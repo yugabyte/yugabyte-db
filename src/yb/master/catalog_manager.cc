@@ -201,6 +201,10 @@ TAG_FLAG(cluster_uuid, hidden);
 
 DECLARE_int32(yb_num_shards_per_tserver);
 
+DEFINE_uint64(transaction_table_num_tablets, 0,
+    "Number of tablets to use when creating the transaction status table."
+    "0 to use the same default num tablets as for regular tables.");
+
 namespace yb {
 namespace master {
 
@@ -437,7 +441,7 @@ class UDTypeLoader : public Visitor<PersistentUDTypeInfo> {
 
   Status Visit(const UDTypeId& udtype_id, const SysUDTypeEntryPB& metadata) override {
     CHECK(!ContainsKey(catalog_manager_->udtype_ids_map_, udtype_id))
-        << "Table already exists: " << udtype_id;
+        << "Type already exists: " << udtype_id;
 
     // Setup the table info.
     UDTypeInfo *const udtype = new UDTypeInfo(udtype_id);
@@ -1879,6 +1883,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   LOG(INFO) << "Successfully created " << object_type << " " << table->ToString()
             << " per request from " << RequestorString(rpc);
   background_tasks_->Wake();
+
+  // If this is a transactional table, we need to create the transaction status table (if it does
+  // not exist already).
+  if (req.schema().table_properties().is_transactional()) {
+    Status s = CreateTransactionsStatusTableIfNeeded(rpc);
+    if (!s.ok()) {
+      return s.CloneAndPrepend("Error while creating transaction status table");
+    }
+  }
   return Status::OK();
 }
 
@@ -2001,6 +2014,49 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
   return Status::OK();
 }
 
+Status CatalogManager::CreateTransactionsStatusTableIfNeeded(rpc::RpcContext *rpc) {
+  TableIdentifierPB table_indentifier;
+  table_indentifier.set_table_name(kTransactionsTableName);
+  table_indentifier.mutable_namespace_()->set_name(kSystemNamespaceName);
+
+  // Check that the namespace exists.
+  scoped_refptr<NamespaceInfo> ns_info;
+  RETURN_NOT_OK(FindNamespace(table_indentifier.namespace_(), &ns_info));
+  if (!ns_info) {
+    return STATUS(NotFound, "Namespace does not exist", kSystemNamespaceName);
+  }
+
+  // If status table exists do nothing, otherwise create it.
+  scoped_refptr<TableInfo> table_info;
+  RETURN_NOT_OK(FindTable(table_indentifier, &table_info));
+
+  if (!table_info) {
+    // Set up a CreateTable request internally.
+    CreateTableRequestPB req;
+    CreateTableResponsePB resp;
+    req.set_name(kTransactionsTableName);
+    req.mutable_namespace_()->set_name(kSystemNamespaceName);
+    req.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
+
+    // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
+    // will use the same defaults as for regular tables.
+    if (FLAGS_transaction_table_num_tablets > 0) {
+      req.set_num_tablets(FLAGS_transaction_table_num_tablets);
+    }
+
+    ColumnSchema hash(kRedisKeyColumnName, BINARY, /* is_nullable */ false, /* is_hash_key */ true);
+    ColumnSchemaToPB(hash, req.mutable_schema()->mutable_columns()->Add());
+
+    Status s = CreateTable(&req, &resp, rpc);
+    // We do not lock here so it is technically possible that the table was already created.
+    // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.
+    if (!s.ok() && !s.IsAlreadyPresent()) {
+      return s;
+    }
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                                          IsCreateTableDoneResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
@@ -2044,7 +2100,21 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
     resp->set_done(alter_table_resp.done());
   }
 
+  // If this is a transactional table we are not done until the transaction status table is created.
+  if (resp->done() && l->data().pb.schema().table_properties().is_transactional()) {
+    return IsTransactionStatusTableCreated(resp);
+  }
+
   return Status::OK();
+}
+
+Status CatalogManager::IsTransactionStatusTableCreated(IsCreateTableDoneResponsePB* resp) {
+  IsCreateTableDoneRequestPB req;
+
+  req.mutable_table()->set_table_name(kTransactionsTableName);
+  req.mutable_table()->mutable_namespace_()->set_name(kSystemNamespaceName);
+
+  return IsCreateTableDone(&req, resp);
 }
 
 TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
