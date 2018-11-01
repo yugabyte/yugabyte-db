@@ -37,8 +37,9 @@ extern "C" {
 
 void YBCInitPgGate() {
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
+  pgapi_shutdown_done.exchange(false);
   pgapi = new pggate::PgApiImpl();
-  LOG(INFO) << "PgGate open";
+  VLOG(1) << "PgGate open";
 }
 
 void YBCDestroyPgGate() {
@@ -47,7 +48,7 @@ void YBCDestroyPgGate() {
   }
   delete pgapi;
   pgapi = nullptr;
-  LOG(INFO) << __PRETTY_FUNCTION__ << " finished";
+  VLOG(1) << __PRETTY_FUNCTION__ << " finished";
 }
 
 YBCStatus YBCPgCreateEnv(YBCPgEnv *pg_env) {
@@ -188,6 +189,28 @@ YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropTable(handle));
 }
 
+YBCStatus YBCPgGetTableDesc(YBCPgSession pg_session,
+                            const char *database_name,
+                            const char *table_name,
+                            YBCPgTableDesc *handle) {
+  return ToYBCStatus(pgapi->GetTableDesc(pg_session, database_name, table_name, handle));
+
+}
+
+YBCStatus YBCPgDeleteTableDesc(YBCPgTableDesc handle) {
+  return ToYBCStatus(pgapi->DeleteTableDesc(handle));
+}
+
+YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
+                             int16_t attr_number,
+                             bool *is_primary,
+                             bool *is_hash) {
+  return ToYBCStatus(pgapi->GetColumnInfo(table_desc,
+      attr_number,
+      is_primary,
+      is_hash));
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML Statements.
 //--------------------------------------------------------------------------------------------------
@@ -252,6 +275,11 @@ YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, YBCPgExpr *expr_h
   return ToYBCStatus(pgapi->NewColumnRef(stmt, attr_num, expr_handle));
 }
 
+YBCStatus YBCPgNewConstantBool(YBCPgStatement stmt, bool value, bool is_null,
+                               YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
+}
+
 YBCStatus YBCPgNewConstantInt2(YBCPgStatement stmt, int16_t value, bool is_null,
                                YBCPgExpr *expr_handle) {
   return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
@@ -314,6 +342,10 @@ YBCStatus YBCPgUpdateConstText(YBCPgExpr expr, const char *value, bool is_null) 
 
 YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value,  int64_t bytes, bool is_null) {
   return ToYBCStatus(pgapi->UpdateConstant(expr, value, bytes, is_null));
+}
+
+YBCPgTxnManager YBCGetPgTxnManager() {
+  return pgapi->GetPgTxnManager();
 }
 
 } // extern "C"

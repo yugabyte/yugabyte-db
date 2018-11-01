@@ -115,10 +115,8 @@ class ConsensusQueueTest : public YBTest {
   }
 
   Status AppendReplicateMsg(int term, int index, int payload_size) {
-    return queue_->AppendOperation(CreateDummyReplicate(term,
-                                                        index,
-                                                        clock_->Now(),
-                                                        payload_size));
+    return queue_->TEST_AppendOperation(CreateDummyReplicate(
+        term, index, clock_->Now(), payload_size));
   }
 
   // Updates the peer's watermark in the queue so that it matches
@@ -642,7 +640,7 @@ TEST_F(ConsensusQueueTest, TestQueueHandlesOperationOverwriting) {
   // Test even when a correct peer responds (meaning we actually get to execute
   // watermark advancement) we sill have the same all-replicated watermark.
   auto replicate = CreateDummyReplicate(2, 21, clock_->Now(), 0);
-  ASSERT_OK(queue_->AppendOperation(replicate));
+  ASSERT_OK(queue_->TEST_AppendOperation(replicate));
   WaitForLocalPeerToAckIndex(21);
 
   ASSERT_OPID_EQ(queue_->GetAllReplicatedIndexForTests(), MinimumOpId());
@@ -679,7 +677,7 @@ TEST_F(ConsensusQueueTest, TestQueueMovesWatermarksBackward) {
   // Now rewrite some of the operations and wait for the log to append.
   Synchronizer synch;
   ASSERT_OK(queue_->AppendOperations(
-      { CreateDummyReplicate(2, 5, clock_->Now(), 0) },
+      { CreateDummyReplicate(2, 5, clock_->Now(), 0) }, yb::OpId() /* committed_op_id */,
       synch.AsStatusCallback()));
 
   // Wait for the operation to be in the log.
@@ -689,7 +687,7 @@ TEST_F(ConsensusQueueTest, TestQueueMovesWatermarksBackward) {
   // in log cache.
   synch.Reset();
   ASSERT_OK(queue_->AppendOperations(
-      { CreateDummyReplicate(2, 6, clock_->Now(), 0) },
+      { CreateDummyReplicate(2, 6, clock_->Now(), 0) }, yb::OpId() /* committed_op_id */,
       synch.AsStatusCallback()));
 
   // Wait for the operation to be in the log.

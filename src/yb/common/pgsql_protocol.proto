@@ -205,6 +205,7 @@ message PgsqlReadRequestPB {
   // - Range columns combining with partition columns are used for indexing.
   optional uint32 hash_code = 4;
   repeated PgsqlExpressionPB partition_column_values = 5;
+  repeated PgsqlExpressionPB range_column_values = 18;
 
   //------------------------------------------------------------------------------------------------
   // Tuple descriptor.

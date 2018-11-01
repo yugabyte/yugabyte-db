@@ -21,6 +21,7 @@
 #endif
 
 #include <cstddef>
+#include <string>
 
 #include "yb/util/ybc_util.h"
 #include "yb/util/status.h"
@@ -29,13 +30,20 @@ namespace yb {
 
 // Convert our C++ status to YBCStatus, which can be returned to PostgreSQL C code.
 YBCStatus ToYBCStatus(const Status& status);
+void FreeYBCStatus(YBCStatus status);
 
 void YBCSetPAllocFn(YBCPAllocFn pg_palloc_fn);
 void* YBCPAlloc(size_t size);
 
+void YBCSetCStringToTextWithLenFn(YBCCStringToTextWithLenFn fn);
+void* YBCCStringToTextWithLen(const char* c, int size);
+
 // YBCStatus definition for Some common Status.
 YBCStatus YBCStatusOK();
 YBCStatus YBCStatusNotSupport(const string& feature_name);
+
+// Duplicate the given string in memory allocated using PostgreSQL's palloc.
+const char* YBCPAllocStdString(const std::string& s);
 
 } // namespace yb
 

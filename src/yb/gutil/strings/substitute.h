@@ -51,7 +51,7 @@ namespace strings {
 //   * It's much faster than StringPrintf.
 //
 //   Supported types:
-//   * StringPiece (const char*, const string&) (NULL is equivalent to "")
+//   * GStringPiece (const char*, const string&) (NULL is equivalent to "")
 //     * Note that this means you do not have to add .c_str() to all of
 //       your strings.  In fact, you shouldn't; it will be slower.
 //   * int32, int64, uint32, uint64
@@ -92,7 +92,7 @@ class SubstituteArg {
     : text_(value), size_(value == NULL ? 0 : strlen(text_)) {}
   inline SubstituteArg(const string& value)  // NOLINT(runtime/explicit)
     : text_(value.data()), size_(value.size()) {}
-  inline SubstituteArg(const StringPiece& value)  // NOLINT(runtime/explicit)
+  inline SubstituteArg(const GStringPiece& value)  // NOLINT(runtime/explicit)
     : text_(value.data()), size_(value.size()) {}
 
   // Primitives
@@ -158,21 +158,21 @@ class SubstituteArg {
 
 // Return the length of the resulting string after performing the given
 // substitution.
-int SubstitutedSize(StringPiece format,
+int SubstitutedSize(GStringPiece format,
                     const SubstituteArg* const* args_array);
 
 // Perform the given substitution into 'target'. 'target' must have
 // space for the result -- use SubstitutedSize() to determine how many
 // bytes are required.  Returns a pointer to the next byte following
 // the result in 'target'.
-char* SubstituteToBuffer(StringPiece format,
+char* SubstituteToBuffer(GStringPiece format,
                          const SubstituteArg* const* args_array,
                          char* target);
 
 }  // namespace internal
 
 void SubstituteAndAppend(
-  string* output, StringPiece format,
+  string* output, GStringPiece format,
   const internal::SubstituteArg& arg0 = internal::SubstituteArg::NoArg,
   const internal::SubstituteArg& arg1 = internal::SubstituteArg::NoArg,
   const internal::SubstituteArg& arg2 = internal::SubstituteArg::NoArg,
@@ -185,7 +185,7 @@ void SubstituteAndAppend(
   const internal::SubstituteArg& arg9 = internal::SubstituteArg::NoArg);
 
 inline string Substitute(
-  StringPiece format,
+  GStringPiece format,
   const internal::SubstituteArg& arg0 = internal::SubstituteArg::NoArg,
   const internal::SubstituteArg& arg1 = internal::SubstituteArg::NoArg,
   const internal::SubstituteArg& arg2 = internal::SubstituteArg::NoArg,

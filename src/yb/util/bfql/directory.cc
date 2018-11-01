@@ -154,17 +154,17 @@ const vector<BFDecl> kBFDirectory = {
   { "ConvertBlobToTuple",     "blobastuple", "",     TUPLE,     {BINARY}, TSOpcode::kNoOp, false },
 
   // CQL Conversions for TimeUUID and date-time types.
-  { "ConvertTimeuuidToDate", "todate", "", DATE, {TIMEUUID}, TSOpcode::kNoOp, false },
-  { "ConvertTimestampToDate", "todate", "", DATE, {TIMESTAMP}, TSOpcode::kNoOp, false },
+  { "ConvertTimeuuidToDate", "todate", "", DATE, {TIMEUUID}, TSOpcode::kNoOp},
+  { "ConvertTimestampToDate", "todate", "", DATE, {TIMESTAMP}, TSOpcode::kNoOp},
 
   { "ConvertTimeuuidToTime", "totime", "", TIME, {TIMEUUID}, TSOpcode::kNoOp, false },
   { "ConvertTimestampToTime", "totime", "", TIME, {TIMESTAMP}, TSOpcode::kNoOp, false },
 
-  { "ConvertDateToTimestamp", "totimestamp", "", TIMESTAMP, {DATE}, TSOpcode::kNoOp, false },
+  { "ConvertDateToTimestamp", "totimestamp", "", TIMESTAMP, {DATE}, TSOpcode::kNoOp},
   { "ConvertTimeuuidToTimestamp", "totimestamp", "", TIMESTAMP, {TIMEUUID}, TSOpcode::kNoOp},
   { "ConvertTimeuuidToTimestamp", "dateof", "", TIMESTAMP, {TIMEUUID}, TSOpcode::kNoOp},
 
-  { "ConvertDateToUnixTimestamp", "tounixtimestamp", "", INT64, {DATE}, TSOpcode::kNoOp, false},
+  { "ConvertDateToUnixTimestamp", "tounixtimestamp", "", INT64, {DATE}, TSOpcode::kNoOp},
   { "ConvertTimestampToUnixTimestamp", "tounixtimestamp", "", INT64, {TIMESTAMP}, TSOpcode::kNoOp},
   { "ConvertTimeuuidToUnixTimestamp", "tounixtimestamp", "", INT64, {TIMEUUID}, TSOpcode::kNoOp},
   { "ConvertTimeuuidToUnixTimestamp", "unixtimestampof", "", INT64, {TIMEUUID}, TSOpcode::kNoOp},
@@ -255,12 +255,20 @@ const vector<BFDecl> kBFDirectory = {
   { "ConvertI16ToVarint",      "cast", "", VARINT,  {INT16, VARINT} },
   { "ConvertI32ToVarint",      "cast", "", VARINT,  {INT32, VARINT} },
   { "ConvertI64ToVarint",      "cast", "", VARINT,  {INT64, VARINT} },
-  { "ConvertToI16",            "cql_cast", "", INT16,  {ANYTYPE, INT16} },
-  { "ConvertToI32",            "cql_cast", "", INT32,  {ANYTYPE, INT32} },
-  { "ConvertToI64",            "cql_cast", "", INT64,  {ANYTYPE, INT64} },
-  { "ConvertToDouble",         "cql_cast", "", DOUBLE, {ANYTYPE, DOUBLE} },
-  { "ConvertToFloat",          "cql_cast", "", FLOAT,  {ANYTYPE, FLOAT} },
-  { "ConvertToString",         "cql_cast", "", STRING,  {ANYTYPE, STRING} },
+  { "ConvertToI16",            "cql_cast", "", INT16,     {ANYTYPE, INT16} },
+  { "ConvertToI32",            "cql_cast", "", INT32,     {ANYTYPE, INT32} },
+  { "ConvertToI64",            "cql_cast", "", INT64,     {ANYTYPE, INT64} },
+  { "ConvertToDouble",         "cql_cast", "", DOUBLE,    {ANYTYPE, DOUBLE} },
+  { "ConvertToFloat",          "cql_cast", "", FLOAT,     {ANYTYPE, FLOAT} },
+  { "ConvertToString",         "cql_cast", "", STRING,    {ANYTYPE, STRING} },
+  { "ConvertToTimestamp",      "cql_cast", "", TIMESTAMP, {ANYTYPE, TIMESTAMP} },
+  { "ConvertToDate",           "cql_cast", "", DATE,      {ANYTYPE, DATE} },
+
+  // Current date, time, timestamp and timeuuid functions.
+  { "NowDate",      "currentdate", "",      DATE, {} },
+  { "NowTime",      "currenttime", "",      TIME, {} },
+  { "NowTimestamp", "currenttimestamp", "", TIMESTAMP, {} },
+  { "NowTimeUuid",  "currenttimeuuid", "",  TIMEUUID, {} }, // alias of now() for timeuuid.
 };
 
 } // namespace bfql

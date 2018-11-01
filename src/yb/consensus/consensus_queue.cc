@@ -275,34 +275,45 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
   callback.Run(status);
 }
 
-Status PeerMessageQueue::AppendOperation(const ReplicateMsgPtr& msg) {
-  return AppendOperations({ msg }, Bind(DoNothingStatusCB));
+Status PeerMessageQueue::TEST_AppendOperation(const ReplicateMsgPtr& msg) {
+  return AppendOperations(
+      { msg }, yb::OpId::FromPB(msg->committed_op_id()), Bind(DoNothingStatusCB));
 }
 
 Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
+                                          const yb::OpId& committed_op_id,
                                           const StatusCallback& log_append_callback) {
-
   DFAKE_SCOPED_LOCK(append_fake_lock_);
-  std::unique_lock<simple_spinlock> lock(queue_lock_);
+  OpId last_id;
+  if (!msgs.empty()) {
+    std::unique_lock<simple_spinlock> lock(queue_lock_);
 
-  OpId last_id = msgs.back()->id();
+    last_id = msgs.back()->id();
 
-  if (last_id.term() > queue_state_.current_term) {
-    queue_state_.current_term = last_id.term();
+    if (last_id.term() > queue_state_.current_term) {
+      queue_state_.current_term = last_id.term();
+    }
+  } else {
+    std::unique_lock<simple_spinlock> lock(queue_lock_);
+    last_id = queue_state_.last_appended;
   }
 
   // Unlock ourselves during Append to prevent a deadlock: it's possible that the log buffer is
   // full, in which case AppendOperations would block. However, for the log buffer to empty, it may
   // need to call LocalPeerAppendFinished() which also needs queue_lock_.
-  lock.unlock();
-  RETURN_NOT_OK(log_cache_.AppendOperations(msgs,
-                                            Bind(&PeerMessageQueue::LocalPeerAppendFinished,
-                                                 Unretained(this),
-                                                 last_id,
-                                                 log_append_callback)));
-  lock.lock();
-  queue_state_.last_appended = last_id;
-  UpdateMetrics();
+  //
+  // Since we are doing AppendOperations only in one thread, no concurrent AppendOperations could
+  // be executed and queue_state_.last_appended will be updated correctly.
+  RETURN_NOT_OK(log_cache_.AppendOperations(
+      msgs, committed_op_id,
+      Bind(&PeerMessageQueue::LocalPeerAppendFinished, Unretained(this), last_id,
+           log_append_callback)));
+
+  if (!msgs.empty()) {
+    std::unique_lock<simple_spinlock> lock(queue_lock_);
+    queue_state_.last_appended = last_id;
+    UpdateMetrics();
+  }
 
   return Status::OK();
 }
@@ -317,6 +328,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   MonoDelta unreachable_time = MonoDelta::kMin;
   bool is_new;
   int64_t next_index;
+  HybridTime propagated_safe_time;
   {
     LockGuard lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, State::kQueueOpen);
@@ -338,15 +350,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
 
     if (propagated_safe_time_provider_ && FLAGS_propagate_safe_time) {
-      auto propagated_safe_time = propagated_safe_time_provider_();
-      if (propagated_safe_time) {
-        // Get the current local safe time on the leader and propagate it to the follower.
-        request->set_propagated_safe_time(propagated_safe_time.ToUint64());
-      } else {
-        request->clear_propagated_safe_time();
-      }
-    } else {
-      request->clear_propagated_safe_time();
+      propagated_safe_time = propagated_safe_time_provider_();
     }
 
     request->set_propagated_hybrid_time(now_ht.ToUint64());
@@ -397,12 +401,14 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     // The batch of messages to send to the peer.
     ReplicateMsgs messages;
     int max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSize();
+    bool have_more_messages = false;
 
     // We try to get the follower's next_index from our log.
     Status s = log_cache_.ReadOps(next_index - 1,
                                   max_batch_size,
                                   &messages,
-                                  &preceding_id);
+                                  &preceding_id,
+                                  &have_more_messages);
     if (PREDICT_FALSE(!s.ok())) {
       if (PREDICT_TRUE(s.IsNotFound())) {
         // It's normal to have a NotFound() here if a follower falls behind where the leader has
@@ -433,6 +439,12 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     // messages. At that point we'll need to do something smarter here, like copy or ref-count.
     for (const auto& msg : messages) {
       request->mutable_ops()->AddAllocated(msg.get());
+    }
+    if (propagated_safe_time && !have_more_messages) {
+      // Get the current local safe time on the leader and propagate it to the follower.
+      request->set_propagated_safe_time(propagated_safe_time.ToUint64());
+    } else {
+      request->clear_propagated_safe_time();
     }
     msg_refs->swap(messages);
     DCHECK_LE(request->ByteSize(), FLAGS_consensus_max_batch_size_bytes);
@@ -549,13 +561,16 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
       watermarks.push_back(Policy::ExtractValue(peer));
     }
   }
-  VLOG(1) << Policy::Name() << " watermarks by peer: " << ::yb::ToString(watermarks)
-          << ", num_peers_required=" << num_peers_required;
 
   // We always assume that local peer has most recent information.
   const size_t num_responsive_peers = watermarks.size() + local_peer_infinite_watermark;
 
   if (num_responsive_peers < num_peers_required) {
+    VLOG_WITH_PREFIX_UNLOCKED(2)
+        << Policy::Name() << " watermarks by peer: " << ::yb::ToString(watermarks)
+        << ", num_peers_required=" << num_peers_required
+        << ", num_responsive_peers=" << num_responsive_peers
+        << ", not enough responsive peers";
     // There are not enough peers with which the last message exchange was successful.
     return Policy::Min();
   }
@@ -577,6 +592,12 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
 
   auto nth = watermarks.begin() + index_of_interest;
   std::nth_element(watermarks.begin(), nth, watermarks.end(), typename Policy::Comparator());
+  VLOG_WITH_PREFIX_UNLOCKED(2)
+      << Policy::Name() << " watermarks by peer: " << ::yb::ToString(watermarks)
+      << ", num_peers_required=" << num_peers_required
+      << ", local_peer_infinite_watermark=" << local_peer_infinite_watermark
+      << ", watermark: " << yb::ToString(*nth);
+
   return *nth;
 }
 
@@ -899,8 +920,8 @@ void PeerMessageQueue::UpdateMetrics() {
       queue_state_.committed_index.index() -
       queue_state_.all_replicated_opid.index());
   metrics_.num_in_progress_ops->set_value(
-    queue_state_.last_appended.index() -
-    queue_state_.committed_index.index());
+      queue_state_.last_appended.index() -
+      queue_state_.committed_index.index());
 }
 
 void PeerMessageQueue::DumpToHtml(std::ostream& out) const {

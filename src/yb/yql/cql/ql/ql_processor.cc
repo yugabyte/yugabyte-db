@@ -17,8 +17,12 @@
 
 #include <memory>
 
+#include "yb/common/roles_permissions.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/yql/cql/ql/statement.h"
 #include "yb/util/thread_restrictions.h"
+
+DECLARE_bool(use_cassandra_authentication);
 
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_ParseRequest,
@@ -81,6 +85,7 @@ using std::shared_ptr;
 using std::string;
 using client::YBClient;
 using client::YBMetaDataCache;
+using client::YBTableName;
 
 QLMetrics::QLMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
   time_to_parse_ql_query_ =
@@ -132,10 +137,11 @@ QLProcessor::~QLProcessor() {
 }
 
 Status QLProcessor::Parse(const string& stmt, ParseTree::UniPtr* parse_tree,
-                          const bool reparsed, const MemTrackerPtr& mem_tracker) {
+                          const bool reparsed, const MemTrackerPtr& mem_tracker,
+                          const bool internal) {
   // Parse the statement and get the generated parse tree.
   const MonoTime begin_time = MonoTime::Now();
-  RETURN_NOT_OK(parser_.Parse(stmt, reparsed, mem_tracker));
+  RETURN_NOT_OK(parser_.Parse(stmt, reparsed, mem_tracker, internal));
   const MonoTime end_time = MonoTime::Now();
   if (ql_metrics_ != nullptr) {
     const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);
@@ -162,8 +168,9 @@ Status QLProcessor::Analyze(ParseTree::UniPtr* parse_tree) {
 }
 
 Status QLProcessor::Prepare(const string& stmt, ParseTree::UniPtr* parse_tree,
-                            const bool reparsed, const MemTrackerPtr& mem_tracker) {
-  RETURN_NOT_OK(Parse(stmt, parse_tree, reparsed, mem_tracker));
+                            const bool reparsed, const MemTrackerPtr& mem_tracker,
+                            const bool internal) {
+  RETURN_NOT_OK(Parse(stmt, parse_tree, reparsed, mem_tracker, internal));
   const Status s = Analyze(parse_tree);
   if (s.IsQLError() && GetErrorCode(s) == ErrorCode::STALE_METADATA && !reparsed) {
     *parse_tree = nullptr;
@@ -173,8 +180,156 @@ Status QLProcessor::Prepare(const string& stmt, ParseTree::UniPtr* parse_tree,
   return s;
 }
 
+bool QLProcessor::CheckPermissions(const ParseTree& parse_tree, StatementExecutedCallback cb) {
+  const TreeNode* tnode = parse_tree.root().get();
+  if (tnode != nullptr) {
+    Status s;
+    switch (tnode->opcode()) {
+      case TreeNodeOpcode::kPTCreateKeyspace:
+        s = ql_env_.HasResourcePermission("data", OBJECT_SCHEMA, ql_env_.CurrentRoleName(),
+                                          PermissionType::CREATE_PERMISSION);
+        break;
+      case TreeNodeOpcode::kPTCreateTable: {
+        const char* keyspace =
+            static_cast<const PTCreateTable*>(tnode)->table_name()->first_name().c_str();
+        s = ql_env_.HasResourcePermission(get_canonical_keyspace(keyspace), OBJECT_SCHEMA,
+                                          ql_env_.CurrentRoleName(),
+                                          PermissionType::CREATE_PERMISSION, keyspace);
+        break;
+      }
+      case TreeNodeOpcode::kPTAlterTable: {
+        const YBTableName table_name = static_cast<const PTAlterTable*>(tnode)->yb_table_name();
+        s = ql_env_.HasTablePermission(table_name, PermissionType::ALTER_PERMISSION);
+        break;
+      }
+      case TreeNodeOpcode::kPTTruncateStmt: {
+        const YBTableName table_name = static_cast<const PTTruncateStmt*>(tnode)->yb_table_name();
+        s = ql_env_.HasTablePermission(table_name, PermissionType::MODIFY_PERMISSION);
+        break;
+      }
+      case TreeNodeOpcode::kPTUpdateStmt: FALLTHROUGH_INTENDED;
+      case TreeNodeOpcode::kPTDeleteStmt: FALLTHROUGH_INTENDED;
+      case TreeNodeOpcode::kPTInsertStmt: {
+        const YBTableName table_name = static_cast<const PTDmlStmt*>(tnode)->table_name();
+        s = ql_env_.HasTablePermission(table_name, PermissionType::MODIFY_PERMISSION);
+        break;
+      }
+      case TreeNodeOpcode::kPTSelectStmt: {
+        const auto select_stmt = static_cast<const PTSelectStmt*>(tnode);
+        if (select_stmt->IsReadableByAllSystemTable()) {
+          break;
+        }
+        const YBTableName table_name = select_stmt->table_name();
+        s = ql_env_.HasTablePermission(table_name, PermissionType::SELECT_PERMISSION);
+        break;
+      }
+      case TreeNodeOpcode::kPTCreateRole:
+        s = ql_env_.HasResourcePermission("roles", ObjectType::OBJECT_ROLE,
+            ql_env_.CurrentRoleName(), PermissionType::CREATE_PERMISSION);
+        break;
+      case TreeNodeOpcode::kPTAlterRole: {
+        const char* role = static_cast<const PTAlterRole*>(tnode)->role_name();
+        s = ql_env_.HasRolePermission(role, PermissionType::ALTER_PERMISSION);
+        break;
+      }
+      case TreeNodeOpcode::kPTGrantRevokeRole: {
+        const auto grant_revoke_role_stmt = static_cast<const PTGrantRevokeRole*>(tnode);
+        const string granted_role = grant_revoke_role_stmt->granted_role_name();
+        const string recipient_role = grant_revoke_role_stmt->recipient_role_name();
+        s = ql_env_.HasRolePermission(granted_role, PermissionType::AUTHORIZE_PERMISSION);
+        if (s.ok()) {
+          s = ql_env_.HasRolePermission(recipient_role, PermissionType::AUTHORIZE_PERMISSION);
+        }
+        break;
+      }
+      case TreeNodeOpcode::kPTGrantRevokePermission: {
+        const auto grant_revoke_permission = static_cast<const PTGrantRevokePermission*>(tnode);
+        const string canonical_resource = grant_revoke_permission->canonical_resource();
+        const char* keyspace = grant_revoke_permission->namespace_name();
+        // It's only a table name if the resource type is TABLE.
+        const char* table = grant_revoke_permission->resource_name();
+        switch (grant_revoke_permission->resource_type()) {
+          case ResourceType::KEYSPACE: {
+            DCHECK_EQ(canonical_resource, get_canonical_keyspace(keyspace));
+            s = ql_env_.HasResourcePermission(canonical_resource, OBJECT_SCHEMA,
+                                              ql_env_.CurrentRoleName(),
+                                              PermissionType::AUTHORIZE_PERMISSION, keyspace);
+            break;
+          }
+          case ResourceType::TABLE: {
+            DCHECK_EQ(canonical_resource, get_canonical_table(keyspace, table));
+            s = ql_env_.HasTablePermission(keyspace, table, PermissionType::AUTHORIZE_PERMISSION);
+            break;
+          }
+          case ResourceType::ROLE: {
+            DCHECK_EQ(canonical_resource,
+                      get_canonical_role(grant_revoke_permission->resource_name()));
+            s = ql_env_.HasResourcePermission(canonical_resource, OBJECT_ROLE,
+                                              ql_env_.CurrentRoleName(),
+                                              PermissionType::AUTHORIZE_PERMISSION);
+            break;
+          }
+          case ResourceType::ALL_KEYSPACES: {
+            DCHECK_EQ(canonical_resource, "data");
+            s = ql_env_.HasResourcePermission(canonical_resource, OBJECT_SCHEMA,
+                                              ql_env_.CurrentRoleName(),
+                                              PermissionType::AUTHORIZE_PERMISSION);
+            break;
+          }
+          case ResourceType::ALL_ROLES:
+            DCHECK_EQ(canonical_resource, "roles");
+            s = ql_env_.HasResourcePermission(canonical_resource, OBJECT_ROLE,
+                                              ql_env_.CurrentRoleName(),
+                                              PermissionType::AUTHORIZE_PERMISSION);
+            break;
+        }
+        break;
+      }
+      case TreeNodeOpcode::kPTDropStmt: {
+        const auto drop_stmt = static_cast<const PTDropStmt*>(tnode);
+        const ObjectType object_type = drop_stmt->drop_type();
+        switch(object_type) {
+          case OBJECT_ROLE:
+            s = ql_env_.HasRolePermission(drop_stmt->name()->QLName(),
+                                          PermissionType::DROP_PERMISSION);
+            break;
+          case OBJECT_SCHEMA:
+            s = ql_env_.HasResourcePermission(
+                get_canonical_keyspace(drop_stmt->yb_table_name().namespace_name()),
+                OBJECT_SCHEMA, ql_env_.CurrentRoleName(), PermissionType::DROP_PERMISSION);
+            break;
+          case OBJECT_TABLE:
+            s = ql_env_.HasTablePermission(drop_stmt->yb_table_name(),
+                                           PermissionType::DROP_PERMISSION);
+            break;
+          case OBJECT_TYPE: FALLTHROUGH_INTENDED;
+          case OBJECT_INDEX:
+            s = ql_env_.HasResourcePermission("data", OBJECT_SCHEMA, ql_env_.CurrentRoleName(),
+                                              PermissionType::DROP_PERMISSION);
+            break;
+          default:
+            break;
+        }
+        break;
+      }
+      default:
+        break;
+    }
+    if (!s.ok()) {
+      cb.Run(s, nullptr);
+      return false;
+    }
+  }
+  return true;
+}
+
 void QLProcessor::ExecuteAsync(const ParseTree& parse_tree, const StatementParameters& params,
                                StatementExecutedCallback cb) {
+  if (FLAGS_use_cassandra_authentication && !parse_tree.internal()) {
+    if (!CheckPermissions(parse_tree, cb)) {
+      return;
+    }
+  }
   executor_.ExecuteAsync(parse_tree, params, std::move(cb));
 }
 

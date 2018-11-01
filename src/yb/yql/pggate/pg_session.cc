@@ -14,7 +14,10 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pggate_if_cxx_decl.h"
+
 #include "yb/client/yb_op.h"
+#include "yb/client/transaction.h"
 
 namespace yb {
 namespace pggate {
@@ -40,8 +43,13 @@ static MonoDelta kSessionTimeout = 60s;
 // Class PgSession
 //--------------------------------------------------------------------------------------------------
 
-PgSession::PgSession(std::shared_ptr<client::YBClient> client, const string& database_name)
-    : client_(client), session_(client_->NewSession()) {
+PgSession::PgSession(
+    std::shared_ptr<client::YBClient> client,
+    const string& database_name,
+    scoped_refptr<PgTxnManager> pg_txn_manager)
+    : client_(client),
+      session_(client_->NewSession()),
+      pg_txn_manager_(std::move(pg_txn_manager)) {
   session_->SetTimeout(kSessionTimeout);
 }
 
@@ -107,59 +115,55 @@ shared_ptr<client::YBTable> PgSession::GetTableDesc(const client::YBTableName& t
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::LoadTable(const YBTableName& name,
-                            const bool write_table,
-                            shared_ptr<YBTable> *table,
-                            vector<PgColumn>* columns,
-                            int* num_key_columns,
-                            int* num_partition_columns) {
-
-  *table = nullptr;
-  shared_ptr<YBTable> pg_table;
-
+Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const YBTableName& name,
+                                                       const bool write_table) {
   VLOG(3) << "Loading table descriptor for " << name.ToString();
-  pg_table = GetTableDesc(name);
-  if (pg_table == nullptr) {
+  shared_ptr<YBTable> table = GetTableDesc(name);
+  if (table == nullptr) {
     return STATUS_FORMAT(NotFound, "Table $0 does not exist", name.ToString());
   }
-  if (pg_table->table_type() != YBTableType::PGSQL_TABLE_TYPE) {
-    return STATUS(InvalidArgument, "Cannot access non-postgres table");
+  if (table->table_type() != YBTableType::PGSQL_TABLE_TYPE) {
+    return STATUS(InvalidArgument, "Cannot access non-postgres table through the PostgreSQL API");
   }
-
-  const YBSchema& schema = pg_table->schema();
-  const int num_columns = schema.num_columns();
-  if (num_key_columns != nullptr) {
-    *num_key_columns = schema.num_key_columns();
-  }
-  if (num_partition_columns != nullptr) {
-    *num_partition_columns = schema.num_hash_key_columns();
-  }
-
-  if (columns != nullptr) {
-    columns->resize(num_columns);
-    for (int idx = 0; idx < num_columns; idx++) {
-      // Find the column descriptor.
-      const YBColumnSchema col = schema.Column(idx);
-
-      // TODO(neil) Considering index columns by attr_num instead of ID.
-      ColumnDesc *desc = (*columns)[idx].desc();
-      desc->Init(idx,
-                 schema.ColumnId(idx),
-                 col.name(),
-                 idx < *num_partition_columns,
-                 idx < *num_key_columns,
-                 col.order() /* attr_num */,
-                 col.type(),
-                 YBColumnSchema::ToInternalDataType(col.type()));
-    }
-  }
-
-  *table = pg_table;
-  return Status::OK();
+  return make_scoped_refptr<PgTableDesc>(table);
 }
 
 CHECKED_STATUS PgSession::Apply(const std::shared_ptr<client::YBPgsqlOp>& op) {
-  return session_->ApplyAndFlush(op);
+  YBSession* session = GetSession(op->read_only());
+  return session->ApplyAndFlush(op);
+}
+
+CHECKED_STATUS PgSession::ApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op) {
+  return GetSession(op->read_only())->Apply(op);
+}
+
+void PgSession::FlushAsync(StatusFunctor callback) {
+  // Even in case of read-write operations, Apply or ApplyAsync would have already been called
+  // with that operation, and that would have started the YB transaction.
+  GetSession(/* read_only_op */ true)->FlushAsync(callback);
+}
+
+YBSession* PgSession::GetSession(bool read_only_op) {
+  YBSession* txn_session = pg_txn_manager_->GetTransactionalSession();
+  if (txn_session) {
+    VLOG(1) << __PRETTY_FUNCTION__
+            << ": read_only_op=" << read_only_op << ", returning transactional session";
+    if (!read_only_op) {
+      pg_txn_manager_->BeginWriteTransactionIfNecessary();
+    }
+    return txn_session;
+  }
+  VLOG(1) << __PRETTY_FUNCTION__
+          << ": read_only_op=" << read_only_op << ", returning non-transactional session";
+  return session_.get();
+}
+
+int PgSession::CountPendingErrors() const {
+  return session_->CountPendingErrors();
+}
+
+std::vector<std::unique_ptr<client::YBError>> PgSession::GetPendingErrors() {
+  return session_->GetPendingErrors();
 }
 
 }  // namespace pggate

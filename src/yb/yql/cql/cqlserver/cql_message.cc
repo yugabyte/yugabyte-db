@@ -1231,6 +1231,12 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
     case DataType::TIMESTAMP:
       id = Id::TIMESTAMP;
       return;
+    case DataType::DATE:
+      id = Id::DATE;
+      return;
+    case DataType::TIME:
+      id = Id::TIME;
+      return;
     case DataType::INET:
       id = Id::INET;
       return;
@@ -1282,8 +1288,6 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
     case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DataType::TUPLE: FALLTHROUGH_INTENDED;
     case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
-    case DataType::DATE: FALLTHROUGH_INTENDED;
-    case DataType::TIME: FALLTHROUGH_INTENDED;
 
     case DataType::UINT8:  FALLTHROUGH_INTENDED;
     case DataType::UINT16: FALLTHROUGH_INTENDED;
@@ -1736,7 +1740,7 @@ CQLServerEvent::CQLServerEvent(std::unique_ptr<EventResponse> event_response)
   serialized_response_ = RefCntBuffer(temp);
 }
 
-void CQLServerEvent::Serialize(std::deque<RefCntBuffer>* output) const {
+void CQLServerEvent::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
   output->push_back(serialized_response_);
 }
 
@@ -1753,7 +1757,8 @@ void CQLServerEventList::Transferred(const Status& status, rpc::Connection*) {
   }
 }
 
-void CQLServerEventList::Serialize(std::deque<RefCntBuffer>* output) const {
+void CQLServerEventList::Serialize(
+    boost::container::small_vector_base<RefCntBuffer>* output) const {
   for (const auto& cql_server_event : cql_server_events_) {
     cql_server_event->Serialize(output);
   }

@@ -49,6 +49,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
+#include "yb/util/opid.h"
 
 // Used by other classes, now part of the API.
 DECLARE_bool(durable_wal_write);
@@ -153,7 +154,8 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // If 'end_offset' is not NULL, then returns the file offset following the last
   // successfully read entry.
   CHECKED_STATUS ReadEntries(LogEntries* entries,
-                             int64_t* end_offset = nullptr);
+                             int64_t* end_offset = nullptr,
+                             yb::OpId* committed_op_id = nullptr);
 
   // Rebuilds this segment's footer by scanning its entries.
   // This is an expensive operation as it reads and parses the whole segment
@@ -414,8 +416,7 @@ using consensus::ReplicateMsgs;
 // ReplicateMsgs in 'msgs'.
 // We use C-style passing here to avoid having to allocate a vector
 // in some hot paths.
-void CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs,
-                                        LogEntryBatchPB* batch);
+LogEntryBatchPB CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs);
 
 // Checks if 'fname' is a correctly formatted name of log segment file.
 bool IsLogFileName(const std::string& fname);

@@ -73,6 +73,14 @@ void PgExpr::TranslateComplex(Slice *yb_cursor, const PgWireDataHeader& header,
 
 //--------------------------------------------------------------------------------------------------
 
+PgConstant::PgConstant(bool value, bool is_null)
+    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kBoolValue) {
+  if (!is_null) {
+    ql_value_.set_bool_value(value);
+  }
+  TranslateData = TranslateNumber<bool>;
+}
+
 PgConstant::PgConstant(int16_t value, bool is_null)
     : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kInt16Value) {
   if (!is_null) {
@@ -124,7 +132,7 @@ PgConstant::PgConstant(const char *value, bool is_null)
 PgConstant::PgConstant(const char *value, size_t bytes, bool is_null)
     : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kStringValue) {
   if (!is_null) {
-    ql_value_.set_binary_value(value);
+    ql_value_.set_binary_value(value, bytes);
   }
   TranslateData = TranslateText;
 }
@@ -208,6 +216,9 @@ Status PgColumnRef::Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   RETURN_NOT_OK(pg_stmt->PrepareColumnForRead(attr_num_, expr_pb, &col));
 
   switch (col->internal_type()) {
+    case QLValue::InternalType::kBoolValue:
+      TranslateData = TranslateNumber<bool>;
+      break;
     case QLValue::InternalType::kInt16Value:
       TranslateData = TranslateNumber<int16_t>;
       break;
@@ -230,11 +241,12 @@ Status PgColumnRef::Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
 
     case QLValue::InternalType::kDecimalValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kTimestampValue: FALLTHROUGH_INTENDED;
+    case QLValue::InternalType::kDateValue: FALLTHROUGH_INTENDED;
+    case QLValue::InternalType::kTimeValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kInetaddressValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kJsonbValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kUuidValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kTimeuuidValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kBoolValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kBinaryValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kVarintValue:
       return STATUS_SUBSTITUTE(NotSupported, "Datatype $0 is not yet supported",

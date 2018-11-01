@@ -94,6 +94,14 @@ class PTBcall : public PTExpr {
     string arg_names;
     string keyspace;
 
+    // cql_cast() is displayed as "cast(<col> as <type>)".
+    if (strcmp(name_->c_str(), bfql::kCqlCastFuncName) == 0) {
+      CHECK_GE(args_->size(), 2);
+      const string column_name = args_->element(0)->QLName();
+      const string type =  QLType::ToCQLString(args_->element(1)->ql_type()->type_info()->type());
+      return strings::Substitute("cast($0 as $1)", column_name, type);
+    }
+
     for (auto arg : args_->node_list()) {
       if (!arg_names.empty()) {
         arg_names += ", ";
@@ -101,13 +109,13 @@ class PTBcall : public PTExpr {
       arg_names += arg->QLName();
     }
     if (IsAggregateCall()) {
-      // count(*) is displayed as count
+      // count(*) is displayed as "count".
       if (arg_names.empty()) {
-        return strings::Substitute("$0", name_->c_str());
+        return name_->c_str();
       }
       keyspace += "system.";
     }
-    return strings::Substitute("$0$1$2$3$4", keyspace, name_->c_str(), "(", arg_names, ")");
+    return strings::Substitute("$0$1($2)", keyspace, name_->c_str(), arg_names);
   }
 
   virtual bool IsAggregateCall() const override;

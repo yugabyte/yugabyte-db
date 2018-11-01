@@ -444,7 +444,8 @@ void Batcher::FlushBuffersIfReady() {
                                           this,
                                           _1,
                                           BatcherPtr(this)),
-                                &transaction_metadata_)) {
+                                &transaction_metadata_,
+                                &may_have_metadata_)) {
         return;
       }
     }

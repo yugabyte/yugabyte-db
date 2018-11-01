@@ -172,7 +172,7 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
   if (tnode->opcode() != TreeNodeOpcode::kPTListNode) {
     tnode_context = exec_context_->AddTnode(tnode);
     if (tnode->IsDml() && static_cast<const PTDmlStmt *>(tnode)->RequiresTransaction()) {
-      exec_context_->StartTransaction(SNAPSHOT_ISOLATION, ql_env_);
+      RETURN_NOT_OK(exec_context_->StartTransaction(SNAPSHOT_ISOLATION, ql_env_));
     }
   }
   switch (tnode->opcode()) {
@@ -1068,8 +1068,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_conte
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTStartTransaction *tnode) {
-  exec_context_->StartTransaction(tnode->isolation_level(), ql_env_);
-  return Status::OK();
+  return exec_context_->StartTransaction(tnode->isolation_level(), ql_env_);
 }
 
 //--------------------------------------------------------------------------------------------------

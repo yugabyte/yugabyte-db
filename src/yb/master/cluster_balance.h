@@ -147,20 +147,20 @@ class ClusterLoadBalancer {
   // Goes over the tablet_map_ and the set of live TSDescriptors to compute the load distribution
   // across the tablets for the given table. Returns false if we encounter transient errors that
   // should stop the load balancing.
-  virtual bool AnalyzeTablets(const TableId& table_uuid);
+  virtual Result<bool> AnalyzeTablets(const TableId& table_uuid);
 
   // Processes any required replica additions, as part of moving load from a highly loaded TS to
   // one that is less loaded.
   //
   // Returns true if a move was actually made.
-  bool HandleAddReplicas(
+  Result<bool> HandleAddReplicas(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
   // Processes any required replica removals, as part of having added an extra replica to a
   // tablet's set of peers, which caused its quorum to be larger than the configured number.
   //
   // Returns true if a move was actually made.
-  bool HandleRemoveReplicas(TabletId* out_tablet_id, TabletServerId* out_from_ts);
+  Result<bool> HandleRemoveReplicas(TabletId* out_tablet_id, TabletServerId* out_from_ts);
 
   // Methods for load preparation, called by ClusterLoadBalancer while analyzing tablets and
   // building the initial state.
@@ -173,7 +173,7 @@ class ClusterLoadBalancer {
   // required number of replicas, we need to add extra tablets to its peer set.
   //
   // Returns true if a move was actually made.
-  bool HandleAddIfMissingPlacement(TabletId* out_tablet_id, TabletServerId* out_to_ts);
+  Result<bool> HandleAddIfMissingPlacement(TabletId* out_tablet_id, TabletServerId* out_to_ts);
 
   // If we find a tablet with peers that violate the placement information, we want to move load
   // away from the invalid placement peers, to new peers that are valid. To ensure we do not
@@ -181,7 +181,7 @@ class ClusterLoadBalancer {
   // over-replicating the tablet temporarily.
   //
   // Returns true if a move was actually made.
-  bool HandleAddIfWrongPlacement(
+  Result<bool> HandleAddIfWrongPlacement(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
   // If we find a tablet with peers that violate the placement information, we first over-replicate
@@ -189,12 +189,12 @@ class ClusterLoadBalancer {
   // on the remove path, here.
   //
   // Returns true if a move was actually made.
-  bool HandleRemoveIfWrongPlacement(TabletId* out_tablet_id, TabletServerId* out_from_ts);
+  Result<bool> HandleRemoveIfWrongPlacement(TabletId* out_tablet_id, TabletServerId* out_from_ts);
 
   // Processes any tablet leaders that are on a highly loaded tablet server and need to be moved.
   //
   // Returns true if a move was actually made.
-  virtual bool HandleLeaderMoves(
+  virtual Result<bool> HandleLeaderMoves(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
   // Go through sorted_load_ and figure out which tablet to rebalance and from which TS that is
@@ -202,7 +202,8 @@ class ClusterLoadBalancer {
   //
   // Returns true if we could find a tablet to rebalance and sets the three output parameters.
   // Returns false otherwise.
-  bool GetLoadToMove(TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId* to_ts);
+  Result<bool> GetLoadToMove(
+      TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId* to_ts);
 
   bool GetTabletToMove(
       const TabletServerId& from_ts, const TabletServerId& to_ts, TabletId* moving_tablet_id);
@@ -216,21 +217,21 @@ class ClusterLoadBalancer {
 
   // Issue the change config and modify the in-memory state for moving a replica from one tablet
   // server to another.
-  void MoveReplica(
+  CHECKED_STATUS MoveReplica(
       const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts);
 
   // Issue the change config and modify the in-memory state for adding a replica on the specified
   // tablet server.
-  void AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts);
+  CHECKED_STATUS AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts);
 
   // Issue the change config and modify the in-memory state for removing a replica on the specified
   // tablet server.
-  void RemoveReplica(
+  CHECKED_STATUS RemoveReplica(
       const TabletId& tablet_id, const TabletServerId& ts_uuid, const bool stepdown_if_leader);
 
   // Issue the change config and modify the in-memory state for moving a tablet leader on the
   // specified tablet server to the other specified tablet server.
-  void MoveLeader(
+  CHECKED_STATUS MoveLeader(
       const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts);
 
   // Methods called for returning tablet id sets, for figuring out tablets to move around.

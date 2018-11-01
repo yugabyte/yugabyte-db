@@ -25,6 +25,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master_util.h"
 
+#include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
@@ -38,6 +39,7 @@
 #include "yb/yql/redis/redisserver/redis_rpc.h"
 
 using namespace std::literals;
+using namespace std::placeholders;
 using yb::client::YBTableName;
 
 namespace {
@@ -53,6 +55,9 @@ static bool ValidateRedisPasswordSeparator(const char* flagname, const string& v
 DEFINE_bool(yedis_enable_flush, true, "Enables FLUSHDB and FLUSHALL commands in yedis.");
 DEFINE_bool(use_hashed_redis_password, true, "Store the hash of the redis passwords instead.");
 DEFINE_string(redis_passwords_separator, ",", "The character used to separate multiple passwords.");
+
+DEFINE_int32(redis_keys_threshold, 10000,
+             "Maximum number of keys allowed to be in the db before the KEYS operation errors out");
 
 __attribute__((unused))
 DEFINE_validator(redis_passwords_separator, &ValidateRedisPasswordSeparator);
@@ -117,10 +122,13 @@ namespace redisserver {
     ((ping, Ping, -1, LOCAL)) \
     ((command, Command, -1, LOCAL)) \
     ((monitor, Monitor, 1, LOCAL)) \
+    ((publish, Publish, 3, LOCAL)) \
+    ((subscribe, Subscribe, -2, LOCAL)) \
     ((quit, Quit, 1, LOCAL)) \
     ((flushdb, FlushDB, 1, LOCAL)) \
     ((flushall, FlushAll, 1, LOCAL)) \
     ((debugsleep, DebugSleep, 2, LOCAL)) \
+    ((keys, Keys, 2, LOCAL)) \
     ((cluster, Cluster, -2, CLUSTER)) \
     ((persist, Persist, 2, WRITE)) \
     ((expire, Expire, 3, WRITE)) \
@@ -256,8 +264,22 @@ class LocalCommandData {
   }
 
   template<class Functor>
-  void Apply(const Functor& functor, const std::string& partition_key) {
-    context_->Apply(idx_, functor, partition_key, info_.metrics);
+  void Apply(const Functor& functor, const std::string& partition_key,
+             ManualResponse manual_response) {
+    context_->Apply(idx_, functor, partition_key, info_.metrics, manual_response);
+  }
+
+  const rpc::RpcMethodMetrics& metrics() const {
+    return info_.metrics;
+  }
+
+  void Respond(const Status& status, RedisResponsePB* response) const {
+    if (!status.ok()) {
+      call()->RespondFailure(idx_, status);
+      return;
+    }
+
+    Respond(response);
   }
 
   void Respond(RedisResponsePB* response = nullptr) const {
@@ -371,6 +393,54 @@ void HandleMonitor(LocalCommandData data) {
   data.context()->service_data()->AppendToMonitors(conn);
 }
 
+void HandlePublish(LocalCommandData data) {
+  const string& channel = data.arg(1).ToBuffer();
+  const string& published_message = data.arg(2).ToBuffer();
+
+  RedisResponsePB response;
+  response.set_code(RedisResponsePB::OK);
+
+  vector<string> parts;
+  parts.push_back(redisserver::EncodeAsBulkString("message").ToBuffer());
+  parts.push_back(redisserver::EncodeAsBulkString(channel).ToBuffer());
+  parts.push_back(redisserver::EncodeAsBulkString(published_message).ToBuffer());
+  string encoded_msg = redisserver::EncodeAsArrayOfEncodedElements(parts);
+  response.set_int_response(data.context()->service_data()->PublishToChannel(channel, encoded_msg));
+  data.Respond(&response);
+}
+
+void HandleSubscribe(LocalCommandData data) {
+  RedisResponsePB response;
+  response.set_code(RedisResponsePB::OK);
+
+  // Add to the appenders after the call has been handled (i.e. reponded with "OK").
+  auto conn = data.call()->connection();
+  for (int idx = 1; idx < data.arg_size(); idx++) {
+    string channel = data.arg(idx).ToBuffer();
+
+    data.context()->service_data()->AppendToChannelSubscribers(channel, conn);
+
+    vector<string> parts;
+    parts.push_back(redisserver::EncodeAsBulkString("subscribe").ToBuffer());
+    parts.push_back(redisserver::EncodeAsBulkString(channel).ToBuffer());
+    // TODO: Should be returning the number of channels that the client is subscribed to.
+    parts.push_back(redisserver::EncodeAsInteger(0).ToBuffer());
+    if (idx < data.arg_size() - 1) {
+      string encoded_msg = redisserver::EncodeAsArrayOfEncodedElements(parts);
+      conn->QueueOutboundData(
+          std::make_shared<yb::rpc::StringOutboundData>(encoded_msg, "Subscribe Response"));
+    } else {
+      auto array_response = response.mutable_array_response();
+      array_response->set_encoded(true);
+      for (auto& part : parts) {
+        array_response->add_elements(part);
+      }
+    }
+  }
+
+  data.Respond(&response);
+}
+
 void HandleRole(LocalCommandData data) {
   RedisResponsePB response;
   response.set_code(RedisResponsePB::OK);
@@ -401,6 +471,115 @@ void HandlePing(LocalCommandData data) {
   data.Respond(&response);
 }
 
+class KeysProcessor : public std::enable_shared_from_this<KeysProcessor> {
+ public:
+  explicit KeysProcessor(const LocalCommandData& data)
+      : data_(data),
+        partitions_(data.table()->GetPartitions()), sessions_(partitions_.size()),
+        callbacks_(partitions_.size()) {
+    resp_.set_code(RedisResponsePB::OK);
+  }
+
+  bool Store(size_t idx, client::YBSession* session, const StatusFunctor& callback) {
+    sessions_[idx] = session;
+    callbacks_[idx] = callback;
+    if (stored_.fetch_add(1, std::memory_order_acq_rel) + 1 == callbacks_.size()) {
+      Execute(0);
+    }
+    return true;
+  }
+
+  const std::vector<std::string>& partitions() const {
+    return partitions_;
+  }
+
+ private:
+  void Execute(size_t idx) {
+    if (idx == partitions_.size()) {
+      ProcessedAll(Status::OK());
+      return;
+    }
+
+    const auto& partition_key = partitions_[idx];
+    auto operation = std::make_shared<client::YBRedisReadOp>(data_.table()->shared_from_this());
+    auto request = operation->mutable_request();
+    uint16_t hash_code = partition_key.size() == 0 ?
+        0 : PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+    request->mutable_key_value()->set_hash_code(hash_code);
+    request->mutable_keys_request()->set_pattern(data_.arg(1).ToBuffer());
+    request->mutable_keys_request()->set_threshold(keys_threshold_);
+    sessions_[idx]->set_allow_local_calls_in_curr_thread(false);
+    auto status = sessions_[idx]->Apply(operation);
+    if (!status.ok()) {
+      ProcessedAll(status);
+      return;
+    }
+    sessions_[idx]->FlushAsync(std::bind(
+        &KeysProcessor::ProcessedOne, shared_from_this(), idx, operation, _1));
+  }
+
+  void ProcessedOne(
+      size_t idx, const std::shared_ptr<client::YBRedisReadOp>& operation, const Status& status) {
+    if (!status.ok()) {
+      ProcessedAll(status);
+      return;
+    }
+
+    auto& response = *operation->mutable_response();
+    if (response.code() == RedisResponsePB::SERVER_ERROR) {
+      // We received too many keys, forwarding the error message.
+      resp_ = response;
+      ProcessedAll(Status::OK());
+      return;
+    }
+
+    size_t count = response.array_response().elements_size();
+    auto** elements = response.mutable_array_response()->mutable_elements()->mutable_data();
+    keys_threshold_ -= count;
+
+    auto& array_response = *resp_.mutable_array_response();
+    for (size_t i = 0; i != count; ++i) {
+      array_response.mutable_elements()->AddAllocated(elements[i]);
+    }
+
+    response.mutable_array_response()->mutable_elements()->ExtractSubrange(0, count, nullptr);
+
+    if (keys_threshold_ == 0) {
+      ProcessedAll(Status::OK());
+      return;
+    }
+
+    Execute(idx + 1);
+  }
+
+  void ProcessedAll(const Status& status) {
+    data_.Respond(status, &resp_);
+
+    for (const auto& callback : callbacks_) {
+      callback(status);
+    }
+  }
+
+  LocalCommandData data_;
+
+  std::vector<std::string> partitions_;
+  std::vector<client::YBSession*> sessions_;
+  std::vector<StatusFunctor> callbacks_;
+  std::atomic<size_t> stored_{0};
+  RedisResponsePB resp_;
+  size_t keys_threshold_ = FLAGS_redis_keys_threshold;
+};
+
+void HandleKeys(LocalCommandData data) {
+  auto processor = std::make_shared<KeysProcessor>(data);
+  size_t idx = 0;
+  for (const std::string& partition_key : processor->partitions()) {
+    data.Apply(std::bind(
+        &KeysProcessor::Store, processor, idx, _1, _2), partition_key, ManualResponse::kTrue);
+    ++idx;
+  }
+}
+
 void HandleCommand(LocalCommandData data) {
   data.Respond();
 }
@@ -423,9 +602,16 @@ bool AcceptPassword(const vector<string>& allowed, const string& candidate) {
 
 void HandleConfig(LocalCommandData data) {
   RedisResponsePB resp;
+  // We only handle config requests of the type:
+  // CONFIG SET REQUIREPASS <password>
+  // everything else is handled as a no-op.
   if (data.arg_size() != 4 ||
       !(boost::iequals(data.arg(1).ToBuffer(), "SET") &&
         boost::iequals(data.arg(2).ToBuffer(), "REQUIREPASS"))) {
+    if (data.arg_size() >= 2 && boost::iequals(data.arg(1).ToBuffer(), "GET")) {
+      // CONFIG GET will be responded to with an empty array.
+      resp.mutable_array_response()->set_encoded(false);
+    }
     data.Respond(&resp);
     return;
   }
@@ -677,13 +863,13 @@ void HandleDebugSleep(LocalCommandData data) {
 
   auto now = std::chrono::steady_clock::now();
   auto functor = [end = now + std::chrono::milliseconds(*time_ms),
-                  data](const StatusFunctor& callback) {
+                  data](client::YBSession*, const StatusFunctor& callback) {
     SleepWaiter waiter{ end, callback, data };
     waiter(Status::OK());
     return true;
   };
 
-  data.Apply(functor, std::string());
+  data.Apply(functor, std::string(), ManualResponse::kFalse);
 }
 
 } // namespace

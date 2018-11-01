@@ -45,6 +45,7 @@ static const char* const kSystemSchemaIndexesTableName = "indexes";
 static const char* const kSystemSchemaTriggersTableName = "triggers";
 static const char* const kSystemSchemaTypesTableName = "types";
 static const char* const kSystemSchemaViewsTableName = "views";
+static const char* const kSystemSchemaPartitionsTableName = "partitions";
 static const char* const kSystemSchemaKeyspacesTableName = "keyspaces";
 static const char* const kSystemSchemaTablesTableName = "tables";
 

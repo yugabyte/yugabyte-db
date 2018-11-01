@@ -42,7 +42,10 @@ CHECKED_STATUS PTAlterTable::Analyze(SemContext *sem_context) {
   // Populate internal table_ variable.
   bool is_system_ignored;
   RETURN_NOT_OK(name_->AnalyzeName(sem_context, OBJECT_TABLE));
+
+  // Permissions check happen in LookupTable if flag use_cassandra_authentication is enabled.
   RETURN_NOT_OK(sem_context->LookupTable(name_->ToTableName(), name_->loc(), true /* write_table */,
+                                         PermissionType::ALTER_PERMISSION,
                                          &table_, &is_system_ignored, &table_columns_));
 
   // Save context state, and set "this" as current table being altered.

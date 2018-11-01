@@ -54,6 +54,154 @@ static constexpr size_t kSizeUuid = 16;
 static constexpr size_t kByteSize = 8;
 static constexpr size_t kHexBase = 16;
 
+//--------------------------------------------------------------------------------------------------
+template<typename SetResult, typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS SetNumericResult(SetResult set_result, PTypePtr source, DataType target_datatype,
+                                RTypePtr target) {
+  DataType source_datatype = QLValue::FromInternalDataType(source->type());
+  if (!QLType::IsExplicitlyConvertible(target_datatype, source_datatype)) {
+    return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
+                             QLType::ToCQLString(source_datatype),
+                             QLType::ToCQLString(target_datatype));
+  }
+
+  switch(source->type()) {
+    case QLValue::InternalType::kInt32Value:
+      RETURN_NOT_OK(set_result(source->int32_value(), target));
+      break;
+    case QLValue::InternalType::kInt16Value:
+      RETURN_NOT_OK(set_result(source->int16_value(), target));
+      break;
+    case QLValue::InternalType::kInt64Value:
+      RETURN_NOT_OK(set_result(source->int64_value(), target));
+      break;
+    case QLValue::InternalType::kFloatValue:
+      RETURN_NOT_OK(set_result(source->float_value(), target));
+      break;
+    case QLValue::InternalType::kDoubleValue:
+      RETURN_NOT_OK(set_result(source->double_value(), target));
+      break;
+    default:
+      return STATUS_SUBSTITUTE(QLError, "Invalid datatype for cast: $0",
+                               QLType::ToCQLString(source_datatype));
+  }
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS SetStringResult(PTypePtr source, RTypePtr target) {
+  DataType source_datatype = QLValue::FromInternalDataType(source->type());
+  if (!QLType::IsExplicitlyConvertible(DataType::STRING, source_datatype)) {
+    return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
+                             QLType::ToCQLString(source_datatype),
+                             QLType::ToCQLString(DataType::STRING));
+  }
+
+  switch(source->type()) {
+    case QLValue::InternalType::kInt32Value:
+      target->set_string_value(std::to_string(source->int32_value()));
+      break;
+    case QLValue::InternalType::kInt16Value:
+      target->set_string_value(std::to_string(source->int16_value()));
+      break;
+    case QLValue::InternalType::kInt64Value:
+      target->set_string_value(std::to_string(source->int64_value()));
+      break;
+    case QLValue::InternalType::kFloatValue:
+      target->set_string_value(std::to_string(source->float_value()));
+      break;
+    case QLValue::InternalType::kDoubleValue:
+      target->set_string_value(std::to_string(source->double_value()));
+      break;
+    case QLValue::InternalType::kStringValue:
+      target->set_string_value(source->string_value());
+      break;
+    case QLValue::InternalType::kBoolValue:
+      target->set_string_value(source->bool_value() ? "true" : "false");
+      break;
+    case QLValue::InternalType::kTimestampValue:
+      target->set_string_value(DateTime::TimestampToString(source->timestamp_value()));
+      break;
+    case QLValue::InternalType::kDateValue:
+      target->set_string_value(VERIFY_RESULT(DateTime::DateToString(source->date_value())));
+      break;
+    case QLValue::InternalType::kTimeValue:
+      target->set_string_value(VERIFY_RESULT(DateTime::TimeToString(source->time_value())));
+      break;
+    default:
+      return STATUS_SUBSTITUTE(QLError, "Invalid datatype for cast: $0",
+                               QLType::ToCQLString(source_datatype));
+  }
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS SetTimestampResult(PTypePtr source, RTypePtr target) {
+  DataType source_datatype = QLValue::FromInternalDataType(source->type());
+  if (!QLType::IsExplicitlyConvertible(DataType::TIMESTAMP, source_datatype)) {
+    return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
+                             QLType::ToCQLString(source_datatype),
+                             QLType::ToCQLString(DataType::TIMESTAMP));
+  }
+
+  switch(source->type()) {
+    case QLValue::InternalType::kTimeuuidValue: {
+      Uuid time_uuid = source->timeuuid_value();
+      int64_t unix_timestamp;
+      RETURN_NOT_OK(time_uuid.toUnixTimestamp(&unix_timestamp));
+      target->set_timestamp_value(Timestamp(DateTime::AdjustPrecision
+                                            (unix_timestamp,
+                                             DateTime::kMillisecondPrecision,
+                                             DateTime::kInternalPrecision)));
+      break;
+    }
+    case QLValue::InternalType::kDateValue:
+      target->set_timestamp_value(DateTime::DateToTimestamp(source->date_value()));
+      break;
+    default:
+      return STATUS_SUBSTITUTE(QLError, "Invalid datatype for cast: $0",
+                               QLType::ToCQLString(source_datatype));
+  }
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS SetDateResult(PTypePtr source, RTypePtr target) {
+  DataType source_datatype = QLValue::FromInternalDataType(source->type());
+  if (!QLType::IsExplicitlyConvertible(DataType::DATE, source_datatype)) {
+    return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
+                             QLType::ToCQLString(source_datatype),
+                             QLType::ToCQLString(DataType::DATE));
+  }
+
+  switch(source->type()) {
+    case QLValue::InternalType::kTimestampValue:
+      target->set_date_value(VERIFY_RESULT(DateTime::DateFromTimestamp(source->timestamp_value())));
+      break;
+    case QLValue::InternalType::kTimeuuidValue: {
+      Uuid time_uuid = source->timeuuid_value();
+      int64_t unix_timestamp;
+      RETURN_NOT_OK(time_uuid.toUnixTimestamp(&unix_timestamp));
+      target->set_date_value(VERIFY_RESULT(DateTime::DateFromUnixTimestamp(unix_timestamp)));
+      break;
+    }
+    default:
+      return STATUS_SUBSTITUTE(QLError, "Invalid datatype for cast: $0",
+                               QLType::ToCQLString(source_datatype));
+  }
+  return Status::OK();
+}
+
+template<typename RTypePtr, typename StrToNum, typename SetTarget>
+CHECKED_STATUS StringToNumeric(const string& str_val, RTypePtr target, StrToNum strToNum,
+                               SetTarget setTarget) {
+  auto result = strToNum(str_val);
+  RETURN_NOT_OK(result);
+  setTarget(*result, target);
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertI8ToI8(PTypePtr source, RTypePtr target) {
   if (source->IsNull()) {
@@ -622,8 +770,7 @@ CHECKED_STATUS ConvertBlobToString(PTypePtr source, RTypePtr target) {
   if (source->IsNull()) {
     target->SetNull();
   } else {
-    string target_val = source->binary_value();
-    target->set_string_value(target_val);
+    target->set_string_value(source->binary_value());
   }
   return Status::OK();
 }
@@ -637,11 +784,7 @@ CHECKED_STATUS ConvertBlobToBool(PTypePtr source, RTypePtr target) {
     if (blob.size() != kSizeBool) {
       return STATUS(QLError, "The blob string is not a valid string for a boolean type.");
     }
-    if (blob[0] == 0) {
-      target->set_bool_value(false);
-    } else {
-      target->set_bool_value(true);
-    }
+    target->set_bool_value(blob[0] != 0);
   }
   return Status::OK();
 }
@@ -847,12 +990,20 @@ CHECKED_STATUS ConvertBlobToTuple(PTypePtr source, RTypePtr target) {
 // The following functions are for conversions between date-time datatypes.
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertTimeuuidToDate(PTypePtr source, RTypePtr target) {
-  return STATUS(RuntimeError, "Not yet implemented");
+  if (source->IsNull()) {
+    target->SetNull();
+    return Status::OK();
+  }
+  return SetDateResult(source, target);
 }
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertTimestampToDate(PTypePtr source, RTypePtr target) {
-  return STATUS(RuntimeError, "Not yet implemented");
+  if (source->IsNull()) {
+    target->SetNull();
+    return Status::OK();
+  }
+  return SetDateResult(source, target);
 }
 
 template<typename PTypePtr, typename RTypePtr>
@@ -867,28 +1018,30 @@ CHECKED_STATUS ConvertTimestampToTime(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertDateToTimestamp(PTypePtr source, RTypePtr target) {
-  return STATUS(RuntimeError, "Not yet implemented");
+  if (source->IsNull()) {
+    target->SetNull();
+    return Status::OK();
+  }
+  return SetTimestampResult(source, target);
 }
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertTimeuuidToTimestamp(PTypePtr source, RTypePtr target) {
   if (source->IsNull()) {
     target->SetNull();
-  } else {
-    Uuid time_uuid = source->timeuuid_value();
-    int64_t unix_timestamp;
-    RETURN_NOT_OK(time_uuid.toUnixTimestamp(&unix_timestamp));
-    target->set_timestamp_value(Timestamp(DateTime::AdjustPrecision
-                                              (unix_timestamp,
-                                               DateTime::kMillisecondPrecision,
-                                               DateTime::kInternalPrecision)));
+    return Status::OK();
   }
-  return Status::OK();
+  return SetTimestampResult(source, target);
 }
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertDateToUnixTimestamp(PTypePtr source, RTypePtr target) {
-  return STATUS(RuntimeError, "Not yet implemented");
+  if (source->IsNull()) {
+    target->SetNull();
+  } else {
+    target->set_int64_value(DateTime::DateToUnixTimestamp(source->date_value()));
+  }
+  return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
@@ -1057,81 +1210,6 @@ CHECKED_STATUS ConvertI64ToVarint(PTypePtr source, RTypePtr target) {
   return Status::OK();
 }
 
-template<typename SetResult, typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS SetNumericResult(SetResult set_result, PTypePtr source, DataType target_datatype,
-                       RTypePtr target) {
-  DataType source_datatype = QLValue::FromInternalDataType(source->type());
-  if (!QLType::IsExplicitlyConvertible(target_datatype, source_datatype)) {
-    return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
-                             QLType::ToCQLString(source_datatype),
-                             QLType::ToCQLString(target_datatype));
-  }
-
-  switch(source->type()) {
-    case QLValue::InternalType::kInt32Value:
-      RETURN_NOT_OK(set_result(source->int32_value(), target));
-      break;
-    case QLValue::InternalType::kInt16Value:
-      RETURN_NOT_OK(set_result(source->int16_value(), target));
-      break;
-    case QLValue::InternalType::kInt64Value:
-      RETURN_NOT_OK(set_result(source->int64_value(), target));
-      break;
-    case QLValue::InternalType::kFloatValue:
-      RETURN_NOT_OK(set_result(source->float_value(), target));
-      break;
-    case QLValue::InternalType::kDoubleValue:
-      RETURN_NOT_OK(set_result(source->double_value(), target));
-      break;
-    default:
-      return STATUS_SUBSTITUTE(QLError, "Invalid datatype for cast: $0", source->type());
-  }
-  return Status::OK();
-}
-
-template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS SetStringResult(PTypePtr source, RTypePtr target) {
-  DataType source_datatype = QLValue::FromInternalDataType(source->type());
-  if (!QLType::IsExplicitlyConvertible(DataType::STRING, source_datatype)) {
-    return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
-                             QLType::ToCQLString(source_datatype),
-                             QLType::ToCQLString(DataType::STRING));
-  }
-
-  switch(source->type()) {
-    case QLValue::InternalType::kInt32Value:
-      target->set_string_value(std::to_string(source->int32_value()));
-      break;
-    case QLValue::InternalType::kInt16Value:
-      target->set_string_value(std::to_string(source->int16_value()));
-      break;
-    case QLValue::InternalType::kInt64Value:
-      target->set_string_value(std::to_string(source->int64_value()));
-      break;
-    case QLValue::InternalType::kFloatValue:
-      target->set_string_value(std::to_string(source->float_value()));
-      break;
-    case QLValue::InternalType::kDoubleValue:
-      target->set_string_value(std::to_string(source->double_value()));
-      break;
-    case QLValue::InternalType::kStringValue:
-      target->set_string_value(source->string_value());
-      break;
-    default:
-      return STATUS_SUBSTITUTE(QLError, "Invalid datatype for cast: $0", source->type());
-  }
-  return Status::OK();
-}
-
-template<typename RTypePtr, typename StrToNum, typename SetTarget>
-CHECKED_STATUS StringToNumeric(const string& str_val, RTypePtr target, StrToNum strToNum,
-                               SetTarget setTarget) {
-  auto result = strToNum(str_val);
-  RETURN_NOT_OK(result);
-  setTarget(*result, target);
-  return Status::OK();
-}
-
 template<typename RTypePtr>
 CHECKED_STATUS ToInt32(int32_t val, RTypePtr target) {
   target->set_int32_value(val);
@@ -1167,15 +1245,13 @@ CHECKED_STATUS ConvertToNumeric(PTypePtr source, RTypePtr target, const DataType
                                 StrToNum strToNum, ToNumeric toNumeric) {
   if (source->IsNull()) {
     target->SetNull();
-  } else {
-    if (source->type() == QLValue::InternalType::kStringValue) {
-      RETURN_NOT_OK(StringToNumeric<RTypePtr>(source->string_value(), target,
-                                              strToNum, toNumeric));
-    } else {
-      RETURN_NOT_OK(SetNumericResult(toNumeric, source, data_type, target));
-    }
+    return Status::OK();
   }
-  return Status::OK();
+  if (source->type() == QLValue::InternalType::kStringValue) {
+    return StringToNumeric<RTypePtr>(source->string_value(), target, strToNum, toNumeric);
+  } else {
+    return SetNumericResult(toNumeric, source, data_type, target);
+  }
 }
 
 template<typename PTypePtr, typename RTypePtr>
@@ -1212,10 +1288,27 @@ template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertToString(PTypePtr source, RTypePtr target) {
   if (source->IsNull()) {
     target->SetNull();
-  } else {
-    return SetStringResult(source, target);
+    return Status::OK();
   }
-  return Status::OK();
+  return SetStringResult(source, target);
+}
+
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS ConvertToTimestamp(PTypePtr source, RTypePtr target) {
+  if (source->IsNull()) {
+    target->SetNull();
+    return Status::OK();
+  }
+  return SetTimestampResult(source, target);
+}
+
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS ConvertToDate(PTypePtr source, RTypePtr target) {
+  if (source->IsNull()) {
+    target->SetNull();
+    return Status::OK();
+  }
+  return SetDateResult(source, target);
 }
 
 } // namespace bfql

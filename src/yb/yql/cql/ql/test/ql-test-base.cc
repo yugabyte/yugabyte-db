@@ -52,7 +52,8 @@ void QLTestBase::CreateSimulatedCluster(int num_tablet_servers) {
   builder.default_rpc_timeout(MonoDelta::FromSeconds(30));
   builder.set_tserver_uuid(cluster_->mini_tablet_server(0)->server()->permanent_uuid());
   ASSERT_OK(builder.Build(&client_));
-  metadata_cache_ = std::make_shared<client::YBMetaDataCache>(client_);
+  metadata_cache_ = std::make_shared<client::YBMetaDataCache>(client_,
+      false /* Update roles' permissions cache */);
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kDefaultKeyspaceName));
 }
 

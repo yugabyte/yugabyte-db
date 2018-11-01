@@ -1,0 +1,228 @@
+//--------------------------------------------------------------------------------------------------
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//--------------------------------------------------------------------------------------------------
+
+#include "yb/yql/pggate/pg_doc_op.h"
+
+using std::shared_ptr;
+
+namespace yb {
+namespace pggate {
+
+PgDocOp::PgDocOp(PgSession::ScopedRefPtr pg_session)
+    : pg_session_(std::move(pg_session)) {
+}
+
+PgDocOp::~PgDocOp() {
+  std::unique_lock<std::mutex> lock(mtx_);
+  // Hold on to this object just in case there are requests in the queue while PostgreSQL client
+  // cancels the operation.
+  is_canceled_ = true;
+  cv_.notify_all();
+
+  while (waiting_for_response_) {
+    cv_.wait(lock);
+  }
+}
+
+bool PgDocOp::EndOfResult() const {
+  std::lock_guard<std::mutex> lock(mtx_);
+  return !has_cached_data_ && end_of_data_;
+}
+
+Status PgDocOp::Execute() {
+  if (is_canceled_) {
+    return STATUS(IllegalState, "Operation canceled");
+  }
+
+  std::unique_lock<std::mutex> lock(mtx_);
+
+  // As of 09/25/2018, DocDB doesn't cache or keep any execution state for a statement, so we
+  // have to call query execution every time.
+  // - Normal SQL convention: Exec, Fetch, Fetch, ...
+  // - Our SQL convention: Exec & Fetch, Exec & Fetch, ...
+  // This refers to the sequence of operations between this layer and the underlying tablet
+  // server / DocDB layer, not to the sequence of operations between the PostgreSQL layer and this
+  // layer.
+  InitUnlocked(&lock);
+
+  return SendRequestUnlocked();
+}
+
+void PgDocOp::InitUnlocked(std::unique_lock<std::mutex>* lock) {
+  CHECK(!is_canceled_);
+  if (waiting_for_response_) {
+    LOG(DFATAL) << __PRETTY_FUNCTION__
+                << " is not supposed to be called while response is in flight";
+    while (waiting_for_response_) {
+      cv_.wait(*lock);
+    }
+    CHECK(!waiting_for_response_);
+  }
+  result_cache_.clear();
+  end_of_data_ = false;
+  has_cached_data_ = false;
+}
+
+Status PgDocOp::GetResult(string *result_set) {
+  std::unique_lock<std::mutex> lock(mtx_);
+  if (is_canceled_) {
+    return STATUS(IllegalState, "Operation canceled");
+  }
+
+  // If the execution has error, return without reading any rows.
+  RETURN_NOT_OK(exec_status_);
+
+  RETURN_NOT_OK(SendRequestIfNeededUnlocked());
+
+  // Wait for response from DocDB.
+  while (!has_cached_data_ && !end_of_data_) {
+    cv_.wait(lock);
+  }
+
+  RETURN_NOT_OK(exec_status_);
+
+  // Read from cache.
+  ReadFromCacheUnlocked(result_set);
+
+  // This will pre-fetch the next chunk of data if we've consumed all cached
+  // rows.
+  RETURN_NOT_OK(SendRequestIfNeededUnlocked());
+
+  return Status::OK();
+}
+
+void PgDocOp::WriteToCacheUnlocked(std::shared_ptr<client::YBPgsqlOp> yb_op) {
+  if (!yb_op->rows_data().empty()) {
+    result_cache_.push_back(yb_op->rows_data());
+    has_cached_data_ = !result_cache_.empty();
+  }
+}
+
+void PgDocOp::ReadFromCacheUnlocked(string *result) {
+  if (!result_cache_.empty()) {
+    *result = result_cache_.front();
+    result_cache_.pop_front();
+    has_cached_data_ = !result_cache_.empty();
+  }
+}
+
+Status PgDocOp::SendRequestIfNeededUnlocked() {
+  // Request more data if more execution is needed and cache is empty.
+  if (!has_cached_data_ && !end_of_data_ && !waiting_for_response_) {
+    return SendRequestUnlocked();
+  }
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+PgDocReadOp::PgDocReadOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlReadOp *read_op)
+    : PgDocOp(pg_session), read_op_(read_op) {
+}
+
+PgDocReadOp::~PgDocReadOp() {
+}
+
+void PgDocReadOp::InitUnlocked(std::unique_lock<std::mutex>* lock) {
+  PgDocOp::InitUnlocked(lock);
+
+  PgsqlReadRequestPB *req = read_op_->mutable_request();
+  req->set_limit(kPrefetchLimit);
+  req->set_return_paging_state(true);
+}
+
+Status PgDocReadOp::SendRequestUnlocked() {
+  RETURN_NOT_OK(pg_session_->ApplyAsync(read_op_));
+  waiting_for_response_ = true;
+  pg_session_->FlushAsync([this](const Status& s) { PgDocReadOp::ReceiveResponse(s); });
+  return Status::OK();
+}
+
+void PgDocReadOp::ReceiveResponse(Status exec_status) {
+  std::unique_lock<std::mutex> lock(mtx_);
+  CHECK(waiting_for_response_);
+  cv_.notify_all();
+  waiting_for_response_ = false;
+  exec_status_ = exec_status;
+
+  if (!exec_status.ok()) {
+    end_of_data_ = true;
+    return;
+  }
+
+  if (!is_canceled_) {
+    // Save it to cache.
+    WriteToCacheUnlocked(read_op_);
+
+    // Setup request for the next batch of data.
+    const PgsqlResponsePB& res = read_op_->response();
+     if (res.has_paging_state()) {
+      PgsqlReadRequestPB *req = read_op_->mutable_request();
+      // Set up paging state for next request.
+      *req->mutable_paging_state() = res.paging_state();
+    } else {
+      end_of_data_ = true;
+    }
+  } else {
+    end_of_data_ = true;
+  }
+}
+
+//--------------------------------------------------------------------------------------------------
+
+PgDocWriteOp::PgDocWriteOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlWriteOp *write_op)
+    : PgDocOp(pg_session), write_op_(write_op) {
+}
+
+PgDocWriteOp::~PgDocWriteOp() {
+}
+
+Status PgDocWriteOp::SendRequestUnlocked() {
+  CHECK(!waiting_for_response_);
+  RETURN_NOT_OK(pg_session_->ApplyAsync(write_op_));
+  waiting_for_response_ = true;
+  pg_session_->FlushAsync([this](const Status& s) { PgDocWriteOp::ReceiveResponse(s); });
+  VLOG(1) << __PRETTY_FUNCTION__ << ": Sending request for " << this;
+  return Status::OK();
+}
+
+void PgDocWriteOp::ReceiveResponse(Status exec_status) {
+  std::unique_lock<std::mutex> lock(mtx_);
+  CHECK(waiting_for_response_);
+  waiting_for_response_ = false;
+  cv_.notify_all();
+
+  if (exec_status.ok() && !write_op_->succeeded()) {
+    exec_status_ = STATUS(QLError, write_op_->response().error_message());
+  } else {
+    exec_status_ = exec_status;
+  }
+  if (!is_canceled_ && exec_status_.ok()) {
+    // Save it to cache.
+    WriteToCacheUnlocked(write_op_);
+  }
+  end_of_data_ = true;
+  VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+PgDocCompoundOp::PgDocCompoundOp(PgSession::ScopedRefPtr pg_session) : PgDocOp(pg_session) {
+}
+
+PgDocCompoundOp::~PgDocCompoundOp() {
+}
+
+}  // namespace pggate
+}  // namespace yb

@@ -16,11 +16,11 @@ resource:
   master:
     requests:
       cpu: 2
-      memory: 7.5Gi
+      memory: 2Gi
   tserver:
     requests:
       cpu: 2
-      memory: 7.5Gi
+      memory: 4Gi
 
 replicas:
   master: 3
@@ -29,6 +29,12 @@ replicas:
 partition:
   master: 3
   tserver: 3
+
+gflags:
+  master:
+    default_memory_limit_to_ram_ratio: 0.85
+  tserver:
+    use_cassandra_authentication: False
 
 PodManagementPolicy: Parallel
 

@@ -130,6 +130,7 @@ class TabletPeerTest : public YBTabletTest,
     tablet_peer_.reset(
       new TabletPeerClass(make_scoped_refptr(tablet()->metadata()),
                           config_peer,
+                          tablet()->metadata()->fs_manager()->uuid(),
                           Bind(&TabletPeerTest::TabletPeerStateChangedCallback,
                                Unretained(this),
                                tablet()->tablet_id())));
@@ -160,7 +161,7 @@ class TabletPeerTest : public YBTabletTest,
                         tablet()->metadata()->schema_version(), metric_entity_.get(),
                         append_pool_.get(), &log));
 
-    tablet_peer_->SetBootstrapping();
+    ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                            std::shared_future<client::YBClientPtr>(),
                                            clock(),
@@ -222,14 +223,11 @@ class TabletPeerTest : public YBTabletTest,
     CHECK(!resp->has_error())
         << "\nReq:\n" << req.DebugString() << "Resp:\n" << resp->DebugString();
 
-    // Roll the log after each write.
-    // Usually the append thread does the roll and no additional sync is required. However in
-    // this test the thread that is appending is not the same thread that is rolling the log
-    // so we must make sure the Log's queue is flushed before we roll or we might have a race
-    // between the appender thread and the thread executing the test.
-    CHECK_OK(tablet_peer->log_->WaitUntilAllFlushed());
-    CHECK_OK(tablet_peer->log_->AllocateSegmentAndRollOver());
-    return Status::OK();
+    Synchronizer synchronizer;
+    CHECK_OK(tablet_peer->log_->TEST_SubmitFuncToAppendToken([&synchronizer, tablet_peer] {
+      synchronizer.StatusCB(tablet_peer->log_->AllocateSegmentAndRollOver());
+    }));
+    return synchronizer.Wait();
   }
 
   // Execute insert requests and roll log after each one.

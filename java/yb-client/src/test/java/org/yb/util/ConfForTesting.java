@@ -12,9 +12,10 @@
 //
 package org.yb.util;
 
-public class ConfForTesting {
+public final class ConfForTesting {
 
-  private static final boolean DEFAULT_USE_PER_TEST_LOG_FILES = true;
+  private ConfForTesting() {
+  }
 
   public static final String DELETE_SUCCESSFUL_LOGS_ENV_VAR =
       "YB_DELETE_SUCCESSFUL_PER_TEST_METHOD_LOGS";
@@ -26,35 +27,19 @@ public class ConfForTesting {
     return System.getenv("BUILD_ID") != null && System.getenv("JOB_NAME") != null;
   }
 
-  public static boolean isStringTrue(String value, boolean defaultValue) {
-    if (value == null)
-      return defaultValue;
-    value = value.trim().toLowerCase();
-    if (value.isEmpty() || value.equals("auto") || value.equals("default"))
-      return defaultValue;
-    return !value.equals("0") && !value.equals("no") && !value.equals("false") &&
-           !value.equals("off");
-  }
-
-  public static boolean isEnvVarTrue(String envVarName, boolean defaultValue) {
-    return isStringTrue(System.getenv(envVarName), defaultValue);
-  }
-
-  public static boolean isSystemPropertyTrue(String systemPropertyName, boolean defaultValue) {
-    return isStringTrue(System.getProperty(systemPropertyName), defaultValue);
-  }
-
   public static boolean usePerTestLogFiles() {
     // Don't create per-test-method logs if we're told only one test method is invoked at a time.
-    return isEnvVarTrue("YB_JAVA_PER_TEST_LOG_FILES", false);
+    return EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_JAVA_PER_TEST_LOG_FILES", false);
   }
 
   public static boolean gzipPerTestMethodLogs() {
-    return isEnvVarTrue(GZIP_PER_TEST_METHOD_LOGS_ENV_VAR, false);
+    return EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue(GZIP_PER_TEST_METHOD_LOGS_ENV_VAR,
+        false);
   }
 
   public static boolean deleteSuccessfulPerTestMethodLogs() {
-    return isEnvVarTrue(DELETE_SUCCESSFUL_LOGS_ENV_VAR, false);
+    return EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue(DELETE_SUCCESSFUL_LOGS_ENV_VAR,
+        false);
   }
 
   /**
@@ -62,8 +47,9 @@ public class ConfForTesting {
    *         sub-tests.
    */
   public static boolean onlyCollectingTests() {
-    return isEnvVarTrue("YB_COLLECT_TESTS_ONLY", false) ||
-           isSystemPropertyTrue("yb.only.collect.tests", false);
+    // This will look at YB_COLLECT_TESTS_ONLY env var and at the
+    // yb.collect.tests.only system property.
+    return EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_COLLECT_TESTS_ONLY");
   }
 
 }

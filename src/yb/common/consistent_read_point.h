@@ -36,10 +36,9 @@ class ConsistentReadPoint {
   void SetCurrentReadTime();
 
   // Set the read point to the specified read time with local limits.
-  void SetReadTime(ReadHybridTime&& read_time, HybridTimeMap&& local_limits);
+  void SetReadTime(const ReadHybridTime& read_time, HybridTimeMap&& local_limits);
 
-  // Get the read hybrid time of this read point.
-  HybridTime GetReadTime() const { return read_time_.read; }
+  const ReadHybridTime& GetReadTime() const { return read_time_; }
 
   // Get the read time of this read point for a tablet.
   ReadHybridTime GetReadTime(const TabletId& tablet) const;

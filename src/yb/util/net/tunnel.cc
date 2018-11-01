@@ -56,9 +56,9 @@ class TunnelConnection : public std::enable_shared_from_this<TunnelConnection> {
     strand_.dispatch([this, shared_self = shared_from_this()] {
       boost::system::error_code ec;
       inbound_socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_type::shutdown_both, ec);
-      LOG_IF_WITH_PREFIX(WARNING, ec) << "Shutdown failed: " << ec.message();
+      LOG_IF_WITH_PREFIX(INFO, ec) << "Shutdown failed: " << ec.message();
       outbound_socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_type::shutdown_both, ec);
-      LOG_IF_WITH_PREFIX(WARNING, ec) << "Shutdown failed: " << ec.message();
+      LOG_IF_WITH_PREFIX(INFO, ec) << "Shutdown failed: " << ec.message();
     });
   }
 
@@ -84,7 +84,7 @@ class TunnelConnection : public std::enable_shared_from_this<TunnelConnection> {
   void HandleRead(const boost::system::error_code& ec, size_t transferred,
                   const SemiTunnel& semi_tunnel) {
     if (ec) {
-      LOG_WITH_PREFIX(WARNING) << "Read failed: " << ec.message();
+      VLOG_WITH_PREFIX(1) << "Read failed: " << ec.message();
       return;
     }
 
@@ -96,7 +96,7 @@ class TunnelConnection : public std::enable_shared_from_this<TunnelConnection> {
   void HandleWrite(const boost::system::error_code& ec, size_t transferred,
                    const SemiTunnel& semi_tunnel) {
     if (ec) {
-      LOG_WITH_PREFIX(WARNING) << "Write failed: " << ec.message();
+      VLOG_WITH_PREFIX(1) << "Write failed: " << ec.message();
       return;
     }
 

@@ -2468,6 +2468,10 @@ finish_xact_command(void)
 #endif
 
 		xact_started = false;
+
+		if (YBTransactionsEnabled()) {
+			YBCHandleCommitError();
+		}
 	}
 }
 
@@ -2596,7 +2600,9 @@ quickdie(SIGNAL_ARGS)
 	 */
 	on_exit_reset();
 
-	YBOnPostgresBackendShutdown();
+	if (IsYugaByteEnabled()) {
+		YBOnPostgresBackendShutdown();
+	}
 
 	/*
 	 * Note we do exit(2) not exit(0).  This is to force the postmaster into a
@@ -2639,7 +2645,9 @@ die(SIGNAL_ARGS)
 
 	errno = save_errno;
 
-	YBOnPostgresBackendShutdown();
+	if (IsYugaByteEnabled()) {
+		YBOnPostgresBackendShutdown();
+	}
 }
 
 /*
@@ -3583,6 +3591,23 @@ PostgresMain(int argc, char *argv[],
 			 const char *dbname,
 			 const char *username)
 {
+	// TODO(neil) Once we have our system DB, remove the following code.
+	// It is a hack to help us getting by for now.
+	for (int i = 0; i < argc; i++) {
+		if (strcmp(argv[i], "template0") == 0 || strcmp(argv[i], "template1") == 0) {
+			YBSetPreparingTemplates();
+		}
+	}
+	if (dbname) {
+		if (strcmp(dbname, "template0") == 0 || strcmp(dbname, "template1") == 0) {
+			YBSetPreparingTemplates();
+		}
+	} else if (username) {
+		if (strcmp(username, "template0") == 0 || strcmp(username, "template1") == 0) {
+			YBSetPreparingTemplates();
+		}
+	}
+
 	int			firstchar;
 	StringInfoData input_message;
 	sigjmp_buf	local_sigjmp_buf;

@@ -12,6 +12,8 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/client/yb_table_name.h"
+
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pg_ddl.h"
 #include "yb/yql/pggate/pg_insert.h"
@@ -19,6 +21,7 @@
 #include "yb/yql/pggate/pg_delete.h"
 #include "yb/yql/pggate/pg_select.h"
 #include "yb/util/flag_tags.h"
+#include "yb/client/client_fwd.h"
 
 DEFINE_int32(pgsql_rpc_keepalive_time_ms, 0,
              "If an RPC connection from a client is idle for this amount of time, the server "
@@ -80,7 +83,10 @@ PgApiImpl::PgApiImpl()
                          "" /* tserver_uuid */,
                          &pggate_options_,
                          metric_entity_,
-                         mem_tracker_) {
+                         mem_tracker_),
+      clock_(new server::HybridClock()),
+      pg_txn_manager_(new PgTxnManager(&async_client_init_, clock_)) {
+  CHECK_OK(clock_->Init());
 }
 
 PgApiImpl::~PgApiImpl() {
@@ -103,7 +109,7 @@ CHECKED_STATUS PgApiImpl::DestroyEnv(PgEnv *pg_env) {
 CHECKED_STATUS PgApiImpl::CreateSession(const PgEnv *pg_env,
                                         const string& database_name,
                                         PgSession **pg_session) {
-  auto session = make_scoped_refptr<PgSession>(client(), database_name);
+  auto session = make_scoped_refptr<PgSession>(client(), database_name, pg_txn_manager_);
   if (!database_name.empty()) {
     RETURN_NOT_OK(session->ConnectDatabase(database_name));
   }
@@ -277,6 +283,32 @@ CHECKED_STATUS PgApiImpl::ExecDropTable(PgStatement *handle) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   return down_cast<PgDropTable*>(handle)->Exec();
+}
+
+CHECKED_STATUS PgApiImpl::GetTableDesc(PgSession *pg_session,
+                            const char *database_name,
+                            const char *table_name,
+                            PgTableDesc **handle) {
+  PgTableDesc::ScopedRefPtr table;
+  auto result = pg_session->LoadTable(client::YBTableName(database_name, table_name),
+                                      false /* for_write */);
+  RETURN_NOT_OK(result);
+  *handle = (*result).detach();
+  return Status::OK();
+}
+
+CHECKED_STATUS PgApiImpl::DeleteTableDesc(PgTableDesc *handle) {
+  if (handle) {
+    handle->Release();
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS PgApiImpl::GetColumnInfo(YBCPgTableDesc table_desc,
+                                        int16_t attr_number,
+                                        bool *is_primary,
+                                        bool *is_hash) {
+  return table_desc->GetColumnInfo(attr_number, is_primary, is_hash);
 }
 
 //--------------------------------------------------------------------------------------------------

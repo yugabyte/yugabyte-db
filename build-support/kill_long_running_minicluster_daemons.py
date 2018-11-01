@@ -27,6 +27,7 @@ from datetime import datetime
 # 6181 Mon Apr  2 15:50:48 2018 <command_line>
 PS_OUTPUT_LINE_RE = re.compile(r'^\s*(\d+)\s+\S+\s+(\S+\s+\d+\s\d+:\d+:\d+ \d+)\s+(.*)$')
 
+
 if __name__ == '__main__':
     logging.basicConfig(
         level=logging.INFO,
@@ -86,4 +87,3 @@ if __name__ == '__main__':
         "Examined %d processes, found %d masters/tservers, killed %d long-running masters/tservers"
         ", failed to kill %d processes.", num_processes_found, num_daemons_found, num_killed,
         num_failed_to_kill)
-    pass

@@ -44,9 +44,9 @@
 #include "yb/client/stubs.h"
 #endif
 
-
 #include "yb/util/slice.h"
 #include "yb/util/format.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/gutil/strings/substitute.h"
 
 // Return the given status if it is not OK.
@@ -66,6 +66,19 @@
 #define YB_RETURN_NOT_OK_RET(to_call, to_return) do { \
     ::yb::Status s = (to_call); \
     if (PREDICT_FALSE(!s.ok())) return (to_return);  \
+  } while (0);
+
+#define YB_DFATAL_OR_RETURN_NOT_OK(s) do { \
+    LOG_IF(DFATAL, !s.ok()) << s; \
+    YB_RETURN_NOT_OK(s); \
+  } while (0);
+
+#define YB_DFATAL_OR_RETURN_ERROR_IF(condition, s) do { \
+    if (PREDICT_FALSE(condition)) { \
+      DCHECK(!s.ok()) << "Invalid OK status"; \
+      LOG(DFATAL) << s; \
+      return s; \
+    } \
   } while (0);
 
 // Emit a warning if 'to_call' returns a bad status.
@@ -93,13 +106,16 @@
 // If the status is bad, CHECK immediately, appending the status to the logged message.
 #define YB_CHECK_OK(s) YB_CHECK_OK_PREPEND(s, "Bad status")
 
-#define RETURN_NOT_OK         YB_RETURN_NOT_OK
-#define RETURN_NOT_OK_PREPEND YB_RETURN_NOT_OK_PREPEND
-#define RETURN_NOT_OK_RET     YB_RETURN_NOT_OK_RET
-#define WARN_NOT_OK           YB_WARN_NOT_OK
-#define LOG_AND_RETURN        YB_LOG_AND_RETURN
-#define CHECK_OK_PREPEND      YB_CHECK_OK_PREPEND
-#define CHECK_OK              YB_CHECK_OK
+#define RETURN_NOT_OK           YB_RETURN_NOT_OK
+#define RETURN_NOT_OK_PREPEND   YB_RETURN_NOT_OK_PREPEND
+#define RETURN_NOT_OK_RET       YB_RETURN_NOT_OK_RET
+// If status is not OK, this will FATAL in debug mode, or return the error otherwise.
+#define DFATAL_OR_RETURN_NOT_OK YB_DFATAL_OR_RETURN_NOT_OK
+#define DFATAL_OR_RETURN_ERROR_IF  YB_DFATAL_OR_RETURN_ERROR_IF
+#define WARN_NOT_OK             YB_WARN_NOT_OK
+#define LOG_AND_RETURN          YB_LOG_AND_RETURN
+#define CHECK_OK_PREPEND        YB_CHECK_OK_PREPEND
+#define CHECK_OK                YB_CHECK_OK
 
 // These are standard glog macros.
 #define YB_LOG              LOG
@@ -157,6 +173,8 @@ enum class TimeoutError {
   kLockLimit = 3,
 };
 
+YB_STRONGLY_TYPED_BOOL(DupFileName);
+
 class Status {
  public:
   // Create a success status.
@@ -194,6 +212,9 @@ class Status {
 
   int64_t error_code() const { return state_ ? state_->error_code : 0; }
 
+  const char* file_name() const { return state_ ? state_->file_name : ""; }
+  int line_number() const { return state_ ? state_->line_number : 0; }
+
   // Return a new Status object with the same state plus an additional leading message.
   Status CloneAndPrepend(const Slice& msg) const;
 
@@ -222,7 +243,8 @@ class Status {
          int line_number,
          const Slice& msg,
          const Slice& msg2 = Slice(),
-         int64_t error_code = -1);
+         int64_t error_code = -1,
+         DupFileName dup_file_name = DupFileName::kFalse);
 
   Status(Code code,
          const char* file_name,
@@ -234,6 +256,9 @@ class Status {
   }
  private:
   struct State {
+    State(const State&) = delete;
+    void operator=(const State&) = delete;
+
     std::atomic<size_t> counter;
     uint32_t message_len;
     uint8_t code;
@@ -244,6 +269,8 @@ class Status {
     int line_number;
     char message[1];
   };
+
+  bool file_name_duplicated() const;
 
   typedef boost::intrusive_ptr<State> StatePtr;
 

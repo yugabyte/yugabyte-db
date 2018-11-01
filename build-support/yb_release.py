@@ -207,24 +207,22 @@ def main():
 
     # This points to the release manifest within the release_manager, and we are modifying that
     # directly.
-    release_util = ReleaseUtil(YB_SRC_ROOT, build_type, args.edition, build_target, args.force,
-                               args.commit)
-    release_util.rewrite_manifest(build_root)
+    release_util = ReleaseUtil(
+        YB_SRC_ROOT, build_type, args.edition, build_target, args.force,
+        args.commit, build_root)
 
     if not args.java_only:
         system = platform.system().lower()
+        library_packager_args = dict(
+            build_dir=build_root,
+            seed_executable_patterns=release_util.get_seed_executable_patterns(),
+            dest_dir=yb_distribution_dir,
+            verbose_mode=args.verbose
+        )
         if system == "linux":
-            library_packager = LibraryPackager(
-                build_dir=build_root,
-                seed_executable_patterns=release_util.get_binary_path(),
-                dest_dir=yb_distribution_dir,
-                verbose_mode=args.verbose)
+            library_packager = LibraryPackager(**library_packager_args)
         elif system == "darwin":
-            library_packager = MacLibraryPackager(
-                    build_dir=build_root,
-                    seed_executable_patterns=release_util.get_binary_path(),
-                    dest_dir=yb_distribution_dir,
-                    verbose_mode=args.verbose)
+            library_packager = MacLibraryPackager(**library_packager_args)
         else:
             raise RuntimeError("System {} not supported".format(system))
         library_packager.package_binaries()

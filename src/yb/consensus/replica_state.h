@@ -331,7 +331,7 @@ class ReplicaState {
 
   // A common prefix that should be in any log messages emitted,
   // identifying the tablet and peer.
-  std::string LogPrefix();
+  std::string LogPrefix() const;
   std::string LogPrefixUnlocked() const;
 
   // A variant of LogPrefix which does not take the lock. This is a slightly

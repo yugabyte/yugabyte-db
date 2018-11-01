@@ -522,6 +522,20 @@ struct DataTypeTraits<TIMESTAMP> : public DerivedTypeTraits<INT64>{
   }
 };
 
+template<>
+struct DataTypeTraits<DATE> : public DerivedTypeTraits<UINT32>{
+  static const char* name() {
+    return "date";
+  }
+};
+
+template<>
+struct DataTypeTraits<TIME> : public DerivedTypeTraits<INT64>{
+  static const char* name() {
+    return "time";
+  }
+};
+
 // Instantiate this template to get static access to the type traits.
 template<DataType datatype>
 struct TypeTraits : public DataTypeTraits<datatype> {
@@ -582,9 +596,11 @@ class Variant {
         numeric_.i32 = *static_cast<const int32_t *>(value);
         break;
       case UINT32:
+      case DATE:
         numeric_.u32 = *static_cast<const uint32_t *>(value);
         break;
       case TIMESTAMP:
+      case TIME:
       case INT64:
         numeric_.i64 = *static_cast<const int64_t *>(value);
         break;

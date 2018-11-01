@@ -585,13 +585,6 @@ Status LinkedListTester::LoadLinkedList(
     }
 
     auto now = CoarseMonoClock::Now();
-    if (next_sample < now) {
-      HybridTime now = ht_clock->Now();
-      sampled_hybrid_times_and_counts_.emplace_back(now, *written_count);
-      next_sample += sample_interval;
-      LOG(INFO) << "Sample at HT hybrid_time: " << now.ToString()
-                << " Inserted count: " << *written_count;
-    }
     if (deadline < now) {
       LOG(INFO) << "Finished inserting list. Added " << (*written_count) << " in chain";
       LOG(INFO) << "Last entries inserted had keys:";
@@ -599,6 +592,17 @@ Status LinkedListTester::LoadLinkedList(
         LOG(INFO) << i << ": " << chains[i]->prev_key();
       }
       return Status::OK();
+    }
+    // We cannot store snapshot on the last step, because his hybrid time could be in future,
+    // related to max time that could be served by one alive server.
+    // So we ensure that we always write some data after snapshot, to be sure that server would
+    // have at least time of snapshot as read time for follower.
+    if (next_sample < now) {
+      HybridTime now = ht_clock->Now();
+      sampled_hybrid_times_and_counts_.emplace_back(now, *written_count);
+      next_sample += sample_interval;
+      LOG(INFO) << "Sample at HT hybrid_time: " << now.ToString()
+                << " Inserted count: " << *written_count;
     }
     for (const auto& chain : chains) {
       RETURN_NOT_OK_PREPEND(chain->GenerateNextInsert(table, session.get()),

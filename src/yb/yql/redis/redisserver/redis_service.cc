@@ -168,7 +168,8 @@ class Operation {
       call_(call),
       index_(index),
       operation_(std::move(operation)),
-      metrics_(metrics) {
+      metrics_(metrics),
+      manual_response_(ManualResponse::kFalse) {
     auto status = operation_->GetPartitionKey(&partition_key_);
     if (!status.ok()) {
       Respond(status);
@@ -177,15 +178,17 @@ class Operation {
 
   Operation(const std::shared_ptr<RedisInboundCall>& call,
             size_t index,
-            std::function<bool(const StatusFunctor&)> functor,
+            std::function<bool(client::YBSession*, const StatusFunctor&)> functor,
             std::string partition_key,
-            const rpc::RpcMethodMetrics& metrics)
+            const rpc::RpcMethodMetrics& metrics,
+            ManualResponse manual_response)
     : type_(OperationType::kLocal),
       call_(call),
       index_(index),
       functor_(std::move(functor)),
       partition_key_(std::move(partition_key)),
-      metrics_(metrics) {
+      metrics_(metrics),
+      manual_response_(manual_response) {
   }
 
   bool responded() const {
@@ -261,7 +264,7 @@ class Operation {
     }
   }
 
-  bool Apply(client::YBSession* session, const StatusFunctor& callback) {
+  bool Apply(client::YBSession* session, const StatusFunctor& callback, bool* applied_operations) {
     // We should destroy functor after this call.
     // Because it could hold references to other objects.
     // So we more it to temp variable.
@@ -274,7 +277,7 @@ class Operation {
 
     // Used for DebugSleep
     if (functor) {
-      return functor(callback);
+      return functor(session, callback);
     }
 
     auto status = session->Apply(operation_);
@@ -282,11 +285,16 @@ class Operation {
       Respond(status);
       return false;
     }
+    *applied_operations = true;
     return true;
   }
 
   void Respond(const Status& status) {
     responded_.store(true, std::memory_order_release);
+    if (manual_response_) {
+      return;
+    }
+
     if (status.ok()) {
       if (operation_) {
         call_->RespondSuccess(index_, metrics_, &response());
@@ -311,9 +319,10 @@ class Operation {
   std::shared_ptr<RedisInboundCall> call_;
   size_t index_;
   std::shared_ptr<YBRedisOp> operation_;
-  std::function<bool(const StatusFunctor&)> functor_;
+  std::function<bool(client::YBSession*, const StatusFunctor&)> functor_;
   std::string partition_key_;
   rpc::RpcMethodMetrics metrics_;
+  ManualResponse manual_response_;
   client::internal::RemoteTabletPtr tablet_;
   std::atomic<bool> responded_{false};
 };
@@ -384,13 +393,14 @@ class Block : public std::enable_shared_from_this<Block> {
     session_pool_ = session_pool;
     session_ = session_pool->Take();
     bool has_ok = false;
+    bool applied_operations = false;
     // Supposed to be called only once.
     StatusFunctor callback = BlockCallback(shared_from_this());
     for (auto* op : ops_) {
-      has_ok = op->Apply(session_.get(), callback) || has_ok;
+      has_ok = op->Apply(session_.get(), callback, &applied_operations) || has_ok;
     }
     if (has_ok) {
-      if (session_->HasPendingOperations()) {
+      if (applied_operations) {
         // Allow local calls in this thread only if no one is waiting behind us.
         session_->set_allow_local_calls_in_curr_thread(
             allow_local_calls_in_curr_thread && this->next_ == nullptr);
@@ -423,7 +433,7 @@ class Block : public std::enable_shared_from_this<Block> {
       // the context lives beyond the block_.reset() we might get an error while updating the
       // ref-count for the block_ (in the area of arena owned by the context).
       auto context = block_->context_;
-      DCHECK(context != nullptr);
+      DCHECK(context != nullptr) << block_.get();
       block_->Done(status);
       block_.reset();
     }
@@ -594,7 +604,10 @@ class TabletOperations {
       ArenaAllocator<Block> alloc(arena);
       data.block = std::allocate_shared<Block>(
           alloc, context, alloc, metrics_internal[static_cast<size_t>(OperationType::kRead)]);
-      if (type == last_conflict_type_) {
+      if (last_conflict_type_ == OperationType::kLocal) {
+        last_local_block_->SetNext(data.block);
+        last_conflict_type_ = type;
+      } else if (type == last_conflict_type_) {
         auto old_value = this->data(Opposite(type)).block->SetNext(data.block);
         if (old_value) {
           LOG(DFATAL) << "Opposite already had next block: "
@@ -670,8 +683,7 @@ class TabletOperations {
         data.used_keys.clear();
         break;
       case OperationType::kLocal:
-        last_local_block_->SetNext(opposite_data.block);
-        opposite_data.block->SetNext(data.block);
+        last_local_block_->SetNext(data.block);
         break;
     }
     last_conflict_type_ = type;
@@ -679,6 +691,9 @@ class TabletOperations {
 
   void CheckConflicts(OperationType type, const RedisKeyList& keys) {
     if (last_conflict_type_ == type) {
+      return;
+    }
+    if (last_conflict_type_ == OperationType::kLocal) {
       return;
     }
     auto& opposite = data(Opposite(type));
@@ -732,6 +747,9 @@ struct RedisServiceImplData : public RedisServiceData {
 
   void CleanYBTableFromCacheForDB(const string& table);
 
+  void AppendToChannelSubscribers(const string& channel, ConnectionPtr conn) override;
+  int PublishToChannel(const string& channel, const string& message) override;
+
   CHECKED_STATUS GetRedisPasswords(vector<string>* passwords) override;
   CHECKED_STATUS Initialize();
   bool initialized() const { return initialized_.load(std::memory_order_relaxed); }
@@ -751,9 +769,10 @@ struct RedisServiceImplData : public RedisServiceData {
   std::unordered_map<std::string, std::shared_ptr<client::YBTable>> db_to_opened_table_;
   std::shared_ptr<client::YBMetaDataCache> tables_cache_;
 
-  std::vector<ConnectionWeakPtr> monitoring_clients_;
-  scoped_refptr<AtomicGauge<uint64_t>> num_clients_monitoring_;
+  const string kMonitoringChannel = "_redis_monitoring";
   rw_spinlock monitoring_clients_mutex_;
+  std::unordered_map<std::string, std::vector<ConnectionWeakPtr>> channels_to_clients_;
+  scoped_refptr<AtomicGauge<uint64_t>> num_clients_monitoring_;
 
   std::mutex redis_password_mutex_;
   MonoTime redis_cached_password_validity_expiry_;
@@ -854,10 +873,11 @@ class BatchContextImpl : public BatchContext {
 
   void Apply(
       size_t index,
-      std::function<bool(const StatusFunctor&)> functor,
+      std::function<bool(client::YBSession*, const StatusFunctor&)> functor,
       std::string partition_key,
-      const rpc::RpcMethodMetrics& metrics) override {
-    DoApply(index, std::move(functor), std::move(partition_key), metrics);
+      const rpc::RpcMethodMetrics& metrics,
+      ManualResponse manual_response) override {
+    DoApply(index, std::move(functor), std::move(partition_key), metrics, manual_response);
   }
 
   std::string ToString() const {
@@ -1004,16 +1024,21 @@ yb::Result<std::shared_ptr<client::YBTable>> RedisServiceImplData::GetYBTableFor
 }
 
 void RedisServiceImplData::AppendToMonitors(ConnectionPtr conn) {
-  boost::lock_guard<rw_spinlock> lock(monitoring_clients_mutex_);
-  monitoring_clients_.emplace_back(conn);
+  AppendToChannelSubscribers(kMonitoringChannel, conn);
   num_clients_monitoring_->IncrementBy(1);
+}
+
+void RedisServiceImplData::AppendToChannelSubscribers(const string& channel, ConnectionPtr conn) {
+  boost::lock_guard<rw_spinlock> lock(monitoring_clients_mutex_);
+  channels_to_clients_[channel].emplace_back(conn);
 }
 
 void RedisServiceImplData::LogToMonitors(
     const string& end, const string& db, const RedisClientCommand& cmd) {
-  boost::shared_lock<rw_spinlock> rlock(monitoring_clients_mutex_);
-
-  if (monitoring_clients_.empty()) return;
+  {
+    boost::shared_lock<rw_spinlock> rlock(monitoring_clients_mutex_);
+    if (channels_to_clients_[kMonitoringChannel].empty()) return;
+  }
 
   // Prepare the string to be sent to all the monitoring clients.
   // TODO: Use timestamp that works with converter.
@@ -1024,18 +1049,27 @@ void RedisServiceImplData::LogToMonitors(
   ss.precision(6);
   ss << (now_ms / 1000000.0) << " [" << db << " " << end << "]";
   for (auto& part : cmd) {
-    ss << " \"" << part << "\"";
+    ss << " \"" << part.ToBuffer() << "\"";
   }
   ss << "\r\n";
 
+  PublishToChannel(kMonitoringChannel, ss.str());
+}
+
+int RedisServiceImplData::PublishToChannel(const string& channel, const string& message) {
+  boost::shared_lock<rw_spinlock> rlock(monitoring_clients_mutex_);
+
+  int num_pushed_to = 0;
   // Send the message to all the monitoring clients.
   OutboundDataPtr out =
-      std::make_shared<yb::rpc::StringOutboundData>(ss.str(), "Redis Monitor Data");
+      std::make_shared<yb::rpc::StringOutboundData>(message, "Publishing to Channel");
+  auto& subscribing_clients = channels_to_clients_[channel];
   bool should_cleanup = false;
-  for (auto iter = monitoring_clients_.begin(); iter != monitoring_clients_.end(); iter++) {
+  for (auto iter = subscribing_clients.begin(); iter != subscribing_clients.end(); iter++) {
     ConnectionPtr connection = iter->lock();
     if (connection) {
       connection->QueueOutboundData(out);
+      num_pushed_to++;
     } else {
       should_cleanup = true;
     }
@@ -1046,14 +1080,16 @@ void RedisServiceImplData::LogToMonitors(
     rlock.unlock();
     boost::lock_guard<rw_spinlock> wlock(monitoring_clients_mutex_);
 
-    auto old_size = monitoring_clients_.size();
-    monitoring_clients_.erase(std::remove_if(monitoring_clients_.begin(), monitoring_clients_.end(),
+    subscribing_clients.erase(std::remove_if(subscribing_clients.begin(), subscribing_clients.end(),
                                              [] (const ConnectionWeakPtr& e) -> bool {
                                                return e.lock() == nullptr;
                                              }),
-                              monitoring_clients_.end());
-    num_clients_monitoring_->DecrementBy(old_size - monitoring_clients_.size());
+                              subscribing_clients.end());
+    if (channel == kMonitoringChannel) {
+      num_clients_monitoring_->set_value(subscribing_clients.size());
+    }
   }
+  return num_pushed_to;
 }
 
 Status RedisServiceImplData::Initialize() {
@@ -1087,7 +1123,8 @@ Status RedisServiceImplData::Initialize() {
           server_->tserver()->permanent_uuid(), server_->tserver()->proxy());
     }
 
-    tables_cache_ = std::make_shared<YBMetaDataCache>(client_);
+    tables_cache_ = std::make_shared<YBMetaDataCache>(client_,
+        false /* Update roles permissions cache */);
     session_pool_.Init(client_, server_->metric_entity());
 
     initialized_.store(true, std::memory_order_release);
@@ -1157,7 +1194,7 @@ RedisServiceImpl::Impl::Impl(RedisServer* server, string yb_tier_master_addresse
 void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
   auto call = std::static_pointer_cast<RedisInboundCall>(call_ptr);
 
-  DVLOG(4) << "Asked to handle a call " << call->ToString();
+  DVLOG(2) << "Asked to handle a call " << call->ToString();
   if (call->serialized_request().size() > FLAGS_redis_max_command_size) {
     auto message = StrCat("Size of redis command ", call->serialized_request().size(),
                           ", but we only support up to length of ", FLAGS_redis_max_command_size);

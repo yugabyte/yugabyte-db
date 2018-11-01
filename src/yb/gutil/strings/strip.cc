@@ -35,13 +35,13 @@ using std::string;
 #include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/stringpiece.h"
 
-string StripPrefixString(StringPiece str, const StringPiece& prefix) {
+string StripPrefixString(GStringPiece str, const GStringPiece& prefix) {
   if (str.starts_with(prefix))
     str.remove_prefix(prefix.length());
   return str.as_string();
 }
 
-bool TryStripPrefixString(StringPiece str, const StringPiece& prefix,
+bool TryStripPrefixString(GStringPiece str, const GStringPiece& prefix,
                                  string* result) {
   const bool has_prefix = str.starts_with(prefix);
   if (has_prefix)
@@ -50,13 +50,13 @@ bool TryStripPrefixString(StringPiece str, const StringPiece& prefix,
   return has_prefix;
 }
 
-string StripSuffixString(StringPiece str, const StringPiece& suffix) {
+string StripSuffixString(GStringPiece str, const GStringPiece& suffix) {
   if (str.ends_with(suffix))
     str.remove_suffix(suffix.length());
   return str.as_string();
 }
 
-bool TryStripSuffixString(StringPiece str, const StringPiece& suffix,
+bool TryStripSuffixString(GStringPiece str, const GStringPiece& suffix,
                                  string* result) {
   const bool has_suffix = str.ends_with(suffix);
   if (has_suffix)
@@ -70,26 +70,26 @@ bool TryStripSuffixString(StringPiece str, const StringPiece& suffix,
 //    Replaces any occurrence of the character 'remove' (or the characters
 //    in 'remove') with the character 'replacewith'.
 // ----------------------------------------------------------------------
-void StripString(char* str, StringPiece remove, char replacewith) {
+void StripString(char* str, GStringPiece remove, char replacewith) {
   for (; *str != '\0'; ++str) {
-    if (remove.find(*str) != StringPiece::npos) {
+    if (remove.find(*str) != GStringPiece::npos) {
       *str = replacewith;
     }
   }
 }
 
-void StripString(char* str, int len, StringPiece remove, char replacewith) {
+void StripString(char* str, int len, GStringPiece remove, char replacewith) {
   char* end = str + len;
   for (; str < end; ++str) {
-    if (remove.find(*str) != StringPiece::npos) {
+    if (remove.find(*str) != GStringPiece::npos) {
       *str = replacewith;
     }
   }
 }
 
-void StripString(string* s, StringPiece remove, char replacewith) {
+void StripString(string* s, GStringPiece remove, char replacewith) {
   for (char& c : *s) {
-    if (remove.find(c) != StringPiece::npos) {
+    if (remove.find(c) != GStringPiece::npos) {
       c = replacewith;
     }
   }
@@ -189,7 +189,7 @@ string OutputWithMarkupTagsStripped(const string& s) {
 }
 
 
-int TrimStringLeft(string* s, const StringPiece& remove) {
+int TrimStringLeft(string* s, const GStringPiece& remove) {
   int i = 0;
   while (i < s->size() && memchr(remove.data(), (*s)[i], remove.size())) {
     ++i;
@@ -198,7 +198,7 @@ int TrimStringLeft(string* s, const StringPiece& remove) {
   return i;
 }
 
-int TrimStringRight(string* s, const StringPiece& remove) {
+int TrimStringRight(string* s, const GStringPiece& remove) {
   int i = s->size(), trimmed = 0;
   while (i > 0 && memchr(remove.data(), (*s)[i-1], remove.size())) {
     --i;
@@ -366,16 +366,16 @@ void StripTrailingWhitespace(string* const s) {
 //    "  a:(b):c  " -> "a b c"
 //    "first,last::(area)phone, ::zip" -> "first last area phone zip"
 // ----------------------------------------------------------------------
-void TrimRunsInString(string* s, StringPiece remove) {
+void TrimRunsInString(string* s, GStringPiece remove) {
   string::iterator dest = s->begin();
   string::iterator src_end = s->end();
   for (string::iterator src = s->begin(); src != src_end; ) {
-    if (remove.find(*src) == StringPiece::npos) {
+    if (remove.find(*src) == GStringPiece::npos) {
       *(dest++) = *(src++);
     } else {
       // Skip to the end of this run of chars that are in 'remove'.
       for (++src; src != src_end; ++src) {
-        if (remove.find(*src) == StringPiece::npos) {
+        if (remove.find(*src) == GStringPiece::npos) {
           if (dest != s->begin()) {
             // This is an internal run; collapse it.
             *(dest++) = remove[0];

@@ -445,7 +445,7 @@ Status TSTabletManager::Init() {
       CHECK_OK(StartTabletStateTransitionUnlocked(meta->tablet_id(), "opening tablet", &deleter));
     }
 
-    TabletPeerPtr tablet_peer = CreateAndRegisterTabletPeer(meta, NEW_PEER);
+    TabletPeerPtr tablet_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, NEW_PEER));
     RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(
         std::bind(&TSTabletManager::OpenTablet, this, meta, deleter)));
   }
@@ -554,7 +554,7 @@ Status TSTabletManager::CreateNewTablet(
   RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(fs_manager_, tablet_id, fs_manager_->uuid(),
                                                   config, consensus::kMinimumTerm, &cmeta),
                         "Unable to create new ConsensusMeta for tablet " + tablet_id);
-  TabletPeerPtr new_peer = CreateAndRegisterTabletPeer(meta, NEW_PEER);
+  TabletPeerPtr new_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, NEW_PEER));
 
   // We can run this synchronously since there is nothing to bootstrap.
   RETURN_NOT_OK(
@@ -649,12 +649,21 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   scoped_refptr<TransitionInProgressDeleter> deleter;
   {
     std::lock_guard<RWMutex> lock(lock_);
+    if (ClosingUnlocked()) {
+      auto result = STATUS_FORMAT(
+          IllegalState, "StartRemoteBootstrap in wrong state: $0",
+          TSTabletManagerStatePB_Name(state_));
+      LOG(WARNING) << result;
+      return result;
+    }
+
     if (LookupTabletUnlocked(tablet_id, &old_tablet_peer)) {
       meta = old_tablet_peer->tablet_metadata();
       replacing_tablet = true;
     }
-    RETURN_NOT_OK(StartTabletStateTransitionUnlocked(tablet_id,
-        Substitute("remote bootstrapping tablet from peer $0", bootstrap_peer_uuid), &deleter));
+    RETURN_NOT_OK(StartTabletStateTransitionUnlocked(
+        tablet_id, Substitute("remote bootstrapping tablet from peer $0", bootstrap_peer_uuid),
+        &deleter));
   }
 
   if (replacing_tablet) {
@@ -691,7 +700,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 
   // Registering a non-initialized TabletPeer offers visibility through the Web UI.
   RegisterTabletPeerMode mode = replacing_tablet ? REPLACEMENT_PEER : NEW_PEER;
-  TabletPeerPtr tablet_peer = CreateAndRegisterTabletPeer(meta, mode);
+  TabletPeerPtr tablet_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, mode));
 
   // Download all of the remote files.
   TOMBSTONE_NOT_OK(rb_client->FetchAll(tablet_peer->status_listener()),
@@ -749,15 +758,16 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 }
 
 // Create and register a new TabletPeer, given tablet metadata.
-TabletPeerPtr TSTabletManager::CreateAndRegisterTabletPeer(
+Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
     const scoped_refptr<TabletMetadata>& meta, RegisterTabletPeerMode mode) {
   TabletPeerPtr tablet_peer(
       new TabletPeerClass(meta,
                           local_peer_pb_,
+                          fs_manager_->uuid(),
                           Bind(&TSTabletManager::ApplyChange,
                                Unretained(this),
                                meta->tablet_id())));
-  RegisterTablet(meta->tablet_id(), tablet_peer, mode);
+  RETURN_NOT_OK(RegisterTablet(meta->tablet_id(), tablet_peer, mode));
   return tablet_peer;
 }
 
@@ -922,7 +932,12 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
     // TODO: handle crash mid-creation of tablet? do we ever end up with a
     // partially created tablet here?
-    tablet_peer->SetBootstrapping();
+    auto s = tablet_peer->SetBootstrapping();
+    if (!s.ok()) {
+      LOG(ERROR) << kLogPrefix << "Tablet failed to set bootstrapping: " << s;
+      tablet_peer->SetFailed(s);
+      return;
+    }
     tablet::BootstrapTabletData data = {
         meta,
         async_client_init_->get_client_future(),
@@ -1063,20 +1078,39 @@ std::string TSTabletManager::LogPrefix() const {
   return "P " + fs_manager_->uuid() + ": ";
 }
 
-void TSTabletManager::RegisterTablet(const std::string& tablet_id,
-                                     const TabletPeerPtr& tablet_peer,
-                                     RegisterTabletPeerMode mode) {
+bool TSTabletManager::ClosingUnlocked() const {
+  return state_ == MANAGER_QUIESCING || state_ == MANAGER_SHUTDOWN;
+}
+
+Status TSTabletManager::RegisterTablet(const std::string& tablet_id,
+                                       const TabletPeerPtr& tablet_peer,
+                                       RegisterTabletPeerMode mode) {
   std::lock_guard<RWMutex> lock(lock_);
+  if (ClosingUnlocked()) {
+    auto result = STATUS_FORMAT(
+        IllegalState, "Unable to register tablet peer: $0: closing", tablet_id);
+    LOG(WARNING) << result;
+    return result;
+  }
+
   // If we are replacing a tablet peer, we delete the existing one first.
   if (mode == REPLACEMENT_PEER && tablet_map_.erase(tablet_id) != 1) {
-    LOG(FATAL) << "Unable to remove previous tablet peer " << tablet_id << ": not registered!";
+    auto result = STATUS_FORMAT(
+        NotFound, "Unable to remove previous tablet peer $0: not registered", tablet_id);
+    LOG(WARNING) << result;
+    return result;
   }
   if (!InsertIfNotPresent(&tablet_map_, tablet_id, tablet_peer)) {
+    auto result = STATUS_FORMAT(
+        AlreadyPresent, "Unable to register tablet peer $0: already registered", tablet_id);
     scoped_refptr<TabletMetadata> meta = tablet_peer->tablet_metadata();
-    LOG(FATAL) << "Unable to register tablet peer " << tablet_id << ": already registered!";
+    LOG(WARNING) << result;
+    return result;
   }
 
   LOG(INFO) << "Registered tablet " << tablet_id;
+
+  return Status::OK();
 }
 
 bool TSTabletManager::LookupTablet(const string& tablet_id,
@@ -1343,7 +1377,7 @@ Status TSTabletManager::HandleNonReadyTabletOnStartup(const scoped_refptr<Tablet
   // allows us to permanently delete replica tombstones when a table gets
   // deleted.
   if (data_state == TABLET_DATA_TOMBSTONED) {
-    CreateAndRegisterTabletPeer(meta, NEW_PEER);
+    RETURN_NOT_OK(CreateAndRegisterTabletPeer(meta, NEW_PEER));
   }
 
   return Status::OK();

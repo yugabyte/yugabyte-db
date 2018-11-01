@@ -16,14 +16,19 @@
 
 #include "yb/client/client.h"
 #include "yb/client/callbacks.h"
+#include "yb/client/schema.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/callback.h"
 
 #include "yb/yql/pggate/pg_column.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
 
 namespace yb {
 namespace pggate {
+
+class PgTxnManager;
 
 class PgSession : public RefCountedThreadSafe<PgSession> {
  public:
@@ -31,7 +36,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   typedef scoped_refptr<PgSession> ScopedRefPtr;
 
   // Constructors.
-  PgSession(std::shared_ptr<client::YBClient> client, const string& database_name);
+  PgSession(std::shared_ptr<client::YBClient> client,
+            const string& database_name,
+            scoped_refptr<PgTxnManager> pg_txn_manager);
   virtual ~PgSession();
 
   //------------------------------------------------------------------------------------------------
@@ -61,11 +68,19 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS DropTable(const client::YBTableName& name);
 
   // API for read and write database content.
-  CHECKED_STATUS LoadTable(const client::YBTableName& table_name, bool for_write,
-                           std::shared_ptr<client::YBTable>* table, vector<PgColumn>* col_descs,
-                           int* key_col_count, int* partition_col_count);
+  Result<PgTableDesc::ScopedRefPtr> LoadTable(const client::YBTableName& name, bool for_write);
 
+  // Apply the given operation.
   CHECKED_STATUS Apply(const std::shared_ptr<client::YBPgsqlOp>& op);
+  CHECKED_STATUS ApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op);
+  void FlushAsync(StatusFunctor callback);
+
+  // Return the number of errors which are pending.
+  int CountPendingErrors() const;
+
+  // Return the pending errors.
+  std::vector<std::unique_ptr<client::YBError>> GetPendingErrors();
+
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -96,6 +111,13 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   }
 
  private:
+  // Returns the appopriate session to use, in most cases the one used by the current transaction.
+  // read_only_op - whether this is being done in the context of a read-only operation. For
+  //                non-read-only operations we make sure to start a YB transaction.
+  // We are returning a raw pointer here because the returned session is owned either by the
+  // PgTxnManager or by this object.
+  client::YBSession* GetSession(bool read_only_op);
+
   // YBClient, an API that SQL engine uses to communicate with all servers.
   std::shared_ptr<client::YBClient> client_;
 
@@ -104,6 +126,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Connected database.
   std::string connected_database_;
+
+  // A transaction manager allowing to begin/abort/commit transactions.
+  scoped_refptr<PgTxnManager> pg_txn_manager_;
 
   // Execution status.
   Status status_;

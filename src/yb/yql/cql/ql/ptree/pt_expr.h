@@ -610,6 +610,10 @@ class PTLiteral {
     return std::to_string(value);
   }
 
+  virtual string ToQLName(uint32_t value) const {
+    return std::to_string(value);
+  }
+
   virtual string ToQLName(long double value) const {
     return std::to_string(value);
   }
@@ -725,6 +729,8 @@ class PTLiteralString : public PTLiteral<MCSharedPtr<MCString>> {
 
   CHECKED_STATUS ToString(std::string *value) const;
   CHECKED_STATUS ToTimestamp(int64_t *value) const;
+  CHECKED_STATUS ToDate(uint32_t *value) const;
+  CHECKED_STATUS ToTime(int64_t *value) const;
 
   CHECKED_STATUS ToInetaddress(InetAddress *value) const;
 };
@@ -774,6 +780,14 @@ using PTConstDouble = PTExprConst<InternalType::kDoubleValue,
 using PTConstFloat = PTExprConst<InternalType::kFloatValue,
                                  DataType::FLOAT,
                                  float>;
+
+using PTConstTimestamp = PTExprConst<InternalType::kTimestampValue,
+                                     DataType::TIMESTAMP,
+                                     int64_t>;
+
+using PTConstDate = PTExprConst<InternalType::kDateValue,
+                                DataType::DATE,
+                                uint32_t>;
 
 // Class representing a json operator.
 class PTJsonOperator : public PTExpr {
@@ -1133,7 +1147,7 @@ class PTAllColumns : public PTOperator0 {
   virtual string QLName() const override {
     // We should not get here as '*' should have been converted into a list of column name before
     // the selected tuple is constructed and described.
-    LOG(FATAL) << "Calling QLName for '*' is not expected";
+    LOG(DFATAL) << "Calling QLName for '*' is not expected";
     return "*";
   }
 

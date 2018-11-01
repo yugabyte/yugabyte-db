@@ -133,6 +133,7 @@ using tserver::TabletServerErrorPB;
 TabletPeer::TabletPeer(
     const scoped_refptr<TabletMetadata>& meta,
     const consensus::RaftPeerPB& local_peer_pb,
+    const std::string& permanent_uuid,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk)
   : meta_(meta),
     tablet_id_(meta->tablet_id()),
@@ -140,15 +141,14 @@ TabletPeer::TabletPeer(
     state_(TabletStatePB::NOT_STARTED),
     status_listener_(new TabletStatusListener(meta)),
     log_anchor_registry_(new LogAnchorRegistry()),
-    mark_dirty_clbk_(std::move(mark_dirty_clbk)) {}
+    mark_dirty_clbk_(std::move(mark_dirty_clbk)),
+    permanent_uuid_(permanent_uuid) {}
 
 TabletPeer::~TabletPeer() {
   std::lock_guard<simple_spinlock> lock(lock_);
   // We should either have called Shutdown(), or we should have never called
   // Init().
-  CHECK(!tablet_)
-      << "TabletPeer not fully shut down. State: "
-      << TabletStatePB_Name(state_);
+  LOG_IF_WITH_PREFIX(DFATAL, tablet_) << "TabletPeer not fully shut down.";
 }
 
 Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
@@ -167,7 +167,11 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
 
   {
     std::lock_guard<simple_spinlock> lock(lock_);
-    CHECK_EQ(TabletStatePB::BOOTSTRAPPING, state_);
+    auto state = state_.load(std::memory_order_acquire);
+    if (state != TabletStatePB::BOOTSTRAPPING) {
+      return STATUS_FORMAT(
+          IllegalState, "Invalid tablet state for init: $0", TabletStatePB_Name(state));
+    }
     tablet_ = tablet;
     client_future_ = client_future;
     clock_ = clock;
@@ -246,14 +250,14 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
       return mvcc_manager->SafeTime(ht_lease);
     });
 
+    prepare_thread_ = std::make_unique<Preparer>(consensus_.get(), tablet_prepare_pool);
+
     consensus_->SetMajorityReplicatedListener([mvcc_manager, ht_lease_provider] {
       auto ht_lease = ht_lease_provider(/* min_allowed */ 0, /* deadline */ MonoTime::kMax);
       if (ht_lease) {
         mvcc_manager->UpdatePropagatedSafeTimeOnLeader(ht_lease);
       }
     });
-
-    prepare_thread_ = std::make_unique<Preparer>(consensus_.get(), tablet_prepare_pool);
   }
 
   RETURN_NOT_OK(prepare_thread_->Start());
@@ -318,6 +322,7 @@ bool TabletPeer::StartShutdown() {
       }
       if (state_.compare_exchange_strong(
           state, TabletStatePB::QUIESCING, std::memory_order_acq_rel)) {
+        LOG_WITH_PREFIX(INFO) << "Started shutdown from state: " << TabletStatePB_Name(state);
         break;
       }
     }
@@ -368,7 +373,9 @@ void TabletPeer::CompleteShutdown() {
     consensus_.reset();
     prepare_thread_.reset();
     tablet_.reset();
-    DCHECK_EQ(state_.load(std::memory_order_acquire), TabletStatePB::QUIESCING);
+    auto state = state_.load(std::memory_order_acquire);
+    LOG_IF_WITH_PREFIX(DFATAL, state != TabletStatePB::QUIESCING) <<
+        "Bad state when completing shutdown: " << TabletStatePB_Name(state);
     state_.store(TabletStatePB::SHUTDOWN, std::memory_order_release);
   }
 }
@@ -770,23 +777,6 @@ void TabletPeer::SetPropagatedSafeTime(HybridTime ht) {
   (**driver).ExecuteAsync();
 }
 
-const std::string& TabletPeer::permanent_uuid() const {
-  if (cached_permanent_uuid_initialized_.load(std::memory_order_acquire)) {
-    return cached_permanent_uuid_;
-  }
-  std::lock_guard<simple_spinlock> lock(lock_);
-  if (tablet_ == nullptr) {
-    static std::string empty_string;
-    return empty_string;
-  }
-
-  if (!cached_permanent_uuid_initialized_.load(std::memory_order_acquire)) {
-    cached_permanent_uuid_ = tablet_->metadata()->fs_manager()->uuid();
-    cached_permanent_uuid_initialized_.store(true, std::memory_order_release);
-  }
-  return cached_permanent_uuid_;
-}
-
 consensus::Consensus* TabletPeer::consensus() const {
   std::lock_guard<simple_spinlock> lock(lock_);
   return consensus_.get();
@@ -862,7 +852,7 @@ uint64_t TabletPeer::OnDiskSize() const {
 
 std::string TabletPeer::LogPrefix() const {
   return Substitute("T $0 P $1 [state=$2]: ",
-      tablet_id_, cached_permanent_uuid_, TabletStatePB_Name(state()));
+      tablet_id_, permanent_uuid_, TabletStatePB_Name(state()));
 }
 
 scoped_refptr<OperationDriver> TabletPeer::CreateOperationDriver() {
@@ -892,6 +882,33 @@ HybridTime TabletPeer::HtLeaseExpiration() const {
 TableType TabletPeer::table_type() {
   // TODO: what if tablet is not set?
   return tablet()->table_type();
+}
+
+void TabletPeer::SetFailed(const Status& error) {
+  DCHECK(error_.get(std::memory_order_acquire) == nullptr);
+  error_ = MakeAtomicUniquePtr<Status>(error);
+  auto state = state_.load(std::memory_order_acquire);
+  while (state != TabletStatePB::FAILED && state != TabletStatePB::QUIESCING &&
+         state != TabletStatePB::SHUTDOWN) {
+    if (state_.compare_exchange_weak(state, TabletStatePB::FAILED, std::memory_order_acq_rel)) {
+      LOG_WITH_PREFIX(INFO) << "Changed state from " << TabletStatePB_Name(state) << " to FAILED";
+      break;
+    }
+  }
+}
+
+Status TabletPeer::UpdateState(TabletStatePB expected, TabletStatePB new_state,
+                               const std::string& error_message) {
+  TabletStatePB old = expected;
+  if (!state_.compare_exchange_strong(old, new_state, std::memory_order_acq_rel)) {
+    return STATUS_FORMAT(
+        InvalidArgument, "$0 Expected state: $1, got: $2",
+        error_message, TabletStatePB_Name(expected), TabletStatePB_Name(old));
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Changed state from " << TabletStatePB_Name(old) << " to "
+                        << TabletStatePB_Name(new_state);
+  return Status::OK();
 }
 
 }  // namespace tablet

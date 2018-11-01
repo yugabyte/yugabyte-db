@@ -100,11 +100,6 @@ class MasterServiceImpl : public MasterServiceIf,
   virtual void DeleteNamespace(const DeleteNamespaceRequestPB* req,
                                DeleteNamespaceResponsePB* resp,
                                rpc::RpcContext rpc) override;
-
-  virtual void GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
-                                     GrantRevokePermissionResponsePB* resp,
-                                     rpc::RpcContext rpc) override;
-
   virtual void ListNamespaces(const ListNamespacesRequestPB* req,
                               ListNamespacesResponsePB* resp,
                               rpc::RpcContext rpc) override;
@@ -120,6 +115,13 @@ class MasterServiceImpl : public MasterServiceIf,
   virtual void GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
                                GrantRevokeRoleResponsePB* resp,
                                rpc::RpcContext rpc) override;
+  virtual void GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
+                                     GrantRevokePermissionResponsePB* resp,
+                                     rpc::RpcContext rpc) override;
+  virtual void GetPermissions(const GetPermissionsRequestPB* req,
+                              GetPermissionsResponsePB* resp,
+                              rpc::RpcContext rpc) override;
+
   virtual void RedisConfigSet(const RedisConfigSetRequestPB* req,
                               RedisConfigSetResponsePB* resp,
                               rpc::RpcContext rpc) override;
@@ -165,6 +167,10 @@ class MasterServiceImpl : public MasterServiceIf,
   virtual void RemovedMasterUpdate(const RemovedMasterUpdateRequestPB* req,
                                    RemovedMasterUpdateResponsePB* resp,
                                    rpc::RpcContext rpc) override;
+
+  virtual void SetPreferredZones(const SetPreferredZonesRequestPB* req,
+                                  SetPreferredZonesResponsePB* resp,
+                                  rpc::RpcContext rpc) override;
 
   virtual void GetMasterClusterConfig(
       const GetMasterClusterConfigRequestPB* req, GetMasterClusterConfigResponsePB* resp,

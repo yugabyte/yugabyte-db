@@ -254,6 +254,15 @@ class PTSelectStmt : public PTDmlStmt {
     return covers_fully_;
   }
 
+  // Certain tables can be read by any authorized role specifically because they are being used
+  // by the Cassandra driver:
+  // system_schema.keyspaces
+  // system_schema.columns
+  // system_schema.tables
+  // system.local
+  // system.peers
+  bool IsReadableByAllSystemTable() const;
+
  private:
   CHECKED_STATUS LookupIndex(SemContext *sem_context);
   CHECKED_STATUS AnalyzeIndexes(SemContext *sem_context);

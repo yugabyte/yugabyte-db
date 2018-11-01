@@ -20,6 +20,9 @@
 
 #ifdef __cplusplus
 extern "C" {
+
+struct varlena;
+
 #endif
 
 typedef struct YBCStatusStruct {
@@ -32,28 +35,57 @@ typedef struct YBCStatusStruct* YBCStatus;
 extern YBCStatus YBCStatusOK;
 bool YBCStatusIsOK(YBCStatus s);
 bool YBCStatusIsNotFound(YBCStatus s);
+void YBCFreeStatus(YBCStatus s);
 
 #define CHECKED_YBCSTATUS __attribute__ ((warn_unused_result)) YBCStatus
 
 typedef void* (*YBCPAllocFn)(size_t size);
 
-// Global initialization of the YugaByte subsystem.
-CHECKED_YBCSTATUS YBCInit(const char* argv0, YBCPAllocFn palloc_fn);
+typedef struct varlena* (*YBCCStringToTextWithLenFn)(const char* c, int size);
 
-// Logging functions with printf-like formatting capabilities.
-void YBCLogInfo(const char* format, ...);
-void YBCLogWarning(const char* format, ...);
-void YBCLogError(const char* format, ...);
-void YBCLogFatal(const char* format, ...);
+// Global initialization of the YugaByte subsystem.
+CHECKED_YBCSTATUS YBCInit(
+    const char* argv0,
+    YBCPAllocFn palloc_fn,
+    YBCCStringToTextWithLenFn cstring_to_text_with_len_fn);
+
+// From glog's log_severity.h:
+// const int GLOG_INFO = 0, GLOG_WARNING = 1, GLOG_ERROR = 2, GLOG_FATAL = 3;
+
+// Logging macros with printf-like formatting capabilities.
+#define YBC_LOG_INFO(...) \
+    YBCLogImpl(/* severity */ 0, __FILE__, __LINE__, /* stack_trace */ false, __VA_ARGS__)
+#define YBC_LOG_WARNING(...) \
+    YBCLogImpl(/* severity */ 1, __FILE__, __LINE__, /* stack_trace */ false, __VA_ARGS__)
+#define YBC_LOG_ERROR(...) \
+    YBCLogImpl(/* severity */ 2, __FILE__, __LINE__, /* stack_trace */ false, __VA_ARGS__)
+#define YBC_LOG_FATAL(...) \
+    YBCLogImpl(/* severity */ 3, __FILE__, __LINE__, /* stack_trace */ false, __VA_ARGS__)
 
 // The following functions log the given message formatted similarly to printf followed by a stack
 // trace.
-void YBCLogInfoStackTrace(const char* format, ...);
-void YBCLogWarningStackTrace(const char* format, ...);
-void YBCLogErrorStackTrace(const char* format, ...);
+
+#define YBC_LOG_INFO_STACK_TRACE(...) \
+    YBCLogImpl(/* severity */ 0, __FILE__, __LINE__, /* stack_trace */ true, __VA_ARGS__)
+#define YBC_LOG_WARNING_STACK_TRACE(...) \
+    YBCLogImpl(/* severity */ 1, __FILE__, __LINE__, /* stack_trace */ true, __VA_ARGS__)
+#define YBC_LOG_ERROR_STACK_TRACE(...) \
+    YBCLogImpl(/* severity */ 2, __FILE__, __LINE__, /* stack_trace */ true, __VA_ARGS__)
+
+// 5 is the index of the format string, 6 is the index of the first printf argument to check.
+void YBCLogImpl(int severity,
+                const char* file_name,
+                int line_number,
+                bool stack_trace,
+                const char* format,
+                ...) __attribute__((format(printf, 5, 6)));
+
+// Returns a string representation of the given block of binary data. The memory for the resulting
+// string is allocated using palloc.
+const char* YBCFormatBytesAsStr(const char* data, size_t size);
 
 #ifdef __cplusplus
-}
+} // extern "C"
 #endif
 
 #endif  // YB_UTIL_YBC_UTIL_H

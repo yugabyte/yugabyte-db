@@ -204,7 +204,7 @@ class MethodSubstitutions : public Substituter {
   // namespaces for method arguments.
   static std::string StripNamespaceIfPossible(const std::string& service_full_name,
                                               const std::string& arg_full_name) {
-    StringPiece service_package(service_full_name);
+    GStringPiece service_package(service_full_name);
     if (!service_package.contains(".")) {
       return arg_full_name;
     }
@@ -213,7 +213,7 @@ class MethodSubstitutions : public Substituter {
     service_package.remove_suffix(service_package.length() -
                                   service_package.find_last_of(".") - 1);
 
-    StringPiece argfqn(arg_full_name);
+    GStringPiece argfqn(arg_full_name);
     if (argfqn.starts_with(service_package)) {
       argfqn.remove_prefix(argfqn.find_last_of(".") + 1);
     }

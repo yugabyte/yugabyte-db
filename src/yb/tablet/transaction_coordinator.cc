@@ -336,7 +336,8 @@ class TransactionState {
   }
 
   bool ShouldBeCommitted() const {
-    return ShouldBeInStatus(TransactionStatus::COMMITTED);
+    return ShouldBeInStatus(TransactionStatus::COMMITTED) ||
+           ShouldBeInStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
   }
 
   bool ShouldBeAborted() const {
@@ -726,8 +727,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
               this, *id, context_.clock().Now(), log_prefix_).first;
         } else {
           lock.unlock();
-          LOG_WITH_PREFIX(WARNING) << "Request to unknown transaction " << id << ": "
-                                   << state.ShortDebugString();
+          YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
+              << LogPrefix() << "Request to unknown transaction " << id << ": "
+              << state.ShortDebugString();
           request->completion_callback()->CompleteWithStatus(
               STATUS(Expired, "Transaction expired"));
           return;

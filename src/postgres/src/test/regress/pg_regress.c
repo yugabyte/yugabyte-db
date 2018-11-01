@@ -1366,10 +1366,31 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 	/* Name to use for temporary diff file */
 	snprintf(diff, sizeof(diff), "%s.diff", resultsfile);
 
+	/*
+	 * A YugaByte-specific way to post-process the results file and also the
+	 * expected output file  before running diff. As part of this we can remove
+	 * trailing whitespace and LLVM sanitizer suppression warnings.
+	 */
+	char extra_cmd_and_semicolon[4096];
+	{
+		const char* resultsfile_postprocess_cmd =
+			getenv("YB_PG_REGRESS_RESULTSFILE_POSTPROCESS_CMD");
+		extra_cmd_and_semicolon[0] = 0;
+		if (resultsfile_postprocess_cmd != NULL)
+		{
+			snprintf(extra_cmd_and_semicolon, sizeof(extra_cmd_and_semicolon),
+				"%s \"%s\"; %s \"%s\";",
+				resultsfile_postprocess_cmd,
+				resultsfile,
+				resultsfile_postprocess_cmd,
+				expectfile);
+		}
+	}
+
 	/* OK, run the diff */
 	snprintf(cmd, sizeof(cmd),
-			 "diff %s \"%s\" \"%s\" > \"%s\"",
-			 basic_diff_opts, expectfile, resultsfile, diff);
+			 "%sdiff %s \"%s\" \"%s\" > \"%s\"",
+			 extra_cmd_and_semicolon, basic_diff_opts, expectfile, resultsfile, diff);
 
 	/* Is the diff file empty? */
 	if (run_diff(cmd, diff) == 0)

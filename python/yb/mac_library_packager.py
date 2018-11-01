@@ -57,6 +57,10 @@ class MacLibraryPackager:
 
         bin_dir_files = []
         for seed_executable_glob in self.seed_executable_patterns:
+            if seed_executable_glob.endswith('postgres/bin/*'):
+                # Skip postgres binaries since they are copied with the postgres root directory
+                # which is handled below.
+                continue
             if seed_executable_glob.startswith('bin/'):
                 bin_dir_files.append(os.path.basename(seed_executable_glob))
                 logging.debug("Adding file '%s' to bash_scripts", seed_executable_glob)
@@ -70,6 +74,9 @@ class MacLibraryPackager:
                     seed_executable_glob))
             for executable in glob_results:
                 shutil.copy(executable, dst_bin_dir)
+
+        src_lib_dir = os.path.join(src, 'lib')
+        yb_lib_file_for_postgres = os.path.join(src_lib_dir, 'libyb_pggate.dylib')
 
         processed_libs = []
         for bin_file in os.listdir(dst_bin_dir):
@@ -88,6 +95,9 @@ class MacLibraryPackager:
 
             # Elements in libs are absolute paths.
             logging.info('library dependencies for file %s: %s', bin_file, libs)
+
+            # Treat this as a special case for now (10/14/18).
+            libs.append(yb_lib_file_for_postgres)
             for lib in libs:
                 if lib in processed_libs:
                     continue
@@ -112,6 +122,15 @@ class MacLibraryPackager:
                         logging.info('Adding dependency %s for library %s', new_lib, lib_file_path)
                         libs.append(new_lib)
                 processed_libs.append(lib)
+
+        # Handle postgres as a special case for now (10/14/18).
+        postgres_src = os.path.join(src, 'postgres')
+        postgres_dst = os.path.join(dst, 'postgres')
+        shutil.copytree(postgres_src, postgres_dst, symlinks=True)
+        postgres_bin = os.path.join(postgres_dst, 'bin')
+        postgres_lib = os.path.join(postgres_dst, 'lib')
+        for bin_file in os.listdir(postgres_bin):
+            self.fix_postgres_load_paths(os.path.join(postgres_bin, bin_file), dst)
 
     # Run otool to extract information from an object file. Returns the command's output to stdout,
     # or an empty string if filename is not a valid object file.
@@ -229,7 +248,7 @@ class MacLibraryPackager:
         logging.debug('Processing file %s', filename)
 
         original_mode = os.stat(filename).st_mode
-        # Made the file writable.
+        # Make the file writable.
         try:
             os.chmod(filename, os.stat(filename).st_mode | stat.S_IWUSR)
         except OSError as e:
@@ -279,3 +298,72 @@ class MacLibraryPackager:
             raise
 
         return absolute_dependency_paths
+
+    # Special case for now (10/14/18).
+    def fix_postgres_load_paths(self, filename, dst):
+        if (os.path.islink(filename)):
+            return []
+
+        libs = []
+
+        original_mode = os.stat(filename).st_mode
+        # Make the file writable.
+        try:
+            os.chmod(filename, original_mode | stat.S_IWUSR)
+        except OSError as e:
+            logging.error('Unable to make file %s writable', filename)
+            raise
+
+        # Extract the paths that are used to resolve paths that start with @rpath.
+        rpaths = self.extract_rpaths(filename)
+
+        # Remove rpaths since we will only use @loader_path and absolute paths for system libraries.
+        self.remove_rpaths(filename, rpaths)
+
+        print 'Processing file %s for rpaths %s' % (filename, rpaths)
+
+        # Dependency path will have the paths as extracted by 'otool -L'
+        dependency_paths, absolute_dependency_paths = \
+            self.extract_dependency_paths(filename, rpaths)
+
+        postgres_dst = os.path.join(dst, 'postgres')
+        lib_files = os.listdir(os.path.join(postgres_dst, "lib"))
+        for dependency_path in dependency_paths:
+            basename = os.path.basename(dependency_path)
+            new_path = ''
+
+            if basename in lib_files:
+                # If the library is in postgres/lib, then add @loader_path/../
+                new_path = os.path.join('@loader_path/../lib', basename)
+                print 'Setting new path to %s for file %s' % (new_path, filename)
+                self.set_new_path(filename, dependency_path, new_path)
+            else:
+                # Search in dst/lib
+                found = False
+                dst_lib = os.path.join(dst, 'lib')
+                if basename in os.listdir(dst_lib):
+                    new_path = os.path.join('@loader_path/../../lib', basename, basename)
+                    print 'Setting new path to %s for file %s' % (new_path, filename)
+                    self.set_new_path(filename, dependency_path, new_path)
+                else:
+                    # Search the file in the rpaths directories.
+                    for rpath in rpaths:
+                        if basename in os.listdir(rpath):
+                            # This shouldn't happen.
+                            raise RuntimeError("lib %s" % os.path.join(rpath, basename))
+
+        postgres_lib = os.path.join(postgres_dst, 'lib')
+        for absolute_dependency in absolute_dependency_paths:
+            if os.path.dirname(absolute_dependency) == postgres_lib:
+                basename = os.path.basename(absolute_dependency)
+                new_path = os.path.join('@loader_path/../lib', basename)
+                self.set_new_path(filename, absolute_dependency, new_path)
+                libs.append(basename)
+            print 'Absolute dependency %s' % absolute_dependency
+
+        # Restore the file's mode.
+        try:
+            os.chmod(filename, original_mode)
+        except OSError as e:
+            logging.error('Unable to restore file %s mode', filename)
+            raise

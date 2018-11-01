@@ -19,6 +19,8 @@
 
 // This appears at the beginning of a YB C API class definition in the DSL.
 #define YBC_CLASS_START
+#define YBC_CLASS_START_INHERIT_FROM
+#define YBC_CLASS_START_REF_COUNTED_THREAD_SAFE
 
 // This appears at the end of a YB C API class definition.
 #define YBC_CLASS_END
@@ -35,17 +37,16 @@
 // Generates a C wrapper function to create an instance of the class. E.g. YBCMyClass_New.
 #define YBC_CONSTRUCTOR(argument_descriptions) \
     YBC_CONSTRUCTOR_WRAPPER_PROTOTYPE(argument_descriptions) { \
-      return reinterpret_cast<YBC_CURRENT_CLASS_C_TYPE*>( \
-          new ::yb::pggate::YBC_CURRENT_CLASS( \
-              YBC_CONVERT_ARGS_TO_C(argument_descriptions) \
-          )); \
+      return new ::yb::pggate::YBC_CURRENT_CLASS(YBC_CONVERT_ARGS_TO_C(argument_descriptions)); \
     }
+#define YBC_CONSTRUCTOR_NO_ARGS \
+    YBC_CONSTRUCTOR_WRAPPER_PROTOTYPE_NO_ARGS { \
+      return new ::yb::pggate::YBC_CURRENT_CLASS());
 
 #define YBC_METHOD_IMPL(return_type, c_method_name, cxx_method_name, argument_descriptions) \
     YBC_METHOD_WRAPPER_PROTOTYPE(return_type, c_method_name, argument_descriptions) { \
       return ::yb::pggate::impl::ReturnTypeMapper<return_type>::ToC( \
-          reinterpret_cast<YBC_CURRENT_CLASS*>(_ybc_this_obj)->cxx_method_name( \
-              YBC_CONVERT_ARGS_TO_C(argument_descriptions) \
+          _ybc_this_obj->cxx_method_name(YBC_CONVERT_ARGS_TO_C(argument_descriptions) \
           ) \
       ); \
     }
@@ -53,7 +54,7 @@
 #define YBC_METHOD_IMPL_NO_ARGS(return_type, c_method_name, cxx_method_name) \
     YBC_METHOD_WRAPPER_PROTOTYPE_NO_ARGS(return_type, c_method_name) { \
       return ::yb::pggate::impl::ReturnTypeMapper<return_type>::ToC( \
-          reinterpret_cast<YBC_CURRENT_CLASS*>(_ybc_this_obj)->cxx_method_name() \
+          _ybc_this_obj->cxx_method_name() \
       ); \
     }
 
@@ -72,6 +73,9 @@
     YBC_METHOD_IMPL( \
         YBCStatus, BOOST_PP_CAT(method_name, _Status), method_name, argument_descriptions)
 
+#define YBC_STATUS_METHOD_NO_ARGS(method_name) \
+    YBC_METHOD_IMPL_NO_ARGS(YBCStatus, BOOST_PP_CAT(method_name, _Status), method_name)
+
 // Generates a C wrapper function to call a class member function that returls a
 // Result<return_type>. Checks the status, convertis it to a YBCStatus instance, and sets the
 // out-parameter to the returned value in case of success. The generated function has a _Status
@@ -81,8 +85,7 @@
     YBC_RESULT_METHOD_WRAPPER_PROTOTYPE(return_type, \
                                         BOOST_PP_CAT(method_name, _Status), \
                                         argument_descriptions) { \
-      auto result = reinterpret_cast<YBC_CURRENT_CLASS*>(_ybc_this_obj)->method_name( \
-          YBC_CONVERT_ARGS_TO_C(argument_descriptions)); \
+      auto result = _ybc_this_obj->method_name(YBC_CONVERT_ARGS_TO_C(argument_descriptions)); \
       if (result.ok()) { \
         *_ybc_result = ::yb::pggate::impl::ReturnTypeMapper<return_type>::ToC(*result); \
         return nullptr; \

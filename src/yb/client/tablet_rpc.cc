@@ -194,7 +194,7 @@ void TabletInvoker::FailToNewReplica(const Status& reason,
                                      const tserver::TabletServerErrorPB* error_code) {
   VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason.ToString();
 
-  bool found = ErrorCode(error_code) != tserver::TabletServerErrorPB::STALE_FOLLOWER  &&
+  bool found = ErrorCode(error_code) != tserver::TabletServerErrorPB::STALE_FOLLOWER &&
                (!tablet_ || tablet_->MarkReplicaFailed(current_ts_, reason));
   if (!found) {
     // Its possible that current_ts_ is not part of replicas if RemoteTablet.Refresh() is invoked
@@ -276,7 +276,9 @@ bool TabletInvoker::Done(Status* status) {
       FailToNewReplica(*status, rpc_->response_error());
     } else {
       auto retry_status = retrier_->DelayedRetry(command_, *status);
-      LOG_IF(DFATAL, !retry_status.ok()) << "Retry failed: " << retry_status;
+      if (!retry_status.ok()) {
+        command_->Finished(retry_status);
+      }
     }
     return false;
   }
@@ -301,7 +303,11 @@ bool TabletInvoker::Done(Status* status) {
                tablet_id_,
                current_ts_string,
                retrier_->attempt_num()));
-    YB_LOG_EVERY_N_SECS(WARNING, 1) << status->ToString();
+    if (status->IsTryAgain() || status->IsExpired()) {
+      YB_LOG_EVERY_N_SECS(INFO, 1) << *status;
+    } else {
+      LOG(WARNING) << *status;
+    }
     rpc_->Failed(old_status);
   }
 
@@ -354,7 +360,7 @@ void TabletInvoker::LookupTabletCb(const Result<RemoteTabletPtr>& result) {
   auto retry_status = retrier_->DelayedRetry(
       command_, result.ok() ? Status::OK() : result.status());
   if (!retry_status.ok()) {
-    command_->Finished(result.status());
+    command_->Finished(!result.ok() ? result.status() : retry_status);
   }
 }
 

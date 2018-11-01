@@ -153,13 +153,13 @@ string UnescapeCEscapeString(const string& src);
 //    Errors: Sets the description of the first encountered error in
 //    'error'. To disable error reporting, set 'error' to NULL.
 // ----------------------------------------------------------------------
-bool CUnescape(const StringPiece& source, char* dest, int* dest_len,
+bool CUnescape(const GStringPiece& source, char* dest, int* dest_len,
                string* error);
 
-bool CUnescape(const StringPiece& source, string* dest, string* error);
+bool CUnescape(const GStringPiece& source, string* dest, string* error);
 
 // A version with no error reporting.
-inline bool CUnescape(const StringPiece& source, string* dest) {
+inline bool CUnescape(const GStringPiece& source, string* dest) {
   return CUnescape(source, dest, NULL);
 }
 
@@ -175,17 +175,17 @@ inline bool CUnescape(const StringPiece& source, string* dest) {
 //
 // ----------------------------------------------------------------------
 
-bool CUnescapeForNullTerminatedString(const StringPiece& source,
+bool CUnescapeForNullTerminatedString(const GStringPiece& source,
                                       char* dest,
                                       int* dest_len,
                                       string* error);
 
-bool CUnescapeForNullTerminatedString(const StringPiece& source,
+bool CUnescapeForNullTerminatedString(const GStringPiece& source,
                                       string* dest,
                                       string* error);
 
 // A version with no error reporting.
-inline bool CUnescapeForNullTerminatedString(const StringPiece& source,
+inline bool CUnescapeForNullTerminatedString(const GStringPiece& source,
                                              string* dest) {
   return CUnescapeForNullTerminatedString(source, dest, NULL);
 }
@@ -222,10 +222,10 @@ int Utf8SafeCHexEscapeString(const char* src, int src_len, char* dest,
 //    allocation.  However, it is much more convenient to use in
 //    non-speed-critical code like logging messages etc.
 // ----------------------------------------------------------------------
-string CEscape(const StringPiece& src);
-string CHexEscape(const StringPiece& src);
-string Utf8SafeCEscape(const StringPiece& src);
-string Utf8SafeCHexEscape(const StringPiece& src);
+string CEscape(const GStringPiece& src);
+string CHexEscape(const GStringPiece& src);
+string Utf8SafeCEscape(const GStringPiece& src);
+string Utf8SafeCHexEscape(const GStringPiece& src);
 
 // ----------------------------------------------------------------------
 // BackslashEscape()
@@ -246,21 +246,21 @@ string Utf8SafeCHexEscape(const StringPiece& src);
 //    On the other hand, for all strings "src", the following is true:
 //      BackslashUnescape(BackslashEscape(src, ":\\"), ":\\") == src
 // ----------------------------------------------------------------------
-void BackslashEscape(const StringPiece& src,
+void BackslashEscape(const GStringPiece& src,
                      const strings::CharSet& to_escape,
                      string* dest);
-void BackslashUnescape(const StringPiece& src,
+void BackslashUnescape(const GStringPiece& src,
                        const strings::CharSet& to_unescape,
                        string* dest);
 
-inline string BackslashEscape(const StringPiece& src,
+inline string BackslashEscape(const GStringPiece& src,
                               const strings::CharSet& to_escape) {
   string s;
   BackslashEscape(src, to_escape, &s);
   return s;
 }
 
-inline string BackslashUnescape(const StringPiece& src,
+inline string BackslashUnescape(const GStringPiece& src,
                                 const strings::CharSet& to_unescape) {
   string s;
   BackslashUnescape(src, to_unescape, &s);
@@ -479,14 +479,14 @@ void FiveBytesToEightBase32Digits(const unsigned char* in_bytes, char* out);
 //
 //   The versions that receive a string for the output will append to it.
 // ----------------------------------------------------------------------
-void EscapeFileName(const StringPiece& src, string* dst);
-void UnescapeFileName(const StringPiece& src, string* dst);
-inline string EscapeFileName(const StringPiece& src) {
+void EscapeFileName(const GStringPiece& src, string* dst);
+void UnescapeFileName(const GStringPiece& src, string* dst);
+inline string EscapeFileName(const GStringPiece& src) {
   string r;
   EscapeFileName(src, &r);
   return r;
 }
-inline string UnescapeFileName(const StringPiece& src) {
+inline string UnescapeFileName(const GStringPiece& src) {
   string r;
   UnescapeFileName(src, &r);
   return r;
@@ -556,7 +556,7 @@ void b2a_hex(const unsigned char* from, string* to, int num);
 //    Return value: 2*'num' characters of ascii string
 // ----------------------------------------------------------------------
 string b2a_hex(const char* from, int num);
-string b2a_hex(const StringPiece& b);
+string b2a_hex(const GStringPiece& b);
 
 // ----------------------------------------------------------------------
 // b2a_bin()
@@ -578,7 +578,7 @@ string b2a_bin(const string& b, bool byte_order_msb);
 //         safe for Bourne shell syntax (i.e. sh, bash), but mileage may vary
 //         with other shells.
 // ----------------------------------------------------------------------
-string ShellEscape(StringPiece src);
+string ShellEscape(GStringPiece src);
 
 // Runs ShellEscape() on the arguments, concatenates them with a space, and
 // returns the resulting string.

@@ -105,7 +105,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
       int64_t value;
       if (!const_pt->ToInt64(&value, negate).ok() ||
           !(value <= INT8_MAX && value >= INT8_MIN)) {
-        return exec_context_->Error(const_pt->loc(), "Invalid tiny integer/int8.",
+        return exec_context_->Error(const_pt->loc(), "Invalid tiny integer/int8",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
       const_pb->set_int8_value(value);
@@ -115,7 +115,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
       int64_t value;
       if (!const_pt->ToInt64(&value, negate).ok() ||
           !(value <= INT16_MAX && value >= INT16_MIN)) {
-        return exec_context_->Error(const_pt->loc(), "Invalid small integer/int16.",
+        return exec_context_->Error(const_pt->loc(), "Invalid small integer/int16",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
       const_pb->set_int16_value(value);
@@ -125,7 +125,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
       int64_t value;
       if (!const_pt->ToInt64(&value, negate).ok() ||
           !(value <= INT32_MAX && value >= INT32_MIN)) {
-        return exec_context_->Error(const_pt->loc(), "Invalid integer/int32.",
+        return exec_context_->Error(const_pt->loc(), "Invalid integer/int32",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
       const_pb->set_int32_value(value);
@@ -135,7 +135,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
       int64_t value;
       if (!const_pt->ToInt64(&value, negate).ok() ||
           !(value <= INT64_MAX && value >= INT64_MIN)) {
-        return exec_context_->Error(const_pt->loc(), "Invalid big integer/int64.",
+        return exec_context_->Error(const_pt->loc(), "Invalid big integer/int64",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
       const_pb->set_int64_value(value);
@@ -144,7 +144,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
     case InternalType::kFloatValue: {
       long double value;
       if (!const_pt->ToDouble(&value, negate).ok()) {
-        return exec_context_->Error(const_pt->loc(), "Invalid float.",
+        return exec_context_->Error(const_pt->loc(), "Invalid float",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
       const_pb->set_float_value(value);
@@ -153,7 +153,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
     case InternalType::kDoubleValue: {
       long double value;
       if (!const_pt->ToDouble(&value, negate).ok()) {
-        return exec_context_->Error(const_pt->loc(), "Invalid double.",
+        return exec_context_->Error(const_pt->loc(), "Invalid double",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
       const_pb->set_double_value(value);
@@ -165,10 +165,31 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
     case InternalType::kTimestampValue: {
       int64_t value;
       if (!const_pt->ToInt64(&value, negate).ok()) {
-        return exec_context_->Error(const_pt->loc(), "Invalid integer.",
+        return exec_context_->Error(const_pt->loc(), "Invalid integer",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
       const_pb->set_timestamp_value(DateTime::TimestampFromInt(value).ToInt64());
+      break;
+    }
+    case InternalType::kDateValue: {
+      int64_t value;
+      if (!const_pt->ToInt64(&value, negate).ok() ||
+          value < std::numeric_limits<uint32_t>::min() ||
+          value > std::numeric_limits<uint32_t>::max()) {
+        return exec_context_->Error(const_pt->loc(), "Invalid date",
+                                    ErrorCode::INVALID_ARGUMENTS);
+      }
+      const_pb->set_date_value(static_cast<uint32_t>(value));
+      break;
+    }
+    case InternalType::kTimeValue: {
+      int64_t value;
+      if (!const_pt->ToInt64(&value, negate).ok() ||
+          value < DateTime::kMinTime || value > DateTime::kMaxTime) {
+        return exec_context_->Error(const_pt->loc(), "Invalid time",
+                                    ErrorCode::INVALID_ARGUMENTS);
+      }
+      const_pb->set_time_value(value);
       break;
     }
     case InternalType::kVarintValue: {
@@ -271,9 +292,21 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstText *const_pt, QLValuePB *cons
     case InternalType::kStringValue:
       return const_pt->ToString(const_pb->mutable_string_value());
     case InternalType::kTimestampValue: {
-      int64_t value;
+      int64_t value = 0;
       RETURN_NOT_OK(const_pt->ToTimestamp(&value));
       const_pb->set_timestamp_value(value);
+      break;
+    }
+    case InternalType::kDateValue: {
+      uint32_t value = 0;
+      RETURN_NOT_OK(const_pt->ToDate(&value));
+      const_pb->set_date_value(value);
+      break;
+    }
+    case InternalType::kTimeValue: {
+      int64_t value = 0;
+      RETURN_NOT_OK(const_pt->ToTime(&value));
+      const_pb->set_time_value(value);
       break;
     }
     case InternalType::kInetaddressValue: {

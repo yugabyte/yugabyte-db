@@ -25,17 +25,14 @@
 #include "yb/client/client.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
-
-#include "yb/gutil/callback.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/yql/cql/cqlserver/cql_rpc.h"
-#include "yb/yql/cql/ql/ql_session.h"
-
 #include "yb/common/common.pb.h"
-#include "yb/util/enums.h"
+#include "yb/gutil/callback.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/util/enums.h"
+#include "yb/yql/cql/cqlserver/cql_rpc.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ql_session.h"
 
 namespace yb {
 namespace ql {
@@ -85,8 +82,8 @@ class QLEnv {
   client::YBSessionPtr NewSession();
 
   // Create a new transaction.
-  client::YBTransactionPtr NewTransaction(const client::YBTransactionPtr& transaction,
-                                          IsolationLevel isolation_level);
+  Result<client::YBTransactionPtr> NewTransaction(const client::YBTransactionPtr& transaction,
+                                                  IsolationLevel isolation_level);
 
   //------------------------------------------------------------------------------------------------
   // Permission related methods.
@@ -120,26 +117,52 @@ class QLEnv {
   // Role related methods.
 
   // Create role with the given arguments.
-  CHECKED_STATUS CreateRole(const std::string& role_name,
-                            const std::string& salted_hash,
-                            const bool login, const bool superuser);
+  virtual CHECKED_STATUS CreateRole(const std::string& role_name,
+                                    const std::string& salted_hash,
+                                    const bool login, const bool superuser);
 
   // Alter an existing role with the given arguments.
-  CHECKED_STATUS AlterRole(const std::string& role_name,
-                           const boost::optional<std::string>& salted_hash,
-                           const boost::optional<bool> login,
-                           const boost::optional<bool> superuser);
+  virtual CHECKED_STATUS AlterRole(const std::string& role_name,
+                                   const boost::optional<std::string>& salted_hash,
+                                   const boost::optional<bool> login,
+                                   const boost::optional<bool> superuser);
 
   // Delete role by name.
   virtual CHECKED_STATUS DeleteRole(const std::string& role_name);
 
-  CHECKED_STATUS GrantRevokeRole(GrantRevokeStatementType statement_type,
-                                 const std::string& granted_role_name,
-                                 const std::string& recipient_role_name);
+  virtual CHECKED_STATUS GrantRevokeRole(GrantRevokeStatementType statement_type,
+                                         const std::string& granted_role_name,
+                                         const std::string& recipient_role_name);
 
   virtual std::string CurrentRoleName() const {
     return ql_session()->current_role_name();
   }
+
+  // Check the cache to determine if a role has been given permissions on a specific canonical
+  // resource.
+  // keyspace and table are only used to generate the error message.
+  virtual CHECKED_STATUS HasResourcePermission(const string& canonical_name,
+                                               const ql::ObjectType& object_type,
+                                               const std::string& role_name,
+                                               const PermissionType permission,
+                                               const NamespaceName& keyspace = "",
+                                               const TableName& table = "");
+
+  // Convenience methods to check whether the current role has the specified permission on the
+  // given table.
+  // We first check if the permission exists at the keyspace level. Otherwise, we check the
+  // table's permissions.
+  virtual CHECKED_STATUS HasTablePermission(const NamespaceName& keyspace_name,
+                                            const TableName& table_name,
+                                            const PermissionType permission);
+
+  virtual CHECKED_STATUS HasTablePermission(const client::YBTableName table_name,
+                                            const PermissionType permission);
+
+  // Convenience method to check whether the current role has the specified permission on the given
+  // role.
+  virtual CHECKED_STATUS HasRolePermission(const RoleName& role_name,
+                                           const PermissionType permission);
 
   //------------------------------------------------------------------------------------------------
   // (User-defined) Type related methods.
@@ -182,6 +205,7 @@ class QLEnv {
   std::shared_ptr<client::YBClient> client_;
 
   // YBMetaDataCache, a cache to avoid creating a new table or type for each call.
+  // Also used to hold the permissions cache when authentication is enabled.
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
 
   // Server clock.

@@ -605,18 +605,6 @@ TEST_F(MasterTest, TestCatalog) {
   }
 }
 
-TEST_F(MasterTest, TestCreateTableInvalidKeyType) {
-  const char *kTableName = "testtb";
-
-  {
-    const Schema kTableSchema({ ColumnSchema("key", BOOL) }, 1);
-    Status s = CreateTable(kTableName, kTableSchema);
-    ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
-    ASSERT_STR_CONTAINS(s.ToString(),
-        "Invalid datatype for primary key column");
-  }
-}
-
 // Regression test for KUDU-253/KUDU-592: crash if the schema passed to CreateTable
 // is invalid.
 TEST_F(MasterTest, TestCreateTableInvalidSchema) {
@@ -635,8 +623,8 @@ TEST_F(MasterTest, TestCreateTableInvalidSchema) {
   ASSERT_OK(proxy_->CreateTable(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());
   ASSERT_TRUE(resp.has_error());
-  ASSERT_EQ("code: INVALID_ARGUMENT message: \"Duplicate column name: col\"",
-            resp.error().status().ShortDebugString());
+  ASSERT_EQ(AppStatusPB::INVALID_ARGUMENT, resp.error().status().code());
+  ASSERT_EQ("Duplicate column name: col", resp.error().status().message());
 }
 
 // Regression test for KUDU-253/KUDU-592: crash if the GetTableLocations RPC call is
@@ -655,9 +643,9 @@ TEST_F(MasterTest, TestInvalidGetTableLocations) {
     ASSERT_OK(proxy_->GetTableLocations(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
-    ASSERT_EQ("code: INVALID_ARGUMENT message: "
-              "\"start partition key is greater than the end partition key\"",
-              resp.error().status().ShortDebugString());
+    ASSERT_EQ(AppStatusPB::INVALID_ARGUMENT, resp.error().status().code());
+    ASSERT_EQ("start partition key is greater than the end partition key",
+              resp.error().status().message());
   }
 }
 

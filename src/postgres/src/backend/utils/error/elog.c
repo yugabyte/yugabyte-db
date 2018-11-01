@@ -400,6 +400,13 @@ errstart(int elevel, const char *filename, int lineno,
 	edata->assoc_context = ErrorContext;
 
 	recursion_depth--;
+	if (YBShouldLogStackTraceOnError() && elevel >= ERROR)
+	{
+		YBCLogImpl(
+			/* severity (2=ERROR) */ 2,
+			filename, lineno, /* stack_trace */ true,
+			"Postgres error: %s", YBPgErrorLevelToString(elevel));
+	}
 	return true;
 }
 
@@ -1357,7 +1364,7 @@ elog_finish(int elevel, const char *fmt,...)
 	/* TODO Make this a YB-debug-mode feature */
 	if (IsYugaByteEnabled() && elevel >= FATAL)
 	{
-		YBCLogInfoStackTrace("StackTrace:");
+		YBC_LOG_ERROR_STACK_TRACE("Stack trace on a FATAL log");
 	}
 
 	/*

@@ -8,7 +8,7 @@
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
  *
- * http: *www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software distributed under the License
  * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
@@ -29,72 +29,105 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
+#include "pg_yb_utils.h"
+
+/**
+ * Types we need for system tables:
+ *
+ * bool
+ * char
+ * text
+ * int2
+ * int4
+ * int8
+ * float4
+ * float8
+ * timestamptz
+ * bytea
+ * oid
+ * xid
+ * cid
+ * tid
+ * name (same as text?)
+ * aclitem
+ * pg_node_tree
+ * pg_lsn
+ * pg_ndistinct
+ * pg_dependencies
+ *
+ * OID aliases:
+ *
+ * regproc
+ * regprocedure
+ * regoper
+ * regoperator
+ * regclass
+ * regtype
+ * regconfig
+ * regdictionary
+ *
+ * Vectors/arrays:
+ *
+ * int2vector (list of 16-bit integers)
+ * oidvector (list of 32-bit unsigned integers)
+ * anyarray (list of 32-bit integers - signed or unsigned)
+ */
+
 /*
- * TODO For now we use the CQL/YQL types here, eventually we should use the
- * internal (protobuf) types.
+ * TODO For now we use the CQL/YQL types here (listed in common.proto).
+ * Eventually we should use the internal (protobuf) types listed in
+ * yb/client/schema.h.
  */
 YBCPgDataType
 YBCDataTypeFromName(TypeName *typeName)
 {
-	Oid			type_id;
-	int32		typmod;
+	Oid			type_id = 0;
+	int32		typmod = 0;
 
 	typenameTypeIdAndMod(NULL /* parseState */ , typeName, &type_id, &typmod);
 
-	if (typmod != -1)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Type modifiers are not supported yet: %d", typmod)));
+	if (YBCIsPgBinarySerializedType(type_id)) {
+		/*
+		 * TODO: distinguish between string and binary types in the backend.
+		 */
+		return YB_YQL_DATA_TYPE_STRING;
 	}
 
 	switch (type_id)
 	{
 		case BOOLOID:
-		case BYTEAOID:
+			return YB_YQL_DATA_TYPE_BOOL;
 		case CHAROID:
 		case NAMEOID:
-			ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Datatype not yet supported: %d", type_id)));
+			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
 			break;
 		case INT8OID:
-			return 4;
+			return YB_YQL_DATA_TYPE_INT64;
 		case INT2OID:
-			return 2;
-		case INT2VECTOROID:
-			ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Datatype not yet supported: %d", type_id)));
-			break;
+			return YB_YQL_DATA_TYPE_INT16;
 		case INT4OID:
-			return 3;
+			return YB_YQL_DATA_TYPE_INT32;
 		case REGPROCOID:
-			ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Datatype not yet supported: %d", type_id)));
+			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
 			break;
-		case TEXTOID:
-			return 5;
 		case OIDOID:
+			/* TODO: need to use UINT32 here */
+			return YB_YQL_DATA_TYPE_INT32;
 		case TIDOID:
 		case XIDOID:
 		case CIDOID:
-		case OIDVECTOROID:
 		case POINTOID:
 		case LSEGOID:
 		case PATHOID:
 		case BOXOID:
 		case POLYGONOID:
 		case LINEOID:
-			ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Datatype not yet supported: %d", type_id)));
+			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
 			break;
 		case FLOAT4OID:
-			return 7;
+			return YB_YQL_DATA_TYPE_FLOAT;
 		case FLOAT8OID:
-			return 8;
+			return YB_YQL_DATA_TYPE_DOUBLE;
 		case ABSTIMEOID:
 		case RELTIMEOID:
 		case TINTERVALOID:
@@ -103,13 +136,6 @@ YBCDataTypeFromName(TypeName *typeName)
 		case CASHOID:
 		case INETOID:
 		case CIDROID:
-		case BPCHAROID:
-			ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Datatype not yet supported: %d", type_id)));
-			break;
-		case VARCHAROID:
-			return 5;
 		case DATEOID:
 		case TIMEOID:
 		case TIMESTAMPOID:
@@ -126,7 +152,8 @@ YBCDataTypeFromName(TypeName *typeName)
 		case REGTYPEOID:
 		case REGROLEOID:
 		case REGNAMESPACEOID:
-		case REGTYPEARRAYOID:
+			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
+			break;
 		case UUIDOID:
 		case LSNOID:
 		case TSVECTOROID:
@@ -134,13 +161,31 @@ YBCDataTypeFromName(TypeName *typeName)
 		case TSQUERYOID:
 		case REGCONFIGOID:
 		case REGDICTIONARYOID:
-		case JSONBOID:
 		case INT4RANGEOID:
+			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
+		case INT4ARRAYOID:
+			/** TODO: make this binary */
+			return YB_YQL_DATA_TYPE_STRING;
 		default:
-			ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Datatype not yet supported: %d", type_id)));
-			break;
+			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
 	}
 	return -1;
+}
+
+bool
+YBCIsPgBinarySerializedType(Oid type_id) {
+	switch (type_id) {
+		case BYTEAOID:
+		case INT2ARRAYOID:
+		case INT2VECTOROID:
+		case JSONBOID:
+		case OIDVECTOROID:
+		case TEXTOID:
+		case VARCHAROID:
+		case REGTYPEARRAYOID:
+		case BPCHAROID:
+			return true;
+		default:
+			return false;
+	}
 }

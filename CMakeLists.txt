@@ -446,6 +446,8 @@ CHECK_YB_COMPILER_PATH(${CMAKE_C_COMPILER})
 message("CMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}")
 CHECK_YB_COMPILER_PATH(${CMAKE_CXX_COMPILER})
 
+set(BUILD_SUPPORT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/build-support)
+
 # Provide a 'latest' symlink to this build directory if the "blessed" multi-build layout is
 # detected:
 #
@@ -469,7 +471,9 @@ if (NOT "$ENV{YB_DISABLE_LATEST_SYMLINK}" STREQUAL "1")
     set(MORE_ARGS "-h")
   endif()
   add_custom_target(latest_symlink ALL
-    ln ${MORE_ARGS} -sf "${CMAKE_CURRENT_BINARY_DIR}" "${LATEST_BUILD_SYMLINK_PATH}"
+    "${BUILD_SUPPORT_DIR}/create_latest_symlink.sh"
+    "${CMAKE_CURRENT_BINARY_DIR}"
+    "${LATEST_BUILD_SYMLINK_PATH}"
     COMMENT "Recreating the 'latest' symlink at '${LATEST_BUILD_SYMLINK_PATH}'")
 endif()
 
@@ -479,8 +483,6 @@ add_custom_target(dummy_target ALL
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_modules")
 include(CMakeParseArguments)
-
-set(BUILD_SUPPORT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/build-support)
 
 # Allow "make install" to not depend on all targets.
 #
@@ -786,17 +788,20 @@ elseif (USING_LINUXBREW AND IS_CLANG)
   ADD_LINKER_FLAGS("-L${LINUXBREW_LIB_DIR}")
 
   execute_process(COMMAND "${LINUXBREW_DIR}/bin/brew" list --versions gcc
-                  COMMAND tr -d '\n'
-                  COMMAND tail -c 5
-                  OUTPUT_VARIABLE LINUXBREW_GCC_VERSION
-                  ERROR_VARIABLE LINUXBREW_GCC_VERSION_ERROR)
+                  OUTPUT_VARIABLE LINUXBREW_GCC_VERSION_OUTPUT
+                  ERROR_VARIABLE LINUXBREW_GCC_VERSION_ERROR OUTPUT_STRIP_TRAILING_WHITESPACE
+                  ERROR_STRIP_TRAILING_WHITESPACE)
+  string(REGEX REPLACE "gcc[ ]+(.*)$" "\\1" LINUXBREW_GCC_VERSION "${LINUXBREW_GCC_VERSION_OUTPUT}")
+  string(REGEX REPLACE "^(.*)_[^_]+$" "\\1" LINUXBREW_GCC_MAJOR_VERSION "${LINUXBREW_GCC_VERSION}")
 
   message("Brew GCC version: ${LINUXBREW_GCC_VERSION}")
   set(LINUXBREW_CXX_INCLUDE_DIR
-      "${LINUXBREW_DIR}/Cellar/gcc/${LINUXBREW_GCC_VERSION}/include/c++/${LINUXBREW_GCC_VERSION}")
-  if(NOT IS_DIRECTORY ${LINUXBREW_CXX_INCLUDE_DIR})
-    message(FATAL_ERROR "Missing libstdc++ directory: ${LINUXBREW_CXX_INCLUDE_DIR}, "
-                        "fetching gcc version error: ${LINUXBREW_GCC_VERSION_ERROR}")
+      "${LINUXBREW_DIR}/Cellar/gcc/${LINUXBREW_GCC_VERSION}/include/c++/\
+${LINUXBREW_GCC_MAJOR_VERSION}")
+  if (NOT IS_DIRECTORY ${LINUXBREW_CXX_INCLUDE_DIR})
+    message(FATAL_ERROR "Fetching gcc version stdout: \n${LINUXBREW_GCC_VERSION_OUTPUT}\n\
+Fetching gcc version stderr: \n${LINUXBREW_GCC_VERSION_ERROR}\n\
+GCC include dir tried: ${LINUXBREW_CXX_INCLUDE_DIR}")
   endif()
   include_directories(SYSTEM ${LINUXBREW_CXX_INCLUDE_DIR})
   include_directories(SYSTEM ${LINUXBREW_CXX_INCLUDE_DIR}/backward)
@@ -1525,6 +1530,17 @@ foreach(IDX RANGE ${LAST_IDX})
 endforeach()
 include_directories(SYSTEM ${Boost_INCLUDE_DIR})
 
+if(APPLE)
+  set(ICU_ROOT "/usr/local/opt/icu4c")
+endif()
+find_package(ICU COMPONENTS i18n uc REQUIRED)
+include_directories(SYSTEM ${ICU_INCLUDE_DIRS})
+ADD_THIRDPARTY_LIB(icui18n
+  STATIC_LIB "${ICU_I18N_LIBRARIES}"
+  SHARED_LIB "${ICU_I18N_LIBRARIES}")
+ADD_THIRDPARTY_LIB(icuuc
+  STATIC_LIB "${ICU_UC_LIBRARIES}"
+  SHARED_LIB "${ICU_UC_LIBRARIES}")
 
 ############################################################
 # Linker setup
@@ -1622,6 +1638,9 @@ if (USING_LINUXBREW)
   ADD_GLOBAL_RPATH_ENTRY("${LINUXBREW_LIB_DIR}")
   ADD_LINKER_FLAGS("-L/usr/lib64")
   ADD_GLOBAL_RPATH_ENTRY("/usr/lib64")
+elseif(APPLE)
+  ADD_LINKER_FLAGS("-L${ICU_ROOT}/lib")
+  ADD_GLOBAL_RPATH_ENTRY("${ICU_ROOT}/lib")
 endif()
 
 message("Linker flags: ${CMAKE_EXE_LINKER_FLAGS}")

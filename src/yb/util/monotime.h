@@ -88,6 +88,7 @@ class MonoDelta {
 
   MonoDelta& operator+=(const MonoDelta& rhs);
   MonoDelta& operator-=(const MonoDelta& rhs);
+  MonoDelta& operator*=(int64_t mul);
 
   // Update struct timeval to current value of delta, with microsecond accuracy.
   // Note that if MonoDelta::IsPositive() returns true, the struct timeval
@@ -123,6 +124,9 @@ inline bool operator==(MonoDelta lhs, MonoDelta rhs) { return lhs.Equals(rhs); }
 inline bool operator!=(MonoDelta lhs, MonoDelta rhs) { return !(rhs == lhs); }
 
 std::string FormatForComparisonFailureMessage(const MonoDelta& op, const MonoDelta& other);
+
+inline MonoDelta operator-(MonoDelta lhs, MonoDelta rhs) { return lhs -= rhs; }
+inline MonoDelta operator+(MonoDelta lhs, MonoDelta rhs) { return lhs += rhs; }
 
 inline std::ostream& operator<<(std::ostream& out, MonoDelta delta) {
   return out << delta.ToString();

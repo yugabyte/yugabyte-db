@@ -33,6 +33,7 @@
 
 #include <limits.h>
 #include <math.h>
+#include <utils/rel.h>
 
 #include "miscadmin.h"
 #include "access/sysattr.h"
@@ -193,15 +194,18 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 	{
 		for (rti = 1; rti < root->simple_rel_array_size; rti++)
 		{
-			RelOptInfo *rel = root->simple_rel_array[rti];
+			RelOptInfo *relation = root->simple_rel_array[rti];
 
-			if (rel != NULL && rel->rtekind == RTE_RELATION)
+			if (relation != NULL && relation->rtekind == RTE_RELATION)
 			{
-				/*
-				 * set the yugabyte fdw routing because we will use a foreign
-				 * scan below.
-				 */
-				rel->fdwroutine = (FdwRoutine *) ybc_fdw_handler();
+				RangeTblEntry *rte = root->simple_rte_array[rti];
+				if (IsYBSupportedTable(rte->relid)) {
+					/*
+					 * Set the YugaByte FDW routine because we will use the foreign
+					 * scan API below.
+					 */
+					relation->fdwroutine = (FdwRoutine *) ybc_fdw_handler();
+				}
 			}
 		}
 	}
@@ -397,11 +401,14 @@ set_rel_size(PlannerInfo *root, RelOptInfo *rel,
 				}
 				else if (rte->tablesample != NULL)
 				{
-
-					/* TODO we don't support tablesample queries yet. */
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("'TABLESAMPLE' clause is not yet supported")));
+					if (IsYugaByteEnabled() && IsYBSupportedTable(rte->relid))
+					{
+						/* TODO we don't support tablesample queries yet. */
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("'TABLESAMPLE' clause is not yet "
+										"supported by YugaByte")));
+					}
 
 					/* Sampled relation */
 					set_tablesample_rel_size(root, rel, rte);
@@ -409,7 +416,7 @@ set_rel_size(PlannerInfo *root, RelOptInfo *rel,
 				else
 				{
 					/* Plain relation */
-					if (IsYugaByteEnabled() && MyDatabaseId != TemplateDbOid)
+					if (IsYugaByteEnabled() && IsYBSupportedTable(rte->relid))
 					{
 						set_foreign_size(root, rel, rte);
 					}
@@ -494,10 +501,14 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				}
 				else if (rte->tablesample != NULL)
 				{
-					/* TODO we don't support tablesample queries yet. */
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("'TABLESAMPLE' clause is not yet supported")));
+					if (IsYugaByteEnabled() && IsYBSupportedTable(rte->relid))
+					{
+						/* TODO we don't support tablesample queries yet. */
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("'TABLESAMPLE' clause is not yet "
+									   "supported by YugaByte")));
+					}
 
 					/* Sampled relation */
 					set_tablesample_rel_pathlist(root, rel, rte);
@@ -505,7 +516,7 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				else
 				{
 					/* Plain relation */
-					if (IsYugaByteEnabled() && MyDatabaseId != TemplateDbOid)
+					if (IsYugaByteEnabled() && IsYBSupportedTable(rte->relid))
 					{
 						/*
 						 * Using a foreign scan which will use the YB FDW by

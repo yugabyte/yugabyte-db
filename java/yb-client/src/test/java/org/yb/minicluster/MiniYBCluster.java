@@ -35,10 +35,9 @@ import org.apache.commons.io.FileUtils;
 import org.yb.client.BaseYBClientTest;
 import org.yb.client.TestUtils;
 import org.yb.client.YBClient;
-import org.yb.util.NetUtil;
+import org.yb.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.RandomNumberUtil;
 
 import java.io.*;
 import java.net.InetAddress;
@@ -180,6 +179,7 @@ public class MiniYBCluster implements AutoCloseable {
     syncClient.waitForMasterLeader(defaultTimeoutMs);
   }
 
+  /** Common flags for both master and tserver processes */
   private List<String> getCommonDaemonFlags() {
     final List<String> commonFlags = Lists.newArrayList(
         // Ensure that logging goes to the test output and doesn't get buffered.
@@ -197,8 +197,9 @@ public class MiniYBCluster implements AutoCloseable {
       commonFlags.add("--yb_test_name=" + testClassName);
     }
 
-    final long memoryLimit = TestUtils.nonTsanVsTsan(DAEMON_MEMORY_LIMIT_HARD_BYTES_NON_TSAN,
-                                                     DAEMON_MEMORY_LIMIT_HARD_BYTES_TSAN);
+    final long memoryLimit = SanitizerUtil.nonTsanVsTsan(
+        DAEMON_MEMORY_LIMIT_HARD_BYTES_NON_TSAN,
+        DAEMON_MEMORY_LIMIT_HARD_BYTES_TSAN);
     commonFlags.add("--memory_limit_hard_bytes=" + memoryLimit);
 
     // YB_TEST_INVOCATION_ID is a special environment variable that we use to force-kill all
@@ -211,6 +212,8 @@ public class MiniYBCluster implements AutoCloseable {
       // and yb-tserver for this.
       commonFlags.add("--metric_node_name=" + testInvocationId);
     }
+
+    commonFlags.add("--yb_num_shards_per_tserver=" + numShardsPerTserver);
 
     return commonFlags;
   }
@@ -426,14 +429,12 @@ public class MiniYBCluster implements AutoCloseable {
         "--pgsql_proxy_bind_address=" + tserverBindAddress + ":" + PGSQL_PORT,
         "--pgsql_proxy_webserver_port=" + pgsqlWebPort,
         "--cql_proxy_bind_address=" + tserverBindAddress + ":" + CQL_PORT,
-        "--yb_num_shards_per_tserver=" + numShardsPerTserver,
         "--cql_nodelist_refresh_interval_secs=" + CQL_NODE_LIST_REFRESH_SECS,
         "--heartbeat_interval_ms=" + TSERVER_HEARTBEAT_INTERVAL_MS,
         "--rpc_slow_query_threshold_ms=" + RPC_SLOW_QUERY_THRESHOLD,
         "--cql_proxy_webserver_port=" + cqlWebPort,
         "--yb_client_admin_operation_timeout_sec=" + YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC,
         "--callhome_enabled=false");
-    tsCmdLine.addAll(getCommonDaemonFlags());
     if (tserverArgs != null) {
       for (String arg : tserverArgs) {
         tsCmdLine.add(arg);
@@ -633,6 +634,7 @@ public class MiniYBCluster implements AutoCloseable {
       fatalDetailsPathPrefix += "." + type.shortStr() + "-" + indexForLog + "." + bindIp + "-" +
           "port" + rpcPort;
       args.add("--fatal_details_path_prefix=" + fatalDetailsPathPrefix);
+      args.addAll(getCommonDaemonFlags());
       command = args.toArray(command);
     }
 
@@ -652,7 +654,7 @@ public class MiniYBCluster implements AutoCloseable {
       // This means the process is still alive, it's like reverse psychology.
     }
 
-    LOG.info("Started " + command[0] + " as pid " + TestUtils.pidOfProcess(proc));
+    LOG.info("Started " + command[0] + " as pid " + ProcessUtil.pidOfProcess(proc));
 
     return daemon;
   }
@@ -673,7 +675,7 @@ public class MiniYBCluster implements AutoCloseable {
       // This means the process is still alive, it's like reverse psychology.
     }
 
-    LOG.info("Restarted " + command[0] + " as pid " + TestUtils.pidOfProcess(proc));
+    LOG.info("Restarted " + command[0] + " as pid " + ProcessUtil.pidOfProcess(proc));
 
     return daemon;
   }
@@ -702,55 +704,11 @@ public class MiniYBCluster implements AutoCloseable {
     LOG.info("Restarted mini cluster");
   }
 
-  public static void processCoreFile(int pid,
-                                     String executablePath,
-                                     String programDescription,
-                                     File coreFileDir,
-                                     boolean tryWithoutPid) throws Exception {
-    List<String> coreFileNames = new ArrayList<String>();
-    coreFileNames.add("core." + pid);
-    if (tryWithoutPid) {
-      coreFileNames.add("core");
-    }
-    for (String coreBasename : coreFileNames) {
-      final File coreFile =
-          coreFileDir == null ? new File(coreBasename) : new File(coreFileDir, coreBasename);
-      if (coreFile.exists()) {
-        LOG.warn("Found core file '{}' from {}", coreFile.getAbsolutePath(), programDescription);
-        String analysisScript = TestUtils.findYbRootDir() + "/build-support/analyze_core_file.sh";
-        List<String> analysisArgs = Arrays.asList(
-            analysisScript,
-            "--core",
-            coreFile.getAbsolutePath(),
-            "--executable",
-            executablePath
-        );
-        LOG.warn("Analyzing core file using the command: " + analysisArgs);
-        ProcessBuilder procBuilder = new ProcessBuilder().command(analysisArgs);
-        procBuilder.redirectErrorStream(true);
-        Process analysisProcess = procBuilder.start();
-
-        LogPrinter logPrinter = new LogPrinter(analysisProcess.getInputStream(), "    ");
-        analysisProcess.waitFor();
-        logPrinter.stop();
-
-        if (analysisProcess.exitValue() != 0) {
-          LOG.warn("Core file analysis script " + analysisProcess + " exited with code: " +
-              analysisProcess.exitValue());
-        } else {
-          if (coreFile.delete()) {
-            LOG.warn("Deleted core file at '{}'", coreFile.getAbsolutePath());
-          } else {
-            LOG.warn("Failed to delete core file at '{}'", coreFile.getAbsolutePath());
-          }
-        }
-      }
-    }
-  }
-
   private void processCoreFile(MiniYBDaemon daemon) throws Exception {
-    processCoreFile(daemon.getPid(), daemon.getCommandLine()[0], daemon.toString(),
-        /* coreFileDir */ null, /* tryWithoutPid */ false);
+    CoreFileUtil.processCoreFile(
+        daemon.getPid(), daemon.getCommandLine()[0], daemon.toString(),
+        /* coreFileDir */ null,
+        CoreFileUtil.CoreFileMatchMode.EXACT_PID);
   }
 
   private void destroyDaemon(MiniYBDaemon daemon) throws Exception {
@@ -840,6 +798,7 @@ public class MiniYBCluster implements AutoCloseable {
     for (String path : pathsToDelete) {
       try {
         File f = new File(path);
+        LOG.info("Deleting path: " + path);
         if (f.isDirectory()) {
           FileUtils.deleteDirectory(f);
         } else {

@@ -63,6 +63,7 @@ DECLARE_bool(transaction_disable_proactive_cleanup_in_tests);
 DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
+DECLARE_int32(load_balancer_max_concurrent_adds);
 
 namespace yb {
 namespace client {
@@ -129,12 +130,13 @@ class QLTransactionTest : public KeyValueTableTest {
   void SetUp() override {
     server::SkewedClock::Register();
     FLAGS_time_source = server::SkewedClock::kName;
+    FLAGS_load_balancer_max_concurrent_adds = 100;
     KeyValueTableTest::SetUp();
 
     CreateTable(Transactional::kTrue);
 
     FLAGS_transaction_table_num_tablets = 1;
-    FLAGS_log_segment_size_bytes = 128;
+    FLAGS_log_segment_size_bytes = log_segment_size_bytes();
     FLAGS_log_min_seconds_to_retain = 5;
     FLAGS_intents_flush_max_delay_ms = 250;
 
@@ -146,6 +148,10 @@ class QLTransactionTest : public KeyValueTableTest {
     server::ClockPtr clock2(new server::HybridClock(skewed_clock_));
     ASSERT_OK(clock2->Init());
     transaction_manager2_.emplace(client_, clock2, client::LocalTabletFilter());
+  }
+
+  virtual uint64_t log_segment_size_bytes() const {
+    return 128;
   }
 
   void WriteRows(
@@ -191,13 +197,15 @@ class QLTransactionTest : public KeyValueTableTest {
   }
 
   YBTransactionPtr CreateTransaction() {
-    return std::make_shared<YBTransaction>(
-        transaction_manager_.get_ptr(), IsolationLevel::SNAPSHOT_ISOLATION);
+    auto result = std::make_shared<YBTransaction>(transaction_manager_.get_ptr());
+    EXPECT_OK(result->Init(IsolationLevel::SNAPSHOT_ISOLATION));
+    return result;
   }
 
   YBTransactionPtr CreateTransaction2() {
-    return std::make_shared<YBTransaction>(
-        transaction_manager2_.get_ptr(), IsolationLevel::SNAPSHOT_ISOLATION);
+    auto result = std::make_shared<YBTransaction>(transaction_manager2_.get_ptr());
+    EXPECT_OK(result->Init(IsolationLevel::SNAPSHOT_ISOLATION));
+    return result;
   }
 
   void VerifyRows(const YBSessionPtr& session,
@@ -299,10 +307,36 @@ class QLTransactionTest : public KeyValueTableTest {
     ASSERT_EQ(false, has_bad);
   }
 
+  bool CheckAllTabletsRunning() {
+    bool result = true;
+    size_t count = 0;
+    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
+      if (i == 0) {
+        count = peers.size();
+      } else if (count != peers.size()) {
+        LOG(WARNING) << "Different number of tablets in tservers: "
+                     << count << " vs " << peers.size() << " at " << i;
+        result = false;
+      }
+      for (const auto& peer : peers) {
+        auto status = peer->CheckRunning();
+        if (!status.ok()) {
+          LOG(WARNING) << Format("T $0 P $1 is not running: $2", peer->tablet_id(),
+                                 peer->permanent_uuid(), status);
+          result = false;
+        }
+      }
+    }
+    return result;
+  }
+
   // We write data with first transaction then try to read it another one.
   // If commit is true, then first transaction is committed and second should be restarted.
   // Otherwise second transaction would see pending intents from first one and should not restart.
   void TestReadRestart(bool commit = true);
+
+  void TestWriteConflicts(bool do_restarts);
 
   std::shared_ptr<server::SkewedClock> skewed_clock_{
       std::make_shared<server::SkewedClock>(WallClock())};
@@ -347,8 +381,6 @@ TEST_F(QLTransactionTest, WriteSameKeyWithIntents) {
 
 // Commit flags says whether we should commit write txn during this test.
 void QLTransactionTest::TestReadRestart(bool commit) {
-  google::FlagSaver saver;
-
   SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
 
   {
@@ -384,11 +416,7 @@ void QLTransactionTest::TestReadRestart(bool commit) {
         txn2->Abort();
       } BOOST_SCOPE_EXIT_END;
       session->SetTransaction(txn2);
-      for (size_t r = 0; r != kNumRows; ++r) {
-        auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
-        ASSERT_OK(row);
-        ASSERT_EQ(ValueForTransactionAndIndex(0, r, WriteOpType::INSERT), *row);
-      }
+      VerifyRows(session);
       VerifyData();
     } else {
       for (size_t r = 0; r != kNumRows; ++r) {
@@ -407,13 +435,11 @@ TEST_F(QLTransactionTest, ReadRestart) {
 }
 
 TEST_F(QLTransactionTest, ReadRestartWithIntents) {
-  google::FlagSaver saver;
   DisableApplyingIntents();
   TestReadRestart();
 }
 
 TEST_F(QLTransactionTest, ReadRestartWithPendingIntents) {
-  google::FlagSaver saver;
   FLAGS_transaction_allow_rerequest_status_in_tests = false;
   DisableApplyingIntents();
   TestReadRestart(false /* commit */);
@@ -424,7 +450,6 @@ TEST_F(QLTransactionTest, ReadRestartWithPendingIntents) {
 // has time greater than max safetime to read, that causes restart.
 TEST_F(QLTransactionTest, ReadRestartNonTransactional) {
   const auto kClockSkew = 500ms;
-  google::FlagSaver saver;
 
   SetAtomicFlag(1000000ULL, &FLAGS_max_clock_skew_usec);
   FLAGS_transaction_table_num_tablets = 3;
@@ -450,8 +475,6 @@ TEST_F(QLTransactionTest, ReadRestartNonTransactional) {
 }
 
 TEST_F(QLTransactionTest, WriteRestart) {
-  google::FlagSaver saver;
-
   SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
 
   const std::string kExtraColumn = "v2";
@@ -501,6 +524,38 @@ TEST_F(QLTransactionTest, WriteRestart) {
   CheckNoRunningTransactions();
 }
 
+// Commit flags says whether we should commit write txn during this test.
+TEST_F(QLTransactionTest, WriteAfterReadRestart) {
+  const auto kClockDelta = 100ms;
+  SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
+
+  auto write_txn = CreateTransaction();
+  WriteRows(CreateSession(write_txn));
+  ASSERT_OK(write_txn->CommitFuture().get());
+
+  server::SkewedClockDeltaChanger delta_changer(-kClockDelta, skewed_clock_);
+
+  auto txn1 = CreateTransaction2();
+  auto session = CreateSession(txn1);
+  for (size_t r = 0; r != kNumRows; ++r) {
+    auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
+    ASSERT_NOK(row);
+    ASSERT_EQ(ql::ErrorCode::RESTART_REQUIRED, ql::GetErrorCode(row.status()))
+                  << "Bad row: " << row;
+  }
+  {
+    // To reset clock back.
+    auto temp_delta_changed = std::move(delta_changer);
+  }
+  auto txn2 = txn1->CreateRestartedTransaction();
+  session->SetTransaction(txn2);
+  VerifyRows(session);
+  WriteRows(session, 0, WriteOpType::UPDATE);
+  ASSERT_OK(txn2->CommitFuture().get());
+
+  VerifyData(1, WriteOpType::UPDATE);
+}
+
 TEST_F(QLTransactionTest, Child) {
   auto txn = CreateTransaction();
   TransactionManager manager2(client_, clock_, client::LocalTabletFilter());
@@ -523,8 +578,6 @@ TEST_F(QLTransactionTest, Child) {
 }
 
 TEST_F(QLTransactionTest, ChildReadRestart) {
-  google::FlagSaver saver;
-
   SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
 
   {
@@ -572,8 +625,6 @@ TEST_F(QLTransactionTest, ChildReadRestart) {
 }
 
 TEST_F(QLTransactionTest, InsertUpdate) {
-  google::FlagSaver flag_saver;
-
   DisableApplyingIntents();
   WriteData(); // Add data
   WriteData(); // Update data
@@ -609,7 +660,6 @@ TEST_F(QLTransactionTest, Heartbeat) {
 }
 
 TEST_F(QLTransactionTest, Expire) {
-  google::FlagSaver flag_saver;
   SetDisableHeartbeatInTests(true);
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
@@ -627,7 +677,6 @@ TEST_F(QLTransactionTest, Expire) {
 }
 
 TEST_F(QLTransactionTest, PreserveLogs) {
-  google::FlagSaver flag_saver;
   SetDisableHeartbeatInTests(true);
   DisableTransactionTimeout();
   std::vector<std::shared_ptr<YBTransaction>> transactions;
@@ -655,8 +704,6 @@ TEST_F(QLTransactionTest, PreserveLogs) {
 }
 
 TEST_F(QLTransactionTest, ResendApplying) {
-  google::FlagSaver flag_saver;
-
   DisableApplyingIntents();
   WriteData();
   std::this_thread::sleep_for(5s); // Transaction should not be applied here.
@@ -672,8 +719,6 @@ TEST_F(QLTransactionTest, ResendApplying) {
 }
 
 TEST_F(QLTransactionTest, ConflictResolution) {
-  google::FlagSaver flag_saver;
-
   constexpr size_t kTotalTransactions = 5;
   constexpr size_t kNumRows = 10;
   std::vector<YBTransactionPtr> transactions;
@@ -731,7 +776,7 @@ TEST_F(QLTransactionTest, SimpleWriteConflict) {
   ASSERT_NOK(transaction->CommitFuture().get());
 }
 
-TEST_F(QLTransactionTest, WriteConflicts) {
+void QLTransactionTest::TestWriteConflicts(bool do_restarts) {
   struct ActiveTransaction {
     YBTransactionPtr transaction;
     YBSessionPtr session;
@@ -745,6 +790,19 @@ TEST_F(QLTransactionTest, WriteConflicts) {
   std::vector<ActiveTransaction> active_transactions;
 
   auto stop = std::chrono::steady_clock::now() + kTestTime;
+
+  std::thread restart_thread;
+
+  if (do_restarts) {
+    restart_thread = std::thread([this, stop] {
+        int it = 0;
+        while (std::chrono::steady_clock::now() < stop) {
+          std::this_thread::sleep_for(5s);
+          ASSERT_OK(cluster_->mini_tablet_server(++it % cluster_->num_tablet_servers())->Restart());
+        }
+    });
+  }
+
   int value = 0;
   size_t tries = 0;
   size_t written = 0;
@@ -756,6 +814,10 @@ TEST_F(QLTransactionTest, WriteConflicts) {
         break;
       }
       LOG(INFO) << "Time expired, remaining transactions: " << active_transactions.size();
+      for (const auto& txn : active_transactions) {
+        LOG(INFO) << "TXN: " << txn.transaction->ToString() << ", "
+                  << (!txn.commit_future.valid() ? "Flushing" : "Committing");
+      }
     }
     while (!expired && active_transactions.size() < kActiveTransactions) {
       auto key = RandomUniformInt(1, kTotalKeys);
@@ -802,7 +864,11 @@ TEST_F(QLTransactionTest, WriteConflicts) {
     }
     active_transactions.erase(w, active_transactions.end());
 
-    std::this_thread::sleep_for(100ms);
+    std::this_thread::sleep_for(expired ? 1s : 100ms);
+  }
+
+  if (do_restarts) {
+    restart_thread.join();
   }
 
   ASSERT_GE(written, kTotalKeys);
@@ -811,8 +877,22 @@ TEST_F(QLTransactionTest, WriteConflicts) {
   ASSERT_GE(tries, flushed);
 }
 
+class WriteConflictsTest : public QLTransactionTest {
+ protected:
+  uint64_t log_segment_size_bytes() const override {
+    return 0;
+  }
+};
+
+TEST_F_EX(QLTransactionTest, WriteConflicts, WriteConflictsTest) {
+  TestWriteConflicts(false /* do_restarts */);
+}
+
+TEST_F_EX(QLTransactionTest, WriteConflictsWithRestarts, WriteConflictsTest) {
+  TestWriteConflicts(true /* do_restarts */);
+}
+
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadUpdateRead) {
-  google::FlagSaver flag_saver;
   DisableApplyingIntents();
 
   WriteData();
@@ -825,7 +905,6 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadUpdateRead) {
 }
 
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
-  google::FlagSaver flag_saver;
   SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
   DisableApplyingIntents();
 
@@ -918,7 +997,6 @@ TEST_F(QLTransactionTest, CheckCompactionAbortCleanup) {
 }
 
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
-  google::FlagSaver flag_saver;
   SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
   DisableApplyingIntents();
 
@@ -965,7 +1043,6 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
 }
 
 TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
-  google::FlagSaver flag_saver;
   SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
   DisableApplyingIntents();
 
@@ -1027,7 +1104,6 @@ TEST_F(QLTransactionTest, CorrectStatusRequestBatching) {
   constexpr auto kMinWrites = RegularBuildVsSanitizers(25, 1);
   constexpr auto kMinReads = 10;
   constexpr size_t kConcurrentReads = RegularBuildVsSanitizers<size_t>(20, 5);
-  google::FlagSaver saver;
 
   FLAGS_transaction_delay_status_reply_usec_in_tests = 200000;
   FLAGS_transaction_table_num_tablets = 3;
@@ -1263,8 +1339,6 @@ TEST_F(QLTransactionTest, StatusEvolution) {
 //
 // This test addresses this issue.
 TEST_F(QLTransactionTest, WaitRead) {
-  google::FlagSaver saver;
-
   constexpr size_t kWriteThreads = 10;
   constexpr size_t kCycles = 100;
   constexpr size_t kConcurrentReads = 4;
@@ -1386,7 +1460,7 @@ TEST_F(QLTransactionTest, ChangeLeader) {
   DisableTransactionTimeout();
 
   std::vector<std::thread> threads;
-  std::atomic<bool> stopped;
+  std::atomic<bool> stopped{false};
   for (size_t i = 0; i != kThreads; ++i) {
     threads.emplace_back([this, i, &stopped] {
       size_t idx = i;
@@ -1426,13 +1500,20 @@ TEST_F(QLTransactionTest, ChangeLeader) {
 class RemoteBootstrapTest : public QLTransactionTest {
  protected:
   void SetUp() override {
-    FLAGS_log_segment_size_bytes = 128;
     FLAGS_remote_bootstrap_max_chunk_size = 1_KB;
     QLTransactionTest::SetUp();
   }
 };
 
 // Check that we do correct remote bootstrap for intents db.
+// Workflow is the following:
+// Shutdown TServer with index 0.
+// Write some data to two remaining servers.
+// Flush data and clean logs.
+// Restart cluster.
+// Verify that all tablets at all tservers are up and running.
+// Verify that all tservers have same amount of running tablets.
+// During test tear down cluster verifier will check that all servers have same data.
 TEST_F_EX(QLTransactionTest, RemoteBootstrap, RemoteBootstrapTest) {
   constexpr size_t kNumWrites = 10;
   constexpr size_t kTransactionalWrites = 8;
@@ -1470,7 +1551,7 @@ TEST_F_EX(QLTransactionTest, RemoteBootstrap, RemoteBootstrapTest) {
   ASSERT_OK(cluster_->CleanTabletLogs());
 
   // Wait logs cleanup.
-  std::this_thread::sleep_for(5s);
+  std::this_thread::sleep_for(5s * kTimeMultiplier);
 
   // Shutdown to reset cached logs.
   for (int i = 1; i != cluster_->num_tablet_servers(); ++i) {
@@ -1481,6 +1562,9 @@ TEST_F_EX(QLTransactionTest, RemoteBootstrap, RemoteBootstrapTest) {
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
   }
+
+  ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 20s * kTimeMultiplier,
+                    "All tablets running"));
 }
 
 TEST_F(QLTransactionTest, FlushIntents) {
@@ -1496,6 +1580,47 @@ TEST_F(QLTransactionTest, FlushIntents) {
   ASSERT_OK(cluster_->StartSync());
 
   VerifyData(2);
+}
+
+// Test that we could init transaction after it was originally created.
+TEST_F(QLTransactionTest, DelayedInit) {
+  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
+
+  auto txn1 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr());
+  auto txn2 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr());
+
+  auto write_session = CreateSession();
+  WriteRow(write_session, 0, 0);
+
+  ConsistentReadPoint read_point(transaction_manager_->clock());
+  read_point.SetCurrentReadTime();
+
+  WriteRow(write_session, 1, 1);
+
+  ASSERT_OK(txn1->Init(IsolationLevel::SNAPSHOT_ISOLATION, read_point.GetReadTime()));
+  ASSERT_OK(txn2->Init(IsolationLevel::SNAPSHOT_ISOLATION));
+
+  WriteRow(write_session, 2, 2);
+
+  {
+    auto read_session = CreateSession(txn1);
+    auto row0 = ASSERT_RESULT(SelectRow(read_session, 0));
+    ASSERT_EQ(0, row0);
+    auto row1 = SelectRow(read_session, 1);
+    ASSERT_TRUE(!row1.ok() && row1.status().IsNotFound()) << row1;
+    auto row2 = SelectRow(read_session, 2);
+    ASSERT_TRUE(!row2.ok() && row2.status().IsNotFound()) << row2;
+  }
+
+  {
+    auto read_session = CreateSession(txn2);
+    auto row0 = ASSERT_RESULT(SelectRow(read_session, 0));
+    ASSERT_EQ(0, row0);
+    auto row1 = ASSERT_RESULT(SelectRow(read_session, 1));
+    ASSERT_EQ(1, row1);
+    auto row2 = SelectRow(read_session, 2);
+    ASSERT_TRUE(!row2.ok() && row2.status().IsNotFound()) << row2;
+  }
 }
 
 } // namespace client

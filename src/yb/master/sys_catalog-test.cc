@@ -835,6 +835,75 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
   ASSERT_EQ(0, loader->config_entries.size());
 }
 
+class TestSysConfigLoader : public Visitor<PersistentSysConfigInfo> {
+ public:
+  TestSysConfigLoader() {}
+  ~TestSysConfigLoader() { Reset(); }
+
+  void Reset() {
+    for (SysConfigInfo* sys_config : sys_configs) {
+      sys_config->Release();
+    }
+    sys_configs.clear();
+  }
+
+  Status Visit(const string& id, const SysConfigEntryPB& metadata) override {
+
+    // Setup the sysconfig info.
+    SysConfigInfo* const sys_config = new SysConfigInfo(id /* config_type */);
+    auto l = sys_config->LockForWrite();
+    l->mutable_data()->pb.CopyFrom(metadata);
+    l->Commit();
+    sys_config->AddRef();
+    sys_configs.push_back(sys_config);
+    LOG(INFO) << " Current SysConfigInfo: " << sys_config->ToString();
+    return Status::OK();
+  }
+
+  vector<SysConfigInfo*> sys_configs;
+};
+
+// Test the sys-catalog sys-config basic operations (add, visit, drop).
+TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
+  SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
+
+  // 1. Verify that when master initializes, "security-config" entry is set up with
+  // roles_version = 0.
+  scoped_refptr<SysConfigInfo> security_config = new SysConfigInfo(kSecurityConfigType);
+  {
+    auto l = security_config->LockForWrite();
+    l->mutable_data()->pb.mutable_security_config()->set_roles_version(0);
+    l->Commit();
+  }
+  unique_ptr<TestSysConfigLoader> loader(new TestSysConfigLoader());
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(1, loader->sys_configs.size());
+  ASSERT_TRUE(MetadatasEqual(security_config.get(), loader->sys_configs[0]));
+
+  // 2. Add a new SysConfigEntryPB and verify it shows up.
+  scoped_refptr<SysConfigInfo> test_config = new SysConfigInfo("test-security-configuration");
+  {
+    auto l = test_config->LockForWrite();
+    l->mutable_data()->pb.mutable_security_config()->set_roles_version(1234);
+
+    // Add the test_config.
+    ASSERT_OK(sys_catalog->AddItem(test_config.get()));
+    l->Commit();
+  }
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(2, loader->sys_configs.size());
+  ASSERT_TRUE(MetadatasEqual(security_config.get(), loader->sys_configs[0]));
+  ASSERT_TRUE(MetadatasEqual(test_config.get(), loader->sys_configs[1]));
+
+  // 2. Remove the SysConfigEntry and verify that it got removed.
+  ASSERT_OK(sys_catalog->DeleteItem(test_config.get()));
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(1, loader->sys_configs.size());
+  ASSERT_TRUE(MetadatasEqual(security_config.get(), loader->sys_configs[0]));
+}
+
 class TestRoleLoader : public Visitor<PersistentRoleInfo> {
  public:
   TestRoleLoader() {}
@@ -856,7 +925,7 @@ class TestRoleLoader : public Visitor<PersistentRoleInfo> {
     l->Commit();
     rl->AddRef();
     roles.push_back(rl);
-    LOG(INFO) << " Current Role:" << rl->ToString();
+    LOG(INFO) << " Current Role: " << rl->ToString();
     return Status::OK();
   }
 

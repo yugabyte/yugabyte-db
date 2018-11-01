@@ -26,8 +26,8 @@
 // non-const method, all threads accessing the same Slice must use
 // external synchronization.
 //
-// Slices can be built around faststrings and StringPieces using constructors
-// with implicit casts. Both StringPieces and faststrings depend on a great
+// Slices can be built around faststrings and GStringPieces using constructors
+// with implicit casts. Both GStringPieces and faststrings depend on a great
 // deal of gutil code, so these constructors are conditionalized on
 // YB_HEADERS_USE_RICH_SLICE. Likewise, YB_HEADERS_USE_RICH_SLICE controls
 // whether to use gutil-based memeq/memcmp substitutes; if it is unset, Slice
@@ -93,7 +93,7 @@ class Slice {
   Slice(const faststring &s) // NOLINT(runtime/explicit)
       : Slice(s.data(), s.size()) {}
 
-  Slice(const StringPiece& s) // NOLINT(runtime/explicit)
+  Slice(const GStringPiece& s) // NOLINT(runtime/explicit)
       : Slice(util::to_uchar_ptr(s.data()), s.size()) {}
 
   // Create a single slice from SliceParts using buf as storage.
@@ -258,6 +258,14 @@ struct SliceParts {
   template<size_t N>
   SliceParts(const std::array<Slice, N>& input) // NOLINT
       : parts(input.data()), num_parts(N) {
+  }
+
+  std::string ToDebugHexString() const {
+    std::string result;
+    for (int i = 0; i != num_parts; ++i) {
+      result += parts[i].ToDebugHexString();
+    }
+    return result;
   }
 
   const Slice* parts;

@@ -123,8 +123,7 @@ class MultiThreadedLogTest : public LogTestBase {
           batch_replicates.push_back(replicate);
         }
 
-        log::LogEntryBatchPB entry_batch_pb;
-        CreateBatchFromAllocatedOperations(batch_replicates, &entry_batch_pb);
+        auto entry_batch_pb = CreateBatchFromAllocatedOperations(batch_replicates);
 
         ASSERT_OK(log_->Reserve(REPLICATE, &entry_batch_pb, &entry_batch));
       } // lock_guard scope

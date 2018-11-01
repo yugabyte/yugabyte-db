@@ -141,8 +141,8 @@ void JoinStringsInArray(string const *components,
 // ----------------------------------------------------------------------
 
 void JoinMapKeysAndValues(const map<string, string>& components,
-                          const StringPiece& intra_delim,
-                          const StringPiece& inter_delim,
+                          const GStringPiece& intra_delim,
+                          const GStringPiece& inter_delim,
                           string* result) {
   JoinKeysAndValuesIterator(components.begin(), components.end(),
                             intra_delim, inter_delim,
@@ -150,8 +150,8 @@ void JoinMapKeysAndValues(const map<string, string>& components,
 }
 
 void JoinVectorKeysAndValues(const vector< pair<string, string> >& components,
-                             const StringPiece& intra_delim,
-                             const StringPiece& inter_delim,
+                             const GStringPiece& intra_delim,
+                             const GStringPiece& inter_delim,
                              string* result) {
   JoinKeysAndValuesIterator(components.begin(), components.end(),
                             intra_delim, inter_delim,

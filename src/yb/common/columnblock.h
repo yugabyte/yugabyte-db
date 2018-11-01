@@ -74,7 +74,7 @@ class ColumnBlock {
   }
 
 #ifndef NDEBUG
-  void OverwriteWithPattern(size_t idx, StringPiece pattern) {
+  void OverwriteWithPattern(size_t idx, GStringPiece pattern) {
     char *col_data = reinterpret_cast<char *>(mutable_cell_ptr(idx));
     yb::OverwriteWithPattern(col_data, type_->size(), pattern);
   }

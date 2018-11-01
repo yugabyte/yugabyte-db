@@ -253,7 +253,7 @@ class Consensus {
   //
   // This method can only be called on the leader, i.e. role() == LEADER
 
-  virtual CHECKED_STATUS Replicate(const ConsensusRoundPtr& round) = 0;
+  virtual CHECKED_STATUS TEST_Replicate(const ConsensusRoundPtr& round) = 0;
 
   // A batch version of Replicate, which is what we try to use as much as possible for performance.
   virtual CHECKED_STATUS ReplicateBatch(const ConsensusRounds& rounds) = 0;

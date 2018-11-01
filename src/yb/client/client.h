@@ -42,10 +42,14 @@
 
 #include <boost/function.hpp>
 #include <boost/functional/hash/hash.hpp>
+#include <boost/thread/shared_mutex.hpp>
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/schema.h"
 #include "yb/common/common.pb.h"
+#include "yb/rpc/io_thread_pool.h"
+#include "yb/rpc/scheduler.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
 
 #ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
@@ -60,6 +64,9 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/partition.h"
+#include "yb/common/roles_permissions.h"
+
+#include "yb/master/master.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -102,6 +109,75 @@ class YBTableCreator;
 class YBTabletServer;
 class YBValue;
 class YBOperation;
+
+struct RolePermissions {
+  // Permissions for resources "ALL KEYSPACES" ('data') and "ALL ROLES" ('roles').
+  // Special case to avoid hashing canonical resources 'data' and 'roles' and doing a hashmap
+  // lookup.
+  Permissions all_keyspaces_permissions;
+  Permissions all_roles_permissions;
+  // canonical resource -> permission bitmap.
+  std::unordered_map<std::string, Permissions> resource_permissions;
+};
+
+using RolesPermissionsMap = std::unordered_map<RoleName, RolePermissions>;
+
+class PermissionsCache {
+ public:
+  explicit PermissionsCache(std::shared_ptr<YBClient> client,
+                            bool automatically_update_cache = true);
+  ~PermissionsCache();
+
+  void UpdateRolesPermissions(const master::GetPermissionsResponsePB *resp);
+
+  std::shared_ptr<RolesPermissionsMap> get_roles_permissions_map() {
+    std::unique_lock<simple_spinlock> l(permissions_cache_lock_);
+    return roles_permissions_map_;
+  }
+
+  bool ready() {
+    return ready_.load(std::memory_order_acquire);
+  }
+
+  // Wait until the cache is ready (it has received at least one update from the master). Returns
+  // false if the cache is not ready after waiting for the specified time. Returns true otherwise.
+  bool WaitUntilReady(MonoDelta wait_for);
+
+  boost::optional<uint64_t> version() {
+    std::unique_lock<simple_spinlock> l(permissions_cache_lock_);
+    return version_;
+  }
+
+ private:
+  void ScheduleGetPermissionsFromMaster(bool now);
+
+  void GetPermissionsFromMaster();
+
+  // Passed to the master whenever we want to update our cache. The master will only send a new
+  // cache if its version number is greater than this version number.
+  boost::optional<uint64_t> version_;
+
+  // Client used to send the request to the master.
+  std::shared_ptr<YBClient> client_;
+
+  // role name -> RolePermissions.
+  std::shared_ptr<RolesPermissionsMap> roles_permissions_map_;
+
+  // Used to modify the internal state.
+  mutable simple_spinlock permissions_cache_lock_;
+
+  // Used to wait until the cache is ready.
+  std::mutex mtx_;
+  std::condition_variable cond_;
+
+  // Thread pool used by the scheduler.
+  std::unique_ptr<yb::rpc::IoThreadPool> pool_;
+  // The scheduler used to refresh the permissions.
+  std::unique_ptr<yb::rpc::Scheduler> scheduler_;
+
+  // Whether we have received the permissions from the master.
+  std::atomic<bool> ready_{false};
+};
 
 namespace internal {
 class Batcher;
@@ -367,6 +443,10 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
                                  const std::string& granted_role_name,
                                  const std::string& recipient_role_name);
 
+  // Get all the roles' permissions from the master only if the master's permissions version is
+  // greater than permissions_cache->version().
+  CHECKED_STATUS GetPermissions(PermissionsCache* permissions_cache);
+
   // (User-defined) type related methods.
 
   // Create a new (user-defined) type.
@@ -555,7 +635,14 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
 
 class YBMetaDataCache {
  public:
-  explicit YBMetaDataCache(std::shared_ptr<YBClient> client) : client_(client) {}
+  YBMetaDataCache(std::shared_ptr<YBClient> client,
+                  bool create_roles_permissions_cache = false) : client_(client)  {
+    if (create_roles_permissions_cache) {
+      permissions_cache_ = std::make_shared<PermissionsCache>(client);
+    } else {
+      LOG(INFO) << "Creating a metadata cache without a permissions cache";
+    }
+  }
 
   // Opens the table with the given name or id. If the table has been opened before, returns the
   // previously opened table from cached_tables_. If the table has not been opened before
@@ -582,6 +669,18 @@ class YBMetaDataCache {
   // Remove the type from cached_types_ if it is in the cache.
   void RemoveCachedUDType(const string& keyspace_name, const string& type_name);
 
+  // Used to determine if the role has the specified permission on the canonical resource.
+  // Arguments keyspace and table can be empty strings and are only used to generate the error
+  // message.
+  // object_type can be ObjectType::OBJECT_SCHEMA, ObjectType::OBJECT_TABLE, or
+  // ObjectType::OBJECT_ROLE.
+  CHECKED_STATUS HasResourcePermission(const std::string& canonical_resource,
+                                       const ql::ObjectType& object_type,
+                                       const RoleName& role_name,
+                                       const PermissionType& permission,
+                                       const NamespaceName& keyspace,
+                                       const TableName& table);
+
  private:
   std::shared_ptr<YBClient> client_;
 
@@ -598,6 +697,8 @@ class YBMetaDataCache {
   YBTableByIdMap cached_tables_by_id_;
 
   std::mutex cached_tables_mutex_;
+
+  std::shared_ptr<PermissionsCache> permissions_cache_;
 
   // Map from type-name to QLType instances.
   typedef std::unordered_map<std::pair<string, string>,
@@ -740,6 +841,8 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   const YBSchema& schema() const;
   const Schema& InternalSchema() const;
   const PartitionSchema& partition_schema() const;
+
+  const std::vector<std::string>& GetPartitions() const;
 
   // Indexes available on the table.
   const IndexMap& index_map() const;
@@ -910,15 +1013,10 @@ YB_STRONGLY_TYPED_BOOL(Restart);
 //   indivisible semantic unit, per the usual definitions of database transactions
 //   and isolation levels.
 //
-// NOTE: YB does not currently support transactions! They are only mentioned
-// in the above documentation to clarify that batches are not transactional and
-// should only be used for efficiency.
-//
 // YBSession is separate from YBTable because a given batch or transaction
-// may span multiple tables. This is particularly important in the future when
-// we add ACID support, but even in the context of batching, we may be able to
-// coalesce writes to different tables hosted on the same server into the same
-// RPC.
+// may span multiple tables. Even in the context of batching and not multi-table
+// ACID transactions, we may be able to coalesce writes to different tables hosted
+// on the same server into the same RPC.
 //
 // YBSession is separate from YBClient because, in a multi-threaded
 // application, different threads may need to concurrently execute
@@ -935,11 +1033,6 @@ YB_STRONGLY_TYPED_BOOL(Restart);
 // priorities high. Without the separation of batches, a latency-sensitive
 // single-row insert might get batched along with 10MB worth of inserts from the
 // batch writer, thus delaying the response significantly.
-//
-// Though we currently do not have transactional support, users will be forced
-// to use a YBSession to instantiate reads as well as writes.  This will make
-// it more straight-forward to add RW transactions in the future without
-// significant modifications to the API.
 //
 // Users who are familiar with the Hibernate ORM framework should find this
 // concept of a Session familiar.
@@ -960,16 +1053,6 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   // Changed transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
-
-  // Set the amount of buffer space used by this session for outbound writes.
-  // The effect of the buffer size varies based on the flush mode of the
-  // session:
-  //
-  // AUTO_FLUSH_SYNC:
-  //   since no buffering is done, this has no effect
-  // MANUAL_FLUSH:
-  //   if the buffer space is exhausted, then write calls will return an error.
-  CHECKED_STATUS SetMutationBufferSpace(size_t size) WARN_UNUSED_RESULT;
 
   // Set the timeout for writes made in this session.
   void SetTimeout(MonoDelta timeout);

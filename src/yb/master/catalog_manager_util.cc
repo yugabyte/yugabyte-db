@@ -92,5 +92,17 @@ Status CatalogManagerUtil::GetPerZoneTSDesc(const TSDescriptorVector& ts_descs,
   return Status::OK();
 }
 
+Status CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
+                                                             const CloudInfoPB& cloud_info) {
+  const string& cloud_info_string = TSDescriptor::generate_placement_id(cloud_info);
+  for (const auto& placement_block : placement_info.placement_blocks()) {
+    if (TSDescriptor::generate_placement_id(placement_block.cloud_info()) == cloud_info_string) {
+      return Status::OK();
+    }
+  }
+  return STATUS_SUBSTITUTE(InvalidArgument, "Placement info $0 does not contain cloud info $1",
+                           placement_info.DebugString(), cloud_info_string);
+}
+
 } // namespace master
 } // namespace yb

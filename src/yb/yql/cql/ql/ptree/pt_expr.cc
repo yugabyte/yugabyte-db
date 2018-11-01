@@ -192,6 +192,10 @@ PTExpr::SharedPtr PTExpr::CreateConst(MemoryContext *memctx,
       return PTConstInt::MakeShared(memctx, loc, 0);
     case DataType::STRING:
       return PTConstText::MakeShared(memctx, loc, MCMakeShared<MCString>(memctx, ""));
+    case DataType::TIMESTAMP:
+      return PTConstTimestamp::MakeShared(memctx, loc, 0);
+    case DataType::DATE:
+      return PTConstDate::MakeShared(memctx, loc, 0);
     default:
       return nullptr;
   }
@@ -257,15 +261,22 @@ CHECKED_STATUS PTLiteralString::ToString(string *value) const {
 }
 
 CHECKED_STATUS PTLiteralString::ToTimestamp(int64_t *value) const {
-  auto ts = DateTime::TimestampFromString(value_->c_str());
-  RETURN_NOT_OK(ts);
-  *value = ts->ToInt64();
+  *value = VERIFY_RESULT(DateTime::TimestampFromString(value_->c_str())).ToInt64();
+  return Status::OK();
+}
+
+CHECKED_STATUS PTLiteralString::ToDate(uint32_t *value) const {
+  *value = VERIFY_RESULT(DateTime::DateFromString(value_->c_str()));
+  return Status::OK();
+}
+
+CHECKED_STATUS PTLiteralString::ToTime(int64_t *value) const {
+  *value = VERIFY_RESULT(DateTime::TimeFromString(value_->c_str()));
   return Status::OK();
 }
 
 CHECKED_STATUS PTLiteralString::ToInetaddress(InetAddress *value) const {
-  RETURN_NOT_OK(value->FromString(value_->c_str()));
-  return Status::OK();
+  return value->FromString(value_->c_str());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -775,6 +786,20 @@ CHECKED_STATUS PTRef::CheckLhsExpr(SemContext *sem_context) {
                                 ErrorCode::CQL_STATEMENT_INVALID);
     }
   }
+
+  // Only hash/static columns are supported in the where clause of SELECT DISTINCT.
+  if (sem_context->where_state() != nullptr) {
+    const PTDmlStmt *dml = sem_context->current_dml_stmt();
+    if (dml != nullptr && dml->opcode() == TreeNodeOpcode::kPTSelectStmt &&
+        down_cast<const PTSelectStmt*>(dml)->distinct() &&
+        !desc_->is_hash() && !desc_->is_static()) {
+      return sem_context->Error(this,
+                                "Non-partition/static column reference is not supported in the "
+                                "where clause of a SELECT DISTINCT statement",
+                                ErrorCode::CQL_STATEMENT_INVALID);
+    }
+  }
+
   return Status::OK();
 }
 

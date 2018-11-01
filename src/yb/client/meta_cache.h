@@ -225,6 +225,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // Return stringified representation of the list of replicas for this tablet.
   std::string ReplicasAsString() const;
 
+  std::string ToString() const;
+
  private:
   // Same as ReplicasAsString(), except that the caller must hold lock_.
   std::string ReplicasAsStringUnlocked() const;

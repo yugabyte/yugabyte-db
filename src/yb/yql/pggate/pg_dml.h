@@ -17,6 +17,7 @@
 
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
+#include "yb/yql/pggate/pg_doc_op.h"
 
 namespace yb {
 namespace pggate {
@@ -77,12 +78,7 @@ class PgDml : public PgStatement {
   // TODO(neil) All related information to table descriptor should be cached in the global API
   // object or some global data structures.
   client::YBTableName table_name_;
-  std::shared_ptr<client::YBTable> table_;
-
-  // TODO(neil) Considering the posibility of indexing columns_ by attr_num instead of ID.
-  std::vector<PgColumn> columns_;
-  int key_col_count_;
-  int partition_col_count_;
+  PgTableDesc::ScopedRefPtr table_desc_;
 
   // Postgres targets of statements. These are either selected or returned expressions.
   std::vector<PgExpr*> targets_;
@@ -91,7 +87,7 @@ class PgDml : public PgStatement {
   // Data members for generated protobuf.
   // NOTE:
   // - Where clause processing data is not supported yet.
-  // - Some protobuf structure are also setup in PgColumn class.
+  // - Some protobuf structure are also set up in PgColumn class.
 
   // Column references.
   PgsqlColumnRefsPB *column_refs_ = nullptr;
@@ -103,16 +99,19 @@ class PgDml : public PgStatement {
   //   be updated accordingly.
   std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
 
-  //------------------------------------------------------------------------------------------------
-  // Data members for output.
-  // Result set either from seleted or returned targets is cached in a list of strings.
-  std::list<string> result_set_;
+  // DML Operator.
+  PgDocOp::SharedPtr doc_op_;
 
+  //------------------------------------------------------------------------------------------------
+  // A batch of rows in result set.
+  string row_batch_;
+
+  // Data members for navigating the output / result-set from either seleted or returned targets.
   // Cursor.
   Slice cursor_;
 
   // Total number of rows that have been found.
-  int64_t total_row_count_ = 0;
+  int64_t accumulated_row_count_ = 0;
 };
 
 }  // namespace pggate

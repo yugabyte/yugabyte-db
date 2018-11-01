@@ -100,6 +100,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
   TabletPeer(const scoped_refptr<TabletMetadata>& meta,
              const consensus::RaftPeerPB& local_peer_pb,
+             const std::string& permanent_uuid,
              Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk);
 
   ~TabletPeer();
@@ -195,25 +196,16 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   }
 
   // Sets the tablet to a BOOTSTRAPPING state, indicating it is starting up.
-  void SetBootstrapping() {
-    CHECK_OK(UpdateState(TabletStatePB::NOT_STARTED, TabletStatePB::BOOTSTRAPPING, ""));
+  CHECKED_STATUS SetBootstrapping() {
+    return UpdateState(TabletStatePB::NOT_STARTED, TabletStatePB::BOOTSTRAPPING, "");
   }
 
-  Status UpdateState(TabletStatePB expected, TabletStatePB new_state, string error_message) {
-    TabletStatePB old = expected;
-    return (state_.compare_exchange_strong(old, new_state, std::memory_order_acq_rel) ?
-        Status::OK() : STATUS_FORMAT(
-            InvalidArgument, "$0 Expected state:$1, got:$2",
-            error_message, TabletStatePB_Name(expected), TabletStatePB_Name(old)));
-  }
+  CHECKED_STATUS UpdateState(TabletStatePB expected, TabletStatePB new_state,
+                             const std::string& error_message);
 
   // sets the tablet state to FAILED additionally setting the error to the provided
   // one.
-  void SetFailed(const Status& error) {
-    DCHECK(error_.get(std::memory_order_acquire) == nullptr);
-    error_ = MakeAtomicUniquePtr<Status>(error);
-    state_.store(TabletStatePB::FAILED, std::memory_order_release);
-  }
+  void SetFailed(const Status& error);
 
   // Returns the error that occurred, when state is FAILED.
   CHECKED_STATUS error() const {
@@ -296,7 +288,9 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   const std::string& tablet_id() const override { return tablet_id_; }
 
   // Convenience method to return the permanent_uuid of this peer.
-  const std::string& permanent_uuid() const;
+  const std::string& permanent_uuid() const {
+    return permanent_uuid_;
+  }
 
   Result<OperationDriverPtr> NewOperationDriver(std::unique_ptr<Operation>* operation,
                                                 consensus::DriverType type);
@@ -405,8 +399,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   std::vector<MaintenanceOp*> maintenance_ops_;
 
   // Cache the permanent of the tablet UUID to retrieve it without a lock in the common case.
-  mutable std::atomic<bool> cached_permanent_uuid_initialized_ { false };
-  mutable std::string cached_permanent_uuid_;
+  const std::string permanent_uuid_;
 
   rpc::ThreadPool* service_thread_pool_;
 

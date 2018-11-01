@@ -63,6 +63,8 @@ enum YQLDatabase {
 
 // To ensure compatibility between release versions, the numeric values of these datatypes cannot
 // be changed once the types are implemented and released.
+//
+// Make sure this is in sync with YBCPgDataType in ybc_pg_typedefs.h.
 enum DataType {
   UNKNOWN_DATA = 999;
   NULL_VALUE_TYPE = 0;
@@ -88,7 +90,7 @@ enum DataType {
   TYPEARGS = 20;
   USER_DEFINED_TYPE = 21;
   FROZEN = 22;
-  DATE = 23;  // TODO(Mihnea) Support date & time.
+  DATE = 23;
   TIME = 24;
   JSONB = 25;
 
@@ -138,14 +140,14 @@ enum ResourceType {
 
 // Suffixed with PERMISSION, because Google does not allow same enum name CREATE
 enum PermissionType {
-  ALL_PERMISSION = 1;
-  ALTER_PERMISSION = 2;
-  CREATE_PERMISSION = 3;
-  DROP_PERMISSION = 4;
-  SELECT_PERMISSION = 5;
-  MODIFY_PERMISSION = 6;
-  AUTHORIZE_PERMISSION = 7;
-  DESCRIBE_PERMISSION = 8;
+  ALTER_PERMISSION = 0;
+  CREATE_PERMISSION = 1;
+  DROP_PERMISSION = 2;
+  SELECT_PERMISSION = 3;
+  MODIFY_PERMISSION = 4;
+  AUTHORIZE_PERMISSION = 5;
+  DESCRIBE_PERMISSION = 6;
+  ALL_PERMISSION = 999999999;
 }
 
 // The type used in column schemas, which may have type parameters (i.e. for collections)
@@ -364,9 +366,15 @@ message ChildTransactionDataPB {
   map<string, fixed64> local_limits = 3;
 }
 
+enum InvolvedTabletMetadataState {
+  MISSING = 0;
+  EXIST = 1;
+  MAY_EXIST = 2;
+}
+
 message TransactionInvolvedTabletPB {
   optional bytes tablet_id = 1;
-  optional bool has_parameters = 2;
+  optional InvolvedTabletMetadataState metadata_state = 2;
 }
 
 // For clarification of field meaning see comments of appropriate fields in YBTransaction::Impl

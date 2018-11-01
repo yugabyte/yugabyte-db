@@ -39,11 +39,13 @@ PgSelect::~PgSelect() {
 Status PgSelect::Prepare() {
   RETURN_NOT_OK(LoadTable(false /* for_write */));
 
-  // Allocate SELECT request.
-  read_op_.reset(table_->NewPgsqlSelect());
-  read_req_ = read_op_->mutable_request();
+  // Allocate READ/SELECT operation.
+  auto doc_op = make_shared<PgDocReadOp>(pg_session_, table_desc_->NewPgsqlSelect());
+  read_req_ = doc_op->read_op()->mutable_request();
   PrepareColumns();
 
+  // Preparation complete.
+  doc_op_ = doc_op;
   return Status::OK();
 }
 
@@ -54,8 +56,8 @@ void PgSelect::PrepareColumns() {
   // When reading, only values of partition columns are special-cased in protobuf.
   // Because Kudu API requires that partition columns must be listed in their created-order, the
   // slots for partition column bind expressions are allocated here in correct order.
-  for (PgColumn &col : columns_) {
-    col.AllocPartitionBindPB(read_req_);
+  for (PgColumn &col : table_desc_->columns()) {
+    col.AllocPrimaryBindPB(read_req_);
   }
 }
 
@@ -76,25 +78,57 @@ PgsqlExpressionPB *PgSelect::AllocTargetPB() {
 // For now, selected expressions are just a list of column names (ref).
 //   SELECT column_l, column_m, column_n FROM ...
 
+Status PgSelect::DeleteEmptyPrimaryBinds() {
+  bool miss_range_columns = false;
+  bool has_range_columns = false;
+
+  bool miss_partition_columns = false;
+  bool has_partition_columns = false;
+
+  for (PgColumn &col : table_desc_->columns()) {
+    if (col.desc()->is_partition()) {
+      if (expr_binds_.find(col.bind_pb()) == expr_binds_.end()) {
+        miss_partition_columns = true;
+      } else {
+        has_partition_columns = true;
+      }
+    } else if (col.desc()->is_primary()) {
+      if (expr_binds_.find(col.bind_pb()) == expr_binds_.end()) {
+        miss_range_columns = true;
+      } else {
+        has_range_columns = true;
+      }
+    }
+  }
+
+  if (miss_partition_columns) {
+    VLOG(1) << "Full scan is needed";
+    read_req_->clear_partition_column_values();
+    read_req_->clear_range_column_values();
+  } else if (miss_range_columns) {
+    VLOG(1) << "Single tablet scan is needed";
+    read_req_->clear_range_column_values();
+  }
+
+  // Set the primary key indicator in protobuf.
+  if (has_partition_columns && miss_partition_columns) {
+    return STATUS(InvalidArgument, "Partition key must be fully specified");
+  }
+  if (has_range_columns && miss_range_columns) {
+    return STATUS(InvalidArgument, "Range key must be fully specified");
+  }
+  return Status::OK();
+}
+
 Status PgSelect::Exec() {
-  // TODO(neil) The following code is a simple read and cache. It operates once and done.
-  // - This will be extended to do scanning and caching chunk by chunk.
-  // - "result_set_" field need to be locked and release. Available rows are fetched from the
-  //   beginning while the arriving rows are append at the end.
+  // Delete key columns that are not bound to any values.
+  RETURN_NOT_OK(DeleteEmptyPrimaryBinds());
 
   // Update bind values for constants and placeholders.
   RETURN_NOT_OK(UpdateBindPBs());
 
-  // Execute select statement.
-  RETURN_NOT_OK(pg_session_->Apply(read_op_));
-
-  // Append the data and wait for the fetch request.
-  result_set_.push_back(read_op_->rows_data());
-  if (cursor_.empty()) {
-    RETURN_NOT_OK(PgDocData::LoadCache(result_set_.front(), &total_row_count_, &cursor_));
-  }
-
-  return Status::OK();
+  // Execute select statement asynchronously.
+  return doc_op_->Execute();
 }
 
 }  // namespace pggate

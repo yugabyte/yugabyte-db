@@ -137,25 +137,40 @@ CHECKED_STATUS QLRocksDBStorage::BuildYQLScanSpec(const PgsqlReadRequestPB& requ
                                              &hashed_components));
 
   *req_read_time = read_time;
-  SubDocKey start_sub_doc_key;
-  // Decode the start SubDocKey from the paging state and set scan start key and hybrid time.
-  if (request.has_paging_state() &&
-      request.paging_state().has_next_row_key() &&
-      !request.paging_state().next_row_key().empty()) {
-    KeyBytes start_key_bytes(request.paging_state().next_row_key());
-    RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
-    req_read_time->read = start_sub_doc_key.hybrid_time();
+  if (request.range_column_values().size() > 0) {
+    CHECK(!request.has_paging_state()) << "Optimization failure due to wrong assumption";
+    vector<PrimitiveValue> range_components;
+    RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request.range_column_values(),
+                                               schema,
+                                               schema.num_hash_key_columns(),
+                                               &range_components));
+    spec->reset(new DocPgsqlScanSpec(schema,
+                                     request.stmt_id(),
+                                     DocKey(request.hash_code(),
+                                            hashed_components,
+                                            range_components)));
+  } else {
+    SubDocKey start_sub_doc_key;
+    // Decode the start SubDocKey from the paging state and set scan start key and hybrid time.
+    if (request.has_paging_state() &&
+        request.paging_state().has_next_row_key() &&
+        !request.paging_state().next_row_key().empty()) {
+      KeyBytes start_key_bytes(request.paging_state().next_row_key());
+      RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
+      req_read_time->read = start_sub_doc_key.hybrid_time();
+    }
+
+    // Construct the scan spec basing on the WHERE condition.
+    spec->reset(new DocPgsqlScanSpec(schema,
+                                     request.stmt_id(),
+                                     hashed_components,
+                                     hash_code,
+                                     max_hash_code,
+                                     request.has_where_expr() ? &request.where_expr() : nullptr,
+                                     start_sub_doc_key.doc_key(),
+                                     request.is_forward_scan()));
   }
 
-  // Construct the scan spec basing on the WHERE condition.
-  spec->reset(new DocPgsqlScanSpec(schema,
-                                   request.stmt_id(),
-                                   hashed_components,
-                                   hash_code,
-                                   max_hash_code,
-                                   request.has_where_expr() ? &request.where_expr() : nullptr,
-                                   start_sub_doc_key.doc_key(),
-                                   request.is_forward_scan()));
   return Status::OK();
 }
 

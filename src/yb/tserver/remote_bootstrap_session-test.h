@@ -133,6 +133,7 @@ class RemoteBootstrapTest : public YBTabletTest {
     tablet_peer_.reset(
         new TabletPeerClass(tablet()->metadata(),
                             config_peer,
+                            fs_manager()->uuid(),
                             Bind(&RemoteBootstrapTest::TabletPeerStateChangedCallback,
                                  Unretained(this),
                                  tablet()->tablet_id())));
@@ -152,7 +153,7 @@ class RemoteBootstrapTest : public YBTabletTest {
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger);
 
     log_anchor_registry_.reset(new LogAnchorRegistry());
-    tablet_peer_->SetBootstrapping();
+    ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                           std::shared_future<client::YBClientPtr>(),
                                           clock(),

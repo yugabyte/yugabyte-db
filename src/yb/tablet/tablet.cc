@@ -355,7 +355,7 @@ Tablet::Tablet(
 
   // Create index table metadata cache for secondary index update.
   if (!metadata_->index_map().empty()) {
-    metadata_cache_.emplace(client_future_.get());
+    metadata_cache_.emplace(client_future_.get(), false /* Update roles' permissions cache */);
   }
 
   // If this is a unique index tablet, set up the index primary key schema.
@@ -584,7 +584,7 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   RETURN_NOT_OK(schema()->GetMappedReadProjection(projection, mapped_projection.get()));
 
   auto txn_op_ctx = CreateTransactionOperationContext(transaction_id);
-  auto read_time = ReadHybridTime::SingleTime(HybridTime::kMax);
+  auto read_time = ReadHybridTime::SingleTime(SafeTime(RequireLease::kFalse));
   auto result = std::make_unique<DocRowwiseIterator>(
       std::move(mapped_projection), *schema(), txn_op_ctx,
       docdb::DocDB{regular_db_.get(), intents_db_.get()},
@@ -629,6 +629,16 @@ Status Tablet::CreateCheckpoint(const std::string& dir) {
   std::lock_guard<std::mutex> lock(create_checkpoint_lock_);
 
   Status status;
+  if (!regular_db_) {
+    LOG_WITH_PREFIX(INFO) << "Skipped creating checkpoint in " << dir;
+    return STATUS(NotSupported,
+                  "Tablet does not have a RocksDB (could be a transaction status tablet)");
+  }
+
+  auto parent_dir = DirName(dir);
+  RETURN_NOT_OK_PREPEND(metadata()->fs_manager()->CreateDirIfMissing(parent_dir),
+                        Format("Unable to create checkpoints directory $0", parent_dir));
+
   // Order does not matter because we flush both DBs and does not have parallel writes.
   if (intents_db_) {
     status = rocksdb::checkpoint::CreateCheckpoint(intents_db_.get(), temp_intents_dir);
@@ -658,7 +668,8 @@ void Tablet::PrepareTransactionWriteBatch(
   RequestScope request_scope(transaction_participant_.get());
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
-    transaction_participant()->Add(put_batch.transaction(), rocksdb_write_batch);
+    transaction_participant()->Add(
+        put_batch.transaction(), put_batch.may_have_metadata(), rocksdb_write_batch);
   }
   auto transaction_id = CHECK_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
@@ -733,6 +744,8 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
     write_request->mutable_write_batch()->mutable_transaction()->Swap(
         batch_request->mutable_write_batch()->mutable_transaction());
   }
+  write_request->mutable_write_batch()->set_may_have_metadata(
+      batch_request->write_batch().may_have_metadata());
 }
 
 } // namespace
@@ -1331,7 +1344,7 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
                                    scoped_refptr<server::Clock>(clock_),
                                    local_tablet_filter_);
     }
-    metadata_cache_.emplace(client_future_.get());
+    metadata_cache_.emplace(client_future_.get(), false /* Update permissions cache */);
   }
 
   // Flush the updated schema metadata to disk.
@@ -1528,7 +1541,7 @@ Result<IsolationLevel> GetIsolationLevel(const KeyValueWriteBatchPB& write_batch
   RETURN_NOT_OK(id);
   auto stored_metadata = transaction_participant->Metadata(*id);
   if (!stored_metadata) {
-    return STATUS_FORMAT(IllegalState, "Missing metadata for transaction: $0", *id);
+    return STATUS_FORMAT(NotFound, "Missing metadata for transaction: $0", *id);
   }
   return stored_metadata->isolation;
 }

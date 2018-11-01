@@ -219,7 +219,8 @@ class PostgresBuilder:
             if self.build_type == 'asan':
                 additional_c_cxx_flags += [
                     '-fsanitize-recover=signed-integer-overflow',
-                    '-fsanitize-recover=shift-base'
+                    '-fsanitize-recover=shift-base',
+                    '-fsanitize-recover=shift-exponent'
                 ]
 
         # Tell gdb to pretend that we're compiling the code in the $YB_SRC_ROOT/src/postgres
@@ -465,6 +466,7 @@ class PostgresBuilder:
         command = compile_command_item['command']
         file_path = compile_command_item['file']
 
+        new_directory = directory
         if directory.startswith(self.pg_build_root + '/'):
             new_directory = os.path.join(YB_SRC_ROOT, 'src', 'postgres',
                                          os.path.relpath(directory, self.pg_build_root))

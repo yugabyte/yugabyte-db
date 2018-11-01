@@ -180,13 +180,19 @@ set +u
 compiler_args_str="${compiler_args[*]}"
 set -u
 
-if [[ ${build_type:-} == "asan" && \
-      $PWD == */postgres_build/src/backend/utils/adt && \
-      $compiler_args_str == *-c\ -o\ numeric.o\ numeric.c\ * ]]; then
+if [[ ${build_type:-} == "asan" &&
+      $PWD == */postgres_build/src/backend/utils/adt &&
+      ( $compiler_args_str == *-c\ -o\ numeric.o\ numeric.c\ * ||
+        $compiler_args_str == *-c\ -o\ int.o\ .c\ *  ||
+        $compiler_args_str == *-c\ -o\ int8.o\ int8.c\ * ) ]]; then
   # A hack for the problem observed in ASAN when compiling numeric.c with Clang 5.0:
   # undefined reference to `__muloti4'
   # (full log at http://bit.ly/2lYdYnp).
   # Related to the problem reported at http://bit.ly/2NvS6MR.
+  #
+  # Also turning off UBSAN for PostgreSQL's arithmetic functions due to numerious overflows
+  # there that are later handled separately.
+  # https://gist.githubusercontent.com/mbautin/1a94e64e72f95f6ff97fe7bc7ceca70d/raw
   compiler_args+=( -fno-sanitize=undefined )
 fi
 

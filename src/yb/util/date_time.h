@@ -25,80 +25,66 @@
 
 #include <locale>
 #include <regex>
-#include <boost/date_time/local_time/local_time.hpp>
-#include <boost/date_time/gregorian/gregorian.hpp>
 
 #include "yb/util/result.h"
 #include "yb/util/timestamp.h"
 
 namespace yb {
 
-// type of time zone (shared) pointer
-typedef boost::local_time::time_zone_ptr tz_ptr_type;
-// type for point in time
-typedef boost::posix_time::ptime time_type;
-
-class DateTimeFormatBase {
- public:
-  time_type epoch_start() const;
-  tz_ptr_type default_tz() const;
-
- protected:
-  DateTimeFormatBase(time_type epoch_start, tz_ptr_type default_tz);
-  time_type epoch_start_;
-  tz_ptr_type default_tz_;
-};
-
-class DateTimeInputFormat : public DateTimeFormatBase {
- public:
-  DateTimeInputFormat(time_type epoch_start,
-                      tz_ptr_type default_tz,
-                      const std::vector<std::regex>& regexes,
-                      int input_precision);
-  int input_precision() const;
-  std::vector<std::regex> regexes() const;
-
- private:
-  std::vector<std::regex> regexes_;
-  int input_precision_;
-};
-
-class DateTimeOutputFormat : public DateTimeFormatBase {
- public:
-  DateTimeOutputFormat(time_type epoch_start, tz_ptr_type default_tz, std::locale output_locale);
-  std::locale output_locale() const;
-
- private:
-  std::locale output_locale_;
-
-};
-
 class DateTime {
  public:
-  DateTime();
-  ~DateTime();
+  //----------------------------------------------------------------------------------------------
+  // Timestamp input and output formats.
+  struct InputFormat {
+    const std::vector<std::regex> regexes;
+    const int input_precision;
 
-  static DateTimeInputFormat CqlDateTimeInputFormat;
-  static DateTimeOutputFormat CqlDateTimeOutputFormat;
+    InputFormat(const std::vector<std::regex>& regexes, const int input_precision)
+        : regexes(regexes), input_precision(input_precision) {}
+  };
 
-  static Result<Timestamp> TimestampFromString(
-      const string& str,
-      const DateTimeInputFormat input_format = CqlDateTimeInputFormat);
-  static Timestamp TimestampFromInt(int64_t val,
-                                    DateTimeInputFormat input_format = CqlDateTimeInputFormat);
-  static std::string TimestampToString(
-      Timestamp timestamp, DateTimeOutputFormat output_format = CqlDateTimeOutputFormat);
+  struct OutputFormat {
+    const std::locale output_locale;
 
-  static tz_ptr_type GetSystemTimezone();
-  static tz_ptr_type GetUtcTimezone();
+    explicit OutputFormat(const std::locale& output_locale) : output_locale(output_locale) {}
+  };
+
+  // CQL timestamp formats.
+  static const InputFormat CqlInputFormat;
+  static const OutputFormat CqlOutputFormat;
+
+  //----------------------------------------------------------------------------------------------
+  static Result<Timestamp> TimestampFromString(const std::string& str,
+                                               const InputFormat& input_format = CqlInputFormat);
+  static Timestamp TimestampFromInt(int64_t val, const InputFormat& input_format = CqlInputFormat);
+  static std::string TimestampToString(Timestamp timestamp,
+                                       const OutputFormat& output_format = CqlOutputFormat);
+  static Timestamp TimestampNow();
+
+  //----------------------------------------------------------------------------------------------
+  // Date represented as the number of days in uint32_t with the epoch (1970-01-01) at the center of
+  // the range (2^31). Min and max possible dates are "-5877641-06-23" and "5881580-07-11".
+  static Result<uint32_t> DateFromString(const std::string& str);
+  static Result<uint32_t> DateFromTimestamp(Timestamp timestamp);
+  static Result<uint32_t> DateFromUnixTimestamp(int64_t unix_timestamp);
+  static Result<std::string> DateToString(uint32_t date);
+  static Timestamp DateToTimestamp(uint32_t date);
+  static int64_t DateToUnixTimestamp(uint32_t date);
+  static uint32_t DateNow();
+
+  //----------------------------------------------------------------------------------------------
+  // Min and max time of day since midnight in nano-seconds.
+  static constexpr int64_t kMinTime = 0;
+  static constexpr int64_t kMaxTime = 24 * 60 * 60 * 1000000000L - 1; // 23:59:59.999999999
+
+  static Result<int64_t> TimeFromString(const std::string& str);
+  static Result<std::string> TimeToString(int64_t time);
+  static int64_t TimeNow();
+
+  //----------------------------------------------------------------------------------------------
   static int64_t AdjustPrecision(int64_t val, int input_precision, int output_precision);
   static constexpr int64_t kInternalPrecision = 6; // microseconds
   static constexpr int64_t kMillisecondPrecision = 3; // milliseconds
-
- private:
-  // Utility constants to avoid overflow when increasing precision in AdjustPrecision().
-  static constexpr int64_t kInt64MaxOverTen = INT64_MAX / 10;
-  static constexpr int64_t kInt64MinOverTen = INT64_MIN / 10;
 };
 
 } // namespace yb

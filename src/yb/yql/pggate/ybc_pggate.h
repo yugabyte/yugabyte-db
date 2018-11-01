@@ -19,6 +19,7 @@
 
 #include "yb/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pggate/pg_if_c_decl.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -109,6 +110,19 @@ YBCStatus YBCPgNewDropTable(YBCPgSession pg_session,
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
 
+
+YBCStatus YBCPgGetTableDesc(YBCPgSession pg_session,
+                            const char *database_name,
+                            const char *table_name,
+                            YBCPgTableDesc *handle);
+
+YBCStatus YBCPgDeleteTableDesc(YBCPgTableDesc handle);
+
+YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
+                             int16_t attr_number,
+                             bool *is_primary,
+                             bool *is_hash);
+
 //--------------------------------------------------------------------------------------------------
 // All DML statements (select, insert, update, delete)
 
@@ -165,6 +179,8 @@ YBCStatus YBCPgExecSelect(YBCPgStatement handle);
 
 YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, YBCPgExpr *expr_handle);
 
+YBCStatus YBCPgNewConstantBool(YBCPgStatement stmt, bool value, bool is_null,
+                               YBCPgExpr *expr_handle);
 YBCStatus YBCPgNewConstantInt2(YBCPgStatement stmt, int16_t value, bool is_null,
                                YBCPgExpr *expr_handle);
 YBCStatus YBCPgNewConstantInt4(YBCPgStatement stmt, int32_t value, bool is_null,
@@ -179,8 +195,6 @@ YBCStatus YBCPgNewConstantText(YBCPgStatement stmt, const char *value, bool is_n
                                YBCPgExpr *expr_handle);
 YBCStatus YBCPgNewConstantChar(YBCPgStatement stmt, const char *value, int64_t bytes,
                                bool is_null, YBCPgExpr *expr_handle);
-// YBCStatus YBCPgNewConstantBinary(YBCPgStatement stmt, const uint8_t *value, int64_t bytes,
-//                                  bool is_null, YBCPgExpr *expr_handle);
 
 // The following update functions only work for constants.
 // Overwriting the constant expression with new value.
@@ -196,9 +210,7 @@ YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value, int64_t bytes,
 // Deprecated Code End. The above code should be deleted.
 //------------------------------------------------------------------------------------------------
 
-#include "yb/yql/pggate/if_macros_c_wrapper_decl.h"
-#include "yb/yql/pggate/pggate_if.h"
-#include "yb/yql/pggate/if_macros_undef.h"
+YBCPgTxnManager YBCGetPgTxnManager();
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -199,7 +199,8 @@ class Messenger : public ProxyContext {
 
   const Protocol* DefaultProtocol() override { return listen_protocol_; }
 
-  CHECKED_STATUS QueueEventOnAllReactors(ServerEventListPtr server_event);
+  CHECKED_STATUS QueueEventOnAllReactors(
+      ServerEventListPtr server_event, const SourceLocation& source_location);
 
   // Dump the current RPCs into the given protobuf.
   CHECKED_STATUS DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
@@ -215,9 +216,10 @@ class Messenger : public ProxyContext {
   //
   // The status argument conveys whether 'func' was run correctly (i.e. after the elapsed time) or
   // not.
-  ScheduledTaskId ScheduleOnReactor(StatusFunctor func,
-                                    MonoDelta when,
-                                    const std::shared_ptr<Messenger>& msgr = nullptr);
+  MUST_USE_RESULT ScheduledTaskId ScheduleOnReactor(
+      StatusFunctor func, MonoDelta when,
+      const SourceLocation& source_location,
+      const std::shared_ptr<Messenger>& msgr);
 
   std::string name() const {
     return name_;

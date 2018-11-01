@@ -129,7 +129,7 @@ Install [Homebrew](https://brew.sh/):
 Install the following packages using Homebrew:
 ```
 brew install autoconf automake bash bison ccache cmake coreutils flex gnu-tar libtool \
-             pkg-config pstree wget zlib maven
+             pkg-config pstree wget zlib maven icu4u
 ```
 
 Also YugaByte DB build scripts rely on Bash 4. Make sure that `which bash` outputs
@@ -165,7 +165,7 @@ using our driver by adding the following Maven dependency to your application:
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>cassandra-driver-core</artifactId>
-  <version>3.2.0-yb-17</version>
+  <version>3.2.0-yb-18</version>
 </dependency>
 ```
 

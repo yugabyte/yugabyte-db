@@ -113,8 +113,13 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
 
     bool is_system; // ignored
     MCVector<ColumnDesc> copartition_table_columns(sem_context->PTempMem());
+
+    // Permissions check happen in LookupTable if flag use_cassandra_authentication is enabled.
+    // TODO(hector): We need to revisit this once this feature is supported so we can decided
+    // which privileges will be needed.
     RETURN_NOT_OK(sem_context->LookupTable(copartition_table_name_->ToTableName(),
                                            copartition_table_name_->loc(), /* write_table = */ true,
+                                           PermissionType::CREATE_PERMISSION,
                                            &copartition_table_, &is_system,
                                            &copartition_table_columns));
     if (sem_context->current_create_table_stmt()->hash_columns().size() !=

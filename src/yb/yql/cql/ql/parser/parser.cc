@@ -39,8 +39,9 @@ Parser::~Parser() {
 
 //--------------------------------------------------------------------------------------------------
 
-Status Parser::Parse(const string& stmt, const bool reparsed, const MemTrackerPtr& mem_tracker) {
-  parse_context_ = ParseContext::UniPtr(new ParseContext(stmt, reparsed, mem_tracker));
+Status Parser::Parse(const string& stmt, const bool reparsed, const MemTrackerPtr& mem_tracker,
+                     const bool internal) {
+  parse_context_ = ParseContext::UniPtr(new ParseContext(stmt, reparsed, mem_tracker, internal));
   lex_processor_.ScanInit(parse_context());
   gram_processor_.set_debug_level(parse_context_->trace_parsing());
 

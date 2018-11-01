@@ -37,7 +37,7 @@ class LocalOutboundCall : public OutboundCall {
   const std::shared_ptr<LocalYBInboundCall>& CreateLocalInboundCall();
 
  protected:
-  void Serialize(std::deque<RefCntBuffer> *output) const override;
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override;
 
   CHECKED_STATUS GetSidecar(int idx, Slice* sidecar) const override;
 

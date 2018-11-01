@@ -22,8 +22,8 @@ namespace pggate {
 class PggateTestSelect : public PggateTest {
 };
 
-TEST_F(PggateTestSelect, TestSelectBasic) {
-  CHECK_OK(Init("TestSelectBasic"));
+TEST_F(PggateTestSelect, TestSelectOneTablet) {
+  CHECK_OK(Init("TestSelectOneTablet"));
 
   const char *tabname = "basic_table";
   YBCPgStatement pg_stmt;
@@ -99,10 +99,83 @@ TEST_F(PggateTestSelect, TestSelectBasic) {
   pg_stmt = nullptr;
 
   // SELECT ----------------------------------------------------------------------------------------
+  LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
   CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
+  YBCPgNewColumnRef(pg_stmt, 1, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 2, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 3, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 4, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 5, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 6, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+
+  // Set partition and range columns for SELECT to select a specific row.
+  // SELECT ... WHERE hash = 0 AND id = seed.
+  seed = 3;
+  attr_num = 0;
+  CHECK_YBC_STATUS(YBCPgNewConstantInt8(pg_stmt, 0, false, &expr_hash));
+  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_hash));
+  CHECK_YBC_STATUS(YBCPgNewConstantInt4(pg_stmt, seed, false, &expr_id));
+  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_id));
+
+  // Execute select statement.
+  YBCPgExecSelect(pg_stmt);
+
+  // Fetching rows and check their contents.
+  uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
+  bool *isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
+  int select_row_count = 0;
+  for (int i = 0; i < insert_row_count; i++) {
+    bool has_data = false;
+    YBCPgDmlFetch(pg_stmt, values, isnulls, &has_data);
+    if (!has_data) {
+      break;
+    }
+    select_row_count++;
+
+    // Print result
+    LOG(INFO) << "ROW " << i << ": "
+              << "hash_key = " << values[0]
+              << ", id = " << values[1]
+              << ", dependent count = " << values[2]
+              << ", project count = " << values[3]
+              << ", salary = " << *reinterpret_cast<float*>(&values[4])
+              << ", job = (" << values[5] << ")";
+
+    // Check result.
+    int col_index = 0;
+    CHECK_EQ(values[col_index++], 0);  // hash_key : int64
+    int32_t id = values[col_index++];  // id : int32
+    CHECK_EQ(id, seed) << "Unexpected result for hash column";
+    CHECK_EQ(values[col_index++], id);  // dependent_count : int16
+    CHECK_EQ(values[col_index++], 100 + id);  // project_count : int32
+
+    float salary = *reinterpret_cast<float*>(&values[col_index++]); // salary : float
+    CHECK_LE(salary, id + 1.0*id/10.0 + 0.01);
+    CHECK_GE(salary, id + 1.0*id/10.0 - 0.01);
+
+    string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
+    string expected_job_name = strings::Substitute("Job_title_$0", id);
+    CHECK_EQ(selected_job_name, expected_job_name);
+  }
+  CHECK_EQ(select_row_count, 1) << "Unexpected row count";
+
+  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
+  pg_stmt = nullptr;
+
+  // SELECT ----------------------------------------------------------------------------------------
+  LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+
+  // Specify the selected expressions.
   YBCPgNewColumnRef(pg_stmt, 1, &colref);
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
   YBCPgNewColumnRef(pg_stmt, 2, &colref);
@@ -124,8 +197,8 @@ TEST_F(PggateTestSelect, TestSelectBasic) {
   YBCPgExecSelect(pg_stmt);
 
   // Fetching rows and check their contents.
-  uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
-  bool *isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
+  values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
+  isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
     YBCPgDmlFetch(pg_stmt, values, isnulls, &has_data);
@@ -146,8 +219,10 @@ TEST_F(PggateTestSelect, TestSelectBasic) {
     int32_t id = values[col_index++];  // id : int32
     CHECK_EQ(values[col_index++], id);  // dependent_count : int16
     CHECK_EQ(values[col_index++], 100 + id);  // project_count : int32
-    CHECK_LE(*reinterpret_cast<float*>(&values[col_index]), id + 1.0*id/10.0 + 0.01); // salary
-    CHECK_GE(*reinterpret_cast<float*>(&values[col_index++]), id + 1.0*id/10.0 - 0.01); // float
+
+    float salary = *reinterpret_cast<float*>(&values[col_index++]); // salary : float
+    CHECK_LE(salary, id + 1.0*id/10.0 + 0.01); // salary : float
+    CHECK_GE(salary, id + 1.0*id/10.0 - 0.01);
 
     string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
     string expected_job_name = strings::Substitute("Job_title_$0", id);

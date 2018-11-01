@@ -51,8 +51,12 @@ PgUpdate::~PgUpdate() {
 }
 
 void PgUpdate::AllocWriteRequest() {
-  write_op_.reset(table_->NewPgsqlUpdate());
-  write_req_ = write_op_->mutable_request();
+  // Allocate WRITE operation.
+  auto doc_op = make_shared<PgDocWriteOp>(pg_session_, table_desc_->NewPgsqlUpdate());
+  write_req_ = doc_op->write_op()->mutable_request();
+
+  // Preparation complete.
+  doc_op_ = doc_op;
 }
 
 }  // namespace pggate

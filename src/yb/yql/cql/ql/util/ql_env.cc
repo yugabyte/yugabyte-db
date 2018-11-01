@@ -15,12 +15,13 @@
 // QLEnv represents the environment where SQL statements are being processed.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
-#include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/client/client.h"
 #include "yb/client/transaction.h"
-
 #include "yb/master/catalog_manager.h"
+#include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
+#include "yb/yql/cql/ql/util/ql_env.h"
+
+DEFINE_bool(use_cassandra_authentication, false, "If to require authentication on startup.");
 
 namespace yb {
 namespace ql {
@@ -75,8 +76,8 @@ CHECKED_STATUS QLEnv::DeleteIndexTable(const YBTableName& name, YBTableName* ind
 }
 
 //------------------------------------------------------------------------------------------------
-YBTransactionPtr QLEnv::NewTransaction(const YBTransactionPtr& transaction,
-                                       const IsolationLevel isolation_level) {
+Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transaction,
+                                               const IsolationLevel isolation_level) {
   if (transaction) {
     DCHECK(transaction->IsRestartRequired());
     return transaction->CreateRestartedTransaction();
@@ -84,7 +85,9 @@ YBTransactionPtr QLEnv::NewTransaction(const YBTransactionPtr& transaction,
   if (transaction_manager_ == nullptr) {
     transaction_manager_ = transaction_manager_provider_();
   }
-  return std::make_shared<YBTransaction>(transaction_manager_, isolation_level);
+  auto result = std::make_shared<YBTransaction>(transaction_manager_);
+  RETURN_NOT_OK(result->Init(isolation_level));
+  return result;
 }
 
 YBSessionPtr QLEnv::NewSession() {
@@ -208,6 +211,41 @@ Status QLEnv::GrantRevokeRole(GrantRevokeStatementType statement_type,
                               const std::string& granted_role_name,
                               const std::string& recipient_role_name) {
   return client_->GrantRevokeRole(statement_type, granted_role_name, recipient_role_name);
+}
+
+Status QLEnv::HasResourcePermission(const string& canonical_name,
+                                    const ql::ObjectType& object_type,
+                                    const std::string& role_name,
+                                    const PermissionType permission,
+                                    const NamespaceName& keyspace,
+                                    const TableName& table) {
+  DFATAL_OR_RETURN_ERROR_IF(!FLAGS_use_cassandra_authentication, STATUS(IllegalState,
+      "Permissions check is not allowed when use_cassandra_authentication flag is disabled"));
+  return metadata_cache_->HasResourcePermission(canonical_name, object_type, role_name, permission,
+                                                keyspace, table);
+}
+
+Status QLEnv::HasTablePermission(const NamespaceName& keyspace_name,
+                                 const TableName& table_name,
+                                 const PermissionType permission) {
+  const string current_role = CurrentRoleName();
+  if (!HasResourcePermission(get_canonical_keyspace(keyspace_name), OBJECT_SCHEMA,
+                             current_role, permission, keyspace_name).ok()) {
+    RETURN_NOT_OK(HasResourcePermission(get_canonical_table(keyspace_name, table_name),
+                                        OBJECT_TABLE, current_role, permission, keyspace_name,
+                                        table_name));
+  }
+  return Status::OK();
+}
+
+Status QLEnv::HasTablePermission(const client::YBTableName table_name,
+                                 const PermissionType permission) {
+  return HasTablePermission(table_name.namespace_name(), table_name.table_name(), permission);
+}
+
+Status QLEnv::HasRolePermission(const RoleName& role_name, const PermissionType permission) {
+  return HasResourcePermission(get_canonical_role(role_name), OBJECT_ROLE, CurrentRoleName(),
+                               permission);
 }
 
 //------------------------------------------------------------------------------------------------

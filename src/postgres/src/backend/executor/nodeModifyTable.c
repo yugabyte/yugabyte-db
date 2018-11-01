@@ -374,6 +374,13 @@ ExecInsert(ModifyTableState *mtstate,
 
 		newId = InvalidOid;
 	}
+	else if (IsYugaByteEnabled() &&
+	         IsYBSupportedTable(RelationGetRelid(resultRelationDesc)))
+	{
+		newId = YBCExecuteInsert(resultRelationDesc,
+		                         slot->tts_tupleDescriptor,
+		                         tuple);
+	}
 	else
 	{
 		/*
@@ -539,11 +546,6 @@ ExecInsert(ModifyTableState *mtstate,
 				recheckIndexes = ExecInsertIndexTuples(slot, &(tuple->t_self),
 													   estate, false, NULL,
 													   arbiterIndexes);
-		}
-
-		if (IsYugaByteEnabled() && MyDatabaseId != TemplateDbOid)
-		{
-			YBCExecuteInsert(resultRelationDesc, slot->tts_tupleDescriptor, tuple);
 		}
 	}
 

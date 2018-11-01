@@ -172,7 +172,7 @@ CHECKED_STATUS PTQualifiedName::AnalyzeName(SemContext *sem_context, const Objec
     case OBJECT_ROLE:
       if (ptnames_.size() != 1) {
         return sem_context->Error(this,
-                                  strings::Substitute("Invalid $0 role name",
+                                  strings::Substitute("Invalid $0 name",
                                                       ObjectTypeName(object_type)).c_str(),
                                   ErrorCode::SQL_STATEMENT_INVALID);
       }

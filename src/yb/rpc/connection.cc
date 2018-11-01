@@ -52,6 +52,7 @@
 #include "yb/util/string_util.h"
 
 using namespace std::literals;
+using namespace std::placeholders;
 using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
@@ -146,10 +147,11 @@ void Connection::OutboundQueued() {
   auto status = stream_->TryWrite();
   if (!status.ok()) {
     VLOG_WITH_PREFIX(1) << "Write failed: " << status;
-    reactor_->ScheduleReactorTask(
+    auto scheduled = reactor_->ScheduleReactorTask(
         MakeFunctorReactorTask(
             std::bind(&Reactor::DestroyConnection, reactor_, this, status),
-            shared_from_this()));
+            shared_from_this(), SOURCE_LOCATION()));
+    LOG_IF_WITH_PREFIX(WARNING, !scheduled) << "Failed to schedule destroy";
   }
 }
 
@@ -167,16 +169,17 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
 
   auto now = CoarseMonoClock::Now();
 
+  CoarseMonoClock::TimePoint deadline = CoarseMonoClock::TimePoint::max();
   if (!stream_->IsConnected()) {
-    auto deadline = last_activity_time_ + FLAGS_rpc_connection_timeout_ms * 1ms;
+    const MonoDelta timeout = FLAGS_rpc_connection_timeout_ms * 1ms;
+    deadline = last_activity_time_ + timeout;
     if (now > deadline) {
       auto passed = reactor_->cur_time() - last_activity_time_;
       reactor_->DestroyConnection(
-          this, STATUS_FORMAT(NetworkError, "Connect timeout, passed: $0", passed));
+          this,
+          STATUS_FORMAT(NetworkError, "Connect timeout, passed: $0, timeout: $1", passed, timeout));
       return;
     }
-
-    StartTimer(deadline - now, &timer_);
   }
 
   while (!expiration_queue_.empty() && expiration_queue_.top().first <= now) {
@@ -187,15 +190,16 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
       auto i = awaiting_response_.find(call->call_id());
       if (i != awaiting_response_.end()) {
         i->second.reset();
-      } else {
-        LOG(ERROR) << "Timeout of non awaiting call: " << call->call_id();
-        DCHECK(i != awaiting_response_.end());
       }
     }
   }
 
   if (!expiration_queue_.empty()) {
-    StartTimer(expiration_queue_.top().first - now, &timer_);
+    deadline = std::min(deadline, expiration_queue_.top().first);
+  }
+
+  if (deadline != CoarseMonoClock::TimePoint::max()) {
+    StartTimer(deadline - now, &timer_);
   }
 }
 
@@ -204,6 +208,18 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
   DCHECK_EQ(direction_, Direction::CLIENT);
 
   DoQueueOutboundData(call, true);
+
+  // Set up the timeout timer.
+  const MonoDelta& timeout = call->controller()->timeout();
+  if (timeout.Initialized()) {
+    auto expires_at = CoarseMonoClock::Now() + timeout.ToSteadyDuration();
+    auto reschedule = expiration_queue_.empty() || expiration_queue_.top().first > expires_at;
+    expiration_queue_.emplace(expires_at, call);
+    if (reschedule && (stream_->IsConnected() ||
+                       expires_at < last_activity_time_ + FLAGS_rpc_connection_timeout_ms * 1ms)) {
+      StartTimer(timeout.ToSteadyDuration(), &timer_);
+    }
+  }
 
   call->SetQueued();
 }
@@ -276,17 +292,6 @@ void Connection::CallSent(OutboundCallPtr call) {
   DCHECK(reactor_->IsCurrentThread());
 
   awaiting_response_.emplace(call->call_id(), call);
-
-  // Set up the timeout timer.
-  const MonoDelta& timeout = call->controller()->timeout();
-  if (timeout.Initialized()) {
-    auto expires_at = CoarseMonoClock::Now() + timeout.ToSteadyDuration();
-    auto reschedule = expiration_queue_.empty() || expiration_queue_.top().first > expires_at;
-    expiration_queue_.emplace(expires_at, call);
-    if (reschedule) {
-      StartTimer(timeout.ToSteadyDuration(), &timer_);
-    }
-  }
 }
 
 std::string Connection::ToString() const {
@@ -354,12 +359,11 @@ void Connection::QueueOutboundData(OutboundDataPtr outbound_data) {
     std::unique_lock<simple_spinlock> lock(outbound_data_queue_lock_);
     if (!shutdown_status_.ok()) {
       auto task = MakeFunctorReactorTaskWithAbort(
-          std::bind(&OutboundData::Transferred,
-                    outbound_data,
-                    std::placeholders::_2,
-                    /* conn */ nullptr));
+          std::bind(&OutboundData::Transferred, outbound_data, _2, /* conn */ nullptr),
+          SOURCE_LOCATION());
       lock.unlock();
-      reactor_->ScheduleReactorTask(task);
+      auto scheduled = reactor_->ScheduleReactorTask(task, true /* schedule_even_closing */);
+      LOG_IF_WITH_PREFIX(DFATAL, !scheduled) << "Failed to schedule OutboundData::Transferred";
       return;
     }
     was_empty = outbound_data_to_process_.empty();
@@ -367,13 +371,15 @@ void Connection::QueueOutboundData(OutboundDataPtr outbound_data) {
     if (was_empty && !process_response_queue_task_) {
       process_response_queue_task_ =
           MakeFunctorReactorTask(std::bind(&Connection::ProcessResponseQueue, this),
-                                 shared_from_this());
+                                 shared_from_this(), SOURCE_LOCATION());
     }
   }
 
   if (was_empty) {
     // TODO: what happens if the reactor is shutting down? Currently Abort is ignored.
-    reactor_->ScheduleReactorTask(process_response_queue_task_);
+    auto scheduled = reactor_->ScheduleReactorTask(process_response_queue_task_);
+    LOG_IF_WITH_PREFIX(WARNING, !scheduled)
+        << "Failed to schedule Connection::ProcessResponseQueue";
   }
 }
 

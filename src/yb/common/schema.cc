@@ -153,7 +153,7 @@ void Schema::CopyFrom(const Schema& other) {
   col_offsets_ = other.col_offsets_;
   id_to_index_ = other.id_to_index_;
 
-  // We can't simply copy name_to_index_ since the StringPiece keys
+  // We can't simply copy name_to_index_ since the GStringPiece keys
   // reference the other Schema's ColumnSchema objects.
   name_to_index_.clear();
   int i = 0;
@@ -279,11 +279,11 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
   return Status::OK();
 }
 
-Status Schema::CreateProjectionByNames(const std::vector<StringPiece>& col_names,
+Status Schema::CreateProjectionByNames(const std::vector<GStringPiece>& col_names,
                                        Schema* out, size_t num_key_columns) const {
   vector<ColumnId> ids;
   vector<ColumnSchema> cols;
-  for (const StringPiece& name : col_names) {
+  for (const GStringPiece& name : col_names) {
     int idx = find_column(name);
     if (idx == -1) {
       return STATUS(NotFound, "column not found", name);

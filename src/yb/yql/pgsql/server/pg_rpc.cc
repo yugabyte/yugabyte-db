@@ -322,7 +322,7 @@ MonoTime PgInboundCall::GetClientDeadline() const {
 
 //--------------------------------------------------------------------------------------------------
 // Sending response_ message away.
-void PgInboundCall::Serialize(std::deque<RefCntBuffer>* output) const {
+void PgInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
   output->push_back(response_);
 }
 

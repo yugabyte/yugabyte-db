@@ -273,6 +273,7 @@ Status PTSelectStmt::LookupIndex(SemContext *sem_context) {
 }
 
 CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
+  // If use_cassandra_authentication is set, permissions are checked in PTDmlStmt::Analyze.
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
   if (index_id_.empty()) {
@@ -440,6 +441,22 @@ CHECKED_STATUS PTSelectStmt::AnalyzeDistinctClause(SemContext *sem_context) {
   return Status::OK();
 }
 
+bool PTSelectStmt::IsReadableByAllSystemTable() const {
+  const client::YBTableName t = table_name();
+  const string& keyspace = t.namespace_name();
+  const string& table = t.table_name();
+  if (keyspace == master::kSystemSchemaNamespaceName) {
+    return true;
+  } else if (keyspace == master::kSystemNamespaceName) {
+    if (table == master::kSystemLocalTableName ||
+        table == master::kSystemPeersTableName ||
+        table == master::kSystemPartitionsTableName) {
+      return true;
+    }
+  }
+  return false;
+}
+
 //--------------------------------------------------------------------------------------------------
 
 namespace {
@@ -450,7 +467,6 @@ PTOrderBy::Direction directionFromSortingType(ColumnSchema::SortingType sorting_
 }
 
 } // namespace
-
 
 CHECKED_STATUS PTSelectStmt::AnalyzeOrderByClause(SemContext *sem_context) {
   if (order_by_clause_ != nullptr) {

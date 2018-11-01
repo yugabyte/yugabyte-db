@@ -10,7 +10,6 @@
  * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
  * or implied.  See the License for the specific language governing permissions and limitations
  * under the License.
- *
  */
 package org.yb.minicluster;
 
@@ -68,6 +67,11 @@ public class BaseMiniClusterTest extends BaseYBTest {
     return MiniYBCluster.DEFAULT_NUM_SHARDS_PER_TSERVER;
   }
 
+  /** This allows subclasses to optionally skip the usage of a mini-cluster in a test. */
+  protected boolean miniClusterEnabled() {
+    return true;
+  }
+
   /**
    * This makes sure that the mini cluster is up and running before each test. A test might opt to
    * leave the mini cluster running, and it will be reused by next tests, or it might shut down the
@@ -81,14 +85,23 @@ public class BaseMiniClusterTest extends BaseYBTest {
    */
   @Before
   public void setUpBefore() throws Exception {
+    if (!miniClusterEnabled()) {
+      return;
+    }
     TestUtils.clearReservedPorts();
     if (miniCluster == null) {
       createMiniCluster();
     }
   }
 
-  // Helper function to wait for existing tservers to heartbeat to master leader.
+  /**
+   * A helper function to wait for existing tservers to heartbeat to master leader.
+   * @return true if the number of tablet servers found is as expected
+   */
   public boolean waitForTServersAtMasterLeader() throws Exception {
+    if (!miniClusterEnabled()) {
+      return true;
+    }
     return miniCluster.waitForTabletServers(miniCluster.getTabletServers().size());
   }
 
@@ -96,6 +109,9 @@ public class BaseMiniClusterTest extends BaseYBTest {
    * Override this method to create a custom minicluster for your test.
    */
   protected void createMiniCluster() throws Exception {
+    if (!miniClusterEnabled()) {
+      return;
+    }
     createMiniCluster(NUM_MASTERS, NUM_TABLET_SERVERS);
   }
 
@@ -103,11 +119,17 @@ public class BaseMiniClusterTest extends BaseYBTest {
    * Creates a new cluster with the requested number of masters and tservers.
    */
   public void createMiniCluster(int numMasters, int numTservers) throws Exception {
+    if (!miniClusterEnabled()) {
+      return;
+    }
     createMiniCluster(numMasters, Collections.nCopies(numTservers, tserverArgs));
   }
 
   public void createMiniCluster(int numMasters, List<List<String>> tserverArgs)
       throws Exception {
+    if (!miniClusterEnabled()) {
+      return;
+    }
     LOG.info("BaseMiniClusterTest.createMiniCluster is running");
     int numTservers = tserverArgs.size();
     miniCluster = new MiniYBClusterBuilder()
@@ -136,6 +158,9 @@ public class BaseMiniClusterTest extends BaseYBTest {
   public void createMiniCluster(int numMasters, List<String> masterArgs,
                                 List<List<String>> tserverArgs)
       throws Exception {
+    if (!miniClusterEnabled()) {
+      return;
+    }
     LOG.info("BaseMiniClusterTest.createMiniCluster is running");
     int numTservers = tserverArgs.size();
     miniCluster = new MiniYBClusterBuilder()

@@ -126,7 +126,7 @@ class PTSimpleType : public PTPrimitiveType<itype_, data_type_, applicable_for_p
 
 //--------------------------------------------------------------------------------------------------
 // Numeric Types.
-using PTBoolean = PTSimpleType<InternalType::kBoolValue, DataType::BOOL, false>;
+using PTBoolean = PTSimpleType<InternalType::kBoolValue, DataType::BOOL>;
 using PTTinyInt = PTSimpleType<InternalType::kInt8Value, DataType::INT8>;
 using PTSmallInt = PTSimpleType<InternalType::kInt16Value, DataType::INT16>;
 using PTInt = PTSimpleType<InternalType::kInt32Value, DataType::INT32>;
@@ -135,7 +135,7 @@ using PTBigInt = PTSimpleType<InternalType::kInt64Value, DataType::INT64>;
 using PTVarInt = PTSimpleType<InternalType::kVarintValue, DataType::VARINT>;
 using PTDecimal = PTSimpleType<InternalType::kDecimalValue, DataType::DECIMAL>;
 
-class PTFloat : public PTSimpleType<InternalType::kFloatValue, DataType::FLOAT, true> {
+class PTFloat : public PTSimpleType<InternalType::kFloatValue, DataType::FLOAT> {
  public:
   typedef MCSharedPtr<PTFloat> SharedPtr;
   typedef MCSharedPtr<const PTFloat> SharedPtrConst;
@@ -158,7 +158,7 @@ class PTFloat : public PTSimpleType<InternalType::kFloatValue, DataType::FLOAT, 
   int8_t precision_;
 };
 
-class PTDouble : public PTSimpleType<InternalType::kDoubleValue, DataType::DOUBLE, true> {
+class PTDouble : public PTSimpleType<InternalType::kDoubleValue, DataType::DOUBLE> {
  public:
   typedef MCSharedPtr<PTDouble> SharedPtr;
   typedef MCSharedPtr<const PTDouble> SharedPtrConst;
@@ -204,8 +204,7 @@ class PTCounter : public PTSimpleType<InternalType::kInt64Value, DataType::INT64
 //--------------------------------------------------------------------------------------------------
 // Char-based types.
 
-class PTCharBaseType
-    : public PTSimpleType<InternalType::kStringValue, DataType::STRING> {
+class PTCharBaseType : public PTSimpleType<InternalType::kStringValue, DataType::STRING> {
  public:
   typedef MCSharedPtr<PTCharBaseType> SharedPtr;
   typedef MCSharedPtr<const PTCharBaseType> SharedPtrConst;
@@ -279,6 +278,8 @@ using PTTimeUuid = PTSimpleType<InternalType::kTimeuuidValue, DataType::TIMEUUID
 //--------------------------------------------------------------------------------------------------
 // Datetime types.
 using PTTimestamp = PTSimpleType<InternalType::kTimestampValue, DataType::TIMESTAMP>;
+using PTDate = PTSimpleType<InternalType::kDateValue, DataType::DATE>;
+using PTTime = PTSimpleType<InternalType::kTimeValue, DataType::TIME>;
 
 //--------------------------------------------------------------------------------------------------
 // Collection types.
@@ -396,9 +397,7 @@ class PTUserDefinedType : public PTPrimitiveType<InternalType::kMapValue,
   std::shared_ptr<QLType> ql_type_;
 };
 
-class PTFrozen : public PTPrimitiveType<InternalType::kFrozenValue,
-                                        DataType::FROZEN,
-                                        true> {
+class PTFrozen : public PTPrimitiveType<InternalType::kFrozenValue, DataType::FROZEN, true> {
  public:
   typedef MCSharedPtr<PTFrozen> SharedPtr;
   typedef MCSharedPtr<const PTFrozen> SharedPtrConst;
@@ -425,7 +424,7 @@ class PTFrozen : public PTPrimitiveType<InternalType::kFrozenValue,
   std::shared_ptr<QLType> ql_type_;
 };
 
-};  // namespace ql
+}  // namespace ql
 }  // namespace yb
 
 #endif  // YB_YQL_CQL_QL_PTREE_PT_TYPE_H_

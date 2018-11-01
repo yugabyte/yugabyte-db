@@ -88,6 +88,9 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
                                            const size_t num_rows_skipped,
                                            QLResponsePB* response) const override;
 
+  CHECKED_STATUS SetPagingStateIfNecessary(const PgsqlReadRequestPB& request,
+                                           PgsqlResponsePB* response) const override;
+
   const DocKey& row_key() const {
     return row_key_;
   }

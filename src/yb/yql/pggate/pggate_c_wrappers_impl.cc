@@ -10,25 +10,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-// Implementations of YB C API functions generated from the API DSL.
+// Implementations of YB C API functions generated from the API DSL. This is compiled with the
+// C++ compiler, but exports functions to C.
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
 #include "yb/yql/pggate/pggate.h"
 
-// Generate C functions wrapping calls to C++ class member functions.
 #include "yb/yql/pggate/if_macros_c_wrapper_impl.h"
-namespace yb {
-namespace pggate {
 
 extern "C" {
 
 #include "yb/yql/pggate/pggate_if.h"
 
 }
-
-} // namespace pggate
-} // namespace yb
 
 // We don't really need this in the end of a file, but include it anyway for consistency.
 #include "yb/yql/pggate/if_macros_undef.h"

@@ -48,13 +48,50 @@ YB_DEFINE_HANDLE_TYPE(PgStatement)
 // Handle to an expression.
 YB_DEFINE_HANDLE_TYPE(PgExpr);
 
+// Handle to a table description
+YB_DEFINE_HANDLE_TYPE(PgTableDesc);
+
 //--------------------------------------------------------------------------------------------------
 // Other definitions are the same between C++ and C.
 //--------------------------------------------------------------------------------------------------
-// Use YugaByte datatype numeric representation for now.
+// Use YugaByte (YQL) datatype numeric representation for now, as provided in common.proto.
 // TODO(neil) This should be change to "PgType *" and convert Postgres's TypeName struct to our
 // class PgType or QLType.
-typedef int YBCPgDataType;
+enum YBCPgDataType {
+  YB_YQL_DATA_TYPE_UNKNOWN_DATA = 999,
+  YB_YQL_DATA_TYPE_NULL_VALUE_TYPE = 0,
+  YB_YQL_DATA_TYPE_INT8 = 1,
+  YB_YQL_DATA_TYPE_INT16 = 2,
+  YB_YQL_DATA_TYPE_INT32 = 3,
+  YB_YQL_DATA_TYPE_INT64 = 4,
+  YB_YQL_DATA_TYPE_STRING = 5,
+  YB_YQL_DATA_TYPE_BOOL = 6,
+  YB_YQL_DATA_TYPE_FLOAT = 7,
+  YB_YQL_DATA_TYPE_DOUBLE = 8,
+  YB_YQL_DATA_TYPE_BINARY = 9,
+  YB_YQL_DATA_TYPE_TIMESTAMP = 10,
+  YB_YQL_DATA_TYPE_DECIMAL = 11,
+  YB_YQL_DATA_TYPE_VARINT = 12,
+  YB_YQL_DATA_TYPE_INET = 13,
+  YB_YQL_DATA_TYPE_LIST = 14,
+  YB_YQL_DATA_TYPE_MAP = 15,
+  YB_YQL_DATA_TYPE_SET = 16,
+  YB_YQL_DATA_TYPE_UUID = 17,
+  YB_YQL_DATA_TYPE_TIMEUUID = 18,
+  YB_YQL_DATA_TYPE_TUPLE = 19,
+  YB_YQL_DATA_TYPE_TYPEARGS = 20,
+  YB_YQL_DATA_TYPE_USER_DEFINED_TYPE = 21,
+  YB_YQL_DATA_TYPE_FROZEN = 22,
+  YB_YQL_DATA_TYPE_DATE = 23,
+  YB_YQL_DATA_TYPE_TIME = 24,
+  YB_YQL_DATA_TYPE_JSONB = 25,
+  YB_YQL_DATA_TYPE_UINT8 = 100,
+  YB_YQL_DATA_TYPE_UINT16 = 101,
+  YB_YQL_DATA_TYPE_UINT32 = 102,
+  YB_YQL_DATA_TYPE_UINT64 = 103
+};
+
+typedef enum YBCPgDataType YBCPgDataType;
 
 #ifdef __cplusplus
 }  // extern "C"

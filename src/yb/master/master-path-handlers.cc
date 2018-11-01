@@ -194,7 +194,9 @@ string UptimeString(uint64_t seconds) {
   if (days > 0) {
     uptime_string_stream << days << "days, ";
   }
-  uptime_string_stream << hours << ":" << std::setw(2) << std::setfill('0') << mins;
+  uptime_string_stream << hours << ":" << std::setw(2) << std::setfill('0') << mins <<
+      ":" << std::setw(2) << std::setfill('0') << (seconds % 60);
+
   return uptime_string_stream.str();
 }
 

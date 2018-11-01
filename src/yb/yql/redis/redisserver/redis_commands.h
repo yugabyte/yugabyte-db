@@ -42,6 +42,11 @@ class RedisServiceData {
   virtual void LogToMonitors(
       const string& end, const string& db, const RedisClientCommand& cmd) = 0;
 
+  // Used for PubSub.
+  virtual void AppendToChannelSubscribers(
+      const string& channel, std::shared_ptr<rpc::Connection> conn) = 0;
+  virtual int PublishToChannel(const string& channel, const string& message) = 0;
+
   // Used for Auth.
   virtual CHECKED_STATUS GetRedisPasswords(vector<string>* passwords) = 0;
 
@@ -52,6 +57,8 @@ class RedisServiceData {
 
   virtual ~RedisServiceData() {}
 };
+
+YB_STRONGLY_TYPED_BOOL(ManualResponse);
 
 // Context for batch of Redis commands.
 class BatchContext : public RefCountedThreadSafe<BatchContext> {
@@ -76,9 +83,10 @@ class BatchContext : public RefCountedThreadSafe<BatchContext> {
 
   virtual void Apply(
       size_t index,
-      std::function<bool(const StatusFunctor&)> functor,
+      std::function<bool(client::YBSession*, const StatusFunctor&)> functor,
       std::string partition_key,
-      const rpc::RpcMethodMetrics& metrics) = 0;
+      const rpc::RpcMethodMetrics& metrics,
+      ManualResponse manual_response) = 0;
 
   virtual ~BatchContext() {}
 };

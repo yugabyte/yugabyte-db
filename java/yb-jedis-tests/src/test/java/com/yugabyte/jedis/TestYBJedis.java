@@ -161,6 +161,43 @@ public class TestYBJedis extends BaseJedisTest {
   }
 
   @Test
+  public void testKeys() throws Exception {
+    Map <String, String> fields = new HashMap<>();
+    fields.put("f1", "v1");
+    fields.put("f2", "v2");
+    fields.put("f3", "v3");
+    for (int i = 0; i < 100; i++) {
+      for (int j = 0; j < 100; j++) {
+        String str = String.format("key_%d_%d", i, j);
+        if (i < 32) {
+          assertEquals("OK", jedis_client.set(str, "v"));
+        } else if (i < 65) {
+          assertEquals("OK", jedis_client.hmset(str, fields));
+        } else {
+          assertEquals(1L, jedis_client.zadd(str, 1, "a").longValue());
+        }
+      }
+    }
+
+    assertEquals(10000, jedis_client.keys("*").size());
+    assertEquals(10000, jedis_client.keys("key_*_*").size());
+    assertEquals(100, jedis_client.keys("key_*_20").size());
+    assertEquals(1000, jedis_client.keys("key_?_*").size());
+    assertEquals(36, jedis_client.keys("key_[0123]_[^0]").size());
+    assertEquals(0, jedis_client.keys("\\*").size());
+
+    assertEquals("OK", jedis_client.set("key_over_limit", "v"));
+    assertEquals(100, jedis_client.keys("key_?_?").size());
+
+    try {
+      jedis_client.keys("*");
+      fail("Should have failed!");
+    } catch (Exception e) {
+      LOG.info("Expected exception", e);
+    }
+  }
+
+  @Test
   public void testSetCommandWithOptions() throws Exception {
     // Test with lowercase "ex" option.
     assertEquals("OK", jedis_client.set("k_ex", "v", "ex", 2));

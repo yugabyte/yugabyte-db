@@ -196,6 +196,7 @@ set(UTIL_SRCS
   port_picker.cc
   pstack_watcher.cc
   random_util.cc
+  redis_util.cc
   ref_cnt_buffer.cc
   rolling_log.cc
   rw_mutex.cc
@@ -240,6 +241,8 @@ endif()
 set(UTIL_LIBS
   boost_system
   boost_thread
+  icui18n
+  icuuc
   crcutil
   crypt_blowfish
   gflags
@@ -338,6 +341,7 @@ ADD_YB_TEST(hash_util-test)
 ADD_YB_TEST(hdr_histogram-test)
 ADD_YB_TEST(inline_slice-test)
 ADD_YB_TEST(jsonreader-test)
+ADD_YB_TEST(lockfree-test)
 ADD_YB_TEST(logging-test)
 ADD_YB_TEST(map-util-test)
 ADD_YB_TEST(memcmpable_varint-test LABELS no_tsan)

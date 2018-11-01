@@ -15,15 +15,24 @@
 
 #include "yb/rpc/outbound_data.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/string_util.h"
 
 using namespace std::literals;
 
 DECLARE_uint64(rpc_connection_timeout_ms);
+DEFINE_test_flag(int32, TEST_delay_connect_ms, 0,
+                 "Delay connect in tests for specified amount of milliseconds.");
 
 namespace yb {
 namespace rpc {
+
+namespace {
+
+const size_t kMaxIov = 16;
+
+}
 
 TcpStream::TcpStream(
     const Endpoint& remote, Socket socket, GrowableBufferAllocator* allocator, size_t limit)
@@ -51,6 +60,18 @@ Status TcpStream::Start(bool connect, ev::loop_ref* loop, StreamContext* context
   RETURN_NOT_OK(socket_.SetSendTimeout(FLAGS_rpc_connection_timeout_ms * 1ms));
   RETURN_NOT_OK(socket_.SetRecvTimeout(FLAGS_rpc_connection_timeout_ms * 1ms));
 
+  if (connect && FLAGS_TEST_delay_connect_ms) {
+    connect_delayer_.set(*loop);
+    connect_delayer_.set<TcpStream, &TcpStream::DelayConnectHandler>(this);
+    connect_delayer_.start(
+        static_cast<double>(FLAGS_TEST_delay_connect_ms) / MonoTime::kMillisecondsPerSecond, 0);
+    return Status::OK();
+  }
+
+  return DoStart(loop, connect);
+}
+
+Status TcpStream::DoStart(ev::loop_ref* loop, bool connect) {
   if (connect) {
     auto status = socket_.Connect(remote_);
     if (!status.ok() && !Socket::IsTemporarySocketError(status)) {
@@ -58,6 +79,7 @@ Status TcpStream::Start(bool connect, ev::loop_ref* loop, StreamContext* context
       return status;
     }
   }
+
   RETURN_NOT_OK(socket_.GetSocketAddress(&local_));
   log_prefix_.clear();
 
@@ -75,6 +97,18 @@ Status TcpStream::Start(bool connect, ev::loop_ref* loop, StreamContext* context
   }
 
   return Status::OK();
+}
+
+void TcpStream::DelayConnectHandler(ev::timer& watcher, int revents) { // NOLINT
+  if (EV_ERROR & revents) {
+    LOG_WITH_PREFIX(WARNING) << "Got an error in handle delay connect";
+    return;
+  }
+
+  auto status = DoStart(&watcher.loop, true /* connect */);
+  if (!status.ok()) {
+    Shutdown(status);
+  }
 }
 
 void TcpStream::Close() {
@@ -105,6 +139,32 @@ Status TcpStream::TryWrite() {
   return result;
 }
 
+int TcpStream::FillIov(iovec* out) {
+  int index = 0;
+  size_t offset = send_position_;
+  for (auto& data : sending_) {
+    if (data.skipped || (offset == 0 && data.data && data.data->IsFinished())) {
+      data.skipped = true;
+      continue;
+    }
+    for (const auto& bytes : data.bytes) {
+      if (offset >= bytes.size()) {
+        offset -= bytes.size();
+        continue;
+      }
+
+      out[index].iov_base = bytes.data() + offset;
+      out[index].iov_len = bytes.size() - offset;
+      offset = 0;
+      if (++index == kMaxIov) {
+        return index;
+      }
+    }
+  }
+
+  return index;
+}
+
 Status TcpStream::DoWrite() {
   if (!connected_ || waiting_write_ready_ || !is_epoll_registered_) {
     return Status::OK();
@@ -112,20 +172,13 @@ Status TcpStream::DoWrite() {
 
   // If we weren't waiting write to be ready, we could try to write data to socket.
   while (!sending_.empty()) {
-    const size_t kMaxIov = 16;
     iovec iov[kMaxIov];
-    const int iov_len = static_cast<int>(std::min(kMaxIov, sending_.size()));
-    size_t offset = send_position_;
-    for (auto i = 0; i != iov_len; ++i) {
-      iov[i].iov_base = sending_[i].data() + offset;
-      iov[i].iov_len = sending_[i].size() - offset;
-      offset = 0;
-    }
+    int iov_len = FillIov(iov);
 
     context_->UpdateLastActivity();
-    int32_t written = 0;
 
-    auto status = socket_.Writev(iov, iov_len, &written);
+    int32_t written = 0;
+    auto status = iov_len != 0 ? socket_.Writev(iov, iov_len, &written) : Status::OK();
     if (PREDICT_FALSE(!status.ok())) {
       if (!Socket::IsTemporarySocketError(status)) {
         YB_LOG_WITH_PREFIX_EVERY_N(WARNING, 50) << "Send failed: " << status;
@@ -136,11 +189,19 @@ Status TcpStream::DoWrite() {
     }
 
     send_position_ += written;
-    while (!sending_.empty() && send_position_ >= sending_.front().size()) {
-      auto data = sending_outbound_datas_.front();
-      send_position_ -= sending_.front().size();
+    while (!sending_.empty()) {
+      auto& front = sending_.front();
+      if (front.skipped) {
+        sending_.pop_front();
+        continue;
+      }
+      size_t full_size = front.bytes_size();
+      if (send_position_ < full_size) {
+        break;
+      }
+      auto data = front.data;
+      send_position_ -= full_size;
       sending_.pop_front();
-      sending_outbound_datas_.pop_front();
       if (data) {
         context_->Transferred(data, Status::OK());
       }
@@ -312,27 +373,23 @@ bool TcpStream::Idle(std::string* reason_not_idle) {
 
 void TcpStream::ClearSending(const Status& status) {
   // Clear any outbound transfers.
-  for (auto& data : sending_outbound_datas_) {
-    if (data) {
-      context_->Transferred(data, status);
+  for (auto& data : sending_) {
+    if (data.data) {
+      context_->Transferred(data.data, status);
     }
   }
-  sending_outbound_datas_.clear();
   sending_.clear();
 }
 
 void TcpStream::Send(OutboundDataPtr data) {
   // Serialize the actual bytes to be put on the wire.
-  data->Serialize(&sending_);
-
-  sending_outbound_datas_.resize(sending_.size());
-  sending_outbound_datas_.back() = std::move(data);
+  sending_.emplace_back(std::move(data));
 }
 
 void TcpStream::DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) {
   auto call_in_flight = resp->add_calls_in_flight();
-  for (auto& data : sending_outbound_datas_) {
-    if (data && data->DumpPB(req, call_in_flight)) {
+  for (auto& entry : sending_) {
+    if (entry.data && entry.data->DumpPB(req, call_in_flight)) {
       call_in_flight = resp->add_calls_in_flight();
     }
   }
@@ -356,6 +413,11 @@ StreamFactoryPtr TcpStream::Factory() {
 
   return std::make_shared<TcpStreamFactory>();
 }
+
+TcpStream::SendingData::SendingData(OutboundDataPtr data_) : data(std::move(data_)) {
+  data->Serialize(&bytes);
+}
+
 
 } // namespace rpc
 } // namespace yb

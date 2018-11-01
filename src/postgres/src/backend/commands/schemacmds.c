@@ -218,7 +218,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 
 		if (IsYugaByteEnabled())
 		{
-			YBCLogInfo("Creating schema %s/%s", get_database_name(MyDatabaseId), schemaName);
+			YBC_LOG_INFO("Creating schema %s/%s", get_database_name(MyDatabaseId), schemaName);
 		}
 
 		/* make sure later steps can see the object created here */

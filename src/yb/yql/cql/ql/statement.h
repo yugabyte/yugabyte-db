@@ -47,7 +47,7 @@ class Statement {
 
   // Prepare the statement for execution. Optionally return prepared result if requested.
   CHECKED_STATUS Prepare(QLProcessor *processor, const MemTrackerPtr& mem_tracker = nullptr,
-                         PreparedResult::UniPtr *result = nullptr);
+                         const bool internal = false, PreparedResult::UniPtr *result = nullptr);
 
   // Execute the prepared statement.
   CHECKED_STATUS ExecuteAsync(QLProcessor* processor, const StatementParameters& params,

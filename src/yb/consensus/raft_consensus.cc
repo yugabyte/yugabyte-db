@@ -361,7 +361,7 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
     }
     EnableFailureDetector(initial_delta);
 
-    RETURN_NOT_OK(BecomeReplicaUnlocked());
+    RETURN_NOT_OK(BecomeReplicaUnlocked(std::string()));
   }
 
   RETURN_NOT_OK(ExecuteHook(POST_START));
@@ -661,9 +661,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     }
   }
 
-  RETURN_NOT_OK(BecomeReplicaUnlocked());
-
-  WithholdElectionAfterStepDown(new_leader_uuid);
+  RETURN_NOT_OK(BecomeReplicaUnlocked(new_leader_uuid));
 
   return Status::OK();
 }
@@ -699,9 +697,15 @@ void RaftConsensus::WithholdElectionAfterStepDown(const std::string& protege_uui
   DCHECK(state_->IsLocked());
   protege_leader_uuid_ = protege_uuid;
   auto timeout = MonoDelta::FromMilliseconds(
-      FLAGS_after_stepdown_delay_election_multiplier *
       FLAGS_leader_failure_max_missed_heartbeat_periods *
       FLAGS_raft_heartbeat_interval_ms);
+  if (!protege_uuid.empty()) {
+    // Actually we have 2 kinds of step downs.
+    // 1) We step down in favor of some protege.
+    // 2) We step down because term was advanced or just started.
+    // In second case we should not withhold election for a long period of time.
+    timeout *= FLAGS_after_stepdown_delay_election_multiplier;
+  }
   auto deadline = MonoTime::Now() + timeout;
   withhold_election_start_until_.store(deadline.ToUint64(), std::memory_order_release);
   election_lost_by_protege_at_ = MonoTime();
@@ -807,12 +811,13 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   return Status::OK();
 }
 
-Status RaftConsensus::BecomeReplicaUnlocked() {
-  LOG_WITH_PREFIX_UNLOCKED(INFO) << "Becoming Follower/Learner. State: "
-                                 << state_->ToStringUnlocked();
+Status RaftConsensus::BecomeReplicaUnlocked(const std::string& new_leader_uuid) {
+  LOG_WITH_PREFIX_UNLOCKED(INFO)
+      << "Becoming Follower/Learner. State: " << state_->ToStringUnlocked()
+      << ", new leader: " << new_leader_uuid;
 
   if (state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
-    WithholdElectionAfterStepDown(std::string());
+    WithholdElectionAfterStepDown(new_leader_uuid);
   }
 
   state_->ClearLeaderUnlocked();
@@ -840,7 +845,7 @@ Status RaftConsensus::BecomeReplicaUnlocked() {
   return Status::OK();
 }
 
-Status RaftConsensus::Replicate(const ConsensusRoundPtr& round) {
+Status RaftConsensus::TEST_Replicate(const ConsensusRoundPtr& round) {
   return ReplicateBatch({ round });
 }
 
@@ -940,7 +945,9 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   for (const auto& round : rounds) {
     replicate_msgs.push_back(round->replicate_msg());
   }
-  Status s = queue_->AppendOperations(replicate_msgs, Bind(DoNothingStatusCB));
+  Status s = queue_->AppendOperations(
+      replicate_msgs, yb::OpId::FromPB(state_->GetCommittedOpIdUnlocked()),
+      Bind(DoNothingStatusCB));
 
   // Handle Status::ServiceUnavailable(), which means the queue is full.
   // TODO: what are we doing about other errors here? Should we also release OpIds in those cases?
@@ -963,7 +970,7 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
 
 void RaftConsensus::UpdateMajorityReplicated(
     const MajorityReplicatedData& majority_replicated_data,
-    OpId* committed_index) {
+    OpId* committed_op_id) {
   ReplicaState::UniqueLock lock;
   Status s = state_->LockForMajorityReplicatedIndexUpdate(&lock);
   if (PREDICT_FALSE(!s.ok())) {
@@ -981,7 +988,7 @@ void RaftConsensus::UpdateMajorityReplicated(
   TRACE("Marking majority replicated up to $0", majority_replicated_data.op_id.ShortDebugString());
   bool committed_index_changed = false;
   s = state_->UpdateMajorityReplicatedUnlocked(
-      majority_replicated_data.op_id, committed_index, &committed_index_changed);
+      majority_replicated_data.op_id, committed_op_id, &committed_index_changed);
   if (majority_replicated_listener_) {
     majority_replicated_listener_();
   }
@@ -996,9 +1003,29 @@ void RaftConsensus::UpdateMajorityReplicated(
 
   if (committed_index_changed &&
       state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
+    // If all operations were just committed, and we don't have pending operations, then
+    // we write an empty batch that contains committed index.
+    // This affects only our local log, because followers have different logic in this scenario.
+    if (OpIdEquals(*committed_op_id, state_->GetLastReceivedOpIdUnlocked())) {
+      auto status = queue_->AppendOperations(
+          {}, yb::OpId::FromPB(*committed_op_id), Bind(DoNothingStatusCB));
+      LOG_IF_WITH_PREFIX(DFATAL, !status.ok() && !status.IsServiceUnavailable())
+          << "Failed to append empty batch: " << status;
+    }
+
     lock.unlock();
     // No need to hold the lock while calling SignalRequest.
     peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
+  }
+}
+
+void RaftConsensus::AppendEmptyBatchToLeaderLog() {
+  auto lock = state_->LockForRead();
+  auto committed_op_id = state_->GetCommittedOpIdUnlocked();
+  if (OpIdEquals(committed_op_id, state_->GetLastReceivedOpIdUnlocked())) {
+    auto status = queue_->AppendOperations(
+        {}, yb::OpId::FromPB(committed_op_id), Bind(DoNothingStatusCB));
+    LOG_IF_WITH_PREFIX(DFATAL, !status.ok()) << "Failed to append empty batch: " << status;
   }
 }
 
@@ -1475,6 +1502,8 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForUpdate(&lock));
 
+    auto prev_committed_op_id = yb::OpId::FromPB(state_->GetCommittedOpIdUnlocked());
+
     deduped_req.leader_uuid = request->caller_uuid();
 
     RETURN_NOT_OK(CheckLeaderRequestUnlocked(request, response, &deduped_req));
@@ -1514,7 +1543,10 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
     }
 
     // 3 - Enqueue the writes.
-    OpId last_from_leader = EnqueueWritesUnlocked(deduped_req, sync_status_cb);
+    auto new_committed_op_id = yb::OpId::FromPB(request->committed_index());
+    OpId last_from_leader = EnqueueWritesUnlocked(
+        deduped_req, new_committed_op_id, WriteEmpty(prev_committed_op_id != new_committed_op_id),
+        sync_status_cb);
 
     // 4 - Mark operations as committed
     RETURN_NOT_OK(MarkOperationsAsCommittedUnlocked(*request, deduped_req, last_from_leader));
@@ -1659,21 +1691,23 @@ Result<bool> RaftConsensus::EnqueuePreparesUnlocked(const ConsensusRequestPB& re
 }
 
 OpId RaftConsensus::EnqueueWritesUnlocked(const LeaderRequest& deduped_req,
+                                          const yb::OpId& committed_op_id,
+                                          WriteEmpty write_empty,
                                           const StatusCallback& sync_status_cb) {
   // Now that we've triggered the prepares enqueue the operations to be written
   // to the WAL.
-  if (PREDICT_TRUE(!deduped_req.messages.empty())) {
+  if (PREDICT_TRUE(!deduped_req.messages.empty()) || write_empty) {
     // Trigger the log append asap, if fsync() is on this might take a while
     // and we can't reply until this is done.
     //
     // Since we've prepared, we need to be able to append (or we risk trying to apply
     // later something that wasn't logged). We crash if we can't.
-    CHECK_OK(queue_->AppendOperations(deduped_req.messages, sync_status_cb));
-
-    return deduped_req.messages.back()->id();
-  } else {
-    return *deduped_req.preceding_opid;
+    CHECK_OK(queue_->AppendOperations(deduped_req.messages, committed_op_id, sync_status_cb));
   }
+
+
+  return !deduped_req.messages.empty() ?
+      deduped_req.messages.back()->id() : *deduped_req.preceding_opid;
 }
 
 Status RaftConsensus::WaitWritesUnlocked(const LeaderRequest& deduped_req,
@@ -1904,15 +1938,16 @@ Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type
   if (!state_->AreCommittedAndCurrentTermsSameUnlocked() ||
       state_->IsConfigChangePendingUnlocked() ||
       servers_in_transition != 0) {
-    return STATUS(IllegalState, Substitute("Leader is not ready for Config Change, can try again. "
-                                           "Num peers in transit = $0. Type=$1. Has opid=$2.\n"
-                                           "  Committed config: $3.\n  Pending config: $4.",
-                                           servers_in_transition, ChangeConfigType_Name(type),
-                                           active_config.has_opid_index(),
-                                           state_->GetCommittedConfigUnlocked().ShortDebugString(),
-                                           state_->IsConfigChangePendingUnlocked() ?
-                                             state_->GetPendingConfigUnlocked().ShortDebugString() :
-                                             ""));
+    return STATUS_FORMAT(IllegalState,
+                         "Leader is not ready for Config Change, can try again. "
+                         "Num peers in transit: $0. Type: $1. Has opid: $2. Committed config: $3. "
+                         "Pending config: $4. Current term: $5. Committed op id: $6.",
+                         servers_in_transition, ChangeConfigType_Name(type),
+                         active_config.has_opid_index(),
+                         state_->GetCommittedConfigUnlocked().ShortDebugString(),
+                         state_->IsConfigChangePendingUnlocked() ?
+                             state_->GetPendingConfigUnlocked().ShortDebugString() : "",
+                         state_->GetCurrentTermUnlocked(), state_->GetCommittedOpIdUnlocked());
   }
 
   return Status::OK();
@@ -2811,7 +2846,7 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
                                    << state_->GetCurrentTermUnlocked()
                                    << " since new term is " << new_term;
 
-    RETURN_NOT_OK(BecomeReplicaUnlocked());
+    RETURN_NOT_OK(BecomeReplicaUnlocked(std::string()));
   }
 
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Advancing to term " << new_term;
