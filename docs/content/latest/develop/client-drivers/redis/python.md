@@ -4,7 +4,7 @@
 Install the python driver using the following command.
 
 ```
-sudo pip install redis
+sudo pip install yedis
 ```
 
 ## Working Example

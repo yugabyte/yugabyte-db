@@ -4,7 +4,7 @@
 Install the python driver using the following command.
 
 ```
-pip install cassandra-driver
+pip install yb-cassandra-driver
 ```
 
 ## Working Example
