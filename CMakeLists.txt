@@ -365,7 +365,7 @@ macro(YB_SETUP_SANITIZER SANITIZER)
 
   # Disables using the precompiled template specializations for std::string, shared_ptr, etc
   # so that the annotations in the header actually take effect.
-  add_definitions("-D_GLIBCXX_EXTERN_TEMPLATE=0")
+  ADD_CXX_FLAGS("-D_GLIBCXX_EXTERN_TEMPLATE=0")
 
   message("Using ${SANITIZER}-instrumented libc++")
   set(LIBCXX_DIR "${YB_THIRDPARTY_DIR}/installed/${LOWER_SANITIZER}/libcxx")
@@ -638,11 +638,11 @@ endif()
 #
 # 1. https://llvm.org/bugs/show_bug.cgi?id=23529
 # 2. https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_dual_abi.html
-add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
+ADD_CXX_FLAGS(-D_GLIBCXX_USE_CXX11_ABI=0)
 
 # We don't want to use any stubs; that's exclusively for builds using our
 # exported client headers).
-add_definitions(-DYB_HEADERS_NO_STUBS=1)
+ADD_CXX_FLAGS(-DYB_HEADERS_NO_STUBS=1)
 
 # compiler flags for different build types (run 'cmake -DCMAKE_BUILD_TYPE=<type> .')
 # For all builds:
@@ -764,21 +764,21 @@ set(YB_PREFIX_DEPS_ASAN "${YB_THIRDPARTY_DIR}/installed/asan")
 # Flag to enable thread sanitizer (clang or gcc 4.8)
 if (${YB_USE_TSAN})
   YB_SETUP_SANITIZER("TSAN")
-  add_definitions("-fsanitize=thread")
+  ADD_CXX_FLAGS("-fsanitize=thread")
 
   # Enables dynamic_annotations.h to actually generate code
-  add_definitions("-DDYNAMIC_ANNOTATIONS_ENABLED")
+  ADD_CXX_FLAGS("-DDYNAMIC_ANNOTATIONS_ENABLED")
 
   # changes atomicops to use the tsan implementations
-  add_definitions("-DTHREAD_SANITIZER")
+  ADD_CXX_FLAGS("-DTHREAD_SANITIZER")
 
   # Compile and link against the thirdparty TSAN instrumented libstdcxx.
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
 elseif (${YB_USE_ASAN})
   YB_SETUP_SANITIZER("ASAN")
 
-  add_definitions("-fsanitize=address")
-  add_definitions("-DADDRESS_SANITIZER")
+  ADD_CXX_FLAGS("-fsanitize=address")
+  ADD_CXX_FLAGS("-DADDRESS_SANITIZER")
 
   # Compile and link against the thirdparty ASAN instrumented libstdcxx.
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
@@ -975,7 +975,7 @@ if ("${YB_LINK}" STREQUAL "d")
   set(BUILD_SHARED_LIBS ON)
 
   # Position independent code is only necessary when producing shared objects.
-  add_definitions(-fPIC)
+  ADD_CXX_FLAGS(-fPIC)
 endif()
 
 # where to put generated archives (.a files)
@@ -996,9 +996,9 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
 if ("${YB_EDITION}" STREQUAL "enterprise")
   # Enterprise sources have higher priority than community code.
   include_directories(ent/src)
-  add_definitions(-DYB_EDITION_NS_PREFIX=enterprise::)
+  ADD_CXX_FLAGS(-DYB_EDITION_NS_PREFIX=enterprise::)
 else()
-  add_definitions(-DYB_EDITION_NS_PREFIX=)
+  ADD_CXX_FLAGS(-DYB_EDITION_NS_PREFIX=)
 endif()
 
 include_directories(src)
@@ -1422,7 +1422,7 @@ if ("${YB_TCMALLOC_AVAILABLE}" STREQUAL "")
     STATIC_LIB "${PROFILER_STATIC_LIB}"
     SHARED_LIB "${PROFILER_SHARED_LIB}")
   list(APPEND YB_BASE_LIBS tcmalloc profiler)
-  add_definitions("-DTCMALLOC_ENABLED")
+  ADD_CXX_FLAGS("-DTCMALLOC_ENABLED")
   set(YB_TCMALLOC_AVAILABLE 1)
 else()
   message("Not using tcmalloc, because of '${YB_TCMALLOC_AVAILABLE}'")

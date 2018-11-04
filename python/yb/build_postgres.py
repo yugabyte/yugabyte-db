@@ -38,9 +38,16 @@ def adjust_error_on_warning_flag(flag, step, language):
         # Skip C++-only flags.
         return None
 
-    if flag == '-Werror' and step == 'configure':
-        # Skip this flag altogether during the configure step.
-        return None
+    if step == 'configure':
+        if flag == '-Werror':
+            # Skip this flag altogether during the configure step.
+            return None
+
+        if flag == '-fsanitize=thread':
+            # Don't actually enable TSAN in the configure step, otherwise configure will think that
+            # our pthread library is not working properly.
+            # https://gist.githubusercontent.com/mbautin/366970ac55c9d3579816d5e8563e70b4/raw
+            return None
 
     if step == 'make':
         # No changes.
@@ -74,16 +81,6 @@ def get_path_variants(path):
     given path.
     """
     return sorted(set([os.path.abspath(path), os.path.realpath(path)]))
-
-
-def write_program_output_to_file(program_name, program_result, target_dir):
-    for output_type in ['out', 'err']:
-        output_path = os.path.join(target_dir, '%s.%s' % (program_name, output_type))
-        output_content = getattr(program_result, 'std' + output_type)
-        with open(output_path, 'w') as out_f:
-            out_f.write(output_content)
-        if output_content.strip():
-            logging.info("Wrote std%s of %s to %s", output_type, program_name, output_path)
 
 
 class PostgresBuilder:
@@ -352,11 +349,13 @@ class PostgresBuilder:
                 logging.error("Standard error from configure:\n" + configure_result.stderr)
                 raise RuntimeError("configure failed")
 
-            configure_result = run_program(configure_cmd_line)
+            configure_result = run_program(
+                configure_cmd_line, shell=True, stdout_stderr_prefix='configure', error_ok=True)
 
-        if is_verbose_mode():
+        if is_verbose_mode() and configure_result.success():
             configure_result.print_output_to_stdout()
-        write_program_output_to_file('configure', configure_result, self.pg_build_root)
+
+        configure_result.print_output_and_raise_error_if_failed()
 
         logging.info("Successfully ran configure in the postgres build directory")
 
@@ -386,9 +385,15 @@ class PostgresBuilder:
         # environment.
         env_script_content = ''
         for env_var_name in [
-                'YB_SRC_ROOT', 'YB_BUILD_ROOT', 'YB_BUILD_TYPE', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS',
-                'PATH']:
-            env_var_value = os.environ[env_var_name]
+                'CFLAGS',
+                'CXXFLAGS',
+                'LDFLAGS',
+                'PATH',
+                'YB_BUILD_ROOT',
+                'YB_BUILD_TYPE',
+                'YB_SRC_ROOT',
+                'YB_THIRDPARTY_DIR']:
+            env_var_value = os.environ.get(env_var_name)
             if env_var_value is None:
                 raise RuntimeError("Expected env var %s to be set" % env_var_name)
             env_script_content += "export %s=%s\n" % (env_var_name, quote_for_bash(env_var_value))
@@ -412,10 +417,13 @@ class PostgresBuilder:
                 # Actually run Make.
                 if is_verbose_mode():
                     logging.info("Running make in the %s directory", work_dir)
-                make_result = run_program(make_cmd)
-                write_program_output_to_file('make', make_result, work_dir)
-                make_install_result = run_program(['make', 'install'])
-                write_program_output_to_file('make_install', make_install_result, work_dir)
+                run_program(
+                    make_cmd, stdout_stderr_prefix='make', cwd=work_dir, shell=True,
+                    error_ok=True).print_output_and_raise_error_if_failed()
+                run_program(
+                        'make install', stdout_stderr_prefix='make_install',
+                        cwd=work_dir, shell=True, error_ok=True
+                    ).print_output_and_raise_error_if_failed()
                 logging.info("Successfully ran make in the %s directory", work_dir)
 
                 if self.export_compile_commands:

@@ -18,6 +18,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 
 REMOTE_BUILD_HOST_ENV_VAR = 'YB_REMOTE_BUILD_HOST'
 
@@ -52,12 +53,16 @@ def parse_name_status(lines):
     return files
 
 
-def remote_communicate(args, remote_command):
+def remote_communicate(args, remote_command, error_ok=False):
     args = ['ssh', args.host, remote_command]
     proc = subprocess.Popen(args, shell=False)
     proc.communicate()
     if proc.returncode != 0:
-        sys.exit(proc.returncode)
+        if error_ok:
+            return False
+        else:
+            sys.exit(proc.returncode)
+    return True
 
 
 def check_remote_files(args, files):
@@ -122,6 +127,8 @@ def main():
                         const=True,
                         default=False,
                         help='skip build, only sync files')
+    parser.add_argument('--wait-for-ssh', action='store_true',
+                        help='Wait for the remote server to be ssh-able')
     parser.add_argument('args', nargs=argparse.REMAINDER, help='arguments for yb_build.sh')
 
     if len(sys.argv) >= 2 and sys.argv[1] in ['ybd', 'yb_build.sh']:
@@ -147,6 +154,11 @@ def main():
 
     commit = check_output_line(['git', 'merge-base', args.branch, 'HEAD'])
     print("Base commit: {0}".format(commit))
+
+    if args.wait_for_ssh:
+        while not remote_communicate(args, 'true', error_ok=True):
+            print("Remote host is unavailabe, re-trying")
+            time.sleep(1)
 
     remote_commit = fetch_remote_commit(args)
     if remote_commit != commit:

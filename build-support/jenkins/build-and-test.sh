@@ -300,7 +300,9 @@ fi
 
 configure_remote_compilation
 
-if "$using_default_thirdparty_dir"; then
+log "YB_THIRDPARTY_DIR=$YB_THIRDPARTY_DIR"
+if using_default_thirdparty_dir; then
+  log "Found that YB_THIRDPARTY_DIR is the default location"
   find_thirdparty_dir
   if ! "$found_shared_thirdparty_dir"; then
     if [[ ${NO_REBUILD_THIRDPARTY:-} == "1" ]]; then
@@ -312,9 +314,10 @@ if "$using_default_thirdparty_dir"; then
     fi
   fi
 else
-  log "YB_THIRDPARTY_DIR is explicitly specified as '$YB_THIRDPARTY_DIR', not looking for a" \
-      "shared third-party directory."
+  log "YB_THIRDPARTY_DIR is explicitly specified as a non-default location '$YB_THIRDPARTY_DIR'," \
+      "not looking for a shared third-party directory."
 fi
+validate_thirdparty_dir
 
 export NO_REBUILD_THIRDPARTY=1
 

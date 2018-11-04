@@ -305,7 +305,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     LOG.info("Postgres: Running initdb");
     String initCmd = String.format("%s/%s", pgBinDir, "initdb");
     ProcessBuilder procBuilder =
-        new ProcessBuilder(initCmd, "-U", DEFAULT_PG_USER).redirectErrorStream(true);
+        new ProcessBuilder(
+            initCmd, "-U", DEFAULT_PG_USER, "--encoding=UTF8").redirectErrorStream(true);
     procBuilder.environment().putAll(envVars);
     // Make the current directory different from the data directory so that we can collect a core
     // file.
