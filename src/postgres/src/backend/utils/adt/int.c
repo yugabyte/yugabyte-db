@@ -37,6 +37,7 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 
+#include "yb_overflow_utils.h"
 
 #define SAMESIGN(a,b)	(((a) < 0) == ((b) < 0))
 
@@ -600,6 +601,7 @@ int4um(PG_FUNCTION_ARGS)
 	int32		arg = PG_GETARG_INT32(0);
 	int32		result;
 
+	YB_DISALLOW_INT32_VALUE(arg, INT32_MIN);
 	result = -arg;
 	/* overflow check (needed for INT_MIN) */
 	if (arg != 0 && SAMESIGN(result, arg))
@@ -645,6 +647,7 @@ int4mi(PG_FUNCTION_ARGS)
 	int32		arg2 = PG_GETARG_INT32(1);
 	int32		result;
 
+	YB_CHECK_INT32_OVERFLOW(sub, arg1, arg2);
 	result = arg1 - arg2;
 
 	/*
@@ -666,6 +669,7 @@ int4mul(PG_FUNCTION_ARGS)
 	int32		arg2 = PG_GETARG_INT32(1);
 	int32		result;
 
+	YB_CHECK_INT32_OVERFLOW(mul, arg1, arg2);
 	result = arg1 * arg2;
 
 	/*
@@ -714,6 +718,7 @@ int4div(PG_FUNCTION_ARGS)
 	 */
 	if (arg2 == -1)
 	{
+		YB_DISALLOW_INT32_VALUE(arg1, INT32_MIN);
 		result = -arg1;
 		/* overflow check (needed for INT_MIN) */
 		if (arg1 != 0 && SAMESIGN(result, arg1))
@@ -736,6 +741,7 @@ int4inc(PG_FUNCTION_ARGS)
 	int32		arg = PG_GETARG_INT32(0);
 	int32		result;
 
+	YB_DISALLOW_INT32_VALUE(arg, INT32_MAX);
 	result = arg + 1;
 	/* Overflow check */
 	if (arg > 0 && result < 0)
@@ -879,6 +885,7 @@ int24pl(PG_FUNCTION_ARGS)
 	int32		arg2 = PG_GETARG_INT32(1);
 	int32		result;
 
+	YB_CHECK_INT32_OVERFLOW(add, (int32) arg1, arg2);
 	result = arg1 + arg2;
 
 	/*
@@ -900,6 +907,7 @@ int24mi(PG_FUNCTION_ARGS)
 	int32		arg2 = PG_GETARG_INT32(1);
 	int32		result;
 
+	YB_CHECK_INT32_OVERFLOW(sub, (int32) arg1, arg2);
 	result = arg1 - arg2;
 
 	/*
@@ -921,6 +929,7 @@ int24mul(PG_FUNCTION_ARGS)
 	int32		arg2 = PG_GETARG_INT32(1);
 	int32		result;
 
+	YB_CHECK_INT32_OVERFLOW(mul, (int32) arg1, arg2);
 	result = arg1 * arg2;
 
 	/*
@@ -967,6 +976,7 @@ int42pl(PG_FUNCTION_ARGS)
 	int16		arg2 = PG_GETARG_INT16(1);
 	int32		result;
 
+	YB_CHECK_INT32_OVERFLOW(add, arg1, (int32) arg2);
 	result = arg1 + arg2;
 
 	/*
@@ -988,6 +998,7 @@ int42mi(PG_FUNCTION_ARGS)
 	int16		arg2 = PG_GETARG_INT16(1);
 	int32		result;
 
+	YB_CHECK_INT32_OVERFLOW(sub, arg1, (int32) arg2);
 	result = arg1 - arg2;
 
 	/*
@@ -1009,6 +1020,7 @@ int42mul(PG_FUNCTION_ARGS)
 	int16		arg2 = PG_GETARG_INT16(1);
 	int32		result;
 
+	YB_CHECK_INT32_OVERFLOW(mul, arg1, (int32) arg2);
 	result = arg1 * arg2;
 
 	/*
@@ -1053,6 +1065,7 @@ int42div(PG_FUNCTION_ARGS)
 	 */
 	if (arg2 == -1)
 	{
+		YB_DISALLOW_INT32_VALUE(arg1, INT_MIN);
 		result = -arg1;
 		/* overflow check (needed for INT_MIN) */
 		if (arg1 != 0 && SAMESIGN(result, arg1))
@@ -1136,6 +1149,7 @@ int4abs(PG_FUNCTION_ARGS)
 	int32		arg1 = PG_GETARG_INT32(0);
 	int32		result;
 
+	YB_DISALLOW_INT32_VALUE(arg1, INT_MIN);
 	result = (arg1 < 0) ? -arg1 : arg1;
 	/* overflow check (needed for INT_MIN) */
 	if (result < 0)
