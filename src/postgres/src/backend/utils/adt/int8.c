@@ -23,6 +23,7 @@
 #include "utils/int8.h"
 #include "utils/builtins.h"
 
+#include "yb_overflow_utils.h"
 
 #define MAXINT8LEN		25
 
@@ -493,6 +494,8 @@ int8um(PG_FUNCTION_ARGS)
 	int64		arg = PG_GETARG_INT64(0);
 	int64		result;
 
+	YB_DISALLOW_INT64_VALUE(arg, INT64_MIN);
+
 	result = -arg;
 	/* overflow check (needed for INT64_MIN) */
 	if (arg != 0 && SAMESIGN(result, arg))
@@ -517,6 +520,8 @@ int8pl(PG_FUNCTION_ARGS)
 	int64		arg2 = PG_GETARG_INT64(1);
 	int64		result;
 
+	YB_CHECK_INT64_OVERFLOW(add, arg1, arg2);
+
 	result = arg1 + arg2;
 
 	/*
@@ -540,6 +545,8 @@ int8mi(PG_FUNCTION_ARGS)
 
 	result = arg1 - arg2;
 
+	YB_CHECK_INT64_OVERFLOW(sub, arg1, arg2);
+
 	/*
 	 * Overflow check.  If the inputs are of the same sign then their
 	 * difference cannot overflow.  If they are of different signs then the
@@ -560,6 +567,7 @@ int8mul(PG_FUNCTION_ARGS)
 	int64		result;
 
 	result = arg1 * arg2;
+	YB_CHECK_INT64_OVERFLOW(mul, arg1, arg2);
 
 	/*
 	 * Overflow check.  We basically check to see if result / arg2 gives arg1
@@ -608,6 +616,7 @@ int8div(PG_FUNCTION_ARGS)
 	 */
 	if (arg2 == -1)
 	{
+		YB_DISALLOW_INT64_VALUE(arg1, INT64_MIN);
 		result = -arg1;
 		/* overflow check (needed for INT64_MIN) */
 		if (arg1 != 0 && SAMESIGN(result, arg1))
@@ -635,6 +644,10 @@ int8abs(PG_FUNCTION_ARGS)
 
 	result = (arg1 < 0) ? -arg1 : arg1;
 	/* overflow check (needed for INT64_MIN) */
+	/*
+	 * YugaByte: we specifically test for INT64_MIN -- not only for ASAN, but
+	 * this is needed in release mode as well!
+	 */
 	if (result < 0 || arg1 == INT64_MIN)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
@@ -822,6 +835,8 @@ int84pl(PG_FUNCTION_ARGS)
 	int32		arg2 = PG_GETARG_INT32(1);
 	int64		result;
 
+	YB_CHECK_INT64_OVERFLOW(add, arg1, (int64) arg2);
+
 	result = arg1 + arg2;
 
 	/*
@@ -843,6 +858,8 @@ int84mi(PG_FUNCTION_ARGS)
 	int32		arg2 = PG_GETARG_INT32(1);
 	int64		result;
 
+	YB_CHECK_INT64_OVERFLOW(sub, arg1, (int64) arg2);
+
 	result = arg1 - arg2;
 
 	/*
@@ -863,6 +880,8 @@ int84mul(PG_FUNCTION_ARGS)
 	int64		arg1 = PG_GETARG_INT64(0);
 	int32		arg2 = PG_GETARG_INT32(1);
 	int64		result;
+
+	YB_CHECK_INT64_OVERFLOW(mul, arg1, (int64) arg2);
 
 	result = arg1 * arg2;
 
@@ -908,6 +927,7 @@ int84div(PG_FUNCTION_ARGS)
 	 */
 	if (arg2 == -1)
 	{
+		YB_DISALLOW_INT64_VALUE(arg1, INT64_MIN);
 		result = -arg1;
 		/* overflow check (needed for INT64_MIN) */
 		if (arg1 != 0 && SAMESIGN(result, arg1))
@@ -931,6 +951,8 @@ int48pl(PG_FUNCTION_ARGS)
 	int64		arg2 = PG_GETARG_INT64(1);
 	int64		result;
 
+	YB_CHECK_INT64_OVERFLOW(add, (int64) arg1, arg2);
+
 	result = arg1 + arg2;
 
 	/*
@@ -952,6 +974,8 @@ int48mi(PG_FUNCTION_ARGS)
 	int64		arg2 = PG_GETARG_INT64(1);
 	int64		result;
 
+	YB_CHECK_INT64_OVERFLOW(sub, (int64) arg1, arg2);
+
 	result = arg1 - arg2;
 
 	/*
@@ -972,6 +996,8 @@ int48mul(PG_FUNCTION_ARGS)
 	int32		arg1 = PG_GETARG_INT32(0);
 	int64		arg2 = PG_GETARG_INT64(1);
 	int64		result;
+
+	YB_CHECK_INT64_OVERFLOW(mul, (int64) arg1, arg2);
 
 	result = arg1 * arg2;
 
@@ -1019,6 +1045,8 @@ int82pl(PG_FUNCTION_ARGS)
 	int16		arg2 = PG_GETARG_INT16(1);
 	int64		result;
 
+	YB_CHECK_INT64_OVERFLOW(add, arg1, (int64) arg2);
+
 	result = arg1 + arg2;
 
 	/*
@@ -1040,6 +1068,8 @@ int82mi(PG_FUNCTION_ARGS)
 	int16		arg2 = PG_GETARG_INT16(1);
 	int64		result;
 
+	YB_CHECK_INT64_OVERFLOW(sub, arg1, (int64) arg2);
+
 	result = arg1 - arg2;
 
 	/*
@@ -1060,6 +1090,8 @@ int82mul(PG_FUNCTION_ARGS)
 	int64		arg1 = PG_GETARG_INT64(0);
 	int16		arg2 = PG_GETARG_INT16(1);
 	int64		result;
+
+	YB_CHECK_INT64_OVERFLOW(mul, arg1, (int64) arg2);
 
 	result = arg1 * arg2;
 
@@ -1105,6 +1137,7 @@ int82div(PG_FUNCTION_ARGS)
 	 */
 	if (arg2 == -1)
 	{
+		YB_DISALLOW_INT64_VALUE(arg1, INT64_MIN);
 		result = -arg1;
 		/* overflow check (needed for INT64_MIN) */
 		if (arg1 != 0 && SAMESIGN(result, arg1))
@@ -1128,6 +1161,8 @@ int28pl(PG_FUNCTION_ARGS)
 	int64		arg2 = PG_GETARG_INT64(1);
 	int64		result;
 
+	YB_CHECK_INT64_OVERFLOW(add, (int64) arg1, arg2);
+
 	result = arg1 + arg2;
 
 	/*
@@ -1149,6 +1184,8 @@ int28mi(PG_FUNCTION_ARGS)
 	int64		arg2 = PG_GETARG_INT64(1);
 	int64		result;
 
+	YB_CHECK_INT64_OVERFLOW(sub, (int64) arg1, arg2);
+
 	result = arg1 - arg2;
 
 	/*
@@ -1169,6 +1206,8 @@ int28mul(PG_FUNCTION_ARGS)
 	int16		arg1 = PG_GETARG_INT16(0);
 	int64		arg2 = PG_GETARG_INT64(1);
 	int64		result;
+
+	YB_CHECK_INT64_OVERFLOW(mul, (int64) arg1, arg2);
 
 	result = arg1 * arg2;
 

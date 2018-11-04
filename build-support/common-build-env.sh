@@ -1472,6 +1472,15 @@ read_file_and_trim() {
   fi
 }
 
+using_default_thirdparty_dir() {
+  if [[ -n ${YB_THIRDPARTY_DIR:-} &&
+        $YB_THIRDPARTY_DIR != "$YB_SRC_ROOT/thirdparty" ]]; then
+    # YB_THIRDPARTY_DIR is specified and is not the default location
+    return 1
+  fi
+  return 0
+}
+
 # In our internal environment we build third-party dependencies in separate directories on NFS
 # so that we can use them across many builds.
 find_thirdparty_dir() {
@@ -1881,10 +1890,8 @@ if [[ ! -d $YB_BUILD_SUPPORT_DIR ]]; then
         "$YB_BUILD_SUPPORT_DIR does not exist."
 fi
 
-using_default_thirdparty_dir=false
 if [[ -z ${YB_THIRDPARTY_DIR:-} ]]; then
-  YB_THIRDPARTY_DIR=$YB_SRC_ROOT/thirdparty
-  using_default_thirdparty_dir=true
+  export YB_THIRDPARTY_DIR=$YB_SRC_ROOT/thirdparty
 fi
 
 readonly YB_DEFAULT_CMAKE_OPTS=(

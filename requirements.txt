@@ -1,4 +1,4 @@
 PyYAML==3.12
 six==1.11.0
-yugabyte_pycommon==1.8.0
+yugabyte_pycommon==1.9.3
 compiledb==0.9.7

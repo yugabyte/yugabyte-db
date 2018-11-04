@@ -936,7 +936,7 @@ if "$java_only" && ! "$build_java"; then
         "--cxx-test or --skip-java-build."
 fi
 
-if [[ -n ${YB_THIRDPARTY_DIR:-} && $YB_THIRDPARTY_DIR != "$YB_SRC_ROOT/thirdparty" ]]; then
+if ! using_default_thirdparty_dir; then
   log "YB_THIRDPARTY_DIR ('$YB_THIRDPARTY_DIR') is not what we expect based on the source root " \
       "('$YB_SRC_ROOT/thirdparty'), not attempting to rebuild third-party dependencies."
   export NO_REBUILD_THIRDPARTY=1
@@ -982,8 +982,8 @@ fi
 configure_remote_compilation
 do_not_use_local_thirdparty_flag_path=$YB_SRC_ROOT/thirdparty/.yb_thirdparty_do_not_use
 
-if [[ -f $do_not_use_local_thirdparty_flag_path ]] || \
-   "$use_shared_thirdparty" || \
+if [[ -f $do_not_use_local_thirdparty_flag_path ]] ||
+   "$use_shared_thirdparty" ||
    using_remote_compilation && ! "$no_shared_thirdparty"; then
   find_thirdparty_dir
 fi
