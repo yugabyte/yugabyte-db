@@ -15,6 +15,28 @@
 #include "yb/gutil/strings/substitute.h"
 
 namespace yb {
+
+const std::unordered_map<string, vector<PermissionType>> all_permissions_by_resource = {
+    {"KEYSPACE", {ALTER_PERMISSION, AUTHORIZE_PERMISSION, CREATE_PERMISSION, DROP_PERMISSION,
+                  MODIFY_PERMISSION, SELECT_PERMISSION}},
+    {"TABLE", {ALTER_PERMISSION, AUTHORIZE_PERMISSION, DROP_PERMISSION, MODIFY_PERMISSION,
+               SELECT_PERMISSION}},
+    {"ROLE", {ALTER_PERMISSION, AUTHORIZE_PERMISSION, DROP_PERMISSION}}
+};
+
+const std::vector<PermissionType> empty_permissions;
+
+const vector<PermissionType>& all_permissions_for_resource(ResourceType resource_type) {
+  DCHECK(resource_type == ResourceType::KEYSPACE ||
+         resource_type == ResourceType::TABLE ||
+         resource_type == ResourceType::ROLE);
+  const auto iter = all_permissions_by_resource.find(ResourceType_Name(resource_type));
+  if (iter == all_permissions_by_resource.end()) {
+    return empty_permissions;
+  }
+  return iter->second;
+}
+
 std::string get_canonical_keyspace(const std::string &keyspace) {
   return strings::Substitute("$0/$1", kRolesDataResource, keyspace);
 }

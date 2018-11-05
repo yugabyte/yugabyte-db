@@ -81,22 +81,6 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     }
   }
 
-  private void assertPermissionsGranted(String role, String resource, List<String> permissions) {
-    String stmt = String.format("SELECT permissions FROM system_auth.role_permissions " +
-                                "WHERE role = '%s' and resource = '%s';", role, resource);
-    List<Row> rows = s.execute(stmt).all();
-    assertEquals(1, rows.size());
-
-    List list = rows.get(0).getList("permissions", String.class);
-    assertEquals(permissions.size(), list.size());
-
-    for (String permission : permissions) {
-      if (!list.contains(permission)) {
-        fail("Unable to find permission " + permission);
-      }
-    }
-  }
-
   private String GrantStmt(String memberOfRole, String role) {
     return String.format("GRANT %s to %s", memberOfRole, role);
   }
@@ -272,17 +256,17 @@ public class TestRoles extends BaseAuthenticationCQLTest {
       throws Exception {
 
     s.execute(grantStmt.get(allPermissions.get(0), resourceName, role[0]));
-    assertPermissionsGranted(role[0], canonicalResource, Arrays.asList(allPermissions.get(0)));
+    assertPermissionsGranted(s, role[0], canonicalResource, Arrays.asList(allPermissions.get(0)));
 
     s.execute(revokeStmt.get(allPermissions.get(0), resourceName, role[0]));
-    assertPermissionsGranted(role[0], canonicalResource, Arrays.asList());
+    assertPermissionsGranted(s, role[0], canonicalResource, Arrays.asList());
 
     // Grant all the permissions one by one.
     List<String> grantedPermissions = new ArrayList<>();
     for (String permission: allPermissions) {
       s.execute(grantStmt.get(permission, resourceName, role[0]));
       grantedPermissions.add(permission);
-      assertPermissionsGranted(role[0], canonicalResource, grantedPermissions);
+      assertPermissionsGranted(s, role[0], canonicalResource, grantedPermissions);
     }
 
     // Revoke all the permissions one by one.
@@ -290,44 +274,44 @@ public class TestRoles extends BaseAuthenticationCQLTest {
       LOG.info("Revoking permission " + permission);
       s.execute(revokeStmt.get(permission, resourceName, role[0]));
       grantedPermissions.remove(0);
-      assertPermissionsGranted(role[0], canonicalResource, grantedPermissions);
+      assertPermissionsGranted(s, role[0], canonicalResource, grantedPermissions);
     }
 
     // Grant all the permissions at once.
     s.execute(grantStmt.get("ALL", resourceName, role[0]));
-    assertPermissionsGranted(role[0], canonicalResource, allPermissions);
+    assertPermissionsGranted(s, role[0], canonicalResource, allPermissions);
 
     // Revoke all the permissions at once.
     s.execute(revokeStmt.get("ALL", resourceName, role[0]));
-    assertPermissionsGranted(role[0], canonicalResource, Arrays.asList());
+    assertPermissionsGranted(s, role[0], canonicalResource, Arrays.asList());
 
     // Grant all the permissions at once.
     s.execute(grantStmt.get("ALL", resourceName, role[0]));
-    assertPermissionsGranted(role[0], canonicalResource, allPermissions);
+    assertPermissionsGranted(s, role[0], canonicalResource, allPermissions);
 
     // Revoke one of the permissions in the middle.
     s.execute(revokeStmt.get("CREATE", resourceName, role[0]));
     List<String> permissions = new ArrayList<>();
     permissions.addAll(allPermissions);
     permissions.remove(permissions.indexOf("CREATE"));
-    assertPermissionsGranted(role[0], canonicalResource, permissions);
+    assertPermissionsGranted(s, role[0], canonicalResource, permissions);
 
     if (permissions.contains("DESCRIBE")) {
       // Revoke another permission in the middle.
       s.execute(revokeStmt.get("DESCRIBE", resourceName, role[0]));
       permissions.remove(permissions.indexOf("DESCRIBE"));
-      assertPermissionsGranted(role[0], canonicalResource, permissions);
+      assertPermissionsGranted(s, role[0], canonicalResource, permissions);
     }
 
     // Revoke the first permission.
     s.execute(revokeStmt.get("ALTER", resourceName, role[0]));
     permissions.remove(permissions.indexOf("ALTER"));
-    assertPermissionsGranted(role[0], canonicalResource, permissions);
+    assertPermissionsGranted(s, role[0], canonicalResource, permissions);
 
     // Revoke the last permission.
     s.execute(revokeStmt.get("AUTHORIZE", resourceName, role[0]));
     permissions.remove(permissions.indexOf("AUTHORIZE"));
-    assertPermissionsGranted(role[0], canonicalResource, permissions);
+    assertPermissionsGranted(s, role[0], canonicalResource, permissions);
   }
 
   @Test
@@ -421,7 +405,7 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     // Grant all the permissions at once.
     String st = grantStmt.get("ALL", resourceName, role[0]);
     s.execute(st);
-    assertPermissionsGranted(role[0], canonicalResource, allPermissions);
+    assertPermissionsGranted(s, role[0], canonicalResource, allPermissions);
 
     // Test invalid statements.
     thrown.expect(SyntaxError.class);
@@ -429,12 +413,12 @@ public class TestRoles extends BaseAuthenticationCQLTest {
 
     thrown.expect(InvalidQueryException.class);
     s.execute(grantStmt.get("ALL", resourceName, "invalid_role"));
-    assertPermissionsGranted(role[0], canonicalResource, allPermissions);
+    assertPermissionsGranted(s, role[0], canonicalResource, allPermissions);
 
     if (!resourceName.isEmpty()) {
       thrown.expect(InvalidQueryException.class);
       s.execute(grantStmt.get("ALL", "invalid_resource", role[0]));
-      assertPermissionsGranted(role[0], canonicalResource, allPermissions);
+      assertPermissionsGranted(s, role[0], canonicalResource, allPermissions);
     }
 
     thrown.expect(SyntaxError.class);
@@ -443,12 +427,12 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     if (!resourceName.isEmpty()) {
       // This shouldn't return an error. It should just be ignored.
       s.execute(revokeStmt.get("ALL", "invalid_resource", role[0]));
-      assertPermissionsGranted(role[0], canonicalResource, allPermissions);
+      assertPermissionsGranted(s, role[0], canonicalResource, allPermissions);
     }
 
     // This shouldn't return an error. It should just be ignored.
     s.execute(revokeStmt.get("ALL", resourceName, "invalid_role"));
-    assertPermissionsGranted(role[0], canonicalResource, allPermissions);
+    assertPermissionsGranted(s, role[0], canonicalResource, allPermissions);
   }
 
   @Test
@@ -623,39 +607,39 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     // Grant describe on a role.
     String canonicalResource = "roles/" + role[2];
     s.execute(GrantPermissionRoleStmt(DESCRIBE, role[2], role[1]));
-    assertPermissionsGranted(role[1], canonicalResource, DESCRIBE_LIST);
+    assertPermissionsGranted(s, role[1], canonicalResource, DESCRIBE_LIST);
 
     // Revoke describe on a role.
     s.execute(RevokePermissionRoleStmt(DESCRIBE, role[2], role[1]));
-    assertPermissionsGranted(role[1], canonicalResource, new ArrayList<>());
+    assertPermissionsGranted(s, role[1], canonicalResource, new ArrayList<>());
 
     // Grant describe on all roles.
     canonicalResource = "roles";
     s.execute(GrantPermissionAllRolesStmt(DESCRIBE, role[3]));
-    assertPermissionsGranted(role[3], canonicalResource, DESCRIBE_LIST);
+    assertPermissionsGranted(s, role[3], canonicalResource, DESCRIBE_LIST);
 
     // Revoke describe on all roles.
     s.execute(RevokePermissionAllRolesStmt(DESCRIBE, role[3]));
-    assertPermissionsGranted(role[3], canonicalResource, new ArrayList<>());
+    assertPermissionsGranted(s, role[3], canonicalResource, new ArrayList<>());
 
     final String ALL = "ALL";
 
     // Grant ALL on a role.
     canonicalResource = "roles/" + role[4];
     s.execute(GrantPermissionRoleStmt(ALL, role[4], role[5]));
-    assertPermissionsGranted(role[5], canonicalResource, ALL_PERMISSIONS);
+    assertPermissionsGranted(s, role[5], canonicalResource, ALL_PERMISSIONS);
 
     // Revoke ALL on a role.
     s.execute(RevokePermissionRoleStmt(ALL, role[4], role[5]));
-    assertPermissionsGranted(role[5], canonicalResource, new ArrayList<>());
+    assertPermissionsGranted(s, role[5], canonicalResource, new ArrayList<>());
 
     // Grant ALL on all roles.
     canonicalResource = "roles";
     s.execute(GrantPermissionAllRolesStmt(ALL, role[6]));
-    assertPermissionsGranted(role[6], canonicalResource, ALL_PERMISSIONS);
+    assertPermissionsGranted(s, role[6], canonicalResource, ALL_PERMISSIONS);
 
     // Revoke ALL on all roles.
     s.execute(RevokePermissionAllRolesStmt(ALL, role[6]));
-    assertPermissionsGranted(role[6], canonicalResource, new ArrayList<>());
+    assertPermissionsGranted(s, role[6], canonicalResource, new ArrayList<>());
   }
 }

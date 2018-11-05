@@ -164,7 +164,8 @@ Status QLEnv::GrantRevokePermission(GrantRevokeStatementType statement_type,
 
 //------------------------------------------------------------------------------------------------
 Status QLEnv::CreateKeyspace(const std::string& keyspace_name) {
-  return client_->CreateNamespace(keyspace_name);
+  return client_->CreateNamespace(keyspace_name, YQLDatabase::YQL_DATABASE_UNDEFINED,
+      CurrentRoleName());
 }
 
 Status QLEnv::DeleteKeyspace(const string& keyspace_name) {
@@ -193,7 +194,7 @@ Status QLEnv::UseKeyspace(const string& keyspace_name) {
 Status QLEnv::CreateRole(const std::string& role_name,
                          const std::string& salted_hash,
                          const bool login, const bool superuser) {
-  return client_->CreateRole(role_name, salted_hash, login, superuser);
+  return client_->CreateRole(role_name, salted_hash, login, superuser, CurrentRoleName());
 }
 
 Status QLEnv::AlterRole(const std::string& role_name,

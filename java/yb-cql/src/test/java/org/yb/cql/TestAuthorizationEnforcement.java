@@ -36,7 +36,8 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
   private static final long PERMISSIONS_CACHE_TIME_MSECS = 100;
   // Time to sleep. Used to give the clients enough time to update their permissions cache.
-  private static final long TIME_SLEEP_MS = PERMISSIONS_CACHE_TIME_MSECS * 3;
+  // Used only when revoking a permission or altering the role to remove superuser property.
+  private static final long TIME_SLEEP_MS = PERMISSIONS_CACHE_TIME_MSECS * 4;
 
   // Value that we insert into the table.
   private static final int VALUE = 5;
@@ -160,25 +161,17 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     Thread.sleep(TIME_SLEEP_MS);
   }
 
-  private void grantPermissionNoSleep(String permission, String resourceType, String resource,
-                                      String role) throws Exception {
-    s.execute(String.format("GRANT %s ON %s %s TO %s", permission, resourceType, resource, role));
-  }
-
   private void grantPermission(String permission, String resourceType, String resource,
                                String role) throws Exception {
-    grantPermissionNoSleep(permission, resourceType, resource, role);
-    // Wait so that the clients' permissions cache is updated.
-    Thread.sleep(TIME_SLEEP_MS);
+    s.execute(String.format("GRANT %s ON %s %s TO %s", permission, resourceType, resource, role));
   }
 
   private void grantAllPermissionsExcept(List<String> exceptions, String resourceType,
                                          String resource, String role) throws Exception {
     List<String> permissions = getAllPermissionsExcept(exceptions);
     for (String permission : permissions) {
-      grantPermissionNoSleep(permission, resourceType, resource, role);
+      grantPermission(permission, resourceType, resource, role);
     }
-    Thread.sleep(TIME_SLEEP_MS);
   }
 
   private void grantAllPermission(String resourceType, String resource, String role)
@@ -334,7 +327,6 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   public void testSuperuserCanCreateKeyspace() throws Exception {
     // Make the role a superuser.
     s.execute(String.format("ALTER ROLE %s with SUPERUSER = true", username));
-    Thread.sleep(TIME_SLEEP_MS);
 
     createKeyspaceAndVerify(s2, keyspace + "_2");
   }
@@ -384,7 +376,6 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   public void testSuperuserCanDeleteKeyspace() throws Exception {
     // Make the role a superuser.
     s.execute(String.format("ALTER ROLE %s with SUPERUSER = true", username));
-    Thread.sleep(TIME_SLEEP_MS);
 
     deleteKeyspaceAndVerify(s2, keyspace);
   }
@@ -418,7 +409,6 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   public void testSuperuserCanCreateTable() throws Exception {
     // Make the role a superuser.
     s.execute(String.format("ALTER ROLE %s with SUPERUSER = true", username));
-    Thread.sleep(TIME_SLEEP_MS);
 
     createTableAndVerify(s2, keyspace, table);
   }
@@ -501,7 +491,6 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
     // Make the role a superuser.
     s.execute(String.format("ALTER ROLE %s with SUPERUSER = true", username));
-    Thread.sleep(TIME_SLEEP_MS);
 
     deleteTableAndVerify(s2, keyspace, table);
   }
@@ -623,7 +612,6 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
     // Make the role a superuser.
     s.execute(String.format("ALTER ROLE %s with SUPERUSER = true", username));
-    Thread.sleep(TIME_SLEEP_MS);
 
     selectAndVerify(s2, keyspace, table);
   }
@@ -740,7 +728,6 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
     // Make the role a superuser.
     s.execute(String.format("ALTER ROLE %s with SUPERUSER = true", username));
-    Thread.sleep(TIME_SLEEP_MS);
 
     insertRow(s2, keyspace, table);
   }
@@ -863,7 +850,6 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     createTableAndInsertRecord(s, keyspace, table);
 
     s.execute(String.format("ALTER ROLE %s with SUPERUSER = true", username));
-    Thread.sleep(TIME_SLEEP_MS);
 
     updateRowAndVerify(s2, keyspace, table);
   }
@@ -977,7 +963,6 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   public void testSuperuserCanTruncateTable() throws Exception {
     createTableAndInsertRecord(s, keyspace, table);
     s.execute(String.format("ALTER ROLE %s with SUPERUSER = true", username));
-    Thread.sleep(TIME_SLEEP_MS);
     truncateTableAndVerify(s2, keyspace, table);
   }
 
@@ -1070,7 +1055,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     testCreateRoleHelperWithSession(recipient_role, password, false, false, false, s);
     testCreateRoleHelperWithSession(granted_role, password, false, false, false, s);
 
-    grantPermissionNoSleep(AUTHORIZE, ROLE, granted_role, username);
+    grantPermission(AUTHORIZE, ROLE, granted_role, username);
     grantPermission(AUTHORIZE, ROLE, recipient_role, username);
 
     if (stmtType.equals(GRANT)) {
@@ -1154,7 +1139,6 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   // AUTHORIZE permission only on the granted role.
   @Test
   public void testRevokeRoleWithoutPermissionOnRecipientRole() throws Exception {
-    Thread.sleep(40000);
     testGrantRevokeRoleWithoutPermissionOnRecipientRole(REVOKE);
   }
 
@@ -1663,7 +1647,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     testCreateRoleHelperWithSession(recipient_role, password, false, false, false, s);
     testCreateRoleHelperWithSession(granted_role, password, false, false, false, s);
 
-    grantPermissionNoSleep(AUTHORIZE, ROLE, granted_role, username);
+    grantPermission(AUTHORIZE, ROLE, granted_role, username);
     grantPermission(AUTHORIZE, ROLE, recipient_role, username);
 
     String stmt;
@@ -1843,7 +1827,6 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     createTableAndVerify(s, keyspace, table);
 
     grantPermission(DROP, TABLE, String.format("%s.%s", keyspace, table), username);
-    Thread.sleep(5000);
 
     String drop_stmt = String.format("DROP TABLE %s.%s", keyspace, table);
     PreparedStatement stmt = s2.prepare(drop_stmt);
@@ -1854,5 +1837,153 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
     thrown.expect(UnauthorizedException.class);
     s2.execute(stmt.bind());
+  }
+
+  @Test
+  public void testOperationsOnKeyspaceByCreatorRole() throws Exception {
+    grantPermissionOnAllKeyspaces(CREATE, username);
+
+    String keyspace2 = keyspace + "_2";
+
+    s2.execute(String.format("CREATE KEYSPACE %s", keyspace2));
+
+    // Revoke CREATE on ALL KEYSPACES to ensure that we are allowed to create tables on keyspace2
+    // because we were granted CREATE permission on the new keyspace.
+    revokePermission(CREATE, ALL_KEYSPACES, "", username);
+
+    // Create a new table to test the CREATE permission.
+    s2.execute(String.format("CREATE TABLE %s.%s (h int, v int, PRIMARY KEY(h))",
+        keyspace2, table));
+
+    // Create another table using superuser cassandra. Role 'username' shouldn't have any
+    // permissions granted on this table because it's not the creator, but because it has all the
+    // permissions granted on the keyspace, 'username' should be able to do any operations on the
+    // table.
+    String table2 = table + "_2";
+    s2.execute(String.format("CREATE TABLE %s.%s (h int, v int, PRIMARY KEY(h))",
+        keyspace2, table2));
+
+    // Verify that we can insert a value in table2.
+    s2.execute (String.format("INSERT INTO %s.%s (h, v) VALUES (%d, %d)",
+        keyspace2, table2, VALUE, VALUE));
+
+    // Verify that we can read a value.
+    ResultSet rs = s2.execute (String.format("SELECT * from %s.%s", keyspace2, table2));
+    assertEquals(1, rs.all().size());
+
+    // Verify that we can update a value.
+    s2.execute(String.format("UPDATE %s.%s SET v = %d WHERE h = %d",
+        keyspace2, table2, VALUE + 1, VALUE));
+
+    // Verify that we can delete a value.
+    s2.execute(String.format("DELETE FROM %s.%s WHERE h = %d", keyspace2, table2, VALUE));
+
+    // Verify that we can alter the table.
+    s2.execute(String.format("ALTER TABLE %s.%s ADD v2 int", keyspace2, table2));
+
+    // Verify that we can drop the table.
+    s2.execute(String.format("DROP TABLE %s.%s", keyspace2, table2));
+
+    // Drop the table we created so that we can delete the keyspace (it needs to be empty).
+    s2.execute(String.format("DROP TABLE %s.%s", keyspace2, table));
+
+    // Verify that we can delete the keyspace.
+    s2.execute(String.format("DROP KEYSPACE %s", keyspace2));
+  }
+
+  @Test
+  public void testOperationsOnTableByCreatorRole() throws Exception {
+    grantPermission(CREATE, KEYSPACE, keyspace, username);
+
+    s2.execute(String.format("CREATE TABLE %s.%s (h int, v int, PRIMARY KEY(h))", keyspace, table));
+
+    // Verify that we can insert a value.
+    s2.execute (String.format("INSERT INTO %s.%s (h, v) VALUES (%d, %d)",
+        keyspace, table, VALUE, VALUE));
+
+    // Verify that we can read a value.
+    ResultSet rs = s2.execute (String.format("SELECT * from %s.%s", keyspace, table));
+    assertEquals(1, rs.all().size());
+
+    // Verify that we can update a value.
+    s2.execute(String.format("UPDATE %s.%s SET v = %d WHERE h = %d",
+        keyspace, table, VALUE + 1, VALUE));
+
+    // Verify that we can delete a value.
+    s2.execute(String.format("DELETE FROM %s.%s WHERE h = %d", keyspace, table, VALUE));
+
+    // Verify that we can alter the table.
+    s2.execute(String.format("ALTER TABLE %s.%s ADD v2 int", keyspace, table));
+
+    // Verify that we can drop the table.
+    s2.execute(String.format("DROP TABLE %s.%s", keyspace, table));
+  }
+
+  @Test
+  public void testOperationsOnRolesByCreatorRole() throws Exception {
+    grantPermissionOnAllRoles(CREATE, username);
+
+    String role1 = username + "_1";
+    String role2 = username + "_2";
+
+    // Create two roles.
+    s2.execute(String.format("CREATE ROLE %s", role1));
+    s2.execute(String.format("CREATE ROLE %s", role2));
+
+    // Alter role1.
+    s2.execute(String.format("ALTER ROLE %s WITH LOGIN = TRUE", role1));
+
+    // Grant role1 to role2. It should succeed because we should have AUTHORIZE permission on both
+    // roles.
+    s2.execute(String.format("GRANT %s to %s", role1, role2));
+
+    // Drop both roles.
+    s2.execute(String.format("DROP ROLE %s", role1));
+    s2.execute(String.format("DROP ROLE %s", role2));
+  }
+
+  @Test
+  public void testCreateKeyspaceStmtGrantsPermissionsToCreator() throws Exception {
+    // Grant CREATE permission on ALL KEYSPACES so that we can create a new keyspace.
+    grantPermissionOnAllKeyspaces(CREATE, username);
+
+    // Crete the keyspace.
+    String keyspace2 = keyspace + "_2";
+    s2.execute(String.format("CREATE KEYSPACE %s", keyspace2));
+
+    List<String> expectedPermissions =
+        Arrays.asList("ALTER", "AUTHORIZE", "CREATE", "DROP", "MODIFY", "SELECT");
+    String resource = String.format("data/%s", keyspace2);
+
+    assertPermissionsGranted(s, username, resource, expectedPermissions);
+  }
+
+  @Test
+  public void testCreateTableStmtGrantsPermissionsToCreator() throws Exception {
+    // Grant CREATE permission on keyspace so that we can create a new table.
+    grantPermission(CREATE, KEYSPACE, keyspace, username);
+
+    // Create the table.
+    s2.execute(String.format("CREATE TABLE %s.%s (h int, v int, PRIMARY KEY(h))", keyspace, table));
+
+    List<String> expectedPermissions =
+        Arrays.asList("ALTER", "AUTHORIZE", "DROP", "MODIFY", "SELECT");
+    String resoure = String.format("data/%s/%s", keyspace, table);
+
+    assertPermissionsGranted(s, username, resoure, expectedPermissions);
+  }
+
+  @Test
+  public void testCreateRoleStmtGrantsPermissionsToCreator() throws Exception {
+    // Grant CREATE permission on ALL ROLES so that we can create a new role.
+    grantPermissionOnAllRoles(CREATE, username);
+
+    // Create a new role.
+    s2.execute(String.format("CREATE ROLE %s", anotherUsername));
+
+    List<String> expectedPermissions = Arrays.asList("ALTER", "AUTHORIZE", "DROP");
+    String resource = String.format("roles/%s", anotherUsername);
+
+    assertPermissionsGranted(s, username, resource, expectedPermissions);
   }
 }
