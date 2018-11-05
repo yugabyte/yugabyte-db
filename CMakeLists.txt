@@ -32,10 +32,8 @@
 
 # Portions Copyright (c) YugaByte, Inc.
 
-# Require cmake that supports BYPRODUCTS in add_custom_command() [1].
-#
-# 1. https://cmake.org/Bug/view.php?id=14963
-cmake_minimum_required(VERSION 3.2.0)
+# Require cmake that includes FindICU module (https://cmake.org/cmake/help/v3.7/release/3.7.html)
+cmake_minimum_required(VERSION 3.7.0)
 
 # =================================================================================================
 # Functions
