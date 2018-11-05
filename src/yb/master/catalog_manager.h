@@ -1523,6 +1523,18 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                   const ResourceType resource_type,
                                   RespClass* resp);
 
+  // For each role in roles_map_ traverse all of its resources and delete any resource that matches
+  // the given canonical resource. This is used when a table/keyspace/role is deleted so that we
+  // don't leave old permissions alive. This is specially dangerous when a resource with the same
+  // canonical name is created again.
+  template<class RespClass>
+  CHECKED_STATUS RemoveAllPermissionsForResourceUnlocked(const std::string& canonical_resource,
+                                                         RespClass* resp);
+
+  template<class RespClass>
+  CHECKED_STATUS RemoveAllPermissionsForResource(const std::string& canonical_resource,
+                                                 RespClass* resp);
+
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
   // easy to make a "gettable set".

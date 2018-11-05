@@ -24,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 
+import java.sql.Time;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -35,6 +36,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(org.yb.cql.TestRoles.class);
 
   private static final long PERMISSIONS_CACHE_TIME_MSECS = 100;
+
   // Time to sleep. Used to give the clients enough time to update their permissions cache.
   // Used only when revoking a permission or altering the role to remove superuser property.
   private static final long TIME_SLEEP_MS = PERMISSIONS_CACHE_TIME_MSECS * 4;
@@ -990,7 +992,6 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     // Grant AUTHORIZE on granted_role.
     grantPermission(AUTHORIZE, ROLE, granted_role, username);
 
-    thrown.expect(UnauthorizedException.class);
     thrown.expect(UnauthorizedException.class);
     if (stmtType.equals(GRANT)) {
       s2.execute(String.format("GRANT %s TO %s", granted_role, anotherUsername));
@@ -1985,5 +1986,149 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     String resource = String.format("roles/%s", anotherUsername);
 
     assertPermissionsGranted(s, username, resource, expectedPermissions);
+  }
+
+  private void verifySomePermissionsGranted(String role, String resource) {
+    ResultSet rs = s.execute(String.format(
+        "SELECT * FROM system_auth.role_permissions WHERE role = '%s' AND resource = '%s'",
+        role, resource));
+    assert(!rs.all().isEmpty());
+  }
+
+  private void verifyPermissionsDeleted(String role, String resource) {
+    ResultSet rs = s.execute(String.format(
+        "SELECT * FROM system_auth.role_permissions WHERE role = '%s' AND resource = '%s'",
+        role, resource));
+    assert(rs.all().isEmpty());
+  }
+
+  @Test
+  public void testDeletingKeyspaceRemovesPermissionsToo() throws Exception {
+    String keyspace2 = keyspace + "_2";
+    s.execute(String.format("CREATE KEYSPACE %s", keyspace2));
+
+    grantAllPermission(KEYSPACE, keyspace2, username);
+    String resource = String.format("data/%s", keyspace2);
+    verifySomePermissionsGranted(username, resource);
+
+    s.execute(String.format("DROP KEYSPACE %s", keyspace2));
+    verifyPermissionsDeleted(username, resource);
+  }
+
+  @Test
+  public void testDeletingTableRemovesPermissionsToo() throws Exception {
+    createTableAndVerify(s, keyspace, table);
+
+    grantAllPermission(TABLE, table, username);
+    String resource = String.format("data/%s/%s", keyspace, table);
+    verifySomePermissionsGranted(username, resource);
+
+    s.execute(String.format("DROP TABLE %s.%s", keyspace, table));
+    verifyPermissionsDeleted(username, resource);
+  }
+
+  @Test
+  public void testDeletingRoleRemovesPermissionsToo() throws Exception {
+    testCreateRoleHelperWithSession(anotherUsername, password, false, false, false, s);
+
+    grantAllPermission(ROLE, anotherUsername, username);
+    String resource = String.format("roles/%s", anotherUsername);
+    verifySomePermissionsGranted(username, resource);
+
+    s.execute(String.format("DROP ROLE %s", anotherUsername));
+    verifyPermissionsDeleted(username, resource);
+  }
+
+  @Test
+  public void testNewKeyspaceWithOldNameDoesNotGetOldPermissions() throws Exception {
+    String keyspace2 = keyspace + "_2";
+
+    s.execute(String.format("CREATE KEYSPACE %s", keyspace2));
+
+    // Grant all the permissions to username role.
+    grantAllPermission(KEYSPACE, keyspace2, username);
+
+    // Create a table and insert a record to verify that username role received the permissions.
+    createTableAndInsertRecord(s2, keyspace2, table);
+
+    // Drop the table and keyspace.
+    s2.execute(String.format("DROP TABLE %s.%s", keyspace2, table));
+    s2.execute(String.format("DROP KEYSPACE %s", keyspace2));
+
+    // Create the keyspace again.
+    s.execute(String.format("CREATE KEYSPACE %s", keyspace2));
+
+    // Sleep to give the cache some time to be refreshed.
+    Thread.sleep(TIME_SLEEP_MS);
+
+    // Verify that username role can't create a table in the new keyspace.
+    thrown.expect(UnauthorizedException.class);
+    createTableAndVerify(s2, keyspace2, table);
+  }
+
+  @Test
+  public void testNewTableWithOldNameDoesNotGetOldPermissions() throws Exception {
+    createTableAndVerify(s, keyspace, table);
+
+    // Grant all the permissions to username role.
+    grantAllPermission(TABLE, table, username);
+
+    // username role should be able to insert a row.
+    insertRow(s2, keyspace, table);
+
+    s.execute(String.format("DROP TABLE %s.%s", keyspace, table));
+
+    // Create a new table with the same name.
+    createTableAndVerify(s, keyspace, table);
+
+    // Sleep to give the cache some time to be refreshed.
+    Thread.sleep(TIME_SLEEP_MS);
+
+    // Verify that we can't insert a row again since we haven't granted any permissions to
+    // username.
+    thrown.expect(UnauthorizedException.class);
+    insertRow(s2, keyspace, table);
+  }
+
+  @Test
+  public void testNewRoleWithOldNameDoesNotGetOldPermissions() throws Exception {
+    String role1 = username + "_1";
+    String role2 = username + "_2";
+    String role3 = username + "_3";
+
+    // Create the roles.
+    testCreateRoleHelperWithSession(role1, password, false, false, false, s);
+    testCreateRoleHelperWithSession(role2, password, false, false, false, s);
+    testCreateRoleHelperWithSession(role3, password, false, false, false, s);
+
+    // Grant all the permissions to username role on the roles we just created.
+    grantAllPermission(ROLE, role1, username);
+    grantAllPermission(ROLE, role2, username);
+    grantAllPermission(ROLE, role3, username);
+
+    verifySomePermissionsGranted(username, "roles/" + role1);
+    verifySomePermissionsGranted(username, "roles/" + role2);
+    verifySomePermissionsGranted(username, "roles/" + role3);
+
+    // Verify that username role can grant role1 to role2 (AUTHORIZE permissions on both roles
+    // needed to do this).
+    s2.execute(String.format("GRANT %s to %s", role1, role2));
+
+    // Used to verify that username role has permissions on role2 and role3 roles.
+    s2.execute(String.format("GRANT %s to %s", role2, role3));
+
+    // Drop role1 role.
+    s2.execute(String.format("DROP ROLE %s", role1));
+
+    // Create role1 role again.
+    testCreateRoleHelperWithSession(role1, password, false, false, false, s);
+
+    // Sleep to give the cache some time to be refreshed.
+    Thread.sleep(TIME_SLEEP_MS);
+
+    // Verify that we can't grant role1 to role3 since username role shouldn't have any permissions
+    // on role1 role.
+    thrown.expect(UnauthorizedException.class);
+    s2.execute(String.format("GRANT %s to %s", role1, role3));
   }
 }
