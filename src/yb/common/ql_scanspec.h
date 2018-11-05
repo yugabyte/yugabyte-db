@@ -124,11 +124,19 @@ class PgsqlScanSpec : public YQLScanSpec {
  public:
   typedef std::unique_ptr<common::PgsqlScanSpec> UniPtr;
 
-  explicit PgsqlScanSpec(QLClient client_type) : YQLScanSpec(client_type) {
+  explicit PgsqlScanSpec(QLClient client_type,
+                         const PgsqlExpressionPB *where_expr,
+                         QLExprExecutor::SharedPtr executor = nullptr);
+
+  virtual ~PgsqlScanSpec();
+
+  const PgsqlExpressionPB *where_expr() {
+    return where_expr_;
   }
 
-  virtual ~PgsqlScanSpec() {
-  }
+ protected:
+  const PgsqlExpressionPB *where_expr_;
+  QLExprExecutor::SharedPtr executor_;
 };
 
 } // namespace common

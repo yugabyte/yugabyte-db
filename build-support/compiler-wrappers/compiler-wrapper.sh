@@ -30,6 +30,7 @@ readonly GENERATED_BUILD_DEBUG_SCRIPT_DIR=$HOME/.yb-build-debug-scripts
 readonly SCRIPT_NAME="compiler-wrapper.sh"
 declare -i -r MAX_INPUT_FILES_TO_SHOW=20
 
+
 # -------------------------------------------------------------------------------------------------
 # Common functions
 
@@ -179,22 +180,6 @@ set +u
 # treated as such.
 compiler_args_str="${compiler_args[*]}"
 set -u
-
-if [[ ${build_type:-} == "asan" &&
-      $PWD == */postgres_build/src/backend/utils/adt &&
-      ( $compiler_args_str == *-c\ -o\ numeric.o\ numeric.c\ * ||
-        $compiler_args_str == *-c\ -o\ int.o\ .c\ *  ||
-        $compiler_args_str == *-c\ -o\ int8.o\ int8.c\ * ) ]]; then
-  # A hack for the problem observed in ASAN when compiling numeric.c with Clang 5.0:
-  # undefined reference to `__muloti4'
-  # (full log at http://bit.ly/2lYdYnp).
-  # Related to the problem reported at http://bit.ly/2NvS6MR.
-  #
-  # Also turning off UBSAN for PostgreSQL's arithmetic functions due to numerious overflows
-  # there that are later handled separately.
-  # https://gist.githubusercontent.com/mbautin/1a94e64e72f95f6ff97fe7bc7ceca70d/raw
-  compiler_args+=( -fno-sanitize=undefined )
-fi
 
 output_file=""
 input_files=()
@@ -465,6 +450,30 @@ local_build_exit_handler() {
 
 # -------------------------------------------------------------------------------------------------
 # Local build
+
+if [[ ${build_type:-} == "asan" &&
+      $PWD == */postgres_build/src/backend/utils/adt &&
+      ( $compiler_args_str == *\ -c\ -o\ numeric.o\ numeric.c\ * ||
+        $compiler_args_str == *\ -c\ -o\ int.o\ int.c\ * ||
+        $compiler_args_str == *\ -c\ -o\ int8.o\ int8.c\ * ) ]]; then
+  # A hack for the problem observed in ASAN when compiling numeric.c with Clang 5.0 and 6.0.
+  # undefined reference to `__muloti4'
+  # (full log at http://bit.ly/2lYdYnp).
+  # Related to the problem reported at http://bit.ly/2NvS6MR.
+
+  rewritten_args=()
+  for arg in "${compiler_args[@]}"; do
+    case $arg in
+      -fsanitize=undefined)
+        # Skip UBSAN
+      ;;
+      *)
+        rewritten_args+=( "$arg" )
+      ;;
+    esac
+  done
+  compiler_args=( "${rewritten_args[@]}" -fno-sanitize=undefined )
+fi
 
 set_default_compiler_type
 find_compiler_by_type "$YB_COMPILER_TYPE"

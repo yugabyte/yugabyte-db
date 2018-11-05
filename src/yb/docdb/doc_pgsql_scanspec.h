@@ -38,7 +38,7 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
                    const std::vector<PrimitiveValue>& hashed_components,
                    boost::optional<int32_t> hash_code,
                    boost::optional<int32_t> max_hash_code,
-                   const PgsqlExpressionPB *bool_expr,
+                   const PgsqlExpressionPB *where_expr,
                    const DocKey& start_doc_key = DocKey(),
                    bool is_forward_scan = true);
 
@@ -87,9 +87,6 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   // Max hash code is used if hashed_components_ vector is empty.
   // hash values are positive int16_t.
   const boost::optional<int32_t> max_hash_code_;
-
-  // Filter condition.
-  const PgsqlExpressionPB *condition_;
 
   // Specific doc key to scan if not empty.
   const DocKey doc_key_;

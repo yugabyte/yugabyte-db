@@ -70,7 +70,47 @@ void PgDmlWrite::PrepareColumns() {
   }
 }
 
+Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
+  // Iterate primary-key columns and remove the binds without values.
+  bool missing_primary_key = false;
+
+  // Remove empty binds from partition list.
+  auto partition_iter = write_req_->mutable_partition_column_values()->begin();
+  while (partition_iter != write_req_->mutable_partition_column_values()->end()) {
+    if (expr_binds_.find(&*partition_iter) == expr_binds_.end()) {
+      missing_primary_key = true;
+      partition_iter = write_req_->mutable_partition_column_values()->erase(partition_iter);
+    } else {
+      partition_iter++;
+    }
+  }
+
+  // Remove empty binds from range list.
+  auto range_iter = write_req_->mutable_range_column_values()->begin();
+  while (range_iter != write_req_->mutable_range_column_values()->end()) {
+    if (expr_binds_.find(&*range_iter) == expr_binds_.end()) {
+      missing_primary_key = true;
+      range_iter = write_req_->mutable_range_column_values()->erase(range_iter);
+    } else {
+      range_iter++;
+    }
+  }
+
+  // Set the primary key indicator in protobuf.
+  if (missing_primary_key) {
+    return STATUS(InvalidArgument, "Primary key must be fully specified for modifying table");
+  }
+  write_req_->set_missing_primary_key(missing_primary_key);
+  return Status::OK();
+}
+
 Status PgDmlWrite::Exec() {
+  // Delete allocated binds that are not associated with a value.
+  // YBClient interface enforce us to allocate binds for primary key columns in their indexing
+  // order, so we have to allocate these binds before associating them with values. When the values
+  // are not assigned, these allocated binds must be deleted.
+  RETURN_NOT_OK(DeleteEmptyPrimaryBinds());
+
   // First update protobuf with new bind values.
   RETURN_NOT_OK(UpdateBindPBs());
 

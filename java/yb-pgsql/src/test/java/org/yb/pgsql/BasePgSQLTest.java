@@ -305,7 +305,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     LOG.info("Postgres: Running initdb");
     String initCmd = String.format("%s/%s", pgBinDir, "initdb");
     ProcessBuilder procBuilder =
-        new ProcessBuilder(initCmd, "-U", DEFAULT_PG_USER).redirectErrorStream(true);
+        new ProcessBuilder(
+            initCmd, "-U", DEFAULT_PG_USER, "--encoding=UTF8").redirectErrorStream(true);
     procBuilder.environment().putAll(envVars);
     // Make the current directory different from the data directory so that we can collect a core
     // file.
@@ -640,11 +641,29 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected void assertOneRow(String stmt, Object... values)throws SQLException {
+  protected void assertOneRow(String stmt, Object... values) throws SQLException {
     try (Statement statement = connection.createStatement()) {
       try (ResultSet rs = statement.executeQuery(stmt)) {
         assertNextRow(rs, values);
         assertFalse(rs.next());
+      }
+    }
+  }
+
+  /*
+   * Returns whether or not this select statement requires filtering by Postgres (i.e. not all
+   * conditions can be pushed down to YugaByte).
+   */
+  protected boolean needsPgFiltering(String stmt) throws SQLException {
+    try (Statement statement = connection.createStatement()) {
+      try (ResultSet rs = statement.executeQuery("EXPLAIN " + stmt)) {
+        assert(rs.getMetaData().getColumnCount() == 1); // Expecting one string column.
+        while (rs.next()) {
+          if (rs.getString(1).contains("Filter:")) {
+            return true;
+          }
+        }
+        return false;
       }
     }
   }
