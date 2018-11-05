@@ -10036,3 +10036,76 @@ RETURNS text AS $$
          ORDER BY $1[i]
     ), $2);
 $$ LANGUAGE SQL immutable;
+
+-- policies_are( schema, table, policies[], description )
+CREATE OR REPLACE FUNCTION policies_are( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'policies',
+        ARRAY(
+            SELECT p.polname
+              FROM pg_catalog.pg_policy p
+              JOIN pg_catalog.pg_class c     ON c.oid = p.polrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = $1
+               AND c.relname = $2
+            EXCEPT
+            SELECT $3[i]
+              FROM generate_series(1, array_upper($3, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $3[i]
+              FROM generate_series(1, array_upper($3, 1)) s(i)
+            EXCEPT
+            SELECT p.polname
+              FROM pg_catalog.pg_policy p
+              JOIN pg_catalog.pg_class c     ON c.oid = p.polrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = $1
+               AND c.relname = $2
+        ),
+        $4
+    );
+$$ LANGUAGE SQL;
+
+-- policies_are( schema, table, policies[] )
+CREATE OR REPLACE FUNCTION policies_are( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT policies_are( $1, $2, $3, 'Table ' || quote_ident($1) || '.' || quote_ident($2) || ' should have the correct policies' );
+$$ LANGUAGE SQL;
+
+-- policies_are( table, policies[], description )
+CREATE OR REPLACE FUNCTION policies_are( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'policies',
+        ARRAY(
+            SELECT p.polname
+              FROM pg_catalog.pg_policy p
+              JOIN pg_catalog.pg_class c ON c.oid = p.polrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+             WHERE c.relname = $1
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+            EXCEPT
+            SELECT $2[i]
+              FROM generate_series(1, array_upper($2, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $2[i]
+              FROM generate_series(1, array_upper($2, 1)) s(i)
+            EXCEPT
+            SELECT p.polname
+              FROM pg_catalog.pg_policy p
+              JOIN pg_catalog.pg_class c ON c.oid = p.polrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        ),
+        $3
+    );
+$$ LANGUAGE SQL;
+
+-- policies_are( table, policies[] )
+CREATE OR REPLACE FUNCTION policies_are( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT policies_are( $1, $2, 'Table ' || quote_ident($1) || ' should have the correct policies' );
+$$ LANGUAGE SQL;
