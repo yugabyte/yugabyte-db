@@ -7157,6 +7157,48 @@ something like:
     # Failed test 17: "Role slim should be granted USAGE on oltp"
     #     Role slim does not exist
 
+### `policies_are()` ###
+
+    SELECT policies_are( :schema, :table, :policies, :description );
+    SELECT policies_are( :schema, :table, :policies );
+    SELECT policies_are( :table,  :policies, :description );
+    SELECT policies_are( :table,  :policies );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:table`.
+
+`:table`
+: Name of a table in which to find policies.
+
+`:policies`
+: An array of policy names.
+
+`:description`
+: A short description of the test.
+
+This function tests that all of the policies on the named table are only the
+policies that *should* be on that table. If the `:schema` argument is omitted,
+the table must be visible in the search path, excluding `pg_catalog` and
+`information_schema`. If the description is omitted, a generally useful
+default description will be generated. Example:
+
+    SELECT policies_are(
+        'myschema',
+        'atable',
+        ARRAY[ 'atable_policy_one', 'atable_policy_two' ]
+    );
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing policies, like so:
+
+    # Failed test 13: "Table myschema.atable should have the correct policies"
+    #     Extra policies:
+    #         policy_for_atable
+    #     Missing policies:
+    #         atable_policy_two
+
 No Test for the Wicked
 ======================
 
