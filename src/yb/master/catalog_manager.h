@@ -1513,6 +1513,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // SysVersionInfo object with version equal to 0 to track the roles versions.
   CHECKED_STATUS IncrementRolesVersionUnlocked();
 
+  // Grant the specified permissions.
+  template<class RespClass>
+  CHECKED_STATUS GrantPermissions(const RoleName& role_name,
+                                  const std::string& canonical_resource,
+                                  const std::string& resource_name,
+                                  const NamespaceName& keyspace,
+                                  const std::vector<PermissionType>& permissions,
+                                  const ResourceType resource_type,
+                                  RespClass* resp);
+
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
   // easy to make a "gettable set".

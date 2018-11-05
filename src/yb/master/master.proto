@@ -628,6 +628,9 @@ message CreateTableRequestPB {
   optional bytes indexed_table_id = 9; // Indexed table id of this index.
   optional bool is_local_index = 10 [ default = false ];  // Is a local index?
   optional bool is_unique_index = 11 [ default = false ]; // Is a unique index?
+
+  // For RBAC.
+  optional string creator_role_name = 12;
 }
 
 message CreateTableResponsePB {
@@ -1026,6 +1029,9 @@ message CreateNamespaceRequestPB {
 
   // Database type.
   optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
+
+  // For RBAC.
+  optional string creator_role_name = 3;
 }
 
 message CreateNamespaceResponsePB {
@@ -1070,6 +1076,8 @@ message CreateRoleRequestPB {
   optional string salted_hash = 2;
   optional bool login = 3;
   optional bool superuser = 4;
+  // Name of the role creating this role.
+  optional string creator_role_name = 5;
 }
 
 message CreateRoleResponsePB {

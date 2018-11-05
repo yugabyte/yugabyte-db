@@ -54,6 +54,8 @@ class YBTableCreator::Data {
 
   TableType table_type_ = TableType::DEFAULT_TABLE_TYPE;
 
+  RoleName creator_role_name_;
+
   int32_t num_tablets_ = 0;
 
   const YBSchema* schema_ = nullptr;

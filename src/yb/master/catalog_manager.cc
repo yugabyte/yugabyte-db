@@ -1863,6 +1863,18 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     tablet->mutable_metadata()->CommitMutation();
   }
 
+  if (req.has_creator_role_name()) {
+    const NamespaceName& keyspace_name = req.namespace_().name();
+    const TableName& table_name = req.name();
+    RETURN_NOT_OK(GrantPermissions(req.creator_role_name(),
+                                   get_canonical_table(keyspace_name, table_name),
+                                   table_name,
+                                   keyspace_name,
+                                   all_permissions_for_resource(ResourceType::TABLE),
+                                   ResourceType::TABLE,
+                                   resp));
+  }
+
   VLOG(1) << "Created table " << table->ToString();
   LOG(INFO) << "Successfully created " << object_type << " " << table->ToString()
             << " per request from " << RequestorString(rpc);
@@ -3755,6 +3767,61 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
   return Status::OK();
 }
 
+template<class RespClass>
+Status CatalogManager::GrantPermissions(const RoleName& role_name,
+                                        const std::string& canonical_resource,
+                                        const std::string& resource_name,
+                                        const NamespaceName& keyspace,
+                                        const std::vector<PermissionType>& permissions,
+                                        const ResourceType resource_type,
+                                        RespClass* resp) {
+  std::lock_guard<LockType> l(lock_);
+
+  scoped_refptr<RoleInfo> rp;
+  rp = FindPtrOrNull(roles_map_, role_name);
+  if (rp == nullptr) {
+    const Status s = STATUS_SUBSTITUTE(NotFound, "Role $0 was not found", role_name);
+    return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+  }
+
+  RETURN_NOT_OK(IncrementRolesVersionUnlocked());
+
+  {
+    SysRoleEntryPB* metadata;
+    ScopedMutation <RoleInfo> role_info_mutation(rp.get());
+    metadata = &rp->mutable_metadata()->mutable_dirty()->pb;
+
+    ResourcePermissionsPB* current_resource = metadata->add_resources();
+
+    current_resource->set_canonical_resource(canonical_resource);
+    current_resource->set_resource_type(resource_type);
+    current_resource->set_resource_name(resource_name);
+    current_resource->set_namespace_name(keyspace);
+
+    for (const auto& permission : permissions) {
+      if (permission == PermissionType::DESCRIBE_PERMISSION &&
+          resource_type != ResourceType::ROLE &&
+          resource_type != ResourceType::ALL_ROLES) {
+        // Describe permission should only be granted to the role resource.
+        continue;
+      }
+      current_resource->add_permissions(permission);
+    }
+    Status s = sys_catalog_->UpdateItem(rp.get());
+    if (!s.ok()) {
+      s = s.CloneAndPrepend(Substitute(
+          "An error occurred while updating permissions in sys-catalog: $0", s.ToString()));
+      LOG(WARNING) << s;
+      return CheckIfNoLongerLeaderAndSetupError(s, resp);
+    }
+    TRACE("Wrote Permission to sys-catalog");
+    role_info_mutation.Commit();
+
+    BuildResourcePermissionsUnlocked();
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                        CreateNamespaceResponsePB* resp,
                                        rpc::RpcContext* rpc) {
@@ -3818,6 +3885,17 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
   ns->mutable_metadata()->CommitMutation();
 
   LOG(INFO) << "Created namespace " << ns->ToString();
+
+  if (req->has_creator_role_name()) {
+    RETURN_NOT_OK(GrantPermissions(req->creator_role_name(),
+                                   get_canonical_keyspace(req->name()),
+                                   req->name() /* resource name */,
+                                   req->name() /* keyspace name */,
+                                   all_permissions_for_resource(ResourceType::KEYSPACE),
+                                   ResourceType::KEYSPACE,
+                                   resp));
+  }
+
   return Status::OK();
 }
 
@@ -4008,18 +4086,28 @@ Status CatalogManager::CreateRole(const CreateRoleRequestPB* req,
 
   RETURN_NOT_OK(CheckOnline());
   Status s;
+  {
+    TRACE("Acquired catalog manager lock");
+    std::lock_guard<LockType> l_big(lock_);
 
-  TRACE("Acquired catalog manager lock");
-  std::lock_guard<LockType> l_big(lock_);
-
-  if (FindPtrOrNull(roles_map_, req->name()) != nullptr) {
-    s = STATUS(AlreadyPresent,
-               Substitute("Role $0 already exists", req->name()));
-    return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_ALREADY_PRESENT, s);
+    if (FindPtrOrNull(roles_map_, req->name()) != nullptr) {
+      s = STATUS(AlreadyPresent,
+                 Substitute("Role $0 already exists", req->name()));
+      return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_ALREADY_PRESENT, s);
+    }
+    s = CreateRoleUnlocked(req->name(), req->salted_hash(), req->login(), req->superuser());
   }
-  s = CreateRoleUnlocked(req->name(), req->salted_hash(), req->login(), req->superuser());
   if (PREDICT_TRUE(s.ok())) {
     LOG(INFO) << "Created role: " << req->name();
+    if (req->has_creator_role_name()) {
+      RETURN_NOT_OK(GrantPermissions(req->creator_role_name(),
+                                     get_canonical_role(req->name()),
+                                     req->name() /* resource name */,
+                                     "" /* keyspace name */,
+                                     all_permissions_for_resource(ResourceType::ROLE),
+                                     ResourceType::ROLE,
+                                     resp));
+    }
   }
   return s;
 }

@@ -394,6 +394,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   shared_ptr<YBTableCreator> table_creator(ql_env_->NewTableCreator());
   table_creator->table_name(table_name)
       .table_type(YBTableType::YQL_TABLE_TYPE)
+      .creator_role_name(ql_env_->CurrentRoleName())
       .schema(&schema);
   if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
     const PTCreateIndex *index_node = static_cast<const PTCreateIndex*>(tnode);
