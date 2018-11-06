@@ -172,11 +172,12 @@ public class HealthChecker extends Thread {
         }
         info.sshPort = sshPort;
         info.identityFile = accessKey.getKeyInfo().privateKey;
+        info.ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
         clusterMetadata.put(cluster.uuid, info);
       }
       for (NodeDetails nd : details.nodeDetailsSet) {
-        HealthManager.ClusterInfo cluster = clusterMetadata.get(nd.placementUuid);
-        if (cluster == null) {
+        HealthManager.ClusterInfo info = clusterMetadata.get(nd.placementUuid);
+        if (info == null) {
           invalidUniverseData = true;
           LOG.warn(String.format(
                 "Universe %s has node %s with invalid placement %s", u.name, nd.nodeName,
@@ -184,10 +185,10 @@ public class HealthChecker extends Thread {
           break;
         }
         if (nd.isMaster) {
-          cluster.masterNodes.add(nd.cloudInfo.private_ip);
+          info.masterNodes.add(nd.cloudInfo.private_ip);
         }
         if (nd.isTserver) {
-          cluster.tserverNodes.add(nd.cloudInfo.private_ip);
+          info.tserverNodes.add(nd.cloudInfo.private_ip);
         }
       }
       // If any nodes were invalid, abort for this universe.
