@@ -26,6 +26,7 @@ public class HealthManager extends DevopsBase {
     public int sshPort;
     public List<String> masterNodes = new ArrayList<>();
     public List<String> tserverNodes = new ArrayList<>();
+    public String ybSoftwareVersion = null;
   }
 
   public ShellProcessHandler.ShellResponse runCommand(
