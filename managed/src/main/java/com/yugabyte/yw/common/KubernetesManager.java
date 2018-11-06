@@ -23,7 +23,7 @@ public class KubernetesManager {
   @Inject
   play.Configuration appConfig;
 
-  private static String SERVICE_INFO_JSONPATH="{.spec.clusterIP}|{.status.*.ingress[0].ip}";
+  private static String SERVICE_INFO_JSONPATH="{.spec.clusterIP}|{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}";
 
   public ShellProcessHandler.ShellResponse createNamespace(UUID providerUUID, String universePrefix) {
     List<String> commandList = ImmutableList.of("kubectl",  "create",

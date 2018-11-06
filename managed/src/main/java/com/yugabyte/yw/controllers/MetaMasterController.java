@@ -3,8 +3,11 @@
 package com.yugabyte.yw.controllers;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
@@ -127,15 +130,16 @@ public class MetaMasterController extends Controller {
           universeDetails.nodePrefix,
           type == ServerType.MASTER);
       if (r.code != 0 || r.message == null) {
-        LOG.warn("Kuberenetes getServiceIPs api failed!", r.message);
+        LOG.warn("Kubernetes getServiceIPs api failed!", r.message);
         return null;
       }
-      String[] ips = r.message.split("\\|");
+      List<String> ips = Arrays.stream(r.message.split("\\|"))
+          .filter((ip) -> !ip.isEmpty()).collect(Collectors.toList());
       int rpcPort = MASTER_RPC_PORT;
       if (!type.equals(ServerType.MASTER)) {
         rpcPort = type == ServerType.YQLSERVER ? YCQL_SERVER_RPC_PORT : YEDIS_SERVER_RPC_PORT;
       }
-      return String.format("%s:%d", ips[ips.length-1], rpcPort);
+      return String.format("%s:%d", ips.get(ips.size() - 1), rpcPort);
     }
   }
 }
