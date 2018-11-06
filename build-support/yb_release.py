@@ -198,10 +198,12 @@ def main():
             "specified on the command line ('{}')".format(build_root))
 
     thirdparty_dir = build_desc["thirdparty_dir"]
-    if thirdparty_dir != os.environ.get("YB_THIRDPARTY_DIR", thirdparty_dir):
+    thirdparty_dir_from_env = os.environ.get("YB_THIRDPARTY_DIR", thirdparty_dir)
+    if (thirdparty_dir != thirdparty_dir_from_env and
+            thirdparty_dir_from_env != os.path.join(YB_SRC_ROOT, 'thirdparty')):
         raise RuntimeError(
-            "Mismatch between env YB_THIRDPARTY_DIR: '{}' and build desc thirdparty_dir: '{}'"
-            .format(os.environ["YB_THIRDPARTY_DIR"], thirdparty_dir))
+            "Mismatch between non-default valueo of env YB_THIRDPARTY_DIR: '{}' and build desc "
+            "thirdparty_dir: '{}'".format(thirdparty_dir_from_env, thirdparty_dir))
     # Set the var for in-memory access to it across the other python files.
     set_thirdparty_dir(thirdparty_dir)
 
