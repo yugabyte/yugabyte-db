@@ -50,6 +50,10 @@ export const DELETE_CUSTOMER_CONFIG_RESPONSE = 'DELETE_CUSTOMER_CONFIG_RESPONSE'
 export const FETCH_CUSTOMER_CONFIGS = 'FETCH_CUSTOMER_CONFIGS';
 export const FETCH_CUSTOMER_CONFIGS_RESPONSE = 'FETCH_CUSTOMER_CONFIGS_RESPONSE';
 
+export const GET_LOGS = 'GET_LOGS';
+export const GET_LOGS_SUCCESS = 'GET_LOGS_SUCCESS';
+export const GET_LOGS_FAILURE = 'GET_LOGS_FAILURE';
+
 export function validateToken(tokenFromStorage) {
   const cUUID = localStorage.getItem("customer_id");
   const auth_token = localStorage.getItem("customer_token");
@@ -262,5 +266,28 @@ export function fetchCustomerConfigsResponse(response) {
   return {
     type: FETCH_CUSTOMER_CONFIGS_RESPONSE,
     payload: response
+  };
+}
+
+export function getLogs() {
+  // TODO(bogdan): Maybe make this a URL param somehow?
+  const request = axios.get(`${ROOT_URL}/logs/1000`);
+  return {
+    type: FETCH_HOST_INFO,
+    payload: request
+  };
+}
+
+export function getLogsSuccess(result) {
+  return {
+    type: GET_LOGS_SUCCESS,
+    payload: result
+  };
+}
+
+export function getLogsFailure(error) {
+  return {
+    type: GET_LOGS_FAILURE,
+    payload: error
   };
 }
