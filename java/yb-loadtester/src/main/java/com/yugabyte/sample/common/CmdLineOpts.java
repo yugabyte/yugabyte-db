@@ -268,6 +268,20 @@ public class CmdLineOpts {
     if (commandLine.hasOption("use_redis_cluster")) {
       AppBase.appConfig.useRedisCluster = true;
     }
+    if (commandLine.hasOption("yql_username")) {
+      if (!commandLine.hasOption("yql_password")) {
+        LOG.error("--yql_username requires --yql_password to be set");
+        System.exit(1);
+      }
+      AppBase.appConfig.cassandraUsername = commandLine.getOptionValue("yql_username");
+    }
+    if (commandLine.hasOption("yql_password")) {
+      if (!commandLine.hasOption("yql_username")) {
+        LOG.error("--yql_password requires --yql_username to be set");
+        System.exit(1);
+      }
+      AppBase.appConfig.cassandraPassword = commandLine.getOptionValue("yql_password");
+    }
   }
 
   /**
@@ -518,6 +532,12 @@ public class CmdLineOpts {
     options.addOption("run_time", true,
         "Run time for workload. Negative value means forever (default).");
     options.addOption("use_redis_cluster", false, "Use redis cluster client.");
+    options.addOption("yql_username", true,
+        "Use authentication with the YQL client using the provided username. " +
+            "If this option is set, yql_password option should be used too.");
+    options.addOption("yql_password", true,
+        "Use authentication with the YQL client using the provided password. " +
+            "If this option is set, yql_username option should be used too.");
 
     // Options for CassandraTimeseries workload.
     options.addOption("num_users", true, "[CassandraTimeseries] The total number of users.");
