@@ -172,7 +172,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     Universe universe = getKuberentesUniverse();
     ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
     re.code = 0;
-    re.message = "12.13.14.15|";
+    re.message = "12.13.14.15||";
     when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
 
     endpointPort.entrySet().forEach((endpoint) -> {
@@ -189,7 +189,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     Universe universe = getKuberentesUniverse();
     ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
     re.code = 0;
-    re.message = "12.13.14.15|56.78.90.1";
+    re.message = "12.13.14.15|56.78.90.1|";
     when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
 
     endpointPort.entrySet().forEach((endpoint) -> {
@@ -201,6 +201,39 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     });
   }
 
+  @Test
+  public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerHostname() {
+    Universe universe = getKuberentesUniverse();
+    ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
+    re.code = 0;
+    re.message = "12.13.14.15||loadbalancer.hostname";
+    when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
+
+    endpointPort.entrySet().forEach((endpoint) -> {
+      String expectedHostString = "loadbalancer.hostname:" + endpoint.getValue();
+      Result r = route(fakeRequest("GET", "/api/customers/" + defaultCustomer.uuid + "/universes/" +
+          universe.universeUUID + endpoint.getKey()));
+      JsonNode json = Json.parse(contentAsString(r));
+      assertEquals(expectedHostString, json.asText());
+    });
+  }
+
+  @Test
+  public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIpAndHostname() {
+    Universe universe = getKuberentesUniverse();
+    ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
+    re.code = 0;
+    re.message = "12.13.14.15|56.78.90.1|loadbalancer.hostname";
+    when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
+
+    endpointPort.entrySet().forEach((endpoint) -> {
+      String expectedHostString = "loadbalancer.hostname:" + endpoint.getValue();
+      Result r = route(fakeRequest("GET", "/api/customers/" + defaultCustomer.uuid + "/universes/" +
+          universe.universeUUID + endpoint.getKey()));
+      JsonNode json = Json.parse(contentAsString(r));
+      assertEquals(expectedHostString, json.asText());
+    });
+  }
   private void assertRestResult(Result result, boolean expectSuccess, int expectStatus) {
     assertEquals(expectStatus, result.status());
     JsonNode json = Json.parse(contentAsString(result));
