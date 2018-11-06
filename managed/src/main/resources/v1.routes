@@ -13,6 +13,7 @@ POST    /register                                 com.yugabyte.yw.controllers.Se
 GET     /customer_count                           com.yugabyte.yw.controllers.SessionController.customerCount()
 GET     /customers/:cUUID/host_info               com.yugabyte.yw.controllers.CustomerController.getHostInfo(cUUID: java.util.UUID)
 GET     /app_version                              com.yugabyte.yw.controllers.SessionController.appVersion()
+GET     /logs/:maxLines                           com.yugabyte.yw.controllers.SessionController.getLogs(maxLines: java.lang.Integer)
 
 # Initialize cloud information.
 GET     /customers/:cUUID/regions                 com.yugabyte.yw.controllers.RegionController.listAllRegions(cUUID: java.util.UUID)

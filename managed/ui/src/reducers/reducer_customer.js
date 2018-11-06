@@ -7,7 +7,7 @@ import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_RESPONSE,
          FETCH_CUSTOMER_COUNT, FETCH_YUGAWARE_VERSION, FETCH_YUGAWARE_VERSION_RESPONSE,
          UPDATE_PROFILE, UPDATE_PROFILE_SUCCESS, UPDATE_PROFILE_FAILURE, ADD_CUSTOMER_CONFIG,
          ADD_CUSTOMER_CONFIG_RESPONSE, FETCH_CUSTOMER_CONFIGS, FETCH_CUSTOMER_CONFIGS_RESPONSE,
-         DELETE_CUSTOMER_CONFIG, DELETE_CUSTOMER_CONFIG_RESPONSE } from '../actions/customers';
+         DELETE_CUSTOMER_CONFIG, DELETE_CUSTOMER_CONFIG_RESPONSE, GET_LOGS, GET_LOGS_SUCCESS, GET_LOGS_FAILURE } from '../actions/customers';
 import {sortVersionStrings} from '../utils/ObjectUtils';
 import { getInitialState, setLoadingState, setSuccessState, setFailureState, setPromiseResponse }  from '../utils/PromiseUtils';
 
@@ -90,6 +90,13 @@ export default function(state = INITIAL_STATE, action) {
       return setLoadingState(state, "deleteConfig", {});
     case DELETE_CUSTOMER_CONFIG_RESPONSE:
       return setPromiseResponse(state, "deleteConfig", action);
+
+    case GET_LOGS:
+      return {...state, yugaware_logs: null};
+    case GET_LOGS_SUCCESS:
+      return {...state, yugaware_logs: action.payload.data.lines.reverse()};
+    case GET_LOGS_FAILURE:
+      return {...state, yugaware_logs: null };
     default:
       return state;
   }

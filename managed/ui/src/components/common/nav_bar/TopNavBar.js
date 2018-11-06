@@ -21,6 +21,7 @@ export default class TopNavBar extends Component {
         ? currentCustomer.data.email
         : "";
 
+    // TODO(bogdan): icon for logs...
     return (
       <Navbar fixedTop>
         <Navbar.Header>
@@ -31,7 +32,6 @@ export default class TopNavBar extends Component {
 
         <div className="flex-grow">
         </div>
-        
         <Nav pullRight>
           <NavDropdown  eventKey="2" title={<span><i className="fa fa-user fa-fw"></i> {customerEmail}</span>} id="profile-dropdown">
             <LinkContainer to="/profile">
@@ -39,8 +39,13 @@ export default class TopNavBar extends Component {
                 <i className="fa fa-user fa-fw"></i>Profile
               </MenuItem>
             </LinkContainer>
+            <LinkContainer to="/logs">
+              <MenuItem eventKey="2.2">
+                <i className="fa fa-user fa-fw"></i>Logs
+              </MenuItem>
+            </LinkContainer>
             <LinkContainer to="/login">
-              <MenuItem eventKey="2.2" id="logoutLink" onClick={this.handleLogout}>
+              <MenuItem eventKey="2.3" id="logoutLink" onClick={this.handleLogout}>
                 <i className="fa fa-sign-out fa-fw"></i>Logout
               </MenuItem>
             </LinkContainer>
