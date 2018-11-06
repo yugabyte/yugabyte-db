@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -10,12 +11,16 @@ import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.models.Customer;
 
+import org.apache.commons.io.input.ReversedLinesFileReader;
+
 import play.Configuration;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.*;
 
+import java.io.File;
+import java.io.IOException;
 import javax.persistence.PersistenceException;
 
 public class SessionController extends Controller {
@@ -108,4 +113,32 @@ public class SessionController extends Controller {
     return ApiResponse.success(configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion));
   }
 
+  @With(TokenAuthenticator.class)
+  public Result getLogs(Integer maxLines) {
+    String logDir = appConfig.getString("application.home", ".");
+    File file = new File(String.format("%s/logs/application.log", logDir));
+    // TODO(bogdan): This is not really pagination friendly as it re-reads everything all the time..
+    // TODO(bogdan): Need to figure out if there's a rotation-friendly log-reader..
+    try {
+      ReversedLinesFileReader reader = new ReversedLinesFileReader(file);
+      int index = 0;
+      ObjectNode result = Json.newObject();
+      ArrayNode lines = Json.newArray();
+      while (index++ < maxLines) {
+        String line = reader.readLine();
+        if (line != null) {
+          lines.add(line);
+        } else {
+          // No more lines.
+          break;
+        }
+      }
+      result.put("lines", lines);
+
+      return ApiResponse.success(result);
+    } catch (IOException ex) {
+      ex.printStackTrace();
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Could not open log file");
+    }
+  }
 }
