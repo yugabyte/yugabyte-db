@@ -152,4 +152,24 @@ public class KubernetesManagerTest extends FakeDBApplication {
         command.getAllValues());
     assertTrue(config.getValue().isEmpty());
   }
+
+  @Test
+  public void getMasterServiceIPs() {
+      kubernetesManager.getServiceIPs(defaultProvider.uuid, "demo-universe", true);
+      Mockito.verify(shellProcessHandler, times(1))
+          .run(command.capture(), (Map<String, String>) config.capture());
+      assertEquals(ImmutableList.of("kubectl", "get", "svc",
+          "yb-master-service", "--namespace", "demo-universe", "-o",
+          "jsonpath={.spec.clusterIP}|{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}"), command.getValue());
+  }
+
+  @Test
+  public void getTserverServiceIPs() {
+    kubernetesManager.getServiceIPs(defaultProvider.uuid, "demo-universe", false);
+    Mockito.verify(shellProcessHandler, times(1))
+        .run(command.capture(), (Map<String, String>) config.capture());
+    assertEquals(ImmutableList.of("kubectl", "get", "svc",
+        "yb-tserver-service", "--namespace", "demo-universe", "-o",
+        "jsonpath={.spec.clusterIP}|{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}"), command.getValue());
+  }
 }
