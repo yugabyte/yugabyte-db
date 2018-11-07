@@ -40,6 +40,7 @@ class MacLibraryPackager:
 
         self.dest_dir = dest_dir
         self.verbose_mode = verbose_mode
+        self.absolute_paths_by_libname = {}
 
     def package_binaries(self):
         src = self.build_dir
@@ -205,6 +206,7 @@ class MacLibraryPackager:
             # If we don't skip system libraries and package it, macOS will complain that the library
             # exists in two different places (in /usr/lib and in our package lib directory).
             if path.startswith('/usr/lib'):
+                self.absolute_paths_by_libname[os.path.basename(path)] = path
                 continue
             if path.startswith('@rpath'):
                 name = os.path.basename(path)
@@ -213,14 +215,28 @@ class MacLibraryPackager:
                     candidate_path = os.path.join(rpath, name)
                     if os.path.isfile(candidate_path):
                         absolute_dependency_paths.append(candidate_path)
+                        self.absolute_paths_by_libname[name] = candidate_path
                         break
-            elif not path.startswith('@loader_path'):
+            elif path.startswith('@loader_path'):
+                absolute_path = self.absolute_paths_by_libname[os.path.basename(filename)]
+                if not os.path.isfile(absolute_path):
+                    raise RuntimeError("File %s doesn't exist" % absolute_path)
+
+                # Replace @loader_path with the absolute dir path of filename.
+                absolute_dir = os.path.dirname(absolute_path)
+                new_lib_path = path.replace('@loader_path', absolute_dir)
+                name = os.path.basename(path)
+                if not os.path.isfile(new_lib_path):
+                    raise RuntimeError("File %s doesn't exist" % new_lib_path)
+                absolute_dependency_paths.append(new_lib_path)
+                self.absolute_paths_by_libname[name] = new_lib_path
+            else:
                 # This should be an absolute path.
                 if os.path.isfile(path):
                     absolute_dependency_paths.append(path)
+                    self.absolute_paths_by_libname[os.path.basename(path)] = path
                 else:
-                    raise RuntimeError("File %s doesn't exist", path)
-
+                    raise RuntimeError("File %s doesn't exist" % path)
             dependency_paths.append(path)
 
         return dependency_paths, absolute_dependency_paths
