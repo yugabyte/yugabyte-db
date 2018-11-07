@@ -14,8 +14,12 @@
 #include <cassandra.h>
 
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
+#include "yb/util/jsonreader.h"
 
 using std::string;
+using std::vector;
+
+using rapidjson::Value;
 
 namespace yb {
 
@@ -117,7 +121,7 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
 
 namespace {
 
-static string ValueGetString(const CassRow* row, size_t index) {
+string ValueGetString(const CassRow* row, size_t index) {
   const char* s = nullptr;
   size_t sz = 0;
   cass_value_get_string(cass_row_get_column(row, index), &s, &sz);
@@ -144,6 +148,7 @@ class TestData {
     CHECK_EQ(cass_true, cass_iterator_next(iterator));
     ReadValues(CHECK_NOTNULL(cass_iterator_get_row(iterator)), 1);
 
+    CHECK_EQ(cass_false, cass_iterator_next(iterator));
     cass_iterator_free(iterator);
     cass_result_free(result);
   }
@@ -267,7 +272,8 @@ TEST_F(CppCassandraDriverTest, TestBasicTypes) {
   ASSERT_EQ(input.str_, output.str_);
 }
 
-struct JsonData : TestData {
+class JsonData : public TestData {
+ public:
   JsonData() {}
   explicit JsonData(const string& j) : json_(j) {}
 
@@ -329,36 +335,84 @@ TEST_F(CppCassandraDriverTest, TestJsonBType) {
   doJsonTest(driver_.get(), "test1", "{\"b\":1}", update_op);
 }
 
+void verifyLongJson(const string& json) {
+    // Parse JSON.
+    JsonReader r(json);
+    ASSERT_OK(r.Init());
+    const Value* json_obj = nullptr;
+    EXPECT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
+    EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+
+    EXPECT_TRUE(json_obj->HasMember("b"));
+    EXPECT_EQ(rapidjson::kNumberType, (*json_obj)["b"].GetType());
+    EXPECT_EQ(1, (*json_obj)["b"].GetInt());
+
+    EXPECT_TRUE(json_obj->HasMember("a1"));
+    EXPECT_EQ(rapidjson::kArrayType, (*json_obj)["a1"].GetType());
+    const Value::ConstArray arr = (*json_obj)["a1"].GetArray();
+
+    EXPECT_EQ(rapidjson::kNumberType, arr[2].GetType());
+    EXPECT_EQ(3., arr[2].GetDouble());
+
+    EXPECT_EQ(rapidjson::kFalseType, arr[3].GetType());
+    EXPECT_EQ(false, arr[3].GetBool());
+
+    EXPECT_EQ(rapidjson::kTrueType, arr[4].GetType());
+    EXPECT_EQ(true, arr[4].GetBool());
+
+    EXPECT_EQ(rapidjson::kObjectType, arr[5].GetType());
+    const Value::ConstObject obj = arr[5].GetObject();
+    EXPECT_TRUE(obj.HasMember("k2"));
+    EXPECT_EQ(rapidjson::kArrayType, obj["k2"].GetType());
+    EXPECT_EQ(rapidjson::kNumberType, obj["k2"].GetArray()[1].GetType());
+    EXPECT_EQ(200, obj["k2"].GetArray()[1].GetInt());
+
+    EXPECT_TRUE(json_obj->HasMember("a"));
+    EXPECT_EQ(rapidjson::kObjectType, (*json_obj)["a"].GetType());
+    const Value::ConstObject obj_a = (*json_obj)["a"].GetObject();
+
+    EXPECT_TRUE(obj_a.HasMember("q"));
+    EXPECT_EQ(rapidjson::kObjectType, obj_a["q"].GetType());
+    const Value::ConstObject obj_q = obj_a["q"].GetObject();
+    EXPECT_TRUE(obj_q.HasMember("s"));
+    EXPECT_EQ(rapidjson::kNumberType, obj_q["s"].GetType());
+    EXPECT_EQ(2147483647, obj_q["s"].GetInt());
+
+    EXPECT_TRUE(obj_a.HasMember("f"));
+    EXPECT_EQ(rapidjson::kStringType, obj_a["f"].GetType());
+    EXPECT_EQ("hello", string(obj_a["f"].GetString()));
+}
+
 TEST_F(CppCassandraDriverTest, TestLongJson) {
   driver_->ExecuteQuery("CREATE TABLE basic (key text, json jsonb,"
                         " PRIMARY KEY (key));");
 
   const string long_json =
-    "{ "
-      "\"b\" : 1,"
-      "\"a2\" : {},"
-      "\"a3\" : \"\","
-      "\"a1\" : [1, 2, 3.0, false, true, { \"k1\" : 1, \"k2\" : [100, 200, 300], \"k3\" : true}],"
-      "\"a\" :"
-      "{"
-        "\"d\" : true,"
-        "\"q\" :"
-          "{"
-            "\"p\" : 4294967295,"
-            "\"r\" : -2147483648,"
-            "\"s\" : 2147483647"
-          "},"
-        "\"g\" : -100,"
-        "\"c\" : false,"
-        "\"f\" : \"hello\","
-        "\"x\" : 2.0,"
-        "\"y\" : 9223372036854775807,"
-        "\"z\" : -9223372036854775808,"
-        "\"u\" : 18446744073709551615,"
-        "\"l\" : 2147483647.123123e+75,"
-        "\"e\" : null"
-      "}"
-    "}";
+      "{ "
+        "\"b\" : 1,"
+        "\"a2\" : {},"
+        "\"a3\" : \"\","
+        "\"a1\" : [1, 2, 3.0, false, true, { \"k1\" : 1, \"k2\" : [100, 200, 300], \"k3\" : true}],"
+        "\"a\" :"
+        "{"
+          "\"d\" : true,"
+          "\"q\" :"
+            "{"
+              "\"p\" : 4294967295,"
+              "\"r\" : -2147483648,"
+              "\"s\" : 2147483647"
+            "},"
+          "\"g\" : -100,"
+          "\"c\" : false,"
+          "\"f\" : \"hello\","
+          "\"x\" : 2.0,"
+          "\"y\" : 9223372036854775807,"
+          "\"z\" : -9223372036854775808,"
+          "\"u\" : 18446744073709551615,"
+          "\"l\" : 2147483647.123123e+75,"
+          "\"e\" : null"
+        "}"
+      "}";
 
   const JsonData input(long_json);
   ASSERT_EQ(input.json_, long_json);
@@ -366,7 +420,7 @@ TEST_F(CppCassandraDriverTest, TestLongJson) {
   input.Insert(driver_.get(), "test");
 
   driver_->ExecuteQuery("INSERT INTO basic(key, json) values ('test0', '" + long_json + "');");
-  driver_->ExecuteQuery("INSERT INTO basic(key, json) values ('test1', '{\"a\":1}');");
+  driver_->ExecuteQuery("INSERT INTO basic(key, json) values ('test1', '{ \"a\" : 1 }');");
   driver_->ExecuteQuery("INSERT INTO basic(key, json) values ('test2', '\"abc\"');");
   driver_->ExecuteQuery("INSERT INTO basic(key, json) values ('test3', '3');");
   driver_->ExecuteQuery("INSERT INTO basic(key, json) values ('test4', 'true');");
@@ -375,38 +429,42 @@ TEST_F(CppCassandraDriverTest, TestLongJson) {
   driver_->ExecuteQuery("INSERT INTO basic(key, json) values ('test7', '2.0');");
   driver_->ExecuteQuery("INSERT INTO basic(key, json) values ('test8', '{\"b\" : 1}');");
 
-  JsonData output;
-  output.Print("OUTPUT before run");
-  output.Select(driver_.get(), "test");
-  LOG(INFO) << "Checking selected values...";
-  output.Print("RESULT OUTPUT");
+  for (const string& key : {"test", "test0"} ) {
+    JsonData output;
+    output.Print("OUTPUT before run");
+    output.Select(driver_.get(), key);
+    LOG(INFO) << "Checking selected JSON object for key=" << key;
+    output.Print("RESULT OUTPUT");
 
-  ASSERT_EQ(output.json_,
-  "{"
-    "\"a\":"
-    "{"
-      "\"c\":false,"
-      "\"d\":true,"
-      "\"e\":null,"
-      "\"f\":\"hello\","
-      "\"g\":-100,"
-      "\"l\":2.147483647123123e84,"
-      "\"q\":"
+    ASSERT_EQ(output.json_,
         "{"
-          "\"p\":4294967295,"
-          "\"r\":-2147483648,"
-          "\"s\":2147483647"
-        "},"
-        "\"u\":18446744073709551615,"
-        "\"x\":2.0,"
-        "\"y\":9223372036854775807,"
-        "\"z\":-9223372036854775808"
-      "},"
-      "\"a1\":[1,2,3.0,false,true,{\"k1\":1,\"k2\":[100,200,300],\"k3\":true}],"
-      "\"a2\":{},"
-      "\"a3\":\"\","
-      "\"b\":1"
-    "}");
+          "\"a\":"
+          "{"
+            "\"c\":false,"
+            "\"d\":true,"
+            "\"e\":null,"
+            "\"f\":\"hello\","
+            "\"g\":-100,"
+            "\"l\":2.147483647123123e84,"
+            "\"q\":"
+            "{"
+              "\"p\":4294967295,"
+              "\"r\":-2147483648,"
+              "\"s\":2147483647"
+            "},"
+            "\"u\":18446744073709551615,"
+            "\"x\":2.0,"
+            "\"y\":9223372036854775807,"
+            "\"z\":-9223372036854775808"
+          "},"
+          "\"a1\":[1,2,3.0,false,true,{\"k1\":1,\"k2\":[100,200,300],\"k3\":true}],"
+          "\"a2\":{},"
+          "\"a3\":\"\","
+          "\"b\":1"
+        "}");
+
+    verifyLongJson(output.json_);
+  }
 }
 
 }  // namespace yb
