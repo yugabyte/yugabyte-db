@@ -73,7 +73,7 @@ class ProviderConfiguration extends Component {
       this.setState({currentView: 'init'});
     }
 
-    if (isNonEmptyArray(customerTaskList) && isNonEmptyObject(currentProvider) && this.props.tasks.customerTaskList.length === 0) {
+    if (isNonEmptyArray(customerTaskList) && isNonEmptyObject(currentProvider) && isNonEmptyArray(this.props.tasks.customerTaskList) && this.props.tasks.customerTaskList.length === 0) {
       currentProviderTask = customerTaskList.find((task) => task.targetUUID === currentProvider.uuid);
       if (currentProviderTask) {
         this.props.getCurrentTaskData(currentProviderTask.id);
