@@ -157,6 +157,11 @@
 
     img {
       height: 50px;
+      
+      &.aws-logo {
+        height: 42px;
+        margin-top: 5px;
+      }
     }
 
     h3 {

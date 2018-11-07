@@ -7,7 +7,7 @@ import { AzureProviderConfigurationContainer, KubernetesProviderConfigurationCon
 import { Tab, Row, Col } from 'react-bootstrap';
 import { YBTabsPanel } from '../../panels';
 import './providerConfig.scss';
-import awsLogo from './images/aws.png';
+import awsLogo from './images/aws.svg';
 import azureLogo from './images/azure.png';
 import gkeLogo from './images/gke.png';
 import pksLogo from './images/pks.png';
