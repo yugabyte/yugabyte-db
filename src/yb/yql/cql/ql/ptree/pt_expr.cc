@@ -764,7 +764,10 @@ CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
   }
   desc_ = GetColumnDesc(sem_context, name_->last_name());
   if (desc_ == nullptr) {
-    return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
+    // If this is a nested select from an uncovered index, ignore column that is uncovered.
+    return sem_context->IsUncoveredIndexSelect()
+        ? Status::OK()
+        : sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
 
   // Type resolution: Ref(x) should have the same datatype as (x).
@@ -844,7 +847,10 @@ CHECKED_STATUS PTJsonColumnWithOperators::AnalyzeOperator(SemContext *sem_contex
   RETURN_NOT_OK(name_->Analyze(sem_context));
   desc_ = GetColumnDesc(sem_context, name_->last_name());
   if (desc_ == nullptr) {
-    return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
+    // If this is a nested select from an uncovered index, ignore column that is uncovered.
+    return sem_context->IsUncoveredIndexSelect()
+        ? Status::OK()
+        : sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
 
   SemState sem_state(sem_context);
@@ -911,7 +917,10 @@ CHECKED_STATUS PTSubscriptedColumn::AnalyzeOperator(SemContext *sem_context) {
   RETURN_NOT_OK(name_->Analyze(sem_context));
   desc_ = GetColumnDesc(sem_context, name_->last_name());
   if (desc_ == nullptr) {
-    return sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
+    // If this is a nested select from an uncovered index, ignore column that is uncovered.
+    return sem_context->IsUncoveredIndexSelect()
+        ? Status::OK()
+        : sem_context->Error(this, "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
 
   SemState sem_state(sem_context);

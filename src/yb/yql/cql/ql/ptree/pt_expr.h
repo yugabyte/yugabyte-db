@@ -925,6 +925,9 @@ class PTOperatorExpr : public PTExpr {
  protected:
   // Get the column descriptor from the current DML statement.
   const ColumnDesc *GetColumnDesc(const SemContext *sem_context, const MCString& col_name) const;
+
+  // Is the current DML a select on an uncovered index?
+  bool IsUncoveredIndexSelect(const SemContext *sem_context) const;
 };
 
 using PTOperator0 = PTExpr0<InternalType::VALUE_NOT_SET, DataType::UNKNOWN_DATA, PTOperatorExpr>;

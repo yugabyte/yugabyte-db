@@ -180,8 +180,8 @@ class Executor : public QLExprExecutor {
   using OpErrors = std::unordered_map<const client::YBqlOp*, Status>;
   CHECKED_STATUS ProcessAsyncStatus(const OpErrors& op_errors, ExecContext* exec_context);
 
-  // Append execution result.
-  CHECKED_STATUS AppendResult(const RowsResult::SharedPtr& result);
+  // Append rows result.
+  CHECKED_STATUS AppendRowsResult(RowsResult::SharedPtr&& rows_result);
 
   // Continue a multi-partition select (e.g. table scan or query with 'IN' condition on hash cols).
   Result<bool> FetchMoreRows(const PTSelectStmt* tnode,
@@ -189,8 +189,14 @@ class Executor : public QLExprExecutor {
                              TnodeContext* tnode_context,
                              ExecContext* exec_context);
 
+  // Fetch rows for a select statement using primary keys selected from an uncovered index.
+  Result<bool> FetchRowsByKeys(const PTSelectStmt* tnode,
+                               const client::YBqlReadOpPtr& select_op,
+                               const QLRowBlock& keys,
+                               TnodeContext* tnode_context);
+
   // Aggregate all result sets from all tablet servers to form the requested resultset.
-  CHECKED_STATUS AggregateResultSets(const PTSelectStmt* pt_select);
+  CHECKED_STATUS AggregateResultSets(const PTSelectStmt* pt_select, TnodeContext* tnode_context);
   CHECKED_STATUS EvalCount(const std::shared_ptr<QLRowBlock>& row_block,
                            int column_index,
                            QLValue *ql_value);
@@ -307,6 +313,9 @@ class Executor : public QLExprExecutor {
                                  const MCVector<ColumnOp>& key_where_ops,
                                  const MCList<ColumnOp>& where_ops,
                                  const MCList<SubscriptedColumnOp>& subcol_where_ops);
+
+  // Set a primary key in a read request.
+  CHECKED_STATUS WhereKeyToPB(QLReadRequestPB *req, const Schema& schema, const QLRow& key);
 
   // Convert an expression op in where clause to protobuf.
   CHECKED_STATUS WhereOpToPB(QLConditionPB *condition, const ColumnOp& col_op);

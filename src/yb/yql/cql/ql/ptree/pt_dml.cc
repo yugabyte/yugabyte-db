@@ -34,25 +34,50 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
                      const bool else_error,
                      PTDmlUsingClause::SharedPtr using_clause,
                      const bool returns_status)
-  : PTCollection(memctx, loc),
-    where_clause_(where_clause),
-    if_clause_(if_clause),
-    else_error_(else_error),
-    using_clause_(using_clause),
-    returns_status_(returns_status),
-    bind_variables_(memctx),
-    column_map_(memctx),
-    func_ops_(memctx),
-    key_where_ops_(memctx),
-    where_ops_(memctx),
-    subscripted_col_where_ops_(memctx),
-    json_col_where_ops_(memctx),
-    partition_key_ops_(memctx),
-    hash_col_bindvars_(memctx),
-    column_refs_(memctx),
-    static_column_refs_(memctx),
-    pk_only_indexes_(memctx),
-    non_pk_only_indexes_(memctx) {
+    : PTCollection(memctx, loc),
+      where_clause_(where_clause),
+      if_clause_(if_clause),
+      else_error_(else_error),
+      using_clause_(using_clause),
+      returns_status_(returns_status),
+      bind_variables_(memctx),
+      column_map_(memctx),
+      func_ops_(memctx),
+      key_where_ops_(memctx),
+      where_ops_(memctx),
+      subscripted_col_where_ops_(memctx),
+      json_col_where_ops_(memctx),
+      partition_key_ops_(memctx),
+      hash_col_bindvars_(memctx),
+      column_refs_(memctx),
+      static_column_refs_(memctx),
+      pk_only_indexes_(memctx),
+      non_pk_only_indexes_(memctx) {
+}
+
+// Clone a DML tnode for re-analysis. Only the syntactic information populated by the parser should
+// be cloned here. Semantic information should be left in the initial state to be populated when
+// this tnode is analyzed.
+PTDmlStmt::PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other)
+    : PTCollection(memctx, other.loc_ptr()),
+      where_clause_(other.where_clause_),
+      if_clause_(other.if_clause_),
+      else_error_(other.else_error_),
+      using_clause_(other.using_clause_),
+      returns_status_(other.returns_status_),
+      bind_variables_(other.bind_variables_, memctx),
+      column_map_(memctx),
+      func_ops_(memctx),
+      key_where_ops_(memctx),
+      where_ops_(memctx),
+      subscripted_col_where_ops_(memctx),
+      json_col_where_ops_(memctx),
+      partition_key_ops_(memctx),
+      hash_col_bindvars_(memctx),
+      column_refs_(memctx),
+      static_column_refs_(memctx),
+      pk_only_indexes_(memctx),
+      non_pk_only_indexes_(memctx) {
 }
 
 PTDmlStmt::~PTDmlStmt() {
@@ -420,6 +445,10 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
                                        const ColumnDesc *col_desc,
                                        PTExpr::SharedPtr value,
                                        PTExprListNode::SharedPtr col_args) {
+  // If this is a nested select from an uncovered index, ignore column that is uncovered.
+  if (col_desc == nullptr && sem_context->IsUncoveredIndexSelect()) {
+    return Status::OK();
+  }
   ColumnOpCounter& counter = op_counters_->at(col_desc->index());
   switch (expr->ql_op()) {
     case QL_OP_EQUAL: {

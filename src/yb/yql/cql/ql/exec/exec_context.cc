@@ -24,6 +24,7 @@ namespace ql {
 
 using client::CommitCallback;
 using client::Restart;
+using client::YBqlReadOpPtr;
 using client::YBSessionPtr;
 using client::YBTransactionPtr;
 
@@ -143,6 +144,18 @@ void ExecContext::Reset(const Restart restart) {
 TnodeContext::TnodeContext(const TreeNode* tnode) : tnode_(tnode), start_time_(MonoTime::Now()) {
 }
 
+Status TnodeContext::AppendRowsResult(RowsResult::SharedPtr&& rows_result) {
+  if (!rows_result) {
+    return Status::OK();
+  }
+  row_count_ += VERIFY_RESULT(QLRowBlock::GetRowCount(YQL_CLIENT_CQL, rows_result->rows_data()));
+  if (rows_result_ == nullptr) {
+    rows_result_ = std::move(rows_result);
+    return Status::OK();
+  }
+  return rows_result_->Append(std::move(*rows_result));
+}
+
 void TnodeContext::InitializePartition(QLReadRequestPB *req, uint64_t start_partition) {
   current_partition_index_ = start_partition;
   // Hash values before the first 'IN' condition will be already set.
@@ -205,7 +218,21 @@ bool TnodeContext::HasPendingOperations() const {
       return true;
     }
   }
+  if (child_context_) {
+    return child_context_->HasPendingOperations();
+  }
   return false;
+}
+
+void TnodeContext::SetUncoveredSelectOp(const YBqlReadOpPtr& select_op) {
+  uncovered_select_op_ = select_op;
+  const Schema& schema = static_cast<const PTSelectStmt*>(tnode_)->table()->InternalSchema();
+  std::vector<ColumnId> key_column_ids;
+  key_column_ids.reserve(schema.num_key_columns());
+  for (size_t idx = 0; idx < schema.num_key_columns(); idx++) {
+    key_column_ids.emplace_back(schema.column_id(idx));
+  }
+  keys_ = std::make_unique<QLRowBlock>(schema, key_column_ids);
 }
 
 }  // namespace ql
