@@ -21,10 +21,10 @@ namespace ql {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::WhereClauseToPB(QLWriteRequestPB *req,
-                                         const MCVector<ColumnOp>& key_where_ops,
-                                         const MCList<ColumnOp>& where_ops,
-                                         const MCList<SubscriptedColumnOp>& subcol_where_ops) {
+Status Executor::WhereClauseToPB(QLWriteRequestPB *req,
+                                 const MCVector<ColumnOp>& key_where_ops,
+                                 const MCList<ColumnOp>& where_ops,
+                                 const MCList<SubscriptedColumnOp>& subcol_where_ops) {
 
   // Setup the key columns.
   for (const auto& op : key_where_ops) {
@@ -257,7 +257,7 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
   return max_rows_estimate;
 }
 
-CHECKED_STATUS Executor::WhereOpToPB(QLConditionPB *condition, const ColumnOp& col_op) {
+Status Executor::WhereOpToPB(QLConditionPB *condition, const ColumnOp& col_op) {
   // Set the operator.
   condition->set_op(col_op.yb_op());
 
@@ -290,8 +290,32 @@ CHECKED_STATUS Executor::WhereOpToPB(QLConditionPB *condition, const ColumnOp& c
   return PTExprToPB(col_op.expr(), expr_pb);
 }
 
-CHECKED_STATUS Executor::WhereJsonColOpToPB(QLConditionPB *condition,
-                                            const JsonColumnOp& col_op) {
+Status Executor::WhereKeyToPB(QLReadRequestPB *req,
+                              const Schema& schema,
+                              const QLRow& key) {
+  // Add the hash column values
+  DCHECK(req->hashed_column_values().empty());
+  for (size_t idx = 0; idx < schema.num_hash_key_columns(); idx++) {
+    *req->add_hashed_column_values()->mutable_value() = key.column(idx).value();
+  }
+
+  // Add the range column values to the where clause
+  QLConditionPB *where_pb = req->mutable_where_expr()->mutable_condition();
+  if (!where_pb->has_op()) {
+    where_pb->set_op(QL_OP_AND);
+  }
+  DCHECK_EQ(where_pb->op(), QL_OP_AND);
+  for (size_t idx = schema.num_hash_key_columns(); idx < schema.num_key_columns(); idx++) {
+    QLConditionPB *col_cond_pb = where_pb->add_operands()->mutable_condition();
+    col_cond_pb->set_op(QL_OP_EQUAL);
+    col_cond_pb->add_operands()->set_column_id(schema.column_id(idx));
+    *col_cond_pb->add_operands()->mutable_value() = key.column(idx).value();
+  }
+
+  return Status::OK();
+}
+
+Status Executor::WhereJsonColOpToPB(QLConditionPB *condition, const JsonColumnOp& col_op) {
   // Set the operator.
   condition->set_op(col_op.yb_op());
 
@@ -310,8 +334,7 @@ CHECKED_STATUS Executor::WhereJsonColOpToPB(QLConditionPB *condition,
   return PTExprToPB(col_op.expr(), expr_pb);
 }
 
-CHECKED_STATUS Executor::WhereSubColOpToPB(QLConditionPB *condition,
-                                           const SubscriptedColumnOp& col_op) {
+Status Executor::WhereSubColOpToPB(QLConditionPB *condition, const SubscriptedColumnOp& col_op) {
   // Set the operator.
   condition->set_op(col_op.yb_op());
 
@@ -329,7 +352,7 @@ CHECKED_STATUS Executor::WhereSubColOpToPB(QLConditionPB *condition,
   return PTExprToPB(col_op.expr(), expr_pb);
 }
 
-CHECKED_STATUS Executor::FuncOpToPB(QLConditionPB *condition, const FuncOp& func_op) {
+Status Executor::FuncOpToPB(QLConditionPB *condition, const FuncOp& func_op) {
   // Set the operator.
   condition->set_op(func_op.yb_op());
 

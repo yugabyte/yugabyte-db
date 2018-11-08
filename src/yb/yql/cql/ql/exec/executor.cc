@@ -632,11 +632,24 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   }
 
   const StatementParameters& params = exec_context_->params();
-  // If there is a table id in the statement parameter's paging state, this is a continuation of
-  // a prior SELECT statement. Verify that the same table still exists.
-  const bool continue_select = !params.table_id().empty();
+  // If there is a table id in the statement parameter's paging state, this is a continuation of a
+  // prior SELECT statement. Verify that the same table/index still exists and matches the table id
+  // for query without index, or the index id in the leaf node (where child_select is null also).
+  const bool continue_select = !tnode->child_select() && !params.table_id().empty();
   if (continue_select && params.table_id() != table->id()) {
     return exec_context_->Error(tnode, "Table no longer exists.", ErrorCode::TABLE_NOT_FOUND);
+  }
+
+  // If there is an index to select from, execute it.
+  if (tnode->child_select()) {
+    const PTSelectStmt* child_select = tnode->child_select().get();
+    TnodeContext* child_context = tnode_context->AddChildTnode(child_select);
+    RETURN_NOT_OK(ExecPTNode(child_select, child_context));
+    // If the index covers the SELECT query fully, we are done. Otherwise, continue to prepare
+    // the SELECT from the table using the primary key to be returned from the index select.
+    if (child_select->covers_fully()) {
+      return Status::OK();
+    }
   }
 
   // Create the read request.
@@ -777,6 +790,17 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
     }
   }
 
+  // If this select statement uses an uncovered index underneath, save this op as a template to
+  // read from the table once the primary keys are returned from the uncovered index. The paging
+  // state should be used by the underlying select from the index only which decides where to
+  // continue the select from the index.
+  if (tnode->child_select() && !tnode->child_select()->covers_fully()) {
+    req->clear_return_paging_state();
+    tnode_context->SetUncoveredSelectOp(select_op);
+    result_ = std::make_shared<RowsResult>(select_op.get());
+    return Status::OK();
+  }
+
   // Add the operation.
   return AddOperation(select_op, tnode_context);
 }
@@ -785,14 +809,13 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
                                      const YBqlReadOpPtr& op,
                                      TnodeContext* tnode_context,
                                      ExecContext* exec_context) {
-  if (result_ == nullptr) {
+  RowsResult::SharedPtr current_result = tnode_context->rows_result();
+  if (!current_result) {
     return STATUS(InternalError, "Missing result for SELECT operation");
   }
 
   // Rows read so far: in this fetch, previous fetches (for paging selects), and in total.
-  RowsResult::SharedPtr current_result = std::static_pointer_cast<RowsResult>(result_);
-  const size_t current_fetch_row_count =
-      VERIFY_RESULT(QLRowBlock::GetRowCount(current_result->client(), current_result->rows_data()));
+  const size_t current_fetch_row_count = tnode_context->row_count();
   const size_t previous_fetches_row_count = exec_context->params().total_num_rows_read();
   const size_t total_row_count = previous_fetches_row_count + current_fetch_row_count;
 
@@ -811,7 +834,7 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
 
     // If the LIMIT clause has been reached, we are done.
     if (total_row_count >= limit_pb.value().int32_value()) {
-      current_result->clear_paging_state();
+      current_result->ClearPagingState();
       return false;
     }
 
@@ -836,7 +859,7 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
     // If there or no other partitions to query, we are done.
     if (tnode_context->UnreadPartitionsRemaining() <= 1) {
       // Clear the paging state, since we don't have any more data left in the table.
-      current_result->clear_paging_state();
+      current_result->ClearPagingState();
       return false;
     }
 
@@ -868,7 +891,7 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
       paging_state.set_next_partition_key(current_params.next_partition_key());
       paging_state.set_next_row_key(current_params.next_row_key());
 
-      current_result->set_paging_state(paging_state);
+      current_result->SetPagingState(paging_state);
     }
 
     return false;
@@ -894,6 +917,23 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
   paging_state->set_total_num_rows_read(total_row_count);
   paging_state->set_total_rows_skipped(total_rows_skipped);
   return true;
+}
+
+
+Result<bool> Executor::FetchRowsByKeys(const PTSelectStmt* tnode,
+                                       const YBqlReadOpPtr& select_op,
+                                       const QLRowBlock& keys,
+                                       TnodeContext* tnode_context) {
+  const Schema& schema = tnode->table()->InternalSchema();
+  for (const QLRow& key : keys.rows()) {
+    YBqlReadOpPtr op(tnode->table()->NewQLSelect());
+    op->set_yb_consistency_level(select_op->yb_consistency_level());
+    QLReadRequestPB* req = op->mutable_request();
+    req->CopyFrom(select_op->request());
+    RETURN_NOT_OK(WhereKeyToPB(req, schema, key));
+    RETURN_NOT_OK(AddOperation(op, tnode_context));
+  }
+  return !keys.rows().empty();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1136,6 +1176,23 @@ bool NeedsRestart(const Status& s) {
   return s.IsTryAgain() || s.IsExpired() || s.IsTimedOut();
 }
 
+// Process TnodeContexts and their children under an ExecContext.
+Status ProcessTnodeContexts(ExecContext* exec_context,
+                            const std::function<Result<bool>(TnodeContext*)>& processor) {
+  for (TnodeContext& tnode_context : exec_context->tnode_contexts()) {
+    TnodeContext* p = &tnode_context;
+    while (p != nullptr) {
+      const Result<bool> done = processor(p);
+      RETURN_NOT_OK(done);
+      if (done.get()) {
+        return Status::OK();
+      }
+      p = p->child_context();
+    }
+  }
+  return Status::OK();
+}
+
 } // namespace
 
 void Executor::FlushAsync() {
@@ -1194,14 +1251,18 @@ void Executor::FlushAsync() {
     if (IsReturnsStatusBatch()) {
       for (ExecContext& exec_context : exec_contexts_) {
         int64_t row_count = 0;
-        for (TnodeContext& tnode_context : exec_context.tnode_contexts()) {
-          for (client::YBqlOpPtr& op : tnode_context.ops()) {
-            if (!op->rows_data().empty()) {
-              DCHECK_EQ(++row_count, 1) << exec_context.stmt() << " returns multiple status row";
-              RETURN_STMT_NOT_OK(AppendResult(std::make_shared<RowsResult>(op.get())));
-            }
-          }
-        }
+        RETURN_STMT_NOT_OK(ProcessTnodeContexts(
+            &exec_context,
+            [this, &exec_context, &row_count](TnodeContext* tnode_context) -> Result<bool> {
+              for (client::YBqlOpPtr& op : tnode_context->ops()) {
+                if (!op->rows_data().empty()) {
+                  DCHECK_EQ(++row_count, 1) << exec_context.stmt()
+                                            << " returned multiple status rows";
+                  RETURN_NOT_OK(AppendRowsResult(std::make_shared<RowsResult>(op.get())));
+                }
+              }
+              return false; // not done
+            }));
       }
     }
     return StatementExecuted(Status::OK());
@@ -1344,7 +1405,8 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
       // For SELECT statement, aggregate result sets if needed.
       const TreeNode *tnode = tnode_context.tnode();
       if (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt) {
-        RETURN_STMT_NOT_OK(AggregateResultSets(static_cast<const PTSelectStmt *>(tnode)));
+        RETURN_STMT_NOT_OK(AggregateResultSets(static_cast<const PTSelectStmt *>(tnode),
+                                               &tnode_context));
       }
 
       // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been completed
@@ -1383,7 +1445,8 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
         continue;
       }
 
-      // Remove the statement tnode that has completed.
+      // Move rows results and remove the statement tnode that has completed.
+      RETURN_STMT_NOT_OK(AppendRowsResult(std::move(tnode_context.rows_result())));
       tnode_itr = tnode_contexts.erase(tnode_itr);
     }
 
@@ -1441,14 +1504,17 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
          (op->response().has_applied() && !op->response().applied()))) {
       exec_context_->AbortTransaction();
       if (IsReturnsStatusBatch()) {
-        for (auto& tnode_context2 : exec_context_->tnode_contexts()) {
-          for (auto& op2 : tnode_context2.ops()) {
-            if (op2 != op) {
-              op2->mutable_response()->set_status(QLResponsePB::YQL_STATUS_OK);
-              op2->rows_data().clear();
-            }
-          }
-        }
+        RETURN_NOT_OK(ProcessTnodeContexts(
+            exec_context_,
+            [&op](TnodeContext* tnode_context) -> Result<bool> {
+              for (auto& other : tnode_context->ops()) {
+                if (other != op) {
+                  other->mutable_response()->set_status(QLResponsePB::YQL_STATUS_OK);
+                  other->mutable_rows_data()->clear();
+                }
+              }
+              return false; // not done
+            }));
       }
     }
 
@@ -1473,28 +1539,72 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
       continue;
     }
 
-    // Append the row if present.
+    // Append the rows if present.
     if (!op->rows_data().empty()) {
-      RETURN_NOT_OK(AppendResult(std::make_shared<RowsResult>(op.get())));
+      RETURN_NOT_OK(tnode_context->AppendRowsResult(std::make_shared<RowsResult>(op.get())));
     }
 
     // For SELECT statement, check if there are more rows to fetch and apply the op as needed.
     if (tnode->opcode() == TreeNodeOpcode::kPTSelectStmt) {
       const auto* select_stmt = static_cast<const PTSelectStmt *>(tnode);
-      DCHECK_EQ(op->type(), YBOperation::Type::QL_READ);
-      const auto& read_op = std::static_pointer_cast<YBqlReadOp>(op);
-      if (VERIFY_RESULT(FetchMoreRows(select_stmt, read_op, tnode_context, exec_context_))) {
-        op->mutable_response()->Clear();
-        TRACE("Apply");
-        RETURN_NOT_OK(session_->Apply(op));
-        has_buffered_ops = true;
-        op_itr++;
-        continue;
+      // Do this except for the parent SELECT with an index. For covered index, we will select
+      // from the index only. For uncovered index, the parent SELECT will fetch using the primary
+      // keys returned from below.
+      if (!select_stmt->child_select()) {
+        DCHECK_EQ(op->type(), YBOperation::Type::QL_READ);
+        const auto& read_op = std::static_pointer_cast<YBqlReadOp>(op);
+        if (VERIFY_RESULT(FetchMoreRows(select_stmt, read_op, tnode_context, exec_context_))) {
+          op->mutable_response()->Clear();
+          TRACE("Apply");
+          RETURN_NOT_OK(session_->Apply(op));
+          has_buffered_ops = true;
+          op_itr++;
+          continue;
+        }
       }
     }
 
     // Remove the op that has completed.
     op_itr = ops.erase(op_itr);
+  }
+
+  // If there is a child context, process it.
+  TnodeContext* child_context = tnode_context->child_context();
+  if (child_context != nullptr) {
+    const TreeNode *child_tnode = child_context->tnode();
+    if (VERIFY_RESULT(ProcessTnodeResults(child_context))) {
+      has_buffered_ops = true;
+    }
+
+    // If the child selects from an uncovered index, extract the primary keys returned and use them
+    // to select from the indexed table.
+    DCHECK_EQ(child_tnode->opcode(), TreeNodeOpcode::kPTSelectStmt);
+    DCHECK(!static_cast<const PTSelectStmt *>(child_tnode)->index_id().empty());
+    const bool covers_fully = static_cast<const PTSelectStmt *>(child_tnode)->covers_fully();
+    string& rows_data = child_context->rows_result()->rows_data();
+    if (!covers_fully && !rows_data.empty()) {
+      QLRowBlock* keys = tnode_context->keys();
+      keys->rows().clear();
+      Slice data(rows_data);
+      RETURN_NOT_OK(keys->Deserialize(YQL_CLIENT_CQL,  &data));
+      DCHECK_EQ(tnode->opcode(), TreeNodeOpcode::kPTSelectStmt);
+      const auto* select_stmt = static_cast<const PTSelectStmt *>(tnode);
+      const YBqlReadOpPtr& select_op = tnode_context->uncovered_select_op();
+      if (VERIFY_RESULT(FetchRowsByKeys(select_stmt, select_op, *keys, tnode_context))) {
+        has_buffered_ops = true;
+      }
+      rows_data.clear();
+    }
+
+    // If the current statement tnode and its child are done, move the result from the child
+    // for covered query, or just the paging state for uncovered query.
+    if (!tnode_context->HasPendingOperations() && !child_context->HasPendingOperations()) {
+      if (covers_fully) {
+        RETURN_NOT_OK(tnode_context->AppendRowsResult(std::move(child_context->rows_result())));
+      } else {
+        tnode_context->rows_result()->SetPagingState(std::move(*child_context->rows_result()));
+      }
+    }
   }
 
   return has_buffered_ops;
@@ -1795,41 +1905,46 @@ Status Executor::ProcessOpStatus(const PTDmlStmt* stmt,
 }
 
 Status Executor::ProcessAsyncStatus(const OpErrors& op_errors, ExecContext* exec_context) {
-  for (auto& tnode_context : exec_context->tnode_contexts()) {
-    const TreeNode* tnode = tnode_context.tnode();
-    for (auto& op : tnode_context.ops()) {
-      Status s;
-      const auto itr = op_errors.find(op.get());
-      if (itr != op_errors.end()) {
-        s = itr->second;
-      }
-      if (PREDICT_FALSE(!s.ok() && !NeedsRestart(s))) {
-        // YBOperation returns not-found error when the tablet is not found.
-        const auto errcode = s.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::EXEC_ERROR;
-        s = exec_context->Error(tnode, s, errcode);
-      }
-      if (s.ok()) {
-        DCHECK(tnode->IsDml()) << "Only DML should issue a read/write operation";
-        s = ProcessOpStatus(static_cast<const PTDmlStmt *>(tnode), op, exec_context);
-      }
-      if (NeedsRestart(s)) {
-        exec_context->Reset(client::Restart::kTrue);
-        return Status::OK();
-      }
-      RETURN_NOT_OK(ProcessStatementStatus(exec_context->parse_tree(), s));
-    }
-  }
-  return Status::OK();
+  return ProcessTnodeContexts(
+      exec_context,
+      [this, exec_context, &op_errors](TnodeContext* tnode_context) -> Result<bool> {
+        const TreeNode* tnode = tnode_context->tnode();
+        for (auto& op : tnode_context->ops()) {
+          Status s;
+          const auto itr = op_errors.find(op.get());
+          if (itr != op_errors.end()) {
+            s = itr->second;
+          }
+          if (PREDICT_FALSE(!s.ok() && !NeedsRestart(s))) {
+            // YBOperation returns not-found error when the tablet is not found.
+            const auto errcode = s.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND
+                                                : ErrorCode::EXEC_ERROR;
+            s = exec_context->Error(tnode, s, errcode);
+          }
+          if (s.ok()) {
+            DCHECK(tnode->IsDml()) << "Only DML should issue a read/write operation";
+            s = ProcessOpStatus(static_cast<const PTDmlStmt *>(tnode), op, exec_context);
+          }
+          if (NeedsRestart(s)) {
+            exec_context->Reset(client::Restart::kTrue);
+            return true; // done
+          }
+          RETURN_NOT_OK(ProcessStatementStatus(exec_context->parse_tree(), s));
+        }
+        return false; // not done
+      });
 }
 
-Status Executor::AppendResult(const RowsResult::SharedPtr& result) {
-  CHECK(result) << "No result to append";
-  if (result_ == nullptr) {
-    result_ = result;
+Status Executor::AppendRowsResult(RowsResult::SharedPtr&& rows_result) {
+  if (!rows_result) {
+    return Status::OK();
+  }
+  if (!result_) {
+    result_ = std::move(rows_result);
     return Status::OK();
   }
   CHECK(result_->type() == ExecutedResult::Type::ROWS);
-  return std::static_pointer_cast<RowsResult>(result_)->Append(*result);
+  return std::static_pointer_cast<RowsResult>(result_)->Append(std::move(*rows_result));
 }
 
 void Executor::StatementExecuted(const Status& s) {

@@ -28,6 +28,24 @@ class QLTestAnalyzer: public QLTestBase {
   QLTestAnalyzer() : QLTestBase() {
   }
 
+  // TODO(omer): should also input the index_tree, in order to ensure the id found is the id of the
+  // index that should be used, but I do not know how to do this yet, as index_tree has the name of
+  // the index while select_tree has the id.
+  void TestIndexSelection(const string& select_stmt,
+                          const bool use_index,
+                          const bool covers_fully) {
+    ParseTree::UniPtr parse_tree;
+    EXPECT_OK(TestAnalyzer(select_stmt, &parse_tree));
+
+    TreeNode::SharedPtr root = parse_tree->root();
+    CHECK_EQ(TreeNodeOpcode::kPTSelectStmt, root->opcode());
+    PTSelectStmt::SharedPtr pt_select_stmt = std::static_pointer_cast<PTSelectStmt>(root);
+    PTSelectStmt::SharedPtr pt_child_select = pt_select_stmt->child_select();
+    EXPECT_EQ(pt_child_select != nullptr, use_index) << select_stmt;
+    EXPECT_EQ(pt_child_select != nullptr && pt_child_select->covers_fully(), covers_fully)
+        << select_stmt;
+  }
+
   PTJsonColumnWithOperators* RetrieveJsonColumn(const ParseTree::UniPtr& parse_tree,
                                                 const DataType& expected_type) {
     auto select_stmt = std::dynamic_pointer_cast<PTSelectStmt>(parse_tree->root());
@@ -339,24 +357,7 @@ TEST_F(QLTestAnalyzer, TestCreateLocalIndex) {
 }
 
 
-// TODO(omer): should also input the index_tree, in order to ensure the id found is the id of the
-// index that should be used, but I do not know how to do this yet, as index_tree has the name of
-// the index while select_tree has the id.
-CHECKED_STATUS AnalyzeSelectTree(const ParseTree::UniPtr &select_parse_tree,
-                                 const bool use_index = false,
-                                 const bool covers_fully = false) {
-  TreeNode::SharedPtr root = select_parse_tree->root();
-  EXPECT_EQ(TreeNodeOpcode::kPTSelectStmt, root->opcode());
-  PTSelectStmt::SharedPtr pt_select_stmt = std::static_pointer_cast<PTSelectStmt>(root);
-
-  EXPECT_EQ(!pt_select_stmt->index_id().empty(), use_index);
-
-  EXPECT_EQ(pt_select_stmt->covers_fully(), covers_fully);
-
-  return Status::OK();
-}
-
-TEST_F(QLTestAnalyzer, TestSelectLocalIndex) {
+TEST_F(QLTestAnalyzer, TestIndexSelection) {
   CreateSimulatedCluster();
   TestQLProcessor *processor = GetQLProcessor();
   EXPECT_OK(processor->Run("CREATE TABLE t (h1 int, h2 int, r1 int, r2 int, c1 int, c2 int, "
@@ -365,9 +366,8 @@ TEST_F(QLTestAnalyzer, TestSelectLocalIndex) {
 
   ParseTree::UniPtr select_parse_tree, parse_tree;
 
-  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND r1 = 1", &select_parse_tree));
   // Should not use index if there is no index.
-  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, false, false));
+  TestIndexSelection("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND r1 = 1", false, false);
 
   EXPECT_OK(processor->Run("CREATE INDEX i1 ON t ((h1, h2), r1);"));
   EXPECT_OK(processor->Run("CREATE INDEX i2 ON t ((h1, h2), c2, c1);"));
@@ -380,69 +380,43 @@ TEST_F(QLTestAnalyzer, TestSelectLocalIndex) {
   client::YBTableName table_name(kDefaultKeyspaceName, "t");
   processor->RemoveCachedTableDesc(table_name);
 
-  // Should use the table.
-  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND c2 = 1 AND c1 = 1", &select_parse_tree));
-  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, false, false));
-
-  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND r1 = 1", &select_parse_tree));
-  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, false, false));
-
-  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND c1 = 1 AND c2 = 1", &select_parse_tree));
-  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, false, false));
+  // Should select from the indexed table.
+  TestIndexSelection("SELECT * FROM t WHERE h1 = 1 AND c2 = 1 AND c1 = 1", false, false);
+  TestIndexSelection("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND r1 = 1", false, false);
+  TestIndexSelection("SELECT * FROM t WHERE h1 = 1 AND c1 = 1 AND c2 = 1", false, false);
 
   // None for i1, as the table itself is always better.
 
   // Should use i2.
-  EXPECT_OK(TestAnalyzer("SELECT c2, r1 FROM t WHERE h1 = 1 AND h2 = 1 AND c2 = 1 AND c1 = 1",
-                         &select_parse_tree));
-  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
-
+  TestIndexSelection("SELECT c2, r1 FROM t WHERE h1 = 1 AND h2 = 1 AND c2 = 1 AND c1 = 1",
+                     true, true);
   // Check that fully specified beats range clauses.
-  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND c2 = 1 AND r1 > 0 AND r1 < 2",
-                         &select_parse_tree));
-  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
+  TestIndexSelection("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND c2 = 1 AND r1 > 0 AND r1 < 2",
+                     true, true);
 
   // Should use i3.
-  EXPECT_OK(TestAnalyzer("SELECT c1 FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1",
-                         &select_parse_tree));
-  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
+  TestIndexSelection("SELECT c1 FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1", true, true);
 
-  // Should use indexed table.
-  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1",
-                         &select_parse_tree));
-  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, false, false));
+  // Should use i3 as uncovered index.
+  TestIndexSelection("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1", true, false);
 
   // Should use i4.
-  EXPECT_OK(TestAnalyzer("SELECT c2, r1 FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1",
-                         &select_parse_tree));
-  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
-
-  EXPECT_OK(TestAnalyzer("SELECT h2, c2, r1 FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1 AND "
-                         "c2 = 1 AND r1 > 0 AND r1 < 2",
-                         &select_parse_tree));
-  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
+  TestIndexSelection("SELECT c2, r1 FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1", true, true);
+  TestIndexSelection("SELECT h2, c2, r1 FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1 AND "
+                     "c2 = 1 AND r1 > 0 AND r1 < 2", true, true);
 
   // Should use i5.
   // Check that local beats-non-local.
-  EXPECT_OK(TestAnalyzer("SELECT c1 FROM t WHERE h1 = 1 AND h2 = 1 AND c1 = 1",
-                         &select_parse_tree));
-  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
+  TestIndexSelection("SELECT c1 FROM t WHERE h1 = 1 AND h2 = 1 AND c1 = 1", true, true);
 
   // Should use i6.
-  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1 AND c1 = 1 AND c2 = 1",
-                         &select_parse_tree));
-  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
+  TestIndexSelection("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1 AND c1 = 1 AND c2 = 1",
+                     true, true);
 
   // Should use i7.
   // Check that non-local beats local if it can perform the read.
-  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND c1 = 1",
-                         &select_parse_tree));
-  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
-
-  EXPECT_OK(TestAnalyzer("SELECT c2 FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1 AND c1 = 1",
-                         &select_parse_tree));
-  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
-
+  TestIndexSelection("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND c1 = 1", true, true);
+  TestIndexSelection("SELECT c2 FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1 AND c1 = 1", true, true);
 }
 
 TEST_F(QLTestAnalyzer, TestTruncate) {

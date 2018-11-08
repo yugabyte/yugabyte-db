@@ -234,7 +234,7 @@ class YBqlOp : public YBOperation {
 
   QLResponsePB* mutable_response() { return ql_response_.get(); }
 
-  std::string&& rows_data() { return std::move(rows_data_); }
+  const std::string& rows_data() { return rows_data_; }
 
   std::string* mutable_rows_data() { return &rows_data_; }
 
