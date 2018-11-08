@@ -6,7 +6,7 @@ import { OnPremSuccess } from '../../config';
 import { deleteProvider, deleteProviderSuccess, deleteProviderFailure, fetchCloudMetadata,
   setOnPremConfigData, getNodeInstancesForProvider, getNodesInstancesForProviderResponse,
   getInstanceTypeList, getInstanceTypeListResponse, } from '../../../actions/cloud';
-import {openDialog, closeDialog} from '../../../actions/universe';
+import {openDialog, closeDialog} from '../../../actions/modal';
 
 const mapStateToProps = (state, ownProps) => {
   return {
@@ -15,7 +15,7 @@ const mapStateToProps = (state, ownProps) => {
     configuredRegions: state.cloud.supportedRegionList,
     accessKeys: state.cloud.accessKeys,
     cloudBootstrap: state.cloud.bootstrap,
-    visibleModal: state.universe.visibleModal,
+    visibleModal: state.modal.visibleModal,
     cloud: state.cloud,
   };
 };

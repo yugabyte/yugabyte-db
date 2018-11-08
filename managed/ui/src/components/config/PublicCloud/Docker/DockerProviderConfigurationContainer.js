@@ -5,7 +5,7 @@ import { reduxForm } from 'redux-form';
 import { DockerProviderConfiguration } from '../../../config';
 import { createDockerProvider, createDockerProviderResponse,
  deleteProvider, deleteProviderFailure, deleteProviderSuccess, fetchCloudMetadata } from '../../../../actions/cloud';
-import { openDialog, closeDialog } from '../../../../actions/universe';
+import { openDialog, closeDialog } from '../../../../actions/modal';
 
 const mapStateToProps = (state) => {
   return {
@@ -16,7 +16,7 @@ const mapStateToProps = (state) => {
     dockerBootstrap: state.cloud.dockerBootstrap,
     universeList: state.universe.universeList,
 
-    visibleModal: state.universe.visibleModal,
+    visibleModal: state.modal.visibleModal,
     // TODO change this once we refactor aws bootstrap.
     cloudBootstrap: state.cloud.bootstrap
   };

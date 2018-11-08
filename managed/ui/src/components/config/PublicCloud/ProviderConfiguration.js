@@ -97,7 +97,7 @@ class ProviderConfiguration extends Component {
 
 
   getResultView = () => {
-    const { configuredProviders, visibleModal, configuredRegions, universeList,
+    const { configuredProviders, modal: { visibleModal }, configuredRegions, universeList,
             accessKeys, hideDeleteProviderModal, initializeProvider, showDeleteProviderModal,
             deleteProviderConfig, providerType, hostInfo } = this.props;
     const currentProvider = configuredProviders.data.find((provider) => provider.code === providerType);
@@ -177,7 +177,7 @@ class ProviderConfiguration extends Component {
 
   getBootstrapView = () => {
     const {configuredProviders, reloadCloudMetadata, cloud: {createProvider}, providerType, showDeleteProviderModal,
-           visibleModal, deleteProviderConfig, hideDeleteProviderModal} = this.props;
+           modal: { visibleModal }, deleteProviderConfig, hideDeleteProviderModal} = this.props;
     let currentModal = "";
     if (providerType === "aws") {
       currentModal = "deleteAWSProvider";

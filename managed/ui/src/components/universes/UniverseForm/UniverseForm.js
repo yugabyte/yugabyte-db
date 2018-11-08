@@ -303,7 +303,7 @@ class UniverseForm extends Component {
       asyncReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText={"Configure Read Replica (Beta)"} onClick={this.configureReadOnlyCluster}/>;
     }
 
-    const {universe: {currentUniverse: {data: {universeDetails}}}} = this.props;
+    const {universe: {currentUniverse: {data: {universeDetails}}}, modal } = this.props;
     const readOnlyCluster = universeDetails && getReadOnlyCluster(universeDetails.clusters);
 
     if (type === "Async") {
@@ -349,7 +349,7 @@ class UniverseForm extends Component {
 
     return (
       <Grid id="page-wrapper" fluid={true} className="universe-form-new">
-        <DeleteUniverseContainer visible={universe.showModal && universe.visibleModal==="deleteReadReplicaModal"}
+        <DeleteUniverseContainer visible={modal.showModal && modal.visibleModal==="deleteReadReplicaModal"}
                                onHide={closeModal} title="Delete Read Replica of " body="Are you sure you want to delete this read replica cluster?" type="async"/>
         {pageTitle} 
         <form name="UniverseForm" className="universe-form-container" onSubmit={handleSubmit(this.handleSubmitButtonClick)}>

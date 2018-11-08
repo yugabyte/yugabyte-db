@@ -117,7 +117,7 @@ class OnPremNodesList extends Component {
   }
 
   render() {
-    const {cloud: {nodeInstanceList, instanceTypes, supportedRegionList, accessKeys, providers}, handleSubmit, showProviderView} = this.props;
+    const {cloud: {nodeInstanceList, instanceTypes, supportedRegionList, accessKeys, providers}, handleSubmit, showProviderView, visibleModal } = this.props;
     const self = this;
     let nodeListItems = [];
     if (getPromiseState(nodeInstanceList).isSuccess()) {
@@ -206,7 +206,7 @@ class OnPremNodesList extends Component {
             </BootstrapTable>
           </Col>
         </Row>
-        <YBModal title={"Add Instances"} formName={"AddNodeForm"} visible={this.props.visibleModal === "AddNodesForm"}
+        <YBModal title={"Add Instances"} formName={"AddNodeForm"} visible={visibleModal === "AddNodesForm"}
                  onHide={this.hideAddNodeModal} onFormSubmit={handleSubmit(this.submitAddNodesForm)}
                  showCancelButton={true} submitLabel="Add">
           <div className="on-prem-form-text">
@@ -216,7 +216,7 @@ class OnPremNodesList extends Component {
         </YBModal>
 
         <YBConfirmModal name={"confirmDeleteNodeInstance"} title={"Delete Node"} hideConfirmModal={this.hideDeleteNodeModal}
-                        currentModal={"confirmDeleteNodeInstance"} visibleModal={this.props.visibleModal}
+                        currentModal={"confirmDeleteNodeInstance"} visibleModal={visibleModal}
                         onConfirm={this.deleteInstance} confirmLabel={"Delete"} cancelLabel={"Cancel"}>
           Are you sure you want to delete node {isNonEmptyObject(this.state.nodeToBeDeleted) ? this.state.nodeToBeDeleted.nodeName : ""}
         </YBConfirmModal>

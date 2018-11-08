@@ -4,7 +4,8 @@ import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
 import { RollingUpgradeForm }  from '../../../common/forms';
 import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../../actions/tasks';
-import { rollingUpgrade, rollingUpgradeResponse, closeDialog, resetRollingUpgrade,
+import { closeDialog } from '../../../../actions/modal';
+import { rollingUpgrade, rollingUpgradeResponse, closeUniverseDialog, resetRollingUpgrade,
   fetchUniverseTasks, fetchUniverseTasksResponse, fetchUniverseMetadata, fetchUniverseInfo,
   fetchUniverseInfoResponse } from '../../../../actions/universe';
 import { isDefinedNotNull, isNonEmptyObject } from "../../../../utils/ObjectUtils";
@@ -20,6 +21,7 @@ const mapDispatchToProps = (dispatch) => {
      */
     submitRollingUpgradeForm: (values, universeUUID, reset) => {
       dispatch(closeDialog());
+      dispatch(closeUniverseDialog());
       dispatch(rollingUpgrade(values, universeUUID)).then((response) => {
         dispatch(rollingUpgradeResponse(response.payload));
         // Reset the Rolling upgrade form fields to pristine state,
@@ -82,6 +84,7 @@ function mapStateToProps(state, ownProps) {
   initalGFlagValues.timeDelay = 60;
   initalGFlagValues.rollingUpgrade = true;
   return {
+    modal: state.modal,
     universe: state.universe,
     softwareVersions: state.customer.softwareVersions,
     initialValues: initalGFlagValues

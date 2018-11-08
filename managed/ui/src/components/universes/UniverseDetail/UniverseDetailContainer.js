@@ -3,9 +3,11 @@
 import { connect } from 'react-redux';
 import { UniverseDetail } from '../../universes';
 import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, fetchUniverseTasks,
-  fetchUniverseTasksResponse, resetUniverseTasks, openDialog, closeDialog, getHealthCheck,
+  fetchUniverseTasksResponse, resetUniverseTasks, closeUniverseDialog, getHealthCheck,
   getHealthCheckResponse
 } from '../../../actions/universe';
+
+import { openDialog, closeDialog } from '../../../actions/modal';
 
 import { fetchUniverseTables, fetchUniverseTablesSuccess, fetchUniverseTablesFailure,
   resetTablesList } from '../../../actions/tables';
@@ -61,6 +63,7 @@ const mapDispatchToProps = (dispatch) => {
     },
     closeModal: () => {
       dispatch(closeDialog());
+      dispatch(closeUniverseDialog());
     },
     getHealthCheck: (uuid) => {
       dispatch(getHealthCheck(uuid))
@@ -97,6 +100,7 @@ function mapStateToProps(state, ownProps) {
 
   return {
     universe: state.universe,
+    modal: state.modal,
     providers: state.cloud.providers,
     updateAvailable: isUpdateAvailable(state)
   };

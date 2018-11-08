@@ -10,12 +10,13 @@ import {
   getNodesInstancesForProviderResponse, deleteInstance, deleteInstanceResponse
 } from '../../../actions/cloud';
 import { reduxForm } from 'redux-form';
-import {openDialog, closeDialog} from '../../../actions/universe';
+import {closeUniverseDialog} from '../../../actions/universe';
+import {openDialog, closeDialog} from '../../../actions/modal';
 
 const mapStateToProps = (state) => {
   return {
     cloud: state.cloud,
-    visibleModal: state.universe.visibleModal
+    visibleModal: state.modal.visibleModal
   };
 };
 
@@ -44,6 +45,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
                 dispatch(getNodesInstancesForProviderResponse(response.payload));
               });
               dispatch(closeDialog());
+              dispatch(closeUniverseDialog());
             }
           });
         });
@@ -56,6 +58,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
 
     hideAddNodesDialog() {
       dispatch(closeDialog());
+      dispatch(closeUniverseDialog());
       dispatch(reset("AddNodeForm"));
     },
 
@@ -82,6 +85,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
 
     hideDialog: () => {
       dispatch(closeDialog());
+      dispatch(closeUniverseDialog());
     },
 
   };
