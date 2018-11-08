@@ -7,7 +7,7 @@ import { createProvider, createProviderResponse, createRegion, createRegionRespo
   createAccessKey, createAccessKeyResponse, initializeProvider, initializeProviderSuccess,
   initializeProviderFailure, deleteProvider, deleteProviderSuccess, deleteProviderFailure,
   resetProviderBootstrap, fetchCloudMetadata, bootstrapProvider, bootstrapProviderResponse } from '../../../actions/cloud';
-import { openDialog, closeDialog } from '../../../actions/universe';
+import { openDialog, closeDialog } from '../../../actions/modal';
 import {fetchTaskProgress, fetchTaskProgressResponse,fetchCustomerTasks , fetchCustomerTasksFailure, fetchCustomerTasksSuccess }
   from '../../../actions/tasks';
 
@@ -115,7 +115,13 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(fetchCustomerTasksFailure(response.payload));
         }
       });
-    }
+    },
+    showModal: (modalName) => {
+      dispatch(openDialog(modalName));
+    },
+    closeModal: () => {
+      dispatch(closeDialog());
+    },
   };
 };
 
@@ -128,7 +134,7 @@ const mapStateToProps = (state) => {
     cloudBootstrap: state.cloud.bootstrap,
     universeList: state.universe.universeList,
     hostInfo: state.customer.hostInfo,
-    visibleModal: state.universe.visibleModal,
+    modal: state.modal,
     cloud: state.cloud,
     tasks: state.tasks,
   };

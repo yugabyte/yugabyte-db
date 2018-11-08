@@ -119,7 +119,7 @@ class CreateTable extends Component {
                           onClick={this.cancelCreateTableForm}/>
               </div>
             </form>
-            <YBConfirmModal visibleModal={this.props.universe.visibleModal} title="Create Table"
+            <YBConfirmModal visibleModal={this.props.modal.visibleModal} title="Create Table"
                              name="cancelCreate" onConfirm={this.confirmCancelCreateModal}
                              hideConfirmModal={this.hideCancelCreateModal} currentModal="cancelCreate"
                              confirmLabel={"Yes"} cancelLabel={"No"}>
