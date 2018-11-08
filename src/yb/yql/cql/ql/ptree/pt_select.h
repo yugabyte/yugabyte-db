@@ -178,6 +178,12 @@ class PTSelectStmt : public PTDmlStmt {
                PTOrderByListNode::SharedPtr order_by_clause,
                PTExpr::SharedPtr limit_clause,
                PTExpr::SharedPtr offset_clause);
+  // Construct a nested select tnode to select from the index.
+  PTSelectStmt(MemoryContext *memctx,
+               const PTSelectStmt& parent,
+               PTExprListNode::SharedPtr selected_exprs,
+               const TableId& index_id,
+               bool covers_fully);
   virtual ~PTSelectStmt();
 
   template<typename... TypeArgs>
@@ -246,6 +252,10 @@ class PTSelectStmt : public PTDmlStmt {
     return is_aggregate_;
   }
 
+  const PTSelectStmt::SharedPtr& child_select() const {
+    return child_select_;
+  }
+
   const TableId& index_id() const {
     return index_id_;
   }
@@ -262,6 +272,21 @@ class PTSelectStmt : public PTDmlStmt {
   // system.local
   // system.peers
   bool IsReadableByAllSystemTable() const;
+
+  const std::shared_ptr<client::YBTable>& bind_table() const override {
+    return child_select_ ? child_select_->bind_table() : PTDmlStmt::bind_table();
+  }
+
+  const MCVector<PTBindVar*> &bind_variables() const override {
+    return child_select_ ? child_select_->bind_variables() : PTDmlStmt::bind_variables();
+  }
+  MCVector<PTBindVar*> &bind_variables() override {
+    return child_select_ ? child_select_->bind_variables() : PTDmlStmt::bind_variables();
+  }
+
+  std::vector<int64_t> hash_col_indices() const override {
+    return child_select_ ? child_select_->hash_col_indices() : PTDmlStmt::hash_col_indices();
+  }
 
  private:
   CHECKED_STATUS LookupIndex(SemContext *sem_context);
@@ -298,7 +323,11 @@ class PTSelectStmt : public PTDmlStmt {
   bool is_forward_scan_ = true;
   bool is_aggregate_ = false;
 
-  // Index info.
+  // Child select statement. Currently only a select statement using an index (covered or uncovered)
+  // has a child select statement to query an index.
+  PTSelectStmt::SharedPtr child_select_;
+
+  // For nested select from an index: the index id and whether it covers the query fully.
   TableId index_id_;
   bool covers_fully_ = false;
 };

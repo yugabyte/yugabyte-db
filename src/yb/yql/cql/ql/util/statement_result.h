@@ -137,15 +137,17 @@ class RowsResult : public ExecutedResult {
     (*column_schemas_)[col_index].set_type(type);
   }
   const std::string& rows_data() const { return rows_data_; }
+  std::string& rows_data() { return rows_data_; }
   void set_rows_data(const char *str, size_t size) { rows_data_.assign(str, size); }
   const std::string& paging_state() const { return paging_state_; }
   QLClient client() const { return client_; }
 
-  CHECKED_STATUS Append(const RowsResult& other);
-  void clear_paging_state() { paging_state_.clear(); }
-  void set_paging_state(const QLPagingStatePB& paging_state) {
-    paging_state.SerializeToString(&paging_state_);
-  }
+  CHECKED_STATUS Append(RowsResult&& other);
+
+  void SetPagingState(client::YBqlOp *op);
+  void SetPagingState(const QLPagingStatePB& paging_state);
+  void SetPagingState(RowsResult&& other);
+  void ClearPagingState();
 
   // Parse the rows data and return it as a row block. It is the caller's responsibility to free
   // the row block after use.

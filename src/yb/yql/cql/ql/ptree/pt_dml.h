@@ -191,6 +191,8 @@ class PTDmlStmt : public PTCollection {
             bool else_error = false,
             PTDmlUsingClause::SharedPtr using_clause = nullptr,
             bool returns_status = false);
+  // Clone a DML tnode for re-analysis.
+  PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other);
   virtual ~PTDmlStmt();
 
   template<typename... TypeArgs>
@@ -288,14 +290,18 @@ class PTDmlStmt : public PTCollection {
     return using_clause_ ? using_clause_->user_timestamp_usec() : nullptr;
   }
 
-  const MCVector<PTBindVar*> &bind_variables() const {
+  virtual const std::shared_ptr<client::YBTable>& bind_table() const {
+    return table_;
+  }
+
+  virtual const MCVector<PTBindVar*> &bind_variables() const {
     return bind_variables_;
   }
-  MCVector<PTBindVar*> &bind_variables() {
+  virtual MCVector<PTBindVar*> &bind_variables() {
     return bind_variables_;
   }
 
-  std::vector<int64_t> hash_col_indices() const {
+  virtual std::vector<int64_t> hash_col_indices() const {
     std::vector<int64_t> indices;
     indices.reserve(hash_col_bindvars_.size());
     for (const PTBindVar* bindvar : hash_col_bindvars_) {

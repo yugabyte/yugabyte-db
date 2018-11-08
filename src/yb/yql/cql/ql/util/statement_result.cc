@@ -56,7 +56,7 @@ void GetBindVariableSchemasFromDmlStmt(const PTDmlStmt& stmt,
   for (const PTBindVar *var : stmt.bind_variables()) {
     schemas->emplace_back(string(var->name()->c_str()), var->ql_type());
     if (table_names != nullptr) {
-      table_names->emplace_back(stmt.table()->name());
+      table_names->emplace_back(stmt.bind_table()->name());
     }
   }
 }
@@ -118,7 +118,7 @@ QLClient GetClientFromOp(const YBqlOp& op) {
 
 //------------------------------------------------------------------------------------------------
 PreparedResult::PreparedResult(const PTDmlStmt& stmt)
-    : table_name_(stmt.table()->name()),
+    : table_name_(stmt.bind_table()->name()),
       hash_col_indices_(stmt.hash_col_indices()),
       column_schemas_(stmt.selected_schemas()) {
   GetBindVariableSchemasFromDmlStmt(stmt, &bind_variable_schemas_);
@@ -155,24 +155,14 @@ RowsResult::RowsResult(YBqlOp *op, const PTDmlStmt *tnode)
     : table_name_(op->table()->name()),
       column_schemas_(GetColumnSchemasFromOp(*op, tnode)),
       client_(GetClientFromOp(*op)),
-      rows_data_(op->rows_data()) {
-
+      rows_data_(std::move(*op->mutable_rows_data())) {
   if (column_schemas_ == nullptr) {
     column_schemas_ = make_shared<vector<ColumnSchema>>();
   }
-
-  // If there is a paging state in the response, fill in the table ID also and serialize the
-  // paging state as bytes.
-  if (op->response().has_paging_state()) {
-    QLPagingStatePB *paging_state = op->mutable_response()->mutable_paging_state();
-    paging_state->set_table_id(op->table()->id());
-    faststring serialized_paging_state;
-    CHECK(pb_util::SerializeToString(*paging_state, &serialized_paging_state));
-    paging_state_ = serialized_paging_state.ToString();
-  }
+  SetPagingState(op);
 }
 
-RowsResult::RowsResult(const client::YBTableName& table_name,
+RowsResult::RowsResult(const YBTableName& table_name,
                        const shared_ptr<vector<ColumnSchema>>& column_schemas,
                        const std::string& rows_data)
     : table_name_(table_name),
@@ -184,14 +174,40 @@ RowsResult::RowsResult(const client::YBTableName& table_name,
 RowsResult::~RowsResult() {
 }
 
-Status RowsResult::Append(const RowsResult& other) {
+Status RowsResult::Append(RowsResult&& other) {
+  column_schemas_ = std::move(other.column_schemas_);
   if (rows_data_.empty()) {
-    rows_data_ = other.rows_data_;
+    rows_data_ = std::move(other.rows_data_);
   } else {
     RETURN_NOT_OK(QLRowBlock::AppendRowsData(other.client_, other.rows_data_, &rows_data_));
   }
-  paging_state_ = other.paging_state_;
+  paging_state_ = std::move(other.paging_state_);
   return Status::OK();
+}
+
+void RowsResult::SetPagingState(YBqlOp *op) {
+  // If there is a paging state in the response, fill in the table ID also and serialize the
+  // paging state as bytes.
+  if (op->response().has_paging_state()) {
+    QLPagingStatePB *paging_state = op->mutable_response()->mutable_paging_state();
+    paging_state->set_table_id(op->table()->id());
+    SetPagingState(*paging_state);
+  }
+}
+
+void RowsResult::SetPagingState(const QLPagingStatePB& paging_state) {
+  faststring s;
+  CHECK(pb_util::SerializeToString(paging_state, &s));
+  paging_state_ = s.ToString();
+}
+
+void RowsResult::SetPagingState(RowsResult&& other) {
+  paging_state_ = std::move(other.paging_state_);
+}
+
+void RowsResult::ClearPagingState() {
+  VLOG(3) << "Clear paging state " << GetStackTrace();
+  paging_state_.clear();
 }
 
 std::unique_ptr<QLRowBlock> RowsResult::GetRowBlock() const {

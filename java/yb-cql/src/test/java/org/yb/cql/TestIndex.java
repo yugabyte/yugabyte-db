@@ -23,9 +23,11 @@ import com.datastax.driver.core.ColumnDefinitions.Definition;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSetFuture;
 import com.datastax.driver.core.Row;
+import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.TableMetadata;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
 import org.yb.minicluster.MiniYBCluster;
+import org.yb.minicluster.RocksDBMetrics;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
@@ -525,9 +527,9 @@ public class TestIndex extends BaseCQLTest {
                            new Object[] {Integer.valueOf(1)},
                            "Row[1, a, 2, b]");
 
-    // Select using base table because i1 does not cover c1.
+    // Select using index i1 but as uncovered index.
     assertRoutingVariables("select h1, h2, r1, r2, c1 from test_prepare where h1 = ?;",
-                           null,
+                           Arrays.asList("i1.h1"),
                            new Object[] {Integer.valueOf(1)},
                            "Row[1, a, 2, b, 3]");
 
@@ -827,5 +829,106 @@ public class TestIndex extends BaseCQLTest {
     // Select all columns using index and verify the selected columns are returned in the same order
     // as the table columns.
     assertQuery("select * from test_all where v1 = 2;", "Row[1, 2, 3]");
+  }
+
+  @Test
+  public void testUncoveredIndex() throws Exception {
+    // Create test table and uncovered index.
+    session.execute("create table test_uncovered (h int, r int, v1 text, v2 int," +
+                    "  primary key ((h), r)) with transactions = {'enabled' : true};");
+    session.execute("create index test_uncovered_by_v1 on test_uncovered (v1);");
+
+    // Populate the table.
+    for (int h = 1; h <= 5; h++) {
+      for (int r = 1; r <= 100; r++) {
+        int val = (r == 3) ? 333 : h * 10 + r;
+        session.execute("insert into test_uncovered (h, r, v1, v2) values (?, ?, ?, ?);",
+                        h, r, "v" + val, val);
+      }
+    }
+
+    // Fetch by the indexed column. Verify that the index is used and no range scan happens as
+    // confirmed by the no. of next's.
+    RocksDBMetrics tableMetrics = getRocksDBMetric("test_uncovered");
+    RocksDBMetrics indexMetrics = getRocksDBMetric("test_uncovered_by_v1");
+    LOG.info("Initial: table {}, index {}", tableMetrics, indexMetrics);
+
+    assertQuery("select * from test_uncovered where v1 = 'v333';",
+                new HashSet<String>(Arrays.asList("Row[1, 3, v333, 333]",
+                                                  "Row[2, 3, v333, 333]",
+                                                  "Row[3, 3, v333, 333]",
+                                                  "Row[4, 3, v333, 333]",
+                                                  "Row[5, 3, v333, 333]")));
+
+    // Also verfiy select with limit and offset.
+    assertQuery("select * from test_uncovered where v1 = 'v333' offset 1 limit 3;",
+                new HashSet<String>(Arrays.asList("Row[2, 3, v333, 333]",
+                                                  "Row[3, 3, v333, 333]",
+                                                  "Row[4, 3, v333, 333]")));
+
+    tableMetrics = getRocksDBMetric("test_uncovered").subtract(tableMetrics);
+    indexMetrics = getRocksDBMetric("test_uncovered_by_v1").subtract(indexMetrics);
+    LOG.info("Difference: table {}, index {}", tableMetrics, indexMetrics);
+
+    // Verify that both the index and the primary table are read.
+    assertTrue(indexMetrics.nextCount > 0);
+    assertTrue(tableMetrics.nextCount > 0);
+  }
+
+  @Test
+  public void testUncoveredIndexMisc() throws Exception {
+    // Create test table and index and populate with rows.
+    session.execute("create table test_misc (h int, r int, s int static, v1 int, v2 int," +
+                    "  primary key ((h), r)) with transactions = { 'enabled' : true };");
+    session.execute("create index test_misc_by_v1 on test_misc (v1);");
+
+    session.execute("insert into test_misc (h, r, s, v1, v2) values (1, 1, 2, 1, 11);");
+    session.execute("insert into test_misc (h, r, s, v1, v2) values (1, 2, 3, 2, 22);");
+    session.execute("insert into test_misc (h, r,    v1, v2) values (1, 3,    2, 33);");
+    session.execute("insert into test_misc (h, r, s, v1, v2) values (2, 1, 1, 1, 111);");
+    session.execute("insert into test_misc (h, r,    v1, v2) values (2, 2,    2, 222);");
+    session.execute("insert into test_misc (h, r,    v1, v2) values (3, 1,    2, 333);");
+
+    // Test select with static column.
+    assertQuery("select * from test_misc where v1 = 2;",
+                new HashSet<String>(Arrays.asList("Row[1, 2, 3, 2, 22]",
+                                                  "Row[1, 3, 3, 2, 33]",
+                                                  "Row[2, 2, 1, 2, 222]",
+                                                  "Row[3, 1, NULL, 2, 333]")));
+
+    // Test select with offset and limit.
+    assertQuery("select * from test_misc where v1 = 2 offset 2 limit 1;",
+                new HashSet<String>(Arrays.asList("Row[2, 2, 1, 2, 222]")));
+
+    // Test select with additional condition on non-indexed column.
+    assertQuery("select * from test_misc where v1 = 2 and v2 = 33;",
+                new HashSet<String>(Arrays.asList("Row[1, 3, 3, 2, 33]")));
+
+    // Test select with aggregate functions.
+    assertQuery("select sum(r), min(v2), max(v2), sum(v2) from test_misc where v1 = 2 and v2 > 30;",
+                new HashSet<String>(Arrays.asList("Row[6, 33, 333, 588]")));
+  }
+
+  @Test
+  public void testPagingSelect() throws Exception {
+    // Create test table and index.
+    session.execute("create table test_paging (h int, r int, v1 int, v2 varchar, " +
+                    "primary key (h, r)) with transactions = { 'enabled' : true };");
+    session.execute("create index test_paging_idx on test_paging (v1);");
+
+    // Populate rows.
+    session.execute("insert into test_paging (h, r, v1, v2) values (1, 1, 1, 'a');");
+    session.execute("insert into test_paging (h, r, v1, v2) values (1, 2, 2, 'b');");
+    session.execute("insert into test_paging (h, r, v1, v2) values (2, 1, 3, 'c');");
+    session.execute("insert into test_paging (h, r, v1, v2) values (2, 2, 4, 'd');");
+    session.execute("insert into test_paging (h, r, v1, v2) values (3, 1, 5, 'e');");
+    session.execute("insert into test_paging (h, r, v1, v2) values (3, 2, 6, 'f');");
+
+    // Execute uncovered select by index column with small page size.
+    assertQuery(new SimpleStatement("select * from test_paging where v1 in (3, 4, 5);")
+                .setFetchSize(1),
+                new HashSet<String>(Arrays.asList("Row[2, 1, 3, c]",
+                                                  "Row[2, 2, 4, d]",
+                                                  "Row[3, 1, 5, e]")));
   }
 }
