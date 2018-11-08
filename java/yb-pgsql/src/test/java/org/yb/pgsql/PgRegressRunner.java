@@ -17,13 +17,15 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.ExternalDaemonLogErrorListener;
 import org.yb.minicluster.LogErrorListener;
+import org.yb.minicluster.LogErrorListenerWrapper;
 import org.yb.minicluster.LogPrinter;
-import org.yb.util.EnvAndSysPropertyUtil;
-import org.yb.util.ProcessUtil;
+import org.yb.util.*;
 
 import java.io.*;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * A wrapper for running the pg_regress utility.
@@ -46,6 +48,8 @@ public class PgRegressRunner {
   private Map<String, String> extraEnvVars = new HashMap<>();
   private int pgRegressPid;
 
+  private Set<String> failedTests = new ConcurrentSkipListSet<>();
+
   public PgRegressRunner(String pgHost, int pgPort, String pgUser) {
     pgRegressDir = new File(TestUtils.getBuildRootDir(), "postgres_build/src/test/regress");
     pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
@@ -60,8 +64,21 @@ public class PgRegressRunner {
     extraEnvVars = envVars;
   }
 
+  private Pattern FAILED_TEST_LINE_RE =
+      Pattern.compile("^test\\s+([a-zA-Z0-9_-]+)\\s+[.]+\\s+FAILED\\s*$");
+
   private LogErrorListener createLogErrorListener() {
-    return new ExternalDaemonLogErrorListener("pg_regress with pid " + pgRegressPid);
+    return new LogErrorListenerWrapper(
+        new ExternalDaemonLogErrorListener("pg_regress with pid " + pgRegressPid)) {
+      @Override
+      public void handleLine(String line) {
+        super.handleLine(line);
+        Matcher matcher = FAILED_TEST_LINE_RE.matcher(line);
+        if (matcher.matches()) {
+          failedTests.add(matcher.group(1));
+        }
+      }
+    };
   }
 
   public void start() throws IOException, NoSuchFieldException, IllegalAccessException {
@@ -127,9 +144,39 @@ public class PgRegressRunner {
       LOG.info("File does not exist: " + regressionDiffsPath);
     }
 
-    if (exitCode != 0 &&
-        !EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_REGRESS_IGNORE_RESULT")) {
-      throw new AssertionError("pg_regress exited with error code: " + exitCode);
+    Set<String> sortedFailedTests = new TreeSet<>();
+    sortedFailedTests.addAll(failedTests);
+    if (!sortedFailedTests.isEmpty()) {
+      LOG.info("Failed tests: " + sortedFailedTests);
+      for (String testName : sortedFailedTests) {
+        File expectedFile = new File(new File(pgRegressDir, "expected"), testName + ".out");
+        File resultFile = new File(new File(pgRegressDir, "results"), testName + ".out");
+        if (!expectedFile.exists()) {
+          LOG.warn("Expected test output file " + expectedFile + " not found.");
+          continue;
+        }
+        if (!resultFile.exists()) {
+          LOG.warn("Actual test output file " + resultFile + " not found.");
+          continue;
+        }
+        String diffCmd = String.format("diff -W250 -y '%s' '%s'", expectedFile, resultFile);
+        CommandResult diffResult = CommandUtil.runShellCommand(diffCmd);
+        LOG.warn("Output from: " + diffCmd + "\n" +
+            StringUtil.expandTabsAndConcatenate(diffResult.getStdoutLines()));
+      }
+    }
+
+    if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_REGRESS_IGNORE_RESULT")) {
+      return;
+    }
+
+    if (exitCode != 0) {
+      throw new AssertionError("pg_regress exited with error code: " + exitCode +
+          ", failed tests: " + sortedFailedTests);
+    }
+    if (!sortedFailedTests.isEmpty()) {
+      throw new AssertionError("Tests failed (but pg_regress exit code is 0, unexpectedly): " +
+          sortedFailedTests);
     }
   }
 
