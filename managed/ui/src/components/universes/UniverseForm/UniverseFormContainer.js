@@ -13,7 +13,10 @@ import { createUniverse, createUniverseResponse, editUniverse, editUniverseRespo
          checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration,
          fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata, fetchUniverseTasks,
          fetchUniverseTasksResponse, addUniverseReadReplica, editUniverseReadReplica, 
-         addUniverseReadReplicaResponse, editUniverseReadReplicaResponse, openDialog, closeDialog, closeDialogClean } from '../../../actions/universe';
+         addUniverseReadReplicaResponse, editUniverseReadReplicaResponse, closeUniverseDialog } from '../../../actions/universe';
+
+import { openDialog, closeDialog } from '../../../actions/modal';
+
 import { isNonEmptyArray, isDefinedNotNull, isNonEmptyObject, isNonEmptyString, normalizeToPositiveFloat, isEmptyObject }
   from '../../../utils/ObjectUtils';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
@@ -73,6 +76,7 @@ const mapDispatchToProps = (dispatch) => {
 
     closeUniverseDialog: () => {
       dispatch(closeDialog());
+      dispatch(closeUniverseDialog());
     },
 
     submitEditUniverse: (values, universeUUID) => {
@@ -125,7 +129,7 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     closeModal: () => {
-      dispatch(closeDialogClean());
+      dispatch(closeDialog());
     },
 
     showDeleteReadReplicaModal: () => {
@@ -224,6 +228,7 @@ function mapStateToProps(state, ownProps) {
 
   return {
     universe: state.universe,
+    modal: state.modal,
     tasks: state.tasks,
     cloud: state.cloud,
     softwareVersions: state.customer.softwareVersions,

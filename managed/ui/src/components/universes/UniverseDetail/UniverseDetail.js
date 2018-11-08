@@ -89,7 +89,7 @@ class UniverseDetail extends Component {
   };
 
   showUpgradeMarker = () => {
-    const { updateAvailable, universe: { rollingUpgrade, showModal, visibleModal }} = this.props;
+    const { updateAvailable, universe: { rollingUpgrade }, modal: { showModal, visibleModal }} = this.props;
 
     if (!getPromiseState(rollingUpgrade).isLoading() &&
         updateAvailable &&
@@ -103,8 +103,9 @@ class UniverseDetail extends Component {
     const {
       uuid,
       updateAvailable,
+      modal: { showModal, visibleModal },
       universe,
-      universe: { currentUniverse, showModal, visibleModal },
+      universe: { currentUniverse },
       location: { query, pathname },
       showSoftwareUpgradesModal,
       showGFlagsModal,

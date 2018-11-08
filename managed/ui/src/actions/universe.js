@@ -48,10 +48,8 @@ export const FETCH_UNIVERSE_TASKS = 'FETCH_UNIVERSE_TASKS';
 export const FETCH_UNIVERSE_TASKS_RESPONSE = 'FETCH_UNIVERSE_TASKS_RESPONSE';
 export const RESET_UNIVERSE_TASKS = 'RESET_UNIVERSE_TASKS';
 
-// Universe Modal Tasks
-export const OPEN_DIALOG = 'OPEN_DIALOG';
-export const CLOSE_DIALOG = 'CLOSE_DIALOG';
-export const CLOSE_DIALOG_CLEAN = 'CLOSE_DIALOG_CLEAN';
+// Universe Co-Modal Tasks
+export const CLOSE_UNIVERSE_DIALOG = 'CLOSE_UNIVERSE_DIALOG';
 
 // Submit G-Flag Tasks
 export const ROLLING_UPGRADE = 'ROLLING_UPGRADE';
@@ -289,22 +287,9 @@ export function resetUniverseTasks() {
   };
 }
 
-export function openDialog(data) {
+export function closeUniverseDialog() {
   return {
-    type: OPEN_DIALOG,
-    payload: data
-  };
-}
-
-export function closeDialog() {
-  return {
-    type: CLOSE_DIALOG
-  };
-}
-
-export function closeDialogClean() {
-  return {
-    type: CLOSE_DIALOG_CLEAN
+    type: CLOSE_UNIVERSE_DIALOG
   };
 }
 

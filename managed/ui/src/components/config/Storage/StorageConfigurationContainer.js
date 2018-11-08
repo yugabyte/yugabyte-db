@@ -6,13 +6,13 @@ import { StorageConfiguration } from '../../config';
 import { addCustomerConfig, addCustomerConfigResponse,
          fetchCustomerConfigs, fetchCustomerConfigsResponse,
          deleteCustomerConfig, deleteCustomerConfigResponse } from '../../../actions/customers';
-import { openDialog, closeDialog } from '../../../actions/universe';
+import { openDialog, closeDialog } from '../../../actions/modal';
 
 const mapStateToProps = (state) => {
   return {
     addConfig: state.customer.addConfig,
     customerConfigs: state.customer.configs,
-    visibleModal: state.universe.visibleModal,
+    visibleModal: state.modal.visibleModal,
     deleteConfig: state.customer.deleteConfig
   };
 };

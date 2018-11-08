@@ -6,8 +6,8 @@ import { reduxForm } from 'redux-form';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { createUniverseTable, createUniverseTableFailure, createUniverseTableSuccess,
   toggleTableView } from '../../../actions/tables';
-import { fetchUniverseTasks, fetchUniverseTasksResponse, openDialog,
-  closeDialog } from '../../../actions/universe';
+import { fetchUniverseTasks, fetchUniverseTasksResponse, closeUniverseDialog } from '../../../actions/universe';
+import { openDialog, closeDialog } from '../../../actions/modal';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -81,6 +81,7 @@ const mapDispatchToProps = (dispatch) => {
 
     hideModal: () => {
       dispatch(closeDialog());
+      dispatch(closeUniverseDialog());
     }
   };
 };

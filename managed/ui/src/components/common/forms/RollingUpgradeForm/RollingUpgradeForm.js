@@ -99,8 +99,10 @@ export default class RollingUpgradeForm extends Component {
   setRollingUpgradeProperties = values => {
     const {
       reset,
+      modal: {
+        visibleModal
+      },
       universe: {
-        visibleModal,
         currentUniverse: {
           data: {
             universeDetails: {clusters, nodePrefix},
@@ -156,9 +158,8 @@ export default class RollingUpgradeForm extends Component {
 
   render() {
     const self = this;
-    const {onHide, modalVisible, handleSubmit, universe: {visibleModal,
-      error}, resetRollingUpgrade, softwareVersions} = this.props;
-    const { universe } = this.props;
+    const {onHide, modalVisible, handleSubmit, universe, modal: { visibleModal }, 
+      universe: { error}, resetRollingUpgrade, softwareVersions} = this.props;
 
     let currentVersion = null;
     if(isDefinedNotNull(universe.currentUniverse.data) && isNonEmptyObject(universe.currentUniverse.data)) {
