@@ -18,11 +18,11 @@ c) Make sure that your file limits for kern.maxfiles and kern.maxfilesperproc ar
 Download the YugaByte DB CE package as shown below.
 
 ```{.sh .copy .separator-dollar}
-$ wget https://downloads.yugabyte.com/yugabyte-ce-1.1.2.0-darwin.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-ce-1.1.3.0-darwin.tar.gz
 ```
 
 ```{.sh .copy .separator-dollar}
-$ tar xvfz yugabyte-ce-1.1.2.0-darwin.tar.gz && cd yugabyte-1.1.2.0/
+$ tar xvfz yugabyte-ce-1.1.3.0-darwin.tar.gz && cd yugabyte-1.1.3.0/
 ```
 
 ## Configure

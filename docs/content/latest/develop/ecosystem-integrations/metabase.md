@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: metabase
     parent: ecosystem-integrations
-    weight: 574
+    weight: 576
 ---
 
 [Metabase](https://www.metabase.com/) is an extremly easy-to-use Business Intelligence (BI) tool. It bills itself as `the easy, open source way for everyone in your company to ask questions and learn from data`. This page shows how Metabase can be setup to integrate with YugaByte DB's PostgreSQL compatible API.
