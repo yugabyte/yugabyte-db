@@ -114,6 +114,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       );
     }
     double burstVal = 1.2;
+    Map<String, String> config = defaultProvider.getConfig();
 
     Map<String, Object> diskSpecs = new HashMap<>();
     if (defaultUserIntent.deviceInfo != null) {
@@ -161,6 +162,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
     if (!gflagOverrides.isEmpty()) {
       expectedOverrides.put("gflags", gflagOverrides);
+    }
+
+    Map<String, Object> annotations = new HashMap<String, Object>();
+    if (config.containsKey("KUBECONFIG_ANNOTATIONS")) {
+      annotations =(HashMap<String, Object>) yaml.load(
+          config.get("KUBECONFIG_ANNOTATIONS"));
+      expectedOverrides.putAll(annotations);
     }
 
     return expectedOverrides;
@@ -243,6 +251,34 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, Object> resourceOverrides = (Map<String, Object>) overrides.get("resource");
     assertFalse(resourceOverrides.containsKey("master"));
     assertTrue(resourceOverrides.containsKey("tserver"));
+    assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+  @Test
+  public void testHelmInstallForAnnotations() throws IOException {
+    Map<String, String> defaultAnnotations = new HashMap<String, String>();
+    defaultAnnotations.put("KUBECONFIG_ANNOTATIONS", "annotations:\n  master:\n    loadbalancer:\n      annotation-1: foo");
+    defaultProvider.setConfig(defaultAnnotations);
+    defaultProvider.save();
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
+    ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(expectedProviderUUID.capture(), expectedNodePrefix.capture(),
+            expectedOverrideFile.capture());
+    assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
+    assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
+    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+
+    // TODO implement exposeAll false case
     assertEquals(getExpectedOverrides(true), overrides);
   }
 
