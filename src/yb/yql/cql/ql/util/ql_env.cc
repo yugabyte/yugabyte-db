@@ -191,6 +191,18 @@ Status QLEnv::UseKeyspace(const string& keyspace_name) {
   return Status::OK();
 }
 
+Status QLEnv::AlterKeyspace(const string& keyspace_name) {
+  // Check if a keyspace with the specified name exists.
+  Result<bool> exists = client_->NamespaceExists(keyspace_name);
+  RETURN_NOT_OK(exists);
+  if (!exists.get()) {
+    return STATUS(NotFound, "Cannot alter unknown keyspace");
+  }
+
+  // Current implementation does not update any keyspace properties.
+  return Status::OK();
+}
+
 //------------------------------------------------------------------------------------------------
 Status QLEnv::CreateRole(const std::string& role_name,
                          const std::string& salted_hash,
