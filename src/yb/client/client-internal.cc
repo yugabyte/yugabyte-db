@@ -183,29 +183,31 @@ Status YBClient::Data::SyncLeaderMasterRpc(
       ++*num_attempts;
     }
     Status s = func(master_proxy_.get(), req, resp, &rpc);
-    if (s.IsNetworkError()) {
-      LOG(WARNING) << "Unable to send the request (" << req.ShortDebugString()
-                   << ") to leader Master (" << leader_master_hostport().ToString()
-                   << "): " << s.ToString();
+    if (s.IsNetworkError() || s.IsServiceUnavailable()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 1)
+          << "Unable to send the request (" << req.ShortDebugString()
+          << ") to leader Master (" << leader_master_hostport().ToString()
+          << "): " << s.ToString();
       if (client->IsMultiMaster()) {
-        LOG(INFO) << "Determining the new leader Master and retrying...";
+        YB_LOG_EVERY_N_SECS(INFO, 1) << "Determining the new leader Master and retrying...";
         WARN_NOT_OK(SetMasterServerProxy(client, deadline),
                     "Unable to determine the new leader Master");
-        continue;
       }
+      continue;
     }
 
     if (s.IsTimedOut()) {
       if (MonoTime::Now().ComesBefore(deadline)) {
-        LOG(WARNING) << "Unable to send the request (" << req.ShortDebugString()
-                     << ") to leader Master (" << leader_master_hostport().ToString()
-                     << "): " << s.ToString();
+        YB_LOG_EVERY_N_SECS(WARNING, 1)
+            << "Unable to send the request (" << req.ShortDebugString()
+            << ") to leader Master (" << leader_master_hostport().ToString()
+            << "): " << s.ToString();
         if (client->IsMultiMaster()) {
-          LOG(INFO) << "Determining the new leader Master and retrying...";
+          YB_LOG_EVERY_N_SECS(INFO, 1) << "Determining the new leader Master and retrying...";
           WARN_NOT_OK(SetMasterServerProxy(client, deadline),
                       "Unable to determine the new leader Master");
-          continue;
         }
+        continue;
       } else {
         // Operation deadline expired during this latest RPC.
         s = s.CloneAndPrepend(Substitute("$0 timed out after deadline expired",
@@ -217,11 +219,13 @@ Status YBClient::Data::SyncLeaderMasterRpc(
       if (resp->error().code() == MasterErrorPB::NOT_THE_LEADER ||
           resp->error().code() == MasterErrorPB::CATALOG_MANAGER_NOT_INITIALIZED) {
         if (client->IsMultiMaster()) {
-          LOG(INFO) << "Determining the new leader Master and retrying...";
+          YB_LOG_EVERY_N_SECS(INFO, 1) << "Determining the new leader Master and retrying...";
           WARN_NOT_OK(SetMasterServerProxy(client, deadline),
                       "Unable to determine the new leader Master");
-          continue;
         }
+        continue;
+      } else {
+        return StatusFromPB(resp->error().status());
       }
     }
     return s;
