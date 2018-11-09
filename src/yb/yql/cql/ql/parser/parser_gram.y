@@ -73,6 +73,7 @@
 #include "yb/yql/cql/ql/parser/parser_inactive_nodes.h"
 #include "yb/yql/cql/ql/ptree/pt_create_keyspace.h"
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
+#include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_type.h"
@@ -253,7 +254,7 @@ using namespace yb::ql;
                           renameColumn alterColumnType
 
                           // Keyspace related statements.
-                          CreateSchemaStmt UseSchemaStmt
+                          CreateSchemaStmt UseSchemaStmt AlterSchemaStmt
 
                           // User-defined types.
                           CreateTypeStmt
@@ -859,6 +860,9 @@ stmt:
   | UseSchemaStmt {
     $$ = $1;
   }
+  | AlterSchemaStmt {
+    $$ = $1;
+  }
   | CreateTypeStmt {
     $$ = $1;
   }
@@ -1123,6 +1127,22 @@ keyspace_property_map_list_element:
 UseSchemaStmt:
   USE ColId {
     $$ = MAKE_NODE(@1, PTUseKeyspace, $2);
+  }
+;
+
+//--------------------------------------------------------------------------------------------------
+// ALTER KEYSPACE statement.
+// Syntax:
+//   ALTER KEYSPACE | SCHEMA keyspace_name [ WITH REPLICATION = map
+//                                           AND DURABLE_WRITES =  true | false ]
+//--------------------------------------------------------------------------------------------------
+
+AlterSchemaStmt:
+  ALTER KEYSPACE ColId opt_keyspace_options OptSchemaEltList {
+    $$ = MAKE_NODE(@1, PTAlterKeyspace, $3, $4);
+  }
+  | ALTER SCHEMA ColId opt_keyspace_options OptSchemaEltList {
+    $$ = MAKE_NODE(@1, PTAlterKeyspace, $3, $4);
   }
 ;
 

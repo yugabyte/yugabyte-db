@@ -22,6 +22,7 @@ add_library(ql_ptree
             pt_table_property.cc
             pt_create_keyspace.cc
             pt_use_keyspace.cc
+            pt_alter_keyspace.cc
             pt_create_table.cc
             pt_alter_table.cc
             pt_create_type.cc

@@ -25,6 +25,7 @@
 #include "yb/yql/cql/ql/exec/exec_context.h"
 #include "yb/yql/cql/ql/ptree/pt_create_keyspace.h"
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
+#include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_type.h"
@@ -142,6 +143,9 @@ class Executor : public QLExprExecutor {
 
   // Use a keyspace.
   CHECKED_STATUS ExecPTNode(const PTUseKeyspace *tnode);
+
+  // Alter a keyspace.
+  CHECKED_STATUS ExecPTNode(const PTAlterKeyspace *tnode);
 
   //------------------------------------------------------------------------------------------------
   // Result processing.

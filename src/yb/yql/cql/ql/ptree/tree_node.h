@@ -38,6 +38,7 @@ YB_DEFINE_ENUM(TreeNodeOpcode,
                (kPTListNode)
                (kPTCreateKeyspace)
                (kPTUseKeyspace)
+               (kPTAlterKeyspace)
                (kPTCreateTable)
                (kPTAlterTable)
                (kPTCreateType)
