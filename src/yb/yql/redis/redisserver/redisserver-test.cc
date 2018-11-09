@@ -2489,7 +2489,21 @@ TEST_F(TestRedisService, TestSortedSets) {
   DoRedisTestInt(__LINE__, {"ZCARD", "my_z_set"}, 1);
   SyncClient();
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "my_z_set", "1", "1"}, {"v1"});
+}
 
+TEST_F(TestRedisService, ZRangeByScoreInvalidOptions) {
+  expected_no_sessions_ = true;
+
+  // Not enough args to ZRANGEBYSCORE should throw an error.
+  DoRedisTestExpectError(__LINE__, {"ZRANGEBYSCORE", "z_key", "-inf", "+inf", "LIMIT"});
+  DoRedisTestExpectError(__LINE__, {"ZRANGEBYSCORE", "z_key", "-inf", "+inf", "LIMIT", "2"});
+  DoRedisTestExpectError(__LINE__, {"ZRANGEBYSCORE", "z_key", "-inf", "+inf", "LIMIT", "a", "1"});
+  DoRedisTestExpectError(__LINE__, {
+      "ZRANGEBYSCORE", "z_key", "-inf", "+inf", "LIMIT", "1", "2", "3"});
+  DoRedisTestExpectError(__LINE__, {
+      "ZRANGEBYSCORE", "z_key", "-inf", "+inf", "LIMIT", "WITHSCORES", "2", "3"});
+  DoRedisTestExpectError(__LINE__, {
+      "ZRANGEBYSCORE", "z_key", "-inf", "+inf", "WITHSCORES", "2", "3"});
   SyncClient();
   VerifyCallbacks();
 }
