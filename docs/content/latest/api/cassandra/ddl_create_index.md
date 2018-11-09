@@ -78,8 +78,7 @@ Where
  - Any primary key column of the table not indexed explicitly in `index_columns` is added as a clustering column to the index implicitly. This is necessary so that the whole primary key of the table is indexed.
 
 ### INCLUDED COLUMNS
- - Included columns are optional table columns whose values are copied into the index in addition to storing them in the table. This is done in order to respond to queries directly from the index without querying the table.
- - Currently, an index is used to execute a query only when all columns selected by the query are included by the index, either as index columns or additional included columns. This limitation will be removed in future versions.
+ - Included columns are optional table columns whose values are copied into the index in addition to storing them in the table. When additional columns are included in the index, they can be used to respond to queries directly from the index without querying the table.
 
 ### UNIQUE INDEX
  - A unique index disallows duplicate values from being inserted into the indexed columns. It can be used to ensure uniqueness of index column values.

@@ -22,7 +22,6 @@ If you haven't installed YugaByte DB yet, do so first by following the [Quick St
 
 - To create a secondary index on a table, the primary table needs to be created with distributed transaction enabled using the `with transactions = { 'enabled' : true }` clause.
 - The secondary index needs to be created before any data is inserted into the primary table.
-- A secondary index will be used to execute a query only when the index covers all columns selected by the query.
 
 These requirements may be removed in the future.
 
