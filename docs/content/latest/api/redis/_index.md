@@ -64,6 +64,7 @@ Command | Description |
 [`HSTRLEN`](hstrlen/) | Read the length of a specified entry in a hash |
 [`HVALS`](hvals/) | Read all values in a hash |
 [`INCR`](incr/) | Increment the value by one |
+[`KEYS`](keys/) | Retrieve all keys matching a pattern
 [`MONITOR`](monitor/) | Debugging tool to see all requests that are processed by a YEDIS API server |
 [`MGET`](mget/) | Read multiple keys |
 [`MSET`](mset/) | Write multiple key values |
