@@ -31,6 +31,15 @@ apiVersion: v1
 kind: Service
 metadata:
   name: "{{ $endpoint.name }}"
+  {{- if $root.Values.annotations }}
+  annotations:
+    {{- if $root.Values.annotations.encryption}}
+    {{ $root.Values.annotations.encryption }}
+    {{- end}}
+    {{- if $root.Values.annotations.loadBalancer}}
+    {{ $root.Values.annotations.loadBalancer }}
+    {{- end}}
+  {{- end }}
   labels:
     app: "{{ $endpoint.app }}"
     heritage: {{ $root.Release.Service | quote }}
