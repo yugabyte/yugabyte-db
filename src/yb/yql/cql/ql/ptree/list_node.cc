@@ -68,7 +68,6 @@ Status PTListNode::AnalyzeStatementBlock(SemContext *sem_context) {
       }
       dml = static_cast<const PTDmlStmt*>(tnode.get());
     }
-    sem_context->Reset();
     RETURN_NOT_OK(tnode->Analyze(sem_context));
     if (dml != nullptr) {
       if (!dml->table()->schema().table_properties().is_transactional()) {

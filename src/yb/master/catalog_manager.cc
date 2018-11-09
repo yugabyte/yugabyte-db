@@ -1863,6 +1863,18 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     tablet->mutable_metadata()->CommitMutation();
   }
 
+  if (req.has_creator_role_name()) {
+    const NamespaceName& keyspace_name = req.namespace_().name();
+    const TableName& table_name = req.name();
+    RETURN_NOT_OK(GrantPermissions(req.creator_role_name(),
+                                   get_canonical_table(keyspace_name, table_name),
+                                   table_name,
+                                   keyspace_name,
+                                   all_permissions_for_resource(ResourceType::TABLE),
+                                   ResourceType::TABLE,
+                                   resp));
+  }
+
   VLOG(1) << "Created table " << table->ToString();
   LOG(INFO) << "Successfully created " << object_type << " " << table->ToString()
             << " per request from " << RequestorString(rpc);
@@ -2324,6 +2336,35 @@ Status CatalogManager::DeleteIndexInfoFromTable(const TableId& indexed_table_id,
   return Status::OK();
 }
 
+namespace {
+
+// Helper class to abort mutations at the end of a scope.
+template<class PersistentDataEntryPB>
+class ScopedMutation {
+ public:
+  explicit ScopedMutation(PersistentDataEntryPB* cow_object)
+      : cow_object_(DCHECK_NOTNULL(cow_object)) {
+    cow_object->mutable_metadata()->StartMutation();
+  }
+
+  void Commit() {
+    cow_object_->mutable_metadata()->CommitMutation();
+    committed_ = true;
+  }
+
+  // Abort the mutation if it wasn't committed.
+  ~ScopedMutation() {
+    if (PREDICT_FALSE(!committed_)) {
+      cow_object_->mutable_metadata()->AbortMutation();
+    }
+  }
+
+ private:
+  PersistentDataEntryPB* cow_object_;
+  bool committed_ = false;
+};
+}  // anonymous namespace
+
 // Delete a Table
 //  - Update the table state to "removed"
 //  - Write the updated table metadata to sys-table
@@ -2358,6 +2399,16 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
     // Send a DeleteTablet() request to each tablet replica in the table.
     DeleteTabletsAndSendRequests(tables[i]);
   }
+
+  // If there are any permissions granted on this table find them and delete them. This is necessary
+  // because we keep track of the permissions based on the canonical resource name which is a
+  // combination of the keyspace and table names, so if another table with the same name is created
+  // (in the same keyspace where the previous one existed), and the permissions were not deleted at
+  // the time of the previous table deletion, then the permissions that existed for the previous
+  // table will automatically be granted to the new table even though this wasn't the intention.
+  string canonical_resource = get_canonical_table(req->table().namespace_().name(),
+                                                  req->table().table_name());
+  RETURN_NOT_OK(RemoveAllPermissionsForResource(canonical_resource, resp));
 
   LOG(INFO) << Substitute("Successfully initiated deletion of $0 ",
                           req->is_index_table() ? "index" : "table") << " with "
@@ -3567,35 +3618,6 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
   return Status::OK();
 }
 
-namespace {
-
-// Helper class to abort mutations at the end of a scope.
-template<class PersistentDataEntryPB>
-class ScopedMutation {
- public:
-  explicit ScopedMutation(PersistentDataEntryPB* cow_object)
-      : cow_object_(DCHECK_NOTNULL(cow_object)) {
-    cow_object->mutable_metadata()->StartMutation();
-  }
-
-  void Commit() {
-    cow_object_->mutable_metadata()->CommitMutation();
-    committed_ = true;
-  }
-
-  // Abort the mutation if it wasn't committed.
-  ~ScopedMutation() {
-    if (PREDICT_FALSE(!committed_)) {
-      cow_object_->mutable_metadata()->AbortMutation();
-    }
-  }
-
- private:
-  PersistentDataEntryPB* cow_object_;
-  bool committed_ = false;
-};
-}  // anonymous namespace
-
 Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
                                              GrantRevokePermissionResponsePB* resp,
                                              rpc::RpcContext* rpc) {
@@ -3755,6 +3777,61 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
   return Status::OK();
 }
 
+template<class RespClass>
+Status CatalogManager::GrantPermissions(const RoleName& role_name,
+                                        const std::string& canonical_resource,
+                                        const std::string& resource_name,
+                                        const NamespaceName& keyspace,
+                                        const std::vector<PermissionType>& permissions,
+                                        const ResourceType resource_type,
+                                        RespClass* resp) {
+  std::lock_guard<LockType> l(lock_);
+
+  scoped_refptr<RoleInfo> rp;
+  rp = FindPtrOrNull(roles_map_, role_name);
+  if (rp == nullptr) {
+    const Status s = STATUS_SUBSTITUTE(NotFound, "Role $0 was not found", role_name);
+    return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+  }
+
+  RETURN_NOT_OK(IncrementRolesVersionUnlocked());
+
+  {
+    SysRoleEntryPB* metadata;
+    ScopedMutation <RoleInfo> role_info_mutation(rp.get());
+    metadata = &rp->mutable_metadata()->mutable_dirty()->pb;
+
+    ResourcePermissionsPB* current_resource = metadata->add_resources();
+
+    current_resource->set_canonical_resource(canonical_resource);
+    current_resource->set_resource_type(resource_type);
+    current_resource->set_resource_name(resource_name);
+    current_resource->set_namespace_name(keyspace);
+
+    for (const auto& permission : permissions) {
+      if (permission == PermissionType::DESCRIBE_PERMISSION &&
+          resource_type != ResourceType::ROLE &&
+          resource_type != ResourceType::ALL_ROLES) {
+        // Describe permission should only be granted to the role resource.
+        continue;
+      }
+      current_resource->add_permissions(permission);
+    }
+    Status s = sys_catalog_->UpdateItem(rp.get());
+    if (!s.ok()) {
+      s = s.CloneAndPrepend(Substitute(
+          "An error occurred while updating permissions in sys-catalog: $0", s.ToString()));
+      LOG(WARNING) << s;
+      return CheckIfNoLongerLeaderAndSetupError(s, resp);
+    }
+    TRACE("Wrote Permission to sys-catalog");
+    role_info_mutation.Commit();
+
+    BuildResourcePermissionsUnlocked();
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                        CreateNamespaceResponsePB* resp,
                                        rpc::RpcContext* rpc) {
@@ -3818,6 +3895,17 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
   ns->mutable_metadata()->CommitMutation();
 
   LOG(INFO) << "Created namespace " << ns->ToString();
+
+  if (req->has_creator_role_name()) {
+    RETURN_NOT_OK(GrantPermissions(req->creator_role_name(),
+                                   get_canonical_keyspace(req->name()),
+                                   req->name() /* resource name */,
+                                   req->name() /* keyspace name */,
+                                   all_permissions_for_resource(ResourceType::KEYSPACE),
+                                   ResourceType::KEYSPACE,
+                                   resp));
+  }
+
   return Status::OK();
 }
 
@@ -3908,6 +3996,11 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   TRACE("Committing in-memory state");
   l->Commit();
 
+  // Delete any permissions granted on this keyspace to any role. See comment in DeleteTable() for
+  // more details.
+  string canonical_resource = get_canonical_keyspace(req->namespace_().name());
+  RETURN_NOT_OK(RemoveAllPermissionsForResource(canonical_resource, resp));
+
   LOG(INFO) << "Successfully deleted namespace " << ns->ToString()
             << " per request from " << RequestorString(rpc);
   return Status::OK();
@@ -3960,6 +4053,49 @@ Status CatalogManager::IncrementRolesVersionUnlocked() {
   return Status::OK();
 }
 
+template<class RespClass>
+Status CatalogManager::RemoveAllPermissionsForResourceUnlocked(
+    const std::string& canonical_resource,
+    RespClass* resp) {
+
+  DCHECK(lock_.is_locked()) << "We don't have the catalog manager lock!";
+
+  bool permissions_modified = false;
+  for (const auto& e : roles_map_) {
+    scoped_refptr <RoleInfo> rp = e.second;
+    ScopedMutation <RoleInfo> role_info_mutation(rp.get());
+    auto* resources = rp->mutable_metadata()->mutable_dirty()->pb.mutable_resources();
+    for (auto itr = resources->begin(); itr != resources->end(); itr++) {
+      if (itr->canonical_resource() == canonical_resource) {
+        resources->erase(itr);
+        role_info_mutation.Commit();
+        permissions_modified = true;
+        break;
+      }
+    }
+  }
+
+  // Increment the roles version and update the cache only if there was a modification to the
+  // permissions.
+  if (permissions_modified) {
+    const Status s = IncrementRolesVersionUnlocked();
+    if (!s.ok()) {
+      return CheckIfNoLongerLeaderAndSetupError(s, resp);
+    }
+
+    BuildResourcePermissionsUnlocked();
+  }
+
+  return Status::OK();
+}
+
+template<class RespClass>
+Status CatalogManager::RemoveAllPermissionsForResource(const std::string& canonical_resource,
+                                                       RespClass* resp) {
+  std::lock_guard<LockType> l_big(lock_);
+  return RemoveAllPermissionsForResourceUnlocked(canonical_resource, resp);
+}
+
 Status CatalogManager::CreateRoleUnlocked(const std::string& role_name,
                                           const std::string& salted_hash,
                                           const bool login, const bool superuser,
@@ -4008,18 +4144,28 @@ Status CatalogManager::CreateRole(const CreateRoleRequestPB* req,
 
   RETURN_NOT_OK(CheckOnline());
   Status s;
+  {
+    TRACE("Acquired catalog manager lock");
+    std::lock_guard<LockType> l_big(lock_);
 
-  TRACE("Acquired catalog manager lock");
-  std::lock_guard<LockType> l_big(lock_);
-
-  if (FindPtrOrNull(roles_map_, req->name()) != nullptr) {
-    s = STATUS(AlreadyPresent,
-               Substitute("Role $0 already exists", req->name()));
-    return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_ALREADY_PRESENT, s);
+    if (FindPtrOrNull(roles_map_, req->name()) != nullptr) {
+      s = STATUS(AlreadyPresent,
+                 Substitute("Role $0 already exists", req->name()));
+      return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_ALREADY_PRESENT, s);
+    }
+    s = CreateRoleUnlocked(req->name(), req->salted_hash(), req->login(), req->superuser());
   }
-  s = CreateRoleUnlocked(req->name(), req->salted_hash(), req->login(), req->superuser());
   if (PREDICT_TRUE(s.ok())) {
     LOG(INFO) << "Created role: " << req->name();
+    if (req->has_creator_role_name()) {
+      RETURN_NOT_OK(GrantPermissions(req->creator_role_name(),
+                                     get_canonical_role(req->name()),
+                                     req->name() /* resource name */,
+                                     "" /* keyspace name */,
+                                     all_permissions_for_resource(ResourceType::ROLE),
+                                     ResourceType::ROLE,
+                                     resp));
+    }
   }
   return s;
 }
@@ -4142,6 +4288,11 @@ Status CatalogManager::DeleteRole(const DeleteRoleRequestPB* req,
   TRACE("Committing in-memory state");
   l->Commit();
   BuildRecursiveRolesUnlocked();
+
+  // Remove all the permissions granted on the deleted role to any role. See DeleteTable() comment
+  // for for more details.
+  string canonical_resource = get_canonical_role(req->name());
+  RETURN_NOT_OK(RemoveAllPermissionsForResourceUnlocked(canonical_resource, resp));
 
   LOG(INFO) << "Successfully deleted role " << role->ToString()
             << " per request from " << RequestorString(rpc);

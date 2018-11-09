@@ -25,14 +25,14 @@ using yb::util::Decimal;
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::AggregateResultSets(const PTSelectStmt* pt_select) {
+Status Executor::AggregateResultSets(const PTSelectStmt* pt_select, TnodeContext* tnode_context) {
   if (!pt_select->is_aggregate()) {
     return Status::OK();
   }
 
-  shared_ptr<RowsResult> rows = std::static_pointer_cast<RowsResult>(result_);
-  DCHECK(rows->client() == QLClient::YQL_CLIENT_CQL);
-  shared_ptr<QLRowBlock> row_block = rows->GetRowBlock();
+  shared_ptr<RowsResult> rows_result = tnode_context->rows_result();
+  DCHECK(rows_result->client() == QLClient::YQL_CLIENT_CQL);
+  shared_ptr<QLRowBlock> row_block = rows_result->GetRowBlock();
   int column_index = 0;
   faststring buffer;
 
@@ -47,7 +47,7 @@ CHECKED_STATUS Executor::AggregateResultSets(const PTSelectStmt* pt_select) {
         RETURN_NOT_OK(EvalAvg(row_block, column_index, expr_node->ql_type()->main(),
                               &ql_value));
         // Change type back from MAP to basic type for result of Avg
-        rows->set_column_schema(column_index, expr_node->ql_type());
+        rows_result->set_column_schema(column_index, expr_node->ql_type());
         break;
       case TSOpcode::kCount:
         RETURN_NOT_OK(EvalCount(row_block, column_index, &ql_value));
@@ -66,18 +66,18 @@ CHECKED_STATUS Executor::AggregateResultSets(const PTSelectStmt* pt_select) {
     }
 
     // Serialize the return value.
-    ql_value.Serialize(expr_node->ql_type(), rows->client(), &buffer);
+    ql_value.Serialize(expr_node->ql_type(), rows_result->client(), &buffer);
     column_index++;
   }
 
   // Change the result set to the aggregate result.
-  std::static_pointer_cast<RowsResult>(result_)->set_rows_data(buffer.c_str(), buffer.size());
+  rows_result->set_rows_data(buffer.c_str(), buffer.size());
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::EvalCount(const shared_ptr<QLRowBlock>& row_block,
-                                   int column_index,
-                                   QLValue *ql_value) {
+Status Executor::EvalCount(const shared_ptr<QLRowBlock>& row_block,
+                           int column_index,
+                           QLValue *ql_value) {
   int64_t total_count = 0;
   for (auto row : row_block->rows()) {
     total_count += row.column(column_index).int64_value();
@@ -86,9 +86,9 @@ CHECKED_STATUS Executor::EvalCount(const shared_ptr<QLRowBlock>& row_block,
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::EvalMax(const shared_ptr<QLRowBlock>& row_block,
-                                 int column_index,
-                                 QLValue *ql_value) {
+Status Executor::EvalMax(const shared_ptr<QLRowBlock>& row_block,
+                         int column_index,
+                         QLValue *ql_value) {
   for (auto row : row_block->rows()) {
     if (ql_value->IsNull() ||
         (!row.column(column_index).IsNull() && *ql_value < row.column(column_index))) {
@@ -98,9 +98,9 @@ CHECKED_STATUS Executor::EvalMax(const shared_ptr<QLRowBlock>& row_block,
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::EvalMin(const shared_ptr<QLRowBlock>& row_block,
-                                 int column_index,
-                                 QLValue *ql_value) {
+Status Executor::EvalMin(const shared_ptr<QLRowBlock>& row_block,
+                         int column_index,
+                         QLValue *ql_value) {
   for (auto row : row_block->rows()) {
     if (ql_value->IsNull() ||
         (!row.column(column_index).IsNull() && *ql_value > row.column(column_index))) {
@@ -110,10 +110,10 @@ CHECKED_STATUS Executor::EvalMin(const shared_ptr<QLRowBlock>& row_block,
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::EvalSum(const shared_ptr<QLRowBlock>& row_block,
-                                 int column_index,
-                                 DataType data_type,
-                                 QLValue *ql_value) {
+Status Executor::EvalSum(const shared_ptr<QLRowBlock>& row_block,
+                         int column_index,
+                         DataType data_type,
+                         QLValue *ql_value) {
   // CQL doesn't return overflow for sum.
   for (auto row : row_block->rows()) {
     if (row.column(column_index).IsNull()) {
@@ -199,10 +199,10 @@ CHECKED_STATUS Executor::EvalSum(const shared_ptr<QLRowBlock>& row_block,
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::EvalAvg(const shared_ptr<QLRowBlock>& row_block,
-                                 int column_index,
-                                 DataType data_type,
-                                 QLValue *ql_value) {
+Status Executor::EvalAvg(const shared_ptr<QLRowBlock>& row_block,
+                         int column_index,
+                         DataType data_type,
+                         QLValue *ql_value) {
   QLValue sum, count;
 
   for (auto row : row_block->rows()) {

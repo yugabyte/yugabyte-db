@@ -841,6 +841,7 @@ stmt :
 			| VariableShowStmt
 			| AlterDatabaseStmt
 			| AlterDatabaseSetStmt
+			| VariableResetStmt
 
 			/* Not supported statements */
 			| AlterEventTrigStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -946,7 +947,6 @@ stmt :
 			| UnlistenStmt { parser_ybc_not_support(@1, "This statement"); }
 			| UpdateStmt { parser_ybc_not_support(@1, "This statement"); }
 			| VacuumStmt { parser_ybc_not_support(@1, "This statement"); }
-			| VariableResetStmt { parser_ybc_not_support(@1, "This statement"); }
 		;
 
 /*****************************************************************************
@@ -1673,7 +1673,6 @@ NonReservedWord_or_Sconst:
 VariableResetStmt:
 			RESET reset_rest
 				{
-					parser_ybc_not_support(@1, "RESET variable");
 					$$ = (Node *) $2;
 				}
 		;
@@ -1682,7 +1681,6 @@ reset_rest:
 			generic_reset							{ $$ = $1; }
 			| TIME ZONE
 				{
-					parser_ybc_not_support(@1, "RESET TIME ZONE");
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->kind = VAR_RESET;
 					n->name = "timezone";
@@ -12769,7 +12767,7 @@ SimpleTypename:
 			| Numeric	{ $$ = $1; }
 			| Bit	{ parser_ybc_not_support(@1, "Bit type"); $$ = $1; }
 			| Character	{ $$ = $1; }
-			| ConstDatetime	{ parser_ybc_not_support(@1, "Datetime"); $$ = $1; }
+			| ConstDatetime	{ $$ = $1; }
 			| ConstInterval opt_interval
 				{
 					parser_ybc_not_support(@1, "Interval");
@@ -13059,7 +13057,6 @@ opt_varying:
 ConstDatetime:
 			TIMESTAMP '(' Iconst ')' opt_timezone
 				{
-					parser_ybc_not_support(@1, "Datetime");
 					if ($5)
 						$$ = SystemTypeName("timestamptz");
 					else
@@ -13069,7 +13066,6 @@ ConstDatetime:
 				}
 			| TIMESTAMP opt_timezone
 				{
-					parser_ybc_not_support(@1, "Datetime");
 					if ($2)
 						$$ = SystemTypeName("timestamptz");
 					else
@@ -13078,7 +13074,6 @@ ConstDatetime:
 				}
 			| TIME '(' Iconst ')' opt_timezone
 				{
-					parser_ybc_not_support(@1, "Datetime");
 					if ($5)
 						$$ = SystemTypeName("timetz");
 					else
@@ -13088,7 +13083,6 @@ ConstDatetime:
 				}
 			| TIME opt_timezone
 				{
-					parser_ybc_not_support(@1, "Datetime");
 					if ($2)
 						$$ = SystemTypeName("timetz");
 					else

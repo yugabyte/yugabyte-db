@@ -153,4 +153,10 @@ public class AppConfig {
 
   // Enable batch write.
   public boolean batchWrite = false;
+
+  // Username to connect to the YQL client.
+  public String cassandraUsername = null;
+
+  // Password to connect to the YQL client.
+  public String cassandraPassword = null;
 }

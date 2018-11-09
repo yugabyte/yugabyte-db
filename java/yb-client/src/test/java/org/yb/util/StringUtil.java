@@ -46,4 +46,31 @@ public final class StringUtil {
            value.equals("on") || value.equals("enabled") || value.equals("true") ||
            value.equals("t");
   }
+
+  public static String expandTabs(String line) {
+    StringBuilder sb = new StringBuilder();
+    final int tabSize = 8;
+    for (int lineIndex = 0; lineIndex < line.length(); ++lineIndex) {
+      char c = line.charAt(lineIndex);
+      if (c == '\t') {
+        int nSpaces = tabSize - sb.length() % tabSize;
+        for (int spaceIndex = 0; spaceIndex < nSpaces; ++spaceIndex) {
+          sb.append(' ');
+        }
+      } else {
+        sb.append(c);
+      }
+    }
+    return sb.toString();
+  }
+
+  public static String expandTabsAndConcatenate(List<String> lines) {
+    StringBuilder sb = new StringBuilder();
+    for (String line : lines) {
+      sb.append(expandTabs(line));
+      sb.append('\n');
+    }
+    return sb.toString();
+  }
+
 }

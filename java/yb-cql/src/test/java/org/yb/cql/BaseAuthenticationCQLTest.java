@@ -21,6 +21,7 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 
+import static junit.framework.TestCase.fail;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -140,5 +141,22 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
 
     // Verify that the information got written into system_auth.roles correctly.
     verifyRoleWithSession(roleName, canLogin, isSuperuser, s);
+  }
+
+  public void assertPermissionsGranted(Session s, String role, String resource,
+                                       List<String> permissions) {
+    String stmt = String.format("SELECT permissions FROM system_auth.role_permissions " +
+        "WHERE role = '%s' and resource = '%s';", role, resource);
+    List<Row> rows = s.execute(stmt).all();
+    assertEquals(1, rows.size());
+
+    List list = rows.get(0).getList("permissions", String.class);
+    assertEquals(permissions.size(), list.size());
+
+    for (String permission : permissions) {
+      if (!list.contains(permission)) {
+        fail("Unable to find permission " + permission);
+      }
+    }
   }
 }

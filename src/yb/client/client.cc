@@ -185,7 +185,7 @@ using std::shared_ptr;
   } while(0);
 
 namespace {
-Status GenerateUnauthorizedError(const string& canonical_resource,
+Status GenerateUnauthorizedError(const std::string& canonical_resource,
                                  const ql::ObjectType& object_type,
                                  const RoleName& role_name,
                                  const PermissionType& permission,
@@ -615,10 +615,15 @@ Status YBClient::GetTableSchema(const YBTableName& table_name,
   return Status::OK();
 }
 
-Status YBClient::CreateNamespace(const std::string& namespace_name, YQLDatabase database_type) {
+Status YBClient::CreateNamespace(const std::string& namespace_name,
+                                 YQLDatabase database_type,
+                                 const std::string& creator_role_name) {
   CreateNamespaceRequestPB req;
   CreateNamespaceResponsePB resp;
   req.set_name(namespace_name);
+  if (!creator_role_name.empty()) {
+    req.set_creator_role_name(creator_role_name);
+  }
   if (database_type != YQL_DATABASE_UNDEFINED) {
     req.set_database_type(database_type);
   }
@@ -729,9 +734,10 @@ CHECKED_STATUS YBClient::GetUDType(const std::string &namespace_name,
   return Status::OK();
 }
 
-CHECKED_STATUS YBClient::CreateRole(const std::string& role_name,
+CHECKED_STATUS YBClient::CreateRole(const RoleName& role_name,
                                     const std::string& salted_hash,
-                                    const bool login, const bool superuser) {
+                                    const bool login, const bool superuser,
+                                    const RoleName& creator_role_name) {
 
   // Setting up request.
   CreateRoleRequestPB req;
@@ -740,12 +746,16 @@ CHECKED_STATUS YBClient::CreateRole(const std::string& role_name,
   req.set_login(login);
   req.set_superuser(superuser);
 
+  if (!creator_role_name.empty()) {
+    req.set_creator_role_name(creator_role_name);
+  }
+
   CreateRoleResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateRole);
   return Status::OK();
 }
 
-CHECKED_STATUS YBClient::AlterRole(const std::string& role_name,
+CHECKED_STATUS YBClient::AlterRole(const RoleName& role_name,
                                    const boost::optional<std::string>& salted_hash,
                                    const boost::optional<bool> login,
                                    const boost::optional<bool> superuser) {
@@ -767,7 +777,7 @@ CHECKED_STATUS YBClient::AlterRole(const std::string& role_name,
   return Status::OK();
 }
 
-CHECKED_STATUS YBClient::DeleteRole(const std::string& role_name) {
+CHECKED_STATUS YBClient::DeleteRole(const RoleName& role_name) {
   // Setting up request.
   DeleteRoleRequestPB req;
   req.set_name(role_name);
@@ -1225,12 +1235,28 @@ void YBMetaDataCache::RemoveCachedUDType(const string& keyspace_name,
   cached_types_.erase(std::make_pair(keyspace_name, type_name));
 }
 
-Status YBMetaDataCache::HasResourcePermission(const string& canonical_resource,
+Status YBMetaDataCache::HasResourcePermission(const std::string& canonical_resource,
                                               const ql::ObjectType& object_type,
                                               const RoleName& role_name,
                                               const PermissionType& permission,
                                               const NamespaceName& keyspace,
                                               const TableName& table) {
+  Status s = HasResourcePermissionWithoutRetry(canonical_resource, object_type, role_name,
+                                                     permission, keyspace, table);
+  if (s.IsNotAuthorized()) {
+    RETURN_NOT_OK(client_->GetPermissions(permissions_cache_.get()));
+    s = HasResourcePermissionWithoutRetry(canonical_resource, object_type, role_name,
+                                          permission, keyspace, table);
+  }
+  return s;
+}
+
+Status YBMetaDataCache::HasResourcePermissionWithoutRetry(const std::string& canonical_resource,
+                                                          const ql::ObjectType& object_type,
+                                                          const RoleName& role_name,
+                                                          const PermissionType& permission,
+                                                          const NamespaceName& keyspace,
+                                                          const TableName& table) {
   if (!permissions_cache_) {
     LOG(WARNING) << "Permissions cache disabled. This only should be used in unit tests";
     return Status::OK();
@@ -1391,6 +1417,11 @@ YBTableCreator& YBTableCreator::table_type(YBTableType table_type) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::creator_role_name(const RoleName& creator_role_name) {
+  data_->creator_role_name_ = creator_role_name;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::hash_schema(YBHashSchema hash_schema) {
   switch (hash_schema) {
     case YBHashSchema::kMultiColumnHash:
@@ -1509,6 +1540,10 @@ Status YBTableCreator::Create() {
   req.set_name(data_->table_name_.table_name());
   req.mutable_namespace_()->set_name(data_->table_name_.resolved_namespace_name());
   req.set_table_type(data_->table_type_);
+
+  if (!data_->creator_role_name_.empty()) {
+    req.set_creator_role_name(data_->creator_role_name_);
+  }
 
   // Note that the check that the sum of min_num_replicas for each placement block being less or
   // equal than the overall placement info num_replicas is done on the master side and an error is

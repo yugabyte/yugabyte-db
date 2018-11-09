@@ -592,11 +592,16 @@ class ExternalTabletServer : public ExternalDaemon {
   CHECKED_STATUS Restart(bool start_cql_proxy = true);
 
   // Postgres addresses.
-  const string& bind_host() const {
+  const std::string& bind_host() const {
     return bind_host_;
   }
   uint16_t pgsql_rpc_port() const {
     return pgsql_rpc_port_;
+  }
+
+  // CQL addresses.
+  uint16_t cql_rpc_port() const {
+    return cql_rpc_port_;
   }
 
  protected:

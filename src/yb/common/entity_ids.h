@@ -30,7 +30,6 @@ using RoleName = std::string;
 using NamespaceId = std::string;
 using TableId = std::string;
 using UDTypeId = std::string;
-using RoleName = std::string;
 
 using PeerId = std::string;
 using TabletServerId = PeerId;

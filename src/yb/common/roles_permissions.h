@@ -29,6 +29,8 @@ typedef std::bitset<kMaxPermissions> Permissions;
 constexpr const char* const kRolesDataResource = "data";
 constexpr const char* const kRolesRoleResource = "roles";
 
+const std::vector<PermissionType>& all_permissions_for_resource(ResourceType resource_type);
+
 std::string PermissionName(PermissionType permission);
 
 std::string get_canonical_keyspace(const std::string &keyspace);

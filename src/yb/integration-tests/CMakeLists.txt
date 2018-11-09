@@ -107,6 +107,11 @@ ADD_YB_TEST(full_stack-insert-scan-test)
 ADD_YB_TEST(redis_table-test)
 ADD_YB_TEST(update_scan_delta_compact-test)
 
+set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
+set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)
+ADD_YB_TEST(cassandra_cpp_driver-test)
+set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})
+
 # Additional tests
 if(YB_ENT_CURRENT_SOURCE_DIR)
   # Set the test source file folder.

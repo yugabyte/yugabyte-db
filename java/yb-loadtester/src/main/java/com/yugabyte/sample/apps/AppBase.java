@@ -159,8 +159,17 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    * will succeed in creating the client. This method does nothing for the other threads.
    */
   protected synchronized void createCassandraClient(List<ContactPoint> contactPoints) {
+    Cluster.Builder builder;
     if (cassandra_cluster == null) {
-      Cluster.Builder builder = Cluster.builder();
+      if (appConfig.cassandraUsername != null) {
+        if (appConfig.cassandraPassword == null) {
+          throw new IllegalArgumentException("Password required when providing a username");
+        }
+        builder = Cluster.builder()
+            .withCredentials(appConfig.cassandraUsername, appConfig.cassandraPassword);
+      } else {
+        builder = Cluster.builder();
+      }
       Integer port = null;
       for (ContactPoint cp : contactPoints) {
         if (port == null) {

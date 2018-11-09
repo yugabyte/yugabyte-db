@@ -302,7 +302,14 @@ class SemContext : public ProcessContext {
   CHECKED_STATUS CheckHasAllRolesPermission(const YBLocation& loc,
                                             const PermissionType permission);
 
-  void Reset();
+  bool IsUncoveredIndexSelect() const {
+    DCHECK(current_dml_stmt_) << "Current DML statement is not set";
+    if (current_dml_stmt_->opcode() != TreeNodeOpcode::kPTSelectStmt) {
+      return false;
+    }
+    const auto* select_stmt = static_cast<const PTSelectStmt*>(current_dml_stmt_);
+    return !select_stmt->index_id().empty() && !select_stmt->covers_fully();
+  }
 
  private:
   CHECKED_STATUS LoadSchema(const std::shared_ptr<client::YBTable>& table,

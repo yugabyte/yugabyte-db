@@ -382,7 +382,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // TODO(neil) When database_type is undefined, backend will not check error on database type.
   // Except for testing we should use proper database_types for all creations.
   CHECKED_STATUS CreateNamespace(const std::string& namespace_name,
-                                 YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
+                                 YQLDatabase database_type = YQL_DATABASE_UNDEFINED,
+                                 const std::string& creator_role_name = "");
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
@@ -417,18 +418,19 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
 
   // Authentication and Authorization
   // Create a new role.
-  CHECKED_STATUS CreateRole(const std::string& role_name,
+  CHECKED_STATUS CreateRole(const RoleName& role_name,
                             const std::string& salted_hash,
-                            const bool login, const bool superuser);
+                            const bool login, const bool superuser,
+                            const RoleName& creator_role_name);
 
   // Alter an existing role.
-  CHECKED_STATUS AlterRole(const std::string& role_name,
+  CHECKED_STATUS AlterRole(const RoleName& role_name,
                            const boost::optional<std::string>& salted_hash,
                            const boost::optional<bool> login,
                            const boost::optional<bool> superuser);
 
   // Delete a role.
-  CHECKED_STATUS DeleteRole(const std::string& role_name);
+  CHECKED_STATUS DeleteRole(const RoleName& role_name);
 
   CHECKED_STATUS SetRedisPasswords(const vector<string>& passwords);
   // Fetches the password from the local cache, or from the master if the local cached value
@@ -682,6 +684,12 @@ class YBMetaDataCache {
                                        const TableName& table);
 
  private:
+  CHECKED_STATUS HasResourcePermissionWithoutRetry(const std::string& canonical_resource,
+                                                   const ql::ObjectType& object_type,
+                                                   const RoleName& role_name,
+                                                   const PermissionType& permission,
+                                                   const NamespaceName& keyspace,
+                                                   const TableName& table);
   std::shared_ptr<YBClient> client_;
 
   // Map from table-name to YBTable instances.
@@ -718,6 +726,9 @@ class YBTableCreator {
 
   // Sets the type of the table.
   YBTableCreator& table_type(YBTableType table_type);
+
+  // Sets the name of the role creating this table.
+  YBTableCreator& creator_role_name(const RoleName& creator_role_name);
 
   // Sets the partition hash schema.
   YBTableCreator& hash_schema(YBHashSchema hash_schema);

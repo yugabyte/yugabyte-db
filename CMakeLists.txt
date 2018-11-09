@@ -32,10 +32,8 @@
 
 # Portions Copyright (c) YugaByte, Inc.
 
-# Require cmake that supports BYPRODUCTS in add_custom_command() [1].
-#
-# 1. https://cmake.org/Bug/view.php?id=14963
-cmake_minimum_required(VERSION 3.2.0)
+# Require cmake that includes FindICU module (https://cmake.org/cmake/help/v3.7/release/3.7.html)
+cmake_minimum_required(VERSION 3.7.0)
 
 # =================================================================================================
 # Functions
@@ -1541,6 +1539,18 @@ ADD_THIRDPARTY_LIB(icui18n
 ADD_THIRDPARTY_LIB(icuuc
   STATIC_LIB "${ICU_UC_LIBRARIES}"
   SHARED_LIB "${ICU_UC_LIBRARIES}")
+
+## Libuv
+find_package(LibUv REQUIRED)
+include_directories(SYSTEM ${LIBUV_INCLUDE_DIR})
+ADD_THIRDPARTY_LIB(libuv
+  STATIC_LIB "${LIBUV_STATIC_LIB}"
+  SHARED_LIB "${LIBUV_SHARED_LIB}")
+
+## C++ Cassandra driver
+find_package(Cassandra REQUIRED)
+include_directories(SYSTEM ${LIBCASSANDRA_INCLUDE_DIR})
+ADD_THIRDPARTY_LIB(cassandra SHARED_LIB "${LIBCASSANDRA_SHARED_LIB}")
 
 ############################################################
 # Linker setup
