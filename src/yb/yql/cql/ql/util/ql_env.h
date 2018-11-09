@@ -109,6 +109,9 @@ class QLEnv {
   // Use keyspace with the given name.
   virtual CHECKED_STATUS UseKeyspace(const std::string& keyspace_name);
 
+  // Alter keyspace with the given name.
+  virtual CHECKED_STATUS AlterKeyspace(const std::string& keyspace_name);
+
   virtual std::string CurrentKeyspace() const {
     return ql_session()->current_keyspace();
   }

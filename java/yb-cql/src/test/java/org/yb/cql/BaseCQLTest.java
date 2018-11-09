@@ -442,17 +442,23 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     runInvalidQuery(new SimpleStatement(stmt));
   }
 
-  protected void runInvalidStmt(Statement stmt) {
+  protected void runInvalidStmt(Statement stmt, Session s) {
     try {
-      session.execute(stmt);
+      s.execute(stmt);
       fail(String.format("Statement did not fail: %s", stmt));
     } catch (QueryValidationException qv) {
       LOG.info("Expected exception", qv);
     }
   }
 
+  protected void runInvalidStmt(Statement stmt) { runInvalidStmt(stmt, session); }
+
+  protected void runInvalidStmt(String stmt, Session s) {
+    runInvalidStmt(new SimpleStatement(stmt), s);
+  }
+
   protected void runInvalidStmt(String stmt) {
-    runInvalidStmt(new SimpleStatement(stmt));
+    runInvalidStmt(stmt, session);
   }
 
   protected void assertNoRow(String select_stmt) {
@@ -550,12 +556,22 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return buffer;
   }
 
-  public ResultSet execute(String statement) throws Exception {
-    LOG.info("EXEC CQL: " + statement);
-    final ResultSet result = session.execute(statement);
-    LOG.info("EXEC CQL FINISHED: " + statement);
+  public ResultSet execute(String stmt, Session s) throws Exception {
+    LOG.info("EXEC CQL: " + stmt);
+    final ResultSet result = s.execute(stmt);
+    LOG.info("EXEC CQL FINISHED: " + stmt);
     return result;
   }
+
+  public ResultSet execute(String stmt) throws Exception { return execute(stmt, session); }
+
+  public void executeInvalid(String stmt, Session s) throws Exception {
+    LOG.info("EXEC INVALID CQL: " + stmt);
+    runInvalidStmt(stmt, s);
+    LOG.info("EXEC INVALID CQL FINISHED: " + stmt);
+  }
+
+  public void executeInvalid(String stmt) throws Exception { executeInvalid(stmt, session); }
 
   public void createKeyspace(String keyspaceName) throws Exception {
     String createKeyspaceStmt = "CREATE KEYSPACE \"" + keyspaceName + "\";";

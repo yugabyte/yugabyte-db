@@ -231,6 +231,9 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
     case TreeNodeOpcode::kPTUseKeyspace:
       return ExecPTNode(static_cast<const PTUseKeyspace *>(tnode));
 
+    case TreeNodeOpcode::kPTAlterKeyspace:
+      return ExecPTNode(static_cast<const PTAlterKeyspace *>(tnode));
+
     default:
       return exec_context_->Error(tnode, ErrorCode::FEATURE_NOT_SUPPORTED);
   }
@@ -1159,6 +1162,22 @@ Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
   }
 
   result_ = std::make_shared<SetKeyspaceResult>(tnode->name());
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status Executor::ExecPTNode(const PTAlterKeyspace *tnode) {
+  // To get new keyspace properties use: tnode->keyspace_properties()
+  // Current implementation only check existence of this keyspace.
+  const Status s = ql_env_->AlterKeyspace(tnode->name());
+
+  if (PREDICT_FALSE(!s.ok())) {
+    ErrorCode error_code = s.IsNotFound() ? ErrorCode::KEYSPACE_NOT_FOUND : ErrorCode::SERVER_ERROR;
+    return exec_context_->Error(tnode, s, error_code);
+  }
+
+  result_ = std::make_shared<SchemaChangeResult>("UPDATED", "KEYSPACE", tnode->name());
   return Status::OK();
 }
 
