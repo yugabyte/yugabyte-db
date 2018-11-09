@@ -694,12 +694,17 @@ CHECKED_STATUS ParseWithScores(const Slice& slice, RedisCollectionGetRangeReques
 
 CHECKED_STATUS ParseRangeByScoreOptions(YBRedisReadOp* op, const RedisClientCommand& args) {
   int i = 4;
-  while (i < args.size()) {
+  int args_size = args.size();
+  while (i < args_size) {
     string upper_arg;
     ToUpperCase(args[i].ToBuffer(), &upper_arg);
     if (upper_arg == "LIMIT") {
+      if (i >= args_size - 2) {
+        return STATUS_SUBSTITUTE(InvalidArgument, "Not enough args passed into LIMIT clause, "
+            "expected 2 but found $0", args_size - (i + 1));
+      }
       auto offset = VERIFY_RESULT(ParseInt64(args[++i], "offset"));
-      auto limit = VERIFY_RESULT(ParseInt64(args[++i], "limit"));
+      auto limit = VERIFY_RESULT(ParseInt64(args[++i], "count"));
       op->mutable_request()->mutable_index_range()->mutable_lower_bound()->set_index(offset);
       op->mutable_request()->set_range_request_limit(limit);
     } else if (upper_arg == "WITHSCORES") {
