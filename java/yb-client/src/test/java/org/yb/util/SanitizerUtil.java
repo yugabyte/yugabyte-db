@@ -54,7 +54,11 @@ public final class SanitizerUtil {
 
   /** @return a timeout multiplier to apply in tests based on the build type */
   public static double getTimeoutMultiplier() {
-    return isTSAN() ? 3.0 : 1.0;
+    if (isTSAN())
+      return 3;
+    if (isASAN())
+      return 1.5;
+    return 1;
   }
 
   /**

@@ -324,9 +324,12 @@ inline std::ostream& operator<<(std::ostream& out, const Status& status) {
 
 // Utility macros to perform the appropriate check. If the check fails,
 // returns the specified (error) Status, with the given message.
-#define SCHECK_OP(var1, op, var2, type, msg)                        \
-  do {                                                              \
-    if (PREDICT_FALSE(!((var1)op(var2)))) return STATUS(type, msg); \
+#define SCHECK_OP(var1, op, var2, type, msg) \
+  do { \
+    auto v1_tmp = (var1); \
+    auto v2_tmp = (var2); \
+    if (PREDICT_FALSE(!((v1_tmp)op(v2_tmp)))) return STATUS(type, \
+      yb::Format("$0: $1 vs. $2", (msg), v1_tmp, v2_tmp)); \
   } while (0)
 #define SCHECK(expr, type, msg) SCHECK_OP(expr, ==, true, type, msg)
 #define SCHECK_EQ(var1, var2, type, msg) SCHECK_OP(var1, ==, var2, type, msg)

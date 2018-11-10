@@ -12,9 +12,13 @@
 //
 package org.yb.util;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 public final class StringUtil {
+
+  private final static Pattern RTRIM_RE = Pattern.compile("\\s+$");
 
   private StringUtil() {
   }
@@ -73,4 +77,23 @@ public final class StringUtil {
     return sb.toString();
   }
 
+  public static String rtrim(String s) {
+    return RTRIM_RE.matcher(s).replaceAll("");
+  }
+
+  public static List<String> expandTabsAndRemoveTrailingSpaces(List<String> lines) {
+    List<String> result = new ArrayList<>();
+    for (String line : lines) {
+      result.add(rtrim(expandTabs(line)));
+    }
+    return result;
+  }
+
+  public static int getMaxLineLength(List<String> lines) {
+    int maxLen = 0;
+    for (String line : lines) {
+      maxLen = Math.max(maxLen, line.length());
+    }
+    return maxLen;
+  }
 }
