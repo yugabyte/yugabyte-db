@@ -2293,7 +2293,7 @@ CREATE OR REPLACE FUNCTION pg_catalog.substrb(varchar2, integer) RETURNS varchar
 AS 'bytea_substr_no_len'
 LANGUAGE internal
 STRICT IMMUTABLE;
-COMMENT ON FUNCTION pg_catalog.substrb(varchar2, integer, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
+COMMENT ON FUNCTION pg_catalog.substrb(varchar2, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
 
 CREATE OR REPLACE FUNCTION pg_catalog.lengthb(varchar2) RETURNS integer
 AS 'byteaoctetlen'
