@@ -13,7 +13,7 @@ The tutorial assumes that you have:
 To get the C/C++ driver run: 
 
 ```{.sh .copy .separator-dollar}
-$ git clone https://github.com/datastax/cpp-driver.git
+$ git clone https://github.com/YugaByte/cassandra-cpp-driver.git
 ```
 
 ### Dependencies
