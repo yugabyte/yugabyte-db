@@ -30,6 +30,21 @@ readonly GENERATED_BUILD_DEBUG_SCRIPT_DIR=$HOME/.yb-build-debug-scripts
 readonly SCRIPT_NAME="compiler-wrapper.sh"
 declare -i -r MAX_INPUT_FILES_TO_SHOW=20
 
+# Files such as numeric.c, int.c, int8.c, and float.c get compiled with UBSAN (Undefined Behavior
+# Sanitizer) turned off due to large number of overflow cases in them (by design).
+
+# numeric.c is compiled without UBSAN as a fix for a problem observed with Clang 5.0 and 6.0:
+# undefined reference to `__muloti4'
+# (full log at http://bit.ly/2lYdYnp).
+# Related to the problem reported at http://bit.ly/2NvS6MR.
+
+# int.c and int8.c have a lot of assumptions regarding the exact resulting values of overflowing
+# operations, and these assumptions are not true in UBSAN mode.
+
+# float.c compiled in UBSAN mode causes the following error on the yb_float4 test (server process
+# crashes): http://bit.ly/2AW9oye
+
+readonly NO_UBSAN_RE='(numeric|int|int8|float)'
 
 # -------------------------------------------------------------------------------------------------
 # Common functions
@@ -453,14 +468,9 @@ local_build_exit_handler() {
 
 if [[ ${build_type:-} == "asan" &&
       $PWD == */postgres_build/src/backend/utils/adt &&
-      ( $compiler_args_str == *\ -c\ -o\ numeric.o\ numeric.c\ * ||
-        $compiler_args_str == *\ -c\ -o\ int.o\ int.c\ * ||
-        $compiler_args_str == *\ -c\ -o\ int8.o\ int8.c\ * ) ]]; then
-  # A hack for the problem observed in ASAN when compiling numeric.c with Clang 5.0 and 6.0.
-  # undefined reference to `__muloti4'
-  # (full log at http://bit.ly/2lYdYnp).
-  # Related to the problem reported at http://bit.ly/2NvS6MR.
-
+      # Turn off UBSAN instrumentation in a number of PostgreSQL source files determined by the
+      # $NO_UBSAN_RE regular expression. See the definition of NO_UBSAN_RE for details.
+      $compiler_args_str =~ .*\ -c\ -o\ $NO_UBSAN_RE[.]o\ $NO_UBSAN_RE[.]c\ .* ]]; then
   rewritten_args=()
   for arg in "${compiler_args[@]}"; do
     case $arg in

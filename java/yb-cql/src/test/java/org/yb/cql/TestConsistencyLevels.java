@@ -14,35 +14,30 @@
 package org.yb.cql;
 
 import com.datastax.driver.core.*;
-import com.datastax.driver.core.exceptions.ProtocolError;
 import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
 import com.datastax.driver.core.querybuilder.QueryBuilder;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.ColumnSchema;
-import org.yb.Common;
-import org.yb.Schema;
-import org.yb.Type;
+import org.yb.*;
 import org.yb.client.*;
 import org.yb.consensus.Metadata;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 
 import static junit.framework.TestCase.assertEquals;
 import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertTrue;
-import static org.yb.AssertionWrappers.fail;
-
-import org.yb.YBTestRunner;
-
-import org.junit.runner.RunWith;
 
 @RunWith(value=YBTestRunner.class)
 public class TestConsistencyLevels extends BaseCQLTest {

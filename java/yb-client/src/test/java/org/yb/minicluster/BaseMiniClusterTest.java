@@ -33,16 +33,12 @@ public class BaseMiniClusterTest extends BaseYBTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(BaseMiniClusterTest.class);
 
-  protected static final String NUM_MASTERS_PROP = "NUM_MASTERS";
+  // TODO: review the usage of the constants below.
+  protected static final int NUM_MASTERS = 3;
   protected static final int NUM_TABLET_SERVERS = 3;
-  protected static final int DEFAULT_NUM_MASTERS = 3;
+
   protected static final int STANDARD_DEVIATION_FACTOR = 2;
   protected static final int DEFAULT_TIMEOUT_MS = 50000;
-
-  // Number of masters that will be started for this test if we're starting
-  // a cluster.
-  protected static final int NUM_MASTERS =
-      Integer.getInteger(NUM_MASTERS_PROP, DEFAULT_NUM_MASTERS);
 
   /**
    * This is used as the default timeout when calling YB Java client's async API.
@@ -61,6 +57,18 @@ public class BaseMiniClusterTest extends BaseYBTest {
   // Comma separate describing the master addresses and ports.
   protected static String masterAddresses;
   protected static List<HostAndPort> masterHostPorts;
+
+  protected int getReplicationFactor() {
+    return -1;
+  }
+
+  protected int getInitialNumMasters() {
+    return -1;
+  }
+
+  protected int getInitialNumTServers() {
+    return -1;
+  }
 
   // Subclasses can override this to set the number of shards per tablet server.
   protected int overridableNumShardsPerTServer() {
@@ -112,7 +120,13 @@ public class BaseMiniClusterTest extends BaseYBTest {
     if (!miniClusterEnabled()) {
       return;
     }
-    createMiniCluster(NUM_MASTERS, NUM_TABLET_SERVERS);
+    final int replicationFactor = getReplicationFactor();
+    createMiniCluster(
+        TestUtils.getFirstPositiveNumber(
+            getInitialNumMasters(), replicationFactor, MiniYBCluster.DEFAULT_NUM_MASTERS),
+        TestUtils.getFirstPositiveNumber(
+            getInitialNumTServers(), replicationFactor, MiniYBCluster.DEFAULT_NUM_TSERVERS)
+    );
   }
 
   /**
@@ -141,6 +155,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
                       .tserverArgs(tserverArgs)
                       .numShardsPerTServer(overridableNumShardsPerTServer())
                       .useIpWithCertificate(useIpWithCertificate)
+                      .replicationFactor(getReplicationFactor())
                       .build();
     masterAddresses = miniCluster.getMasterAddresses();
     masterHostPorts = miniCluster.getMasterHostPorts();

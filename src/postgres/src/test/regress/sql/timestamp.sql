@@ -2,7 +2,7 @@
 -- TIMESTAMP
 --
 
-CREATE TABLE TIMESTAMP_TBL (d1 timestamp(2) without time zone);
+CREATE TABLE TIMESTAMP_TBL (d1 timestamp(2) without time zone PRIMARY KEY);
 
 -- Test shorthand input values
 -- We can't just "select" the results since they aren't constants; test for
@@ -16,8 +16,6 @@ CREATE TABLE TIMESTAMP_TBL (d1 timestamp(2) without time zone);
 INSERT INTO TIMESTAMP_TBL VALUES ('now');
 SELECT pg_sleep(0.1);
 
-BEGIN;
-
 INSERT INTO TIMESTAMP_TBL VALUES ('now');
 INSERT INTO TIMESTAMP_TBL VALUES ('today');
 INSERT INTO TIMESTAMP_TBL VALUES ('yesterday');
@@ -26,25 +24,20 @@ INSERT INTO TIMESTAMP_TBL VALUES ('tomorrow');
 INSERT INTO TIMESTAMP_TBL VALUES ('tomorrow EST');
 INSERT INTO TIMESTAMP_TBL VALUES ('tomorrow zulu');
 
-SELECT count(*) AS One FROM TIMESTAMP_TBL WHERE d1 = timestamp without time zone 'today';
-SELECT count(*) AS Three FROM TIMESTAMP_TBL WHERE d1 = timestamp without time zone 'tomorrow';
-SELECT count(*) AS One FROM TIMESTAMP_TBL WHERE d1 = timestamp without time zone 'yesterday';
-SELECT count(*) AS One FROM TIMESTAMP_TBL WHERE d1 = timestamp(2) without time zone 'now';
+SElECT COUNT(*) FROM TIMESTAMP_TBL;
 
-COMMIT;
-
-DELETE FROM TIMESTAMP_TBL;
+DROP TABLE TIMESTAMP_TBL;
+CREATE TABLE TIMESTAMP_TBL (d1 timestamp(2) without time zone PRIMARY KEY);
 
 -- verify uniform transaction time within transaction block
-BEGIN;
 INSERT INTO TIMESTAMP_TBL VALUES ('now');
 SELECT pg_sleep(0.1);
 INSERT INTO TIMESTAMP_TBL VALUES ('now');
 SELECT pg_sleep(0.1);
-SELECT count(*) AS two FROM TIMESTAMP_TBL WHERE d1 = timestamp(2) without time zone 'now';
-COMMIT;
+SELECT count(*) FROM TIMESTAMP_TBL ORDER BY d1;
 
-DELETE FROM TIMESTAMP_TBL;
+DROP TABLE TIMESTAMP_TBL;
+CREATE TABLE TIMESTAMP_TBL (d1 timestamp(2) without time zone PRIMARY KEY);
 
 -- Special values
 INSERT INTO TIMESTAMP_TBL VALUES ('-infinity');
@@ -141,7 +134,7 @@ INSERT INTO TIMESTAMP_TBL VALUES ('Jan 01 17:32:01 2001');
 INSERT INTO TIMESTAMP_TBL VALUES ('Feb 16 17:32:01 -0097');
 INSERT INTO TIMESTAMP_TBL VALUES ('Feb 16 17:32:01 5097 BC');
 
-SELECT '' AS "64", d1 FROM TIMESTAMP_TBL;
+SELECT '' AS "64", d1 FROM TIMESTAMP_TBL ORDER BY d1;
 
 -- Check behavior at the lower boundary of the timestamp range
 SELECT '4714-11-24 00:00:00 BC'::timestamp;
@@ -196,37 +189,37 @@ SELECT '' AS "54", d1 as "timestamp",
 
 -- TO_CHAR()
 SELECT '' AS to_char_1, to_char(d1, 'DAY Day day DY Dy dy MONTH Month month RM MON Mon mon')
-   FROM TIMESTAMP_TBL;
+   FROM TIMESTAMP_TBL ORDER BY d1;
 
 SELECT '' AS to_char_2, to_char(d1, 'FMDAY FMDay FMday FMMONTH FMMonth FMmonth FMRM')
-   FROM TIMESTAMP_TBL;
+   FROM TIMESTAMP_TBL ORDER BY d1;
 
 SELECT '' AS to_char_3, to_char(d1, 'Y,YYY YYYY YYY YY Y CC Q MM WW DDD DD D J')
-   FROM TIMESTAMP_TBL;
+   FROM TIMESTAMP_TBL ORDER BY d1;
 
 SELECT '' AS to_char_4, to_char(d1, 'FMY,YYY FMYYYY FMYYY FMYY FMY FMCC FMQ FMMM FMWW FMDDD FMDD FMD FMJ')
-   FROM TIMESTAMP_TBL;
+   FROM TIMESTAMP_TBL ORDER BY d1;
 
 SELECT '' AS to_char_5, to_char(d1, 'HH HH12 HH24 MI SS SSSS')
-   FROM TIMESTAMP_TBL;
+   FROM TIMESTAMP_TBL ORDER BY d1;
 
 SELECT '' AS to_char_6, to_char(d1, E'"HH:MI:SS is" HH:MI:SS "\\"text between quote marks\\""')
-   FROM TIMESTAMP_TBL;
+   FROM TIMESTAMP_TBL ORDER BY d1;
 
 SELECT '' AS to_char_7, to_char(d1, 'HH24--text--MI--text--SS')
-   FROM TIMESTAMP_TBL;
+   FROM TIMESTAMP_TBL ORDER BY d1;
 
 SELECT '' AS to_char_8, to_char(d1, 'YYYYTH YYYYth Jth')
-   FROM TIMESTAMP_TBL;
+   FROM TIMESTAMP_TBL ORDER BY d1;
 
 SELECT '' AS to_char_9, to_char(d1, 'YYYY A.D. YYYY a.d. YYYY bc HH:MI:SS P.M. HH:MI:SS p.m. HH:MI:SS pm')
-   FROM TIMESTAMP_TBL;
+   FROM TIMESTAMP_TBL ORDER BY d1;
 
 SELECT '' AS to_char_10, to_char(d1, 'IYYY IYY IY I IW IDDD ID')
-   FROM TIMESTAMP_TBL;
+   FROM TIMESTAMP_TBL ORDER BY d1;
 
 SELECT '' AS to_char_11, to_char(d1, 'FMIYYY FMIYY FMIY FMI FMIW FMIDDD FMID')
-   FROM TIMESTAMP_TBL;
+   FROM TIMESTAMP_TBL ORDER BY d1;
 
 -- timestamp numeric fields constructor
 SELECT make_timestamp(2014,12,28,6,30,45.887);

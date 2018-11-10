@@ -135,6 +135,7 @@ public class MiniYBCluster implements AutoCloseable {
 
   public static final int DEFAULT_NUM_SHARDS_PER_TSERVER = 3;
 
+  public static final int DEFAULT_NUM_MASTERS = 3;
   public static final int DEFAULT_NUM_TSERVERS = 3;
 
   private int numShardsPerTserver;
@@ -150,6 +151,8 @@ public class MiniYBCluster implements AutoCloseable {
   private static final long DAEMON_MEMORY_LIMIT_HARD_BYTES_NON_TSAN = 1024 * 1024 * 1024;
   private static final long DAEMON_MEMORY_LIMIT_HARD_BYTES_TSAN = 512 * 1024 * 1024;
 
+  private int replicationFactor = -1;
+
   /**
    * Not to be invoked directly, but through a {@link MiniYBClusterBuilder}.
    */
@@ -160,11 +163,13 @@ public class MiniYBCluster implements AutoCloseable {
                 List<List<String>> tserverArgs,
                 int numShardsPerTserver,
                 String testClassName,
-                boolean useIpWithCertificate) throws Exception {
+                boolean useIpWithCertificate,
+                int replicationFactor) throws Exception {
     this.defaultTimeoutMs = defaultTimeoutMs;
     this.testClassName = testClassName;
     this.numShardsPerTserver = numShardsPerTserver;
     this.useIpWithCertificate = useIpWithCertificate;
+    this.replicationFactor = replicationFactor;
 
     startCluster(numMasters, numTservers, masterArgs, tserverArgs);
     startSyncClient();
@@ -214,6 +219,10 @@ public class MiniYBCluster implements AutoCloseable {
     }
 
     commonFlags.add("--yb_num_shards_per_tserver=" + numShardsPerTserver);
+
+    if (replicationFactor > 0) {
+      commonFlags.add("--replication_factor=" + replicationFactor);
+    }
 
     return commonFlags;
   }
