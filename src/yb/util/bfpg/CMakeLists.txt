@@ -44,6 +44,11 @@ ADD_YB_LIBRARY(yb_bfpg
 
 # Make sure code-generator is built before yb_bfpg library.
 add_dependencies(yb_bfpg bfpg_codegen)
+# Also make sure that the protobuf headers we depend on here are generated.
+add_dependencies(yb_bfpg bfpg_codegen
+    gen_src_yb_common_pgsql_protocol_proto
+    gen_src_yb_common_ql_protocol_proto
+    )
 
 # Build the test cases.
 set(YB_TEST_LINK_LIBS yb_bfpg ${YB_MIN_TEST_LIBS} yb_common)

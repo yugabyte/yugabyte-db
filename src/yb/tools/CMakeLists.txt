@@ -96,6 +96,9 @@ target_link_libraries(ysck
   tserver_service_proto
   ${YB_BASE_LIBS}
 )
+add_dependencies(
+  ysck
+  gen_src_yb_consensus_log_proto)
 
 add_executable(yb-ysck yb-ysck.cc)
 target_link_libraries(yb-ysck

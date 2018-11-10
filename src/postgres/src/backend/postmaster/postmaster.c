@@ -4362,7 +4362,13 @@ BackendRun(Port *port)
 #endif
 	/* slightly hacky way to convert timestamptz into integers */
 	TimestampDifference(0, port->SessionStartTime, &secs, &usecs);
+#ifdef ADDRESS_SANITIZER
+	/* YugaByte fix for ASAN */
+	srandom((unsigned int) (MyProcPid ^ ((int64_t) usecs << 12) ^ secs));
+#else
 	srandom((unsigned int) (MyProcPid ^ (usecs << 12) ^ secs));
+#endif
+
 
 	/*
 	 * Now, build the argv vector that will be given to PostgresMain.

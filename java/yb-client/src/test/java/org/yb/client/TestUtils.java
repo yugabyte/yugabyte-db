@@ -466,4 +466,19 @@ public class TestUtils {
     System.setErr(defaultStdErr);
   }
 
+  /**
+   * @param arr integer parameters
+   * @return the first of the given numbers that is positive
+   */
+  public static int getFirstPositiveNumber(int... arr) {
+    for (int value : arr) {
+      if (value > 0)
+        return value;
+    }
+    if (arr.length > 0) {
+      return arr[arr.length - 1];
+    }
+    throw new IllegalArgumentException("No numbers given to firstPositiveNumber");
+  }
+
 }
