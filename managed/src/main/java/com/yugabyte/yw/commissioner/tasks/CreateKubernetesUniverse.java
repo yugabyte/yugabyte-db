@@ -3,7 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -49,15 +49,34 @@ public class CreateKubernetesUniverse extends UniverseDefinitionTaskBase {
       createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
       createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO);
 
+      /*
+       * TODO: node names do not match in k8s...
+      // Wait for new tablet servers to be responsive.
+      createWaitForServersTasks(taskParams().nodeDetailsSet, ServerType.TSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      */
+
+      // Wait for a Master Leader to be elected.
+      createWaitForMasterLeaderTask()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Persist the placement info into the YB master leader.
+      createPlacementInfoTask(null /* blacklistNodes */)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Wait for a master leader to hear from all the tservers.
+      createWaitForTServerHeartBeatsTask()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
       createSwamperTargetUpdateTask(false);
 
       // Create a simple redis table.
       createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
       subTaskGroupQueue.run();

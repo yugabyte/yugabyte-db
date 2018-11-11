@@ -126,7 +126,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
       placementInfoPB.build();
     }
 
-    public void addAffinitizedPlacements(Master.ReplicationInfoPB.Builder replicationInfoPB, 
+    public void addAffinitizedPlacements(Master.ReplicationInfoPB.Builder replicationInfoPB,
                                          PlacementInfo placementInfo) {
       for (PlacementCloud placementCloud : placementInfo.cloudList) {
         Provider cloud = Provider.find.byId(placementCloud.uuid);
@@ -155,7 +155,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
           Master.SysClusterConfigEntryPB.newBuilder(config);
 
       // Clear the replication info, as it is no longer valid.
-      Master.ReplicationInfoPB.Builder replicationInfoPB = 
+      Master.ReplicationInfoPB.Builder replicationInfoPB =
           configBuilder.clearReplicationInfo().getReplicationInfoBuilder();
       // Build the live replicas from the replication info.
       Master.PlacementInfoPB.Builder placementInfoPB =
@@ -169,7 +169,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
         Master.PlacementInfoPB.Builder placementInfoReadPB = replicationInfoPB.addReadReplicasBuilder();
         generatePlacementInfoPB(placementInfoReadPB, cluster);
       }
-      
+
       addAffinitizedPlacements(replicationInfoPB, placementInfo);
       replicationInfoPB.build();
 

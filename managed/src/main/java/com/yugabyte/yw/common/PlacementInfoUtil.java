@@ -458,10 +458,19 @@ public class PlacementInfoUtil {
     // to 5, we will show existing zones. ResetConfig can be used to change zone count.
     boolean mode_changed = false;
     if (clusterOpType.equals(ClusterOperationType.CREATE)) {
-      int numZones = getAzUuidToNumNodes(taskParams.getNodesInCluster(cluster.uuid)).size();
+      int totalRF = 0;
+      // Compute RF across all chosen zones to be <= user RF.
+      for (PlacementCloud cloud : cluster.placementInfo.cloudList) {
+        for (PlacementRegion region : cloud.regionList) {
+          for (PlacementAZ az : region.azList) {
+            totalRF += az.replicationFactor;
+          }
+        }
+      }
       int rf = cluster.userIntent.replicationFactor;
-      LOG.info("Replication factor={} while zones={}.", rf, numZones);
-      if (rf < numZones) {
+      LOG.info("UserIntent replication factor={} while total zone replication factor={}.",
+          rf, totalRF);
+      if (rf < totalRF) {
         cluster.placementInfo = getPlacementInfo(cluster.clusterType, cluster.userIntent);
         LOG.info("New placement has {} zones.", getNumZones(cluster.placementInfo));
         taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));

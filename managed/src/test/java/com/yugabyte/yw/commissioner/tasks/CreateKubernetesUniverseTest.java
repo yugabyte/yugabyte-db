@@ -22,8 +22,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.Common;
+import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.ListTabletServersResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
+import org.yb.master.Master;
 import play.libs.Json;
 
 import java.util.HashMap;
@@ -37,6 +41,7 @@ import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecu
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.HELM_INIT;
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.HELM_INSTALL;
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.POD_INFO;
+import static com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUniverseConfig;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
@@ -44,6 +49,8 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyLong;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -86,22 +93,30 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesCommandExecutor,
+      TaskType.WaitForMasterLeader,
+      TaskType.UpdatePlacementInfo,
+      TaskType.WaitForTServerHeartBeats,
       TaskType.SwamperTargetsFileUpdate,
       TaskType.CreateTable,
       TaskType.UniverseUpdateSucceeded);
 
-
-  List<JsonNode> KUBERNETES_CREATE_UNIVERSE_EXPECTED_RESULTS = ImmutableList.of(
+  // Cannot use defaultUniverse.universeUUID in a class field.
+  List<JsonNode> getExpectedCreateUniverseTaskResults() {
+    return ImmutableList.of(
       Json.toJson(ImmutableMap.of("commandType", CREATE_NAMESPACE.name())),
       Json.toJson(ImmutableMap.of("commandType", APPLY_SECRET.name())),
       Json.toJson(ImmutableMap.of("commandType", HELM_INIT.name())),
       Json.toJson(ImmutableMap.of("commandType", HELM_INSTALL.name())),
       Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of("removeFile", false)),
       Json.toJson(ImmutableMap.of("tableType", "REDIS_TABLE_TYPE",
                                   "tableName", "redis")),
       Json.toJson(ImmutableMap.of())
-  );
+    );
+  }
 
   private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition) {
     int position = 0;
@@ -110,7 +125,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       assertEquals(1, tasks.size());
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults =
-          KUBERNETES_CREATE_UNIVERSE_EXPECTED_RESULTS.get(position);
+          getExpectedCreateUniverseTaskResults().get(position);
       List<JsonNode> taskDetails = tasks.stream()
           .map(t -> t.getTaskDetails())
           .collect(Collectors.toList());
@@ -146,24 +161,40 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockKubernetesManager.helmInstall(any(), any(), any())).thenReturn(response);
     response.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"123.456.78.90\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
+            "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"123.456.78.91\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"}}," +
+            "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"}}," +
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"123.456.78.92\"}, \"spec\": {\"hostname\": \"yb-master-1\"}}," +
+            "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-master-1\"}}," +
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"123.456.78.93\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"}}," +
+            "\"podIP\": \"1.2.3.4\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"}}," +
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"123.456.78.94\"}, \"spec\": {\"hostname\": \"yb-master-2\"}}," +
+            "\"podIP\": \"1.2.3.5\"}, \"spec\": {\"hostname\": \"yb-master-2\"}}," +
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
-            "\"podIP\": \"123.456.78.95\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"}}]}";
+            "\"podIP\": \"1.2.3.6\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"}}]}";
     when(mockKubernetesManager.getPodInfos(any(), any())).thenReturn(response);
+    // Table RPCs.
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any())).thenReturn(mockClient);
     YBTable mockTable = mock(YBTable.class);
     when(mockTable.getName()).thenReturn("redis");
     when(mockTable.getTableType()).thenReturn(Common.TableType.REDIS_TABLE_TYPE);
+    // WaitForServer mock.
+    when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     try {
+      // WaitForTServerHeartBeats mock.
+      ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
+      when(mockClient.listTabletServers()).thenReturn(mockResponse);
+      when(mockResponse.getTabletServersCount()).thenReturn(3);
+      // WaitForMasterLeader mock.
+      doNothing().when(mockClient).waitForMasterLeader(anyLong());
+      // PlacementUtil mock.
+      Master.SysClusterConfigEntryPB.Builder configBuilder = Master.SysClusterConfigEntryPB.newBuilder();
+      GetMasterClusterConfigResponse gcr = new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
+      when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
+      ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
+      // CreateTable mock.
       when(mockClient.createRedisTable(any())).thenReturn(mockTable);
     } catch (Exception e) {
       e.printStackTrace();

@@ -113,7 +113,7 @@ public class ApiUtils {
   public static Universe.UniverseUpdater mockUniverseUpdaterWithInactiveNodes() {
     return mockUniverseUpdaterWithInactiveNodes(false);
   }
-  
+
   public static Universe.UniverseUpdater mockUniverseUpdaterWithInactiveNodes(
       final boolean setMasters) {
     return new Universe.UniverseUpdater() {
