@@ -20,6 +20,13 @@
 .modal-body {
   max-height: calc(100% - 120px);
   overflow: auto;
+
+  .divider {
+    margin: 5px -15px 15px;
+    height: 1px;
+    width: auto;
+    background-color: $YB_GRAY_HOVER;
+  }
 }
 
 .modal-footer {
