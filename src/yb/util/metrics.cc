@@ -175,7 +175,8 @@ MetricEntity::MetricEntity(const MetricEntityPrototype* prototype,
                            std::string id, AttributeMap attributes)
     : prototype_(prototype),
       id_(std::move(id)),
-      attributes_(std::move(attributes)) {}
+      attributes_(std::move(attributes)) {
+}
 
 MetricEntity::~MetricEntity() {
 }
@@ -323,6 +324,11 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer) const 
   }
 
   return Status::OK();
+}
+
+void MetricEntity::Remove(const MetricPrototype* proto) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  metric_map_.erase(proto);
 }
 
 void MetricEntity::RetireOldMetrics() {
@@ -584,6 +590,10 @@ scoped_refptr<MetricEntity> MetricRegistry::FindOrCreateEntity(
 //
 Metric::Metric(const MetricPrototype* prototype)
   : prototype_(prototype) {
+}
+
+Metric::Metric(std::unique_ptr<MetricPrototype> prototype)
+  : prototype_holder_(std::move(prototype)), prototype_(prototype_holder_.get()) {
 }
 
 Metric::~Metric() {

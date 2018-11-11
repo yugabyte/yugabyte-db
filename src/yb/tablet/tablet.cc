@@ -306,7 +306,9 @@ Tablet::Tablet(
       metadata_(metadata),
       table_type_(metadata->table_type()),
       log_anchor_registry_(log_anchor_registry),
-      mem_tracker_(MemTracker::CreateTracker(Format("tablet-$0", tablet_id()), parent_mem_tracker)),
+      mem_tracker_(MemTracker::CreateTracker(
+          Format("tablet-$0", tablet_id()), parent_mem_tracker, AddToParent::kTrue,
+          CreateMetrics::kFalse)),
       dms_mem_tracker_(MemTracker::CreateTracker(kDMSMemTrackerId, mem_tracker_)),
       clock_(clock),
       mvcc_(Format("T $0 ", metadata_->tablet_id()), clock),
@@ -340,6 +342,8 @@ Tablet::Tablet(
     });
 
     metrics_.reset(new TabletMetrics(metric_entity_));
+
+    mem_tracker_->SetMetricEntity(metric_entity_);
   }
 
   if (transaction_participant_context && metadata->schema().table_properties().is_transactional()) {

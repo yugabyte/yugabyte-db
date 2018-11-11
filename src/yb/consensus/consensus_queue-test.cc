@@ -103,6 +103,7 @@ class ConsensusQueueTest : public YBTest {
     queue_.reset();
     queue_.reset(new PeerMessageQueue(metric_entity_,
                                       log_.get(),
+                                      nullptr /* server_tracker */,
                                       FakeRaftPeerPB(kLeaderUuid),
                                       kTestTablet,
                                       clock_,
