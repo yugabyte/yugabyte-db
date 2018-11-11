@@ -160,6 +160,7 @@ class PeerMessageQueue {
 
   PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_entity,
                    const scoped_refptr<log::Log>& log,
+                   const std::shared_ptr<MemTracker>& server_tracker,
                    const RaftPeerPB& local_peer_pb,
                    const std::string& tablet_id,
                    const server::ClockPtr& clock,

@@ -481,8 +481,12 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   scoped_refptr<Histogram> FindOrCreateHistogram(const HistogramPrototype* proto);
 
   template<typename T>
-  scoped_refptr<AtomicGauge<T> > FindOrCreateGauge(const GaugePrototype<T>* proto,
-                                                   const T& initial_value);
+  scoped_refptr<AtomicGauge<T>> FindOrCreateGauge(const GaugePrototype<T>* proto,
+                                                  const T& initial_value);
+
+  template<typename T>
+  scoped_refptr<AtomicGauge<T>> FindOrCreateGauge(std::unique_ptr<GaugePrototype<T>> proto,
+                                                  const T& initial_value);
 
   template<typename T>
   scoped_refptr<FunctionGauge<T> > FindOrCreateFunctionGauge(const GaugePrototype<T>* proto,
@@ -536,6 +540,10 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
     std::lock_guard<simple_spinlock> l(lock_);
     external_prometheus_metrics_cbs_.push_back(external_metrics_cb);
   }
+
+  const MetricEntityPrototype& prototype() const { return *prototype_; }
+
+  void Remove(const MetricPrototype* proto);
 
  private:
   friend class MetricRegistry;
@@ -659,8 +667,10 @@ class Metric : public RefCountedThreadSafe<Metric> {
 
  protected:
   explicit Metric(const MetricPrototype* prototype);
+  explicit Metric(std::unique_ptr<MetricPrototype> prototype);
   virtual ~Metric();
 
+  std::unique_ptr<MetricPrototype> prototype_holder_;
   const MetricPrototype* const prototype_;
 
  private:
@@ -810,10 +820,10 @@ class MetricPrototype {
   void WriteFields(JsonWriter* writer,
                    const MetricJsonOptions& opts) const;
 
+  virtual ~MetricPrototype() {}
+
  protected:
   explicit MetricPrototype(CtorArgs args);
-  virtual ~MetricPrototype() {
-  }
 
   const CtorArgs args_;
 
@@ -859,8 +869,13 @@ class GaugePrototype : public MetricPrototype {
 class Gauge : public Metric {
  public:
   explicit Gauge(const MetricPrototype* prototype)
-    : Metric(prototype) {
+      : Metric(prototype) {
   }
+
+  explicit Gauge(std::unique_ptr<MetricPrototype> prototype)
+      : Metric(std::move(prototype)) {
+  }
+
   virtual ~Gauge() {}
   virtual CHECKED_STATUS WriteAsJson(JsonWriter* w,
                              const MetricJsonOptions& opts) const override;
@@ -893,9 +908,12 @@ template <typename T>
 class AtomicGauge : public Gauge {
  public:
   AtomicGauge(const GaugePrototype<T>* proto, T initial_value)
-    : Gauge(proto),
-      value_(initial_value) {
+      : Gauge(proto), value_(initial_value) {
   }
+
+  AtomicGauge(std::unique_ptr<GaugePrototype<T>> proto, T initial_value)
+      : Gauge(std::move(proto)), value_(initial_value) {}
+
   T value() const {
     return static_cast<T>(value_.Load(kMemOrderRelease));
   }
@@ -1222,6 +1240,20 @@ inline scoped_refptr<AtomicGauge<T> > MetricEntity::FindOrCreateGauge(
 }
 
 template<typename T>
+inline scoped_refptr<AtomicGauge<T> > MetricEntity::FindOrCreateGauge(
+    std::unique_ptr<GaugePrototype<T>> proto,
+    const T& initial_value) {
+  CheckInstantiation(proto.get());
+  std::lock_guard<simple_spinlock> l(lock_);
+  auto m = down_cast<AtomicGauge<T>*>(FindPtrOrNull(metric_map_, proto.get()).get());
+  if (!m) {
+    m = new AtomicGauge<T>(std::move(proto), initial_value);
+    InsertOrDie(&metric_map_, m->prototype(), m);
+  }
+  return m;
+}
+
+template<typename T>
 inline scoped_refptr<FunctionGauge<T> > MetricEntity::FindOrCreateFunctionGauge(
     const GaugePrototype<T>* proto,
     const Callback<T()>& function) {
@@ -1235,6 +1267,37 @@ inline scoped_refptr<FunctionGauge<T> > MetricEntity::FindOrCreateFunctionGauge(
   }
   return m;
 }
+
+struct OwningMetricCtorArgs {
+  OwningMetricCtorArgs(
+      std::string entity_type_,
+      std::string name_,
+      std::string label_,
+      MetricUnit::Type unit_,
+      std::string description_,
+      uint32_t flags_ = 0)
+    : entity_type(std::move(entity_type_)), name(std::move(name_)), label(std::move(label_)),
+      unit(unit_), description(std::move(description_)), flags(flags_) {}
+
+  std::string entity_type;
+  std::string name;
+  std::string label;
+  MetricUnit::Type unit;
+  std::string description;
+  uint32_t flags;
+};
+
+template <class T>
+class OwningGaugePrototype : public OwningMetricCtorArgs, public GaugePrototype<T> {
+ public:
+  template <class... Args>
+  explicit OwningGaugePrototype(Args&&... args)
+      : OwningMetricCtorArgs(std::forward<Args>(args)...),
+        GaugePrototype<T>(MetricPrototype::CtorArgs(
+            OwningMetricCtorArgs::entity_type.c_str(), OwningMetricCtorArgs::name.c_str(),
+            OwningMetricCtorArgs::label.c_str(), unit, OwningMetricCtorArgs::description.c_str(),
+            flags)) {}
+};
 
 } // namespace yb
 
