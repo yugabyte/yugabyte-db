@@ -71,6 +71,8 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     dummyShellResponse = new ShellProcessHandler.ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    // TODO(bogdan): I don't think these mocks of the AbstractModifyMasterClusterConfig are doing
+    // anything..
     modifyUC = mock(ModifyUniverseConfig.class);
     amuc = mock(AbstractModifyMasterClusterConfig.class);
     try {

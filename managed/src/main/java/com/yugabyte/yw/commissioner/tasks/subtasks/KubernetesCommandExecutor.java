@@ -14,10 +14,12 @@ import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import play.Application;
 import play.api.Play;
 import play.libs.Json;
@@ -62,7 +64,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         case HELM_UPGRADE:
           return UserTaskDetails.SubTaskGroupType.HelmUpgrade.name();
         case UPDATE_NUM_NODES:
-          return UserTaskDetails.SubTaskGroupType.UpdateNumNodes.name();  
+          return UserTaskDetails.SubTaskGroupType.UpdateNumNodes.name();
         case HELM_DELETE:
           return UserTaskDetails.SubTaskGroupType.HelmDelete.name();
         case VOLUME_DELETE:
@@ -119,7 +121,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       case APPLY_SECRET:
         String pullSecret = this.getPullSecret();
         if (pullSecret != null) {
-          kubernetesManager.applySecret(taskParams().providerUUID, taskParams().nodePrefix, pullSecret);  
+          kubernetesManager.applySecret(taskParams().providerUUID, taskParams().nodePrefix, pullSecret);
         }
         break;
       case HELM_INIT:
@@ -136,7 +138,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       case UPDATE_NUM_NODES:
         int numNodes = this.getNumNodes();
         if (numNodes > 0) {
-          kubernetesManager.updateNumNodes(taskParams().providerUUID, taskParams().nodePrefix, numNodes);  
+          kubernetesManager.updateNumNodes(taskParams().providerUUID, taskParams().nodePrefix, numNodes);
         }
         break;
       case HELM_DELETE:
@@ -166,7 +168,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       pod.put("privateIP", statusNode.get("podIP").asText());
       pods.set(podSpec.path("hostname").asText(), pod);
     }
-    
+
     Universe.UniverseUpdater updater = universe -> {
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       Set<NodeDetails> defaultNodes = universeDetails.nodeDetailsSet;
@@ -212,7 +214,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       Map<String, String> config = provider.getConfig();
       if (config.containsKey("KUBECONFIG_IMAGE_PULL_SECRET_NAME")) {
         return config.get("KUBECONFIG_PULL_SECRET");
-      }  
+      }
     }
     return null;
   }
@@ -278,8 +280,9 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     Map<String, Object> resourceOverrides = new HashMap();
     resourceOverrides.put("tserver", ImmutableMap.of("requests", tserverResource, "limits", tserverLimit));
 
-    // If the instance type is not xsmall, we would bump the master resource.
-    if (!instanceType.getInstanceTypeCode().equals("xsmall")) {
+    // If the instance type is not xsmall or dev, we would bump the master resource.
+    if (!instanceType.getInstanceTypeCode().equals("xsmall") &&
+        !instanceType.getInstanceTypeCode().equals("dev") ) {
       Map<String, Object> masterResource = new HashMap<>();
       Map<String, Object> masterLimit = new HashMap<>();
       masterResource.put("cpu", 2);
@@ -309,23 +312,73 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     }
     else if (taskParams().serverType == ServerType.MASTER) {
       partition.put("tserver", userIntent.numNodes);
-      partition.put("master", taskParams().rollingUpgradePartition); 
+      partition.put("master", taskParams().rollingUpgradePartition);
     }
     if (!partition.isEmpty()) {
       overrides.put("partition", partition);
     }
 
-    // Override num of tserver replicas based on num nodes 
+    // Override num of tserver replicas based on num nodes
     // and num of master replicas based on replication factor.
     overrides.put("replicas", ImmutableMap.of("tserver", userIntent.numNodes,
         "master", userIntent.replicationFactor));
 
-    Map<String, Object> gflagOverrides = new HashMap<>();
-    if (!userIntent.masterGFlags.isEmpty()) {
-      gflagOverrides.put("master", userIntent.masterGFlags);
+    // TODO: this needs a better handling in k8s.
+    String placementCloud = null;
+    String placementRegion = null;
+    String placementZone = null;
+    UUID placementUuid = u.getUniverseDetails().getPrimaryCluster().uuid;
+    PlacementInfo pi = u.getUniverseDetails().getPrimaryCluster().placementInfo;
+    if (pi != null) {
+      if (pi.cloudList.size() != 0) {
+        PlacementInfo.PlacementCloud cloud = pi.cloudList.get(0);
+        placementCloud = cloud.code;
+        if (cloud.regionList.size() != 0) {
+          PlacementInfo.PlacementRegion region = cloud.regionList.get(0);
+          placementRegion = region.code;
+          if (region.azList.size() != 0) {
+            PlacementInfo.PlacementAZ zone = region.azList.get(0);
+            // TODO: wtf, why do we have AZ name but not code at this level??
+            placementZone = AvailabilityZone.get(zone.uuid).code;
+          }
+        }
+      }
     }
-    if (!userIntent.tserverGFlags.isEmpty()) {
-      gflagOverrides.put("tserver", userIntent.tserverGFlags);
+
+    Map<String, Object> gflagOverrides = new HashMap<>();
+    // Go over master flags.
+    Map<String, Object> masterOverrides = new HashMap<String, Object>(userIntent.masterGFlags);
+    if (placementCloud != null && masterOverrides.get("placement_cloud") == null) {
+      masterOverrides.put("placement_cloud", placementCloud);
+    }
+    if (placementRegion != null && masterOverrides.get("placement_region") == null) {
+      masterOverrides.put("placement_region", placementRegion);
+    }
+    if (placementZone != null && masterOverrides.get("placement_zone") == null) {
+      masterOverrides.put("placement_zone", placementZone);
+    }
+    if (placementUuid != null && masterOverrides.get("placement_uuid") == null) {
+      masterOverrides.put("placement_uuid", placementUuid.toString());
+    }
+    if (!masterOverrides.isEmpty()) {
+      gflagOverrides.put("master", masterOverrides);
+    }
+    // Go over master flags.
+    Map<String, Object> tserverOverrides = new HashMap<String, Object>(userIntent.tserverGFlags);
+    if (placementCloud != null && tserverOverrides.get("placement_cloud") == null) {
+      tserverOverrides.put("placement_cloud", placementCloud);
+    }
+    if (placementRegion != null && tserverOverrides.get("placement_region") == null) {
+      tserverOverrides.put("placement_region", placementRegion);
+    }
+    if (placementZone != null && tserverOverrides.get("placement_zone") == null) {
+      tserverOverrides.put("placement_zone", placementZone);
+    }
+    if (placementUuid != null && tserverOverrides.get("placement_uuid") == null) {
+      tserverOverrides.put("placement_uuid", placementUuid.toString());
+    }
+    if (!tserverOverrides.isEmpty()) {
+      gflagOverrides.put("tserver", tserverOverrides);
     }
 
     if (!gflagOverrides.isEmpty()) {

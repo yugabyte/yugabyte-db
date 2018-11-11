@@ -29,6 +29,7 @@ import com.google.inject.Inject;
 import play.api.Play;
 import play.data.Form;
 import play.data.FormFactory;
+import play.Environment;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -47,6 +48,8 @@ import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadat
 public class CloudProviderController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderController.class);
 
+  private static JsonNode KUBERNETES_DEV_INSTANCE_TYPE = Json.parse(
+      "{\"instanceTypeCode\": \"dev\", \"numCores\": 0, \"memSizeGB\": 0.5}");
   private static JsonNode KUBERNETES_INSTANCE_TYPES = Json.parse("[" +
       "{\"instanceTypeCode\": \"xsmall\", \"numCores\": 2, \"memSizeGB\": 4}," +
       "{\"instanceTypeCode\": \"small\", \"numCores\": 4, \"memSizeGB\": 7.5}," +
@@ -59,7 +62,7 @@ public class CloudProviderController extends AuthenticatedController {
 
   @Inject
   AWSInitializer awsInitializer;
-  
+
   @Inject
   GCPInitializer gcpInitializer;
 
@@ -68,12 +71,15 @@ public class CloudProviderController extends AuthenticatedController {
 
   @Inject
   ConfigHelper configHelper;
-  
+
   @Inject
   AccessManager accessManager;
 
   @Inject
   DnsManager dnsManager;
+
+  @Inject
+  private play.Environment environment;
 
   /**
    * GET endpoint for listing providers
@@ -218,6 +224,16 @@ public class CloudProviderController extends AuthenticatedController {
           idt
       );
     }));
+    if (environment.isDev()) {
+      InstanceType.InstanceTypeDetails idt = new InstanceType.InstanceTypeDetails();
+      idt.setVolumeDetailsList(1, 100, InstanceType.VolumeType.SSD);
+      InstanceType.upsert(provider.code,
+          KUBERNETES_DEV_INSTANCE_TYPE.get("instanceTypeCode").asText(),
+          KUBERNETES_DEV_INSTANCE_TYPE.get("numCores").asInt(),
+          KUBERNETES_DEV_INSTANCE_TYPE.get("memSizeGB").asDouble(),
+          idt
+      );
+    }
   }
 
   private void updateKubeConfig(Provider provider, Map<String, String> config) {
