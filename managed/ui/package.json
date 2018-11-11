@@ -55,7 +55,7 @@
     "jquery": "^3.1.0",
     "leaflet": "1.0.2",
     "leaflet.markercluster": "^1.0.0",
-    "lodash": "^3.10.1",
+    "lodash": "^4.0.0",
     "node-sass": "^4.9.0",
     "npm": "^5.0.4",
     "react": "^16.2.0",

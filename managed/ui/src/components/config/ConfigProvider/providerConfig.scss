@@ -68,6 +68,155 @@
   text-align: center;
 }
 
+.provider-config-container {
+  .btn-add-region {
+    float: none;
+    width: 100%;
+    margin: 0 auto;
+    height: 60px;
+    border: 1px dotted desaturate(rgba($YB_VIOLET, 0.35), 20%);
+    color: $YB_ORANGE;
+    font-weight: 400;
+
+    &:focus {
+      background-color: #fff;
+    }
+
+    &:hover {
+      @include transition(0.3s);
+      transform: scale(1.01, 1.01);
+      background-color: #fff;
+      transform-origin: 50% 50%;
+      border-color: white;
+      box-shadow: 0 4px 9px rgba(35, 35, 41, 0.2), 0 0 1px rgba(35, 35, 41, 0.1);
+    }
+
+    .btn-icon {
+      position: relative;
+      display: inline-block;
+      background-color: $YB_ORANGE;
+      height: 30px;
+      width: 30px;
+      font-weight: 200;
+      text-align: center;
+      color: white;
+      border-radius: 15px;
+      margin-right: 5px;
+
+      i {
+        line-height: 32px;
+        font-size: 18px;
+        width: 34px;
+        height: 32px;
+        text-align: center;
+        vertical-align: middle;
+        transition: none;
+        color: white;
+      }
+    }
+  }
+
+  .config-region-list {
+    display: table;
+    margin-left: 0;
+    padding-left: 0;
+    width: 100%;
+    border-spacing: 0 10px;
+
+    li {
+      display: table-row;
+      margin-left: 10px;
+      margin-right: 10px;
+      @include transition(0.15s);
+      border-radius: 7px;
+      font-size: 14px;
+
+      &:first-child {
+        
+        div {
+          padding-bottom: 10px;
+        }
+      }
+
+      & > div:first-child {
+        padding: 0 10px 0 20px;
+        border-radius: 7px 0 0 7px;
+      }
+
+      & > div:last-child {
+        border-radius: 0 7px 7px 0;
+        width: 50px;
+      }
+
+      &:not(:first-child) {
+        background-color: $YB_BACKGROUND;
+
+        div {
+          padding-top: 6px;
+          padding-bottom: 6px;
+        }
+
+        & > *:first-child * {
+          font-weight: 700;
+          color: $YB_ORANGE !important;
+        }
+      }
+      &:not(:first-child):hover {
+        position: relative;
+        z-index: 2;
+        cursor: pointer;
+        padding: 0 10px;
+        @include transition(0.3s);
+        transform: scale(1.01, 1.01);
+        background-color: #fff;
+        transform-origin: 50% 50%;
+        border-color: white;
+        box-shadow: 0 4px 9px rgba(35, 35, 41, 0.2), 0 0 1px rgba(35, 35, 41, 0.1);
+      }
+
+      &.header-row {
+        text-transform: uppercase;
+        font-size: 0.8em;
+        font-weight: 600;
+      }
+
+      & > div {
+        display: table-cell;
+      }
+
+      div {
+        background: none;
+        border: none;
+        outline: none;
+        box-shadow: none;
+
+        input {
+          background: none;
+          border: none;
+          outline: none;
+          box-shadow: none;
+          cursor: pointer;
+        }
+
+        .form-group, .yb-field-group, input {
+          padding: 0;
+        }
+
+        .delete-provider {
+          float: none;
+          width: 50px;
+          background: none;
+          border: none;
+        }
+      }
+    }
+  }
+}
+
+.regions-form-title {
+  margin: 20px 0;
+}
+
 .yb-breadcrumb {
   color: #CD6500;
   font-weight: 500;
