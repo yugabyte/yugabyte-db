@@ -55,6 +55,9 @@
 #include "yb/util/metrics.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
+#include "yb/util/size_literals.h"
+
+using namespace std::literals;
 
 DEFINE_int32(log_cache_size_limit_mb, 128,
              "The total per-tablet size of consensus entries which may be kept in memory. "
@@ -80,12 +83,17 @@ METRIC_DEFINE_gauge_int64(tablet, log_cache_size, "Log Cache Memory Usage",
                           MetricUnit::kBytes,
                           "Amount of memory in use for caching the local log.");
 
-static const char kParentMemTrackerId[] = "log_cache";
+namespace {
+
+const std::string kParentMemTrackerId = "log_cache"s;
+
+}
 
 typedef vector<const ReplicateMsg*>::const_iterator MsgIter;
 
 LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
                    const scoped_refptr<log::Log>& log,
+                   const MemTrackerPtr& server_tracker,
                    const string& local_uuid,
                    const string& tablet_id)
   : log_(log),
@@ -95,20 +103,18 @@ LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
     min_pinned_op_index_(0),
     metrics_(metric_entity) {
 
-
-  const int64_t max_ops_size_bytes = FLAGS_log_cache_size_limit_mb * 1024 * 1024;
-  const int64_t global_max_ops_size_bytes = FLAGS_global_log_cache_size_limit_mb * 1024 * 1024;
+  const int64_t max_ops_size_bytes = FLAGS_log_cache_size_limit_mb * 1_MB;
+  const int64_t global_max_ops_size_bytes = FLAGS_global_log_cache_size_limit_mb * 1_MB;
 
   // Set up (or reuse) a tracker with the global limit. It is parented directly to the root tracker
   // so that it's always global.
   parent_tracker_ = MemTracker::FindOrCreateTracker(global_max_ops_size_bytes,
-                                                    kParentMemTrackerId);
+                                                    kParentMemTrackerId,
+                                                    server_tracker);
 
   // And create a child tracker with the per-tablet limit.
   tracker_ = MemTracker::CreateTracker(
-      max_ops_size_bytes, Substitute("$0:$1:$2", kParentMemTrackerId,
-                                     local_uuid, tablet_id),
-      parent_tracker_);
+      max_ops_size_bytes, Format("$0-$1", kParentMemTrackerId, tablet_id), parent_tracker_);
 
   // Put a fake message at index 0, since this simplifies a lot of our code paths elsewhere.
   auto zero_op = std::make_shared<ReplicateMsg>();

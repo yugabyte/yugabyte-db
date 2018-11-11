@@ -204,6 +204,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
   gscoped_ptr<PeerMessageQueue> queue(
       new PeerMessageQueue(metric_entity,
                            log,
+                           parent_mem_tracker->parent(),
                            local_peer_pb,
                            options.tablet_id,
                            clock,

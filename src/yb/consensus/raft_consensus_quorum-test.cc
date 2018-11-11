@@ -160,6 +160,7 @@ class RaftConsensusQuorumTest : public YBTest {
       gscoped_ptr<PeerMessageQueue> queue(
           new PeerMessageQueue(metric_entity_,
                                logs_[i],
+                               MemTracker::FindOrCreateTracker(peer_uuid),
                                local_peer_pb,
                                kTestTablet,
                                clock_,

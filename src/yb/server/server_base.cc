@@ -133,6 +133,8 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
       options_(options),
       initialized_(false),
       stop_metrics_logging_latch_(1) {
+  mem_tracker_->SetMetricEntity(metric_entity_);
+
   if (FLAGS_use_hybrid_clock) {
     clock_ = new HybridClock();
   } else {

@@ -110,10 +110,8 @@ class LogCacheTest : public YBTest {
     // Blow away the memtrackers before creating the new cache.
     cache_.reset();
 
-    cache_.reset(new LogCache(metric_entity_,
-                              log_.get(),
-                              kPeerUuid,
-                              kTestTablet));
+    cache_.reset(new LogCache(
+        metric_entity_, log_.get(), nullptr /* mem_tracker */, kPeerUuid, kTestTablet));
     cache_->Init(preceding_id);
   }
 

@@ -37,7 +37,8 @@ RedisServer::RedisServer(const RedisServerOptions& opts, const tserver::TabletSe
     : RpcAndWebServerBase(
           "RedisServer", opts, "yb.redisserver",
           MemTracker::CreateTracker(
-              "Redis", tserver ? tserver->mem_tracker() : MemTracker::GetRootTracker())),
+              "Redis", tserver ? tserver->mem_tracker() : MemTracker::GetRootTracker(),
+              AddToParent::kTrue, CreateMetrics::kFalse)),
       opts_(opts),
       tserver_(tserver) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<RedisConnectionContext>(

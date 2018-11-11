@@ -83,7 +83,8 @@ class MockQueue : public PeerMessageQueue {
   explicit MockQueue(const scoped_refptr<MetricEntity>& metric_entity, log::Log* log,
                      const server::ClockPtr& clock,
                      std::unique_ptr<ThreadPoolToken> raft_pool_observers_token)
-      : PeerMessageQueue(metric_entity, log, FakeRaftPeerPB(kLocalPeerUuid), kTestTablet, clock,
+      : PeerMessageQueue(metric_entity, log, nullptr /* server_tracker */,
+                         FakeRaftPeerPB(kLocalPeerUuid), kTestTablet, clock,
                          std::move(raft_pool_observers_token)) {}
 
   MOCK_METHOD1(Init, void(const OpId& locally_replicated_index));
