@@ -12,6 +12,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -397,6 +398,10 @@ public class Universe extends Model {
       }
     }
     return true;
+  }
+
+  public String getKubernetesMasterAddresses() {
+    return getMasters().stream().map((m)-> m.nodeName).collect(Collectors.joining(","));
   }
 
   public String getMasterAddresses() {

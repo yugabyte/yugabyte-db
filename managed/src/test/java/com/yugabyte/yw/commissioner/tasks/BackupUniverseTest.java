@@ -55,10 +55,10 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     try {
       Backup backup = Backup.create(defaultCustomer.uuid, backupTableParams);
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, backupTableParams);
+      backup.setTaskUUID(taskUUID);
       CustomerTask.create(defaultCustomer, defaultUniverse.universeUUID, taskUUID,
           CustomerTask.TargetType.Backup, CustomerTask.TaskType.Create,
           "bar");
-      backup.setTaskUUID(taskUUID);
       return waitForTask(taskUUID);
     } catch (InterruptedException e) {
       assertNull(e.getMessage());

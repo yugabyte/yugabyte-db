@@ -54,7 +54,11 @@ public class TableManager extends DevopsBase {
     commandArgs.add(PY_WRAPPER);
     commandArgs.add(subType.getScript());
     commandArgs.add("--masters");
-    commandArgs.add(universe.getMasterAddresses());
+    if (region.provider.code.equals("kubernetes")) {
+      commandArgs.add(universe.getKubernetesMasterAddresses());
+    } else {
+      commandArgs.add(universe.getMasterAddresses());
+    }
     commandArgs.add("--table");
     commandArgs.add(taskParams.tableName);
     commandArgs.add("--keyspace");
@@ -67,13 +71,18 @@ public class TableManager extends DevopsBase {
         CustomerConfig customerConfig = CustomerConfig.get(customer.uuid,
                                                            backupTableParams.storageConfigUUID);
 
-        if (accessKey.getKeyInfo().sshUser != null && !accessKey.getKeyInfo().sshUser.isEmpty()) {
-          commandArgs.add("--ssh_user");
-          commandArgs.add(accessKey.getKeyInfo().sshUser);
-        }
+        if (region.provider.code.equals("kubernetes")) {
+            commandArgs.add("--k8s_namespace");
+            commandArgs.add(universe.getUniverseDetails().nodePrefix);
+        } else {
+          if (accessKey.getKeyInfo().sshUser != null && !accessKey.getKeyInfo().sshUser.isEmpty()) {
+            commandArgs.add("--ssh_user");
+            commandArgs.add(accessKey.getKeyInfo().sshUser);
+          }
 
-        commandArgs.add("--ssh_key_path");
-        commandArgs.add(accessKey.getKeyInfo().privateKey);
+          commandArgs.add("--ssh_key_path");
+          commandArgs.add(accessKey.getKeyInfo().privateKey);
+        }
         commandArgs.add("--s3bucket");
         commandArgs.add(backupTableParams.storageLocation);
         commandArgs.add("--storage_type");
@@ -93,8 +102,11 @@ public class TableManager extends DevopsBase {
         if (bulkImportParams.instanceCount == 0) {
           bulkImportParams.instanceCount = userIntent.numNodes * EMR_MULTIPLE;
         }
-        commandArgs.add("--key_path");
-        commandArgs.add(accessKey.getKeyInfo().privateKey);
+        // TODO(bogdan): does this work?
+        if (!region.provider.code.equals("kubernetes")) {
+          commandArgs.add("--key_path");
+          commandArgs.add(accessKey.getKeyInfo().privateKey);
+        }
         commandArgs.add("--instance_count");
         commandArgs.add(Integer.toString(bulkImportParams.instanceCount));
         commandArgs.add("--universe");
