@@ -41,11 +41,26 @@ def ends_with_one_of(path, exts):
     return False
 
 
+def get_relative_path_or_none(abs_path, relative_to):
+    """
+    If the given path starts with another directory path, return the relative path, or else None.
+    """
+    if not relative_to.endswith('/'):
+        relative_to += '/'
+    if abs_path.startswith(relative_to):
+        return abs_path[len(relative_to):]
+
+
 SOURCE_FILE_EXTENSIONS = make_extensions(['c', 'cc', 'cpp', 'cxx', 'h', 'hpp', 'hxx', 'proto'])
-LIBRARY_FILE_EXTENSIONS = make_extensions(['so', 'dylib'])
+LIBRARY_FILE_EXTENSIONS_NO_DOT = ['so', 'dylib']
+LIBRARY_FILE_EXTENSIONS = make_extensions(LIBRARY_FILE_EXTENSIONS_NO_DOT)
 TEST_FILE_SUFFIXES = ['_test', '-test', '_itest', '-itest']
-LIBRARY_FILE_NAME_RE = re.compile(r'^lib(.*)[.](?:so|dylib)$')
+LIBRARY_FILE_NAME_RE = re.compile(r'^lib(.*)[.](?:%s)$' % '|'.join(
+    LIBRARY_FILE_EXTENSIONS_NO_DOT))
+PROTO_LIBRARY_FILE_NAME_RE = re.compile(r'^lib(.*)_proto[.](?:%s)$' % '|'.join(
+    LIBRARY_FILE_EXTENSIONS_NO_DOT))
 EXECUTABLE_FILE_NAME_RE = re.compile(r'^[a-zA-Z0-9_.-]+$')
+PROTO_OUTPUT_FILE_NAME_RE = re.compile(r'^([a-zA-Z_0-9-]+)[.]pb[.](h|cc)$')
 
 # Ignore some special-case CMake targets that do not have a one-to-one match with executables or
 # libraries.
@@ -55,11 +70,15 @@ LIST_DEPS_CMD = 'deps'
 LIST_REVERSE_DEPS_CMD = 'rev-deps'
 LIST_AFFECTED_CMD = 'affected'
 SELF_TEST_CMD = 'self-test'
+DEBUG_DUMP_CMD = 'debug-dump'
 
 COMMANDS = [LIST_DEPS_CMD,
             LIST_REVERSE_DEPS_CMD,
             LIST_AFFECTED_CMD,
-            SELF_TEST_CMD]
+            SELF_TEST_CMD,
+            DEBUG_DUMP_CMD]
+
+COMMANDS_NOT_NEEDING_TARGET_SET = [SELF_TEST_CMD, DEBUG_DUMP_CMD]
 
 HOME_DIR = os.path.realpath(os.path.expanduser('~'))
 
@@ -80,6 +99,13 @@ DYLIB_SUFFIX = '.dylib' if platform.system() == 'Darwin' else '.so'
 
 def is_object_file(path):
     return path.endswith('.o')
+
+
+def append_to_list_in_dict(dest, key, new_item):
+    if key in dest:
+        dest[key].append(new_item)
+    else:
+        dest[key] = [new_item]
 
 
 def get_node_type_by_path(path):
@@ -148,6 +174,15 @@ class Node:
         self.conf = dep_graph.conf
         self.source_str = source_str
 
+        self.is_proto_lib = (
+            self.node_type == 'library' and
+            PROTO_LIBRARY_FILE_NAME_RE.match(os.path.basename(self.path)))
+
+        self._cached_proto_lib_deps = None
+        self._cached_containing_binaries = None
+        self._cached_cmake_target = None
+        self._has_no_cmake_target = False
+
     def add_dependency(self, dep):
         assert self is not dep
         self.deps.add(dep)
@@ -180,6 +215,12 @@ class Node:
 
         return self.path
 
+    def path_rel_to_build_root(self):
+        return get_relative_path_or_none(self.path, self.conf.build_root)
+
+    def path_rel_to_src_root(self):
+        return get_relative_path_or_none(self.path, self.conf.yb_src_root)
+
     def __str__(self):
         return "Node(\"{}\", type={}, {} deps, {} rev deps)".format(
                 self.get_pretty_path(), self.node_type, len(self.deps), len(self.reverse_deps))
@@ -192,6 +233,11 @@ class Node:
         @return the CMake target based on the current node's path. E.g. this would be "master"
                 for the "libmaster.so" library, "yb-master" for the "yb-master" executable.
         """
+        if self._cached_cmake_target:
+            return self._cached_cmake_target
+        if self._has_no_cmake_target:
+            return None
+
         if self.path.endswith('.proto'):
             path = self.path
             names = []
@@ -215,16 +261,110 @@ class Node:
             if self.conf.verbose:
                 logging.info("Associating protobuf file '{}' with CMake target '{}'".format(
                     self.path, target))
+            self._cached_cmake_target = target
             return target
 
         basename = os.path.basename(self.path)
         m = LIBRARY_FILE_NAME_RE.match(basename)
         if m:
-            return m.group(1)
+            target = m.group(1)
+            self._cached_cmake_target = target
+            return target
         m = EXECUTABLE_FILE_NAME_RE.match(basename)
         if m:
+            self._cached_cmake_target = basename
             return basename
+        self._has_no_cmake_target = True
         return None
+
+    def get_containing_binaries(self):
+        """
+        Returns nodes (usually one node) corresponding to executables or dynamic libraries that the
+        given object file is compiled into.
+        """
+        if self.path.endswith('.cc'):
+            cc_o_rev_deps = [rev_dep for rev_dep in self.reverse_deps
+                             if rev_dep.path.endswith('.cc.o')]
+            if len(cc_o_rev_deps) != 1:
+                raise RuntimeError(
+                    "Could not identify exactly one object file reverse dependency of node "
+                    "%s. All set of reverse dependencies: %s" % (self, self.reverse_deps))
+            return cc_o_rev_deps[0].get_containing_binaries()
+
+        if self.node_type != 'object':
+            return None
+        if self._cached_containing_binaries:
+            return self._cached_containing_binaries
+
+        binaries = []
+        for rev_dep in self.reverse_deps:
+            if rev_dep.node_type in ['library', 'test', 'executable']:
+                binaries.append(rev_dep)
+        if len(binaries) > 1:
+            logging.warning(
+                "Node %s is linked into multiple libraries: %s. Might be worth checking.",
+                self, binaries)
+
+        self._cached_containing_binaries = binaries
+        return binaries
+
+    def get_recursive_deps(self):
+        """
+        Returns a set of all dependencies that this node depends on.
+        """
+
+        recursive_deps = set()
+        visited = set()
+
+        def walk(node, add_self=True):
+            if add_self:
+                recursive_deps.add(node)
+            for dep in node.deps:
+                if dep not in recursive_deps:
+                    walk(dep)
+        walk(self, add_self=False)
+        return recursive_deps
+
+    def get_proto_lib_deps(self):
+        if self._cached_proto_lib_deps is None:
+            self._cached_proto_lib_deps = [
+                dep for dep in self.get_recursive_deps() if dep.is_proto_lib
+            ]
+        return self._cached_proto_lib_deps
+
+    def get_containing_proto_lib(self):
+        """
+        For a .pb.cc file node, return the node corresponding to the containing protobuf library.
+        """
+        if not self.path.endswith('.pb.cc.o'):
+            return
+
+        proto_libs = [binary for binary in self.get_containing_binaries()]
+
+        if len(proto_libs) != 1:
+            logging.info("Reverse deps:\n    %s" % ("\n    ".join(
+                [str(dep) for dep in self.reverse_deps])))
+            raise RuntimeError("Invalid number of proto libs for %s: %s" % (node, proto_libs))
+        return proto_libs[0]
+
+    def get_proto_gen_cmake_target(self):
+        """
+        For .pb.{h,cc} nodes this will return a CMake target of the form
+        gen_..., e.g. gen_src_yb_common_wire_protocol.
+        """
+        rel_path = self.path_rel_to_build_root()
+        if not rel_path:
+            return None
+
+        basename = os.path.basename(rel_path)
+        match = PROTO_OUTPUT_FILE_NAME_RE.match(basename)
+        if not match:
+            return None
+        return '_'.join(
+            ['gen'] +
+            os.path.dirname(rel_path).split('/') +
+            [match.group(1), 'proto']
+        )
 
 
 def set_to_str(items):
@@ -259,25 +399,24 @@ class Configuration:
                 raise RuntimeError("Directory does not exist, or is not a directory: %s" % dir_path)
 
 
-class DependencyGraphBuilder:
+class CMakeDepGraph:
     """
-    Builds a dependency graph from the contents of the build directory. Each node of the graph is
-    a file (an executable, a dynamic library, or a source file).
+    A light-weight class representing the dependency graph of CMake targets imported from the
+    yb_cmake_deps.txt file that we generate in our top-level CMakeLists.txt. This dependency graph
+    does not have any nodes for source files and object files.
     """
-    def __init__(self, conf):
-        self.conf = conf
-        self.compile_dirs = set()
-        self.compile_commands = None
-        self.useful_base_dirs = set()
-        self.unresolvable_rel_paths = set()
-        self.resolved_rel_paths = {}
-        self.dep_graph = DependencyGraph(conf)
-        self.cmake_deps = {}
+    def __init__(self, build_root):
+        self.build_root = build_root
+        self.cmake_targets = None
+        self.cmake_deps = None
+        self._load()
 
-    def load_cmake_deps(self):
-        cmake_deps_path = os.path.join(self.conf.build_root, 'yb_cmake_deps.txt')
+    def _load(self):
+        cmake_deps_path = os.path.join(self.build_root, 'yb_cmake_deps.txt')
         logging.info("Loading dependencies between CMake targets from '{}'".format(
             cmake_deps_path))
+        self.cmake_deps = {}
+        self.cmake_targets = set()
         with open(cmake_deps_path) as cmake_deps_file:
             for line in cmake_deps_file:
                 line = line.strip()
@@ -291,21 +430,71 @@ class DependencyGraphBuilder:
                 lhs, rhs = items
                 if lhs in IGNORED_CMAKE_TARGETS:
                     continue
-                cmake_dep_set = self.cmake_deps.get(lhs)
-                if not cmake_dep_set:
-                    cmake_dep_set = set()
-                    self.cmake_deps[lhs] = cmake_dep_set
+                cmake_dep_set = self._get_cmake_dep_set_of(lhs)
 
                 for cmake_dep in rhs.split(';'):
                     if cmake_dep in IGNORED_CMAKE_TARGETS:
                         continue
                     cmake_dep_set.add(cmake_dep)
 
-        self.cmake_targets = set()
         for cmake_target, cmake_target_deps in iteritems(self.cmake_deps):
-            self.cmake_targets.update(set([cmake_target] + list(cmake_target_deps)))
+            adding_targets = [cmake_target] + list(cmake_target_deps)
+            self.cmake_targets.update(set(adding_targets))
         logging.info("Found {} CMake targets in '{}'".format(
             len(self.cmake_targets), cmake_deps_path))
+
+    def _get_cmake_dep_set_of(self, target):
+        """
+        Get CMake dependencies of the given target. What is returned is a mutable set. Modifying
+        this set modifies this CMake dependency graph.
+        """
+        deps = self.cmake_deps.get(target)
+        if not deps:
+            deps = set()
+            self.cmake_deps[target] = deps
+            self.cmake_targets.add(target)
+        return deps
+
+    def add_dependency(self, from_target, to_target):
+        if from_target in IGNORED_CMAKE_TARGETS or to_target in IGNORED_CMAKE_TARGETS:
+            return
+        self._get_cmake_dep_set_of(from_target).add(to_target)
+        self.cmake_targets.add(to_target)
+
+    def get_recursive_cmake_deps(self, cmake_target):
+        result = set()
+        visited = set()
+
+        def walk(cur_target, add_this_target=True):
+            if cur_target in visited:
+                return
+            visited.add(cur_target)
+            if add_this_target:
+                result.add(cur_target)
+            for dep in self.cmake_deps.get(cur_target, []):
+                walk(dep)
+
+        walk(cmake_target, add_this_target=False)
+        return result
+
+
+class DependencyGraphBuilder:
+    """
+    Builds a dependency graph from the contents of the build directory. Each node of the graph is
+    a file (an executable, a dynamic library, or a source file).
+    """
+    def __init__(self, conf):
+        self.conf = conf
+        self.compile_dirs = set()
+        self.compile_commands = None
+        self.useful_base_dirs = set()
+        self.unresolvable_rel_paths = set()
+        self.resolved_rel_paths = {}
+        self.dep_graph = DependencyGraph(conf)
+        self.cmake_dep_graph = None
+
+    def load_cmake_deps(self):
+        self.cmake_dep_graph = CMakeDepGraph(self.conf.build_root)
 
     def parse_link_and_depend_files_for_make(self):
         logging.info(
@@ -356,26 +545,33 @@ class DependencyGraphBuilder:
                 node_set.add(node)
 
         self.cmake_target_to_node = {}
-        for cmake_target in self.cmake_targets:
+        unmatched_cmake_targets = set()
+        cmake_dep_graph = self.dep_graph.get_cmake_dep_graph()
+        for cmake_target in cmake_dep_graph.cmake_targets:
             nodes = self.cmake_target_to_nodes.get(cmake_target)
             if not nodes:
-                # List some potentially related nodes before we crash.
-                for node in self.dep_graph.get_nodes():
-                    if cmake_target in node.path:
-                        logging.warning("Potentially matching node: {}".format(node))
-                logging.warning("Total number of nodes: {}".format(len(self.dep_graph.get_nodes())))
-                raise RuntimeError("Could not find file for CMake target '{}'".format(cmake_target))
+                unmatched_cmake_targets.add(cmake_target)
+                continue
 
             if len(nodes) > 1:
                 raise RuntimeError("Ambiguous nodes found for CMake target '{}': {}".format(
                     cmake_target, nodes))
             self.cmake_target_to_node[cmake_target] = list(nodes)[0]
 
+        if unmatched_cmake_targets:
+            logging.warn(
+                    "These CMake targets do not have any associated files: %s",
+                    sorted(unmatched_cmake_targets))
+
         # We're not adding nodes into our graph for CMake targets. Instead, we're finding files
         # that correspond to CMake targets, and add dependencies to those files.
-        for cmake_target, cmake_target_deps in iteritems(self.cmake_deps):
+        for cmake_target, cmake_target_deps in iteritems(cmake_dep_graph.cmake_deps):
+            if cmake_target in unmatched_cmake_targets:
+                continue
             node = self.cmake_target_to_node[cmake_target]
             for cmake_target_dep in cmake_target_deps:
+                if cmake_target_dep in unmatched_cmake_targets:
+                    continue
                 node.add_dependency(self.cmake_target_to_node[cmake_target_dep])
 
     def resolve_rel_path(self, rel_path):
@@ -584,6 +780,7 @@ class DependencyGraphBuilder:
 
         self.load_cmake_deps()
         self.match_cmake_targets_with_files()
+        self.dep_graph._add_proto_generation_deps()
 
         return self.dep_graph
 
@@ -601,6 +798,20 @@ class DependencyGraph:
         if json_data:
             self.init_from_json(json_data)
         self.nodes_by_basename = None
+        self.cmake_dep_graph = None
+
+    def get_cmake_dep_graph(self):
+        if self.cmake_dep_graph:
+            return self.cmake_dep_graph
+
+        cmake_dep_graph = CMakeDepGraph(self.conf.build_root)
+        for node in self.get_nodes():
+            proto_lib = node.get_containing_proto_lib()
+            if proto_lib:
+                logging.info("node: %s, proto lib: %s", node, proto_lib)
+
+        self.cmake_dep_graph = cmake_dep_graph
+        return cmake_dep_graph
 
     def find_node(self, path, must_exist=True, source_str=None):
         assert source_str is None or not must_exist
@@ -739,6 +950,162 @@ class DependencyGraph:
         for node in sorted(self.get_nodes(), key=lambda node: str(node)):
             logging.info(node)
 
+    def _add_proto_generation_deps(self):
+        """
+        Add dependencies of .pb.{h,cc} files on the corresponding .proto file. We do that by
+        finding .proto and .pb.{h,cc} nodes in the graph independently and matching them
+        based on their path relative to the source root, regardless of whether the .proto file
+        is present within the Community Edition C/C++ source directory (src) or Enterprise Edition
+        source directory (ent/src), because these two are folded into the same directory hierarchy
+        in the build directory.
+
+        Additionally, we are inferring dependencies between binaries (protobuf libs or in some
+        cases other libraries or even tests) that use a .pb.cc file on the CMake target that
+        generates these files (e.g. gen_src_yb_rocksdb_db_version_edit_proto). We add these
+        inferred dependencies to the separate CMake dependency graph.
+        """
+        proto_node_by_rel_path = {}
+        pb_h_cc_nodes_by_rel_path = {}
+
+        cmake_dep_graph = self.get_cmake_dep_graph()
+
+        for node in self.get_nodes():
+            basename = os.path.basename(node.path)
+            if node.path.endswith('.proto'):
+                proto_rel_path = node.path_rel_to_src_root()
+                if proto_rel_path:
+                    proto_rel_path = proto_rel_path[:-6]
+                    if proto_rel_path.startswith('ent/'):
+                        # Remove the 'ent/' prefix because there is no separate 'ent/' prefix
+                        # in the build directory.
+                        proto_rel_path = proto_rel_path[4:]
+                    if proto_rel_path in proto_node_by_rel_path:
+                        raise RuntimeError(
+                            "Multiple .proto nodes found that share the same "
+                            "relative path to source root: %s and %s" % (
+                                proto_node_by_rel_path[proto_rel_path], node
+                            ))
+
+                    proto_node_by_rel_path[proto_rel_path] = node
+            else:
+                match = PROTO_OUTPUT_FILE_NAME_RE.match(basename)
+                if match:
+                    proto_output_rel_path = node.path_rel_to_build_root()
+                    if proto_output_rel_path:
+                        append_to_list_in_dict(
+                            pb_h_cc_nodes_by_rel_path,
+                            os.path.join(
+                                os.path.dirname(proto_output_rel_path),
+                                match.group(1)
+                            ),
+                            node)
+                        if node.path.endswith('.pb.cc'):
+                            proto_gen_cmake_target = node.get_proto_gen_cmake_target()
+                            for containing_binary in node.get_containing_binaries():
+                                containing_cmake_target = containing_binary.get_cmake_target()
+                                proto_gen_cmake_target = node.get_proto_gen_cmake_target()
+                                self.cmake_dep_graph.add_dependency(
+                                    containing_cmake_target,
+                                    proto_gen_cmake_target
+                                )
+
+        for rel_path in proto_node_by_rel_path:
+            if rel_path not in pb_h_cc_nodes_by_rel_path:
+                raise ValueError(
+                    "For relative path %s, found a proto file (%s) but no .pb.{h,cc} files" %
+                    (rel_path, proto_node_by_rel_path[rel_path]))
+
+        for rel_path in pb_h_cc_nodes_by_rel_path:
+            if rel_path not in proto_node_by_rel_path:
+                raise ValueError(
+                    "For relative path %s, found .pb.{h,cc} files (%s) but no .proto" %
+                    (rel_path, pb_h_cc_nodes_by_rel_path[rel_path]))
+
+        # This is what we've verified above in two directions separately.
+        assert(set(proto_node_by_rel_path.keys()) == set(pb_h_cc_nodes_by_rel_path.keys()))
+
+        for rel_path in proto_node_by_rel_path.keys():
+            proto_node = proto_node_by_rel_path[rel_path]
+            # .pb.{h,cc} files need to depend on the .proto file they were generated from.
+            for pb_h_cc_node in pb_h_cc_nodes_by_rel_path[rel_path]:
+                pb_h_cc_node.add_dependency(proto_node)
+
+    def _check_for_circular_dependencies(self):
+        logging.info("Checking for circular dependencies")
+        visited = set()
+        stack = []
+
+        def walk(node):
+            if node in visited:
+                return
+            try:
+                stack.append(node)
+                visited.add(node)
+                for dep in node.deps:
+                    if dep in visited:
+                        if dep in stack:
+                            raise RuntimeError("Circular dependency loop found: %s", stack)
+                        return
+                    walk(dep)
+            finally:
+                stack.pop()
+
+        for node in self.get_nodes():
+            walk(node)
+
+        logging.info("No circular dependencies found -- this is good (visited %d nodes)",
+                     len(visited))
+
+    def validate_proto_deps(self):
+        """
+        Make sure that code that depends on protobuf-generated files also depends on the
+        corresponding protobuf library target.
+        """
+
+        # TODO: only do this during graph generation.
+        self._add_proto_generation_deps()
+        self._check_for_circular_dependencies()
+
+        header_node_map = {}
+        lib_node_map = {}
+
+        # For any .pb.h file, we want to find all .cc.o files that depend on it, meaning that they
+        # directly or indirectly include that .pb.h file.
+        #
+        # Then we want to look at the containing executable or library of the .cc.o file and make
+        # sure it has a CMake dependency (direct or indirect) on the protobuf generation target of
+        # the form gen_src_yb_common_redis_protocol_proto.
+        #
+        # However, we also need to get the CMake target name corresponding to the binary
+        # containing the .cc.o file.
+        for node in self.get_nodes():
+            if not node.path.endswith('.pb.cc.o'):
+                continue
+            source_deps = [dep for dep in node.deps if dep.path.endswith('.cc')]
+            if len(source_deps) != 1:
+                raise ValueError(
+                    "Could not identify a single source dependency of node %s. Found: %s. " %
+                    (node, source_deps))
+            source_dep = source_deps[0]
+            pb_h_path = source_dep.path[:-3] + '.h'
+            pb_h_node = self.node_by_path[pb_h_path]
+            proto_gen_target = pb_h_node.get_proto_gen_cmake_target()
+
+            for rev_dep in pb_h_node.reverse_deps:
+                if rev_dep.path.endswith('.cc.o'):
+                    for binary in rev_dep.get_containing_binaries():
+                        binary_cmake_target = binary.get_cmake_target()
+
+                        recursive_cmake_deps = self.get_cmake_dep_graph().get_recursive_cmake_deps(
+                            binary_cmake_target)
+                        if proto_gen_target not in recursive_cmake_deps:
+                            raise RuntimeError(
+                                "CMake target %s does not depend directly or indirectly on target "
+                                "%s but uses the header file %s. Recursive cmake deps of %s: %s" %
+                                (binary_cmake_target, proto_gen_target, pb_h_path,
+                                 binary_cmake_target, recursive_cmake_deps)
+                            )
+
 
 class DependencyGraphTest(unittest.TestCase):
     dep_graph = None
@@ -812,6 +1179,9 @@ class DependencyGraphTest(unittest.TestCase):
                 'yb-bulk_load-test',
                 'yb-bulk_load.cc.o'
             ], 'yb-bulk_load.cc')
+
+    def test_proto_deps_validity(self):
+        self.dep_graph.validate_proto_deps()
 
 
 def run_self_test(dep_graph):
@@ -920,10 +1290,11 @@ def main():
             not args.rebuild_graph and
             not args.git_diff and
             not args.git_commit and
-            cmd != SELF_TEST_CMD):
+            cmd not in COMMANDS_NOT_NEEDING_TARGET_SET):
         raise RuntimeError(
                 "Neither of --file-regex, --file-name-glob, --git-{diff,commit}, or "
-                "--rebuild-graph are specified, and the command is not " + SELF_TEST_CMD)
+                "--rebuild-graph are specified, and the command is not one of: " +
+                ", ".join(COMMANDS_NOT_NEEDING_TARGET_SET))
 
     log_level = logging.INFO
     logging.basicConfig(
@@ -955,9 +1326,20 @@ def main():
                      (graph_cache_path, (datetime.now() - start_time).total_seconds()))
         dep_graph.validate_node_existence()
 
+    # ---------------------------------------------------------------------------------------------
+    # Commands that do not require an "initial set of targets"
+    # ---------------------------------------------------------------------------------------------
+
     if cmd == SELF_TEST_CMD:
         run_self_test(dep_graph)
         return
+    elif cmd == DEBUG_DUMP_CMD:
+        dep_graph.dump_debug_info()
+        return
+
+    # ---------------------------------------------------------------------------------------------
+    # Figure out the initial set of targets based on a git commit, a regex, etc.
+    # ---------------------------------------------------------------------------------------------
 
     updated_categories = None
     file_changes = []

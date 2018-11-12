@@ -293,19 +293,24 @@ set(YB_ALL_DEPS "" CACHE INTERNAL "All dependencies" FORCE)
 # This is used to let the add_executable wrapper know if we're adding a test.
 set(YB_ADDING_TEST_EXECUTABLE "FALSE" CACHE INTERNAL "" FORCE)
 
+function(yb_remember_dependency target)
+  # We use \\n instead of a real newline as this is stored in the CMake cache, and some versions
+  # of CMake can't parse their own cache in case some values have newlines.
+  set(YB_ALL_DEPS "${YB_ALL_DEPS}\\n${target}: ${ARGN}" CACHE INTERNAL "All dependencies" FORCE)
+endfunction()
+
 # Wrap add_dependencies so that we can capture dependencies for external processing. We use this
 # when determining what tests to run for a particular set of changes.
 function(add_dependencies target)
-  # We use \\n instead of a real newline as this is stored in the CMake cache, and some versions
-  # of CMake can't parse their own cache in case some values have newlines.
   if (TARGET "${target}" OR NOT ${YB_FILTERING_TARGETS})
-    set(YB_ALL_DEPS "${YB_ALL_DEPS}\\n${target}: ${ARGN}" CACHE INTERNAL "All dependencies" FORCE)
+    yb_remember_dependency(${target} ${ARGN})
     _add_dependencies(${target} ${ARGN})
   endif()
 endfunction()
 
 function(target_link_libraries target)
   if (TARGET "${target}" OR NOT ${YB_FILTERING_TARGETS})
+    yb_remember_dependency(${target} ${ARGN})
     _target_link_libraries(${target} ${ARGN})
   endif()
 endfunction()
@@ -1049,6 +1054,7 @@ function(ADD_YB_LIBRARY LIB_NAME)
       PROPERTIES COMPILE_FLAGS ${ARG_COMPILE_FLAGS})
   endif()
   target_link_libraries(${LIB_NAME} ${ARG_DEPS})
+  yb_remember_dependency(${LIB_NAME} ${ARG_DEPS})
   if(ARG_NONLINK_DEPS)
     add_dependencies(${LIB_NAME} ${ARG_NONLINK_DEPS})
   endif()
