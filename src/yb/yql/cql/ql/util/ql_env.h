@@ -57,9 +57,9 @@ class QLEnv {
   //------------------------------------------------------------------------------------------------
   // Table related methods.
 
-  virtual client::YBTableCreator *NewTableCreator();
+  virtual client::YBTableCreator* NewTableCreator();
 
-  virtual client::YBTableAlterer *NewTableAlterer(const client::YBTableName& table_name);
+  virtual client::YBTableAlterer* NewTableAlterer(const client::YBTableName& table_name);
 
   virtual CHECKED_STATUS TruncateTable(const std::string& table_id);
 
@@ -69,8 +69,8 @@ class QLEnv {
                                           client::YBTableName* indexed_table_name);
 
   virtual std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name,
-                                                        bool *cache_used);
-  virtual std::shared_ptr<client::YBTable> GetTableDesc(const TableId& table_id, bool *cache_used);
+                                                        bool* cache_used);
+  virtual std::shared_ptr<client::YBTable> GetTableDesc(const TableId& table_id, bool* cache_used);
 
   virtual void RemoveCachedTableDesc(const client::YBTableName& table_name);
   virtual void RemoveCachedTableDesc(const TableId& table_id);
@@ -138,20 +138,20 @@ class QLEnv {
     return ql_session()->current_role_name();
   }
 
-  // Check the cache to determine if a role has been given permissions on a specific canonical
-  // resource.
+  // Check the cache to determine whether the current role has been given permissions on a specific
+  // canonical resource.
   // keyspace and table are only used to generate the error message.
+  // If the permission is not found, the client will refresh the cache from the master once.
   virtual CHECKED_STATUS HasResourcePermission(const string& canonical_name,
                                                const ql::ObjectType& object_type,
-                                               const std::string& role_name,
                                                const PermissionType permission,
                                                const NamespaceName& keyspace = "",
                                                const TableName& table = "");
 
   // Convenience methods to check whether the current role has the specified permission on the
   // given table.
-  // We first check if the permission exists at the keyspace level. Otherwise, we check the
-  // table's permissions.
+  // These method call YBMetaDataCache::HasTablePermissionWithRetry which first checks if the
+  // keyspace has the permission. Otherwise, it checks whether the table has the permission.
   virtual CHECKED_STATUS HasTablePermission(const NamespaceName& keyspace_name,
                                             const TableName& table_name,
                                             const PermissionType permission);
@@ -168,19 +168,19 @@ class QLEnv {
   // (User-defined) Type related methods.
 
   // Create (user-defined) type with the given arguments.
-  CHECKED_STATUS CreateUDType(const std::string &keyspace_name,
-                              const std::string &type_name,
-                              const std::vector<std::string> &field_names,
-                              const std::vector<std::shared_ptr<QLType>> &field_types);
+  CHECKED_STATUS CreateUDType(const std::string& keyspace_name,
+                              const std::string& type_name,
+                              const std::vector<std::string>& field_names,
+                              const std::vector<std::shared_ptr<QLType>>& field_types);
 
   // Delete (user-defined) type by name.
-  virtual CHECKED_STATUS DeleteUDType(const std::string &keyspace_name,
-                                      const std::string &type_name);
+  virtual CHECKED_STATUS DeleteUDType(const std::string& keyspace_name,
+                                      const std::string& type_name);
 
   // Retrieve (user-defined) type by name.
-  std::shared_ptr<QLType> GetUDType(const std::string &keyspace_name,
-                                    const std::string &type_name,
-                                    bool *cache_used);
+  std::shared_ptr<QLType> GetUDType(const std::string& keyspace_name,
+                                    const std::string& type_name,
+                                    bool* cache_used);
 
   virtual void RemoveCachedUDType(const std::string& keyspace_name, const std::string& type_name);
 
