@@ -11,7 +11,7 @@ namespace enterprise {
 
 Result<bool> ClusterLoadBalancer::HandleLeaderMoves(
     TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
-  if (HandleLeaderLoadIfNonAffinitized(out_tablet_id, out_from_ts, out_to_ts)) {
+  if (VERIFY_RESULT(HandleLeaderLoadIfNonAffinitized(out_tablet_id, out_from_ts, out_to_ts))) {
     RETURN_NOT_OK(MoveLeader(*out_tablet_id, *out_from_ts, *out_to_ts));
     return true;
   }
@@ -19,7 +19,7 @@ Result<bool> ClusterLoadBalancer::HandleLeaderMoves(
   return super::HandleLeaderMoves(out_tablet_id, out_from_ts, out_to_ts);
 }
 
-Result<bool> ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
+Status ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
   ClusterLoadState* ent_state = GetEntState();
   GetAllAffinitizedZones(&ent_state->affinitized_zones_);
   return super::AnalyzeTablets(table_uuid);
@@ -35,7 +35,7 @@ void ClusterLoadBalancer::GetAllAffinitizedZones(AffinitizedZonesSet* affinitize
   }
 }
 
-bool ClusterLoadBalancer::HandleLeaderLoadIfNonAffinitized(TabletId* moving_tablet_id,
+Result<bool> ClusterLoadBalancer::HandleLeaderLoadIfNonAffinitized(TabletId* moving_tablet_id,
                                                            TabletServerId* from_ts,
                                                            TabletServerId* to_ts) {
   // Similar to normal leader balancing, we double iterate from most loaded to least loaded
@@ -91,7 +91,7 @@ void ClusterLoadBalancer::PopulatePlacementInfo(TabletInfo* tablet, PlacementInf
   }
 }
 
-bool ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
+Status ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
   const auto& table_id = tablet->table()->id();
   // Set the placement information on a per-table basis, only once.
   if (!state_->placement_by_table_.count(table_id)) {
