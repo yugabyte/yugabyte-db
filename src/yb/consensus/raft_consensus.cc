@@ -1122,7 +1122,7 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
   VLOG_WITH_PREFIX(2) << "Replica received request: " << request->ShortDebugString();
 
   // see var declaration
-  std::lock_guard<simple_spinlock> lock(update_lock_);
+  std::lock_guard<std::mutex> lock(update_lock_);
   Status s = UpdateReplica(request, response);
   if (PREDICT_FALSE(VLOG_IS_ON(1))) {
     if (request->ops_size() == 0) {
@@ -1814,7 +1814,7 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // We must acquire the update lock in order to ensure that this vote action
   // takes place between requests.
   // Lock ordering: The update lock must be acquired before the ReplicaState lock.
-  std::unique_lock<simple_spinlock> update_guard(update_lock_, std::defer_lock);
+  std::unique_lock<std::mutex> update_guard(update_lock_, std::defer_lock);
   if (FLAGS_enable_leader_failure_detection) {
     update_guard.try_lock();
   } else {
