@@ -288,9 +288,10 @@ const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) {
 Status SemContext::HasKeyspacePermission(PermissionType permission,
                                          const NamespaceName& keyspace_name) {
 
-  const auto& keyspace = keyspace_name.empty() ? ql_env_->CurrentKeyspace() : keyspace_name;
-  return ql_env_->HasResourcePermission(get_canonical_keyspace(keyspace), ObjectType::OBJECT_SCHEMA,
-      ql_env_->CurrentRoleName(), permission, keyspace);
+  DFATAL_OR_RETURN_ERROR_IF(keyspace_name.empty(),
+                            STATUS(InvalidArgument, "Invalid empty keyspace"));
+  return ql_env_->HasResourcePermission(get_canonical_keyspace(keyspace_name),
+                                        ObjectType::OBJECT_SCHEMA, permission, keyspace_name);
 }
 
 Status SemContext::CheckHasKeyspacePermission(const YBLocation& loc,
@@ -309,16 +310,11 @@ Status SemContext::CheckHasTablePermission(const YBLocation &loc,
                                            const TableName& table_name) {
   DFATAL_OR_RETURN_ERROR_IF(keyspace_name.empty(),
                             STATUS_SUBSTITUTE(InvalidArgument, "Empty keyspace for table $0",
-                                                   table_name));
+                                              table_name));
   DFATAL_OR_RETURN_ERROR_IF(table_name.empty(),
                             STATUS(InvalidArgument, "Table name cannot be empty"));
 
-  if (HasKeyspacePermission(permission, keyspace_name).ok()) {
-    return Status::OK();
-  }
-
-  auto s = ql_env_->HasResourcePermission(get_canonical_table(keyspace_name, table_name),
-      ObjectType::OBJECT_TABLE, ql_env_->CurrentRoleName(), permission, keyspace_name, table_name);
+  auto s = ql_env_->HasTablePermission(keyspace_name, table_name, permission);
   if (!s.ok()) {
     return Error(loc, s.message().ToBuffer().c_str(), ErrorCode::UNAUTHORIZED);
   }
@@ -336,8 +332,7 @@ Status SemContext::CheckHasRolePermission(const YBLocation& loc,
                                           PermissionType permission,
                                           const RoleName& role_name) {
 
-  auto s = ql_env_->HasResourcePermission(get_canonical_role(role_name),  ObjectType::OBJECT_ROLE,
-      ql_env_->CurrentRoleName(), permission);
+  auto s = ql_env_->HasRolePermission(role_name, permission);
   if (!s.ok()) {
     return Error(loc, s.message().ToBuffer().c_str(), ErrorCode::UNAUTHORIZED);
   }
@@ -348,7 +343,7 @@ Status SemContext::CheckHasAllKeyspacesPermission(const YBLocation& loc,
                                                   PermissionType permission) {
 
   auto s = ql_env_->HasResourcePermission(kRolesDataResource, ObjectType::OBJECT_SCHEMA,
-                                          ql_env_->CurrentRoleName(), permission);
+                                          permission);
   if (!s.ok()) {
     return Error(loc, s.message().ToBuffer().c_str(), ErrorCode::UNAUTHORIZED);
   }
@@ -358,8 +353,7 @@ Status SemContext::CheckHasAllKeyspacesPermission(const YBLocation& loc,
 Status SemContext::CheckHasAllRolesPermission(const YBLocation& loc,
                                               PermissionType permission) {
 
-  auto s = ql_env_->HasResourcePermission(kRolesRoleResource, ObjectType::OBJECT_ROLE,
-                                          ql_env_->CurrentRoleName(), permission);
+  auto s = ql_env_->HasResourcePermission(kRolesRoleResource, ObjectType::OBJECT_ROLE, permission);
   if (!s.ok()) {
     return Error(loc, s.message().ToBuffer().c_str(), ErrorCode::UNAUTHORIZED);
   }
