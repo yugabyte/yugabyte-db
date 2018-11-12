@@ -19,18 +19,18 @@ class ClusterLoadBalancer : public yb::master::ClusterLoadBalancer {
   Result<bool> HandleLeaderMoves(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) override;
 
-  Result<bool> AnalyzeTablets(const TableId& table_uuid) override;
+  CHECKED_STATUS AnalyzeTablets(const TableId& table_uuid) override;
 
   virtual void GetAllAffinitizedZones(AffinitizedZonesSet* affinitized_zones) const;
 
   // This function handles leader load from non-affinitized to affinitized nodes.
   // If it can find a way to move leader load from a non-affinitized to affinitized node,
-  // returns true. Otherwise, returns false.
+  // returns true, if not returns false, if error is found, returns Status.
   // This is called before normal leader load balancing.
-  bool HandleLeaderLoadIfNonAffinitized(
+  Result<bool> HandleLeaderLoadIfNonAffinitized(
       TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId* to_ts);
 
-  bool UpdateTabletInfo(TabletInfo* tablet) override;
+  CHECKED_STATUS UpdateTabletInfo(TabletInfo* tablet) override;
 
   // Runs the load balancer once for the live and all read only clusters, in order
   // of the cluster config.
