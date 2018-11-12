@@ -182,7 +182,7 @@ class TestLoadBalancerBase {
   }
 
  protected:
-  Result<bool> AnalyzeTablets() {
+  Status AnalyzeTablets() {
     return cb_->AnalyzeTablets(cur_table_uuid_);
   }
 
@@ -212,7 +212,7 @@ class TestLoadBalancerBase {
     blacklist_.add_hosts()->set_host(ts_descs_[4]->permanent_uuid());
 
     // Prepare the data.
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     string placeholder, expected_from_ts, expected_to_ts;
     // Expecting that we move load from ts0 which is blacklisted, to ts5. This is because ts4 is
@@ -236,7 +236,7 @@ class TestLoadBalancerBase {
 
     // Reset the load state and recompute.
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // Now that we have reinitialized for the next run, we can try to equalize load across the
     // remaining servers. Our load on non-blacklisted servers is: ts1:4, ts2:4, ts3:0, ts5:4. Of
@@ -295,7 +295,7 @@ class TestLoadBalancerBase {
     // Bring a tablet to proper replication, with all replicas in the correct placement.
     AddRunningReplica(tablets_[3].get(), ts_descs_[4]);
 
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // Add all tablets to the list of tablets with a pending add operation and verify that calling
     // HandleAddReplicas fails because all the tablets have a pending add operation.
@@ -307,14 +307,14 @@ class TestLoadBalancerBase {
     int pending_add_count = 0;
     cb_->CountPendingTasks(cur_table_uuid_, &pending_add_count, &count, &count);
     ASSERT_EQ(pending_add_count, pending_add_replica_tasks_.size());
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
     string placeholder, tablet_id;
     ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &placeholder, &placeholder)));
 
     // Clear pending_add_replica_tasks_ and reset the state of ClusterLoadBalancer.
     pending_add_replica_tasks_.clear();
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // Check that if adding replicas, we'll notice the wrong placement and adjust it.
     string expected_tablet_id, expected_from_ts, expected_to_ts;
@@ -332,13 +332,13 @@ class TestLoadBalancerBase {
     int pending_remove_count = 0;
     cb_->CountPendingTasks(cur_table_uuid_, &count, &pending_remove_count, &count);
     ASSERT_EQ(pending_remove_count, pending_remove_replica_tasks_.size());
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
     ASSERT_FALSE(ASSERT_RESULT(cb_->HandleRemoveReplicas(&tablet_id, &placeholder)));
 
     // Clear pending_remove_replica_tasks_ and reset the state of ClusterLoadBalancer.
     pending_remove_replica_tasks_.clear();
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // Check that removing replicas, we take out the wrong placement one first.
     expected_tablet_id = tablets_[0]->tablet_id();
@@ -369,7 +369,7 @@ class TestLoadBalancerBase {
     MoveTabletLeader(tablet, ts_descs_[2]);
 
     // Load up data.
-    ASSERT_TRUE(ASSERT_RESULT(AnalyzeTablets()));
+    ASSERT_OK(AnalyzeTablets());
 
     // Ensure the tablet is picked.
     TestRemoveLoad(tablets_[0]->tablet_id(), "");
@@ -395,7 +395,7 @@ class TestLoadBalancerBase {
     ts_descs_.push_back(SetupTS("3new", "c"));
 
     // Load up data.
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // First we'll fill up the missing placements for all 4 tablets.
     string placeholder;
@@ -424,7 +424,7 @@ class TestLoadBalancerBase {
     ts_descs_.push_back(SetupTS("5555", "a"));
 
     // Analyze the tablets into the internal state.
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // Check some base expectations for balanced cluster.
     ASSERT_EQ(0, cb_->get_total_over_replication());
@@ -462,7 +462,7 @@ class TestLoadBalancerBase {
 
     // Reset the load state and recompute.
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     string placeholder;
     // Lowest load should be the last, empty TS.
@@ -494,7 +494,7 @@ class TestLoadBalancerBase {
     ts_descs_.pop_back();
 
     // Analyze the tablets into the internal state.
-    ASSERT_FALSE(ASSERT_RESULT(AnalyzeTablets()));
+    ASSERT_NOK(AnalyzeTablets());
   }
 
   void TestMovingMultipleTabletsFromSameServer() {
@@ -518,7 +518,7 @@ class TestLoadBalancerBase {
     RemoveReplica(tablets_[1].get(), ts_descs_[2]);
     AddRunningReplica(tablets_[1].get(), ts_descs_[4]);
 
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // ENG-348: Check that 2 different tablets are moved from ts0 to ts5.
     // Since tablet 0 on ts0 is the leader, it won't be moved and tablet 1 and 2 will be instead.
@@ -550,7 +550,7 @@ class TestLoadBalancerBase {
     ts_descs_.push_back(SetupTS("1new", "c"));
 
     // Load up data.
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // First we'll fill up the missing placements for all 4 tablets.
     string placeholder;
@@ -564,7 +564,7 @@ class TestLoadBalancerBase {
     // Add yet 1 more server in that same AZ for some load-balancing.
     ts_descs_.push_back(SetupTS("2new", "c"));
 
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // Since we have just filled up the missing placements for all 4 tablets, we cannot rebalance
     // the tablets to the second new TS until the next run.
@@ -578,7 +578,7 @@ class TestLoadBalancerBase {
 
     // Reset the load state and recompute.
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // Now we should be able to move 2 tablets to the second new TS.
     expected_to_ts = ts_descs_[3]->permanent_uuid();
@@ -597,7 +597,7 @@ class TestLoadBalancerBase {
     }
     LOG(INFO) << "Leader distribution: 4 0 0";
 
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // Only 2 leaders should be moved off from ts0, 1 to ts2 and then another to ts1.
     string placeholder, tablet_id_1, tablet_id_2, expected_tablet_id,
@@ -619,7 +619,7 @@ class TestLoadBalancerBase {
     LOG(INFO) << "Leader distribution: 3 1 0";
 
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // Only 1 leader should be moved off from ts0 to ts2.
     expected_from_ts = ts_descs_[0]->permanent_uuid();
@@ -633,7 +633,7 @@ class TestLoadBalancerBase {
     LOG(INFO) << "Leader distribution: 2 2 0. Blacklist: ts0";
 
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // With ts0 blacklisted, the 2 leaders on ts0 should be moved to some undetermined servers.
     // ts1 still has 2 leaders and ts2 has 0 so 1 leader should be moved to ts2.
@@ -649,7 +649,7 @@ class TestLoadBalancerBase {
     LOG(INFO) << "Leader distribution: 2 2 0. Blacklist cleared.";
 
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // Only 1 tablets should be moved off from ts1 to ts2.
     expected_from_ts = ts_descs_[1]->permanent_uuid();
@@ -662,7 +662,7 @@ class TestLoadBalancerBase {
     LOG(INFO) << "Leader distribution: 2 1 1";
 
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // The distribution is as balanced as it can be so there shouldn't be any move.
     ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
@@ -676,7 +676,7 @@ class TestLoadBalancerBase {
     }
     LOG(INFO) << "Leader distribution: 4 0 0";
 
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // Only 2 leaders should be moved off from ts0 to ts1 and ts2 each.
     string placeholder, tablet_id_1, tablet_id_2, expected_tablet_id,
@@ -698,7 +698,7 @@ class TestLoadBalancerBase {
     LOG(INFO) << "Leader distribution: 3 1 0";
 
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // Only 1 leader should be moved off from ts0 to ts2.
     expected_from_ts = ts_descs_[0]->permanent_uuid();
@@ -712,7 +712,7 @@ class TestLoadBalancerBase {
     LOG(INFO) << "Leader distribution: 2 2 0. Blacklist: ts0";
 
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
 
@@ -721,7 +721,7 @@ class TestLoadBalancerBase {
     LOG(INFO) << "Leader distribution: 2 2 0. Blacklist cleared.";
 
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // Again all tablet servers have leaders below threshold so no move is expected.
     ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
@@ -731,7 +731,7 @@ class TestLoadBalancerBase {
     LOG(INFO) << "Leader distribution: 2 1 1";
 
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // The distribution is as balanced as it can be so there shouldn't be any move.
     ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
@@ -748,7 +748,7 @@ class TestLoadBalancerBase {
     RemoveReplica(tablets_[2].get(), ts_descs_[2]);
 
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     string placeholder, expected_tablet_id, expected_from_ts, expected_to_ts;
 
