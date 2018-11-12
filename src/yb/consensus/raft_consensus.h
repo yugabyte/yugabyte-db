@@ -612,7 +612,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   //
   // Lock ordering note: If both this lock and the ReplicaState lock are to be
   // taken, this lock must be taken first.
-  mutable simple_spinlock update_lock_;
+  mutable std::mutex update_lock_;
 
   AtomicBool shutdown_;
 
