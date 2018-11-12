@@ -100,6 +100,12 @@ class TransactionStateContext {
   // Submits update transaction to the RAFT log. Returns false if was not able to submit.
   virtual MUST_USE_RESULT bool SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperationState> state) = 0;
+
+  virtual void CompleteWithStatus(
+      std::unique_ptr<UpdateTxnOperationState> request, Status status) = 0;
+
+  virtual void CompleteWithStatus(UpdateTxnOperationState* request, Status status) = 0;
+
  protected:
   ~TransactionStateContext() {}
 };
@@ -212,12 +218,12 @@ class TransactionState {
   void ClearRequests(const Status& status) {
     VLOG_WITH_PREFIX(4) << Format("ClearRequests: $0, replicating: $1", status, replicating_);
     if (replicating_ != nullptr) {
-      replicating_->completion_callback()->CompleteWithStatus(status);
+      context_.CompleteWithStatus(std::move(replicating_), status);
       replicating_ = nullptr;
     }
 
     for (auto& entry : request_queue_) {
-      entry->completion_callback()->CompleteWithStatus(status);
+      context_.CompleteWithStatus(std::move(entry), status);
     }
     request_queue_.clear();
 
@@ -268,7 +274,7 @@ class TransactionState {
     VLOG_WITH_PREFIX(1) << "Handle: " << state.ShortDebugString();
     if (state.status() == TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS) {
       auto status = AppliedInOneOfInvolvedTablets(state);
-      request->completion_callback()->CompleteWithStatus(status);
+      context_.CompleteWithStatus(std::move(request), status);
       return;
     }
     if (replicating_) {
@@ -392,7 +398,7 @@ class TransactionState {
     }
 
     if (!status.ok()) {
-      request->completion_callback()->CompleteWithStatus(status);
+      context_.CompleteWithStatus(std::move(request), std::move(status));
       return;
     }
 
@@ -536,6 +542,12 @@ class TransactionState {
   std::vector<TransactionAbortCallback> abort_waiters_;
 };
 
+struct CompleteWithStatusEntry {
+  std::unique_ptr<UpdateTxnOperationState> holder;
+  UpdateTxnOperationState* request;
+  Status status;
+};
+
 // Contains actions that should be executed after lock in transaction coordinator is released.
 struct PostponedLeaderActions {
   bool leader = false;
@@ -545,10 +557,13 @@ struct PostponedLeaderActions {
   // List of update transaction records, that should be replicated via RAFT.
   std::vector<std::unique_ptr<UpdateTxnOperationState>> updates;
 
+  std::vector<CompleteWithStatusEntry> complete_with_status;
+
   void Swap(PostponedLeaderActions* other) {
     std::swap(leader, other->leader);
     notify_applying.swap(other->notify_applying);
     updates.swap(other->updates);
+    complete_with_status.swap(other->complete_with_status);
   }
 };
 
@@ -694,10 +709,14 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   void ClearLocks(const Status& status) {
-    std::lock_guard<std::mutex> lock(managed_mutex_);
-    for (auto it = managed_transactions_.begin(); it != managed_transactions_.end(); ++it) {
-      managed_transactions_.modify(it, std::bind(&TransactionState::ClearRequests, _1, status));
+    PostponedLeaderActions actions;
+    {
+      std::lock_guard<std::mutex> lock(managed_mutex_);
+      for (auto it = managed_transactions_.begin(); it != managed_transactions_.end(); ++it) {
+        managed_transactions_.modify(it, std::bind(&TransactionState::ClearRequests, _1, status));
+      }
     }
+    ExecutePostponedLeaderActions(&actions);
   }
 
   void Start() {
@@ -787,6 +806,10 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   void ExecutePostponedLeaderActions(PostponedLeaderActions* actions) {
+    for (const auto& p : actions->complete_with_status) {
+      p.request->completion_callback()->CompleteWithStatus(p.status);
+    }
+
     if (!actions->leader) {
       return;
     }
@@ -860,10 +883,21 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     }
   }
 
+  void CompleteWithStatus(
+      std::unique_ptr<UpdateTxnOperationState> request, Status status) override {
+    auto ptr = request.get();
+    postponed_leader_actions_.complete_with_status.push_back({
+        std::move(request), ptr, std::move(status)});
+  }
+
+  void CompleteWithStatus(UpdateTxnOperationState* request, Status status) override {
+    postponed_leader_actions_.complete_with_status.push_back({
+        nullptr /* holder */, request, std::move(status)});
+  }
+
   Counter& expired_metric() override {
     return expired_metric_;
   }
-
 
   void SchedulePoll() {
     poll_task_id_ = context_.client_future().get()->messenger()->scheduler().Schedule(
