@@ -1,0 +1,32 @@
+\unset ECHO
+1..30
+ok 1 - policies_are(schema, table, policies, desc) should pass
+ok 2 - policies_are(schema, table, policies, desc) should have the proper description
+ok 3 - policies_are(schema, table, policies, desc) should have the proper diagnostics
+ok 4 - policies_are(schema, table, policies) should pass
+ok 5 - policies_are(schema, table, policies) should have the proper description
+ok 6 - policies_are(schema, table, policies) should have the proper diagnostics
+ok 7 - policies_are(schema, table, policies) + extra should fail
+ok 8 - policies_are(schema, table, policies) + extra should have the proper description
+ok 9 - policies_are(schema, table, policies) + extra should have the proper diagnostics
+ok 10 - policies_are(schema, table, policies) + missing should fail
+ok 11 - policies_are(schema, table, policies) + missing should have the proper description
+ok 12 - policies_are(schema, table, policies) + missing should have the proper diagnostics
+ok 13 - policies_are(schema, table, policies) + extra & missing should fail
+ok 14 - policies_are(schema, table, policies) + extra & missing should have the proper description
+ok 15 - policies_are(schema, table, policies) + extra & missing should have the proper diagnostics
+ok 16 - policies_are(table, policies, desc) should pass
+ok 17 - policies_are(table, policies, desc) should have the proper description
+ok 18 - policies_are(table, policies, desc) should have the proper diagnostics
+ok 19 - policies_are(table, policies) should pass
+ok 20 - policies_are(table, policies) should have the proper description
+ok 21 - policies_are(table, policies) should have the proper diagnostics
+ok 22 - policies_are(table, policies) + extra should fail
+ok 23 - policies_are(table, policies) + extra should have the proper description
+ok 24 - policies_are(table, policies) + extra should have the proper diagnostics
+ok 25 - policies_are(table, policies) + missing should fail
+ok 26 - policies_are(table, policies) + missing should have the proper description
+ok 27 - policies_are(table, policies) + missing should have the proper diagnostics
+ok 28 - policies_are(table, policies) + extra & missing should fail
+ok 29 - policies_are(table, policies) + extra & missing should have the proper description
+ok 30 - policies_are(table, policies) + extra & missing should have the proper diagnostics
