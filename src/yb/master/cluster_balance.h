@@ -145,9 +145,9 @@ class ClusterLoadBalancer {
   virtual void ResetState();
 
   // Goes over the tablet_map_ and the set of live TSDescriptors to compute the load distribution
-  // across the tablets for the given table. Returns false if we encounter transient errors that
-  // should stop the load balancing.
-  virtual Result<bool> AnalyzeTablets(const TableId& table_uuid);
+  // across the tablets for the given table. Returns an OK status if the method succeeded or an
+  // error if there are transient errors in updating the internal state.
+  virtual CHECKED_STATUS AnalyzeTablets(const TableId& table_uuid);
 
   // Processes any required replica additions, as part of moving load from a highly loaded TS to
   // one that is less loaded.
@@ -166,8 +166,9 @@ class ClusterLoadBalancer {
   // building the initial state.
 
   // Method called when initially analyzing tablets, to build up load and usage information.
-  // Returns false only if there are transient errors in updating the internal state.
-  virtual bool UpdateTabletInfo(TabletInfo* tablet);
+  // Returns an OK status if the method succeeded or an error if there are transient errors in
+  // updating the internal state.
+  virtual CHECKED_STATUS UpdateTabletInfo(TabletInfo* tablet);
 
   // If a tablet is under-replicated, or has certain placements that have less than the minimum
   // required number of replicas, we need to add extra tablets to its peer set.
@@ -205,7 +206,7 @@ class ClusterLoadBalancer {
   Result<bool> GetLoadToMove(
       TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId* to_ts);
 
-  bool GetTabletToMove(
+  Result<bool> GetTabletToMove(
       const TabletServerId& from_ts, const TabletServerId& to_ts, TabletId* moving_tablet_id);
 
   // Go through sorted_leader_load_ and figure out which leader to rebalance and from which TS
@@ -213,7 +214,8 @@ class ClusterLoadBalancer {
   //
   // Returns true if we could find a leader to rebalance and sets the three output parameters.
   // Returns false otherwise.
-  bool GetLeaderToMove(TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId* to_ts);
+  Result<bool> GetLeaderToMove(
+      TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId* to_ts);
 
   // Issue the change config and modify the in-memory state for moving a replica from one tablet
   // server to another.
@@ -244,7 +246,7 @@ class ClusterLoadBalancer {
 
   // Returns true when not choosing a leader as victim during normal load balance move operation.
   // Currently skips leader for RF=1 case only.
-  bool SkipLeaderAsVictim(const TabletId& tablet_id) const;
+  Result<bool> ShouldSkipLeaderAsVictim(const TabletId& tablet_id) const;
 
   //
   // Generic load information methods.
@@ -274,7 +276,7 @@ class ClusterLoadBalancer {
  private:
   // Returns true if at least one member in the tablet's configuration is transitioning into a
   // VOTER, but it's not a VOTER yet.
-  bool ConfigMemberInTransitionMode(const TabletId& tablet_id) const;
+  Result<bool> IsConfigMemberInTransitionMode(const TabletId& tablet_id) const;
 
   // Dump the sorted load on tservers (it is usually per table).
   void DumpSortedLoad() const;
