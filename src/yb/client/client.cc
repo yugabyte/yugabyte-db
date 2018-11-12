@@ -221,109 +221,6 @@ Status GenerateUnauthorizedError(const std::string& canonical_resource,
 }
 } // namespace
 
-PermissionsCache::PermissionsCache(std::shared_ptr<YBClient> client,
-                                   bool automatically_update_cache) : client_(client) {
-  if (!automatically_update_cache) {
-    return;
-  }
-  LOG(INFO) << "Creating permissions cache";
-  pool_ = std::make_unique<yb::rpc::IoThreadPool>("permissions_cache_updater", 1);
-  scheduler_ = std::make_unique<yb::rpc::Scheduler>(&pool_->io_service());
-  // This will send many concurrent requests to the master for the permission data.
-  // Queries done before a master leader is elected are all going to fail. This shouldn't be
-  // an issue if the default refresh value is low enough.
-  // TODO(hector): Add logic to retry failed requests so we don't depend on automatic
-  // rescheduling to refresh the permissions cache.
-  ScheduleGetPermissionsFromMaster(true);
-}
-
-PermissionsCache::~PermissionsCache() {
-  if (pool_) {
-    scheduler_->Shutdown();
-    pool_->Shutdown();
-    pool_->Join();
-  }
-}
-
-bool PermissionsCache::WaitUntilReady(MonoDelta wait_for) {
-  std::unique_lock<std::mutex> l(mtx_);
-  return cond_.wait_for(l, wait_for.ToSteadyDuration(),
-      [this] { return this->ready_.load(std::memory_order_acquire); });
-}
-
-void PermissionsCache::ScheduleGetPermissionsFromMaster(bool now) {
-  if (FLAGS_update_permissions_cache_msecs <= 0) {
-    return;
-  }
-
-  DCHECK(pool_);
-  DCHECK(scheduler_);
-
-  scheduler_->Schedule([this](const Status& s) {
-    if (!s.ok()) {
-      LOG(INFO) << "Permissions cache updater scheduler was shutdown: " << s.ToString();
-      return;
-    }
-    this->GetPermissionsFromMaster();
-  }, std::chrono::milliseconds(now ? 0 : FLAGS_update_permissions_cache_msecs));
-}
-
-void PermissionsCache::UpdateRolesPermissions(const GetPermissionsResponsePB *resp) {
-  auto new_roles_permissions_map = std::make_unique<RolesPermissionsMap>();
-
-  // Populate the cache.
-  // Get all the roles in the response. They should have at least one piece of information:
-  // the permissions for 'ALL ROLES' and 'ALL KEYSPACES'
-  for (const auto& role_permissions : resp->role_permissions()) {
-    DCHECK(role_permissions.has_all_keyspaces_permissions());
-    DCHECK(role_permissions.has_all_roles_permissions());
-
-    auto& role_permissions_cache = (*new_roles_permissions_map)[role_permissions.role()];
-    role_permissions_cache.all_keyspaces_permissions = role_permissions.all_keyspaces_permissions();
-    role_permissions_cache.all_roles_permissions = role_permissions.all_roles_permissions();
-
-    // For each resource, extract its permissions and store it in the role's permissions map.
-    for (const auto& resource_permissions : role_permissions.resource_permissions()) {
-      DCHECK(resource_permissions.has_permissions());
-      role_permissions_cache.resource_permissions[resource_permissions.canonical_resource()] =
-          resource_permissions.permissions();
-    }
-  }
-
-  {
-    std::unique_lock<simple_spinlock> l(permissions_cache_lock_);
-    // It's possible that another thread already updated the cache with a more recent version.
-    if (version_ < resp->version()) {
-      roles_permissions_map_ = std::move(new_roles_permissions_map);
-      // Set the permissions cache's version.
-      version_ = resp->version();
-    }
-  }
-  {
-    // We need to hold the mutex before modifying ready_ to avoid a race condition with cond_.
-    std::lock_guard<std::mutex> l(mtx_);
-    ready_.store(true, std::memory_order_release);
-  }
-  cond_.notify_all();
-}
-
-void PermissionsCache::GetPermissionsFromMaster() {
-  // Schedule the cache update before we start processing anything because we want to stay as close
-  // as possible to the refresh rate specified by the update_permissions_cache_msecs flag.
-  // TODO(hector): Add a variable to track the last time that the cache was updated and have a
-  // metric exposed for it, per-server.
-  ScheduleGetPermissionsFromMaster(false);
-
-  Status s = client_->GetPermissions(this);
-
-  if (!s.ok()) {
-    LOG(WARNING) << "Unable to refresh permissions cache. Received error: " << s.ToString();
-    // TODO(hector): If we received an error, then our cache will become stale. We need to allow
-    // users to specify the max staleness that they are willing to tolerate.
-    // For now it's safe to ignore the error since we always check
-  }
-}
-
 // Adapts between the internal LogSeverity and the client's YBLogSeverity.
 static void LoggingAdapterCB(YBLoggingCallback* user_cb,
                              LogSeverity severity,
@@ -706,9 +603,9 @@ Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
   return false;
 }
 
-CHECKED_STATUS YBClient::GetUDType(const std::string &namespace_name,
-                                   const std::string &type_name,
-                                   std::shared_ptr<QLType> *ql_type) {
+CHECKED_STATUS YBClient::GetUDType(const std::string& namespace_name,
+                                   const std::string& type_name,
+                                   std::shared_ptr<QLType>* ql_type) {
   // Setting up request.
   GetUDTypeInfoRequestPB req;
   req.mutable_type()->mutable_namespace_()->set_name(namespace_name);
@@ -841,7 +738,7 @@ CHECKED_STATUS YBClient::GrantRevokeRole(GrantRevokeStatementType statement_type
   return Status::OK();
 }
 
-Status YBClient::GetPermissions(PermissionsCache* permissions_cache) {
+Status YBClient::GetPermissions(client::internal::PermissionsCache* permissions_cache) {
   if (!permissions_cache) {
     DFATAL_OR_RETURN_NOT_OK(STATUS(InvalidArgument, "Invalid null permissions_cache"));
   }
@@ -883,14 +780,14 @@ Status YBClient::GetPermissions(PermissionsCache* permissions_cache) {
         *version, resp.version()));
   }
 
-  permissions_cache->UpdateRolesPermissions(&resp);
+  permissions_cache->UpdateRolesPermissions(resp);
   return Status::OK();
 }
 
-CHECKED_STATUS YBClient::CreateUDType(const std::string &namespace_name,
-                                      const std::string &type_name,
-                                      const std::vector<std::string> &field_names,
-                                      const std::vector<std::shared_ptr<QLType>> &field_types) {
+CHECKED_STATUS YBClient::CreateUDType(const std::string& namespace_name,
+                                      const std::string& type_name,
+                                      const std::vector<std::string>& field_names,
+                                      const std::vector<std::shared_ptr<QLType>>& field_types) {
   // Setting up request.
   CreateUDTypeRequestPB req;
   req.mutable_namespace_()->set_name(namespace_name);
@@ -907,8 +804,8 @@ CHECKED_STATUS YBClient::CreateUDType(const std::string &namespace_name,
   return Status::OK();
 }
 
-CHECKED_STATUS YBClient::DeleteUDType(const std::string &namespace_name,
-                                      const std::string &type_name) {
+CHECKED_STATUS YBClient::DeleteUDType(const std::string& namespace_name,
+                                      const std::string& type_name) {
   // Setting up request.
   DeleteUDTypeRequestPB req;
   req.mutable_type()->mutable_namespace_()->set_name(namespace_name);
@@ -1205,8 +1102,8 @@ void YBMetaDataCache::RemoveCachedTable(const TableId& table_id) {
   }
 }
 
-Status YBMetaDataCache::GetUDType(const string &keyspace_name,
-                                  const string &type_name,
+Status YBMetaDataCache::GetUDType(const string& keyspace_name,
+                                  const string& type_name,
                                   shared_ptr<QLType> *type,
                                   bool *cache_used) {
   auto type_path = std::make_pair(keyspace_name, type_name);
@@ -1240,23 +1137,8 @@ Status YBMetaDataCache::HasResourcePermission(const std::string& canonical_resou
                                               const RoleName& role_name,
                                               const PermissionType& permission,
                                               const NamespaceName& keyspace,
-                                              const TableName& table) {
-  Status s = HasResourcePermissionWithoutRetry(canonical_resource, object_type, role_name,
-                                                     permission, keyspace, table);
-  if (s.IsNotAuthorized()) {
-    RETURN_NOT_OK(client_->GetPermissions(permissions_cache_.get()));
-    s = HasResourcePermissionWithoutRetry(canonical_resource, object_type, role_name,
-                                          permission, keyspace, table);
-  }
-  return s;
-}
-
-Status YBMetaDataCache::HasResourcePermissionWithoutRetry(const std::string& canonical_resource,
-                                                          const ql::ObjectType& object_type,
-                                                          const RoleName& role_name,
-                                                          const PermissionType& permission,
-                                                          const NamespaceName& keyspace,
-                                                          const TableName& table) {
+                                              const TableName& table,
+                                              const internal::CacheCheckMode check_mode) {
   if (!permissions_cache_) {
     LOG(WARNING) << "Permissions cache disabled. This only should be used in unit tests";
     return Status::OK();
@@ -1276,57 +1158,51 @@ Status YBMetaDataCache::HasResourcePermissionWithoutRetry(const std::string& can
     }
   }
 
-  std::shared_ptr<RolesPermissionsMap> roles_permissions_map =
-      permissions_cache_->get_roles_permissions_map();
-
-  const auto& role_permissions_iter = roles_permissions_map->find(role_name);
-
-  if (role_permissions_iter == roles_permissions_map->end()) {
-    VLOG(1) << "Role " << role_name << " not found";
-    // TODO(hector): Refresh the cache when we don't find the role.
-    // Role doesn't exist.
-    return GenerateUnauthorizedError(
-        canonical_resource, object_type, role_name, permission, keyspace, table);
-  }
-
-  // Check if the requested permission has been granted to 'ALL KEYSPACES' or to 'ALL ROLES'.
-  const auto& role_permissions = role_permissions_iter->second;
-  if (object_type == ql::ObjectType::OBJECT_SCHEMA || object_type == ql::ObjectType::OBJECT_TABLE) {
-    if (role_permissions.all_keyspaces_permissions.test(permission)) {
-      // Found.
-      return Status::OK();
+  if (!permissions_cache_->HasCanonicalResourcePermission(canonical_resource, object_type,
+                                                          role_name, permission)) {
+    if (check_mode == internal::CacheCheckMode::RETRY) {
+      // We could have failed to find the permission because our cache is stale. If we are asked
+      // to retry, we update the cache and try again.
+      RETURN_NOT_OK(client_->GetPermissions(permissions_cache_.get()));
+      if (permissions_cache_->HasCanonicalResourcePermission(canonical_resource, object_type,
+                                                             role_name, permission)) {
+        return Status::OK();
+      }
     }
-  } else if (object_type == ql::ObjectType::OBJECT_ROLE) {
-    if (role_permissions.all_roles_permissions.test(permission)) {
-      // Found.
-      return Status::OK();
-    }
-  }
-
-  // If we didn't find the permission by checking all_permissions, then the queried permission was
-  // not granted to 'ALL KEYSPACES' or to 'ALL ROLES'.
-  if (canonical_resource == kRolesDataResource || canonical_resource == kRolesRoleResource) {
     return GenerateUnauthorizedError(
         canonical_resource, object_type, role_name, permission, keyspace, table);
   }
 
-  const auto& resource_permissions_itr =
-      role_permissions.resource_permissions.find(canonical_resource);
+  // Found.
+  return Status::OK();
+}
 
-  if (resource_permissions_itr == role_permissions.resource_permissions.end()) {
-    // Role doesn't have any permissions on the resource.
-    return GenerateUnauthorizedError(
-        canonical_resource, object_type, role_name, permission, keyspace, table);
-  }
-  const Permissions& resource_permissions_bitset = resource_permissions_itr->second;
-  if (resource_permissions_bitset.test(permission)) {
-    // Found.
+Status YBMetaDataCache::HasTablePermission(const NamespaceName& keyspace_name,
+                                           const TableName& table_name,
+                                           const RoleName& role_name,
+                                           const PermissionType permission,
+                                           const internal::CacheCheckMode check_mode) {
+
+  // Check wihtout retry. In case our cache is stale, we will check again by issuing a recursive
+  // call to this method.
+  if (HasResourcePermission(get_canonical_keyspace(keyspace_name),
+                            ql::ObjectType::OBJECT_SCHEMA, role_name, permission,
+                            keyspace_name, "", internal::CacheCheckMode::NO_RETRY).ok()) {
     return Status::OK();
   }
 
-  // Role doesn't have the requested permission on the resource.
-  return GenerateUnauthorizedError(
-      canonical_resource, object_type, role_name, permission, keyspace, table);
+  // By default the first call asks to retry. If we decide to retry, we will issue a recursive
+  // call with NO_RETRY mode.
+  Status s = HasResourcePermission(get_canonical_table(keyspace_name, table_name),
+                                   ql::ObjectType::OBJECT_TABLE, role_name, permission,
+                                   keyspace_name, table_name,
+                                   check_mode);
+
+  if (check_mode == internal::CacheCheckMode::RETRY && s.IsNotAuthorized()) {
+    s = HasTablePermission(keyspace_name, table_name, role_name, permission,
+                           internal::CacheCheckMode::NO_RETRY);
+  }
+  return s;
 }
 
 Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* table) {

@@ -16,6 +16,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/client/client.h"
+#include "yb/client/permissions.h"
 #include "yb/client/transaction.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
@@ -55,11 +56,11 @@ QLEnv::QLEnv(shared_ptr<YBClient> client,
 QLEnv::~QLEnv() {}
 
 //------------------------------------------------------------------------------------------------
-YBTableCreator *QLEnv::NewTableCreator() {
+YBTableCreator* QLEnv::NewTableCreator() {
   return client_->NewTableCreator();
 }
 
-YBTableAlterer *QLEnv::NewTableAlterer(const YBTableName& table_name) {
+YBTableAlterer* QLEnv::NewTableAlterer(const YBTableName& table_name) {
   return client_->NewTableAlterer(table_name);
 }
 
@@ -123,9 +124,9 @@ shared_ptr<YBTable> QLEnv::GetTableDesc(const TableId& table_id, bool* cache_use
   return yb_table;
 }
 
-shared_ptr<QLType> QLEnv::GetUDType(const std::string &keyspace_name,
-                                      const std::string &type_name,
-                                      bool *cache_used) {
+shared_ptr<QLType> QLEnv::GetUDType(const std::string& keyspace_name,
+                                      const std::string& type_name,
+                                      bool* cache_used) {
   shared_ptr<QLType> ql_type = std::make_shared<QLType>(keyspace_name, type_name);
   Status s = metadata_cache_->GetUDType(keyspace_name, type_name, &ql_type, cache_used);
 
@@ -216,27 +217,21 @@ Status QLEnv::GrantRevokeRole(GrantRevokeStatementType statement_type,
 
 Status QLEnv::HasResourcePermission(const string& canonical_name,
                                     const ql::ObjectType& object_type,
-                                    const std::string& role_name,
                                     const PermissionType permission,
                                     const NamespaceName& keyspace,
                                     const TableName& table) {
   DFATAL_OR_RETURN_ERROR_IF(!FLAGS_use_cassandra_authentication, STATUS(IllegalState,
       "Permissions check is not allowed when use_cassandra_authentication flag is disabled"));
-  return metadata_cache_->HasResourcePermission(canonical_name, object_type, role_name, permission,
-                                                keyspace, table);
+  return metadata_cache_->HasResourcePermission(canonical_name, object_type, CurrentRoleName(),
+                                                permission, keyspace, table,
+                                                client::internal::CacheCheckMode::RETRY);
 }
 
 Status QLEnv::HasTablePermission(const NamespaceName& keyspace_name,
                                  const TableName& table_name,
                                  const PermissionType permission) {
-  const string current_role = CurrentRoleName();
-  if (!HasResourcePermission(get_canonical_keyspace(keyspace_name), OBJECT_SCHEMA,
-                             current_role, permission, keyspace_name).ok()) {
-    RETURN_NOT_OK(HasResourcePermission(get_canonical_table(keyspace_name, table_name),
-                                        OBJECT_TABLE, current_role, permission, keyspace_name,
-                                        table_name));
-  }
-  return Status::OK();
+  return metadata_cache_->HasTablePermission(keyspace_name, table_name, CurrentRoleName(),
+                                             permission);
 }
 
 Status QLEnv::HasTablePermission(const client::YBTableName table_name,
@@ -245,19 +240,18 @@ Status QLEnv::HasTablePermission(const client::YBTableName table_name,
 }
 
 Status QLEnv::HasRolePermission(const RoleName& role_name, const PermissionType permission) {
-  return HasResourcePermission(get_canonical_role(role_name), OBJECT_ROLE, CurrentRoleName(),
-                               permission);
+  return HasResourcePermission(get_canonical_role(role_name), OBJECT_ROLE, permission);
 }
 
 //------------------------------------------------------------------------------------------------
-Status QLEnv::CreateUDType(const std::string &keyspace_name,
-                           const std::string &type_name,
-                           const std::vector<std::string> &field_names,
-                           const std::vector<std::shared_ptr<QLType>> &field_types) {
+Status QLEnv::CreateUDType(const std::string& keyspace_name,
+                           const std::string& type_name,
+                           const std::vector<std::string>& field_names,
+                           const std::vector<std::shared_ptr<QLType>>& field_types) {
   return client_->CreateUDType(keyspace_name, type_name, field_names, field_types);
 }
 
-Status QLEnv::DeleteUDType(const std::string &keyspace_name, const std::string &type_name) {
+Status QLEnv::DeleteUDType(const std::string& keyspace_name, const std::string& type_name) {
   return client_->DeleteUDType(keyspace_name, type_name);
 }
 

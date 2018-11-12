@@ -47,9 +47,6 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/schema.h"
 #include "yb/common/common.pb.h"
-#include "yb/rpc/io_thread_pool.h"
-#include "yb/rpc/scheduler.h"
-#include "yb/yql/cql/ql/ptree/pt_option.h"
 
 #ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
@@ -61,6 +58,7 @@
 #else
 #include "yb/client/stubs.h"
 #endif
+#include "yb/client/permissions.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/partition.h"
@@ -109,75 +107,6 @@ class YBTableCreator;
 class YBTabletServer;
 class YBValue;
 class YBOperation;
-
-struct RolePermissions {
-  // Permissions for resources "ALL KEYSPACES" ('data') and "ALL ROLES" ('roles').
-  // Special case to avoid hashing canonical resources 'data' and 'roles' and doing a hashmap
-  // lookup.
-  Permissions all_keyspaces_permissions;
-  Permissions all_roles_permissions;
-  // canonical resource -> permission bitmap.
-  std::unordered_map<std::string, Permissions> resource_permissions;
-};
-
-using RolesPermissionsMap = std::unordered_map<RoleName, RolePermissions>;
-
-class PermissionsCache {
- public:
-  explicit PermissionsCache(std::shared_ptr<YBClient> client,
-                            bool automatically_update_cache = true);
-  ~PermissionsCache();
-
-  void UpdateRolesPermissions(const master::GetPermissionsResponsePB *resp);
-
-  std::shared_ptr<RolesPermissionsMap> get_roles_permissions_map() {
-    std::unique_lock<simple_spinlock> l(permissions_cache_lock_);
-    return roles_permissions_map_;
-  }
-
-  bool ready() {
-    return ready_.load(std::memory_order_acquire);
-  }
-
-  // Wait until the cache is ready (it has received at least one update from the master). Returns
-  // false if the cache is not ready after waiting for the specified time. Returns true otherwise.
-  bool WaitUntilReady(MonoDelta wait_for);
-
-  boost::optional<uint64_t> version() {
-    std::unique_lock<simple_spinlock> l(permissions_cache_lock_);
-    return version_;
-  }
-
- private:
-  void ScheduleGetPermissionsFromMaster(bool now);
-
-  void GetPermissionsFromMaster();
-
-  // Passed to the master whenever we want to update our cache. The master will only send a new
-  // cache if its version number is greater than this version number.
-  boost::optional<uint64_t> version_;
-
-  // Client used to send the request to the master.
-  std::shared_ptr<YBClient> client_;
-
-  // role name -> RolePermissions.
-  std::shared_ptr<RolesPermissionsMap> roles_permissions_map_;
-
-  // Used to modify the internal state.
-  mutable simple_spinlock permissions_cache_lock_;
-
-  // Used to wait until the cache is ready.
-  std::mutex mtx_;
-  std::condition_variable cond_;
-
-  // Thread pool used by the scheduler.
-  std::unique_ptr<yb::rpc::IoThreadPool> pool_;
-  // The scheduler used to refresh the permissions.
-  std::unique_ptr<yb::rpc::Scheduler> scheduler_;
-
-  // Whether we have received the permissions from the master.
-  std::atomic<bool> ready_{false};
-};
 
 namespace internal {
 class Batcher;
@@ -446,8 +375,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
                                  const std::string& recipient_role_name);
 
   // Get all the roles' permissions from the master only if the master's permissions version is
-  // greater than permissions_cache->version().
-  CHECKED_STATUS GetPermissions(PermissionsCache* permissions_cache);
+  // greater than permissions_cache->version().s
+  CHECKED_STATUS GetPermissions(client::internal::PermissionsCache* permissions_cache);
 
   // (User-defined) type related methods.
 
@@ -640,7 +569,7 @@ class YBMetaDataCache {
   YBMetaDataCache(std::shared_ptr<YBClient> client,
                   bool create_roles_permissions_cache = false) : client_(client)  {
     if (create_roles_permissions_cache) {
-      permissions_cache_ = std::make_shared<PermissionsCache>(client);
+      permissions_cache_ = std::make_shared<client::internal::PermissionsCache>(client);
     } else {
       LOG(INFO) << "Creating a metadata cache without a permissions cache";
     }
@@ -676,20 +605,28 @@ class YBMetaDataCache {
   // message.
   // object_type can be ObjectType::OBJECT_SCHEMA, ObjectType::OBJECT_TABLE, or
   // ObjectType::OBJECT_ROLE.
-  CHECKED_STATUS HasResourcePermission(const std::string& canonical_resource,
-                                       const ql::ObjectType& object_type,
-                                       const RoleName& role_name,
-                                       const PermissionType& permission,
-                                       const NamespaceName& keyspace,
-                                       const TableName& table);
+  // If the permission is not found, and check_mode is RETRY, this method will refresh the
+  // permissions cache and retry.
+  CHECKED_STATUS HasResourcePermission(const std::string &canonical_resource,
+                                       const ql::ObjectType &object_type,
+                                       const RoleName &role_name,
+                                       const PermissionType &permission,
+                                       const NamespaceName &keyspace,
+                                       const TableName &table,
+                                       const client::internal::CacheCheckMode check_mode);
+
+  // Convenience method to check if role has the specified permission on the given keyspace or
+  // table.
+  // If the role has not the permission on neither the keyspace nor the table, and check_mode is
+  // RETRY, this method will cause the permissions cache to be refreshed before retrying the check.
+  CHECKED_STATUS HasTablePermission(const NamespaceName &keyspace_name,
+      const TableName &table_name,
+      const RoleName &role_name,
+      const PermissionType permission,
+      const internal::CacheCheckMode check_mode =  internal::CacheCheckMode::RETRY);
 
  private:
-  CHECKED_STATUS HasResourcePermissionWithoutRetry(const std::string& canonical_resource,
-                                                   const ql::ObjectType& object_type,
-                                                   const RoleName& role_name,
-                                                   const PermissionType& permission,
-                                                   const NamespaceName& keyspace,
-                                                   const TableName& table);
+
   std::shared_ptr<YBClient> client_;
 
   // Map from table-name to YBTable instances.
@@ -706,7 +643,7 @@ class YBMetaDataCache {
 
   std::mutex cached_tables_mutex_;
 
-  std::shared_ptr<PermissionsCache> permissions_cache_;
+  std::shared_ptr<client::internal::PermissionsCache> permissions_cache_;
 
   // Map from type-name to QLType instances.
   typedef std::unordered_map<std::pair<string, string>,

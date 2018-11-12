@@ -52,13 +52,13 @@ PTCreateTable::~PTCreateTable() {
 CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   SemState sem_state(sem_context);
 
-  if (FLAGS_use_cassandra_authentication) {
-    RETURN_NOT_OK(sem_context->CheckHasKeyspacePermission(loc(), PermissionType::CREATE_PERMISSION,
-        yb_table_name().namespace_name()));
-  }
-
   // Processing table name.
   RETURN_NOT_OK(relation_->AnalyzeName(sem_context, OBJECT_TABLE));
+
+  if (FLAGS_use_cassandra_authentication) {
+    RETURN_NOT_OK(sem_context->CheckHasKeyspacePermission(loc(), PermissionType::CREATE_PERMISSION,
+                                                          yb_table_name().namespace_name()));
+  }
 
   // Save context state, and set "this" as current column in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
