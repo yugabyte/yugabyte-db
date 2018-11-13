@@ -291,8 +291,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     std::string OpsRangeString() const;
   };
 
-  std::string LogPrefixUnlocked();
-
   std::string LogPrefix();
 
   // Set the leader UUID of the configuration and mark the tablet config dirty for
@@ -377,7 +375,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                                                HybridTime propagated_safe_time);
 
   // Return header string for RequestVote log messages. The ReplicaState lock must be held.
-  std::string GetRequestVoteLogPrefixUnlocked() const;
+  std::string GetRequestVoteLogPrefix() const;
 
   // Fills the response with the current status, if an update was successful.
   void FillConsensusResponseOKUnlocked(ConsensusResponsePB* response);
