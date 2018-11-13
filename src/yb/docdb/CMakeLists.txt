@@ -61,7 +61,6 @@ set(DOCDB_DEPS
     yb_common
     docdb_proto
     server_common
-    pgsql-ybpostgres
     rpc_introspection_proto)
 
 ADD_YB_LIBRARY(yb_docdb
