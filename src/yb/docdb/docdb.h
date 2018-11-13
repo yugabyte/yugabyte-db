@@ -337,6 +337,8 @@ struct GetSubDocumentData {
   SubDocument* result;
   bool* doc_found;
 
+  DeadlineInfo* deadline_info = nullptr;
+
   // The TTL and hybrid time are return values external to the SubDocument
   // which occasionally need to be accessed for TTL calculation.
   mutable Expiration exp;
@@ -359,6 +361,7 @@ struct GetSubDocumentData {
   GetSubDocumentData Adjusted(
       const Slice& subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr) const {
     GetSubDocumentData result(subdoc_key, result_, doc_found_);
+    result.deadline_info = deadline_info;
     result.exp = exp;
     result.return_type_only = return_type_only;
     result.low_subkey = low_subkey;

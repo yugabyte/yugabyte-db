@@ -52,6 +52,9 @@ DEFINE_bool(emulate_redis_responses,
 DEFINE_test_flag(bool, pause_write_apply_after_if, false,
                  "Pause application of QLWriteOperation after evaluating if condition.");
 
+DEFINE_test_flag(bool, test_tserver_timeout, false,
+                 "Sleep past the deadline to test tserver query expiration");
+
 namespace yb {
 namespace docdb {
 
@@ -63,6 +66,8 @@ using std::make_unique;
 using strings::Substitute;
 using common::Jsonb;
 using yb::bfql::TSOpcode;
+
+using namespace std::literals;
 
 //--------------------------------------------------------------------------------------------------
 // Redis support.
@@ -199,7 +204,7 @@ Result<RedisDataType> GetRedisValueType(
     data.return_type_only = true;
     data.exp.always_override = always_override;
     RETURN_NOT_OK(GetSubDocument(iterator, data, /* projection */ nullptr,
-        SeekFwdSuffices::kFalse));
+                                 SeekFwdSuffices::kFalse));
   }
 
   if (!doc_found) {
@@ -455,8 +460,7 @@ void SetOptionalInt(RedisDataType type, int64_t value, RedisResponsePB* response
   SetOptionalInt(type, value, 0, response);
 }
 
-Result<int64_t> GetCardinality(IntentAwareIterator* iterator,
-                              const RedisKeyValuePB& kv) {
+Result<int64_t> GetCardinality(IntentAwareIterator* iterator, const RedisKeyValuePB& kv) {
   auto encoded_key_card = DocKey::EncodedFromRedisKey(kv.hash_code(), kv.key());
   PrimitiveValue(ValueType::kCounter).AppendToKey(&encoded_key_card);
   SubDocument subdoc_card;
@@ -553,6 +557,14 @@ CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
     *last_elem_object = true;
   }
   return Status::OK();
+}
+
+// If test_tserver_timeout is true, set the deadline to now and sleep for 100ms to simulate a
+// tserver timeout.
+void SimulateTimeoutIfTesting(MonoTime* deadline) {
+  if (PREDICT_FALSE(FLAGS_test_tserver_timeout)) {
+    *deadline = MonoTime::Now() - 100ms;
+  }
 }
 
 } // anonymous namespace
@@ -1329,6 +1341,7 @@ Status RedisWriteOperation::ApplyRemove(const DocOperationApplyData& data) {
 }
 
 Status RedisReadOperation::Execute() {
+  SimulateTimeoutIfTesting(&deadline_);
   SubDocKey doc_key(
       DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
   auto iter = yb::docdb::CreateIntentAwareIterator(
@@ -1336,6 +1349,7 @@ Status RedisReadOperation::Execute() {
       doc_key.Encode().AsSlice(),
       redis_query_id(), /* txn_op_context */ boost::none, deadline_, read_time_);
   iterator_ = std::move(iter);
+  deadline_info_.emplace(deadline_);
 
   switch (request_.request_case()) {
     case RedisReadRequestPB::kGetForRenameRequest:
@@ -1379,6 +1393,7 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
   // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
   // support for Redis.
   GetSubDocumentData data = { encoded_doc_key, &doc, &doc_found };
+  data.deadline_info = deadline_info_.get_ptr();
 
   bool has_cardinality_subkey = value_type == ValueType::kRedisSortedSet ||
                                 value_type == ValueType::kRedisList;
@@ -1472,6 +1487,7 @@ Status RedisReadOperation::ExecuteCollectionGetRangeByBounds(
     SubDocument doc;
     bool doc_found = false;
     GetSubDocumentData data = {encoded_doc_key, &doc, &doc_found};
+    data.deadline_info = deadline_info_.get_ptr();
     data.low_subkey = &low_subkey;
     data.high_subkey = &high_subkey;
 
@@ -1528,6 +1544,7 @@ Status RedisReadOperation::ExecuteCollectionGetRangeByBounds(
     SubDocument doc;
     bool doc_found = false;
     GetSubDocumentData data = {encoded_doc_key, &doc, &doc_found};
+    data.deadline_info = deadline_info_.get_ptr();
     data.low_subkey = &low_subkey;
     data.high_subkey = &high_subkey;
     data.limit = request_.range_request_limit();
@@ -1563,7 +1580,6 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
       const RedisSubKeyBoundPB& upper_bound = request_.subkey_range().upper_bound();
       const bool add_keys = request_.get_collection_range_request().with_scores();
       return ExecuteCollectionGetRangeByBounds(request_type, lower_bound, upper_bound, add_keys);
-      break;
     }
     case RedisCollectionGetRangeRequestPB::ZRANGE: FALLTHROUGH_INTENDED;
     case RedisCollectionGetRangeRequestPB::ZREVRANGE: {
@@ -1619,6 +1635,7 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
       SubDocument doc;
       bool doc_found = false;
       GetSubDocumentData data = { encoded_doc_key, &doc, &doc_found};
+      data.deadline_info = deadline_info_.get_ptr();
       data.low_index = &low_bound;
       data.high_index = &high_bound;
 
@@ -1959,6 +1976,9 @@ Status RedisReadOperation::ExecuteKeys() {
   int threshold = request_.keys_request().threshold();
 
   while (iterator_->valid()) {
+    if (deadline_info_ && deadline_info_->CheckAndSetDeadlinePassed()) {
+      return STATUS(Expired, "Deadline for query passed.");
+    }
     auto key = VERIFY_RESULT(iterator_->FetchKey());
     DocKey doc_key;
     RETURN_NOT_OK(doc_key.FullyDecodeFrom(key));
@@ -2913,6 +2933,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
                                 const Schema& query_schema,
                                 QLResultSet* resultset,
                                 HybridTime* restart_read_ht) {
+  SimulateTimeoutIfTesting(&deadline);
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
   size_t num_rows_skipped = 0;
   size_t offset = 0;

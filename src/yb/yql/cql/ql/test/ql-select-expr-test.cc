@@ -8,6 +8,8 @@
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 #include "yb/gutil/strings/substitute.h"
 
+DECLARE_bool(test_tserver_timeout);
+
 using std::string;
 using std::unique_ptr;
 using std::shared_ptr;
@@ -422,6 +424,23 @@ TEST_F(QLTestSelectedExpr, TestQLSelectToken) {
   CHECK_EQ(row2.column(0).int32_value(), 11);
   CHECK_EQ(row2.column(1).double_value(), 22.5);
   CHECK_EQ(row2.column(2).string_value(), "bc");
+}
+
+
+TEST_F(QLTestSelectedExpr, TestTserverTimeout) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  const char *create_stmt = "CREATE TABLE test_table(h int, primary key(h));";
+  CHECK_VALID_STMT(create_stmt);
+  // Insert a row whose hash value is '1'.
+  CHECK_VALID_STMT("INSERT INTO test_table(h) VALUES(1);");
+  // Make sure a select statement works.
+  CHECK_VALID_STMT("SELECT count(*) FROM test_table WHERE h = 1;");
+  // Set a flag to simulate tserver timeout and now check that select produces an error.
+  FLAGS_test_tserver_timeout = true;
+  CHECK_INVALID_STMT("SELECT count(*) FROM test_table WHERE h = 1;");
 }
 
 } // namespace ql
