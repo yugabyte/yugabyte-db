@@ -59,6 +59,7 @@ DocRowwiseIterator::DocRowwiseIterator(
     projection_subkeys_.emplace_back(projection.column_id(i));
   }
   std::sort(projection_subkeys_.begin(), projection_subkeys_.end());
+  deadline_info_.emplace(deadline);
 }
 
 DocRowwiseIterator::~DocRowwiseIterator() {
@@ -308,6 +309,7 @@ bool DocRowwiseIterator::HasNext() const {
     }
 
     GetSubDocumentData data = { sub_doc_key, &row_, &doc_found, TableTTL(schema_) };
+    data.deadline_info = deadline_info_.get_ptr();
     status_ = GetSubDocument(db_iter_.get(), data, &projection_subkeys_);
     // After this, the iter should be positioned right after the subdocument.
     if (!status_.ok()) {

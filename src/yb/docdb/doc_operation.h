@@ -37,6 +37,7 @@
 #include "yb/docdb/value.h"
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/deadline_info.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -241,6 +242,8 @@ class RedisReadOperation {
   // Currently ReadOperations get the state during construction, but Write operations get them when
   // calling Apply(). Apply() and Execute() should be more similar() in definition.
   std::unique_ptr<IntentAwareIterator> iterator_;
+
+  boost::optional<DeadlineInfo> deadline_info_;
 };
 
 //--------------------------------------------------------------------------------------------------

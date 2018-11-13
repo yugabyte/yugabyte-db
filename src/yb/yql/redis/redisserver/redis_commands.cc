@@ -923,7 +923,7 @@ class KeysProcessor : public std::enable_shared_from_this<KeysProcessor> {
 
     auto& response = *operation->mutable_response();
     if (response.code() == RedisResponsePB::SERVER_ERROR) {
-      // We received too many keys, forwarding the error message.
+      // We received too many keys or timed out, forwarding the error message.
       resp_ = response;
       ProcessedAll(Status::OK());
       return;

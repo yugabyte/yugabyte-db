@@ -27,6 +27,7 @@ ADD_YB_LIBRARY(docdb_proto
 set(DOCDB_SRCS
     conflict_resolution.cc
     consensus_frontier.cc
+    deadline_info.cc
     doc_boundary_values_extractor.cc
     docdb.cc
     docdb_compaction_filter.cc
