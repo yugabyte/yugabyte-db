@@ -22,8 +22,8 @@ PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
-STARBALL10 = pg_hint_plan10-$(HINTPLANVER).tar.gz
-STARBALLS = $(STARBALL10)
+STARBALL11 = pg_hint_plan11-$(HINTPLANVER).tar.gz
+STARBALLS = $(STARBALL11)
 
 TARSOURCES = Makefile *.c  *.h COPYRIGHT* \
 	pg_hint_plan--*.sql \
@@ -35,7 +35,7 @@ LDFLAGS+=-Wl,--build-id
 
 installcheck: $(REGRESSION_EXPECTED)
 
-rpms: rpm10
+rpms: rpm11
 
 # pg_hint_plan.c includes core.c and make_join_rel.c
 pg_hint_plan.o: core.c make_join_rel.c # pg_stat_statements.c
@@ -50,7 +50,7 @@ $(STARBALLS): $(TARSOURCES)
 	tar -chzf $@ $(addprefix $(subst .tar.gz,,$@)/, $^)
 	rm $(subst .tar.gz,,$@)
 
-rpm10: $(STARBALL10)
-	MAKE_ROOT=`pwd` rpmbuild -bb SPECS/pg_hint_plan10.spec
+rpm11: $(STARBALL11)
+	MAKE_ROOT=`pwd` rpmbuild -bb SPECS/pg_hint_plan11.spec
 
 
