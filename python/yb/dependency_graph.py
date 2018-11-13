@@ -394,7 +394,11 @@ class Configuration:
         if not self.file_regex and args.file_name_glob:
             self.file_regex = fnmatch.translate('*/' + args.file_name_glob)
 
-        for dir_path in [self.src_dir_path, self.ent_src_dir_path]:
+        self.src_dir_paths = [self.src_dir_path]
+        if os.environ.get('YB_EDITION') != 'community' and os.path.exists(self.ent_src_dir_path):
+            self.src_dir_paths.append(self.ent_src_dir_path)
+
+        for dir_path in self.src_dir_paths:
             if not os.path.isdir(dir_path):
                 raise RuntimeError("Directory does not exist, or is not a directory: %s" % dir_path)
 
@@ -522,7 +526,7 @@ class DependencyGraphBuilder:
                      (datetime.now() - start_time).total_seconds())
 
     def find_proto_files(self):
-        for src_subtree_root in [self.conf.src_dir_path, self.conf.ent_src_dir_path]:
+        for src_subtree_root in self.conf.src_dir_paths:
             logging.info("Finding .proto files in the source tree at '{}'".format(src_subtree_root))
             source_str = 'proto files in {}'.format(src_subtree_root)
             for root, dirs, files in os.walk(src_subtree_root):
