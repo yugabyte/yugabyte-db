@@ -35,6 +35,7 @@
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
+#include "yb/docdb/deadline_info.h"
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/write_batch_formatter.h"
@@ -507,6 +508,9 @@ CHECKED_STATUS BuildSubDocument(
   VLOG(3) << "BuildSubDocument data: " << data << " read_time: " << iter->read_time()
           << " low_ts: " << low_ts;
   while (iter->valid()) {
+    if (data.deadline_info && data.deadline_info->CheckAndSetDeadlinePassed()) {
+      return STATUS(Expired, "Deadline for query passed.");
+    }
     // Since we modify num_values_observed on recursive calls, we keep a local copy of the value.
     int64 current_values_observed = *num_values_observed;
     DocHybridTime write_time;

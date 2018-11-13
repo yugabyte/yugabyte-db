@@ -28,6 +28,7 @@
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/value.h"
+#include "yb/docdb/deadline_info.h"
 #include "yb/util/status.h"
 #include "yb/util/pending_op_counter.h"
 
@@ -249,6 +250,8 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   // Used for keeping track of errors that happen in HasNext. Returned
   mutable Status status_;
+
+  mutable boost::optional<DeadlineInfo> deadline_info_;
 };
 
 }  // namespace docdb
