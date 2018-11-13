@@ -8432,3 +8432,48 @@ set max_parallel_workers_per_gather to DEFAULT;
 (9 rows)
 
 \! rm results/pg_hint_plan.tmpout
+-- hint error level
+set client_min_messages to 'DEBUG1';
+set pg_hint_plan.debug_level to 'verbose';
+/*+ SeqScan( */ SELECT 1;
+INFO:  pg_hint_plan: hint syntax error at or near ""
+DETAIL:  Closing parenthesis is necessary.
+ ?column? 
+----------
+        1
+(1 row)
+
+/*+ SeqScan(t1) */ SELECT * FROM t1 LIMIT 0;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+ id | val 
+----+-----
+(0 rows)
+
+set pg_hint_plan.message_level to 'DEBUG1';
+set pg_hint_plan.parse_messages to 'NOTICE';
+/*+ SeqScan( */ SELECT 1;
+NOTICE:  pg_hint_plan: hint syntax error at or near ""
+DETAIL:  Closing parenthesis is necessary.
+ ?column? 
+----------
+        1
+(1 row)
+
+/*+ SeqScan(t1) */ SELECT * FROM t1 LIMIT 0;
+DEBUG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+ id | val 
+----+-----
+(0 rows)
+

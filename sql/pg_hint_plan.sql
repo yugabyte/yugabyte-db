@@ -1027,3 +1027,14 @@ EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
 set max_parallel_workers_per_gather to DEFAULT;
 \! sql/maskout.sh results/pg_hint_plan.tmpout
 \! rm results/pg_hint_plan.tmpout
+
+-- hint error level
+set client_min_messages to 'DEBUG1';
+set pg_hint_plan.debug_level to 'verbose';
+/*+ SeqScan( */ SELECT 1;
+/*+ SeqScan(t1) */ SELECT * FROM t1 LIMIT 0;
+set pg_hint_plan.message_level to 'DEBUG1';
+set pg_hint_plan.parse_messages to 'NOTICE';
+/*+ SeqScan( */ SELECT 1;
+/*+ SeqScan(t1) */ SELECT * FROM t1 LIMIT 0;
+
