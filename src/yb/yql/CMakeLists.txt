@@ -18,9 +18,6 @@ add_subdirectory(cql/cqlserver)
 # REDIS service
 add_subdirectory(redis/redisserver)
 
-# POSTGRESQL service
-add_subdirectory(pgsql)
-
 # API for Postgres to call.
 add_subdirectory(pggate)
 
