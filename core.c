@@ -39,7 +39,7 @@
  *     restriction_is_constant_false()
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *-------------------------------------------------------------------------
@@ -1076,6 +1076,9 @@ try_partitionwise_join(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 	if (!IS_PARTITIONED_REL(joinrel))
 		return;
 
+	/* The join relation should have consider_partitionwise_join set. */
+	Assert(joinrel->consider_partitionwise_join);
+
 	/*
 	 * Since this join relation is partitioned, all the base relations
 	 * participating in this join must be partitioned and so are all the
@@ -1083,6 +1086,10 @@ try_partitionwise_join(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 	 */
 	Assert(IS_PARTITIONED_REL(rel1) && IS_PARTITIONED_REL(rel2));
 	Assert(REL_HAS_ALL_PART_PROPS(rel1) && REL_HAS_ALL_PART_PROPS(rel2));
+
+	/* The joining relations should have consider_partitionwise_join set. */
+	Assert(rel1->consider_partitionwise_join &&
+		   rel2->consider_partitionwise_join);
 
 	/*
 	 * The partition scheme of the join relation should match that of the
@@ -1163,4 +1170,3 @@ try_partitionwise_join(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 									child_restrictlist);
 	}
 }
-
