@@ -14,7 +14,6 @@
 #include "yb/docdb/doc_operation.h"
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/util/trace.h"
-#include "yb/yql/pgsql/ybpostgres/pg_send.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 namespace yb {
@@ -106,17 +105,10 @@ CHECKED_STATUS AbstractTablet::HandlePgsqlReadRequest(
   // encoding. For now, we'll call PgsqlSerialize() without checking encoding method.
   result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
 
+  // Serializing data for PgGate API.
+  CHECK(!pgsql_read_request.has_rsrow_desc()) << "Row description is not needed";
   TRACE("Start Serialize");
-  if (pgsql_read_request.has_rsrow_desc()) {
-    // Communicating directly with postgre client.
-    PgsqlRSRowDesc rsrow_desc(pgsql_read_request.rsrow_desc());
-    pgapi::PGSend sender;
-    sender.WriteTupleDesc(rsrow_desc, &result->rows_data);
-    sender.WriteTuples(resultset, rsrow_desc, &result->rows_data);
-  } else {
-    // Communicating with PgGate API.
-    RETURN_NOT_OK(pggate::PgDocData::WriteTuples(resultset, &result->rows_data));
-  }
+  RETURN_NOT_OK(pggate::PgDocData::WriteTuples(resultset, &result->rows_data));
   TRACE("Done Serialize");
 
   return Status::OK();

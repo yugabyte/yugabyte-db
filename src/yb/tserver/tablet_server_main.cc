@@ -43,7 +43,6 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
 #include "yb/yql/cql/cqlserver/cql_server.h"
-#include "yb/yql/pgsql/server/pg_server.h"
 #include "yb/master/call_home.h"
 #include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/scheduler.h"
@@ -65,8 +64,6 @@ using yb::cqlserver::CQLServer;
 using yb::cqlserver::CQLServerOptions;
 
 using namespace yb::size_literals;  // NOLINT
-using yb::pgserver::PgServer;
-using yb::pgserver::PgServerOptions;
 
 DEFINE_bool(start_redis_proxy, true, "Starts a redis proxy along with the tablet server");
 
@@ -77,8 +74,6 @@ DEFINE_string(cql_proxy_broadcast_rpc_address, "",
 
 DEFINE_int64(tserver_tcmalloc_max_total_thread_cache_bytes, 256_MB, "Total number of bytes to "
     "use for the thread cache for tcmalloc across all threads in the tserver.");
-
-DEFINE_bool(start_pgsql_proxy, false, "Starts a PostgreSQL proxy along with the tablet server");
 
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(callhome_enabled);
@@ -91,9 +86,6 @@ DECLARE_int32(redis_proxy_webserver_port);
 
 DECLARE_string(cql_proxy_bind_address);
 DECLARE_int32(cql_proxy_webserver_port);
-
-DECLARE_string(pgsql_proxy_bind_address);
-DECLARE_int32(pgsql_proxy_webserver_port);
 
 namespace yb {
 namespace tserver {
@@ -112,9 +104,6 @@ static int TabletServerMain(int argc, char** argv) {
   // Do not sync GLOG to disk for INFO, WARNING.
   // ERRORs, and FATALs will still cause a sync to disk.
   FLAGS_logbuflevel = google::GLOG_WARNING;
-
-  FLAGS_pgsql_proxy_bind_address = strings::Substitute("0.0.0.0:$0", PgServer::kDefaultPort);
-  FLAGS_pgsql_proxy_webserver_port = PgServer::kDefaultWebPort;
 
   // Only write FATALs by default to stderr.
   FLAGS_stderrthreshold = google::FATAL;
@@ -170,23 +159,6 @@ static int TabletServerMain(int argc, char** argv) {
     LOG(INFO) << "Starting redis server...";
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(redis_server->Start());
     LOG(INFO) << "Redis server successfully started.";
-  }
-
-  std::unique_ptr<PgServer> pgsql_server;
-  if (FLAGS_start_pgsql_proxy) {
-    PgServerOptions pgsql_server_options;
-    pgsql_server_options.rpc_opts.rpc_bind_addresses = FLAGS_pgsql_proxy_bind_address;
-    pgsql_server_options.webserver_opts.port = FLAGS_pgsql_proxy_webserver_port;
-    pgsql_server_options.master_addresses_flag = tablet_server_options->master_addresses_flag;
-    pgsql_server_options.SetMasterAddresses(tablet_server_options->GetMasterAddresses());
-    pgsql_server_options.dump_info_path =
-        (tablet_server_options->dump_info_path.empty()
-             ? ""
-             : tablet_server_options->dump_info_path + "-pgsql");
-    pgsql_server.reset(new PgServer(pgsql_server_options, server.get()));
-    LOG(INFO) << "Starting Postgresql server...";
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(pgsql_server->Start());
-    LOG(INFO) << "Postgresql server successfully started.";
   }
 
   // TODO(neil): After CQL server is starting, it blocks this thread from moving on.

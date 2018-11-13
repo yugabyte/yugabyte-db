@@ -212,8 +212,7 @@ public class MiniYBDaemon {
    */
   public MiniYBDaemon(
       MiniYBDaemonType type, int indexForLog, String[] commandLine, Process process, String bindIp,
-      int rpcPort, int webPort, int cqlWebPort, int redisWebPort, int pgsqlWebPort,
-      String dataDirPath) {
+      int rpcPort, int webPort, int cqlWebPort, int redisWebPort, String dataDirPath) {
     this.type = type;
     this.commandLine = commandLine;
     this.process = process;
@@ -223,7 +222,6 @@ public class MiniYBDaemon {
     this.webPort = webPort;
     this.cqlWebPort = cqlWebPort;
     this.redisWebPort = redisWebPort;
-    this.pgsqlWebPort = pgsqlWebPort;
     this.dataDirPath = dataDirPath;
     this.logListener = new ExternalDaemonLogErrorListener(getLogPrefix());
     this.logPrinter = new LogPrinter(process.getInputStream(), getLogPrefix(), logListener);
@@ -266,8 +264,7 @@ public class MiniYBDaemon {
   MiniYBDaemon restart() throws Exception {
     return new MiniYBDaemon(type, indexForLog, commandLine,
                             new ProcessBuilder(commandLine).redirectErrorStream(true).start(),
-                            bindIp, rpcPort, webPort, cqlWebPort, redisWebPort, pgsqlWebPort,
-                            dataDirPath);
+                            bindIp, rpcPort, webPort, cqlWebPort, redisWebPort, dataDirPath);
   }
 
   @Override
@@ -285,7 +282,6 @@ public class MiniYBDaemon {
   private final int webPort;
   private final int cqlWebPort;
   private final int redisWebPort;
-  private final int pgsqlWebPort;
   private final String dataDirPath;
   private final CountDownLatch shutdownLatch = new CountDownLatch(1);
   private final LogPrinter logPrinter;
