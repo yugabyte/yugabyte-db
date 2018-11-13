@@ -3238,7 +3238,7 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | on
+ jit                            | off
  join_collapse_limit            | 8
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
@@ -3293,7 +3293,7 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | on
+ jit                            | off
  join_collapse_limit            | 8
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
@@ -3367,7 +3367,7 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | on
+ jit                            | off
  join_collapse_limit            | 8
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
@@ -3422,7 +3422,7 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | on
+ jit                            | off
  join_collapse_limit            | 8
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
@@ -3485,7 +3485,7 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | on
+ jit                            | off
  join_collapse_limit            | 8
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
@@ -3571,7 +3571,7 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | on
+ jit                            | off
  join_collapse_limit            | 8
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
@@ -3623,7 +3623,7 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | on
+ jit                            | off
  join_collapse_limit            | 8
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
@@ -3687,7 +3687,7 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | on
+ jit                            | off
  join_collapse_limit            | 8
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
@@ -3766,7 +3766,7 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | on
+ jit                            | off
  join_collapse_limit            | 8
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
@@ -3837,7 +3837,7 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | on
+ jit                            | off
  join_collapse_limit            | 8
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
@@ -3910,7 +3910,7 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | on
+ jit                            | off
  join_collapse_limit            | 8
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
@@ -3984,7 +3984,7 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | on
+ jit                            | off
  join_collapse_limit            | 8
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
@@ -4058,7 +4058,7 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | on
+ jit                            | off
  join_collapse_limit            | 8
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
@@ -4133,7 +4133,7 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | on
+ jit                            | off
  join_collapse_limit            | 8
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025

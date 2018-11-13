@@ -4632,14 +4632,15 @@ error hint:
 ---- No. S-3-6 query structure
 ----
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1 AND t1.ctid = '(1,1)';
-               QUERY PLAN                
------------------------------------------
- Nested Loop
-   Join Filter: (t1.c1 = t2.c1)
-   ->  Tid Scan on t1
-         TID Cond: (ctid = '(1,1)'::tid)
+                  QUERY PLAN                   
+-----------------------------------------------
+ Hash Join
+   Hash Cond: (t2.c1 = t1.c1)
    ->  Seq Scan on t2
-(5 rows)
+   ->  Hash
+         ->  Tid Scan on t1
+               TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
 
 -- No. S-3-6-1
 /*+SeqScan(t1)*/

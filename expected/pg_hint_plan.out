@@ -224,7 +224,7 @@ error hint:
 /*+Set(work_mem "1M")*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  invalid value for parameter "work_mem": "1M"
-HINT:  Valid units for this parameter are "kB", "MB", "GB", and "TB".
+HINT:  Valid units for this parameter are "B", "kB", "MB", "GB", and "TB".
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -2999,6 +2999,7 @@ error hint:
    ->  Index Scan using t2_pkey on t2
 (4 rows)
 
+-- Cannot work
 /*+NestLoop(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1 FULL OUTER JOIN  t2 ON (t1.id = t2.id);
 LOG:  pg_hint_plan:
@@ -3011,10 +3012,10 @@ error hint:
           QUERY PLAN          
 ------------------------------
  Hash Full Join
-   Hash Cond: (t2.id = t1.id)
-   ->  Seq Scan on t2
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1
    ->  Hash
-         ->  Seq Scan on t1
+         ->  Seq Scan on t2
 (5 rows)
 
 -- inheritance tables test
