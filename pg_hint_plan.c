@@ -2583,8 +2583,7 @@ set_config_int32_option(const char *name, int32 value, GucContext context)
 	if (snprintf(buf, 16, "%d", value) < 0)
 	{
 		ereport(pg_hint_plan_message_level,
-				(errmsg ("Cannot set integer value: %d: %s",
-						 max_hint_nworkers, strerror(errno))));
+				(errmsg ("Failed to convert integer to string: %d", value)));
 		return false;
 	}
 
