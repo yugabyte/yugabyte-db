@@ -78,8 +78,8 @@ const NodeList = props => {
             <span>
               <span className="tree-node-main-heading">{node.ipAddress}</span>
               – 
-              {countFormatter(node.passingChecks, 'check', 'checks', false, 'OK')}
-              {countFormatter(node.failedChecks, 'check', 'checks', true, 'failed')}
+              {node.passingChecks.length > 0 && countFormatter(node.passingChecks, 'check', 'checks', false, 'OK')}
+              {node.failedChecks.length > 0 && countFormatter(node.failedChecks, 'check', 'checks', true, 'failed')}
             </span>
           }
           body={<ChecksTable checks={node.checks} />}
