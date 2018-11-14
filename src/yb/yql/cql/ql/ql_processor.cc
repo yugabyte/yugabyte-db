@@ -127,9 +127,7 @@ QLProcessor::QLProcessor(shared_ptr<YBClient> client,
                          TransactionManagerProvider transaction_manager_provider)
     : ql_env_(client, cache, clock, std::move(transaction_manager_provider)),
       analyzer_(&ql_env_),
-      executor_(&ql_env_,
-                [this](std::function<void()> resume_from) { RescheduleCurrentCall(resume_from); },
-                ql_metrics),
+      executor_(&ql_env_, this, ql_metrics),
       ql_metrics_(ql_metrics) {
 }
 
@@ -355,18 +353,17 @@ void QLProcessor::RunAsyncDone(const string& stmt, const StatementParameters& pa
   // callback may not be executed in the RPC worker thread. Also, rescheduling gives other calls a
   // chance to execute first before we do.
   if (s.IsQLError() && GetErrorCode(s) == ErrorCode::STALE_METADATA && !parse_tree->reparsed()) {
-    return RescheduleCurrentCall([this, &stmt, &params, cb]() {
-        RunAsync(stmt, params, cb, true /* reparsed */);
-      });
+    return Reschedule(&run_async_task_.Bind(this, stmt, params, std::move(cb)));
   }
   cb.Run(s, result);
 }
 
-void QLProcessor::RescheduleCurrentCall(std::function<void()> resume_from) {
+void QLProcessor::Reschedule(rpc::ThreadPoolTask* task) {
   // Some unit tests are not executed in CQL proxy. In those cases, just execute the callback
   // directly while disabling thread restrictions.
   const bool allowed = ThreadRestrictions::SetWaitAllowed(true);
-  resume_from();
+  task->Run();
+  task->Done(Status::OK());
   ThreadRestrictions::SetWaitAllowed(allowed);
 }
 

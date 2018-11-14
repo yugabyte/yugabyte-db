@@ -25,6 +25,7 @@
 
 #include "yb/rpc/rpc_introspection.pb.h"
 
+#include "yb/util/enums.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace boost {
@@ -107,6 +108,8 @@ YB_STRONGLY_TYPED_BOOL(ReadBufferFull);
 
 typedef int64_t ScheduledTaskId;
 const ScheduledTaskId kInvalidTaskId = -1;
+
+YB_DEFINE_ENUM(ServicePriority, (kNormal)(kHigh));
 
 } // namespace rpc
 } // namespace yb

@@ -170,8 +170,7 @@ class TabletPeerTest : public YBTabletTest,
                                            log,
                                            metric_entity_,
                                            raft_pool_.get(),
-                                           tablet_prepare_pool_.get(),
-                                           nullptr /* service_thread_pool */));
+                                           tablet_prepare_pool_.get()));
   }
 
   Status StartPeer(const ConsensusBootstrapInfo& info) {

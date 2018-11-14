@@ -52,7 +52,7 @@ class QLMetrics {
   scoped_refptr<yb::Histogram> ql_response_size_bytes_;
 };
 
-class QLProcessor {
+class QLProcessor : public Rescheduler {
  public:
   // Public types.
   typedef std::unique_ptr<QLProcessor> UniPtr;
@@ -91,7 +91,8 @@ class QLProcessor {
     ql_env_.set_ql_session(ql_session);
   }
 
-  virtual void RescheduleCurrentCall(std::function<void()> resume_from);
+  bool NeedReschedule() override { return true; }
+  void Reschedule(rpc::ThreadPoolTask* task) override;
 
   //------------------------------------------------------------------------------------------------
   // Environment (YBClient) that processor uses to execute statement.
@@ -123,6 +124,38 @@ class QLProcessor {
   void RunAsyncDone(const std::string& stmt, const StatementParameters& params,
                     const ParseTree* parse_tree, StatementExecutedCallback cb,
                     const Status& s, const ExecutedResult::SharedPtr& result);
+
+  class RunAsyncTask : public rpc::ThreadPoolTask {
+   public:
+    RunAsyncTask& Bind(QLProcessor* processor, const std::string& stmt,
+                       const StatementParameters& params, StatementExecutedCallback cb) {
+      processor_ = processor;
+      stmt_ = &stmt;
+      params_ = &params;
+      cb_ = std::move(cb);
+      return *this;
+    }
+
+    virtual ~RunAsyncTask() {}
+
+   private:
+    void Run() override {
+      auto processor = processor_;
+      processor_ = nullptr;
+      processor->RunAsync(*stmt_, *params_, std::move(cb_), true /* reparsed */);
+    }
+
+    void Done(const Status& status) override {}
+
+    QLProcessor* processor_ = nullptr;
+    const std::string* stmt_;
+    const StatementParameters* params_;
+    StatementExecutedCallback cb_;
+  };
+
+  RunAsyncTask run_async_task_;
+
+  friend class RunAsyncTask;
 };
 
 }  // namespace ql

@@ -52,6 +52,16 @@ class QLMetrics;
 typedef std::vector<std::pair<std::reference_wrapper<const ParseTree>,
                               std::reference_wrapper<const StatementParameters>>> StatementBatch;
 
+// Processing could take a while, we are rescheduling it to our thread pool, if not yet
+// running in it.
+class Rescheduler {
+ public:
+  virtual bool NeedReschedule() = 0;
+  virtual void Reschedule(rpc::ThreadPoolTask* task) = 0;
+ protected:
+  ~Rescheduler() {}
+};
+
 class Executor : public QLExprExecutor {
  public:
   //------------------------------------------------------------------------------------------------
@@ -59,12 +69,9 @@ class Executor : public QLExprExecutor {
   typedef std::unique_ptr<Executor> UniPtr;
   typedef std::unique_ptr<const Executor> UniPtrConst;
 
-  // Function to reschedule the current call.
-  using Rescheduler = std::function<void(std::function<void()>)>;
-
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  Executor(QLEnv *ql_env, Rescheduler rescheduler, const QLMetrics* ql_metrics);
+  Executor(QLEnv *ql_env, Rescheduler* rescheduler, const QLMetrics* ql_metrics);
   virtual ~Executor();
 
   // Execute the given statement (parse tree) or batch. The parse trees and the parameters must not
@@ -377,7 +384,7 @@ class Executor : public QLExprExecutor {
   QLEnv *ql_env_;
 
   // A rescheduler to reschedule the current call.
-  const Rescheduler rescheduler_;
+  Rescheduler* const rescheduler_;
 
   // Execution context of the statement currently being executed, and the contexts for all
   // statements in execution. The contexts are created and destroyed for each execution.
@@ -411,6 +418,56 @@ class Executor : public QLExprExecutor {
 
   // Whether this is a batch with statements that returns status.
   boost::optional<bool> returns_status_batch_opt_;
+
+  class ProcessAsyncResultsTask : public rpc::ThreadPoolTask {
+   public:
+    ProcessAsyncResultsTask& Bind(Executor* executor) {
+      executor_ = executor;
+      return *this;
+    }
+
+    virtual ~ProcessAsyncResultsTask() {}
+
+   private:
+    void Run() override {
+      auto executor = executor_;
+      executor_ = nullptr;
+      executor->ProcessAsyncResults(true /* rescheduled */);
+    }
+
+    void Done(const Status& status) override {}
+
+    Executor* executor_ = nullptr;
+  };
+
+  friend class ProcessAsyncResultsTask;
+
+  ProcessAsyncResultsTask process_async_results_task_;
+
+  class FlushAsyncTask : public rpc::ThreadPoolTask {
+   public:
+    FlushAsyncTask& Bind(Executor* executor) {
+      executor_ = executor;
+      return *this;
+    }
+
+    virtual ~FlushAsyncTask() {}
+
+   private:
+    void Run() override {
+      auto executor = executor_;
+      executor_ = nullptr;
+      executor->FlushAsync();
+    }
+
+    void Done(const Status& status) override {}
+
+    Executor* executor_ = nullptr;
+  };
+
+  friend class FlushAsyncTask;
+
+  FlushAsyncTask flush_async_task_;
 };
 
 }  // namespace ql
