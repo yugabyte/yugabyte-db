@@ -23,12 +23,14 @@ class LibUvDependency(Dependency):
     def __init__(self):
         super(LibUvDependency, self).__init__(
                 'libuv', '1.23.0', 'https://github.com/libuv/libuv/archive/v{0}.tar.gz',
-                BUILD_GROUP_COMMON)
+                BUILD_GROUP_INSTRUMENTED)
         self.copy_sources = True
 
     def build(self, builder):
+        cmake_build = 'Release' if builder.build_type == BUILD_TYPE_UNINSTRUMENTED else 'Debug'
+
         builder.build_with_cmake(self,
-                                 ['-DCMAKE_BUILD_TYPE=Release',
+                                 ['-DCMAKE_BUILD_TYPE={}'.format(cmake_build),
                                   '-DCMAKE_POSITION_INDEPENDENT_CODE=On',
                                   '-DCMAKE_INSTALL_PREFIX={}'.format(builder.prefix),
                                   '-DBUILD_SHARED_LIBS=On'])

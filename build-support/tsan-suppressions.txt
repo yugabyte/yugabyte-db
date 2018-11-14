@@ -119,3 +119,8 @@ race:google::FlagSaverImpl::RestoreToRegistry
 
 # On shutdown we get a lot of signal-unsafe calls originating from PostgreSQL's ServerLoop.
 signal:src/postgres/src/backend/postmaster/postmaster.c
+
+# C++ Cassandra driver uses classic thread-safe implementation of SharedPtr based on atomics.
+# The implementation is correct but TSAN has false positive data races during SharedPtr
+# destruction.
+race:cass::RefCounted<cass::*>::dec_ref
