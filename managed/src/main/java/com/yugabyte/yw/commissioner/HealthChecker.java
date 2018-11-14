@@ -16,6 +16,7 @@ import com.google.inject.Singleton;
 
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.HealthManager;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
@@ -142,16 +143,19 @@ public class HealthChecker extends Thread {
       boolean invalidUniverseData = false;
       for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
         HealthManager.ClusterInfo info = new HealthManager.ClusterInfo();
+        clusterMetadata.put(cluster.uuid, info);
+        info.ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
+        info.nodePrefix = details.nodePrefix;
 
-        AccessKey accessKey = AccessKey.get(
-            UUID.fromString(cluster.userIntent.provider),
-            cluster.userIntent.accessKeyCode);
-        if (accessKey == null || accessKey.getProviderUUID() == null) {
-          LOG.warn("Skipping universe " + u.name + " due to invalid access key...");
-          continue;
+        Provider provider = Provider.get(UUID.fromString(cluster.userIntent.provider));
+        if (provider == null) {
+          LOG.warn("Skipping universe " + u.name + " due to invalid provider "
+              + cluster.userIntent.provider);
+          invalidUniverseData = true;
+          break;
         }
-        String providerCode = Provider.get(accessKey.getProviderUUID()).code;
-        // TODO(bogdan): We do not have access to the default port constnat at this level, as it is
+        String providerCode = provider.code;
+        // TODO(bogdan): We do not have access to the default port constant at this level, as it is
         // baked in devops...hardcode it for now.
         // Default to 54422.
         int sshPort = 54422;
@@ -170,10 +174,20 @@ public class HealthChecker extends Thread {
             }
           }
         }
+        AccessKey accessKey = AccessKey.get(provider.uuid, cluster.userIntent.accessKeyCode);
+        if (accessKey == null || accessKey.getKeyInfo() == null) {
+          if (!providerCode.equals(CloudType.kubernetes.toString())) {
+            LOG.warn("Skipping universe " + u.name + " due to invalid access key...");
+            invalidUniverseData = true;
+          }
+          break;
+        }
         info.sshPort = sshPort;
         info.identityFile = accessKey.getKeyInfo().privateKey;
-        info.ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
-        clusterMetadata.put(cluster.uuid, info);
+      }
+      // If any clusters were invalid, abort for this universe.
+      if (invalidUniverseData) {
+        continue;
       }
       for (NodeDetails nd : details.nodeDetailsSet) {
         HealthManager.ClusterInfo info = clusterMetadata.get(nd.placementUuid);
@@ -217,8 +231,10 @@ public class HealthChecker extends Thread {
       boolean lastCheckHadErrors = lastCheck != null && lastCheck.hasError();
       // Setup customer tag including email and code, for ease of email parsing.
       String customerTag = String.format("[%s][%s]", c.email, c.code);
+      Provider mainProvider = Provider.get(UUID.fromString(
+            details.getPrimaryCluster().userIntent.provider));
       ShellProcessHandler.ShellResponse response = healthManager.runCommand(
-          new ArrayList(clusterMetadata.values()), u.name, customerTag,
+          mainProvider, new ArrayList(clusterMetadata.values()), u.name, customerTag,
           (destinations.size() == 0 ? null : String.join(",", destinations)),
           potentialStartTime, (shouldSendStatusUpdate || lastCheckHadErrors));
       if (response.code == 0) {
