@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common;
 
+import com.yugabyte.yw.models.Provider;
+
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 
@@ -24,14 +26,17 @@ public class HealthManager extends DevopsBase {
   public static class ClusterInfo {
     public String identityFile = null;
     public int sshPort;
+    // TODO: this is to be used by k8s.
+    // Note: this is the same across all clusters, so maybe we should pull it out one level above.
+    public String nodePrefix = null;
     public List<String> masterNodes = new ArrayList<>();
     public List<String> tserverNodes = new ArrayList<>();
     public String ybSoftwareVersion = null;
   }
 
   public ShellProcessHandler.ShellResponse runCommand(
-      List<ClusterInfo> clusters, String universeName, String customerTag, String destination,
-      long potentialStartTimeMs, boolean shouldSendStatusUpdate) {
+      Provider provider, List<ClusterInfo> clusters, String universeName, String customerTag,
+      String destination, long potentialStartTimeMs, boolean shouldSendStatusUpdate) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
@@ -53,7 +58,8 @@ public class HealthManager extends DevopsBase {
     if (shouldSendStatusUpdate) {
       commandArgs.add("--send_status");
     }
-    HashMap extraEnvVars = new HashMap<>();
+    // Start with a copy of the cloud config env vars.
+    HashMap extraEnvVars = new HashMap<>(provider.getConfig());
     String emailUsername = appConfig.getString("yb.health.ses_email_username");
     if (emailUsername != null) {
       extraEnvVars.put("YB_ALERTS_USERNAME", emailUsername);

@@ -1,6 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.models.Provider;
+
 import com.google.common.collect.ImmutableList;
 import org.junit.Before;
 import org.junit.Test;
@@ -32,7 +36,7 @@ public class HealthManagerTest extends FakeDBApplication {
   play.Configuration appConfig;
 
   private List<String> healthCheckCommand(
-      List<HealthManager.ClusterInfo> clusters, String universeName, String customerTag,
+      Provider provider, List<HealthManager.ClusterInfo> clusters, String universeName, String customerTag,
       String destination, long startTimeMs, boolean shouldSendStatusUpdate) {
     List<String> expectedCommand = new ArrayList<>();
 
@@ -60,6 +64,10 @@ public class HealthManagerTest extends FakeDBApplication {
 
   @Test
   public void testHealthManager() {
+    HashMap<String, String> baseConfig = new HashMap<>();
+    baseConfig.put("testKey", "testVal");
+    Provider provider = ModelFactory.newProvider(
+        ModelFactory.testCustomer(), Common.CloudType.aws, baseConfig);
     // Setup the cluster.
     HealthManager.ClusterInfo cluster = new HealthManager.ClusterInfo();
     cluster.sshPort = 22;
@@ -87,10 +95,12 @@ public class HealthManagerTest extends FakeDBApplication {
             when(appConfig.getString("yb.health.ses_email_username")).thenReturn(envVal);
             when(appConfig.getString("yb.health.ses_email_password")).thenReturn(envVal);
             List<String> expectedCommand = healthCheckCommand(
-                ImmutableList.of(cluster), universeName, customerTag, d, startTime, sendStatus);
+                provider, ImmutableList.of(cluster), universeName, customerTag, d, startTime,
+                sendStatus);
             healthManager.runCommand(
-                ImmutableList.of(cluster), universeName, customerTag, d, startTime, sendStatus);
-            HashMap extraEnvVars = new HashMap<>();
+                provider, ImmutableList.of(cluster), universeName, customerTag, d, startTime,
+                sendStatus);
+            HashMap extraEnvVars = new HashMap<>(provider.getConfig());
             if (envVal != null) {
               extraEnvVars.put("YB_ALERTS_USERNAME", envVal);
               extraEnvVars.put("YB_ALERTS_PASSWORD", envVal);

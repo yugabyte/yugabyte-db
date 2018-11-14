@@ -328,8 +328,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   public void testHelmInstallWithStorageClass() throws IOException {
     defaultUserIntent.deviceInfo = new DeviceInfo();
     defaultUserIntent.deviceInfo.storageClass = "foo";
-    Universe.saveDetails(defaultUniverse.universeUUID,
+    Universe u = Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
     kubernetesCommandExecutor.run();
