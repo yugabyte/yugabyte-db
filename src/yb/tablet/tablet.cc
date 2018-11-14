@@ -309,7 +309,6 @@ Tablet::Tablet(
       mem_tracker_(MemTracker::CreateTracker(
           Format("tablet-$0", tablet_id()), parent_mem_tracker, AddToParent::kTrue,
           CreateMetrics::kFalse)),
-      dms_mem_tracker_(MemTracker::CreateTracker(kDMSMemTrackerId, mem_tracker_)),
       clock_(clock),
       mvcc_(Format("T $0 ", metadata_->tablet_id()), clock),
       tablet_options_(tablet_options),
@@ -345,6 +344,7 @@ Tablet::Tablet(
 
     mem_tracker_->SetMetricEntity(metric_entity_);
   }
+  dms_mem_tracker_ = MemTracker::CreateTracker(kDMSMemTrackerId, mem_tracker_);
 
   if (transaction_participant_context && metadata->schema().table_properties().is_transactional()) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(

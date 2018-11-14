@@ -331,7 +331,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // globally unique.
   std::string ToString() const;
 
-  void SetMetricEntity(const scoped_refptr<MetricEntity>& metric_entity);
+  void SetMetricEntity(const scoped_refptr<MetricEntity>& metric_entity,
+                       const std::string& name_suffix = std::string());
   scoped_refptr<MetricEntity> metric_entity() const;
 
  private:
