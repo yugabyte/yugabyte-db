@@ -91,3 +91,8 @@ shift-base:LocalExecuteInvalidationMessage
 shift-exponent:postmaster.c
 signed-integer-overflow:int.c
 signed-integer-overflow:int8.c
+
+# C++ Cassandra driver uses the following hack: type B is inherited from A and object of type A
+# is downcasted to B. It works since B does not have any extra fields etc. UBSAN correctly
+# detects this failure, but it is widely used across driver so we have to suppress it.
+vptr:libcassandra.so
