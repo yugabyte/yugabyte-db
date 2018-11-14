@@ -414,7 +414,7 @@ CREATE OPERATOR oracle.- (
 
 CREATE FUNCTION oracle.add_months(TIMESTAMP WITH TIME ZONE,INTEGER)
 RETURNS TIMESTAMP
-AS $$ SELECT (pg_catalog.add_months($1::date, 1) + $1::time)::oracle.date; $$
+AS $$ SELECT (pg_catalog.add_months($1::date, $2) + $1::time)::oracle.date; $$
 LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION oracle.last_day(TIMESTAMPTZ)
