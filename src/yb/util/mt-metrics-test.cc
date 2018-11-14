@@ -112,7 +112,7 @@ void MultiThreadedMetricsTest::RegisterCounters(
     // are typically static.
     ScopedLeakCheckDisabler disabler;
 
-    string name = strings::Substitute("$0-$1-$2", name_prefix, tid, i);
+    string name = strings::Substitute("$0_$1_$2", name_prefix, tid, i);
     auto proto = new CounterPrototype(MetricPrototype::CtorArgs(
         "test_entity", strdup(name.c_str()), "Test Counter",
         MetricUnit::kOperations, "test counter"));

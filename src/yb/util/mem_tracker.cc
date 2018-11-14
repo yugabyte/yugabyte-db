@@ -168,7 +168,9 @@ void IncrementBy(int64_t amount, HighWaterMark* consumption,
 }
 
 std::string CreateMetricName(const MemTracker& mem_tracker) {
-  if (mem_tracker.metric_entity()) {
+  if (mem_tracker.metric_entity() &&
+        (!mem_tracker.parent() ||
+            mem_tracker.parent()->metric_entity().get() != mem_tracker.metric_entity().get())) {
     return "mem_tracker";
   }
   std::string id = mem_tracker.id();
@@ -192,15 +194,22 @@ std::string CreateMetricDescription(const MemTracker& mem_tracker) {
 
 class MemTracker::TrackerMetrics {
  public:
-  explicit TrackerMetrics(
-      const MemTracker& mem_tracker, const MetricEntityPtr& metric_entity)
-      : metric_entity_(metric_entity),
-        metric_(metric_entity_->FindOrCreateGauge(
-            std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
-              metric_entity->prototype().name(), CreateMetricName(mem_tracker),
-              CreateMetricLabel(mem_tracker), MetricUnit::kBytes,
-              CreateMetricDescription(mem_tracker))),
-            mem_tracker.consumption())) {
+  explicit TrackerMetrics(const MetricEntityPtr& metric_entity)
+      : metric_entity_(metric_entity) {
+  }
+
+  void Init(const MemTracker& mem_tracker, const std::string& name_suffix) {
+    std::string name = CreateMetricName(mem_tracker);
+    if (!name_suffix.empty()) {
+      name += "_";
+      name += name_suffix;
+    }
+    metric_ = metric_entity_->FindOrCreateGauge(
+        std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
+          metric_entity_->prototype().name(), std::move(name),
+          CreateMetricLabel(mem_tracker), MetricUnit::kBytes,
+          CreateMetricDescription(mem_tracker))),
+        mem_tracker.consumption());
   }
 
   TrackerMetrics(TrackerMetrics&) = delete;
@@ -300,7 +309,8 @@ MemTracker::MemTracker(int64_t byte_limit, const string& id, shared_ptr<MemTrack
   if (create_metrics) {
     for (MemTracker* tracker = this; tracker; tracker = tracker->parent().get()) {
       if (tracker->metric_entity()) {
-        metrics_ = std::make_unique<TrackerMetrics>(*this, tracker->metric_entity());
+        metrics_ = std::make_unique<TrackerMetrics>(tracker->metric_entity());
+        metrics_->Init(*this, std::string());
         break;
       }
     }
@@ -726,12 +736,14 @@ shared_ptr<MemTracker> MemTracker::GetRootTracker() {
   return root_tracker;
 }
 
-void MemTracker::SetMetricEntity(const MetricEntityPtr& metric_entity) {
+void MemTracker::SetMetricEntity(
+    const MetricEntityPtr& metric_entity, const std::string& name_suffix) {
   if (metrics_) {
     LOG(DFATAL) << "SetMetricEntity while " << ToString() << " already has metric entity";
     return;
   }
-  metrics_ = std::make_unique<TrackerMetrics>(*this, metric_entity);
+  metrics_ = std::make_unique<TrackerMetrics>(metric_entity);
+  metrics_->Init(*this, name_suffix);
 }
 
 scoped_refptr<MetricEntity> MemTracker::metric_entity() const {
