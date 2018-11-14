@@ -87,6 +87,8 @@ spec:
         image: yugabytedb/yugabyte:latest
         imagePullPolicy: Always
         env:
+        - name: GET_HOSTS_FROM
+          value: dns
         - name: POD_IP
           valueFrom:
             fieldRef:
@@ -200,6 +202,8 @@ spec:
         image: yugabytedb/yugabyte:latest
         imagePullPolicy: Always
         env:
+          - name: GET_HOSTS_FROM
+            value: dns
           - name: POD_IP
             valueFrom:
               fieldRef:
