@@ -33,6 +33,7 @@
 
 #include <iostream>
 #include <map>
+#include <regex>
 #include <set>
 
 #include <gflags/gflags.h>
@@ -181,10 +182,17 @@ MetricEntity::MetricEntity(const MetricEntityPrototype* prototype,
 MetricEntity::~MetricEntity() {
 }
 
+const std::regex& PrometheusNameRegex() {
+  static const std::regex result("[a-zA-Z_:][a-zA-Z0-9_:]*");
+  return result;
+}
+
 void MetricEntity::CheckInstantiation(const MetricPrototype* proto) const {
   CHECK_STREQ(prototype_->name(), proto->entity_type())
     << "Metric " << proto->name() << " may not be instantiated entity of type "
     << prototype_->name() << " (expected: " << proto->entity_type() << ")";
+  DCHECK(regex_match(proto->name(), PrometheusNameRegex()))
+      << "Metric name is not compatible with Prometheus: " << proto->name();
 }
 
 scoped_refptr<Metric> MetricEntity::FindOrNull(const MetricPrototype& prototype) const {

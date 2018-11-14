@@ -114,7 +114,9 @@ LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
 
   // And create a child tracker with the per-tablet limit.
   tracker_ = MemTracker::CreateTracker(
-      max_ops_size_bytes, Format("$0-$1", kParentMemTrackerId, tablet_id), parent_tracker_);
+      max_ops_size_bytes, Format("$0-$1", kParentMemTrackerId, tablet_id), parent_tracker_,
+      AddToParent::kTrue, CreateMetrics::kFalse);
+  tracker_->SetMetricEntity(metric_entity, kParentMemTrackerId);
 
   // Put a fake message at index 0, since this simplifies a lot of our code paths elsewhere.
   auto zero_op = std::make_shared<ReplicateMsg>();

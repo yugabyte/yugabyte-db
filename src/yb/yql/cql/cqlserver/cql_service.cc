@@ -76,7 +76,7 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts,
   prepared_stmts_mem_tracker_ = MemTracker::CreateTracker(
       FLAGS_cql_service_max_prepared_statement_size_bytes > 0 ?
       FLAGS_cql_service_max_prepared_statement_size_bytes : -1,
-      "CQL prepared statements' memory usage", server->mem_tracker());
+      "CQL prepared statements", server->mem_tracker());
 
   auth_prepared_stmt_ = std::make_shared<ql::Statement>(
       "",
