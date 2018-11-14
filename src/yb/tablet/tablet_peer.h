@@ -115,8 +115,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
                                 const scoped_refptr<log::Log> &log,
                                 const scoped_refptr<MetricEntity> &metric_entity,
                                 ThreadPool* raft_pool,
-                                ThreadPool* tablet_prepare_pool,
-                                rpc::ThreadPool* service_thread_pool);
+                                ThreadPool* tablet_prepare_pool);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers

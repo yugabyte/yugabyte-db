@@ -258,6 +258,14 @@ class Thread : public RefCountedThreadSafe<Thread> {
 #endif
   }
 
+  void* user_data() {
+    return user_data_;
+  }
+
+  void SetUserData(void* value) {
+    user_data_ = value;
+  }
+
  private:
   friend class ThreadJoiner;
 
@@ -309,6 +317,10 @@ class Thread : public RefCountedThreadSafe<Thread> {
   static __thread Thread* tls_;
 
   std::vector<Closure> exit_callbacks_;
+
+  // Some generic user data. For instance could be used to identify thread pool, which started
+  // this thread.
+  void* user_data_ = nullptr;
 
   // Starts the thread running SuperviseThread(), and returns once that thread has
   // initialised and its TID has been read. Waits for notification from the started

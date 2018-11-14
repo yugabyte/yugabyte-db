@@ -134,15 +134,23 @@ class MessengerBuilder {
     return connection_context_factory_;
   }
 
+  MessengerBuilder& set_thread_pool_options(size_t queue_limit, size_t workers_limit) {
+    queue_limit_ = queue_limit;
+    workers_limit_ = workers_limit;
+    return *this;
+  }
+
  private:
   const std::string name_;
   CoarseMonoClock::Duration connection_keepalive_time_;
-  int num_reactors_;
-  CoarseMonoClock::Duration coarse_timer_granularity_;
+  int num_reactors_ = 4;
+  CoarseMonoClock::Duration coarse_timer_granularity_ = std::chrono::milliseconds(100);
   scoped_refptr<MetricEntity> metric_entity_;
   ConnectionContextFactoryPtr connection_context_factory_;
   StreamFactories stream_factories_;
   const Protocol* listen_protocol_;
+  size_t queue_limit_;
+  size_t workers_limit_;
 };
 
 // A Messenger is a container for the reactor threads which run event loops for the RPC services.
@@ -186,6 +194,8 @@ class Messenger : public ProxyContext {
   CHECKED_STATUS UnregisterService(const std::string& service_name);
 
   CHECKED_STATUS UnregisterAllServices();
+
+  void ShutdownThreadPools();
 
   // Queue a call for transmission. This will pick the appropriate reactor, and enqueue a task on
   // that reactor to assign and send the call.
@@ -244,6 +254,8 @@ class Messenger : public ProxyContext {
   IoService& io_service() override {
     return io_thread_pool_.io_service();
   }
+
+  rpc::ThreadPool& ThreadPool(ServicePriority priority = ServicePriority::kNormal);
 
  private:
   FRIEND_TEST(TestRpc, TestConnectionKeepalive);
@@ -350,7 +362,15 @@ class Messenger : public ProxyContext {
   IoThreadPool io_thread_pool_;
   Scheduler scheduler_;
 
-#ifndef NDEBUG
+  // Thread pools that are used by services running in this messenger.
+  std::unique_ptr<rpc::ThreadPool> normal_thread_pool_;
+
+  std::mutex mutex_high_priority_thread_pool_;
+
+  // This could be used for high-priority services such as Consensus.
+  AtomicUniquePtr<rpc::ThreadPool> high_priority_thread_pool_;
+
+  #ifndef NDEBUG
   // This is so we can log where exactly a Messenger was instantiated to better diagnose a CHECK
   // failure in the destructor (ENG-2838). This can be removed when that is fixed.
   StackTrace creation_stack_trace_;

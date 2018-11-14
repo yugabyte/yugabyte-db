@@ -402,12 +402,7 @@ CQLResponse* CQLProcessor::ProcessError(const Status& s,
       if (++retry_count_ == 1) {
         stmts_.clear();
         parse_trees_.clear();
-        RescheduleCurrentCall([this]() {
-            unique_ptr<CQLResponse> response(ProcessRequest(*request_));
-            if (response != nullptr) {
-              SendResponse(*response);
-            }
-          });
+        Reschedule(&process_request_task_.Bind(this));
         return nullptr;
       }
       return new ErrorResponse(*request_, ErrorResponse::Code::INVALID,
@@ -517,11 +512,18 @@ CQLResponse* CQLProcessor::ProcessResult(const ExecutedResult::SharedPtr& result
       *request_, ErrorResponse::Code::SERVER_ERROR, "Internal error: unknown result type");
 }
 
-void CQLProcessor::RescheduleCurrentCall(std::function<void()> resume_from) {
-  call_->SetResumeFrom(std::move(resume_from));
+bool CQLProcessor::NeedReschedule() {
+  auto messenger = service_impl_->messenger().lock();
+  if (!messenger) {
+    return false;
+  }
+  return !messenger->ThreadPool(rpc::ServicePriority::kNormal).OwnsThisThread();
+}
+
+void CQLProcessor::Reschedule(rpc::ThreadPoolTask* task) {
   auto messenger = service_impl_->messenger().lock();
   DCHECK(messenger != nullptr) << "No messenger to reschedule CQL call";
-  messenger->QueueInboundCall(call_);
+  messenger->ThreadPool(rpc::ServicePriority::kNormal).Enqueue(task);
 }
 
 }  // namespace cqlserver

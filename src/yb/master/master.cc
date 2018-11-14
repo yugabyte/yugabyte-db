@@ -189,7 +189,7 @@ Status Master::RegisterServices() {
       new ConsensusServiceImpl(metric_entity(), catalog_manager_.get()));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_consensus_svc_queue_length,
                                                      std::move(consensus_service),
-                                                     server::ServicePriority::kHigh));
+                                                     rpc::ServicePriority::kHigh));
 
   std::unique_ptr<ServiceIf> remote_bootstrap_service(
       new RemoteBootstrapServiceImpl(fs_manager_.get(), catalog_manager_.get(), metric_entity()));
