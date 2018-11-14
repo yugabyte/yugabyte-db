@@ -111,7 +111,7 @@ class RpcServerBase {
   CHECKED_STATUS Init();
   CHECKED_STATUS RegisterService(
       size_t queue_limit, rpc::ServiceIfPtr rpc_impl,
-      ServicePriority priority = ServicePriority::kNormal);
+      rpc::ServicePriority priority = rpc::ServicePriority::kNormal);
   CHECKED_STATUS Start();
   CHECKED_STATUS StartRpcServer();
   void Shutdown();

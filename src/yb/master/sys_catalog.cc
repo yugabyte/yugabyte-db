@@ -496,8 +496,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
                                                      log,
                                                      tablet->GetMetricEntity(),
                                                      raft_pool(),
-                                                     tablet_prepare_pool(),
-                                                     nullptr /* service_thread_pool */),
+                                                     tablet_prepare_pool()),
                         "Failed to Init() TabletPeer");
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info),

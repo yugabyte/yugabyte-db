@@ -296,20 +296,5 @@ MonoTime CQLInboundCall::GetClientDeadline() const {
   return MonoTime::Max();
 }
 
-void CQLInboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) {
-  if (!resume_from_) {
-    InboundCall::RecordHandlingStarted(incoming_queue_time);
-  }
-}
-
-bool CQLInboundCall::TryResume() {
-  if (!resume_from_) {
-    return false;
-  }
-  VLOG(2) << "Resuming " << ToString();
-  resume_from_();
-  return true;
-}
-
 } // namespace cqlserver
 } // namespace yb
