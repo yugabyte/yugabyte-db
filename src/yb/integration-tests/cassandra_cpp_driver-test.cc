@@ -51,9 +51,9 @@ class CppCassandraDriver {
     LOG(INFO) << "Terminating driver - DONE";
   }
 
-  const CassResult* ExecuteStatement(CassStatement* const statement) {
+  const CassResult* ExecuteStatement(CassStatement* const statement, bool need_result = false) {
     const CassResult* result = GetResultAndFreeCassFuture(
-        cass_session_execute(cass_session_, statement));
+        cass_session_execute(cass_session_, statement), need_result);
     cass_statement_free(statement);
     return result;
   }
@@ -63,7 +63,7 @@ class CppCassandraDriver {
     ExecuteStatement(CHECK_NOTNULL(cass_statement_new(query.c_str(), 0)));
   }
 
-  const CassResult* GetResultAndFreeCassFuture(CassFuture* const future) {
+  const CassResult* GetResultAndFreeCassFuture(CassFuture* const future, bool need_result = false) {
     cass_future_wait(CHECK_NOTNULL(future));
     const CassError rc = cass_future_error_code(future);
     LOG(INFO) << "Last operation RC: " << rc;
@@ -75,7 +75,10 @@ class CppCassandraDriver {
       LOG(INFO) << "Last operation ERROR: " << message;
     }
 
-    const CassResult* result = cass_future_get_result(future);
+    const CassResult* result = nullptr;
+    if (need_result) {
+      result = cass_future_get_result(future);
+    }
     cass_future_free(future);
     CHECK_EQ(CASS_OK, rc);
     return result;
@@ -136,7 +139,7 @@ class TestData {
     cass_statement_bind_string(statement, 0, key.c_str());
 
     const CassResult* const result = CHECK_NOTNULL(
-        CHECK_NOTNULL(driver)->ExecuteStatement(statement));
+        CHECK_NOTNULL(driver)->ExecuteStatement(statement, /* need_result */ true));
     CassIterator* const iterator = CHECK_NOTNULL(cass_iterator_from_result(result));
     CHECK_EQ(cass_true, cass_iterator_next(iterator));
     ReadValues(CHECK_NOTNULL(cass_iterator_get_row(iterator)), 1);

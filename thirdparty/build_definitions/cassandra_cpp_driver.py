@@ -25,14 +25,16 @@ class CassandraCppDriverDependency(Dependency):
         super(CassandraCppDriverDependency, self).__init__(
                 'cassandra-cpp-driver', '2.9.0-yb-1',
                 'https://github.com/YugaByte/cassandra-cpp-driver/archive/{0}.tar.gz',
-                BUILD_GROUP_COMMON)
+                BUILD_GROUP_INSTRUMENTED)
         self.copy_sources = False
         self.patch_version = 0
         self.patch_strip = 1
 
     def build(self, builder):
+        cmake_build = 'Release' if builder.build_type == BUILD_TYPE_UNINSTRUMENTED else 'Debug'
+
         builder.build_with_cmake(self,
-                                 ['-DCMAKE_BUILD_TYPE=Release',
+                                 ['-DCMAKE_BUILD_TYPE={}'.format(cmake_build),
                                   '-DCMAKE_POSITION_INDEPENDENT_CODE=On',
                                   '-DCMAKE_INSTALL_PREFIX={}'.format(builder.prefix),
                                   '-DBUILD_SHARED_LIBS=On'])
