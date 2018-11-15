@@ -10109,3 +10109,85 @@ CREATE OR REPLACE FUNCTION policies_are( NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT policies_are( $1, $2, 'Table ' || quote_ident($1) || ' should have the correct policies' );
 $$ LANGUAGE SQL;
+
+-- policy_roles_are( schema, table, policy, roles[], description )
+CREATE OR REPLACE FUNCTION policy_roles_are( NAME, NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'policy roles',
+        ARRAY(
+            SELECT pr.rolname
+              FROM pg_catalog.pg_policy AS pp
+              JOIN pg_catalog.pg_roles AS pr ON pr.oid = ANY (pp.polroles)
+              JOIN pg_catalog.pg_class AS pc ON pc.oid = pp.polrelid
+              JOIN pg_catalog.pg_namespace AS pn ON pn.oid = pc.relnamespace
+             WHERE pn.nspname = $1
+               AND pc.relname = $2
+               AND pp.polname = $3
+            EXCEPT
+            SELECT $4[i]
+              FROM generate_series(1, array_upper($4, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $4[i]
+              FROM generate_series(1, array_upper($4, 1)) s(i)
+            EXCEPT
+            SELECT pr.rolname
+              FROM pg_catalog.pg_policy AS pp
+              JOIN pg_catalog.pg_roles AS pr ON pr.oid = ANY (pp.polroles)
+              JOIN pg_catalog.pg_class AS pc ON pc.oid = pp.polrelid
+              JOIN pg_catalog.pg_namespace AS pn ON pn.oid = pc.relnamespace
+             WHERE pn.nspname = $1
+               AND pc.relname = $2
+               AND pp.polname = $3
+        ),
+        $5
+    );
+$$ LANGUAGE SQL;
+
+-- policy_roles_are( schema, table, policy, roles[] )
+CREATE OR REPLACE FUNCTION policy_roles_are( NAME, NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT policy_roles_are( $1, $2, $3, $4, 'Policy ' || quote_ident($3) || ' for table ' || quote_ident($1) || '.' || quote_ident($2) || ' should have the correct roles' );
+$$ LANGUAGE SQL;
+
+-- policy_roles_are( table, policy, roles[], description )
+CREATE OR REPLACE FUNCTION policy_roles_are( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'policy roles',
+        ARRAY(
+            SELECT pr.rolname
+              FROM pg_catalog.pg_policy AS pp
+              JOIN pg_catalog.pg_roles AS pr ON pr.oid = ANY (pp.polroles)
+              JOIN pg_catalog.pg_class AS pc ON pc.oid = pp.polrelid
+              JOIN pg_catalog.pg_namespace AS pn ON pn.oid = pc.relnamespace
+             WHERE pc.relname = $1
+               AND pp.polname = $2
+               AND pn.nspname NOT IN ('pg_catalog', 'information_schema')
+            EXCEPT
+            SELECT $3[i]
+              FROM generate_series(1, array_upper($3, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $3[i]
+              FROM generate_series(1, array_upper($3, 1)) s(i)
+            EXCEPT
+            SELECT pr.rolname
+              FROM pg_catalog.pg_policy AS pp
+              JOIN pg_catalog.pg_roles AS pr ON pr.oid = ANY (pp.polroles)
+              JOIN pg_catalog.pg_class AS pc ON pc.oid = pp.polrelid
+              JOIN pg_catalog.pg_namespace AS pn ON pn.oid = pc.relnamespace
+             WHERE pc.relname = $1
+               AND pp.polname = $2
+               AND pn.nspname NOT IN ('pg_catalog', 'information_schema')
+        ),
+        $4
+    );
+$$ LANGUAGE SQL;
+
+-- policy_roles_are( table, policy, roles[] )
+CREATE OR REPLACE FUNCTION policy_roles_are( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT policy_roles_are( $1, $2, $3, 'Policy ' || quote_ident($2) || ' for table ' || quote_ident($1) || ' should have the correct roles' );
+$$ LANGUAGE SQL;
