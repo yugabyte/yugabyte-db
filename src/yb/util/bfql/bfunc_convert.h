@@ -1072,12 +1072,34 @@ CHECKED_STATUS ConvertTimeuuidToUnixTimestamp(PTypePtr source, RTypePtr target) 
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertToMaxTimeuuid(PTypePtr source, RTypePtr target) {
-  return STATUS(RuntimeError, "Not yet implemented");
+  if (source->IsNull()) {
+    return STATUS(RuntimeError, "Cannot get max timeuuid of null");
+  } else {
+    int64_t timestamp_ms = DateTime::AdjustPrecision(source->timestamp_value().ToInt64(),
+                                                     DateTime::kInternalPrecision,
+                                                     DateTime::kMillisecondPrecision);
+
+    Uuid uuid;
+    RETURN_NOT_OK(uuid.maxFromUnixTimestamp(timestamp_ms));
+    target->set_timeuuid_value(uuid);
+  }
+  return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertToMinTimeuuid(PTypePtr source, RTypePtr target) {
-  return STATUS(RuntimeError, "Not yet implemented");
+  if (source->IsNull()) {
+    return STATUS(RuntimeError, "Cannot get max timeuuid of null");
+  } else {
+    int64_t timestamp_ms = DateTime::AdjustPrecision(source->timestamp_value().ToInt64(),
+                                                     DateTime::kInternalPrecision,
+                                                     DateTime::kMillisecondPrecision);
+
+    Uuid uuid;
+    RETURN_NOT_OK(uuid.minFromUnixTimestamp(timestamp_ms));
+    target->set_timeuuid_value(uuid);
+  }
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
