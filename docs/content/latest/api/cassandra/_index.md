@@ -4,7 +4,7 @@ linkTitle: YCQL
 description: YugaByte Cloud Query Language (YCQL)
 summary: Reference for Cassandra-compatible YCQL API
 image: /images/section_icons/api/cql.png
-headcontent: 
+headcontent:
 menu:
   latest:
     identifier: api-cassandra
@@ -42,6 +42,31 @@ Statement | Description |
 [`DROP TABLE`](ddl_drop_table) | Remove a table |
 [`DROP TYPE`](ddl_drop_type) | Remove a user-defined datatype |
 [`USE`](ddl_use) | Use an existing keyspace for subsequent commands |
+
+## DDL Security Statements
+Security statements are instructions for managing and restricting operations on the database objects.
+
+This feature is enabled by setting the yb-tserver gflag [`use_cassandra_authentication`](../../admin/yb-tserver/#config-flags) to `true`.
+
+- Create, grant, and revoke users and roles
+- Grant, and revoke permissions on database objects
+
+Statement | Description |
+----------|-------------|
+[`ALTER ROLE`](ddl_alter_role) | Alter a role |
+[`CREATE ROLE`](ddl_create_role) | Create a new role |
+[`DROP ROLE`](ddl_drop_role) | Remove a role |
+[`GRANT PERMISSION`](ddl_grant_permission) | Grant a permission on an object to a role |
+[`REVOKE PERMISSION`](ddl_revoke_permission) | Revoke a permission on an object from a role |
+[`GRANT ROLE`](ddl_grant_role) | Grant a role to another role |
+[`REVOKE ROLE`](ddl_revoke_role) | Revoke a role from another role |
+
+- The following table lists all security statements that are not yet implemented.
+
+Primitive Type |
+---------------|
+`LIST ROLES` |
+`LIST PERMISSIONS` |
 
 ## DML Statements
 Data manipulation language (DML) statements are used to read from and write to the existing database objects. YugaByte DB implicitly commits any updates by DML statements (similar to how Apache Cassandra behaves).
@@ -108,4 +133,4 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 
 Primitive Type |
 ---------------|
-`TUPLE` | 
+`TUPLE` |

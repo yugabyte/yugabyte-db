@@ -21,7 +21,7 @@ Collection datatypes are used to specify columns for data objects that can conta
 
 ### MAP
 `MAP` is an sorted collection of pairs of elements, a key and a value. The sorting order is based on the key values and is implementation-dependent. With their key values, elements in a `MAP` can be set by the `[]` operator, added by the `+` operator, and removed by the `-` operator.
-When queries, the element pairs of a map willl be returned in the sorting order.
+When queries, the element pairs of a map will be returned in the sorting order.
 
 ### SET
 `SET` is a sorted collection of elements. The sorting order is implementation-dependent. Elements can be added by `+` operator and removed by `-` operator. When queried, the elements of a set will be returned in the sorting order.
@@ -44,7 +44,7 @@ Where
 - `type` must be a [non-parametric datatype](../#datatypes) or a [frozen](../type_frozen) datatype.
 - `key_type` must be any datatype that is allowed in a primary key (Currently `FROZEN` and all non-parametric datatypes except `BOOL`).
 - For `map_literal` the left-side `expression` represents the key and the right-side one represents the value.
-- `expression` is any well formed CQL expresssion. See [Expression](..#expressions) for more information on syntax rules.
+- `expression` is any well formed CQL expression. See [Expression](..#expressions) for more information on syntax rules.
 
 ## Semantics
 

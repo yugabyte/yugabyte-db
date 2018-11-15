@@ -32,7 +32,7 @@ type_specification ::= { JSONB }
 
 ## Semantics
 
-- Columns of type `JSONB` cannnot be part of the `PRIMARY KEY`.
+- Columns of type `JSONB` cannot be part of the `PRIMARY KEY`.
 - Implicitly, values of type `JSONB` are not convertible to other datatypes. `JSONB` types can be
   compared to `TEXT/VARCHAR` datatype as long it represents valid json.
 - Values of text datatypes with correct format are convertible to `JSONB`.

@@ -15,7 +15,7 @@ aliases:
 Simple expression can be either a column, a constant, or NULL.
 
 ## Column Expression
-A column expression refers to a column in a table by using its name, which can be either a fully qualifiedname or a simple name.  
+A column expression refers to a column in a table by using its name, which can be either a fully qualified name or a simple name.  
 ```
 column_expression ::= [keyspace_name.][table_name.][column_name]
 ```

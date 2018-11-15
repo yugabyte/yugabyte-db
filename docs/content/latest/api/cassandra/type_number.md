@@ -13,7 +13,7 @@ aliases:
 ---
 
 ## Synopsis
-Floating-point and fixed-point numbers are used to specify non-integer numbers. Different floating point datatypes represent different precisions numbers.
+Floating-point and fixed-point numbers are used to specify non-integer numbers. Different floating point datatypes represent different precision numbers.
 
 DataType | Description | Decimal Precision |
 ---------|-----|-----|

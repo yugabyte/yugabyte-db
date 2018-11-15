@@ -61,7 +61,7 @@ Where
 
  - The `where_expression` and `if_expression` must evaluate to boolean values.
  - The `where_expression` must specify conditions for all primary-key columns.
- - The `where_expression` must not specifiy conditions for any regular columns.
+ - The `where_expression` must not specify conditions for any regular columns.
  - The `where_expression` can only apply `AND` and `=` operators. Other operators are not yet supported.
  
 ### `IF` Clause

@@ -31,7 +31,7 @@ Where
 ## Semantics
 
 - Columns of type `BLOB` can be part of the `PRIMARY KEY`.
-- Implicitly, `BLOB` datayype is neither convertible nor comparable with other datatypes.
+- Implicitly, `BLOB` datatype is neither convertible nor comparable with other datatypes.
 - Two series of builtin-functions `BlobAs<Type>` and `<Type>AsBlob` are provided for conversion between `BLOB` and other datatypes.
 - `BLOB` size is virtually unlimited.
 

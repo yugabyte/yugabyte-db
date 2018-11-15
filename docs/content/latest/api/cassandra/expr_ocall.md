@@ -39,7 +39,7 @@ An expression with operators is a compound expression that combines multiple exp
 | `OR`, `AND`| Logical (boolean) expression |
 | `=`, `!=`, `<`, `<=`, `>`, `>=` | Comparison expression |
 | `+` | Addition, append, or prepend |
-| `-` | Substraction or removal |
+| `-` | Subtraction or removal |
 | `*` | Multiplication. Not yet supported |
 | `/` | Division. Not yet supported |
 | `ISNULL`, `IS NOT NULL` | Not yet supported comparison expression. |

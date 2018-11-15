@@ -291,3 +291,75 @@ type_name = [ keyspace_name '.' ] '<Text Literal>';
 ```
 field_name = '<Text Literal>';
 ```
+
+### alter_role
+```
+alter_role = 'ALTER' 'ROLE' role_name 'WITH' role_property { 'AND' role_property };
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="437" height="65" viewbox="0 0 437 65"><path class="connector" d="M0 52h5m58 0h10m52 0h10m84 0h10m53 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h32m46 0h32q5 0 5 5v20q0 5-5 5m-5 0h25"/><rect class="literal" x="5" y="35" width="58" height="25" rx="7"/><text class="text" x="15" y="52">ALTER</text><rect class="literal" x="73" y="35" width="52" height="25" rx="7"/><text class="text" x="83" y="52">ROLE</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="135" y="35" width="84" height="25"/><text class="text" x="145" y="52">role_name</text></a><rect class="literal" x="229" y="35" width="53" height="25" rx="7"/><text class="text" x="239" y="52">WITH</text><rect class="literal" x="339" y="5" width="46" height="25" rx="7"/><text class="text" x="349" y="22">AND</text><a xlink:href="../grammar_diagrams#role-property"><rect class="rule" x="312" y="35" width="100" height="25"/><text class="text" x="322" y="52">role_property</text></a></svg>
+
+### create_role
+```
+create_role = 'CREATE' 'ROLE' role_name [ 'WITH' role_property { 'AND' role_property } ];
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="486" height="80" viewbox="0 0 486 80"><path class="connector" d="M0 52h5m67 0h10m52 0h10m84 0h30m53 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h32m46 0h32q5 0 5 5v20q0 5-5 5m-5 0h40m-238 0q5 0 5 5v8q0 5 5 5h213q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="35" width="67" height="25" rx="7"/><text class="text" x="15" y="52">CREATE</text><rect class="literal" x="82" y="35" width="52" height="25" rx="7"/><text class="text" x="92" y="52">ROLE</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="144" y="35" width="84" height="25"/><text class="text" x="154" y="52">role_name</text></a><rect class="literal" x="258" y="35" width="53" height="25" rx="7"/><text class="text" x="268" y="52">WITH</text><rect class="literal" x="368" y="5" width="46" height="25" rx="7"/><text class="text" x="378" y="22">AND</text><a xlink:href="../grammar_diagrams#role-property"><rect class="rule" x="341" y="35" width="100" height="25"/><text class="text" x="351" y="52">role_property</text></a></svg>
+
+### role_property
+```
+role_property = 'PASSWORD' '=' '<Text Literal>' | 'LOGIN' '=' '<Boolean Literal>' | 'SUPERUSER' '=' '<Boolean Literal>';
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="321" height="95" viewbox="0 0 321 95"><path class="connector" d="M0 22h25m89 0h10m30 0h10m107 0h45m-301 25q0 5 5 5h5m59 0h10m30 0h10m128 0h39q5 0 5-5m-296-25q5 0 5 5v50q0 5 5 5h5m93 0h10m30 0h10m128 0h5q5 0 5-5v-50q0-5 5-5m5 0h5"/><rect class="literal" x="25" y="5" width="89" height="25" rx="7"/><text class="text" x="35" y="22">PASSWORD</text><rect class="literal" x="124" y="5" width="30" height="25" rx="7"/><text class="text" x="134" y="22">=</text><rect class="literal" x="164" y="5" width="107" height="25" rx="7"/><text class="text" x="174" y="22">&lt;Text Literal&gt;</text><rect class="literal" x="25" y="35" width="59" height="25" rx="7"/><text class="text" x="35" y="52">LOGIN</text><rect class="literal" x="94" y="35" width="30" height="25" rx="7"/><text class="text" x="104" y="52">=</text><rect class="literal" x="134" y="35" width="128" height="25" rx="7"/><text class="text" x="144" y="52">&lt;Boolean Literal&gt;</text><rect class="literal" x="25" y="65" width="93" height="25" rx="7"/><text class="text" x="35" y="82">SUPERUSER</text><rect class="literal" x="128" y="65" width="30" height="25" rx="7"/><text class="text" x="138" y="82">=</text><rect class="literal" x="168" y="65" width="128" height="25" rx="7"/><text class="text" x="178" y="82">&lt;Boolean Literal&gt;</text></svg>
+
+### drop_role
+```
+drop_role = 'DROP' 'ROLE' [ 'IF' 'EXISTS' ] role_name;
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="375" height="50" viewbox="0 0 375 50"><path class="connector" d="M0 22h5m53 0h10m52 0h30m32 0h10m64 0h20m-141 0q5 0 5 5v8q0 5 5 5h116q5 0 5-5v-8q0-5 5-5m5 0h10m84 0h5"/><rect class="literal" x="5" y="5" width="53" height="25" rx="7"/><text class="text" x="15" y="22">DROP</text><rect class="literal" x="68" y="5" width="52" height="25" rx="7"/><text class="text" x="78" y="22">ROLE</text><rect class="literal" x="150" y="5" width="32" height="25" rx="7"/><text class="text" x="160" y="22">IF</text><rect class="literal" x="192" y="5" width="64" height="25" rx="7"/><text class="text" x="202" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="286" y="5" width="84" height="25"/><text class="text" x="296" y="22">role_name</text></a></svg>
+
+### grant_role
+```
+grant_role = 'GRANT' role_name 'TO' role_name;
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="305" height="35" viewbox="0 0 305 35"><path class="connector" d="M0 22h5m61 0h10m84 0h10m36 0h10m84 0h5"/><rect class="literal" x="5" y="5" width="61" height="25" rx="7"/><text class="text" x="15" y="22">GRANT</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="76" y="5" width="84" height="25"/><text class="text" x="86" y="22">role_name</text></a><rect class="literal" x="170" y="5" width="36" height="25" rx="7"/><text class="text" x="180" y="22">TO</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="216" y="5" width="84" height="25"/><text class="text" x="226" y="22">role_name</text></a></svg>
+
+### revoke_role
+```
+revoke_role = 'REVOKE' role_name 'FROM' role_name;
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="331" height="35" viewbox="0 0 331 35"><path class="connector" d="M0 22h5m69 0h10m84 0h10m54 0h10m84 0h5"/><rect class="literal" x="5" y="5" width="69" height="25" rx="7"/><text class="text" x="15" y="22">REVOKE</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="84" y="5" width="84" height="25"/><text class="text" x="94" y="22">role_name</text></a><rect class="literal" x="178" y="5" width="54" height="25" rx="7"/><text class="text" x="188" y="22">FROM</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="242" y="5" width="84" height="25"/><text class="text" x="252" y="22">role_name</text></a></svg>
+
+### grant_permission
+```
+grant_permission = 'GRANT' ( all_permissions | permission ) 'ON' resource 'TO' role_name;
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="501" height="65" viewbox="0 0 501 65"><path class="connector" d="M0 22h5m61 0h30m111 0h20m-146 0q5 0 5 5v20q0 5 5 5h5m84 0h32q5 0 5-5v-20q0-5 5-5m5 0h10m38 0h10m71 0h10m36 0h10m84 0h5"/><rect class="literal" x="5" y="5" width="61" height="25" rx="7"/><text class="text" x="15" y="22">GRANT</text><a xlink:href="../grammar_diagrams#all-permissions"><rect class="rule" x="96" y="5" width="111" height="25"/><text class="text" x="106" y="22">all_permissions</text></a><a xlink:href="../grammar_diagrams#permission"><rect class="rule" x="96" y="35" width="84" height="25"/><text class="text" x="106" y="52">permission</text></a><rect class="literal" x="237" y="5" width="38" height="25" rx="7"/><text class="text" x="247" y="22">ON</text><a xlink:href="../grammar_diagrams#resource"><rect class="rule" x="285" y="5" width="71" height="25"/><text class="text" x="295" y="22">resource</text></a><rect class="literal" x="366" y="5" width="36" height="25" rx="7"/><text class="text" x="376" y="22">TO</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="412" y="5" width="84" height="25"/><text class="text" x="422" y="22">role_name</text></a></svg>
+
+### revoke_permission
+```
+revoke_permission = 'REVOKE' ( all_permissions | permission ) 'ON' resource 'FROM' role_name;
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="527" height="65" viewbox="0 0 527 65"><path class="connector" d="M0 22h5m69 0h30m111 0h20m-146 0q5 0 5 5v20q0 5 5 5h5m84 0h32q5 0 5-5v-20q0-5 5-5m5 0h10m38 0h10m71 0h10m54 0h10m84 0h5"/><rect class="literal" x="5" y="5" width="69" height="25" rx="7"/><text class="text" x="15" y="22">REVOKE</text><a xlink:href="../grammar_diagrams#all-permissions"><rect class="rule" x="104" y="5" width="111" height="25"/><text class="text" x="114" y="22">all_permissions</text></a><a xlink:href="../grammar_diagrams#permission"><rect class="rule" x="104" y="35" width="84" height="25"/><text class="text" x="114" y="52">permission</text></a><rect class="literal" x="245" y="5" width="38" height="25" rx="7"/><text class="text" x="255" y="22">ON</text><a xlink:href="../grammar_diagrams#resource"><rect class="rule" x="293" y="5" width="71" height="25"/><text class="text" x="303" y="22">resource</text></a><rect class="literal" x="374" y="5" width="54" height="25" rx="7"/><text class="text" x="384" y="22">FROM</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="438" y="5" width="84" height="25"/><text class="text" x="448" y="22">role_name</text></a></svg>
+
+### all_permissions
+```
+all_permissions = 'ALL' [ 'PERMISSIONS' ];
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="207" height="50" viewbox="0 0 207 50"><path class="connector" d="M0 22h5m42 0h30m105 0h20m-140 0q5 0 5 5v8q0 5 5 5h115q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="42" height="25" rx="7"/><text class="text" x="15" y="22">ALL</text><rect class="literal" x="77" y="5" width="105" height="25" rx="7"/><text class="text" x="87" y="22">PERMISSIONS</text></svg>
+
+### role_name
+```
+role_name = '<Text Literal>';
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="117" height="35" viewbox="0 0 117 35"><path class="connector" d="M0 22h5m107 0h5"/><rect class="literal" x="5" y="5" width="107" height="25" rx="7"/><text class="text" x="15" y="22">&lt;Text Literal&gt;</text></svg>
+
+### permission
+```
+permission = ( 'CREATE' | 'ALTER' | 'DROP' | 'SELECT' | 'MODIFY' | 'AUTHORIZE' | 'DESCRIBE' | 'EXECUTE' ) [ 'PERMISSION' ];
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="288" height="245" viewbox="0 0 288 245"><path class="connector" d="M0 22h25m67 0h44m-121 25q0 5 5 5h5m58 0h38q5 0 5-5m-111 30q0 5 5 5h5m53 0h43q5 0 5-5m-111 30q0 5 5 5h5m66 0h30q5 0 5-5m-111 30q0 5 5 5h5m67 0h29q5 0 5-5m-111 30q0 5 5 5h5m91 0h5q5 0 5-5m-111 30q0 5 5 5h5m82 0h14q5 0 5-5m-116-175q5 0 5 5v200q0 5 5 5h5m76 0h20q5 0 5-5v-200q0-5 5-5m5 0h30m97 0h20m-132 0q5 0 5 5v8q0 5 5 5h107q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="literal" x="25" y="5" width="67" height="25" rx="7"/><text class="text" x="35" y="22">CREATE</text><rect class="literal" x="25" y="35" width="58" height="25" rx="7"/><text class="text" x="35" y="52">ALTER</text><rect class="literal" x="25" y="65" width="53" height="25" rx="7"/><text class="text" x="35" y="82">DROP</text><rect class="literal" x="25" y="95" width="66" height="25" rx="7"/><text class="text" x="35" y="112">SELECT</text><rect class="literal" x="25" y="125" width="67" height="25" rx="7"/><text class="text" x="35" y="142">MODIFY</text><rect class="literal" x="25" y="155" width="91" height="25" rx="7"/><text class="text" x="35" y="172">AUTHORIZE</text><rect class="literal" x="25" y="185" width="82" height="25" rx="7"/><text class="text" x="35" y="202">DESCRIBE</text><rect class="literal" x="25" y="215" width="76" height="25" rx="7"/><text class="text" x="35" y="232">EXECUTE</text><rect class="literal" x="166" y="5" width="97" height="25" rx="7"/><text class="text" x="176" y="22">PERMISSION</text></svg>
+
+### resource
+```
+resource = 'ALL' ( 'KEYSPACES' | 'ROLES' ) | 'KEYSPACE' keyspace_name | [ 'TABLE' ] table_name | 'ROLE' role_name;
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="258" height="170" viewbox="0 0 258 170"><path class="connector" d="M0 22h25m42 0h30m90 0h20m-125 0q5 0 5 5v20q0 5 5 5h5m60 0h35q5 0 5-5v-20q0-5 5-5m5 0h46m-238 55q0 5 5 5h5m82 0h10m116 0h5q5 0 5-5m-228 30q0 5 5 5h25m58 0h20m-93 0q5 0 5 5v8q0 5 5 5h68q5 0 5-5v-8q0-5 5-5m5 0h10m91 0h14q5 0 5-5m-233-85q5 0 5 5v125q0 5 5 5h5m52 0h10m84 0h67q5 0 5-5v-125q0-5 5-5m5 0h5"/><rect class="literal" x="25" y="5" width="42" height="25" rx="7"/><text class="text" x="35" y="22">ALL</text><rect class="literal" x="97" y="5" width="90" height="25" rx="7"/><text class="text" x="107" y="22">KEYSPACES</text><rect class="literal" x="97" y="35" width="60" height="25" rx="7"/><text class="text" x="107" y="52">ROLES</text><rect class="literal" x="25" y="65" width="82" height="25" rx="7"/><text class="text" x="35" y="82">KEYSPACE</text><a xlink:href="../grammar_diagrams#keyspace-name"><rect class="rule" x="117" y="65" width="116" height="25"/><text class="text" x="127" y="82">keyspace_name</text></a><rect class="literal" x="45" y="95" width="58" height="25" rx="7"/><text class="text" x="55" y="112">TABLE</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="133" y="95" width="91" height="25"/><text class="text" x="143" y="112">table_name</text></a><rect class="literal" x="25" y="140" width="52" height="25" rx="7"/><text class="text" x="35" y="157">ROLE</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="87" y="140" width="84" height="25"/><text class="text" x="97" y="157">role_name</text></a></svg>

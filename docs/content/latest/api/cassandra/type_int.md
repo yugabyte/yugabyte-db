@@ -13,7 +13,7 @@ aliases:
 ---
 
 ## Synopsis
-There are several different datatypes for integers of different value ranges. Integers can be set, inserted, incremented, and decremented while `COUNTER` can only be incremented or decremented. We've extend Apache Cassandra to support increment and decrement operator for integer datatypes.
+There are several different datatypes for integers of different value ranges. Integers can be set, inserted, incremented, and decremented while `COUNTER` can only be incremented or decremented. We've extend Apache Cassandra to support increment and decrement operators for integer datatypes.
 
 DataType | Min | Max |
 ---------|-----|-----|
