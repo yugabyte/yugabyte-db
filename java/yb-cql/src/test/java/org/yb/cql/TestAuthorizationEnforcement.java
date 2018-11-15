@@ -2131,4 +2131,26 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     thrown.expect(UnauthorizedException.class);
     s2.execute(String.format("GRANT %s to %s", role1, role3));
   }
+
+  // Test that we can grant and revoke permissions on a table without using the keyword TABLE before
+  // the table name.
+  @Test
+  public void testGrantPermissionOnTableWithoutUsingKeywordTable() throws Exception {
+    createTableAndVerify(s, keyspace, table);
+    s.execute(String.format("GRANT MODIFY ON %s.%s TO %s", keyspace, table, username));
+    String canonicalResource = String.format("data/%s/%s", keyspace, table);
+    assertPermissionsGranted(s, username, canonicalResource, Arrays.asList(MODIFY));
+  }
+
+  @Test
+  public void testRevokePermissionOnTableWithoutUsingKeywordTable() throws Exception {
+    createTableAndVerify(s, keyspace, table);
+    String canonicalResource = String.format("data/%s/%s", keyspace, table);
+
+    grantPermission(SELECT, TABLE, String.format("%s.%s", keyspace, table), username);
+    assertPermissionsGranted(s, username, canonicalResource, Arrays.asList(SELECT));
+
+    s.execute(String.format("REVOKE SELECT ON %s.%s FROM %s", keyspace, table, username));
+    assertPermissionsGranted(s, username, canonicalResource, Arrays.asList());
+  }
 }
