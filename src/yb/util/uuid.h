@@ -93,11 +93,19 @@ class Uuid {
   // For time UUIDs only.
   // This function takes a time UUID and generates a SHA hash for the MAC address bits.
   // This is done because it is not secure to generate UUIDs directly from the MAC address.
-  CHECKED_STATUS HashMACAddress() const;
+  CHECKED_STATUS HashMACAddress();
+
+  // Builds the smallest TimeUUID that willl compare as larger than any TimeUUID with the given
+  // timestamp.
+  CHECKED_STATUS maxFromUnixTimestamp(int64_t timestamp_ms);
+
+  // Builds the largest TimeUUID that willl compare as smaller than any TimeUUID with the given
+  // timestamp.
+  CHECKED_STATUS minFromUnixTimestamp(int64_t timestamp_ms);
 
   // This function takes a 64 bit integer that represents the timestamp, that is basically the
   // number of milliseconds since epoch.
-  CHECKED_STATUS toUnixTimestamp(int64_t *timestamp_ms);
+  CHECKED_STATUS toUnixTimestamp(int64_t *timestamp_ms) const;
 
   CHECKED_STATUS IsTimeUuid() const {
     if (boost_uuid_.version() == boost::uuids::uuid::version_time_based) {
@@ -219,8 +227,13 @@ class Uuid {
     tmp[5] = input[3];
     tmp[6] = input[0];
     tmp[7] = input[1];
-    memcpy(boost_uuid_.begin(), tmp, kUuidMsbSize);
+    memcpy(boost_uuid_.data, tmp, kUuidMsbSize);
   }
+
+  // Utility method used by minTimeuuid and maxTimeuuid.
+  // Set the timestamp bytes of a (time)uuid to the specified value (in hundred nanos).
+  // Also ensure that the uuid is a version 1 uuid (i.e. timeuuid) by setting the version.
+  void fromTimestamp(int64_t ts_hnanos);
 
   // Encodes the MSB of the uuid into a version based byte stream as follows.
   // Used for non-time-based UUIDs, i.e. not version 1.
@@ -265,7 +278,7 @@ class Uuid {
     tmp[6] = (uint8_t)  ( ((input[0] & 0xF0))
                         | ((input[6] & 0x0F)));
     tmp[7] = input[7];
-    memcpy(boost_uuid_.begin(), tmp, kUuidMsbSize);
+    memcpy(boost_uuid_.data, tmp, kUuidMsbSize);
   }
 
 };
