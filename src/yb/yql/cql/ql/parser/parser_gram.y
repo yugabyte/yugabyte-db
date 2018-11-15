@@ -7701,6 +7701,11 @@ GrantStmt:
     $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
                    $2, ResourceType::TABLE, $5, role_node);
   }
+  | GRANT permissions ON qualified_name TO role_name {
+    PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $6);
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+                   $2, ResourceType::TABLE, $4, role_node);
+  }
   | GRANT permissions ON ALL ROLES TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
@@ -7730,6 +7735,11 @@ RevokeStmt:
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
                    $2, ResourceType::TABLE, $5, role_node);
+  }
+  | REVOKE permissions ON qualified_name FROM role_name {
+    PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $6);
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+                   $2, ResourceType::TABLE, $4, role_node);
   }
   | REVOKE permissions ON ALL ROLES FROM role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
