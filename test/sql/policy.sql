@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(30);
+SELECT plan(60);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -38,7 +38,7 @@ ALTER TABLE public.passwd ENABLE ROW LEVEL SECURITY;
 -- Administrator can see all rows and add any rows
 CREATE POLICY root_all ON public.passwd TO root USING (true) WITH CHECK (true);
 -- Normal users can view all rows
-CREATE POLICY all_view ON public.passwd FOR SELECT USING (true);
+CREATE POLICY all_view ON public.passwd FOR SELECT TO root, bob, daemon USING (true);
 -- Normal users can update their own records, but
 -- limit which shells a normal user is allowed to set
 CREATE POLICY user_mod ON public.passwd FOR UPDATE
@@ -143,6 +143,98 @@ SELECT * FROM check_test(
         root_all
     Missing policies:
         extra_policy'
+);
+
+/****************************************************************************/
+-- Test policy_roles_are().
+SELECT * FROM check_test(
+    policy_roles_are( 'public', 'passwd', 'all_view', ARRAY['root', 'bob', 'daemon'], 'whatever' ),
+    true,
+    'policy_roles_are(schema, table, policy, roles, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_roles_are( 'public', 'passwd', 'all_view', ARRAY['root', 'bob', 'daemon'] ),
+    true,
+    'policy_roles_are(schema, table, policy, roles)',
+    'Policy all_view for table public.passwd should have the correct roles',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_roles_are( 'public', 'passwd', 'all_view', ARRAY['bob', 'daemon'] ),
+    false,
+    'policy_roles_are(schema, table, policy, roles) + extra',
+    'Policy all_view for table public.passwd should have the correct roles',
+    '    Extra policy roles:
+        root'
+);
+
+SELECT * FROM check_test(
+    policy_roles_are( 'public', 'passwd', 'all_view', ARRAY['root', 'bob', 'daemon', 'alice'] ),
+    false,
+    'policy_roles_are(schema, table, policy, roles) + missing',
+    'Policy all_view for table public.passwd should have the correct roles',
+    '    Missing policy roles:
+        alice'
+);
+
+SELECT * FROM check_test(
+    policy_roles_are( 'public', 'passwd', 'all_view', ARRAY['bob', 'daemon', 'alice'] ),
+    false,
+    'policy_roles_are(schema, table, policy, roles) + extra & missing',
+    'Policy all_view for table public.passwd should have the correct roles',
+    '    Extra policy roles:
+        root
+    Missing policy roles:
+        alice'
+);
+
+SELECT * FROM check_test(
+    policy_roles_are( 'passwd', 'all_view', ARRAY['root', 'bob', 'daemon'], 'whatever' ),
+    true,
+    'policy_roles_are(table, policy, roles, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_roles_are( 'passwd', 'all_view', ARRAY['root', 'bob', 'daemon'] ),
+    true,
+    'policy_roles_are(table, policy, roles)',
+    'Policy all_view for table passwd should have the correct roles',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_roles_are( 'passwd', 'all_view', ARRAY['bob', 'daemon'] ),
+    false,
+    'policy_roles_are(table, policy, roles) + extra',
+    'Policy all_view for table passwd should have the correct roles',
+    '    Extra policy roles:
+        root'
+);
+
+SELECT * FROM check_test(
+    policy_roles_are( 'passwd', 'all_view', ARRAY['root', 'bob', 'daemon', 'alice'] ),
+    false,
+    'policy_roles_are(table, policy, roles) + missing',
+    'Policy all_view for table passwd should have the correct roles',
+    '    Missing policy roles:
+        alice'
+);
+
+SELECT * FROM check_test(
+    policy_roles_are( 'passwd', 'all_view', ARRAY['bob', 'daemon', 'alice'] ),
+    false,
+    'policy_roles_are(table, policy, roles) + extra & missing',
+    'Policy all_view for table passwd should have the correct roles',
+    '    Extra policy roles:
+        root
+    Missing policy roles:
+        alice'
 );
 
 /****************************************************************************/

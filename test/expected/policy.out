@@ -1,5 +1,5 @@
 \unset ECHO
-1..30
+1..60
 ok 1 - policies_are(schema, table, policies, desc) should pass
 ok 2 - policies_are(schema, table, policies, desc) should have the proper description
 ok 3 - policies_are(schema, table, policies, desc) should have the proper diagnostics
@@ -30,3 +30,33 @@ ok 27 - policies_are(table, policies) + missing should have the proper diagnosti
 ok 28 - policies_are(table, policies) + extra & missing should fail
 ok 29 - policies_are(table, policies) + extra & missing should have the proper description
 ok 30 - policies_are(table, policies) + extra & missing should have the proper diagnostics
+ok 31 - policy_roles_are(schema, table, policy, roles, desc) should pass
+ok 32 - policy_roles_are(schema, table, policy, roles, desc) should have the proper description
+ok 33 - policy_roles_are(schema, table, policy, roles, desc) should have the proper diagnostics
+ok 34 - policy_roles_are(schema, table, policy, roles) should pass
+ok 35 - policy_roles_are(schema, table, policy, roles) should have the proper description
+ok 36 - policy_roles_are(schema, table, policy, roles) should have the proper diagnostics
+ok 37 - policy_roles_are(schema, table, policy, roles) + extra should fail
+ok 38 - policy_roles_are(schema, table, policy, roles) + extra should have the proper description
+ok 39 - policy_roles_are(schema, table, policy, roles) + extra should have the proper diagnostics
+ok 40 - policy_roles_are(schema, table, policy, roles) + missing should fail
+ok 41 - policy_roles_are(schema, table, policy, roles) + missing should have the proper description
+ok 42 - policy_roles_are(schema, table, policy, roles) + missing should have the proper diagnostics
+ok 43 - policy_roles_are(schema, table, policy, roles) + extra & missing should fail
+ok 44 - policy_roles_are(schema, table, policy, roles) + extra & missing should have the proper description
+ok 45 - policy_roles_are(schema, table, policy, roles) + extra & missing should have the proper diagnostics
+ok 46 - policy_roles_are(table, policy, roles, desc) should pass
+ok 47 - policy_roles_are(table, policy, roles, desc) should have the proper description
+ok 48 - policy_roles_are(table, policy, roles, desc) should have the proper diagnostics
+ok 49 - policy_roles_are(table, policy, roles) should pass
+ok 50 - policy_roles_are(table, policy, roles) should have the proper description
+ok 51 - policy_roles_are(table, policy, roles) should have the proper diagnostics
+ok 52 - policy_roles_are(table, policy, roles) + extra should fail
+ok 53 - policy_roles_are(table, policy, roles) + extra should have the proper description
+ok 54 - policy_roles_are(table, policy, roles) + extra should have the proper diagnostics
+ok 55 - policy_roles_are(table, policy, roles) + missing should fail
+ok 56 - policy_roles_are(table, policy, roles) + missing should have the proper description
+ok 57 - policy_roles_are(table, policy, roles) + missing should have the proper diagnostics
+ok 58 - policy_roles_are(table, policy, roles) + extra & missing should fail
+ok 59 - policy_roles_are(table, policy, roles) + extra & missing should have the proper description
+ok 60 - policy_roles_are(table, policy, roles) + extra & missing should have the proper diagnostics
