@@ -293,7 +293,11 @@ class TransactionState {
     if (ShouldBeAborted()) {
       return;
     }
-    CHECK_EQ(status_, TransactionStatus::PENDING);
+    if (status_ != TransactionStatus::PENDING) {
+      LOG_WITH_PREFIX(DFATAL) << "Unexpected status during abort: "
+                              << TransactionStatus_Name(status_);
+      return;
+    }
     SubmitUpdateStatus(TransactionStatus::ABORTED);
   }
 
@@ -466,7 +470,15 @@ class TransactionState {
   }
 
   CHECKED_STATUS CommittedReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
-    CHECK_EQ(status_, TransactionStatus::PENDING);
+    if (status_ != TransactionStatus::PENDING) {
+      auto status = STATUS_FORMAT(
+          IllegalState,
+          "Unexpected status during CommittedReplicationFinished: $0",
+          TransactionStatus_Name(status_));
+      LOG_WITH_PREFIX(DFATAL) << status;
+      return status;
+    }
+
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
     VLOG_WITH_PREFIX(4) << "Commit time: " << commit_time_;
@@ -484,10 +496,16 @@ class TransactionState {
 
   CHECKED_STATUS AppliedInAllInvolvedTabletsReplicationFinished(
       const TransactionCoordinator::ReplicatedData& data) {
-    CHECK_EQ(status_, TransactionStatus::COMMITTED);
+    if (status_ != TransactionStatus::COMMITTED) {
+      // That could happen in old version, because we could drop all entries before
+      // APPLIED_IN_ALL_INVOLVED_TABLETS.
+      LOG_WITH_PREFIX(DFATAL)
+          << "AppliedInAllInvolvedTabletsReplicationFinished in wrong state: "
+          << TransactionStatus_Name(status_) << ", request: " << data.state.ShortDebugString();
+      CHECK_EQ(status_, TransactionStatus::PENDING);
+    }
     last_touch_ = data.hybrid_time;
     status_ = TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS;
-    first_entry_raft_index_ = data.op_id.index();
     return Status::OK();
   }
 
@@ -498,14 +516,24 @@ class TransactionState {
       Abort();
       return Status::OK();
     }
-    CHECK_EQ(status_, TransactionStatus::PENDING) << "Transaction id: " << id_;
+    if (status_ != TransactionStatus::PENDING) {
+      LOG_WITH_PREFIX(DFATAL) << "Bad status during PendingReplicationFinished: "
+                              << TransactionStatus_Name(status_);
+      return Status::OK();
+    }
     last_touch_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index();
     return Status::OK();
   }
 
   CHECKED_STATUS AppliedInOneOfInvolvedTablets(const tserver::TransactionStatePB& state) {
-    CHECK_EQ(status_, TransactionStatus::COMMITTED);
+    if (status_ != TransactionStatus::COMMITTED) {
+      // We could ignore this request, because it will be resend if required.
+      LOG_WITH_PREFIX(DFATAL)
+          << "AppliedInOneOfInvolvedTablets in wrong state: " << TransactionStatus_Name(status_)
+          << ", request: " << state.ShortDebugString();
+      return Status::OK();
+    }
     DCHECK_EQ(state.tablets_size(), 1);
     unnotified_tablets_.erase(state.tablets(0));
     if (unnotified_tablets_.empty()) {
