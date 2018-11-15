@@ -52,16 +52,6 @@ class QLMetrics;
 typedef std::vector<std::pair<std::reference_wrapper<const ParseTree>,
                               std::reference_wrapper<const StatementParameters>>> StatementBatch;
 
-// Processing could take a while, we are rescheduling it to our thread pool, if not yet
-// running in it.
-class Rescheduler {
- public:
-  virtual bool NeedReschedule() = 0;
-  virtual void Reschedule(rpc::ThreadPoolTask* task) = 0;
- protected:
-  ~Rescheduler() {}
-};
-
 class Executor : public QLExprExecutor {
  public:
   //------------------------------------------------------------------------------------------------

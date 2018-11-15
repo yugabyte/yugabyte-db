@@ -174,6 +174,16 @@ class TnodeContext {
   std::unique_ptr<QLRowBlock> keys_;
 };
 
+// Processing could take a while, we are rescheduling it to our thread pool, if not yet
+// running in it.
+class Rescheduler {
+ public:
+  virtual bool NeedReschedule() = 0;
+  virtual void Reschedule(rpc::ThreadPoolTask* task) = 0;
+ protected:
+  ~Rescheduler() {}
+};
+
 // The context for execution of a statement. Inside the statement parse tree, there may be one or
 // more statement tnodes to be executed.
 class ExecContext : public ProcessContextBase {
@@ -257,7 +267,7 @@ class ExecContext : public ProcessContextBase {
   }
 
   // Reset this ExecContext.
-  void Reset(client::Restart restart);
+  void Reset(client::Restart restart, Rescheduler* rescheduler);
 
  private:
   // Statement parse tree to execute and parameters to execute with.
