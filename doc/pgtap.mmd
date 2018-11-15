@@ -7199,6 +7199,52 @@ missing policies, like so:
     #     Missing policies:
     #         atable_policy_two
 
+### `policy_roles_are()` ###
+
+    SELECT policy_roles_are( :schema, :table, :policy, :roles, :description );
+    SELECT policy_roles_are( :schema, :table, :policy, :roles );
+    SELECT policy_roles_are( :table, :policy,  :roles, :description );
+    SELECT policy_roles_are( :table, :policy,  :roles );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:table`.
+
+`:table`
+: Name of a table to which `:policy` applies.
+
+`:policy`
+: Name of a policy.
+
+`:roles`
+: An array of role names to which `:policy` is applied.
+
+`:description`
+: A short description of the test.
+
+This function tests whether the roles to which policy applies are only the
+roles that *should* be on that policy. If the `:schema` argument is omitted,
+the table must be visible in the search path, excluding `pg_catalog` and
+`information_schema`. If the description is omitted, a generally useful
+default description will be generated. Example:
+
+    SELECT policy_roles_are(
+        'myschema',
+        'atable',
+        'apolicy'
+        ARRAY[ 'atable_apolicy_role_one', 'atable_apolicy_role_two' ]
+    );
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing policy roles, like so:
+
+    # Failed test 13: "Policy apolicy for table myschema.atable should have the correct roles"
+    #     Extra policy roles:
+    #         arole_one
+    #     Missing policy roles:
+    #         atable_apolicy_role_one
+
 No Test for the Wicked
 ======================
 
