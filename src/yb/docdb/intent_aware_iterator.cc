@@ -106,6 +106,12 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
       txn_status = std::move(*txn_status_result);
       break;
     }
+    if (txn_status_result.status().IsNotFound()) {
+      // We have intent w/o metadata, that means that transaction was already cleaned up.
+      LOG(ERROR) << "Intent for transaction w/o metadata: " << transaction_id;
+      txn_status_manager_->Cleanup({transaction_id});
+      return HybridTime::kMin;
+    }
     LOG(WARNING)
         << "Failed to request transaction " << yb::ToString(transaction_id) << " status: "
         <<  txn_status_result.status();
