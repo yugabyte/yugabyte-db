@@ -142,7 +142,6 @@ bool YBIsEnabledInPostgresEnvVar();
 						computed_type_id, YBPgTypeOidToStr(computed_type_id)))); \
 	} while (0)
 
-
 /**
  * Determines if PostgreSQL should restart all child processes if one of them
  * crashes. This behavior usually shows up in the log like so:

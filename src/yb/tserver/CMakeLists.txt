@@ -192,7 +192,6 @@ target_link_libraries(yb-tserver
   tserver
   yb-cql
   yb-redis
-  yb-pgsql
   master
   ${YB_BASE_LIBS})
 

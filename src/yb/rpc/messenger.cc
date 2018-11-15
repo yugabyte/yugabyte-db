@@ -92,6 +92,9 @@ DEFINE_uint64(io_thread_pool_size, 4, "Size of allocated IO Thread Pool.");
 DEFINE_int64(outbound_rpc_block_size, 1_MB, "Outbound RPC block size");
 DEFINE_int64(outbound_rpc_memory_limit, 0, "Outbound RPC memory limit");
 
+DEFINE_int32(rpc_queue_limit, 10000, "Queue limit for rpc server");
+DEFINE_int32(rpc_workers_limit, 256, "Workers limit for rpc server");
+
 namespace yb {
 namespace rpc {
 
@@ -105,9 +108,10 @@ class ServerBuilder;
 MessengerBuilder::MessengerBuilder(std::string name)
     : name_(std::move(name)),
       connection_keepalive_time_(FLAGS_rpc_default_keepalive_time_ms * 1ms),
-      num_reactors_(4),
       coarse_timer_granularity_(100ms),
-      listen_protocol_(TcpStream::StaticProtocol()) {
+      listen_protocol_(TcpStream::StaticProtocol()),
+      queue_limit_(FLAGS_rpc_queue_limit),
+      workers_limit_(FLAGS_rpc_workers_limit) {
   AddStreamFactory(TcpStream::StaticProtocol(), TcpStream::Factory());
 }
 
@@ -311,6 +315,28 @@ void Messenger::ShutdownAcceptor() {
   }
 }
 
+rpc::ThreadPool& Messenger::ThreadPool(ServicePriority priority) {
+  switch (priority) {
+    case ServicePriority::kNormal:
+      return *normal_thread_pool_;
+    case ServicePriority::kHigh:
+      auto high_priority_thread_pool = high_priority_thread_pool_.get();
+      if (high_priority_thread_pool) {
+        return *high_priority_thread_pool;
+      }
+      std::lock_guard<std::mutex> lock(mutex_high_priority_thread_pool_);
+      high_priority_thread_pool = high_priority_thread_pool_.get();
+      if (high_priority_thread_pool) {
+        return *high_priority_thread_pool;
+      }
+      const ThreadPoolOptions& options = normal_thread_pool_->options();
+      high_priority_thread_pool_.reset(new rpc::ThreadPool(
+          name_ + "-high-pri", options.queue_limit, options.max_workers));
+      return *high_priority_thread_pool_.get();
+  }
+  FATAL_INVALID_ENUM_VALUE(ServicePriority, priority);
+}
+
 // Register a new RpcService to handle inbound requests.
 Status Messenger::RegisterService(const string& service_name,
                                   const scoped_refptr<RpcService>& service) {
@@ -321,6 +347,14 @@ Status Messenger::RegisterService(const string& service_name,
     return Status::OK();
   } else {
     return STATUS_SUBSTITUTE(AlreadyPresent, "Service $0 is already present", service_name);
+  }
+}
+
+void Messenger::ShutdownThreadPools() {
+  normal_thread_pool_->Shutdown();
+  auto high_priority_thread_pool = high_priority_thread_pool_.get();
+  if (high_priority_thread_pool) {
+    high_priority_thread_pool->Shutdown();
   }
 }
 
@@ -436,7 +470,8 @@ Messenger::Messenger(const MessengerBuilder &bld)
       metric_entity_(bld.metric_entity_),
       retain_self_(this),
       io_thread_pool_(name_, FLAGS_io_thread_pool_size),
-      scheduler_(&io_thread_pool_.io_service()) {
+      scheduler_(&io_thread_pool_.io_service()),
+      normal_thread_pool_(new rpc::ThreadPool(name_, bld.queue_limit_, bld.workers_limit_)) {
 #ifndef NDEBUG
   creation_stack_trace_.Collect(/* skip_frames */ 1);
 #endif

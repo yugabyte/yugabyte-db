@@ -133,6 +133,8 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
       options_(options),
       initialized_(false),
       stop_metrics_logging_latch_(1) {
+  mem_tracker_->SetMetricEntity(metric_entity_);
+
   if (FLAGS_use_hybrid_clock) {
     clock_ = new HybridClock();
   } else {
@@ -252,7 +254,7 @@ Status RpcServerBase::DumpServerInfo(const string& path,
 
 Status RpcServerBase::RegisterService(size_t queue_limit,
                                       rpc::ServiceIfPtr rpc_impl,
-                                      ServicePriority priority) {
+                                      rpc::ServicePriority priority) {
   return rpc_server_->RegisterService(queue_limit, std::move(rpc_impl), priority);
 }
 

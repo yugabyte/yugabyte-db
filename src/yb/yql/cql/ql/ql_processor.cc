@@ -127,9 +127,7 @@ QLProcessor::QLProcessor(shared_ptr<YBClient> client,
                          TransactionManagerProvider transaction_manager_provider)
     : ql_env_(client, cache, clock, std::move(transaction_manager_provider)),
       analyzer_(&ql_env_),
-      executor_(&ql_env_,
-                [this](std::function<void()> resume_from) { RescheduleCurrentCall(resume_from); },
-                ql_metrics),
+      executor_(&ql_env_, this, ql_metrics),
       ql_metrics_(ql_metrics) {
 }
 
@@ -186,14 +184,12 @@ bool QLProcessor::CheckPermissions(const ParseTree& parse_tree, StatementExecute
     Status s;
     switch (tnode->opcode()) {
       case TreeNodeOpcode::kPTCreateKeyspace:
-        s = ql_env_.HasResourcePermission("data", OBJECT_SCHEMA, ql_env_.CurrentRoleName(),
-                                          PermissionType::CREATE_PERMISSION);
+        s = ql_env_.HasResourcePermission("data", OBJECT_SCHEMA, PermissionType::CREATE_PERMISSION);
         break;
       case TreeNodeOpcode::kPTCreateTable: {
         const char* keyspace =
             static_cast<const PTCreateTable*>(tnode)->table_name()->first_name().c_str();
         s = ql_env_.HasResourcePermission(get_canonical_keyspace(keyspace), OBJECT_SCHEMA,
-                                          ql_env_.CurrentRoleName(),
                                           PermissionType::CREATE_PERMISSION, keyspace);
         break;
       }
@@ -225,7 +221,7 @@ bool QLProcessor::CheckPermissions(const ParseTree& parse_tree, StatementExecute
       }
       case TreeNodeOpcode::kPTCreateRole:
         s = ql_env_.HasResourcePermission("roles", ObjectType::OBJECT_ROLE,
-            ql_env_.CurrentRoleName(), PermissionType::CREATE_PERMISSION);
+                                          PermissionType::CREATE_PERMISSION);
         break;
       case TreeNodeOpcode::kPTAlterRole: {
         const char* role = static_cast<const PTAlterRole*>(tnode)->role_name();
@@ -252,8 +248,8 @@ bool QLProcessor::CheckPermissions(const ParseTree& parse_tree, StatementExecute
           case ResourceType::KEYSPACE: {
             DCHECK_EQ(canonical_resource, get_canonical_keyspace(keyspace));
             s = ql_env_.HasResourcePermission(canonical_resource, OBJECT_SCHEMA,
-                                              ql_env_.CurrentRoleName(),
-                                              PermissionType::AUTHORIZE_PERMISSION, keyspace);
+                                              PermissionType::AUTHORIZE_PERMISSION,
+                                              keyspace);
             break;
           }
           case ResourceType::TABLE: {
@@ -265,21 +261,18 @@ bool QLProcessor::CheckPermissions(const ParseTree& parse_tree, StatementExecute
             DCHECK_EQ(canonical_resource,
                       get_canonical_role(grant_revoke_permission->resource_name()));
             s = ql_env_.HasResourcePermission(canonical_resource, OBJECT_ROLE,
-                                              ql_env_.CurrentRoleName(),
                                               PermissionType::AUTHORIZE_PERMISSION);
             break;
           }
           case ResourceType::ALL_KEYSPACES: {
             DCHECK_EQ(canonical_resource, "data");
             s = ql_env_.HasResourcePermission(canonical_resource, OBJECT_SCHEMA,
-                                              ql_env_.CurrentRoleName(),
                                               PermissionType::AUTHORIZE_PERMISSION);
             break;
           }
           case ResourceType::ALL_ROLES:
             DCHECK_EQ(canonical_resource, "roles");
             s = ql_env_.HasResourcePermission(canonical_resource, OBJECT_ROLE,
-                                              ql_env_.CurrentRoleName(),
                                               PermissionType::AUTHORIZE_PERMISSION);
             break;
         }
@@ -296,7 +289,7 @@ bool QLProcessor::CheckPermissions(const ParseTree& parse_tree, StatementExecute
           case OBJECT_SCHEMA:
             s = ql_env_.HasResourcePermission(
                 get_canonical_keyspace(drop_stmt->yb_table_name().namespace_name()),
-                OBJECT_SCHEMA, ql_env_.CurrentRoleName(), PermissionType::DROP_PERMISSION);
+                OBJECT_SCHEMA, PermissionType::DROP_PERMISSION);
             break;
           case OBJECT_TABLE:
             s = ql_env_.HasTablePermission(drop_stmt->yb_table_name(),
@@ -304,7 +297,7 @@ bool QLProcessor::CheckPermissions(const ParseTree& parse_tree, StatementExecute
             break;
           case OBJECT_TYPE: FALLTHROUGH_INTENDED;
           case OBJECT_INDEX:
-            s = ql_env_.HasResourcePermission("data", OBJECT_SCHEMA, ql_env_.CurrentRoleName(),
+            s = ql_env_.HasResourcePermission("data", OBJECT_SCHEMA,
                                               PermissionType::DROP_PERMISSION);
             break;
           default:
@@ -360,18 +353,17 @@ void QLProcessor::RunAsyncDone(const string& stmt, const StatementParameters& pa
   // callback may not be executed in the RPC worker thread. Also, rescheduling gives other calls a
   // chance to execute first before we do.
   if (s.IsQLError() && GetErrorCode(s) == ErrorCode::STALE_METADATA && !parse_tree->reparsed()) {
-    return RescheduleCurrentCall([this, &stmt, &params, cb]() {
-        RunAsync(stmt, params, cb, true /* reparsed */);
-      });
+    return Reschedule(&run_async_task_.Bind(this, stmt, params, std::move(cb)));
   }
   cb.Run(s, result);
 }
 
-void QLProcessor::RescheduleCurrentCall(std::function<void()> resume_from) {
+void QLProcessor::Reschedule(rpc::ThreadPoolTask* task) {
   // Some unit tests are not executed in CQL proxy. In those cases, just execute the callback
   // directly while disabling thread restrictions.
   const bool allowed = ThreadRestrictions::SetWaitAllowed(true);
-  resume_from();
+  task->Run();
+  task->Done(Status::OK());
   ThreadRestrictions::SetWaitAllowed(allowed);
 }
 

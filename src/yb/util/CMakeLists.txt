@@ -440,6 +440,11 @@ PROTOBUF_GENERATE_CPP(
 add_library(proto_container_test_proto
   ${PROTO_CONTAINER_TEST_PROTO_SRCS}
   ${PROTO_CONTAINER_TEST_PROTO_HDRS})
+add_dependencies(proto_container_test_proto
+  gen_src_yb_util_proto_container_test_proto
+  gen_src_yb_util_proto_container_test2_proto
+  gen_src_yb_util_proto_container_test3_proto
+  )
 target_link_libraries(proto_container_test_proto
   protobuf)
 

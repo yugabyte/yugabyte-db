@@ -47,7 +47,9 @@ struct ThreadPoolShare {
 };
 
 namespace {
+
 const std::string kRpcThreadCategory = "rpc_thread_pool";
+
 } // namespace
 
 class Worker {
@@ -92,6 +94,7 @@ class Worker {
   // Meaning that we does not have work (task queue empty) or
   // does not have free hands (worker queue empty)
   void Execute() {
+    Thread::current_thread()->SetUserData(share_);
     while (!stop_requested_) {
       ThreadPoolTask* task = nullptr;
       if (PopTask(&task)) {
@@ -236,6 +239,10 @@ class ThreadPool::Impl {
     }
   }
 
+  bool Owns(Thread* thread) {
+    return thread && thread->user_data() == &share_;
+  }
+
  private:
   ThreadPoolShare share_;
   std::vector<std::unique_ptr<Worker>> workers_;
@@ -281,6 +288,14 @@ void ThreadPool::Shutdown() {
 
 const ThreadPoolOptions& ThreadPool::options() const {
   return impl_->options();
+}
+
+bool ThreadPool::Owns(Thread* thread) {
+  return impl_->Owns(thread);
+}
+
+bool ThreadPool::OwnsThisThread() {
+  return Owns(Thread::current_thread());
 }
 
 } // namespace rpc

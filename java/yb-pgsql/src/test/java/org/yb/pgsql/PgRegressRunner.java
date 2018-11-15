@@ -159,10 +159,8 @@ public class PgRegressRunner {
           LOG.warn("Actual test output file " + resultFile + " not found.");
           continue;
         }
-        String diffCmd = String.format("diff -W250 -y '%s' '%s'", expectedFile, resultFile);
-        CommandResult diffResult = CommandUtil.runShellCommand(diffCmd);
-        LOG.warn("Output from: " + diffCmd + "\n" +
-            StringUtil.expandTabsAndConcatenate(diffResult.getStdoutLines()));
+        LOG.warn("Side-by-side diff between expected output and actual output:\n" +
+            new SideBySideDiff(expectedFile, resultFile).getSideBySideDiff());
       }
     }
 

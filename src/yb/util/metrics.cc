@@ -33,6 +33,7 @@
 
 #include <iostream>
 #include <map>
+#include <regex>
 #include <set>
 
 #include <gflags/gflags.h>
@@ -175,15 +176,23 @@ MetricEntity::MetricEntity(const MetricEntityPrototype* prototype,
                            std::string id, AttributeMap attributes)
     : prototype_(prototype),
       id_(std::move(id)),
-      attributes_(std::move(attributes)) {}
+      attributes_(std::move(attributes)) {
+}
 
 MetricEntity::~MetricEntity() {
+}
+
+const std::regex& PrometheusNameRegex() {
+  static const std::regex result("[a-zA-Z_:][a-zA-Z0-9_:]*");
+  return result;
 }
 
 void MetricEntity::CheckInstantiation(const MetricPrototype* proto) const {
   CHECK_STREQ(prototype_->name(), proto->entity_type())
     << "Metric " << proto->name() << " may not be instantiated entity of type "
     << prototype_->name() << " (expected: " << proto->entity_type() << ")";
+  DCHECK(regex_match(proto->name(), PrometheusNameRegex()))
+      << "Metric name is not compatible with Prometheus: " << proto->name();
 }
 
 scoped_refptr<Metric> MetricEntity::FindOrNull(const MetricPrototype& prototype) const {
@@ -323,6 +332,11 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer) const 
   }
 
   return Status::OK();
+}
+
+void MetricEntity::Remove(const MetricPrototype* proto) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  metric_map_.erase(proto);
 }
 
 void MetricEntity::RetireOldMetrics() {
@@ -584,6 +598,10 @@ scoped_refptr<MetricEntity> MetricRegistry::FindOrCreateEntity(
 //
 Metric::Metric(const MetricPrototype* prototype)
   : prototype_(prototype) {
+}
+
+Metric::Metric(std::unique_ptr<MetricPrototype> prototype)
+  : prototype_holder_(std::move(prototype)), prototype_(prototype_holder_.get()) {
 }
 
 Metric::~Metric() {

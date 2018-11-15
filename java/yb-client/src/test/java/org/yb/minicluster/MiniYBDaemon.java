@@ -65,7 +65,7 @@ public class MiniYBDaemon {
               "tail -%d '%s' | egrep -i -C %d '%s'", NUM_LAST_SYSLOG_LINES_TO_USE,
               SYSLOG_PATH, SYSLOG_CONTEXT_NUM_LINES, regexStr));
       cmdResult.logStderr();
-      if (cmdResult.stdoutLines.isEmpty()) {
+      if (cmdResult.getStdoutLines().isEmpty()) {
         if (!terminatedNormally()) {
           LOG.warn("Could not find anything in " + SYSLOG_PATH + " relevant to the " +
               "disappearance of process: " + MiniYBDaemon.this);
@@ -73,7 +73,7 @@ public class MiniYBDaemon {
       } else {
         LOG.warn("Potentially relevant lines from " + SYSLOG_PATH +
             " for termination of " + this + ":\n" +
-            StringUtil.joinLinesForLogging(cmdResult.stdoutLines));
+            StringUtil.joinLinesForLogging(cmdResult.getStdoutLines()));
       }
     }
 
@@ -89,7 +89,7 @@ public class MiniYBDaemon {
       int numMasters = 0;
       int numTservers = 0;
       List<String> masterTserverPsLines = new ArrayList<String>();
-      for (String line : cmdResult.stdoutLines) {
+      for (String line : cmdResult.getStdoutLines()) {
         // Four parts: RSS, pid, executable path, arguments.
         String[] items = line.split("\\s+", 4);
         if (items.length < 4) {
@@ -125,7 +125,7 @@ public class MiniYBDaemon {
                 ", num tserver processes: " + numTservers +
                 ", total tserver memory usage (MB): " + (totalTserverRssKB / 1024) + "; " +
                 "ps output:\n" +
-                StringUtil.joinLinesForLogging(cmdResult.stdoutLines));
+                StringUtil.joinLinesForLogging(cmdResult.getStdoutLines()));
       } else {
         LOG.info("Did not find any yb-master/yb-tserver processes in 'ps' output");
       }
@@ -212,8 +212,7 @@ public class MiniYBDaemon {
    */
   public MiniYBDaemon(
       MiniYBDaemonType type, int indexForLog, String[] commandLine, Process process, String bindIp,
-      int rpcPort, int webPort, int cqlWebPort, int redisWebPort, int pgsqlWebPort,
-      String dataDirPath) {
+      int rpcPort, int webPort, int cqlWebPort, int redisWebPort, String dataDirPath) {
     this.type = type;
     this.commandLine = commandLine;
     this.process = process;
@@ -223,7 +222,6 @@ public class MiniYBDaemon {
     this.webPort = webPort;
     this.cqlWebPort = cqlWebPort;
     this.redisWebPort = redisWebPort;
-    this.pgsqlWebPort = pgsqlWebPort;
     this.dataDirPath = dataDirPath;
     this.logListener = new ExternalDaemonLogErrorListener(getLogPrefix());
     this.logPrinter = new LogPrinter(process.getInputStream(), getLogPrefix(), logListener);
@@ -266,8 +264,7 @@ public class MiniYBDaemon {
   MiniYBDaemon restart() throws Exception {
     return new MiniYBDaemon(type, indexForLog, commandLine,
                             new ProcessBuilder(commandLine).redirectErrorStream(true).start(),
-                            bindIp, rpcPort, webPort, cqlWebPort, redisWebPort, pgsqlWebPort,
-                            dataDirPath);
+                            bindIp, rpcPort, webPort, cqlWebPort, redisWebPort, dataDirPath);
   }
 
   @Override
@@ -285,7 +282,6 @@ public class MiniYBDaemon {
   private final int webPort;
   private final int cqlWebPort;
   private final int redisWebPort;
-  private final int pgsqlWebPort;
   private final String dataDirPath;
   private final CountDownLatch shutdownLatch = new CountDownLatch(1);
   private final LogPrinter logPrinter;

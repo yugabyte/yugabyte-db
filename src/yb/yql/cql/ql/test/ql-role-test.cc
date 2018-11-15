@@ -18,6 +18,8 @@
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
+#include "yb/client/permissions.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
@@ -144,7 +146,7 @@ class QLTestAuthentication : public QLTestBase {
   }
 
  private:
-  client::PermissionsCache permissions_cache_;
+  client::internal::PermissionsCache permissions_cache_;
   uint64_t version_ = 0;
 };
 
@@ -267,10 +269,10 @@ class TestQLPermission : public QLTestAuthentication {
         {"DESCRIBE", PermissionType::DESCRIBE_PERMISSION}
     };
 
-    client::PermissionsCache permissions_cache(client_, false);
+    client::internal::PermissionsCache permissions_cache(client_, false);
     ASSERT_OK(client_->GetPermissions(&permissions_cache));
 
-    std::shared_ptr<client::RolesPermissionsMap> roles_permissions_map =
+    std::shared_ptr<client::internal::RolesPermissionsMap> roles_permissions_map =
         permissions_cache.get_roles_permissions_map();
 
     const auto& role_permissions_itr = roles_permissions_map->find(role_name);
@@ -282,14 +284,14 @@ class TestQLPermission : public QLTestAuthentication {
 
     Permissions cached_permissions_bitset;
     if (canonical_resource == kRolesDataResource) {
-      cached_permissions_bitset = role_permissions.all_keyspaces_permissions;
+      cached_permissions_bitset = role_permissions.all_keyspaces_permissions();
     } else if (canonical_resource == kRolesRoleResource) {
-      cached_permissions_bitset = role_permissions.all_roles_permissions;
+      cached_permissions_bitset = role_permissions.all_roles_permissions();
     } else {
       // Assert that the canonical resource exists in the cache.
       const auto& canonical_resource_itr =
-          role_permissions.resource_permissions.find(canonical_resource);
-      ASSERT_NE(canonical_resource_itr, role_permissions.resource_permissions.end());
+          role_permissions.resource_permissions().find(canonical_resource);
+      ASSERT_NE(canonical_resource_itr, role_permissions.resource_permissions().end());
 
       cached_permissions_bitset = canonical_resource_itr->second;
     }

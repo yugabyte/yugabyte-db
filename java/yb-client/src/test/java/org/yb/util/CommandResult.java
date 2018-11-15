@@ -20,10 +20,10 @@ import java.util.List;
 public class CommandResult {
   private static final Logger LOG = LoggerFactory.getLogger(CommandResult.class);
 
-  public final String cmd;
-  public final int exitCode;
-  public final List<String> stdoutLines;
-  public final List<String> stderrLines;
+  private final String cmd;
+  private final int exitCode;
+  private final List<String> stdoutLines;
+  private final List<String> stderrLines;
 
   public CommandResult(
       String cmd, int exitCode, List<String> stdoutLines, List<String> stderrLines) {
@@ -90,6 +90,11 @@ public class CommandResult {
 
   public List<String> getStderrLines() {
     return stderrLines;
+  }
+
+  @Override
+  public String toString() {
+    return "Result of running command {{ " + cmd + " }}: exit code " + exitCode;
   }
 
 }

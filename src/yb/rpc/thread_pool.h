@@ -22,6 +22,7 @@
 namespace yb {
 
 class Status;
+class Thread;
 
 namespace rpc {
 
@@ -63,6 +64,9 @@ class ThreadPool {
   void Shutdown();
 
   static bool IsCurrentThreadRpcWorker();
+
+  bool Owns(Thread* thread);
+  bool OwnsThisThread();
 
  private:
   class Impl;

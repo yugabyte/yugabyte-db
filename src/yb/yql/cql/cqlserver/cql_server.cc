@@ -23,7 +23,7 @@
 using yb::rpc::ServiceIf;
 using namespace yb::size_literals;  // NOLINT.
 
-DEFINE_int32(cql_service_queue_length, 5000,
+DEFINE_int32(cql_service_queue_length, 10000,
              "RPC queue length for CQL service");
 TAG_FLAG(cql_service_queue_length, advanced);
 
@@ -54,7 +54,8 @@ CQLServer::CQLServer(const CQLServerOptions& opts,
     : RpcAndWebServerBase(
           "CQLServer", opts, "yb.cqlserver",
           MemTracker::CreateTracker(
-              "CQL", tserver ? tserver->mem_tracker() : MemTracker::GetRootTracker())),
+              "CQL", tserver ? tserver->mem_tracker() : MemTracker::GetRootTracker(),
+              AddToParent::kTrue, CreateMetrics::kFalse)),
       opts_(opts),
       timer_(*io, refresh_interval()),
       tserver_(tserver),

@@ -67,8 +67,6 @@ DEFINE_bool(rpc_server_allow_ephemeral_ports, false,
             "only allowed in tests.");
 TAG_FLAG(rpc_server_allow_ephemeral_ports, unsafe);
 
-DEFINE_int32(rpc_queue_limit, 5000, "Queue limit for rpc server");
-DEFINE_int32(rpc_workers_limit, 128, "Workers limit for rpc server");
 DECLARE_int32(rpc_default_keepalive_time_ms);
 
 namespace yb {
@@ -76,9 +74,6 @@ namespace server {
 
 RpcServerOptions::RpcServerOptions()
   : rpc_bind_addresses(FLAGS_rpc_bind_addresses),
-    default_port(0),
-    queue_limit(FLAGS_rpc_queue_limit),
-    workers_limit(FLAGS_rpc_workers_limit),
     connection_keepalive_time_ms(FLAGS_rpc_default_keepalive_time_ms) {
 }
 
@@ -87,7 +82,6 @@ RpcServer::RpcServer(const std::string& name, RpcServerOptions opts,
     : name_(name),
       server_state_(UNINITIALIZED),
       options_(std::move(opts)),
-      normal_thread_pool_(CreateThreadPool(name, ServicePriority::kNormal)),
       connection_context_factory_(std::move(connection_context_factory)) {}
 
 RpcServer::~RpcServer() {
@@ -130,22 +124,16 @@ Status RpcServer::Init(const shared_ptr<Messenger>& messenger) {
 
 Status RpcServer::RegisterService(size_t queue_limit,
                                   rpc::ServiceIfPtr service,
-                                  ServicePriority priority) {
+                                  rpc::ServicePriority priority) {
   CHECK(server_state_ == INITIALIZED ||
         server_state_ == BOUND) << "bad state: " << server_state_;
   const scoped_refptr<MetricEntity>& metric_entity = messenger_->metric_entity();
   string service_name = service->service_name();
 
-  rpc::ThreadPool* thread_pool = normal_thread_pool_.get();
-  if (priority == ServicePriority::kHigh) {
-    if (!high_priority_thread_pool_) {
-      high_priority_thread_pool_ = CreateThreadPool(name_, ServicePriority::kHigh);
-    }
-    thread_pool = high_priority_thread_pool_.get();
-  }
+  rpc::ThreadPool& thread_pool = messenger_->ThreadPool(priority);
 
   scoped_refptr<rpc::ServicePool> service_pool =
-    new rpc::ServicePool(queue_limit, thread_pool, std::move(service), metric_entity);
+    new rpc::ServicePool(queue_limit, &thread_pool, std::move(service), metric_entity);
   RETURN_NOT_OK(messenger_->RegisterService(service_name, service_pool));
   return Status::OK();
 }
@@ -182,12 +170,8 @@ Status RpcServer::Start() {
 }
 
 void RpcServer::Shutdown() {
-  normal_thread_pool_->Shutdown();
-  if (high_priority_thread_pool_) {
-    high_priority_thread_pool_->Shutdown();
-  }
-
   if (messenger_) {
+    messenger_->ShutdownThreadPools();
     messenger_->ShutdownAcceptor();
     WARN_NOT_OK(messenger_->UnregisterAllServices(), "Unable to unregister our services");
   }
@@ -195,14 +179,6 @@ void RpcServer::Shutdown() {
 
 const rpc::ServicePool* RpcServer::service_pool(const string& service_name) const {
   return down_cast<rpc::ServicePool*>(messenger_->rpc_service(service_name).get());
-}
-
-unique_ptr<rpc::ThreadPool> RpcServer::CreateThreadPool(
-    string name_prefix, ServicePriority priority) {
-  string name = priority == ServicePriority::kHigh ? Format("$0-high-pri", name_prefix)
-                                                   : name_prefix;
-  VLOG(1) << "Creating thread pool '" << name << "'";
-  return make_unique<rpc::ThreadPool>(name, options_.queue_limit, options_.workers_limit);
 }
 
 } // namespace server

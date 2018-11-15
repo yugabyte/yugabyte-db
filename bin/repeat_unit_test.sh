@@ -396,6 +396,7 @@ else
     log "YB_EXTRA_GTEST_FLAGS is not set"
   fi
   log "Saving repeated test execution logs to: $log_dir"
+  ln -sfn "$log_dir" "$HOME/logs/latest_test"
   seq 1 $num_iter | \
     xargs -P $parallelism -n 1 "$0" "${original_args[@]}" --log_dir "$log_dir" --iteration
 fi

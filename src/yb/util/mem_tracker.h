@@ -44,6 +44,8 @@
 #include <gperftools/malloc_extension.h>
 #endif
 
+#include <boost/optional.hpp>
+
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/high_water_mark.h"
 #include "yb/util/locks.h"
@@ -69,6 +71,7 @@ class GarbageCollector {
 
 YB_STRONGLY_TYPED_BOOL(MayExist);
 YB_STRONGLY_TYPED_BOOL(AddToParent);
+YB_STRONGLY_TYPED_BOOL(CreateMetrics);
 
 // A MemTracker tracks memory consumption; it contains an optional limit and is
 // arranged into a tree structure such that the consumption tracked by a
@@ -130,7 +133,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // add_to_parent could be set to false in cases when we want to track memory usage of
   // some subsystem, but don't want this subsystem to take effect on parent mem tracker.
   MemTracker(int64_t byte_limit, const std::string& id, std::shared_ptr<MemTracker> parent,
-             AddToParent add_to_parent);
+             AddToParent add_to_parent, CreateMetrics create_metrics);
 
   ~MemTracker();
 
@@ -179,13 +182,15 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
       int64_t byte_limit,
       const std::string& id,
       const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
-      AddToParent add_to_parent = AddToParent::kTrue);
+      AddToParent add_to_parent = AddToParent::kTrue,
+      CreateMetrics create_metrics = CreateMetrics::kTrue);
 
   static std::shared_ptr<MemTracker> CreateTracker(
       const std::string& id,
       const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
-      AddToParent add_to_parent = AddToParent::kTrue) {
-    return CreateTracker(-1 /* byte_limit */, id, parent, add_to_parent);
+      AddToParent add_to_parent = AddToParent::kTrue,
+      CreateMetrics create_metrics = CreateMetrics::kTrue) {
+    return CreateTracker(-1 /* byte_limit */, id, parent, add_to_parent, create_metrics);
   }
 
   // If a tracker with the specified 'id' and 'parent' exists in the tree, sets
@@ -205,13 +210,15 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
       int64_t byte_limit,
       const std::string& id,
       const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
-      AddToParent add_to_parent = AddToParent::kTrue);
+      AddToParent add_to_parent = AddToParent::kTrue,
+      CreateMetrics create_metrics = CreateMetrics::kTrue);
 
   static std::shared_ptr<MemTracker> FindOrCreateTracker(
       const std::string& id,
       const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
-      AddToParent add_to_parent = AddToParent::kTrue) {
-    return FindOrCreateTracker(-1 /* byte_limit */, id, parent, add_to_parent);
+      AddToParent add_to_parent = AddToParent::kTrue,
+      CreateMetrics create_metrics = CreateMetrics::kTrue) {
+    return FindOrCreateTracker(-1 /* byte_limit */, id, parent, add_to_parent, create_metrics);
   }
 
   void ListDescendantTrackers(std::vector<MemTrackerPtr>* trackers);
@@ -324,6 +331,10 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // globally unique.
   std::string ToString() const;
 
+  void SetMetricEntity(const scoped_refptr<MetricEntity>& metric_entity,
+                       const std::string& name_suffix = std::string());
+  scoped_refptr<MetricEntity> metric_entity() const;
+
  private:
   bool CheckLimitExceeded() const {
     return limit_ >= 0 && limit_ < consumption();
@@ -350,7 +361,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
       int64_t byte_limit,
       const std::string& id,
       MayExist may_exist,
-      AddToParent add_to_parent);
+      AddToParent add_to_parent,
+      CreateMetrics create_metrics);
 
   // Variant of FindTracker() that:
   // 1. Must be called with a non-NULL parent, and
@@ -373,6 +385,9 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   const std::string descr_;
   std::shared_ptr<MemTracker> parent_;
   CoarseMonoClock::time_point last_consumption_update_ = CoarseMonoClock::time_point::min();
+
+  class TrackerMetrics;
+  std::unique_ptr<TrackerMetrics> metrics_;
 
   HighWaterMark consumption_{0};
 

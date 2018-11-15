@@ -108,7 +108,7 @@ Status ReplicaState::StartUnlocked(const OpId& last_id_in_wal) {
 
   // Our last persisted term can be higher than the last persisted operation
   // (i.e. if we called an election) but reverse should never happen.
-  CHECK_LE(last_id_in_wal.term(), GetCurrentTermUnlocked()) << LogPrefixUnlocked()
+  CHECK_LE(last_id_in_wal.term(), GetCurrentTermUnlocked()) << LogPrefix()
       << "The last op in the WAL with id " << OpIdToString(last_id_in_wal)
       << " has a term (" << last_id_in_wal.term() << ") that is greater "
       << "than the latest recorded term, which is " << GetCurrentTermUnlocked();
@@ -371,11 +371,12 @@ bool ReplicaState::IsOpCommittedOrPending(const OpId& op_id, bool* term_mismatch
 
   scoped_refptr<ConsensusRound> round = GetPendingOpByIndexOrNullUnlocked(op_id.index());
   if (round == nullptr) {
-    LOG_WITH_PREFIX_UNLOCKED(ERROR) << "Consensus round not found for op id " << op_id << ": "
-               << "committed_index=" << committed_index << ", "
-               << "last_received_index=" << last_received_index << ", "
-               << "tablet: " << options_.tablet_id << ", current state: "
-               << ToStringUnlocked();
+    LOG_WITH_PREFIX(ERROR)
+        << "Consensus round not found for op id " << op_id << ": "
+        << "committed_index=" << committed_index << ", "
+        << "last_received_index=" << last_received_index << ", "
+        << "tablet: " << options_.tablet_id << ", current state: "
+        << ToStringUnlocked();
     DumpPendingOperationsUnlocked();
     CHECK(false);
   }
@@ -457,10 +458,10 @@ const ConsensusOptions& ReplicaState::GetOptions() const {
 
 void ReplicaState::DumpPendingOperationsUnlocked() {
   DCHECK(IsLocked());
-  LOG_WITH_PREFIX_UNLOCKED(INFO) << "Dumping " << pending_operations_.size()
+  LOG_WITH_PREFIX(INFO) << "Dumping " << pending_operations_.size()
                                  << " pending operations.";
   for (const auto &operation : pending_operations_) {
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << operation.second->replicate_msg()->ShortDebugString();
+    LOG_WITH_PREFIX(INFO) << operation.second->replicate_msg()->ShortDebugString();
   }
 }
 
@@ -475,13 +476,13 @@ Status ReplicaState::CancelPendingOperations() {
       return Status::OK();
     }
 
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Trying to abort " << pending_operations_.size()
-                                   << " pending operations.";
+    LOG_WITH_PREFIX(INFO) << "Trying to abort " << pending_operations_.size()
+                          << " pending operations.";
     for (const auto& operation : pending_operations_) {
       const scoped_refptr<ConsensusRound>& round = operation.second;
       // We cancel only operations whose applies have not yet been triggered.
-      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting operation as it isn't in flight: "
-                                     << operation.second->replicate_msg()->ShortDebugString();
+      LOG_WITH_PREFIX(INFO) << "Aborting operation as it isn't in flight: "
+                            << operation.second->replicate_msg()->ShortDebugString();
       round->NotifyReplicationFinished(STATUS(Aborted, "Operation aborted"));
     }
   }
@@ -490,7 +491,8 @@ Status ReplicaState::CancelPendingOperations() {
 
 Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
   DCHECK(IsLocked());
-  LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting all operations after (but not including): "
+  LOG_WITH_PREFIX(INFO)
+      << "Aborting all operations after (but not including): "
       << new_preceding_idx << ". Current State: " << ToStringUnlocked();
 
   DCHECK_GE(new_preceding_idx, 0);
@@ -516,8 +518,8 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
 
   for (; iter != pending_operations_.end();) {
     const scoped_refptr<ConsensusRound>& round = (*iter).second;
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting uncommitted operation due to leader change: "
-                                   << round->replicate_msg()->id();
+    LOG_WITH_PREFIX(INFO) << "Aborting uncommitted operation due to leader change: "
+                          << round->replicate_msg()->id();
     round->NotifyReplicationFinished(STATUS(Aborted, "Operation aborted by new leader"));
     // Erase the entry from pendings.
     pending_operations_.erase(iter++);
@@ -576,8 +578,8 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
       // Do one last sanity check.
       Status s = CheckNoConfigChangePendingUnlocked();
       if (PREDICT_FALSE(!s.ok())) {
-        s = s.CloneAndAppend(Substitute("\n  New config: $0", new_config.ShortDebugString()));
-        LOG_WITH_PREFIX_UNLOCKED(INFO) << s.ToString();
+        s = s.CloneAndAppend(Format("New config: $0", new_config));
+        LOG_WITH_PREFIX(INFO) << s;
         return s;
       }
       // Check if the pending Raft config has an OpId less than the committed
@@ -587,7 +589,8 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
       if (round->replicate_msg()->id().index() > committed_config.opid_index()) {
         CHECK_OK(SetPendingConfigUnlocked(new_config));
       } else {
-        LOG_WITH_PREFIX_UNLOCKED(INFO) << "Ignoring setting pending config change with OpId "
+        LOG_WITH_PREFIX(INFO)
+            << "Ignoring setting pending config change with OpId "
             << round->replicate_msg()->id() << " because the committed config has OpId index "
             << committed_config.opid_index() << ". The config change we are ignoring is: "
             << "Old config: { " << old_config.ShortDebugString() << " }. "
@@ -635,14 +638,15 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(const OpId& majority_repli
     RETURN_NOT_OK(AdvanceCommittedIndexUnlocked(majority_replicated,
                                                 committed_index_changed));
     committed_index->CopyFrom(last_committed_index_);
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Advanced the committed_index across terms."
+    LOG_WITH_PREFIX(INFO)
+        << "Advanced the committed_index across terms."
         << " Last committed operation was: " << previous.ShortDebugString()
         << " New committed index is: " << last_committed_index_.ShortDebugString();
     return Status::OK();
   }
 
   committed_index->CopyFrom(last_committed_index_);
-  YB_LOG_EVERY_N_SECS(WARNING, 1) << LogPrefixUnlocked()
+  YB_LOG_EVERY_N_SECS(WARNING, 1) << LogPrefix()
           << "Can't advance the committed index across term boundaries"
           << " until operations from the current term are replicated."
           << " Last committed operation was: " << last_committed_index_.ShortDebugString() << ","
@@ -721,15 +725,15 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
   // up in the RPC queue at the same time, and then might get interleaved out
   // of order.
   if (last_committed_index_.index() >= committed_index.index()) {
-    VLOG_WITH_PREFIX_UNLOCKED(1)
+    VLOG_WITH_PREFIX(1)
         << "Already marked ops through " << last_committed_index_ << " as committed. "
         << "Now trying to mark " << committed_index << " which would be a no-op.";
     return Status::OK();
   }
 
   if (pending_operations_.empty()) {
-    VLOG_WITH_PREFIX_UNLOCKED(1) << "No operations to mark as committed up to: "
-                                 << committed_index.ShortDebugString();
+    VLOG_WITH_PREFIX(1) << "No operations to mark as committed up to: "
+                        << committed_index.ShortDebugString();
     return STATUS_SUBSTITUTE(
         NotFound,
         "No pending entries, requested to advance last committed OpId from $0 to $1, "
@@ -758,8 +762,8 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
 Status ReplicaState::ApplyPendingOperationsUnlocked(IndexToRoundMap::iterator iter,
                                                     const OpId &committed_index) {
   DCHECK(IsLocked());
-  VLOG_WITH_PREFIX_UNLOCKED(1) << "Last triggered apply was: "
-      <<  last_committed_index_.ShortDebugString()
+  VLOG_WITH_PREFIX(1)
+      << "Last triggered apply was: " <<  last_committed_index_.ShortDebugString()
       << " Starting to apply from log index: " << (*iter).first;
 
   // Stop at the operation after the last one we must commit. This iterator by definition points to
@@ -827,8 +831,8 @@ void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {
     bool is_transit_to_voter =
       CountVotersInTransition(old_config) > CountVotersInTransition(new_config);
     if (is_transit_to_voter) {
-      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Commit skipped "
-          << " as inject_delay_commit_pre_voter_to_voter_secs flag is set to true.\n"
+      LOG_WITH_PREFIX(INFO)
+          << "Commit skipped as inject_delay_commit_pre_voter_to_voter_secs flag is set to true.\n"
           << "  Old config: { " << old_config.ShortDebugString() << " }.\n"
           << "  New config: { " << new_config.ShortDebugString() << " }";
       SleepFor(MonoDelta::FromSeconds(FLAGS_inject_delay_commit_pre_voter_to_voter_secs));
@@ -841,12 +845,14 @@ void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {
   // messages were delayed.
   const RaftConfigPB& committed_config = GetCommittedConfigUnlocked();
   if (new_config.opid_index() > committed_config.opid_index()) {
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Committing config change with OpId "
+    LOG_WITH_PREFIX(INFO)
+        << "Committing config change with OpId "
         << current_id << ". Old config: { " << old_config.ShortDebugString() << " }. "
         << "New config: { " << new_config.ShortDebugString() << " }";
     CHECK_OK(SetCommittedConfigUnlocked(new_config));
   } else {
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Ignoring commit of config change with OpId "
+    LOG_WITH_PREFIX(INFO)
+        << "Ignoring commit of config change with OpId "
         << current_id << " because the committed config has OpId index "
         << committed_config.opid_index() << ". The config change we are ignoring is: "
         << "Old config: { " << old_config.ShortDebugString() << " }. "
@@ -873,7 +879,7 @@ void ReplicaState::UpdateLastReceivedOpIdUnlocked(const OpId& op_id) {
   DCHECK(IsLocked());
   auto* trace = Trace::CurrentTrace();
   DCHECK_LE(OpIdCompare(last_received_op_id_, op_id), 0)
-      << LogPrefixUnlocked() << ": "
+      << LogPrefix() << ": "
       << "Previously received OpId: " << last_received_op_id_.ShortDebugString()
       << ", updated OpId: " << op_id.ShortDebugString()
       << ", Trace:" << std::endl << (trace ? trace->DumpToString(true) : "No trace found");
@@ -929,27 +935,12 @@ void ReplicaState::CancelPendingOperation(const OpId& id, bool should_exist) {
 }
 
 string ReplicaState::LogPrefix() const {
-  if (ThreadRestrictions::IsWaitAllowed()) {
-    auto lock = LockForRead();
-    return LogPrefixUnlocked();
-  } else {
-    return LogPrefixThreadSafe();
-  }
-}
-
-string ReplicaState::LogPrefixUnlocked() const {
-  DCHECK(IsLocked());
+  auto role_and_term = GetRoleAndTerm();
   return Substitute("T $0 P $1 [term $2 $3]: ",
                     options_.tablet_id,
                     peer_uuid_,
-                    GetCurrentTermUnlocked(),
-                    RaftPeerPB::Role_Name(GetActiveRoleUnlocked()));
-}
-
-string ReplicaState::LogPrefixThreadSafe() const {
-  return Substitute("T $0 P $1: ",
-                    options_.tablet_id,
-                    peer_uuid_);
+                    role_and_term.second,
+                    RaftPeerPB::Role_Name(role_and_term.first));
 }
 
 ReplicaState::State ReplicaState::state() const {

@@ -64,14 +64,13 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 		return YBCNewBinaryConstant(ybc_stmt, type_id, datum, is_null);
 	}
 
+#define REPORT_INVALID_TYPE_AND_BREAK() \
+	YB_REPORT_TYPE_NOT_SUPPORTED(type_id); break
+
 	switch (type_id)
 	{
 		case BOOLOID:
 			HandleYBStatus(YBCPgNewConstantBool(ybc_stmt, DatumGetInt64(datum), is_null, &expr));
-			break;
-		case CHAROID:
-		case NAMEOID:
-			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
 			break;
 		case INT8OID:
 			HandleYBStatus(YBCPgNewConstantInt8(ybc_stmt, DatumGetInt64(datum), is_null, &expr));
@@ -82,24 +81,8 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 		case INT4OID:
 			HandleYBStatus(YBCPgNewConstantInt4(ybc_stmt, DatumGetInt32(datum), is_null, &expr));
 			break;
-		case REGPROCOID:
-			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
-			break;
 		case OIDOID:
 			HandleYBStatus(YBCPgNewConstantInt4(ybc_stmt, DatumGetInt32(datum), is_null, &expr));
-			break;
-		case TIDOID:
-		case XIDOID:
-		case CIDOID:
-			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
-			break;
-		case POINTOID:
-		case LSEGOID:
-		case PATHOID:
-		case BOXOID:
-		case POLYGONOID:
-		case LINEOID:
-			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
 			break;
 		case FLOAT4OID:
 			HandleYBStatus(YBCPgNewConstantFloat4(ybc_stmt, DatumGetFloat4(datum), is_null, &expr));
@@ -107,48 +90,58 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool
 		case FLOAT8OID:
 			HandleYBStatus(YBCPgNewConstantFloat8(ybc_stmt, DatumGetFloat8(datum), is_null, &expr));
 			break;
-		case ABSTIMEOID:
-		case RELTIMEOID:
-		case TINTERVALOID:
-		case UNKNOWNOID:
-		case CIRCLEOID:
-		case CASHOID:
-		case INETOID:
-		case CIDROID:
-			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
-			break;
-		case DATEOID:
-		case TIMEOID:
 		case TIMESTAMPOID:
 		case TIMESTAMPTZOID:
-		case INTERVALOID:
-		case TIMETZOID:
-		case VARBITOID:
-		case NUMERICOID:
-		case REFCURSOROID:
-		case REGPROCEDUREOID:
-		case REGOPEROID:
-		case REGOPERATOROID:
-		case REGCLASSOID:
-		case REGTYPEOID:
-		case REGROLEOID:
-		case REGNAMESPACEOID:
-			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
-		case UUIDOID:
-		case LSNOID:
-		case TSVECTOROID:
-		case GTSVECTOROID:
-		case TSQUERYOID:
-		case REGCONFIGOID:
-		case REGDICTIONARYOID:
-		case INT4RANGEOID:
-			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
+			HandleYBStatus(YBCPgNewConstantInt8(ybc_stmt, DatumGetInt64(datum), is_null, &expr));
+			break;
 		case INT4ARRAYOID:
 			expr = YBCNewBinaryConstant(ybc_stmt, type_id, datum, is_null);
 			break;
-		default:
-			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
+		case REGPROCOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case CHAROID: REPORT_INVALID_TYPE_AND_BREAK();
+		case NAMEOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case TIDOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case XIDOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case CIDOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case POINTOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case LSEGOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case PATHOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case BOXOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case POLYGONOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case LINEOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case ABSTIMEOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case RELTIMEOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case TINTERVALOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case UNKNOWNOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case CIRCLEOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case CASHOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case INETOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case CIDROID: REPORT_INVALID_TYPE_AND_BREAK();
+		case DATEOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case TIMEOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case INTERVALOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case TIMETZOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case VARBITOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case NUMERICOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case REFCURSOROID: REPORT_INVALID_TYPE_AND_BREAK();
+		case REGPROCEDUREOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case REGOPEROID: REPORT_INVALID_TYPE_AND_BREAK();
+		case REGOPERATOROID: REPORT_INVALID_TYPE_AND_BREAK();
+		case REGCLASSOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case REGTYPEOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case REGROLEOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case REGNAMESPACEOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case UUIDOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case LSNOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case TSVECTOROID: REPORT_INVALID_TYPE_AND_BREAK();
+		case GTSVECTOROID: REPORT_INVALID_TYPE_AND_BREAK();
+		case TSQUERYOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case REGCONFIGOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case REGDICTIONARYOID: REPORT_INVALID_TYPE_AND_BREAK();
+		case INT4RANGEOID: REPORT_INVALID_TYPE_AND_BREAK();
+		default: REPORT_INVALID_TYPE_AND_BREAK();
 	}
+#undef REPORT_INVALID_TYPE_AND_BREAK
 
 	if (expr == NULL) {
 		YBC_LOG_FATAL("Trying to return NULL from %s", __PRETTY_FUNCTION__);

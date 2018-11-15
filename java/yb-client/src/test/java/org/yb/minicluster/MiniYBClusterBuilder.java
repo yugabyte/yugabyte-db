@@ -26,6 +26,7 @@ public class MiniYBClusterBuilder {
   private List<String> masterArgs = null;
   private List<List<String>> tserverArgs = null;
   private String testClassName = null;
+  private int replicationFactor = -1;
 
   public MiniYBClusterBuilder numMasters(int numMasters) {
     this.numMasters = numMasters;
@@ -85,8 +86,16 @@ public class MiniYBClusterBuilder {
     return this;
   }
 
+  /**
+   * Sets the replication factor for the mini-cluster.
+   */
+  public MiniYBClusterBuilder replicationFactor(int replicationFactor) {
+    this.replicationFactor = replicationFactor;
+    return this;
+  }
+
   public MiniYBCluster build() throws Exception {
     return new MiniYBCluster(numMasters, numTservers, defaultTimeoutMs, masterArgs, tserverArgs,
-        numShardsPerTServer, testClassName, useIpWithCertificate);
+        numShardsPerTServer, testClassName, useIpWithCertificate, replicationFactor);
   }
 }

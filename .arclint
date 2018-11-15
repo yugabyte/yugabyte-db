@@ -30,7 +30,6 @@
       "type": "googlecpplint",
       "exclude": [
         "(^src/yb/yql/cql/ql/kwlist[.]h$)",
-        "(^src/yb/yql/pgsql/syn/pg_kwlist[.]h$)",
         "(^src/yb/yql/pggate/if_macros_undef[.]h$)",
         "(^src/yb/yql/pggate/if_macros_cxx_decl[.]h$)",
         "(^src/yb/yql/pggate/if_macros_common[.]h$)",

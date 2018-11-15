@@ -71,6 +71,7 @@ class LogCache {
  public:
   LogCache(const scoped_refptr<MetricEntity>& metric_entity,
            const scoped_refptr<log::Log>& log,
+           const std::shared_ptr<MemTracker>& server_tracker,
            const std::string& local_uuid,
            const std::string& tablet_id);
   ~LogCache();

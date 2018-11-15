@@ -134,6 +134,7 @@ PeerMessageQueue::Metrics::Metrics(const scoped_refptr<MetricEntity>& metric_ent
 
 PeerMessageQueue::PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_entity,
                                    const scoped_refptr<log::Log>& log,
+                                   const MemTrackerPtr& server_tracker,
                                    const RaftPeerPB& local_peer_pb,
                                    const string& tablet_id,
                                    const server::ClockPtr& clock,
@@ -143,7 +144,7 @@ PeerMessageQueue::PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_ent
       local_peer_uuid_(local_peer_pb_.has_permanent_uuid() ? local_peer_pb_.permanent_uuid()
                                                            : string()),
       tablet_id_(tablet_id),
-      log_cache_(metric_entity, log, local_peer_pb.permanent_uuid(), tablet_id),
+      log_cache_(metric_entity, log, server_tracker, local_peer_pb.permanent_uuid(), tablet_id),
       metrics_(metric_entity),
       clock_(clock) {
   DCHECK(local_peer_pb_.has_permanent_uuid());

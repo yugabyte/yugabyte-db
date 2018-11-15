@@ -61,13 +61,33 @@ set(DOCDB_DEPS
     yb_common
     docdb_proto
     server_common
-    pgsql-ybpostgres
     rpc_introspection_proto)
 
 ADD_YB_LIBRARY(yb_docdb
                SRCS ${DOCDB_SRCS}
                DEPS ${DOCDB_DEPS})
+
+# Ensure protobuf headers we depend on are generated prior to building DocDB.
+add_dependencies(
+    yb_docdb
+    gen_src_yb_master_master_proto
+    gen_src_yb_rpc_rpc_header_proto
+    gen_src_yb_tablet_metadata_proto
+    gen_src_yb_tablet_tablet_proto
+    gen_src_yb_tserver_tserver_proto
+    )
+
 cotire(yb_docdb)
+
+# Ensure protobuf headers we depend on are generated prior to building DocDB.
+add_dependencies(
+    yb_docdb
+    gen_src_yb_master_master_proto
+    gen_src_yb_rpc_rpc_header_proto
+    gen_src_yb_tablet_metadata_proto
+    gen_src_yb_tablet_tablet_proto
+    gen_src_yb_tserver_tserver_proto
+    )
 
 # A library with common code shared between DocDB tests.
 set(DOCDB_TEST_COMMON_SRCS

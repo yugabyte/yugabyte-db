@@ -30,4 +30,9 @@ public class TestPgRegress extends BasePgSQLTest {
     pgRegress.stop();
   }
 
+  @Override
+  protected int getReplicationFactor() {
+    return 1;
+  }
+
 }

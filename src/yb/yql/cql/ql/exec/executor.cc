@@ -59,9 +59,9 @@ using strings::Substitute;
 
 //--------------------------------------------------------------------------------------------------
 
-Executor::Executor(QLEnv *ql_env, Rescheduler rescheduler, const QLMetrics* ql_metrics)
+Executor::Executor(QLEnv *ql_env, Rescheduler* rescheduler, const QLMetrics* ql_metrics)
     : ql_env_(ql_env),
-      rescheduler_(std::move(rescheduler)),
+      rescheduler_(rescheduler),
       session_(ql_env_->NewSession()),
       ql_metrics_(ql_metrics) {
 }
@@ -230,6 +230,9 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
 
     case TreeNodeOpcode::kPTUseKeyspace:
       return ExecPTNode(static_cast<const PTUseKeyspace *>(tnode));
+
+    case TreeNodeOpcode::kPTAlterKeyspace:
+      return ExecPTNode(static_cast<const PTAlterKeyspace *>(tnode));
 
     default:
       return exec_context_->Error(tnode, ErrorCode::FEATURE_NOT_SUPPORTED);
@@ -1164,6 +1167,22 @@ Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
 
 //--------------------------------------------------------------------------------------------------
 
+Status Executor::ExecPTNode(const PTAlterKeyspace *tnode) {
+  // To get new keyspace properties use: tnode->keyspace_properties()
+  // Current implementation only check existence of this keyspace.
+  const Status s = ql_env_->AlterKeyspace(tnode->name());
+
+  if (PREDICT_FALSE(!s.ok())) {
+    ErrorCode error_code = s.IsNotFound() ? ErrorCode::KEYSPACE_NOT_FOUND : ErrorCode::SERVER_ERROR;
+    return exec_context_->Error(tnode, s, error_code);
+  }
+
+  result_ = std::make_shared<SchemaChangeResult>("UPDATED", "KEYSPACE", tnode->name());
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 namespace {
 
 // When executing a DML in a transaction or a SELECT statement on a transaction-enabled table, the
@@ -1277,7 +1296,6 @@ void Executor::FlushAsyncDone(Status s, ExecContext* exec_context) {
   TRACE("Flush Async Done");
   // Process FlushAsync status for either transactional session in an ExecContext, or the
   // non-transactional session in the Executor for other ExecContexts with no transactional session.
-  const int64_t num_async_calls = --num_async_calls_;
   const YBSessionPtr& session = exec_context != nullptr ? GetSession(exec_context) : session_;
 
   // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
@@ -1315,14 +1333,14 @@ void Executor::FlushAsyncDone(Status s, ExecContext* exec_context) {
 
   // Process async results exclusively if this is the last callback of the last FlushAsync() and
   // there is no more outstanding async call.
-  if (num_async_calls == 0) {
+  if (--num_async_calls_ == 0) {
     ProcessAsyncResults();
   }
 }
 
 void Executor::CommitDone(Status s, ExecContext* exec_context) {
   TRACE("Commit Transaction Done");
-  const int64_t num_async_calls = --num_async_calls_;
+
   if (s.ok()) {
     if (ql_metrics_ != nullptr) {
       const MonoTime now = MonoTime::Now();
@@ -1340,7 +1358,7 @@ void Executor::CommitDone(Status s, ExecContext* exec_context) {
 
   // Process async results exclusively if this is the last callback of the last FlushAsync() and
   // there is no more outstanding async call.
-  if (num_async_calls == 0) {
+  if (--num_async_calls_ == 0) {
     ProcessAsyncResults();
   }
 }
@@ -1348,8 +1366,8 @@ void Executor::CommitDone(Status s, ExecContext* exec_context) {
 void Executor::ProcessAsyncResults(const bool rescheduled) {
   // If the current thread is not the RPC worker thread, call the callback directly. Otherwise,
   // reschedule the call to resume in the RPC worker thread.
-  if (!rescheduled && !rpc::ThreadPool::IsCurrentThreadRpcWorker()) {
-    return rescheduler_([this]() { ProcessAsyncResults(true /* rescheduled */); });
+  if (!rescheduled && rescheduler_->NeedReschedule()) {
+    return rescheduler_->Reschedule(&process_async_results_task_.Bind(this));
   }
 
   // Return error immediately when async call failed.
@@ -1463,7 +1481,7 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
   // RPC worker thread for too long starving other CQL calls waiting in the queue. If there is no
   // buffered ops to flush, just call FlushAsync() to commit the transactions if any.
   if (has_buffered_ops && !rescheduled) {
-    rescheduler_([this]() { FlushAsync(); });
+    rescheduler_->Reschedule(&flush_async_task_.Bind(this));
   } else {
     FlushAsync();
   }

@@ -162,8 +162,7 @@ class RemoteBootstrapTest : public YBTabletTest {
                                           log,
                                           metric_entity,
                                           raft_pool_.get(),
-                                          tablet_prepare_pool_.get(),
-                                          nullptr /* service_thread_pool */));
+                                          tablet_prepare_pool_.get()));
     consensus::ConsensusBootstrapInfo boot_info;
     ASSERT_OK(tablet_peer_->Start(boot_info));
 

@@ -76,7 +76,7 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts,
   prepared_stmts_mem_tracker_ = MemTracker::CreateTracker(
       FLAGS_cql_service_max_prepared_statement_size_bytes > 0 ?
       FLAGS_cql_service_max_prepared_statement_size_bytes : -1,
-      "CQL prepared statements' memory usage", server->mem_tracker());
+      "CQL prepared statements", server->mem_tracker());
 
   auth_prepared_stmt_ = std::make_shared<ql::Statement>(
       "",
@@ -121,11 +121,6 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
   TRACE("Handling the CQL call");
   // Collect the call.
   CQLInboundCall* cql_call = down_cast<CQLInboundCall*>(CHECK_NOTNULL(inbound_call.get()));
-  if (cql_call->TryResume()) {
-    // This is a continuation/callback from a previous request.
-    // Call the call back, and we are done.
-    return;
-  }
   DVLOG(4) << "Handling " << cql_call->ToString();
 
   // Process the call.
