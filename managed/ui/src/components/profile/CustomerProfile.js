@@ -7,6 +7,10 @@ import { Field } from 'redux-form';
 import _ from 'lodash';
 import { isDefinedNotNull } from 'utils/ObjectUtils';
 
+// TODO set predefined defaults another way not to share defaults this way
+const CHECK_INTERVAL_MS = 300000;
+const STATUS_UPDATE_INTERVAL_MS = 43200000;
+
 export default class CustomerProfile extends Component {
   constructor(props) {
     super(props);
@@ -23,6 +27,12 @@ export default class CustomerProfile extends Component {
             nextProps.customer.alertingData.alertingEmail);
         this.props.change("alertingData.sendAlertsToYb",
             nextProps.customer.alertingData.sendAlertsToYb);
+
+        this.props.change("alertingData.checkIntervalMs",
+            nextProps.customer.alertingData.checkIntervalMs || CHECK_INTERVAL_MS);
+
+        this.props.change("alertingData.statusUpdateIntervalMs",
+            nextProps.customer.alertingData.statusUpdateIntervalMs || STATUS_UPDATE_INTERVAL_MS);
       }
     }
   }
@@ -66,6 +76,8 @@ export default class CustomerProfile extends Component {
                      onToggle={this.toggleSendAlertsToYb}
                      label="Send alert emails to YugaByte team"
                      subLabel="Whether or not to send alerting emails to the YugaByte team."/>
+              <Field name="alertingData.checkIntervalMs" type="text" component={YBInputField} label="Health check interval" placeHolder="Miliseconds to check universe status"/>
+              <Field name="alertingData.statusUpdateIntervalMs" type="text" component={YBInputField} label="Report email interval" placeHolder="Miliseconds to send a status report email"/>
             </Col>
           </Row>
           <Row>
