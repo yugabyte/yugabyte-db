@@ -669,7 +669,6 @@ void Tablet::PrepareTransactionWriteBatch(
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     rocksdb::WriteBatch* rocksdb_write_batch) {
-  RequestScope request_scope(transaction_participant_.get());
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
     transaction_participant()->Add(
@@ -702,6 +701,7 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
 
   rocksdb::WriteBatch write_batch;
   if (put_batch.has_transaction()) {
+    RequestScope request_scope(transaction_participant_.get());
     PrepareTransactionWriteBatch(put_batch, hybrid_time, &write_batch);
     WriteBatch(frontiers, hybrid_time, &write_batch, intents_db_.get());
   } else {
