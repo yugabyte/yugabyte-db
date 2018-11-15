@@ -1349,7 +1349,7 @@ void Executor::CommitDone(Status s, ExecContext* exec_context) {
     }
   } else {
     if (NeedsRestart(s)) {
-      exec_context->Reset(client::Restart::kTrue);
+      exec_context->Reset(client::Restart::kTrue, rescheduler_);
     } else {
       std::lock_guard<std::mutex> lock(status_mutex_);
       async_status_ = s;
@@ -1543,7 +1543,7 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
         const auto& result = response.child_transaction_result();
         const Status s = exec_context_->ApplyChildTransactionResult(result);
         if (NeedsRestart(s)) {
-          exec_context_->Reset(client::Restart::kTrue);
+          exec_context_->Reset(client::Restart::kTrue, rescheduler_);
           break;
         }
         RETURN_NOT_OK(s);
@@ -1944,7 +1944,7 @@ Status Executor::ProcessAsyncStatus(const OpErrors& op_errors, ExecContext* exec
             s = ProcessOpStatus(static_cast<const PTDmlStmt *>(tnode), op, exec_context);
           }
           if (NeedsRestart(s)) {
-            exec_context->Reset(client::Restart::kTrue);
+            exec_context->Reset(client::Restart::kTrue, rescheduler_);
             return true; // done
           }
           RETURN_NOT_OK(ProcessStatementStatus(exec_context->parse_tree(), s));

@@ -34,7 +34,10 @@ ExecContext::ExecContext(const ParseTree& parse_tree, const StatementParameters&
 
 ExecContext::~ExecContext() {
   // Reset to abort transaction explicitly instead of letting it expire.
-  Reset(client::Restart::kFalse);
+  // Should be ok not to take a rescheduler here since the `ExecContext` clean up should happen
+  // only when we return a response to the CQL client, which is now guaranteed to happen in
+  // CQL proxy's handler thread.
+  Reset(client::Restart::kFalse, nullptr);
 }
 
 TnodeContext* ExecContext::AddTnode(const TreeNode *tnode) {
@@ -122,8 +125,29 @@ bool ExecContext::HasPendingOperations() const {
   return false;
 }
 
+class AbortTransactionTask : public rpc::ThreadPoolTask {
+ public:
+  explicit AbortTransactionTask(YBTransactionPtr transaction)
+      : transaction_(std::move(transaction)) {}
+
+  void Run() override {
+    transaction_->Abort();
+    transaction_ = nullptr;
+  }
+
+  void Done(const Status& status) override {
+    delete this;
+  }
+
+  virtual ~AbortTransactionTask() {
+  }
+
+ private:
+  YBTransactionPtr transaction_;
+};
+
 //--------------------------------------------------------------------------------------------------
-void ExecContext::Reset(const Restart restart) {
+void ExecContext::Reset(const Restart restart, Rescheduler* rescheduler) {
   if (transactional_session_) {
     transactional_session_->Abort();
     transactional_session_->SetTransaction(nullptr);
@@ -131,7 +155,11 @@ void ExecContext::Reset(const Restart restart) {
   if (transaction_ && !(transaction_->IsRestartRequired() && restart)) {
     YBTransactionPtr transaction = std::move(transaction_);
     TRACE("Abort Transaction");
-    transaction->Abort();
+    if (rescheduler && rescheduler->NeedReschedule()) {
+      rescheduler->Reschedule(new AbortTransactionTask(std::move(transaction)));
+    } else {
+      transaction->Abort();
+    }
   }
   restart_ = restart;
   tnode_contexts_.clear();
