@@ -35,6 +35,10 @@ class TcpStream : public Stream {
 
   std::string ToString() const;
 
+  size_t GetPendingWriteBytes() override {
+    return queued_bytes_to_send_ - send_position_;
+  }
+
   static const rpc::Protocol* StaticProtocol();
   static StreamFactoryPtr Factory();
 
@@ -130,6 +134,7 @@ class TcpStream : public Stream {
 
   std::deque<SendingData> sending_;
   size_t send_position_ = 0;
+  size_t queued_bytes_to_send_ = 0;
   bool waiting_write_ready_ = false;
 };
 

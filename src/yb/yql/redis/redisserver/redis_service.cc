@@ -1173,6 +1173,7 @@ void RedisServiceImplData::LogToMonitors(
 }
 
 int RedisServiceImplData::Publish(const string& channel, const string& message) {
+  VLOG(3) << "Forwarding to clients on channel " << channel;
   return PublishToLocalClients(IsMonitorMessage::kFalse, channel, message);
 }
 
@@ -1296,6 +1297,7 @@ int RedisServiceImplData::PublishToLocalClients(
   if (clients) {
     // Handle Monitor and Subscribe clients.
     for (auto connection : *clients) {
+      DVLOG(3) << "Publishing to subscribed client " << connection->ToString();
       connection->QueueOutboundData(out);
       num_pushed_to++;
     }

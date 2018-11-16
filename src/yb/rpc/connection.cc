@@ -236,7 +236,12 @@ void Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) 
   // eventually runs in the reactor thread will take care of calling
   // ResponseTransferCallbacks::NotifyTransferAborted.
 
+  // Check before and after calling Send. Before to reset state, if we
+  // were over the limit; but are now back in good standing. After, to
+  // check if we are now over the limit.
+  context_->ReportPendingWriteBytes(stream_->GetPendingWriteBytes());
   stream_->Send(std::move(outbound_data));
+  context_->ReportPendingWriteBytes(stream_->GetPendingWriteBytes());
 
   if (!batch) {
     OutboundQueued();

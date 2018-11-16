@@ -50,6 +50,7 @@ class Stream {
   virtual void Send(OutboundDataPtr data) = 0;
   virtual CHECKED_STATUS TryWrite() = 0;
   virtual void ParseReceived() = 0;
+  virtual size_t GetPendingWriteBytes() = 0;
 
   virtual bool Idle(std::string* reason_not_idle) = 0;
   virtual bool IsConnected() = 0;
