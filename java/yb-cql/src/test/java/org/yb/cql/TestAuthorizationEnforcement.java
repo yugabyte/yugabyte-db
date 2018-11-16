@@ -16,6 +16,7 @@ import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
+import com.datastax.driver.core.exceptions.SyntaxError;
 import com.datastax.driver.core.exceptions.UnauthorizedException;
 import org.junit.*;
 import org.junit.rules.TestName;
@@ -2152,5 +2153,29 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
     s.execute(String.format("REVOKE SELECT ON %s.%s FROM %s", keyspace, table, username));
     assertPermissionsGranted(s, username, canonicalResource, Arrays.asList());
+  }
+
+  // This tests the fix for issue https://github.com/YugaByte/yugabyte-db/issues/592.
+  @Test
+  public void testAlterStmtFailsWihoutProperties() throws Exception {
+    thrown.expect(SyntaxError.class);
+    thrown.expectMessage("expecting WITH");
+    s.execute(String.format("ALTER ROLE %s", username));
+  }
+
+  @Test
+  public void testAlterModifiesProperties() throws Exception {
+    testCreateRoleHelperWithSession(anotherUsername, "", false, false, false, s);
+    String newPassword = "p";
+    s.execute(String.format(
+        "ALTER ROLE %s WITH LOGIN = true AND SUPERUSER = true AND PASSWORD = '%s'",
+        anotherUsername, newPassword));
+    ResultSet rs = s.execute(String.format("SELECT * FROM system_auth.roles WHERE role = '%s'",
+        anotherUsername));
+    List<Row> list = rs.all();
+    assertEquals(1, list.size());
+    assert(list.get(0).getBool("can_login"));
+    assert(list.get(0).getBool("is_superuser"));
+    checkConnectivity(true, anotherUsername, newPassword, false);
   }
 }
