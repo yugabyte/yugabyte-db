@@ -140,6 +140,7 @@ const createTableForm = reduxForm({
 function mapStateToProps(state) {
   return {
     universe: state.universe,
+    modal: state.modal,
     tables: state.tables
   };
 }
