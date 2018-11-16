@@ -182,6 +182,10 @@ Status TcpStream::DoWrite() {
 
     int32_t written = 0;
     auto status = iov_len != 0 ? socket_.Writev(iov, iov_len, &written) : Status::OK();
+    DVLOG_WITH_PREFIX(4) << "Queued writes " << queued_bytes_to_send_ << " bytes. written "
+                         << written << " . Status " << status << " sending_ .size() "
+                         << sending_.size();
+
     if (PREDICT_FALSE(!status.ok())) {
       if (!Socket::IsTemporarySocketError(status)) {
         YB_LOG_WITH_PREFIX_EVERY_N(WARNING, 50) << "Send failed: " << status;
@@ -194,16 +198,18 @@ Status TcpStream::DoWrite() {
     send_position_ += written;
     while (!sending_.empty()) {
       auto& front = sending_.front();
+      size_t full_size = front.bytes_size();
       if (front.skipped) {
+        queued_bytes_to_send_ -= full_size;
         sending_.pop_front();
         continue;
       }
-      size_t full_size = front.bytes_size();
       if (send_position_ < full_size) {
         break;
       }
       auto data = front.data;
       send_position_ -= full_size;
+      queued_bytes_to_send_ -= full_size;
       sending_.pop_front();
       if (data) {
         context_->Transferred(data, Status::OK());
@@ -383,11 +389,14 @@ void TcpStream::ClearSending(const Status& status) {
     }
   }
   sending_.clear();
+  queued_bytes_to_send_ = 0;
 }
 
 void TcpStream::Send(OutboundDataPtr data) {
   // Serialize the actual bytes to be put on the wire.
   sending_.emplace_back(std::move(data));
+  queued_bytes_to_send_ += sending_.back().bytes_size();
+  DVLOG_WITH_PREFIX(3) << "Added data queued_bytes_to_send_: " << queued_bytes_to_send_;
 }
 
 void TcpStream::DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) {

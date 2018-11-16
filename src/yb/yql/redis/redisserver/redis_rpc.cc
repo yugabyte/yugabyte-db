@@ -52,6 +52,11 @@ DEFINE_uint64(redis_max_read_buffer_size, 128_MB,
 DEFINE_uint64(redis_max_queued_bytes, 128_MB,
               "Max number of bytes in queued redis commands.");
 
+DEFINE_int32(
+    redis_connection_soft_limit_grace_period_sec, 60,
+    "The duration for which the outbound data needs to exceeed the softlimit "
+    "before the connection gets closed down.");
+
 namespace yb {
 namespace redisserver {
 
@@ -129,6 +134,51 @@ Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& conne
 
 size_t RedisConnectionContext::BufferLimit() {
   return FLAGS_redis_max_read_buffer_size;
+}
+
+void RedisConnectionContext::ReportPendingWriteBytes(size_t pending_bytes) {
+  static constexpr size_t kHardLimit = 32_MB;
+  static constexpr size_t kSoftLimit = 8_MB;
+  auto mode = ClientMode();
+  DVLOG(3) << "Connection in mode " << ToString(mode) << " has " << pending_bytes
+           << " bytes in the queue.";
+  if (mode == RedisClientMode::kNormal) {
+    return;
+  }
+
+  // We use the same buffering logic for subscribers and monitoring clients.
+  // Close a client if:
+  // 1) it exceeds the hard limit of 32MB. or
+  // 2) it has been over the soft limit of 8MB for longer than 1min.
+  if (pending_bytes > kHardLimit) {
+    LOG(INFO) << "Connection in mode " << ToString(mode) << " has reached the HardLimit. "
+              << pending_bytes << " bytes in the queue.";
+    Shutdown(STATUS(NetworkError, "Slow Redis Client: HardLimit exceeded."));
+  } else if (pending_bytes > kSoftLimit) {
+    auto now = CoarseMonoClock::Now();
+    static const CoarseDuration kGracePeriod =
+        std::chrono::seconds(FLAGS_redis_connection_soft_limit_grace_period_sec);
+    if (soft_limit_exceeded_since_ == CoarseTimePoint::max()) {
+      DVLOG(1) << "Connection in mode " << ToString(mode) << " has reached the Softlimit now. "
+               << pending_bytes << " bytes in the queue.";
+      soft_limit_exceeded_since_ = now;
+    } else if (now > soft_limit_exceeded_since_ + kGracePeriod) {
+      LOG(INFO) << "Connection in mode " << ToString(mode) << " has reached the Softlimit > "
+                << yb::ToString(kGracePeriod) << " ago. " << pending_bytes
+                << " bytes in the queue.";
+      Shutdown(STATUS(NetworkError, "Slow Redis Client: Softlimit exceeded."));
+    } else {
+      DVLOG(1) << "Connection in mode " << ToString(mode)
+               << " has reached the Softlimit less than  " << yb::ToString(kGracePeriod) << " ago. "
+               << pending_bytes;
+    }
+  } else {
+    if (soft_limit_exceeded_since_ != CoarseTimePoint::max()) {
+      DVLOG(1) << "Connection in mode " << ToString(mode) << " has dropped below the Softlimit. "
+               << pending_bytes << " bytes in the queue.";
+      soft_limit_exceeded_since_ = CoarseTimePoint::max();
+    }
+  }
 }
 
 void RedisConnectionContext::Shutdown(const Status& status) {

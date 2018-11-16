@@ -73,6 +73,8 @@ class ConnectionContext {
   virtual uint64_t ProcessedCallCount() = 0;
 
   virtual RpcConnectionPB::StateType State() = 0;
+
+  virtual void ReportPendingWriteBytes(size_t bytes_in_queue) = 0;
 };
 
 class ConnectionContextBase : public ConnectionContext {
@@ -84,6 +86,8 @@ class ConnectionContextBase : public ConnectionContext {
   GrowableBufferAllocator& Allocator() override {
     return *allocator_;
   }
+
+  void ReportPendingWriteBytes(size_t bytes_in_queue) override {}
 
  private:
   GrowableBufferAllocator* allocator_;
