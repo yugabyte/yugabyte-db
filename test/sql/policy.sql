@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(60);
+SELECT plan(180);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -235,6 +235,348 @@ SELECT * FROM check_test(
         root
     Missing policy roles:
         alice'
+);
+
+/****************************************************************************/
+-- Test policy_cmd_is().
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'all_view', 'select', 'whatever' ),
+    true,
+    'policy_cmd_is(schema, table, policy, command, desc) for SELECT',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'all_view'::NAME, 'select' ),
+    true,
+    'policy_cmd_is(schema, table, policy, command) for SELECT',
+    'Policy all_view for table public.passwd should apply to SELECT command',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'all_view', 'select', 'whatever' ),
+    true,
+    'policy_cmd_is(table, policy, command, desc) for SELECT',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'all_view', 'select' ),
+    true,
+    'policy_cmd_is(table, policy, command) for SELECT',
+    'Policy all_view for table passwd should apply to SELECT command',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'all_view', 'delete', 'whatever' ),
+    false,
+    'policy_cmd_is(schema, table, policy, command, desc) for SELECT should fail',
+    'whatever',
+    '        have: SELECT
+        want: DELETE'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'all_view'::NAME, 'delete' ),
+    false,
+    'policy_cmd_is(schema, table, policy, command) for SELECT should fail',
+    'Policy all_view for table public.passwd should apply to DELETE command',
+    '        have: SELECT
+        want: DELETE'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'all_view', 'delete', 'whatever' ),
+    false,
+    'policy_cmd_is(table, policy, command, desc) for SELECT should fail',
+    'whatever',
+    '        have: SELECT
+        want: DELETE'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'all_view', 'delete' ),
+    false,
+    'policy_cmd_is(table, policy, command) for SELECT should fail',
+    'Policy all_view for table passwd should apply to DELETE command',
+    '        have: SELECT
+        want: DELETE'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'daemon_insert', 'insert', 'whatever' ),
+    true,
+    'policy_cmd_is(schema, table, policy, command, desc) for INSERT',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'daemon_insert'::NAME, 'insert' ),
+    true,
+    'policy_cmd_is(schema, table, policy, command) for INSERT',
+    'Policy daemon_insert for table public.passwd should apply to INSERT command',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'daemon_insert', 'insert', 'whatever' ),
+    true,
+    'policy_cmd_is(table, policy, command, desc) for INSERT',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'daemon_insert', 'insert' ),
+    true,
+    'policy_cmd_is(table, policy, command) for INSERT',
+    'Policy daemon_insert for table passwd should apply to INSERT command',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'daemon_insert', 'delete', 'whatever' ),
+    false,
+    'policy_cmd_is(schema, table, policy, command, desc) for INSERT should fail',
+    'whatever',
+    '        have: INSERT
+        want: DELETE'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'daemon_insert'::NAME, 'delete' ),
+    false,
+    'policy_cmd_is(schema, table, policy, command) for INSERT should fail',
+    'Policy daemon_insert for table public.passwd should apply to DELETE command',
+    '        have: INSERT
+        want: DELETE'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'daemon_insert', 'delete', 'whatever' ),
+    false,
+    'policy_cmd_is(table, policy, command, desc) for INSERT should fail',
+    'whatever',
+    '        have: INSERT
+        want: DELETE'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'daemon_insert', 'delete' ),
+    false,
+    'policy_cmd_is(table, policy, command) for INSERT should fail',
+    'Policy daemon_insert for table passwd should apply to DELETE command',
+    '        have: INSERT
+        want: DELETE'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'user_mod', 'update', 'whatever' ),
+    true,
+    'policy_cmd_is(schema, table, policy, command, desc) for UPDATE',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'user_mod'::NAME, 'update' ),
+    true,
+    'policy_cmd_is(schema, table, policy, command) for UPDATE',
+    'Policy user_mod for table public.passwd should apply to UPDATE command',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'user_mod', 'update', 'whatever' ),
+    true,
+    'policy_cmd_is(table, policy, command, desc) for UPDATE',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'user_mod', 'update' ),
+    true,
+    'policy_cmd_is(table, policy, command) for UPDATE',
+    'Policy user_mod for table passwd should apply to UPDATE command',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'user_mod', 'delete', 'whatever' ),
+    false,
+    'policy_cmd_is(schema, table, policy, command, desc) for UPDATE should fail',
+    'whatever',
+    '        have: UPDATE
+        want: DELETE'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'user_mod'::NAME, 'all' ),
+    false,
+    'policy_cmd_is(schema, table, policy, command) for UPDATE should fail',
+    'Policy user_mod for table public.passwd should apply to ALL command',
+    '        have: UPDATE
+        want: ALL'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'user_mod', 'all', 'whatever' ),
+    false,
+    'policy_cmd_is(table, policy, command, desc) for UPDATE should fail',
+    'whatever',
+    '        have: UPDATE
+        want: ALL'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'user_mod', 'all' ),
+    false,
+    'policy_cmd_is(table, policy, command) for UPDATE should fail',
+    'Policy user_mod for table passwd should apply to ALL command',
+    '        have: UPDATE
+        want: ALL'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'daemon_delete', 'delete', 'whatever' ),
+    true,
+    'policy_cmd_is(schema, table, policy, command, desc) for DELETE',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'daemon_delete'::NAME, 'delete' ),
+    true,
+    'policy_cmd_is(schema, table, policy, command) for DELETE',
+    'Policy daemon_delete for table public.passwd should apply to DELETE command',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'daemon_delete', 'delete', 'whatever' ),
+    true,
+    'policy_cmd_is(table, policy, command, desc) for DELETE',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'daemon_delete', 'delete' ),
+    true,
+    'policy_cmd_is(table, policy, command) for DELETE',
+    'Policy daemon_delete for table passwd should apply to DELETE command',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'daemon_delete', 'all', 'whatever' ),
+    false,
+    'policy_cmd_is(schema, table, policy, command, desc) for DELETE should fail',
+    'whatever',
+    '        have: DELETE
+        want: ALL'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'daemon_delete'::NAME, 'all' ),
+    false,
+    'policy_cmd_is(schema, table, policy, command) for DELETE should fail',
+    'Policy daemon_delete for table public.passwd should apply to ALL command',
+    '        have: DELETE
+        want: ALL'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'daemon_delete', 'all', 'whatever' ),
+    false,
+    'policy_cmd_is(table, policy, command, desc) for DELETE should fail',
+    'whatever',
+    '        have: DELETE
+        want: ALL'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'daemon_delete', 'all' ),
+    false,
+    'policy_cmd_is(table, policy, command) for DELETE should fail',
+    'Policy daemon_delete for table passwd should apply to ALL command',
+    '        have: DELETE
+        want: ALL'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'root_all', 'all', 'whatever' ),
+    true,
+    'policy_cmd_is(schema, table, policy, command, desc) for ALL',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'root_all'::NAME, 'all' ),
+    true,
+    'policy_cmd_is(schema, table, policy, command) for ALL',
+    'Policy root_all for table public.passwd should apply to ALL command',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'root_all', 'all', 'whatever' ),
+    true,
+    'policy_cmd_is(table, policy, command, desc) for ALL',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'root_all', 'all' ),
+    true,
+    'policy_cmd_is(table, policy, command) for ALL',
+    'Policy root_all for table passwd should apply to ALL command',
+    ''
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'root_all', 'delete', 'whatever' ),
+    false,
+    'policy_cmd_is(schema, table, policy, command, desc) for ALL should fail',
+    'whatever',
+    '        have: ALL
+        want: DELETE'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'public', 'passwd', 'root_all'::NAME, 'delete' ),
+    false,
+    'policy_cmd_is(schema, table, policy, command) for ALL should fail',
+    'Policy root_all for table public.passwd should apply to DELETE command',
+    '        have: ALL
+        want: DELETE'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'root_all', 'delete', 'whatever' ),
+    false,
+    'policy_cmd_is(table, policy, command, desc) for ALL should fail',
+    'whatever',
+    '        have: ALL
+        want: DELETE'
+);
+
+SELECT * FROM check_test(
+    policy_cmd_is( 'passwd', 'root_all', 'delete' ),
+    false,
+    'policy_cmd_is(table, policy, command) for ALL should fail',
+    'Policy root_all for table passwd should apply to DELETE command',
+    '        have: ALL
+        want: DELETE'
 );
 
 /****************************************************************************/
