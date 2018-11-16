@@ -14,6 +14,7 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -123,6 +124,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       }
       if (defaultUserIntent.deviceInfo.volumeSize != null) {
         diskSpecs.put("storage", String.format("%dGi", defaultUserIntent.deviceInfo.volumeSize));
+      }
+      if (defaultUserIntent.deviceInfo.storageClass != null) {
+        diskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
       }
       if (!diskSpecs.isEmpty()) {
         expectedOverrides.put("persistentVolume", diskSpecs);
@@ -260,6 +264,35 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultAnnotations.put("KUBECONFIG_ANNOTATIONS", "annotations:\n  master:\n    loadbalancer:\n      annotation-1: foo");
     defaultProvider.setConfig(defaultAnnotations);
     defaultProvider.save();
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
+    ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(expectedProviderUUID.capture(), expectedNodePrefix.capture(),
+            expectedOverrideFile.capture());
+    assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
+    assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
+    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+
+    // TODO implement exposeAll false case
+    assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+
+  @Test
+  public void testHelmInstallWithStorageClass() throws IOException {
+    defaultUserIntent.deviceInfo = new DeviceInfo();
+    defaultUserIntent.deviceInfo.storageClass = "foo";
+    Universe.saveDetails(defaultUniverse.universeUUID,
+        ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
     kubernetesCommandExecutor.run();

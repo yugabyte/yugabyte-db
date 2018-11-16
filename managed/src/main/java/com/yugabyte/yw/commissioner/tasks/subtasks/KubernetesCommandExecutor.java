@@ -261,6 +261,9 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       if (userIntent.deviceInfo.volumeSize != null) {
         diskSpecs.put("storage", String.format("%dGi", userIntent.deviceInfo.volumeSize));
       }
+      if (userIntent.deviceInfo.storageClass != null) {
+        diskSpecs.put("storageClass", userIntent.deviceInfo.storageClass);
+      }
       if (!diskSpecs.isEmpty()) {
         overrides.put("persistentVolume", diskSpecs);
       }

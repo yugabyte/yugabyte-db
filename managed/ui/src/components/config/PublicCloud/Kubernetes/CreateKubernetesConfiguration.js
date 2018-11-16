@@ -53,6 +53,7 @@ class CreateKubernetesConfiguration extends Component {
         "KUBECONFIG_PROVIDER": self.props.type,
         "KUBECONFIG_SERVICE_ACCOUNT": vals.serviceAccount,
         "KUBECONFIG_ANNOTATIONS": vals.annotations,
+        "KUBECONFIG_STORAGE_CLASSES": vals.storageClasses,
         "KUBECONFIG_IMAGE_REGISTRY": vals.imageRegistry,
         "KUBECONFIG_IMAGE_PULL_SECRET_NAME": vals.imagePullSecretName,
         "KUBECONFIG_PULL_SECRET_NAME": pullSecretFile && pullSecretFile.name,
@@ -200,6 +201,18 @@ class CreateKubernetesConfiguration extends Component {
                                className={"kube-provider-input-field"}/>
                       </Col>
                     </Row>
+                    
+                    <Row className="config-provider-row">
+                      <Col lg={3}>
+                        <div className="form-item-custom-label">Storage Classes</div>
+                      </Col>
+                      <Col lg={7}>
+                        <Field name="storageClasses" placeHolder="Storage Class Names (default Standard)"
+                               component={YBTextInputWithLabel}
+                               insetError={true}
+                               className={"kube-provider-input-field"}/>
+                      </Col>
+                    </Row>
                     <Row className="config-provider-row">
                       <Col lg={3}>
                         <div className="form-item-custom-label">Annotations</div>
@@ -211,7 +224,6 @@ class CreateKubernetesConfiguration extends Component {
                                className={"kube-provider-input-field"}/>
                       </Col>
                     </Row>
-
 
                   </Col>
                 </Row>
