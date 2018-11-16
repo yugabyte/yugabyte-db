@@ -309,6 +309,10 @@ class TestRedisService : public RedisTableTestBase {
     return counter->value();
   }
 
+  virtual Endpoint RedisProxyEndpoint() {
+    return Endpoint(IpAddress(), server_port());
+  }
+
   void TestTSTtl(const std::string& expire_command, int64_t ttl_sec, int64_t expire_val,
       const std::string& redis_key) {
     DoRedisTestOk(__LINE__, {"TSADD", redis_key, "10", "v1", "20", "v2", "30", "v3", expire_command,
@@ -764,11 +768,15 @@ void TestRedisService::StopServer() {
 }
 
 void TestRedisService::StartClient() {
-  Endpoint remote(IpAddress(), server_port());
+  Endpoint remote = RedisProxyEndpoint();
   CHECK_OK(client_sock_.Init(0));
   CHECK_OK(client_sock_.SetNoDelay(false));
   LOG(INFO) << "Connecting to " << remote;
   CHECK_OK(client_sock_.Connect(remote));
+  Endpoint local;
+  CHECK_OK(client_sock_.GetSocketAddress(&local));
+  CHECK_OK(client_sock_.GetPeerAddress(&remote));
+  LOG(INFO) << "Connected: " << local << " => " << remote;
 }
 
 void TestRedisService::StopClient() { EXPECT_OK(client_sock_.Close()); }
@@ -2466,9 +2474,24 @@ class TestRedisServiceExternal : public TestRedisService {
  protected:
   void TestPubSub(LocalOrCluster ltype, SubOrUnsub stype, PatternOrChannel ptype);
 
+  void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    opts->extra_tserver_flags.push_back(
+        "--redis_connection_soft_limit_grace_period_sec=" +
+        yb::ToString(kSoftLimitGracePeriod.ToSeconds()));
+  }
+
+  static const MonoDelta kSoftLimitGracePeriod;
+
  private:
+  Endpoint RedisProxyEndpoint() override {
+    auto ts0 = external_mini_cluster()->tablet_server(0);
+    return Endpoint(IpAddress::from_string(ts0->bind_host()), ts0->redis_rpc_port());
+  }
+
   bool use_external_mini_cluster() override { return true; }
 };
+
+const MonoDelta TestRedisServiceExternal::kSoftLimitGracePeriod = yb::NonTsanVsTsan(1s, 10s);
 
 void TestRedisServiceExternal::TestPubSub(
     LocalOrCluster ltype, SubOrUnsub stype, PatternOrChannel ptype) {
@@ -2554,6 +2577,179 @@ TEST_F(TestRedisServiceExternal, TestPUnsubscribe) {
 TEST_F(TestRedisServiceExternal, TestPUnsubscribeCluster) {
   expected_no_sessions_ = true;
   TestPubSub(LocalOrCluster::kCluster, SubOrUnsub::kUnsubscribe, PatternOrChannel::kPattern);
+}
+
+TEST_F(TestRedisServiceExternal, TestSlowSubscribersCatchingUp) {
+  expected_no_sessions_ = true;
+
+  auto ts0 = external_mini_cluster()->tablet_server(0);
+  auto host0 = ts0->bind_host();
+  auto port0 = ts0->redis_rpc_port();
+
+  auto sc1 = std::make_shared<RedisClient>(host0, port0);
+  auto pc1 = std::make_shared<RedisClient>(host0, port0);
+
+  const string topic1 = "topic1";
+  const string padding(1_MB, 'x');
+
+  UseClient(sc1);
+  DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  SyncClient();
+
+  constexpr int kNumLoops = 3;
+  constexpr int kNumMsgs = 20;
+  const auto kSoftLimitGracePeriodMinusDelta =
+      MonoDelta::FromSeconds(kSoftLimitGracePeriod.ToSeconds() * 0.8);
+  const auto kSoftLimitGracePeriodPlusDelta =
+      MonoDelta::FromSeconds(kSoftLimitGracePeriod.ToSeconds() * 1.2);
+  for (int loops = 0; loops < kNumLoops; loops++) {
+    // Write approx 20MB of data. More than the soft limit. But less than the hard limit.
+    UseClient(pc1);
+    for (int i = 0; i < kNumMsgs; i++) {
+      // Now send msg1 to topic 1.
+      auto msg = Substitute("trial-$0 : $1", i, padding);
+      VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
+      DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 1);
+      ASSERT_NO_FATALS(SyncClient());
+    }
+
+    // Wait for less than what the server to enforce the soft limit.
+    SleepFor(kSoftLimitGracePeriodMinusDelta);
+
+    for (int i = 0; i < kNumMsgs; i++) {
+      // Verify the received messages.
+      VLOG(2) << "Trial " << i << ". Receiving subscribed message";
+      UseClient(sc1);
+      auto msg = Substitute("trial-$0 : $1", i, padding);
+      DoRedisTestArray(__LINE__, {}, {"message", topic1, msg});
+      ASSERT_NO_FATALS(SyncClient());
+    }
+
+    SleepFor(kSoftLimitGracePeriodPlusDelta);
+  }
+
+  const string big_padding(20_MB, 'x');
+  for (int loops = 0; loops < kNumLoops; loops++) {
+    // Write > soft limit sized data in one shot.
+    UseClient(pc1);
+    auto msg = Substitute("Big-$0", big_padding);
+    VLOG(2) << loops << ". Publishing a big message of size " << msg.length();
+    DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 1);
+    ASSERT_NO_FATALS(SyncClient());
+
+    // Wait for less than what the server to enforce the soft limit.
+    SleepFor(kSoftLimitGracePeriodMinusDelta);
+
+    UseClient(sc1);
+    DoRedisTestArray(__LINE__, {}, {"message", topic1, msg});
+    ASSERT_NO_FATALS(SyncClient());
+
+    SleepFor(kSoftLimitGracePeriodPlusDelta);
+  }
+}
+
+TEST_F(TestRedisServiceExternal, TestSlowSubscribersSoftLimit) {
+  expected_no_sessions_ = true;
+
+  auto ts0 = external_mini_cluster()->tablet_server(0);
+  auto host0 = ts0->bind_host();
+  auto port0 = ts0->redis_rpc_port();
+
+  auto sc1 = std::make_shared<RedisClient>(host0, port0);
+  auto pc1 = std::make_shared<RedisClient>(host0, port0);
+
+  const string topic1 = "topic1";
+  const string padding(1_MB, 'x');
+
+  UseClient(sc1);
+  DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  SyncClient();
+
+  UseClient(pc1);
+  // Write approx 15MB of data. Something more than the soft limit.
+  for (int i = 0; i < 15; i++) {
+    // Now send msg1 to topic 1.
+    auto msg = Substitute("trial-$0 : $1", i, padding);
+    VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
+    DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 1);
+    ASSERT_NO_FATALS(SyncClient());
+  }
+
+  // Wait for the server to enforce the soft limit.
+  SleepFor(kSoftLimitGracePeriod);
+
+  DoRedisTestApproxInt(__LINE__, {"PUBLISH", topic1, "whatever"}, 1, 1);
+  ASSERT_NO_FATALS(SyncClient());
+  for (int i = 15; i < 30; i++) {
+    // Now send msg1 to topic 1.
+    auto msg = Substitute("trial-$0 : $1", i, padding);
+    VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
+    DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 0);
+    ASSERT_NO_FATALS(SyncClient());
+  }
+
+  // sc1 should have already been disconnected.
+  UseClient(sc1);
+  DoRedisTestExpectError(__LINE__, {});
+}
+
+TEST_F(TestRedisServiceExternal, TestSlowSubscribersHardLimit) {
+  expected_no_sessions_ = true;
+
+  auto ts0 = external_mini_cluster()->tablet_server(0);
+  auto host0 = ts0->bind_host();
+  auto port0 = ts0->redis_rpc_port();
+
+  auto sc1 = std::make_shared<RedisClient>(host0, port0);
+  auto pc1 = std::make_shared<RedisClient>(host0, port0);
+
+  const string topic1 = "topic1";
+  const string padding(1_MB, 'x');
+
+  UseClient(sc1);
+  DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  SyncClient();
+
+  UseClient(pc1);
+  // Write approx 32MB of data.
+  for (int i = 0; i < 32; i++) {
+    // Now send msg1 to topic 1.
+    auto msg = Substitute("trial-$0 : $1", i, padding);
+    VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
+    DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 1);
+    ASSERT_NO_FATALS(SyncClient());
+  }
+
+  // Let's allow for some msgs to be either sent to the subscriber or unsent, to account for
+  // buffering in the lower layers.
+  for (int i = 32; i < 40; i++) {
+    auto msg = Substitute("trial-$0 : $1", i, padding);
+    VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
+    DoRedisTestApproxInt(__LINE__, {"PUBLISH", topic1, msg}, 1, 1);
+    ASSERT_NO_FATALS(SyncClient());
+  }
+
+  // The slow subscriber should have been disconnected. Expect the msg to be sent to no one.
+  for (int i = 40; i < 50; i++) {
+    // Now send msg1 to topic 1.
+    auto msg = Substitute("trial-$0 : $1", i, padding);
+    VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
+    DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 0);
+    ASSERT_NO_FATALS(SyncClient());
+  }
+
+  UseClient(sc1);
+  // sc1 should have already been disconnected.
+  DoRedisTestExpectError(__LINE__, {});
 }
 
 TEST_F(TestRedisServiceExternal, SubscribedClientMode) {

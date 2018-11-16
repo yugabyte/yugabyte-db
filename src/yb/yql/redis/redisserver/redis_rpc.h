@@ -57,14 +57,16 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
 
   static std::string Name() { return "Redis"; }
 
-  RedisClientMode ClientMode() { return mode_; }
+  RedisClientMode ClientMode() { return mode_.load(std::memory_order_acquire); }
 
-  void SetClientMode(RedisClientMode mode) { mode_ = mode; }
+  void SetClientMode(RedisClientMode mode) { mode_.store(mode, std::memory_order_release); }
 
   void SetCleanupHook(std::function<void()> hook) { cleanup_hook_ = std::move(hook); }
 
   // Shutdown this context. Clean up the subscriptions if any.
   void Shutdown(const Status& status) override;
+
+  void ReportPendingWriteBytes(size_t bytes_in_queue) override;
 
  private:
   void Connected(const rpc::ConnectionPtr& connection) override {}
@@ -88,7 +90,8 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
   size_t end_of_batch_ = 0;
   std::atomic<bool> authenticated_{false};
   std::string redis_db_name_ = "0";
-  RedisClientMode mode_ = RedisClientMode::kNormal;
+  std::atomic<RedisClientMode> mode_{RedisClientMode::kNormal};
+  CoarseTimePoint soft_limit_exceeded_since_{CoarseTimePoint::max()};
   std::function<void()> cleanup_hook_;
 
   MemTrackerPtr call_mem_tracker_;
