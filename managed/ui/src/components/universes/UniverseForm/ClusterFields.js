@@ -605,10 +605,10 @@ export default class ClusterFields extends Component {
 
     let universeTaskParams = {};
     if (isNonEmptyObject(universeConfigTemplate.data)) {
-      universeTaskParams = _.clone(universeConfigTemplate.data, true);
+      universeTaskParams = _.cloneDeep(universeConfigTemplate.data);
     }
     if (this.props.type === "Async" && !isDefinedNotNull(getReadOnlyCluster(currentUniverse.data.universeDetails.clusters))) {
-      universeTaskParams = _.clone(currentUniverse.data.universeDetails, true);
+      universeTaskParams = _.cloneDeep(currentUniverse.data.universeDetails);
     }
     if (isNonEmptyObject(currentUniverse.data)) {
       universeTaskParams.universeUUID = currentUniverse.data.universeUUID;
