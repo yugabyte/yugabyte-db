@@ -7245,6 +7245,60 @@ missing policy roles, like so:
     #     Missing policy roles:
     #         atable_apolicy_role_one
 
+### `policy_cmd_is()` ###
+
+    SELECT policy_cmd_is( :schema, :table, :policy, :command, :description );
+    SELECT policy_cmd_is( :schema, :table, :policy, :command );
+    SELECT policy_cmd_is( :table, :policy,  :command, :description );
+    SELECT policy_cmd_is( :table, :policy,  :command );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:table`.
+
+`:table`
+: Name of a table to which `:policy` applies.
+
+`:policy`
+: Name of a policy.
+
+`:command`
+: The command type to which the `:policy` is applied.
+
+`:description`
+: A short description of the test.
+
+This function tests whether the command to which policy applies is same as
+command that is given in function arguments.
+
+The available policy `:command` types are:
+
+* SELECT
+* INSERT
+* UPDATE
+* DELETE
+* ALL
+
+If the `:schema` argument is omitted, the table must be visible in the search
+path, excluding `pg_catalog` and `information_schema`. If the `:description` is
+omitted (but `:schema` is present, be sure to cast `:policy` to name), a
+generally useful default description will be generated. Example:
+
+    SELECT policy_cmd_is(
+        'myschema',
+        'atable',
+        'apolicy'::NAME
+        'all'
+    );
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing policy command, like so:
+
+    # Failed test 13: "Policy apolicy for table myschema.atable should apply to ALL command"
+    #         have: INSERT
+    #         want: ALL
+
 No Test for the Wicked
 ======================
 
