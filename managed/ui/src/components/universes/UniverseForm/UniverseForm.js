@@ -179,7 +179,8 @@ class UniverseForm extends Component {
           numVolumes: formValues[clusterType].numVolumes,
           diskIops: formValues[clusterType].diskIops,
           mountPoints: formValues[clusterType].mountPoints,
-          ebsType: formValues[clusterType].ebsType
+          ebsType: formValues[clusterType].ebsType,
+          storageClass: formValues[clusterType].storageClass
         },
         spotPrice: normalizeToPositiveFloat(formValues[clusterType].spotPrice)
       };
@@ -351,7 +352,7 @@ class UniverseForm extends Component {
       <Grid id="page-wrapper" fluid={true} className="universe-form-new">
         <DeleteUniverseContainer visible={modal.showModal && modal.visibleModal==="deleteReadReplicaModal"}
                                onHide={closeModal} title="Delete Read Replica of " body="Are you sure you want to delete this read replica cluster?" type="async"/>
-        {pageTitle} 
+        {pageTitle}
         <form name="UniverseForm" className="universe-form-container" onSubmit={handleSubmit(this.handleSubmitButtonClick)}>
           {clusterForm}
           <div className="form-action-button-container">
@@ -378,7 +379,7 @@ class PrimaryClusterFields extends Component {
       <Fields names={['primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList', 'primary.replicationFactor',
         'primary.numNodes', 'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags', 'primary.ybSoftwareVersion',
         'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType', 'primary.spotPrice', 'primary.useSpotPrice',
-        'primary.assignPublicIP', 'primary.useTimeSync']} component={ClusterFields} {...this.props} clusterType={"primary"} />
+        'primary.assignPublicIP', 'primary.useTimeSync', 'primary.storageClass']} component={ClusterFields} {...this.props} clusterType={"primary"} />
     );
   }
 }
@@ -389,7 +390,7 @@ class ReadOnlyClusterFields extends Component {
       <Fields names={['primary.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
         'async.numNodes', 'async.instanceType', 'async.ybSoftwareVersion', 'async.diskIops',
         'async.numVolumes','async.volumeSize', 'async.spotPrice', 'async.useSpotPrice',
-        'async.ebsType', 'async.assignPublicIP', 'async.useTimeSync']}
+        'async.ebsType', 'async.assignPublicIP', 'async.useTimeSync', 'async.storageClass']}
               component={ClusterFields} {...this.props} clusterType={"async"}/>
     );
   }

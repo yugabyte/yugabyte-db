@@ -176,6 +176,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].volumeSize = userIntent.deviceInfo.volumeSize;
     data[clusterType].ebsType = userIntent.deviceInfo.ebsType;
     data[clusterType].mountPoints = userIntent.deviceInfo.mountPoints;
+    data[clusterType].storageClass = userIntent.deviceInfo.storageClass;
 
     data[clusterType].regionList = cluster.regions.map((item) => {
       return {value: item.uuid, name: item.name, label: item.name};
@@ -238,11 +239,11 @@ function mapStateToProps(state, ownProps) {
       'formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
       'primary.numNodes', 'primary.instanceType', 'primary.replicationFactor', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
       'primary.masterGFlags', 'primary.tserverGFlags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType',
-      'primary.diskIops', 'primary.spotPrice', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync',
+      'primary.diskIops', 'primary.spotPrice', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync', 'primary.storageClass',
       'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
       'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.spotPrice', 'async.ybSoftwareVersion', 'async.accessKeyCode',
-      'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.ebsType', 'async.assignPublicIP', 'async.mountPoints', 'async.useTimeSync',
-      'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags')
+      'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.ebsType', 'async.assignPublicIP', 'async.mountPoints',
+      'async.useTimeSync', 'async.storageClass', 'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags')
   };
 }
 

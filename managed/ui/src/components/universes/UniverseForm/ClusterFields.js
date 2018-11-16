@@ -47,7 +47,8 @@ const initialState = {
   spotPrice: normalizeToPositiveFloat('0.00'),
   assignPublicIP: true,
   useTimeSync: false,
-  gettingSuggestedSpotPrice: false
+  gettingSuggestedSpotPrice: false,
+  storageClass: ''
 };
 
 
@@ -124,6 +125,7 @@ export default class ClusterFields extends Component {
           ybSoftwareVersion: userIntent.ybSoftwareVersion,
           accessKeyCode: userIntent.accessKeyCode,
           deviceInfo: userIntent.deviceInfo,
+          storageClass: userIntent.deviceInfo.storageClass,
           ebsType: ebsType,
           regionList: userIntent.regionList,
           volumeType: (ebsType === null) ? "SSD" : "EBS",
@@ -221,6 +223,11 @@ export default class ClusterFields extends Component {
     if (isNonEmptyArray(nextProps.softwareVersions) && isNonEmptyObject(this.props.formValues[clusterType]) && !isNonEmptyString(this.props.formValues[clusterType].ybSoftwareVersion)) {
       this.setState({ybSoftwareVersion: nextProps.softwareVersions[0]});
       this.props.updateFormField(`${clusterType}.ybSoftwareVersion`, nextProps.softwareVersions[0]);
+    }
+
+    if (isNonEmptyArray(this.getStorageClasses()) && !isDefinedNotNull(this.state.storageClass)) {
+      this.setState({storageClass: this.getStorageClasses()[0]});
+      this.props.updateFormField(`${clusterType}.storageClass`, this.getStorageClasses()[0]);
     }
 
     // Set spot price
@@ -416,7 +423,8 @@ export default class ClusterFields extends Component {
         accessKeyCode: formValues[clusterType].accessKeyCode,
         gflags: formValues[clusterType].gflags,
         spotPrice: formValues[clusterType].spotPrice,
-        useTimeSync: formValues[clusterType].useTimeSync
+        useTimeSync: formValues[clusterType].useTimeSync,
+        storageClass: formValues[clusterType].storageClass
       };
     }
   };
@@ -624,7 +632,8 @@ export default class ClusterFields extends Component {
         numVolumes: formValues[clusterType].numVolumes,
         mountPoints: formValues[clusterType].mountPoints,
         ebsType: formValues[clusterType].ebsType,
-        diskIops: formValues[clusterType].diskIops
+        diskIops: formValues[clusterType].diskIops,
+        storageClass: formValues[clusterType].storageClass
       },
       accessKeyCode: formValues[clusterType].accessKeyCode,
       spotPrice: formValues[clusterType].spotPrice
@@ -691,6 +700,11 @@ export default class ClusterFields extends Component {
     this.props.updateFormField(`${clusterType}.accessKeyCode`, event.target.value);
   }
 
+  storageClassChanged = (value) => {
+    const {clusterType} = this.props;
+    this.props.updateFormField(`${clusterType}.storageClass`, value);
+  }
+
   instanceTypeChanged(value) {
     const {updateFormField, clusterType} = this.props;
     const instanceTypeValue = value;
@@ -729,6 +743,18 @@ export default class ClusterFields extends Component {
     }
   }
 
+  getStorageClasses() {
+    const currentProvider = this.getCurrentProvider(this.state.providerSelected);
+    if (!isDefinedNotNull(currentProvider) || currentProvider.code !== "kubernetes") {
+      return null;
+    }
+    if (!isDefinedNotNull(currentProvider.config.KUBECONFIG_STORAGE_CLASSES)) {
+      return ['standard'];
+    } else {
+      return currentProvider.config.KUBECONFIG_STORAGE_CLASSES.split(",");
+    }
+  }
+
   render() {
     const {clusterType, cloud, softwareVersions, accessKeys, universe, cloud: {suggestedSpotPrice}, formValues} = this.props;
     const self = this;
@@ -759,6 +785,7 @@ export default class ClusterFields extends Component {
     let ebsTypeSelector = <span/>;
     let deviceDetail = null;
     let iopsField = <span/>;
+    let storageClassField = <span/>;
     function volumeTypeFormat(num) {
       return num + ' GB';
     }
@@ -792,6 +819,19 @@ export default class ClusterFields extends Component {
         // We don't want to keep the volume fixed in case of Kubernetes.
         const fixedVolumeInfo = self.state.volumeType === 'SSD' &&
                                 currentProvider.code !== 'kubernetes';
+        if (currentProvider.code === 'kubernetes') {
+          const storageClassOptions = this.getStorageClasses().map(function(storageClassName, idx) {
+            return (
+              <option key={"storageClass-" + idx} value={storageClassName}>
+                {storageClassName}
+              </option>
+            );
+          });
+
+          storageClassField = (<Field name={`${clusterType}.storageClass`} type="select"
+            component={YBSelectWithLabel} label="Storage Class" readOnly={isFieldReadOnly}
+            options={storageClassOptions} onInputChanged={self.storageClassChanged} />);
+        }
 
         const isIoType = deviceInfo.ebsType === 'IO1';
         if (isIoType) {
@@ -1069,7 +1109,7 @@ export default class ClusterFields extends Component {
                        options={universeInstanceTypeList} onInputChanged={this.instanceTypeChanged} readOnlySelect={isInstanceTypeReadOnly}/>
               </div>
             </Col>
-            <Col sm={12} md={12} lg={6}> 
+            <Col sm={12} md={12} lg={6}>
               {deviceDetail &&
                 <div className="form-right-aligned-labels">
                   <div className="form-inline-controls">
@@ -1093,6 +1133,7 @@ export default class ClusterFields extends Component {
             </Col>
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
+                {storageClassField}
                 {spotPriceToggle}
                 {spotPriceField}
                 {assignPublicIP}
