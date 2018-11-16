@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -67,7 +68,8 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Removing)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
-      if (instanceExists(taskParams())) {
+      boolean instanceAlive = instanceExists(taskParams());
+      if (instanceAlive) {
         String masterAddrs = universe.getMasterAddresses();
         // Remove the master on this node from master quorum and update its state from YW DB,
         // only if it reachable.
@@ -107,9 +109,13 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       createPlacementInfoTask(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
           .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
-      // Wait for tablet quorums to remove the blacklisted tserver.
-      createWaitForDataMoveTask()
-          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      // Wait for tablet quorums to remove the blacklisted tserver. Do not perform load balance
+      // if node is not reachable so as to avoid cases like 1 node in an 3 node cluster is being
+      // removed and we know LoadBalancer will not be able to handle that.
+      if (instanceAlive) {
+        createWaitForDataMoveTask()
+            .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      }
 
       // Remove master status (even when it does not exists or is not reachable).
       createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
