@@ -5622,8 +5622,8 @@ CreateUserStmt:
  *****************************************************************************/
 
 AlterRoleStmt:
-  ALTER ROLE role_name optRoleOptionList {
-    $$ = MAKE_NODE(@1, PTAlterRole, $3 , $4);
+  ALTER ROLE role_name WITH RoleOptionList {
+    $$ = MAKE_NODE(@1, PTAlterRole, $3 , $5);
   }
 ;
 
@@ -8688,8 +8688,6 @@ RenameStmt:
   | ALTER TRIGGER name ON qualified_name RENAME TO name {
   }
   | ALTER EVENT TRIGGER name RENAME TO name {
-  }
-  | ALTER ROLE RoleId RENAME TO RoleId {
   }
   | ALTER USER RoleId RENAME TO RoleId {
   }

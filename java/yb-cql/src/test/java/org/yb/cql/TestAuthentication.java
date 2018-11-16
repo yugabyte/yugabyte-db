@@ -151,7 +151,7 @@ public class TestAuthentication extends BaseAuthenticationCQLTest {
   @Test(timeout = 100000)
   public void testAlterNonExistingRole() throws Exception {
     Session s = getDefaultSession();
-    String alterStmt = "ALTER ROLE alter_test_5";
+    String alterStmt = "ALTER ROLE alter_test_5 WITH LOGIN = false";
 
     thrown.expect(com.datastax.driver.core.exceptions.InvalidQueryException.class);
     thrown.expectMessage("Role alter_test_5 does not exist");
