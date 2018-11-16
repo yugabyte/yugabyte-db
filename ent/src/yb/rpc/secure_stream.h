@@ -89,6 +89,10 @@ class SecureStream : public Stream, public StreamContext {
   static StreamFactoryPtr Factory(
       StreamFactoryPtr lower_layer_factory, SecureContext* context);
 
+  size_t GetPendingWriteBytes() override {
+    return lower_stream_->GetPendingWriteBytes();
+  }
+
  private:
   CHECKED_STATUS Start(bool connect, ev::loop_ref* loop, StreamContext* context) override;
   void Close() override;
