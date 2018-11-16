@@ -15,6 +15,9 @@ public class DeviceInfo {
   // Desired Iops for the volumes mounted on this instance (if specified).
   public Integer diskIops;
 
+  // Name of storage class (if specified)
+  public String storageClass = "standard";
+
   // Comma separated list of mount points for the devices in each instance (if specified).
   public String mountPoints;
 
