@@ -98,15 +98,23 @@ public class UniverseController extends AuthenticatedController {
   public Result configure(UUID customerUUID) {
     try {
       ObjectNode formData = (ObjectNode)request().body().asJson();
-      ClusterType currentClusterType = ClusterType.valueOf(formData.get("currentClusterType").asText());
-      UniverseDefinitionTaskParams.ClusterOperationType clusterOpType =
-          UniverseDefinitionTaskParams.ClusterOperationType.valueOf(formData.get("clusterOperation").asText());
-      UniverseDefinitionTaskParams taskParams = bindFormDataToTaskParams(formData);
+
       // Verify the customer with this universe is present.
       Customer customer = Customer.get(customerUUID);
       if (customer == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
+
+      JsonNode clustType = formData.get("currentClusterType");
+      JsonNode clustOp = formData.get("clusterOperation");
+      if (!formData.hasNonNull("currentClusterType") || clustType.asText().isEmpty() ||
+          !formData.hasNonNull("clusterOperation") || clustOp.asText().isEmpty()) {
+        return ApiResponse.error(BAD_REQUEST, "Invalid currentClusterType or clusterOperation.");
+      }
+      ClusterType currentClusterType = ClusterType.valueOf(clustType.asText());
+      UniverseDefinitionTaskParams.ClusterOperationType clusterOpType =
+          UniverseDefinitionTaskParams.ClusterOperationType.valueOf(clustOp.asText());
+      UniverseDefinitionTaskParams taskParams = bindFormDataToTaskParams(formData);
 
       // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster uuid.
       Cluster c = currentClusterType.equals(ClusterType.PRIMARY) ?

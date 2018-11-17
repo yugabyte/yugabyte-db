@@ -1504,8 +1504,15 @@ public class PlacementInfoUtil {
     if (regionList.size() > 1) {
       return true;
     }
-    if (Region.get(regionList.get(0)).zones != null &&
-        Region.get(regionList.get(0)).zones.size() > 1) {
+    if (regionList.get(0) == null || regionList.get(0).toString().isEmpty()) {
+        throw new RuntimeException("Invalid region uuid " + regionList.get(0));
+    }
+    Region region = Region.get(regionList.get(0));
+    if (region == null) {
+      throw new RuntimeException("Invalid region list, region not found " + regionList);
+    }
+    if (region.zones != null &&
+        region.zones.size() > 1) {
       return true;
     }
     return false;
