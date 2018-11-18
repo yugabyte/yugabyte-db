@@ -45,31 +45,11 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   // Value that we insert into the table.
   private static final int VALUE = 5;
 
-  // Type of resources.
-  private static final String ALL_KEYSPACES = "ALL KEYSPACES";
-  private static final String KEYSPACE = "KEYSPACE";
-  private static final String TABLE = "TABLE";
-  private static final String ALL_ROLES = "ALL ROLES";
-  private static final String ROLE = "ROLE";
-
   // Used for GRANT/REVOKE roles.
   private static final String GRANT = "grant";
   private static final String REVOKE = "revoke";
 
-  // Permissions.
-  private static final String ALL = "ALL";
-  private static final String ALTER = "ALTER";
-  private static final String AUTHORIZE = "AUTHORIZE";
-  private static final String CREATE = "CREATE";
-  private static final String DESCRIBE = "DESCRIBE";
-  private static final String DROP = "DROP";
-  private static final String MODIFY = "MODIFY";
-  private static final String SELECT = "SELECT";
-  // Permissions in the same order as in catalog_manager.cc.
-  private static final List<String> ALL_PERMISSIONS =
-      Arrays.asList(ALTER, AUTHORIZE, CREATE, DESCRIBE, DROP, MODIFY, SELECT);
-
-  // Session using 'cassandra' role.
+   // Session using 'cassandra' role.
   private Session s = null;
 
   // Session using the created role.
@@ -166,7 +146,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
   private void grantPermission(String permission, String resourceType, String resource,
                                String role) throws Exception {
-    s.execute(String.format("GRANT %s ON %s %s TO %s", permission, resourceType, resource, role));
+    grantPermission(permission, resourceType, resource, role, s);
   }
 
   private void grantAllPermissionsExcept(List<String> exceptions, String resourceType,

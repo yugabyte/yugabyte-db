@@ -4214,7 +4214,21 @@ Status CatalogManager::CreateRole(const CreateRoleRequestPB* req,
   {
     TRACE("Acquired catalog manager lock");
     std::lock_guard<LockType> l_big(lock_);
+    // Only a SUPERUSER role can create another SUPERUSER role. In Apache Cassandra this gets
+    // checked before the existence of the new role.
+    if (req->superuser()) {
+      scoped_refptr<RoleInfo> creator_role = FindPtrOrNull(roles_map_, req->creator_role_name());
+      if (creator_role == nullptr) {
+        s = STATUS_SUBSTITUTE(NotFound, "role $0 does not exist", req->creator_role_name());
+        return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+      }
 
+      auto clr = creator_role->LockForRead();
+      if (!clr->data().pb.is_superuser()) {
+        s = STATUS(NotAuthorized, "Only superusers can create a role with superuser status");
+        return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+      }
+    }
     if (FindPtrOrNull(roles_map_, req->name()) != nullptr) {
       s = STATUS(AlreadyPresent,
                  Substitute("Role $0 already exists", req->name()));

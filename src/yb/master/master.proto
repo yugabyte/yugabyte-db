@@ -113,11 +113,11 @@ message MasterErrorPB {
     PARALLEL_SNAPSHOT_OPERATION = 25;
     SNAPSHOT_IS_NOT_READY = 26;
 
-    // Invalid Roles
+    // Roles and permissions errors.
     ROLE_ALREADY_PRESENT = 27;
     ROLE_NOT_FOUND = 28;
     INVALID_REQUEST = 29;
-    PERMISSION_NOT_FOUND = 32;
+    NOT_AUTHORIZED = 32;
 
     // Indicator to client that the are leaders on preferred only operation can be retried.
     CAN_RETRY_ARE_LEADERS_ON_PREFERRED_ONLY_CHECK = 30;
