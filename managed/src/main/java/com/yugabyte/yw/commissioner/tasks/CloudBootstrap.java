@@ -88,15 +88,10 @@ public class CloudBootstrap extends CloudTaskBase {
   public void run() {
     subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
     Provider p = Provider.get(taskParams().providerUUID);
-
     if (p.code.equals(Common.CloudType.gcp.toString())) {
       createCloudSetupTask()
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
     } else if (p.code.equals(Common.CloudType.aws.toString())) {
-      if (taskParams().destVpcId != null && !taskParams().destVpcId.isEmpty() &&
-          !(taskParams().hostVpcRegion != null && !taskParams().hostVpcRegion.isEmpty())) {
-        throw new RuntimeException("Using destVpcId with AWS requires also passing in hostVpcRegion.");
-      }
       createCloudSetupTask()
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
     }
