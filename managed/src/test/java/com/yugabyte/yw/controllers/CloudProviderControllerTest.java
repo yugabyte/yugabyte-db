@@ -31,6 +31,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiUtils;
@@ -76,6 +77,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   Customer customer;
 
   AccessManager mockAccessManager;
+  CloudQueryHelper mockQueryHelper;
   DnsManager mockDnsManager;
   NetworkManager mockNetworkManager;
   TemplateManager mockTemplateManager;
@@ -84,6 +86,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   protected Application provideApplication() {
     ApiHelper mockApiHelper = mock(ApiHelper.class);
     mockAccessManager = mock(AccessManager.class);
+    mockQueryHelper = mock(CloudQueryHelper.class);
     mockDnsManager = mock(DnsManager.class);
     mockNetworkManager = mock(NetworkManager.class);
     mockTemplateManager = mock(TemplateManager.class);
@@ -91,6 +94,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
         .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
+        .overrides(bind(CloudQueryHelper.class).toInstance(mockQueryHelper))
         .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
         .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
         .overrides(bind(TemplateManager.class).toInstance(mockTemplateManager))
@@ -406,6 +410,38 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Result result = createProvider(bodyJson);
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertInternalServerError(result, "Invalid devops API response: ");
+  }
+
+  @Test
+  public void testGcpBootstrapMultiRegionNoRegionInput() {
+    Provider provider = ModelFactory.gcpProvider(customer);
+    ObjectNode bodyJson = Json.newObject();
+    prepareBootstrap(bodyJson, provider, true);
+  }
+
+  @Test
+  public void testGcpBootstrapMultiRegionSomeRegionInput() {
+    Provider provider = ModelFactory.gcpProvider(customer);
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode perRegionMetadata = Json.newObject();
+    perRegionMetadata.put("region1", Json.newObject());
+    bodyJson.put("perRegionMetadata", perRegionMetadata);
+    prepareBootstrap(bodyJson, provider, false);
+  }
+
+  private void prepareBootstrap(
+      ObjectNode bodyJson, Provider provider, boolean expectCallToGetRegions) {
+    when(mockQueryHelper.getRegions(provider.uuid)).thenReturn(Json.parse("[\"region1\",\"region2\"]"));
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("POST",
+        "/api/customers/" + customer.uuid + "/providers/" + provider.uuid + "/bootstrap",
+        customer.createAuthToken(),
+        bodyJson);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertNotNull(json);
+    assertNotNull(json.get("taskUUID"));
+    // TODO(bogdan): figure out a better way to inspect what tasks and with what params get started.
+    verify(mockQueryHelper, times(expectCallToGetRegions ? 1 : 0)).getRegions(provider.uuid);
   }
 
   private void mockDnsManagerListSuccess() {
