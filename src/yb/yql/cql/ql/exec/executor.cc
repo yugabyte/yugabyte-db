@@ -246,11 +246,14 @@ Status Executor::ExecPTNode(const PTCreateRole *tnode) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
     if (s.IsAlreadyPresent()) {
       error_code = ErrorCode::DUPLICATE_ROLE;
+    } else if (s.IsNotAuthorized()) {
+      error_code = ErrorCode::UNAUTHORIZED;
     }
 
     if (tnode->create_if_not_exists() && error_code == ErrorCode::DUPLICATE_ROLE) {
       return Status::OK();
     }
+
     // TODO (Bristy) : Set result_ properly.
     return exec_context_->Error(tnode, s, error_code);
   }

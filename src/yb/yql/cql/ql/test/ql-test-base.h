@@ -92,9 +92,14 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
 
   // Constructors.
   TestQLProcessor(std::shared_ptr<client::YBClient> client,
-                  std::shared_ptr<client::YBMetaDataCache> cache)
+                  std::shared_ptr<client::YBMetaDataCache> cache,
+                  const RoleName& role_name)
       : QLProcessor(client, cache, nullptr /* ql_metrics */, clock_,
-                    TransactionManagerProvider()) { }
+                    TransactionManagerProvider()) {
+    if (!role_name.empty()) {
+      ql_env_.ql_session()->set_current_role_name(role_name);
+    }
+  }
   virtual ~TestQLProcessor() { }
 
   void RunAsyncDone(
@@ -176,14 +181,14 @@ class QLTestBase : public YBTest {
   //------------------------------------------------------------------------------------------------
   // Test only the parser.
   CHECKED_STATUS TestParser(const std::string& stmt) {
-    QLProcessor *processor = GetQLProcessor();
+    QLProcessor* processor = GetQLProcessor();
     ParseTree::UniPtr parse_tree;
     return processor->Parse(stmt, &parse_tree);
   }
 
   // Tests parser and analyzer
-  CHECKED_STATUS TestAnalyzer(const string& stmt, ParseTree::UniPtr *parse_tree) {
-    QLProcessor *processor = GetQLProcessor();
+  CHECKED_STATUS TestAnalyzer(const string& stmt, ParseTree::UniPtr* parse_tree) {
+    QLProcessor* processor = GetQLProcessor();
     RETURN_NOT_OK(processor->Parse(stmt, parse_tree));
     RETURN_NOT_OK(processor->Analyze(parse_tree));
     return Status::OK();
@@ -194,13 +199,13 @@ class QLTestBase : public YBTest {
   void CreateSimulatedCluster(int num_tablet_servers = 1);
 
   // Create ql processor.
-  TestQLProcessor *GetQLProcessor();
+  TestQLProcessor* GetQLProcessor(const RoleName& role_name = "");
 
 
   //------------------------------------------------------------------------------------------------
   // Utility functions for QL tests.
 
-  void VerifyPaginationSelect(TestQLProcessor *processor,
+  void VerifyPaginationSelect(TestQLProcessor* processor,
                               const string &select_query,
                               int page_size,
                               const string expected_rows) {

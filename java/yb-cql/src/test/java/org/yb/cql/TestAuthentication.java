@@ -15,6 +15,7 @@ package org.yb.cql;
 import com.datastax.driver.core.*;
 import com.datastax.driver.core.ProtocolOptions.Compression;
 
+import com.datastax.driver.core.exceptions.UnauthorizedException;
 import org.junit.Test;
 
 import static org.yb.AssertionWrappers.*;
@@ -181,5 +182,53 @@ public class TestAuthentication extends BaseAuthenticationCQLTest {
     checkConnectivity(true, "fakeUser", "fakePass", Compression.SNAPPY, true);
     checkConnectivity(false, null, null, Compression.LZ4, true);
     checkConnectivity(false, null, null, Compression.SNAPPY, true);
+  }
+
+  @Test
+  public void testNonSuperuserRoleCannotCreateSuperuserRole() throws Exception {
+    Session s = getDefaultSession();
+    String roleName = "non_superuser";
+    String password = "abc";
+    testCreateRoleHelperWithSession(roleName, password, true, false, false, s);
+
+    grantPermission(CREATE, ALL_ROLES, "", roleName, s);
+
+    Session s2 = getSession(roleName, password);
+    // Verify that we can create a simple role.
+    s2.execute("CREATE ROLE simple_role");
+
+    // Verify that we can't create a superuser role.
+    thrown.expect(UnauthorizedException.class);
+    s2.execute("CREATE ROLE some_superuser_role WITH SUPERUSER = true");
+  }
+
+  @Test
+  public void testNonSuperuserRoleCannotCreateIfNotExistsSuperuserRole() throws Exception {
+    Session s = getDefaultSession();
+    String roleName = "non_superuser_2";
+    String password = "abc";
+    testCreateRoleHelperWithSession(roleName, password, true, false, false, s);
+
+    grantPermission(CREATE, ALL_ROLES, "", roleName, s);
+
+    Session s2 = getSession(roleName, password);
+    // Verify that we can create a simple role.
+    s2.execute("CREATE ROLE simple_role_2");
+
+    // Verify that CREATE IF NOT EXISTS for an existing role, fails with an unauthorized exception.
+    thrown.expect(UnauthorizedException.class);
+    s2.execute("CREATE ROLE IF NOT EXISTS simple_role_2 WITH SUPERUSER = true");
+  }
+
+  @Test
+  public void testSuperuserRoleCanCreateSuperuserRole() throws Exception {
+    Session s = getDefaultSession();
+    String roleName = "superuser_role";
+    String password = "abc";
+    testCreateRoleHelperWithSession(roleName, password, true, true, false, s);
+
+    // No need to grant permissions to the superuser role.
+    Session s2 = getSession(roleName, password);
+    s2.execute("CREATE ROLE some_superuser_role WITH SUPERUSER = true");
   }
 }

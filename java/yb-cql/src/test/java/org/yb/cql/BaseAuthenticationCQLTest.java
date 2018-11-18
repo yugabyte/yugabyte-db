@@ -27,6 +27,27 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class BaseAuthenticationCQLTest extends BaseCQLTest {
+  // Type of resources.
+  public static final String ALL_KEYSPACES = "ALL KEYSPACES";
+  public static final String KEYSPACE = "KEYSPACE";
+  public static final String TABLE = "TABLE";
+  public static final String ALL_ROLES = "ALL ROLES";
+  public static final String ROLE = "ROLE";
+
+  // Permissions.
+  public static final String ALL = "ALL";
+  public static final String ALTER = "ALTER";
+  public static final String AUTHORIZE = "AUTHORIZE";
+  public static final String CREATE = "CREATE";
+  public static final String DESCRIBE = "DESCRIBE";
+  public static final String DROP = "DROP";
+  public static final String MODIFY = "MODIFY";
+  public static final String SELECT = "SELECT";
+
+  // Permissions in the same order as in catalog_manager.cc.
+  public static final List<String> ALL_PERMISSIONS =
+      Arrays.asList(ALTER, AUTHORIZE, CREATE, DESCRIBE, DROP, MODIFY, SELECT);
+
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
     // Setting verbose level for debugging.
@@ -158,5 +179,10 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
         fail("Unable to find permission " + permission);
       }
     }
+  }
+
+  public void grantPermission(String permission, String resourceType, String resource,
+                               String role, Session s) throws Exception {
+    s.execute(String.format("GRANT %s ON %s %s TO %s", permission, resourceType, resource, role));
   }
 }
