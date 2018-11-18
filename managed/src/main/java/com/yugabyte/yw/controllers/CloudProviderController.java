@@ -332,12 +332,6 @@ public class CloudProviderController extends AuthenticatedController {
     }
     // Set the top-level provider info.
     taskParams.providerUUID = providerUUID;
-    // Do any special handling on GCP vs AWS.
-    String hostVpcRegion = taskParams.hostVpcRegion;
-    if (provider.code.equals("gcp")) {
-      // Ignore hostVpcRegion for GCP.
-      hostVpcRegion = null;
-    }
     if (taskParams.destVpcId != null && !taskParams.destVpcId.isEmpty()) {
       if (provider.code.equals("gcp")) {
         // We need to save the destVpcId into the provider config, because we'll need it during
@@ -349,15 +343,26 @@ public class CloudProviderController extends AuthenticatedController {
         provider.setConfig(config);
         provider.save();
       } else if (provider.code.equals("aws")) {
-        // TODO(bogdan): do we need this???
-        if (hostVpcRegion == null || hostVpcRegion.isEmpty()) {
-          return ApiResponse.error(
-              BAD_REQUEST, "For AWS provider, destVpcId requires hostVpcRegion");
+        return ApiResponse.error(
+            BAD_REQUEST, "For AWS provider, destVpcId requires hostVpcRegion");
+      }
+    }
+
+    // If the regionList is still empty by here, then we need to list the regions available.
+    if (taskParams.perRegionMetadata == null) {
+      taskParams.perRegionMetadata = new HashMap<>();
+    }
+    if (taskParams.perRegionMetadata.isEmpty()) {
+      CloudQueryHelper queryHelper = Play.current().injector().instanceOf(CloudQueryHelper.class);
+      JsonNode regionInfo = queryHelper.getRegions(provider.uuid);
+      if (regionInfo instanceof ArrayNode) {
+        ArrayNode regionListArray = (ArrayNode) regionInfo;
+        for (JsonNode region : regionListArray) {
+          taskParams.perRegionMetadata.put(
+              region.asText(), new CloudBootstrap.Params.PerRegionMetadata());
         }
       }
     }
-    // TODO(bogdan): do we need this???
-    taskParams.hostVpcRegion = hostVpcRegion;
 
     UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
     CustomerTask.create(customer,
@@ -373,6 +378,7 @@ public class CloudProviderController extends AuthenticatedController {
   }
 
   public Result cleanup(UUID customerUUID, UUID providerUUID) {
+    // TODO(bogdan): this is not currently used, be careful about the API...
     Form<CloudBootstrapFormData> formData = formFactory.form(CloudBootstrapFormData.class).bindFromRequest();
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
@@ -381,8 +387,11 @@ public class CloudProviderController extends AuthenticatedController {
     Provider provider = Provider.get(customerUUID, providerUUID);
     if (provider == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID:" + providerUUID);
+    } else {
+      return ApiResponse.error(BAD_REQUEST, "Internal API issues");
     }
 
+    /*
     CloudCleanup.Params taskParams = new CloudCleanup.Params();
     taskParams.providerUUID = providerUUID;
     taskParams.regionList = formData.get().regionList;
@@ -392,6 +401,7 @@ public class CloudProviderController extends AuthenticatedController {
     ObjectNode resultNode = Json.newObject();
     resultNode.put("taskUUID", taskUUID.toString());
     return ApiResponse.success(resultNode);
+    */
   }
 
   public Result edit(UUID customerUUID, UUID providerUUID) {
