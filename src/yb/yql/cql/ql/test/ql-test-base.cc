@@ -20,6 +20,8 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+DECLARE_bool(use_cassandra_authentication);
+
 namespace yb {
 namespace ql {
 
@@ -64,12 +66,15 @@ static void CallUseKeyspace(const TestQLProcessor::UniPtr& processor, const stri
   ASSERT_OK(processor->UseKeyspace(keyspace_name));
 }
 
-TestQLProcessor *QLTestBase::GetQLProcessor() {
+TestQLProcessor* QLTestBase::GetQLProcessor(const RoleName& role_name) {
+  if (!role_name.empty()) {
+    CHECK(FLAGS_use_cassandra_authentication);
+  }
   if (client_ == nullptr) {
     CreateSimulatedCluster();
   }
 
-  ql_processors_.emplace_back(new TestQLProcessor(client_, metadata_cache_));
+  ql_processors_.emplace_back(new TestQLProcessor(client_, metadata_cache_, role_name));
   CallUseKeyspace(ql_processors_.back(), kDefaultKeyspaceName);
   return ql_processors_.back().get();
 }

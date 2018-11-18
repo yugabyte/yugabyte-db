@@ -32,6 +32,8 @@
 
 DECLARE_bool(use_cassandra_authentication);
 
+constexpr const char* const kDefaultCassandraUsername = "cassandra";
+
 namespace yb {
 namespace master {
 class CatalogManager;
@@ -90,6 +92,11 @@ class QLTestAuthentication : public QLTestBase {
   void ExecuteValidModificationStmt(TestQLProcessor* processor, const string& stmt) {
     ASSERT_OK(processor->Run(stmt));
     version_++;
+    if (stmt.substr(0, 4) == "DROP" || stmt.substr(0, 6) == "CREATE") {
+      // These statements increment the role version twice, because they either grant or revoke
+      // permissions.
+      version_++;
+    }
     ASSERT_EQ(GetPermissionsVersion(), version_);
   }
 
@@ -145,9 +152,11 @@ class QLTestAuthentication : public QLTestBase {
     return Substitute("SELECT * FROM system_auth.roles where role='$0';", role_name);
   }
 
+ protected:
+  uint64_t version_ = 0;
+
  private:
   client::internal::PermissionsCache permissions_cache_;
-  uint64_t version_ = 0;
 };
 
 class TestQLPermission : public QLTestAuthentication {
@@ -163,6 +172,10 @@ class TestQLPermission : public QLTestAuthentication {
         "CREATE TABLE $0.$1(id int, name varchar, primary key(id));", keyspace_name, table_name);
     Status s = processor->Run(create_stmt);
     CHECK(s.ok());
+    // Creating a table grants all the permissions on the new table to the creator role, and this
+    // increments role's version.
+    version_++;
+    ASSERT_EQ(GetPermissionsVersion(), version_);
   }
 
   void CreateKeyspace(TestQLProcessor* processor, const string& keyspace_name) {
@@ -170,6 +183,10 @@ class TestQLPermission : public QLTestAuthentication {
         "CREATE KEYSPACE $0;", keyspace_name);
     Status s = processor->Run(create_stmt);
     CHECK(s.ok());
+    // Creating a keyspace grants all the permissions on the new keyspace to the creator role, and
+    // this increments role's version.
+    version_++;
+    ASSERT_EQ(GetPermissionsVersion(), version_);
   }
 
   string GrantAllKeyspaces(const string& permission, const string& role_name) const {
@@ -322,7 +339,7 @@ TEST_F(TestQLPermission, TestGrantRevokeAll) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
-  TestQLProcessor* processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
   // Ensure permission granted to proper role.
   const string role_name = "test_role";
   const string role_name_2 = "test_role_2";
@@ -397,7 +414,8 @@ TEST_F(TestQLPermission, TestGrantRevokeKeyspace) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
-  TestQLProcessor* processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
+
   const string role_name = "test_role";
   const string keyspace1 = "keyspace1";
   CreateRole(processor, role_name);
@@ -462,7 +480,7 @@ TEST_F(TestQLPermission, TestGrantToRole) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
-  TestQLProcessor* processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
   const string role_name = "test_role";
   const string role_name_2 = "test_role_2";
 
@@ -498,7 +516,7 @@ TEST_F(TestQLPermission, TestGrantRevokeTable) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
-  TestQLProcessor* processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
 
   const string role_name = "test_role";
   const string keyspace1 = "keyspace1";
@@ -565,7 +583,7 @@ TEST_F(TestQLPermission, TestGrantDescribe) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
-  TestQLProcessor* processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
 
   const string role1 = "test_role1";
   const string role2 = "test_role2";
@@ -722,7 +740,7 @@ TEST_F(TestQLRole, TestGrantRole) {
   ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
-  TestQLProcessor* processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
   const string role_1 = "role1";
   const string role_2 = "role2";
   const string role_3 = "role3";
@@ -808,7 +826,7 @@ TEST_F(TestQLRole, TestRevokeRole) {
   ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
-  TestQLProcessor* processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
   const string role1 = "role1";
   const string role2 = "role2";
   const string role3 = "role3";
@@ -853,7 +871,7 @@ TEST_F(TestQLRole, TestRoleQuerySimple) {
   ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
-  TestQLProcessor* processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
   CheckCreateAndDropRole(processor, "test_role1", "test_pw", true, true);
   // Test no password set
   CheckCreateAndDropRole(processor, "test_role2", nullptr, false, true);
@@ -864,7 +882,7 @@ TEST_F(TestQLRole, TestQLCreateRoleSimple) {
   ASSERT_NO_FATALS (CreateSimulatedCluster());
 
   // Get an available processor.
-  TestQLProcessor* processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
 
   // Valid Create Role Statements
   const string role1 = "manager1;";
@@ -965,7 +983,7 @@ TEST_F(TestQLRole, TestQLDropRoleSimple) {
   ASSERT_NO_FATALS (CreateSimulatedCluster());
 
   // Get an available processor.
-  TestQLProcessor* processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
 
   // Valid Create Role Statements
   const string role1 = "manager1;";
@@ -1006,7 +1024,7 @@ TEST_F(TestQLRole, TestQLDroppedRoleIsRemovedFromMemberOfField) {
   ASSERT_NO_FATALS (CreateSimulatedCluster());
 
   // Get an available processor.
-  TestQLProcessor* processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
 
   // Valid Create Role Statements
   const string role1 = "r1";
@@ -1039,7 +1057,7 @@ TEST_F(TestQLRole, TestMutationsGetCommittedOrAborted) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
-  TestQLProcessor* processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
   // Ensure permission granted to proper role
   const string role1 = "test_role_1";
   const string role2 = "test_role_2";
