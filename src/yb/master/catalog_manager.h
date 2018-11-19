@@ -51,7 +51,6 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master.pb.h"
-#include "yb/master/system_tables_handler.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_virtual_table.h"
 #include "yb/server/monitored_task.h"
@@ -364,6 +363,11 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Return the table type of the table.
   TableType GetTableType() const;
+
+  // Checks if the table is the internal redis table.
+  bool IsRedisTable() const {
+    return GetTableType() == REDIS_TABLE_TYPE;
+  }
 
   // Add a tablet to this table.
   void AddTablet(TabletInfo *tablet);
@@ -852,10 +856,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id,
                                     TabletLocationsPB* locs_pb);
 
-  // Retrieves a SystemTablet instance based on the existing system tablets already created in our
-  // syscatalog.
-  CHECKED_STATUS RetrieveSystemTablet(const TabletId& tablet_id,
-                                      std::shared_ptr<tablet::AbstractTablet>* tablet);
+  // Returns the system tablet in catalog manager by the id.
+  Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(const TabletId& id);
 
   // Handle a tablet report from the given tablet server.
   //
@@ -1015,10 +1017,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Is the table a system table?
   bool IsSystemTable(const TableInfo& table) const;
 
-  // Checks if the table is the internal redis table. Returns false if either the redis table or
-  // its namespace info is not found, and returns true otherwise.
-  bool IsRedisTable(const TableInfo& table) const;
-
   // Let the catalog manager know that we have received a response for a delete tablet request,
   // and that we either deleted the tablet successfully, or we received a fatal error.
   void NotifyTabletDeleteFinished(const TabletServerId& tserver_uuid, const TableId& table_id);
@@ -1134,10 +1132,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // the provided timeout, TimedOut Status otherwise.
   CHECKED_STATUS WaitForWorkerPoolTests(
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const;
-
-  size_t NumSystemTables() const {
-    return sys_tables_handler_.supported_system_tables().size();
-  }
 
   CHECKED_STATUS FindNamespace(const NamespaceIdentifierPB& ns_identifier,
                                scoped_refptr<NamespaceInfo>* ns_info) const;
@@ -1305,13 +1299,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Handle one of the tablets in a tablet reported.
   // Requires that the lock is already held.
   CHECKED_STATUS HandleReportedTablet(TSDescriptor* ts_desc,
-                              const ReportedTabletPB& report,
-                              ReportedTabletUpdatesPB *report_updates);
+                                      const ReportedTabletPB& report,
+                                      ReportedTabletUpdatesPB *report_updates);
 
   CHECKED_STATUS ResetTabletReplicasFromReportedConfig(const ReportedTabletPB& report,
-                                               const scoped_refptr<TabletInfo>& tablet,
-                                               TabletInfo::lock_type* tablet_lock,
-                                               TableInfo::lock_type* table_lock);
+                                                       const scoped_refptr<TabletInfo>& tablet,
+                                                       TabletInfo::lock_type* tablet_lock,
+                                                       TableInfo::lock_type* table_lock);
 
   // Register a tablet server whenever it heartbeats with a consensus configuration. This is
   // needed because we have logic in the Master that states that if a tablet
@@ -1684,7 +1678,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // and also the on-disk state of the consensus meta object.
   CHECKED_STATUS UpdateMastersListInMemoryAndDisk();
 
-  SystemTablesHandler sys_tables_handler_;
+  // Tablets of system tables on the master indexed by the tablet id.
+  std::unordered_map<std::string, std::shared_ptr<tablet::AbstractTablet>> system_tablets_;
 
   std::vector<PermissionType> all_permissions_ = {
       PermissionType::ALTER_PERMISSION, PermissionType::AUTHORIZE_PERMISSION,

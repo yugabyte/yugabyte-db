@@ -79,7 +79,7 @@ enum DataType {
   BINARY = 9;
   TIMESTAMP = 10;
   DECIMAL = 11;
-  VARINT = 12;  // VARINT is not yet fully implemented, but it is a CQL type.
+  VARINT = 12;
   INET = 13;
   LIST = 14;
   MAP = 15;

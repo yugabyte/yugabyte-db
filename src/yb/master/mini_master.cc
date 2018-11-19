@@ -210,9 +210,5 @@ std::string MiniMaster::bound_rpc_addr_str() const {
   return yb::ToString(bound_rpc_addr());
 }
 
-size_t MiniMaster::NumSystemTables() const {
-  return master_->NumSystemTables();
-}
-
 } // namespace master
 } // namespace yb
