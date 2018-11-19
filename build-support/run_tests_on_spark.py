@@ -59,6 +59,7 @@ from yb.common_util import set_to_comma_sep_str, get_bool_env_var  # noqa
 # Special Jenkins environment variables. They are propagated to tasks running in a distributed way
 # on Spark.
 JENKINS_ENV_VARS = [
+    "BUILD_TYPE",
     "BUILD_ID",
     "BUILD_NUMBER",
     "BUILD_TAG",

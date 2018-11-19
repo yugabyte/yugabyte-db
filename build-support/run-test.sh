@@ -73,8 +73,12 @@ umask 0002
 set_test_invocation_id
 trap cleanup EXIT
 
-set_common_test_paths
+if [[ -z ${BUILD_ROOT:-} ]]; then
+  handle_build_root_from_current_dir
+fi
 
+set_build_root
+set_common_test_paths
 if [[ $# -eq 1 && $1 == *\#* ]]; then
   # We are trying to run a specific test method or even a parameterized test.
   resolve_and_run_java_test "$1"

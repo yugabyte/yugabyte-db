@@ -23,12 +23,16 @@ import platform
 import re
 import subprocess
 import sys
+import logging
 
 
 from build_definitions import *
 import build_definitions
 import_submodules(build_definitions)
 
+sys.path = [os.path.join(os.path.dirname(__file__), '..', 'python')] + sys.path
+
+from yb.linuxbrew import get_linuxbrew_dir
 
 CLOUDFRONT_URL = 'http://d3dr9sfxru4sde.cloudfront.net/{}'
 
@@ -226,42 +230,10 @@ class Builder:
         if not is_linux():
             return
 
-        candidates = [
-            os.path.join(os.environ['HOME'], '.linuxbrew-yb-build')
-        ]
+        self.linuxbrew_dir = get_linuxbrew_dir()
 
-        version_for_jenkins_file = os.path.join(self.tp_dir, 'linuxbrew_version_for_jenkins.txt')
-        with open(version_for_jenkins_file, 'rt') as inp:
-            version_for_jenkins = inp.read().strip()
-
-        preferred_linuxbrew_dir = os.path.join(
-                '/n', 'jenkins', 'linuxbrew', 'linuxbrew_{}'.format(version_for_jenkins))
-        if os.path.isdir(preferred_linuxbrew_dir):
-            if is_jenkins_user():
-                # If we're running on Jenkins (or building something for consumption by Jenkins
-                # under the "jenkins" user), then the "Linuxbrew for Jenkins" directory takes
-                # precedence.
-                candidates.insert(0, preferred_linuxbrew_dir)
-            else:
-                # Otherwise, the user's local Linuxbrew build takes precedence.
-                candidates.append(preferred_linuxbrew_dir)
-        elif is_jenkins():
-            log("Warning: Linuxbrew directory referenced by '{}' does not exist: '{}', will "
-                    "attempt to use other location."
-                .format(version_for_jenkins_file, preferred_linuxbrew_dir))
-
-        for dir in candidates:
-            if os.path.isdir(dir) and \
-               os.path.isdir(os.path.join(dir, 'bin')) and \
-               os.path.isdir(os.path.join(dir, 'lib')) and \
-               os.path.isdir(os.path.join(dir, 'include')):
-                self.linuxbrew_dir = dir
-                self.using_linuxbrew = True
-                log("Using linuxbrew at: {}".format(self.linuxbrew_dir))
-                break
-
-        if self.using_linuxbrew:
-            os.environ['PATH']=os.path.join(self.linuxbrew_dir, 'bin') + ':' + os.environ['PATH']
+        if self.linuxbrew_dir:
+            os.environ['PATH'] = os.path.join(self.linuxbrew_dir, 'bin') + ':' + os.environ['PATH']
 
     def clean(self):
         heading('Clean')
@@ -508,6 +480,8 @@ class Builder:
             log_output(log_prefix, ['make', 'install'])
 
     def build_with_cmake(self, dep, extra_args=None, **kwargs):
+        log("Building dependency {} using CMake with arguments: {}".format(
+            dep, extra_args))
         log_prefix = self.log_prefix(dep)
         os.environ["YB_REMOTE_COMPILATION"] = "0"
 
@@ -635,7 +609,8 @@ class Builder:
     # dependency. The result is returned in the get_build_stamp_for_component_rv variable, which
     # should have been made local by the caller.
     def get_build_stamp_for_dependency(self, dep):
-        input_files_for_stamp = ['build_thirdparty.py',
+        input_files_for_stamp = ['yb_build_thirdparty_main.py',
+                                 'build_thirdparty.sh',
                                  os.path.join('build_definitions',
                                               '{}.py'.format(dep.name.replace('-', '_')))]
 

@@ -100,11 +100,25 @@ function(ENFORCE_OUT_OF_SOURCE_BUILD)
   endif()
 endfunction()
 
-function(DETECT_LINUXBREW)
+function(DETECT_BREW)
   # Detect Linuxbrew. The logic needs to be consistent with the detect_linuxbrew function in
   # common-build-env.sh.
   set(USING_LINUXBREW FALSE)
-  if(NOT APPLE)
+  set(USING_CUSTOM_HOMEBREW FALSE)
+  if(APPLE)
+    set(CUSTOM_HOMEBREW_DIR "$ENV{YB_CUSTOM_HOMEBREW_DIR}")
+    if("${CUSTOM_HOMEBREW_DIR}" STREQUAL "")
+      set(CUSTOM_HOMEBREW_DIR "$ENV{HOME}/.linuxbrew-yb-build")
+    endif()
+    if(EXISTS "${CUSTOM_HOMEBREW_DIR}/bin" AND
+       EXISTS "${CUSTOM_HOMEBREW_DIR}/lib")
+      message("Custom Homebrew installation found at ${CUSTOM_HOMEBREW_DIR}")
+      set(USING_CUSTOM_HOMEBREW TRUE)
+    else()
+      message("Not using custom Homebrew: no valid Homebewr installation found at "
+              "${CUSTOM_HOMEBREW_DIR}")
+    endif()
+  else()
     set(LINUXBREW_DIR "$ENV{YB_LINUXBREW_DIR}")
     if("${LINUXBREW_DIR}" STREQUAL "")
       set(LINUXBREW_DIR "$ENV{HOME}/.linuxbrew-yb-build")
@@ -118,13 +132,21 @@ function(DETECT_LINUXBREW)
               "${LINUXBREW_DIR}")
     endif()
   endif()
+
   if(NOT USING_LINUXBREW)
     set(LINUXBREW_DIR "/tmp/not-using-linuxbrew")
+  endif()
+  if(NOT USING_CUSTOM_HOMEBREW)
+    set(CUSTOM_HOMEBREW_DIR "/tmp/not-using-custom-homebrew")
   endif()
 
   set(USING_LINUXBREW "${USING_LINUXBREW}" PARENT_SCOPE)
   set(LINUXBREW_DIR "${LINUXBREW_DIR}" PARENT_SCOPE)
   set(LINUXBREW_LIB_DIR "${LINUXBREW_DIR}/lib" PARENT_SCOPE)
+
+  set(USING_CUSTOM_HOMEBREW "${USING_CUSTOM_HOMEBREW}" PARENT_SCOPE)
+  set(CUSTOM_HOMEBREW_DIR "${CUSTOM_HOMEBREW_DIR}" PARENT_SCOPE)
+  set(CUSTOM_HOMEBREW_LIB_DIR "${CUSTOM_HOMEBREW_DIR}/lib" PARENT_SCOPE)
 endfunction()
 
 # Ensures that the YB_COMPILER_TYPE environment variable matches the auto-detected compiler family.
@@ -485,6 +507,7 @@ add_custom_target(dummy_target ALL
   COMMENT "Dummy target for dependency resolution testing")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_modules")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_standard_modules")
 include(CMakeParseArguments)
 
 # Allow "make install" to not depend on all targets.
@@ -510,9 +533,9 @@ endif()
 # Make sure thirdparty stuff is up-to-date.
 if ("$ENV{NO_REBUILD_THIRDPARTY}" STREQUAL "")
   set(BUILD_THIRDPARTY_ARGS --build-type ${THIRDPARTY_INSTRUMENTATION_TYPE})
-  message("Invoking build_thirdparty.py with these arguments: ${BUILD_THIRDPARTY_ARGS}")
+  message("Invoking build_thirdparty.sh with these arguments: ${BUILD_THIRDPARTY_ARGS}")
   execute_process(
-    COMMAND ${YB_THIRDPARTY_DIR}/build_thirdparty.py ${BUILD_THIRDPARTY_ARGS}
+    COMMAND ${YB_THIRDPARTY_DIR}/build_thirdparty.sh ${BUILD_THIRDPARTY_ARGS}
     RESULT_VARIABLE THIRDPARTY_SCRIPT_RESULT)
   if (NOT (${THIRDPARTY_SCRIPT_RESULT} EQUAL 0))
     message(FATAL_ERROR "Thirdparty was built unsuccessfully, terminating.")
@@ -609,7 +632,7 @@ if(IS_CLANG)
   ADD_CXX_FLAGS("-Werror=implicit-fallthrough")
 endif()
 
-DETECT_LINUXBREW()
+DETECT_BREW()
 if(USING_LINUXBREW AND IS_CLANG)
   # We only need these when building using clang. If we use Linuxbrew's gcc, it should set the
   # equivalent of these options automatically.
@@ -620,6 +643,9 @@ endif()
 if(USING_LINUXBREW)
   # This is needed for finding correct versions of Flex, Bison, and other tools.
   set(CMAKE_PREFIX_PATH "${LINUXBREW_DIR}" ${CMAKE_PREFIX_PATH})
+endif()
+if(USING_CUSTOM_HOMEBREW)
+  set(CMAKE_PREFIX_PATH "${CUSTOM_HOMEBREW_DIR}" ${CMAKE_PREFIX_PATH})
 endif()
 
 # For both RocksDB and YugaByte code, we need to set the OS flag on Mac. Some code in RocksDB also
@@ -1265,7 +1291,7 @@ set(CMAKE_PREFIX_PATH ${YB_THIRDPARTY_INSTALLED_DEPS_DIR} ${CMAKE_PREFIX_PATH})
 
 set(YB_THIRDPARTY_INSTALLED_DIR ${YB_PREFIX_COMMON})
 
-# See thirdparty/build_thirdparty.py for an explanation of differences between installed and
+# See thirdparty/yb_build_thirdparty_main.py for an explanation of differences between installed and
 # installed-deps.
 ADD_GLOBAL_RPATH_ENTRY("${YB_THIRDPARTY_INSTALLED_DIR}/lib")
 ADD_GLOBAL_RPATH_ENTRY("${YB_THIRDPARTY_INSTALLED_DEPS_DIR}/lib")
@@ -1281,11 +1307,25 @@ if(IS_CLANG AND NOT "$ENV{YB_CLANG_PREFIX}" STREQUAL "")
   ADD_GLOBAL_RPATH_ENTRY("$ENV{YB_CLANG_PREFIX}/lib")
 endif()
 
+# -------------------------------------------------------------------------------------------------
+# Common setup allowing us to use Homebrew libraries on Darwin
+# -------------------------------------------------------------------------------------------------
+
+if(APPLE)
+  if ("$ENV{YB_CUSTOM_HOMEBREW_DIR}" STREQUAL "")
+    set(HOMEBREW_OPT_DIR "/usr/local/opt")
+  else()
+    set(HOMEBREW_OPT_DIR "$ENV{YB_CUSTOM_HOMEBREW_DIR}/opt")
+  endif()
+  message("HOMEBREW_OPT_DIR is ${HOMEBREW_OPT_DIR}")
+endif()
+
+# -------------------------------------------------------------------------------------------------
+
 ## OpenSSL
 if(APPLE)
-  # Not sure if we need a CMake variable or an environment variable, set both.
-  set(OPENSSL_ROOT_DIR "/usr/local/opt/openssl")
-  set(ENV{OPENSSL_ROOT_DIR} "${OPENSSL_ROOT_DIR}")
+  set(OPENSSL_ROOT_DIR "${HOMEBREW_OPT_DIR}/openssl")
+  message("Setting OPENSSL_ROOT_DIR to ${OPENSSL_ROOT_DIR}")
 endif()
 
 find_package(OpenSSL REQUIRED)
@@ -1293,6 +1333,36 @@ include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
 ADD_THIRDPARTY_LIB(openssl
   SHARED_LIB "${OPENSSL_CRYPTO_LIBRARY}"
   DEPS ${OPENSSL_LIB_DEPS})
+
+if (USING_CUSTOM_HOMEBREW)
+  # This is a work-around for the FindOpenSSL CMake module not finding OpenSSL inside a custom
+  # Homebrew installation directory. Instead, it finds OpenSSL in /usr/local/
+  if ("${OPENSSL_CRYPTO_LIBRARY}" MATCHES "^/usr/lib/.*")
+    set(OLD_OPENSSL_CRYPTO_LIBRARY "${OPENSSL_CRYPTO_LIBRARY}")
+    string(REGEX REPLACE "^/usr/" "${OPENSSL_ROOT_DIR}/"
+           OPENSSL_CRYPTO_LIBRARY "${OPENSSL_CRYPTO_LIBRARY}")
+    message("Auto-corrected OPENSSL_CRYPTO_LIBRARY from ${OLD_OPENSSL_CRYPTO_LIBRARY} to "
+            "${OPENSSL_CRYPTO_LIBRARY}")
+  endif()
+  if ("${OPENSSL_SSL_LIBRARY}" MATCHES "^/usr/lib/.*")
+    set(OLD_OPENSSL_SSL_LIBRARY "${OPENSSL_SSL_LIBRARY}")
+    string(REGEX REPLACE "^/usr/" "${OPENSSL_ROOT_DIR}/"
+           OPENSSL_SSL_LIBRARY  "${OPENSSL_SSL_LIBRARY}")
+    message("Auto-corrected OPENSSL_SSL_LIBRARY from ${OLD_OPENSSL_SSL_LIBRARY} to "
+            "${OPENSSL_SSL_LIBRARY}")
+  endif()
+  set(OPENSSL_LIBRARIES "${OPENSSL_CRYPTO_LIBRARY}" "${OPENSSL_SSL_LIBRARY}")
+  # Unset OpenSSL version because it might not be correct after we manually modified library 
+  # paths. However, we are not using this variable anywhere.
+  unset(OPENSSL_VERSION)
+endif()
+
+message("OPENSSL_CRYPTO_LIBRARY=${OPENSSL_CRYPTO_LIBRARY}")
+message("OPENSSL_SSL_LIBRARY=${OPENSSL_SSL_LIBRARY}")
+message("OPENSSL_FOUND=${OPENSSL_FOUND}")
+message("OPENSSL_INCLUDE_DIR=${OPENSSL_INCLUDE_DIR}")
+message("OPENSSL_LIBRARIES=${OPENSSL_LIBRARIES}")
+message("OPENSSL_VERSION=${OPENSSL_VERSION}")
 
 ## GLog
 find_package(GLog REQUIRED)
@@ -1535,7 +1605,7 @@ endforeach()
 include_directories(SYSTEM ${Boost_INCLUDE_DIR})
 
 if(APPLE)
-  set(ICU_ROOT "/usr/local/opt/icu4c")
+  set(ICU_ROOT "${HOMEBREW_OPT_DIR}/icu4c")
 endif()
 find_package(ICU COMPONENTS i18n uc REQUIRED)
 include_directories(SYSTEM ${ICU_INCLUDE_DIRS})
@@ -1545,6 +1615,8 @@ ADD_THIRDPARTY_LIB(icui18n
 ADD_THIRDPARTY_LIB(icuuc
   STATIC_LIB "${ICU_UC_LIBRARIES}"
   SHARED_LIB "${ICU_UC_LIBRARIES}")
+message("ICU_I18N_LIBRARIES=${ICU_I18N_LIBRARIES}")
+message("ICU_UC_LIBRARIES=${ICU_UC_LIBRARIES}")
 
 ## Libuv
 find_package(LibUv REQUIRED)
