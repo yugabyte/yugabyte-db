@@ -1,5 +1,4 @@
-#!/usr/bin/env bash
-
+#!/bin/bash
 #
 # Copyright (c) YugaByte, Inc.
 #
@@ -13,13 +12,13 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 #
+set -euo pipefail
 . "${BASH_SOURCE%/*}/../build-support/common-build-env.sh"
 
+activate_virtualenv
+export PYTHONPATH=$YB_SRC_ROOT/python:${PYTHONPATH:-}
 detect_brew
-
-if using_linuxbrew; then
-  echo "$YB_LINUXBREW_DIR"
-fi
-if using_custom_homebrew; then
-  echo "$YB_CUSTOM_HOMEBREW_DIR"
-fi
+add_brew_bin_to_path
+echo "YB_LINUXBREW_DIR=${YB_LINUXBREW_DIR:-undefined}"
+echo "YB_CUSTOM_HOMEBREW_DIR=${YB_CUSTOM_HOMEBREW_DIR:-undefined}"
+python2 "$YB_SRC_ROOT/thirdparty/yb_build_thirdparty_main.py" "$@"

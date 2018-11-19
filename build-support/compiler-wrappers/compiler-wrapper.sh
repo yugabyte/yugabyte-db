@@ -562,7 +562,7 @@ if "$has_yb_c_files" && [[ $PWD == $BUILD_ROOT/postgres_build/* ]]; then
   # that we had to disable by default in build_postgres.py.
   cmd+=( -Werror=unused-function )
 fi
-set_build_env_vars
+add_brew_bin_to_path
 
 # Make RPATHs relative whenever possible. This is an effort towards being able to relocate the
 # entire build root to a different path and still be able to run tests. Currently disabled for

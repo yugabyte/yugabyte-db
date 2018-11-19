@@ -33,4 +33,4 @@ class LibUvDependency(Dependency):
                                  ['-DCMAKE_BUILD_TYPE={}'.format(cmake_build),
                                   '-DCMAKE_POSITION_INDEPENDENT_CODE=On',
                                   '-DCMAKE_INSTALL_PREFIX={}'.format(builder.prefix),
-                                  '-DBUILD_SHARED_LIBS=On'])
+                                  '-DBUILD_SHARED_LIBS=On'] + get_openssl_related_cmake_args())
