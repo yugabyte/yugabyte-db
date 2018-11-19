@@ -188,7 +188,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
 
   unique_ptr<TestTableLoader> loader(new TestTableLoader());
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(master_->NumSystemTables(), loader->tables.size());
+  ASSERT_EQ(kNumSystemTables, loader->tables.size());
 
   // Create new table.
   const std::string table_id = "abc";
@@ -210,7 +210,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
 
-  ASSERT_EQ(1 + master_->NumSystemTables(), loader->tables.size());
+  ASSERT_EQ(1 + kNumSystemTables, loader->tables.size());
   ASSERT_TRUE(MetadatasEqual(table.get(), loader->tables[table_id]));
 
   // Update the table
@@ -224,14 +224,14 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
 
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(1 + master_->NumSystemTables(), loader->tables.size());
+  ASSERT_EQ(1 + kNumSystemTables, loader->tables.size());
   ASSERT_TRUE(MetadatasEqual(table.get(), loader->tables[table_id]));
 
   // Delete the table
   loader->Reset();
   ASSERT_OK(sys_catalog->DeleteItem(table.get()));
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(master_->NumSystemTables(), loader->tables.size());
+  ASSERT_EQ(kNumSystemTables, loader->tables.size());
 }
 
 // Verify that data mutations are not available from metadata() until commit.
@@ -325,7 +325,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
 
   unique_ptr<TestTabletLoader> loader(new TestTabletLoader());
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(master_->NumSystemTables(), loader->tablets.size());
+  ASSERT_EQ(kNumSystemTables, loader->tablets.size());
 
   // Add tablet1 and tablet2
   {
@@ -341,7 +341,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     l2->Commit();
 
     ASSERT_OK(sys_catalog->Visit(loader.get()));
-    ASSERT_EQ(2 + master_->NumSystemTables(), loader->tablets.size());
+    ASSERT_EQ(2 + kNumSystemTables, loader->tablets.size());
     ASSERT_TRUE(MetadatasEqual(tablet1.get(), loader->tablets[tablet1->id()]));
     ASSERT_TRUE(MetadatasEqual(tablet2.get(), loader->tablets[tablet2->id()]));
   }
@@ -358,7 +358,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
 
     loader->Reset();
     ASSERT_OK(sys_catalog->Visit(loader.get()));
-    ASSERT_EQ(2 + master_->NumSystemTables(), loader->tablets.size());
+    ASSERT_EQ(2 + kNumSystemTables, loader->tablets.size());
     ASSERT_TRUE(MetadatasEqual(tablet1.get(), loader->tablets[tablet1->id()]));
     ASSERT_TRUE(MetadatasEqual(tablet2.get(), loader->tablets[tablet2->id()]));
   }
@@ -386,7 +386,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     l3->Commit();
 
     ASSERT_OK(sys_catalog->Visit(loader.get()));
-    ASSERT_EQ(3 + master_->NumSystemTables(), loader->tablets.size());
+    ASSERT_EQ(3 + kNumSystemTables, loader->tablets.size());
     ASSERT_TRUE(MetadatasEqual(tablet1.get(), loader->tablets[tablet1->id()]));
     ASSERT_TRUE(MetadatasEqual(tablet2.get(), loader->tablets[tablet2->id()]));
     ASSERT_TRUE(MetadatasEqual(tablet3.get(), loader->tablets[tablet3->id()]));
@@ -401,7 +401,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     loader->Reset();
     ASSERT_OK(sys_catalog->DeleteItems(tablets));
     ASSERT_OK(sys_catalog->Visit(loader.get()));
-    ASSERT_EQ(1 + master_->NumSystemTables(), loader->tablets.size());
+    ASSERT_EQ(1 + kNumSystemTables, loader->tablets.size());
     ASSERT_TRUE(MetadatasEqual(tablet2.get(), loader->tablets[tablet2->id()]));
   }
 }

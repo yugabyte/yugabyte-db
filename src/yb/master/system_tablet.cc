@@ -54,23 +54,19 @@ HybridTime SystemTablet::DoGetSafeTime(
   return HybridTime::kMax;
 }
 
-CHECKED_STATUS SystemTablet::HandleRedisReadRequest(
-    MonoTime deadline, const ReadHybridTime& read_time,
-    const RedisReadRequestPB& redis_read_request, RedisResponsePB* response) {
-  return STATUS(NotSupported, "RedisReadRequest is not supported for system tablets!");
-}
-
-CHECKED_STATUS SystemTablet::HandleQLReadRequest(
-    MonoTime deadline, const ReadHybridTime& read_time, const QLReadRequestPB& ql_read_request,
-    const TransactionMetadataPB& transaction_metadata, tablet::QLReadRequestResult* result) {
+Status SystemTablet::HandleQLReadRequest(MonoTime deadline,
+                                         const ReadHybridTime& read_time,
+                                         const QLReadRequestPB& ql_read_request,
+                                         const TransactionMetadataPB& transaction_metadata,
+                                         tablet::QLReadRequestResult* result) {
   DCHECK(!transaction_metadata.has_transaction_id());
   return tablet::AbstractTablet::HandleQLReadRequest(
       deadline, read_time, ql_read_request, boost::none, result);
 }
 
-CHECKED_STATUS SystemTablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
-                                                      const size_t row_count,
-                                                      QLResponsePB* response) const {
+Status SystemTablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
+                                              const size_t row_count,
+                                              QLResponsePB* response) const {
   // We don't support pagination for system tablets. Although we need to return an OK() status
   // here since we don't want to raise this as an error to the client, but just want to avoid
   // populating any paging state here for the client.

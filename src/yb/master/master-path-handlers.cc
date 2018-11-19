@@ -481,8 +481,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 }
 
 bool MasterPathHandlers::IsSystemTable(const TableInfo& table) {
-  return master_->catalog_manager()->IsSystemTable(table) ||
-         master_->catalog_manager()->IsRedisTable(table);
+  return master_->catalog_manager()->IsSystemTable(table) || table.IsRedisTable();
 }
 
 void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,

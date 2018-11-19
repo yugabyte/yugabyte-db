@@ -72,7 +72,6 @@ set(MASTER_SRCS
   mini_master.cc
   sys_catalog.cc
   system_tablet.cc
-  system_tables_handler.cc
   ts_descriptor.cc
   ts_manager.cc
   yql_virtual_table.cc

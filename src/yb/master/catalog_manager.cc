@@ -111,6 +111,7 @@
 #include "yb/master/yql_size_estimates_vtable.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/rpc/messenger.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/tserver/tserver_admin.proxy.h"
@@ -1105,6 +1106,9 @@ Status CatalogManager::PrepareSystemTables() {
       kSystemAuthResourceRolePermissionsIndexTableName, kSystemAuthNamespaceName,
       kSystemAuthNamespaceId)));
 
+  // Ensure kNumSystemTables is in-sync with the system tables created.
+  DCHECK_EQ(system_tablets_.size(), kNumSystemTables);
+
   return Status::OK();
 }
 
@@ -1182,8 +1186,9 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     if (!tablets.empty()) {
       // Initialize the appropriate system tablet.
       DCHECK_EQ(1, tablets.size());
-      return sys_tables_handler_.AddTablet(
-          std::make_shared<SystemTablet>(schema, std::move(yql_storage), tablets[0]->tablet_id()));
+      system_tablets_[tablets[0]->tablet_id()] =
+          std::make_shared<SystemTablet>(schema, std::move(yql_storage), tablets[0]->tablet_id());
+      return Status::OK();
     } else {
       // Table is already created, only need to create tablets now.
       LOG(INFO) << Substitute("Creating tablets for $0.$1 ...", namespace_name, table_name);
@@ -1244,8 +1249,9 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
   }
 
   // Finally create the appropriate tablet object.
-  return sys_tables_handler_.AddTablet(
-      std::make_shared<SystemTablet>(schema, std::move(yql_storage), tablets[0]->tablet_id()));
+  system_tablets_[tablets[0]->tablet_id()] =
+      std::make_shared<SystemTablet>(schema, std::move(yql_storage), tablets[0]->tablet_id());
+  return Status::OK();
 }
 
 Status CatalogManager::PrepareNamespace(const NamespaceName& name, const NamespaceId& id) {
@@ -3053,7 +3059,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     }
 
     if (req->exclude_system_tables() &&
-        (IsSystemTable(*entry.second) || IsRedisTable(*entry.second))) {
+        (IsSystemTable(*entry.second) || entry.second->IsRedisTable())) {
       continue;
     }
 
@@ -3327,22 +3333,13 @@ NamespaceName CatalogManager::GetNamespaceName(const NamespaceId& id) const {
 }
 
 bool CatalogManager::IsSystemTable(const TableInfo& table) const {
-  return table.IsSupportedSystemTable(sys_tables_handler_.supported_system_tables());
-}
-
-bool CatalogManager::IsRedisTable(const TableInfo& table) const {
-  NamespaceIdentifierPB ns_id;
-  ns_id.set_id(table.namespace_id());
-  scoped_refptr<NamespaceInfo> ns_info;
-  Status s = FindNamespace(ns_id, &ns_info);
-  if (!s.ok()) {
-    return false;
+  TabletInfos tablets;
+  table.GetAllTablets(&tablets);
+  for (const auto& tablet : tablets) {
+    if (system_tablets_.find(tablet->id()) != system_tablets_.end()) {
+      return true;
+    }
   }
-
-  if (ns_info->name() == common::kRedisKeyspaceName && table.name() == common::kRedisTableName) {
-    return true;
-  }
-
   return false;
 }
 
@@ -5779,7 +5776,7 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
   locs_pb->set_table_id(tablet->table()->id());
 
   // For system tables, the set of replicas is always the set of masters.
-  if (tablet->IsSupportedSystemTable(sys_tables_handler_.supported_system_tables())) {
+  if (system_tablets_.find(tablet->id()) != system_tablets_.end()) {
     consensus::ConsensusStatePB master_consensus;
     RETURN_NOT_OK(GetCurrentConfig(&master_consensus));
     locs_pb->set_tablet_id(tablet->tablet_id());
@@ -5846,24 +5843,14 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
   return Status::OK();
 }
 
-Status CatalogManager::RetrieveSystemTablet(const TabletId& tablet_id,
-                                            std::shared_ptr<tablet::AbstractTablet>* tablet) {
+Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(const TabletId& id) {
   RETURN_NOT_OK(CheckOnline());
-  scoped_refptr<TabletInfo> tablet_info;
-  {
-    boost::shared_lock<LockType> l(lock_);
-    if (!FindCopy(tablet_map_, tablet_id, &tablet_info)) {
-      return STATUS(NotFound, Substitute("Unknown tablet $0", tablet_id));
-    }
-  }
 
-  if (!tablet_info->IsSupportedSystemTable(sys_tables_handler_.supported_system_tables())) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a valid system tablet id", tablet_id);
+  const auto iter = system_tablets_.find(id);
+  if (iter == system_tablets_.end()) {
+    return STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a valid system tablet id", id);
   }
-
-  const TableName& table_name = tablet_info->table()->name();
-  RETURN_NOT_OK(sys_tables_handler_.RetrieveTabletByTableName(table_name, tablet));
-  return Status::OK();
+  return iter->second;
 }
 
 Status CatalogManager::GetTabletLocations(const TabletId& tablet_id,
