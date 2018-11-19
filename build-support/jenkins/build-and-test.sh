@@ -170,6 +170,7 @@ readonly build_type
 
 BUILD_TYPE=$build_type
 readonly BUILD_TYPE
+export BUILD_TYPE
 
 export YB_USE_NINJA=1
 log "YB_USE_NINJA=$YB_USE_NINJA"
@@ -309,7 +310,7 @@ if using_default_thirdparty_dir; then
       log "Skiping third-party build because NO_REBUILD_THIRDPARTY is set."
     else
       log "Starting third-party dependency build"
-      time thirdparty/build_thirdparty.py
+      time thirdparty/build_thirdparty.sh
       log "Third-party dependency build finished (see timing information above)"
     fi
   fi

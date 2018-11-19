@@ -21,6 +21,7 @@ yb_is_python_wrapper_script=true
 
 . "${0%/*}/../common-build-env.sh"
 
+detect_brew
 if [[ -n ${YB_PREVENT_PYTHON_WRAPPER_RECURSION:-} ]]; then
   fatal "python wrapper script appears to have gone into recursion: $*"
 fi
@@ -28,6 +29,13 @@ fi
 python_interpreter_dirs=()
 if [[ -n ${VIRTUAL_ENV:-} ]]; then
   python_interpreter_dirs+=( "$VIRTUAL_ENV/bin" )
+fi
+
+if using_linuxbrew; then
+  python_interpreter_dirs+=( "$YB_LINUXBREW_DIR/bin" )
+fi
+if using_custom_homebrew; then
+  python_interpreter_dirs+=( "$YB_CUSTOM_HOMEBREW_DIR/bin" )
 fi
 
 python_interpreter_dirs+=(

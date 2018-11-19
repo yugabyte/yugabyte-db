@@ -45,6 +45,7 @@ readonly YB_JENKINS_NFS_HOME_DIR=/n/jenkins
 
 # In our NFS environment, we keep Linuxbrew builds in this directory.
 readonly SHARED_LINUXBREW_BUILDS_DIR="$YB_JENKINS_NFS_HOME_DIR/linuxbrew"
+readonly SHARED_CUSTOM_HOMEBREW_BUILDS_DIR="$YB_JENKINS_NFS_HOME_DIR/homebrew"
 
 # We look for the list of distributed build worker nodes in this file. This gets populated by
 # a cronjob on buildmaster running under the jenkins user (as of 06/20/2017).
@@ -114,16 +115,25 @@ get_timestamp_for_filenames() {
 }
 
 log_empty_line() {
+  if [[ "${yb_log_quiet:-}" == "true" ]]; then
+    return
+  fi
   echo >&2
 }
 
 log_separator() {
+  if [[ "${yb_log_quiet:-}" == "true" ]]; then
+    return
+  fi
   log_empty_line
   echo >&2 "--------------------------------------------------------------------------------------"
   log_empty_line
 }
 
 heading() {
+  if [[ "${yb_log_quiet:-}" == "true" ]]; then
+    return
+  fi
   log_empty_line
   echo >&2 "--------------------------------------------------------------------------------------"
   echo >&2 "$1"
@@ -132,34 +142,35 @@ heading() {
 }
 
 log() {
-  if [[ "${yb_log_quiet:-}" != "true" ]]; then
-    # Weirdly, when we put $* inside double quotes, that has an effect of making the following log
-    # statement produce multi-line output:
-    #
-    #   log "Some long log statement" \
-    #       "continued on the other line."
-    #
-    # We want that to produce a single line the same way the echo command would. Putting $* by
-    # itself achieves that effect. That has a side effect of passing echo-specific arguments
-    # (e.g. -n or -e) directly to the final echo command.
-    #
-    # On why the index for BASH_LINENO is one lower than that for BASH_SOURECE and FUNCNAME:
-    # This is different from the manual says at
-    # https://www.gnu.org/software/bash/manual/html_node/Bash-Variables.html:
-    #
-    #   An array variable whose members are the line numbers in source files where each
-    #   corresponding member of FUNCNAME was invoked. ${BASH_LINENO[$i]} is the line number in the
-    #   source file (${BASH_SOURCE[$i+1]}) where ${FUNCNAME[$i]} was called (or ${BASH_LINENO[$i-1]}
-    #   if referenced within another shell function). Use LINENO to obtain the current line number.
-    #
-    # Our experience is that FUNCNAME indexes exactly match those of BASH_SOURCE.
-    local stack_idx0=${yb_log_skip_top_frames:-0}
-    local stack_idx1=$(( $stack_idx0 + 1 ))
-
-    echo "[$( get_timestamp )" \
-         "${BASH_SOURCE[$stack_idx1]##*/}:${BASH_LINENO[$stack_idx0]}" \
-         "${FUNCNAME[$stack_idx1]}]" $* >&2
+  if [[ "${yb_log_quiet:-}" == "true" ]]; then
+    return
   fi
+  # Weirdly, when we put $* inside double quotes, that has an effect of making the following log
+  # statement produce multi-line output:
+  #
+  #   log "Some long log statement" \
+  #       "continued on the other line."
+  #
+  # We want that to produce a single line the same way the echo command would. Putting $* by
+  # itself achieves that effect. That has a side effect of passing echo-specific arguments
+  # (e.g. -n or -e) directly to the final echo command.
+  #
+  # On why the index for BASH_LINENO is one lower than that for BASH_SOURECE and FUNCNAME:
+  # This is different from the manual says at
+  # https://www.gnu.org/software/bash/manual/html_node/Bash-Variables.html:
+  #
+  #   An array variable whose members are the line numbers in source files where each
+  #   corresponding member of FUNCNAME was invoked. ${BASH_LINENO[$i]} is the line number in the
+  #   source file (${BASH_SOURCE[$i+1]}) where ${FUNCNAME[$i]} was called (or ${BASH_LINENO[$i-1]}
+  #   if referenced within another shell function). Use LINENO to obtain the current line number.
+  #
+  # Our experience is that FUNCNAME indexes exactly match those of BASH_SOURCE.
+  local stack_idx0=${yb_log_skip_top_frames:-0}
+  local stack_idx1=$(( $stack_idx0 + 1 ))
+
+  echo "[$( get_timestamp )" \
+       "${BASH_SOURCE[$stack_idx1]##*/}:${BASH_LINENO[$stack_idx0]}" \
+       "${FUNCNAME[$stack_idx1]}]" $* >&2
 }
 
 log_with_color() {
@@ -354,6 +365,13 @@ expect_num_args() {
 }
 
 normalize_build_type() {
+  if [[ -z ${build_type:-} ]]; then
+    if [[ -n ${BUILD_TYPE:-} ]]; then
+      build_type=$BUILD_TYPE
+    else
+      fatal "Neither build_type or BUILD_TYPE are set"
+    fi
+  fi
   validate_build_type "$build_type"
   local lowercase_build_type=$( echo "$build_type" | to_lowercase )
   if [[ "$build_type" != "$lowercase_build_type" ]]; then
@@ -545,7 +563,7 @@ build_compiler_if_necessary() {
   # Sometimes we have to build the compiler before we can run CMake.
   if is_clang && is_linux; then
     log "Building clang before we can run CMake with compiler pointing to clang"
-    "$YB_THIRDPARTY_DIR/build_thirdparty.py" llvm
+    "$YB_THIRDPARTY_DIR/build_thirdparty.sh" llvm
   fi
 }
 
@@ -702,6 +720,9 @@ set_cmake_build_type_and_compiler_type() {
     if ! which ninja &>/dev/null; then
       if using_linuxbrew; then
         export YB_NINJA_PATH=$YB_LINUXBREW_DIR/bin/ninja
+        make_program=$YB_NINJA_PATH
+      elif using_custom_homebrew; then
+        export YB_NINJA_PATH=$YB_CUSTOM_HOMEBREW_DIR/bin/ninja
         make_program=$YB_NINJA_PATH
       elif is_mac; then
         log "Did not find the 'ninja' executable, auto-installing ninja using Homebrew"
@@ -950,6 +971,13 @@ remove_path_entry() {
   export PATH
 }
 
+put_path_entry_first() {
+  expect_num_args 1 "$@"
+  local path_entry=$1
+  remove_path_entry "$path_entry"
+  export PATH=$path_entry:$PATH
+}
+
 # Removes the ccache wrapper directory from PATH so we can find the real path to a compiler, e.g.
 # /usr/bin/gcc instead of /usr/lib64/ccache/gcc.  This is expected to run in a subshell so that we
 # don't make any unexpected changes to the script's PATH.
@@ -1069,11 +1097,22 @@ popd() {
   command popd "$@" > /dev/null
 }
 
+detect_brew() {
+  if is_linux; then
+    detect_linuxbrew
+  elif is_mac; then
+    detect_custom_homebrew
+  else
+    log "Not a Linux or a macOS platform, the detect_brew function is a no-op."
+  fi
+}
+
 detect_linuxbrew() {
-  YB_USING_LINUXBREW=false
+  if ! is_linux; then
+    fatal "Expected this function to only be called on Linux"
+  fi
   local user_specified_linuxbrew_dir=${YB_LINUXBREW_DIR:-}
   unset YB_LINUXBREW_DIR
-  unset YB_LINUXBREW_LIB_DIR
   if ! is_linux; then
     return
   fi
@@ -1128,19 +1167,97 @@ detect_linuxbrew() {
           -d "$linuxbrew_dir/lib" &&
           -d "$linuxbrew_dir/include" ]]; then
       export YB_LINUXBREW_DIR=$linuxbrew_dir
-      YB_USING_LINUXBREW=true
-      YB_LINUXBREW_LIB_DIR=$YB_LINUXBREW_DIR/lib
       break
     fi
   done
 }
 
-using_linuxbrew() {
-  if [[ $YB_USING_LINUXBREW == true ]]; then
-    return 0
-  else
-    return 1
+# -------------------------------------------------------------------------------------------------
+# Similar to detect_linuxbrew, but for macOS.
+# This function was created by copying detect_linuxbrew and replacing Linuxbrew with Homebrew
+# in a few places. This was done to avoid destabilizing the Linux environment. Rather than
+# refactoring detect_custom_homebrew and detect_linuxbrew functions to extract common parts, we will
+# leave that until our whole build environment framework is rewritten in Python.
+# Mikhail Bautin, 11/14/2018
+# -------------------------------------------------------------------------------------------------
+detect_custom_homebrew() {
+  if ! is_mac; then
+    fatal "Expected this function to only be called on macOS"
   fi
+  local user_specified_homebrew_dir=${YB_CUSTOM_HOMEBREW_DIR:-}
+  unset YB_CUSTOM_HOMEBREW_DIR
+  local candidates=(
+    "$HOME/.homebrew-yb-build"
+  )
+
+  local version_for_jenkins_file=$YB_SRC_ROOT/thirdparty/homebrew_version_for_jenkins.txt
+  if [[ -f $version_for_jenkins_file ]]; then
+    local version_for_jenkins=$( read_file_and_trim "$version_for_jenkins_file" )
+    preferred_homebrew_dir="$SHARED_CUSTOM_HOMEBREW_BUILDS_DIR/homebrew_$version_for_jenkins"
+    if [[ -d $preferred_homebrew_dir ]]; then
+      if is_jenkins_user; then
+        # If we're running on Jenkins (or building something for consumption by Jenkins under the
+        # "jenkins" user), then the "Homebrew for Jenkins" directory takes precedence.
+        candidates=( "$preferred_homebrew_dir" "${candidates[@]}" )
+      else
+        # Otherwise, the user's local Homebrew build takes precedence.
+        candidates=( "${candidates[@]}" "$preferred_homebrew_dir" )
+      fi
+    elif is_jenkins; then
+      if is_jenkins && is_src_root_on_nfs; then
+        declare -i attempt=0
+        while [[ ! -d $preferred_homebrew_dir ]]; do
+          if [[ $attempt -ge 120 ]]; then
+            fatal "Gave up waiting for '$preferred_homebrew_dir' to mount after $attempt attempts"
+          fi
+          log "Directory '$preferred_homebrew_dir' not found, waiting for it to mount"
+          ( set +e; ls "$preferred_homebrew_dir"/* >/dev/null )
+          let attempt+=1
+          sleep 1
+        done
+      else
+        yb_fatal_exit_code=$YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY
+        fatal "Warning: Homebrew directory referenced by '$version_for_jenkins_file' does not" \
+              "exist: '$preferred_homebrew_dir', refusing to proceed to prevent " \
+              "non-deterministic builds."
+      fi
+    fi
+  elif is_jenkins; then
+    log "Warning: '$version_for_jenkins_file' does not exist"
+  fi
+
+  if [[ -n $user_specified_homebrew_dir ]]; then
+    candidates=( "$user_specified_homebrew_dir" "${candidates[@]}" )
+  fi
+
+  local homebrew_dir
+  for homebrew_dir in "${candidates[@]}"; do
+    if [[ -d "$homebrew_dir" &&
+          -d "$homebrew_dir/bin" &&
+          -d "$homebrew_dir/lib" &&
+          -d "$homebrew_dir/include" ]]; then
+      export YB_CUSTOM_HOMEBREW_DIR=$homebrew_dir
+      break
+    fi
+  done
+}
+# -------------------------------------------------------------------------------------------------
+# End of the detect_custom_homebrew that was created with by copying/pasting and editing
+# the detect_linuxbrew function.
+# -------------------------------------------------------------------------------------------------
+
+using_linuxbrew() {
+  if is_linux && [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
+    return 0  # true in bash
+  fi
+  return 1
+}
+
+using_custom_homebrew() {
+  if is_mac && [[ -n ${YB_CUSTOM_HOMEBREW_DIR:-} ]]; then
+    return 0  # true in bash
+  fi
+  return 1  # false in bash
 }
 
 set_use_ninja() {
@@ -1165,11 +1282,15 @@ using_ninja() {
   fi
 }
 
-set_build_env_vars() {
+add_brew_bin_to_path() {
   if using_linuxbrew; then
     # We need to add Linuxbrew's bin directory to PATH so that we can find the right compiler and
     # linker.
-    export PATH=$YB_LINUXBREW_DIR/bin:$PATH
+    put_path_entry_first "$YB_LINUXBREW_DIR/bin"
+  fi
+  if using_custom_homebrew; then
+    # The same for a custom Homebrew installation on macOS.
+    put_path_entry_first "$YB_CUSTOM_HOMEBREW_DIR/bin"
   fi
 }
 
@@ -1240,7 +1361,7 @@ compute_sha256sum() {
 validate_thirdparty_dir() {
   ensure_directory_exists "$YB_THIRDPARTY_DIR/build_definitions"
   ensure_directory_exists "$YB_THIRDPARTY_DIR/patches"
-  ensure_file_exists "$YB_THIRDPARTY_DIR/build_thirdparty.py"
+  ensure_file_exists "$YB_THIRDPARTY_DIR/build_definitions/__init__.py"
 }
 
 # Detect if we're running on Google Compute Platform. We perform this check lazily as there might be
@@ -1712,6 +1833,10 @@ activate_virtualenv() {
     rm -rf "$virtualenv_dir"
     unset YB_RECREATE_VIRTUALENV
   fi
+
+  # To run pip2 itself we already need to add our Python wrappers directory to PATH.
+  add_python_wrappers_dir_to_path
+
   if [[ ! -d $virtualenv_dir ]]; then
     if [[ -n ${VIRTUAL_ENV:-} && -f $VIRTUAL_ENV/bin/activate ]]; then
       local old_virtual_env=$VIRTUAL_ENV
@@ -1743,7 +1868,6 @@ activate_virtualenv() {
   fi
 
   pip2 install -r "$YB_SRC_ROOT/requirements.txt" $pip_no_cache
-  add_python_wrappers_dir_to_path
 }
 
 check_python_interpreter_version() {
@@ -1753,11 +1877,22 @@ check_python_interpreter_version() {
   local minor_version_lower_bound=$3
   # Get the Python interpreter version. Filter out debug output we may be adding if
   # YB_PYTHON_WRAPPER_DEBUG is set.
-  local version_str=$( "$python_interpreter" --version 2>&1 >/dev/null | grep -v "Invoking Python" )
+  local version_str=$(
+    export yb_log_quiet=true
+    "$python_interpreter" --version 2>&1 >/dev/null | grep -v "Invoking Python"
+  )
   version_str=${version_str#Python }
   local actual_major_version=${version_str%%.*}
   local version_str_without_major=${version_str#*.}
   local actual_minor_version=${version_str_without_major%%.*}
+  if [[ ! $actual_major_version =~ ^[0-9]+ ]]; then
+    fatal "Invalid format of Python major version: $actual_major_version." \
+          "Version string for interpreter $python_interpreter: $version_str"
+  fi
+  if [[ ! $actual_minor_version =~ ^[0-9]+ ]]; then
+    fatal "Invalid format of Python minor version: $actual_minor_version." \
+          "Version string for interpreter $python_interpreter: $version_str"
+  fi
   if [[ $actual_major_version -ne $expected_major_version ]]; then
     fatal "Expected major version for Python interpreter '$python_interpreter' to be" \
           "'$expected_major_version', found '$actual_major_version'. Full Python version:" \
@@ -1902,7 +2037,7 @@ readonly YB_DEFAULT_CMAKE_OPTS=(
 YB_PYTHON_WRAPPERS_DIR=$YB_BUILD_SUPPORT_DIR/python-wrappers
 
 if ! "${yb_is_python_wrapper_script:-false}"; then
-  detect_linuxbrew
+  detect_brew
   add_python_wrappers_dir_to_path
 fi
 

@@ -72,13 +72,18 @@ def colored_log(color, message):
 
 
 def log_output(prefix, args):
-    process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    for line in iter(process.stdout.readline, ''):
-        log("{}{} {}{}".format(CYAN_COLOR, prefix, NO_COLOR, line.rstrip()))
-    process.stdout.close()
-    exit_code = process.wait()
-    if exit_code:
-        fatal("Execution failed with code: {}".format(exit_code))
+    try:
+        process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        for line in iter(process.stdout.readline, ''):
+            log("{}{} {}{}".format(CYAN_COLOR, prefix, NO_COLOR, line.rstrip()))
+        process.stdout.close()
+        exit_code = process.wait()
+        if exit_code:
+            fatal("Execution failed with code: {}".format(exit_code))
+    except OSError, err:
+        log("Error when trying to execute command: " + str(args))
+        log("PATH is: {}".format(os.getenv("PATH")))
+        raise
 
 
 def unset_if_set(name):
@@ -199,3 +204,41 @@ class PushDir:
 
     def __exit__(self, type, value, traceback):
         os.chdir(self.prev)
+
+
+def get_openssl_dir():
+    """
+    Returns the custom OpenSSL installation directory to use or None.
+    """
+    if not is_mac():
+        return
+    custom_homebrew_dir = os.getenv('YB_CUSTOM_HOMEBREW_DIR')
+    if custom_homebrew_dir:
+        opt_path = os.path.join(custom_homebrew_dir, 'opt')
+    else:
+        opt_path = '/usr/local/opt'
+    openssl_dir = os.path.join(opt_path, 'openssl')
+    if not os.path.exists(openssl_dir):
+        raise IOError("Directory does not exist: " + openssl_dir)
+    return openssl_dir
+
+
+def get_openssl_related_cmake_args():
+    """
+    Returns a list of CMake arguments to use to pick up the version of OpenSSL that we should be
+    using. Returns an empty list if the default OpenSSL installation should be used.
+    """
+    openssl_dir = get_openssl_dir()
+    if openssl_dir:
+        openssl_options = ['-DOPENSSL_ROOT_DIR=' + openssl_dir]
+        if os.getenv('YB_CUSTOM_HOMEBREW_DIR'):
+            openssl_crypto_library = os.path.join(openssl_dir, 'lib', 'libcrypto.dylib')
+            openssl_ssl_library = os.path.join(openssl_dir, 'lib', 'libssl.dylib')
+            openssl_options += [
+                '-DOPENSSL_CRYPTO_LIBRARY=' + openssl_crypto_library,
+                '-DOPENSSL_SSL_LIBRARY=' + openssl_ssl_library,
+                '-DOPENSSL_LIBRARIES=%s;%s' % (openssl_crypto_library, openssl_ssl_library)
+            ]
+        return openssl_options
+
+    return []
