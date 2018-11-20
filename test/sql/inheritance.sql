@@ -1,6 +1,7 @@
 \unset ECHO
 \i test/setup.sql
-SELECT plan( 17 );
+SELECT plan( 85 );
+--SELECT * FROM no_plan();
 SET client_min_messages = warning;
 
 -- Create inherited tables
@@ -16,31 +17,201 @@ CREATE TABLE hide.h_child2( id INT PRIMARY KEY ) INHERITS ( hide.h_child1 );
 
 -- test has_inhereted_tables
 SELECT * FROM check_test(
-    has_inherited_tables( 'hide'::name, 'h_parent'::name ),
-    true,  -- expected value
-    'hide.h_parent is supposed to be parent of other tables'
+    has_inherited_tables( 'hide', 'h_parent', 'Gimme inheritance' ),
+    true,
+    'has_inherited_tables(sch, tab, desc)',
+    'Gimme inheritance',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_inherited_tables( 'hide', 'h_child2', 'Gimme inheritance' ),
+    false,
+    'has_inherited_tables(sch, tab, desc) fail',
+    'Gimme inheritance',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_inherited_tables( 'hide', 'nonesuch', 'Gimme inheritance' ),
+    false,
+    'has_inherited_tables(sch, nonesuch, desc)',
+    'Gimme inheritance',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_inherited_tables( 'hide', 'h_parent'::name ),
+    true,
+    'has_inherited_tables(sch, tab)',
+    'Table hide.h_parent should have children',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_inherited_tables( 'hide', 'h_child2'::name ),
+    false,
+    'has_inherited_tables(sch, tab) fail',
+    'Table hide.h_child2 should have children',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_inherited_tables( 'hide', 'nonesuch'::name ),
+    false,
+    'has_inherited_tables(sch, nonesuch)',
+    'Table hide.nonesuch should have children',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_inherited_tables( 'parent', 'Gimme more' ),
+    true,
+    'has_inherited_tables(tab, desc)',
+    'Gimme more',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_inherited_tables( 'child2', 'Gimme more' ),
+    false,
+    'has_inherited_tables(tab, desc) fail',
+    'Gimme more',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_inherited_tables( 'nonesuch', 'Gimme more' ),
+    false,
+    'has_inherited_tables(nonesuch, desc)',
+    'Gimme more',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_inherited_tables( 'parent' ),
+    true,
+    'has_inherited_tables(tab)',
+    'Table parent should have children',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_inherited_tables( 'child2' ),
+    false,
+    'has_inherited_tables(tab) fail',
+    'Table child2 should have children',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_inherited_tables( 'nonesuch' ),
+    false,
+    'has_inherited_tables(nonesuch)',
+    'Table nonesuch should have children',
+    ''
 );
 
 -- test hasnt_inherited_tables
 SELECT * FROM check_test(
-    hasnt_inherited_tables( 'hide'::name, 'h_child2'::name ),
-    true,  -- expected value
-    'hide.h_child2 is not supposed to have children'
+    hasnt_inherited_tables( 'hide', 'h_child2', 'Gimme inheritance' ),
+    true,
+    'hasnt_inherited_tables(sch, tab, desc)',
+    'Gimme inheritance',
+    ''
 );
 
--- test has_inhereted_tables
 SELECT * FROM check_test(
-    has_inherited_tables( 'parent'::name ),
-    true,  -- expected value
-    'public.parent is supposed to be parent of other tables'
+    hasnt_inherited_tables( 'hide', 'h_child1', 'Gimme inheritance' ),
+    false,
+    'hasnt_inherited_tables(sch, tab, desc) fail',
+    'Gimme inheritance',
+    ''
 );
 
--- test hasnt_inherited_tables
 SELECT * FROM check_test(
-    hasnt_inherited_tables( 'child2'::name ),
-    true,  -- expected value
-    'public.child2 is supposed not to have children'
+    hasnt_inherited_tables( 'hide', 'nonesuch', 'Gimme inheritance' ),
+    true,
+    'hasnt_inherited_tables(sch, nonesuch, desc)',
+    'Gimme inheritance',
+    ''
 );
+
+SELECT * FROM check_test(
+    hasnt_inherited_tables( 'hide', 'h_child2'::name ),
+    true,
+    'hasnt_inherited_tables(sch, tab)',
+    'Table hide.h_child2 should not have children',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_inherited_tables( 'hide', 'h_child1'::name ),
+    false,
+    'hasnt_inherited_tables(sch, tab) fail',
+    'Table hide.h_child1 should not have children',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_inherited_tables( 'hide', 'nonesuch'::name ),
+    true,
+    'hasnt_inherited_tables(sch, nonesuch)',
+    'Table hide.nonesuch should not have children',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_inherited_tables( 'child2', 'Gimme inheritance' ),
+    true,
+    'hasnt_inherited_tables(tab, desc)',
+    'Gimme inheritance',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_inherited_tables( 'child1', 'Gimme inheritance' ),
+    false,
+    'hasnt_inherited_tables(tab, desc) fail',
+    'Gimme inheritance',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_inherited_tables( 'nonesuch', 'Gimme inheritance' ),
+    true,
+    'hasnt_inherited_tables(nonesuch, desc)',
+    'Gimme inheritance',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_inherited_tables( 'child2' ),
+    true,
+    'hasnt_inherited_tables(tab)',
+    'Table child2 should not have children',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_inherited_tables( 'child1' ),
+    false,
+    'hasnt_inherited_tables(tab) fail',
+    'Table child1 should not have children',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_inherited_tables( 'nonesuch' ),
+    true,
+    'hasnt_inherited_tables(nonesuch)',
+    'Table nonesuch should not have children',
+    ''
+);
+
+
+
+
 
 SELECT * FROM check_test(
     is_parent_of( 'hide', 'h_parent', 'hide', 'h_child1', 1, 'Test hide.h_parent->hide.h_child1' ),

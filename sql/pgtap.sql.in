@@ -10318,7 +10318,7 @@ CREATE OR REPLACE FUNCTION has_inherited_tables( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
         _inherited( $1, $2 ),
-        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) || ' must have children'
+        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) || ' should have children'
     );
 $$ LANGUAGE SQL;
 
@@ -10333,7 +10333,7 @@ CREATE OR REPLACE FUNCTION has_inherited_tables( NAME )
 RETURNS TEXT AS $$
     SELECT ok(
         _inherited( $1 ),
-        'Table ' || quote_ident( $1 ) || ' has children'
+        'Table ' || quote_ident( $1 ) || ' should have children'
     );
 $$ LANGUAGE SQL;
 
@@ -10348,7 +10348,7 @@ CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
         NOT _inherited( $1, $2 ),
-        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) || 'must not have children'
+        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) || ' should not have children'
     );
 $$ LANGUAGE SQL;
 
@@ -10363,7 +10363,7 @@ CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME )
 RETURNS TEXT AS $$
     SELECT ok(
         NOT _inherited( $1 ),
-        'Table ' || quote_ident( $1 ) || 'must not have children'
+        'Table ' || quote_ident( $1 ) || ' should not have children'
     );
 $$ LANGUAGE SQL;
 
@@ -10377,7 +10377,7 @@ RETURNS BOOLEAN AS $$
     WITH RECURSIVE inheritance_chain AS (
         -- select the parent tuple
         SELECT i.inhrelid AS child_id, 1 AS inheritance_level
-        FROM   pg_catalog.pg_inherits i
+          FROM pg_catalog.pg_inherits i
         WHERE i.inhparent = (
             SELECT c1.oid
               FROM pg_catalog.pg_class c1
@@ -10390,9 +10390,9 @@ RETURNS BOOLEAN AS $$
         -- select the children
         SELECT i.inhrelid AS child_id,
                p.inheritance_level + 1 AS inheritance_level
-          FROM   pg_catalog.pg_inherits i
-          JOIN   inheritance_chain p
-            ON     p.child_id = i.inhparent
+          FROM pg_catalog.pg_inherits i
+          JOIN inheritance_chain p
+            ON p.child_id = i.inhparent
          WHERE i.inhrelid = (
             SELECT c1.oid
               FROM pg_catalog.pg_class c1

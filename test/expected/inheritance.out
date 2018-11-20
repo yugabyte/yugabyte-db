@@ -1,19 +1,87 @@
 \unset ECHO
-1..17
-ok 1 - hide.h_parent is supposed to be parent of other tables should pass
-ok 2 - hide.h_child2 is not supposed to have children should pass
-ok 3 - public.parent is supposed to be parent of other tables should pass
-ok 4 - public.child2 is supposed not to have children should pass
-ok 5 - hide.h_parent direct is father of hide.h_child1 should pass
-ok 6 - hide.h_parent direct is father of hide.h_child1 should pass
-ok 7 - hide.h_child1 direct is father of hide.h_child2 should pass
-ok 8 - hide.h_parent is father of hide.h_child2 should pass
-ok 9 - child1 inherits from parent should pass
-ok 10 - hide.h_parent is not father of public.child1 should fail
-ok 11 - public.parent is not father of public.child1 should pass
-ok 12 - hide.h_parent is not father of public.child1 should pass
-ok 13 - parent is not father of public.child1 should fail
-ok 14 - parent is not child1 should pass
-ok 15 - child1 inherits from parent should fail
-ok 16 - hide.h_parent is not child of hide.h_child1 should pass
-ok 17 - hide.h_child1 inherits from hide.h_parent should fail
+1..85
+ok 1 - has_inherited_tables(sch, tab, desc) should pass
+ok 2 - has_inherited_tables(sch, tab, desc) should have the proper description
+ok 3 - has_inherited_tables(sch, tab, desc) should have the proper diagnostics
+ok 4 - has_inherited_tables(sch, tab, desc) fail should fail
+ok 5 - has_inherited_tables(sch, tab, desc) fail should have the proper description
+ok 6 - has_inherited_tables(sch, tab, desc) fail should have the proper diagnostics
+ok 7 - has_inherited_tables(sch, nonesuch, desc) should fail
+ok 8 - has_inherited_tables(sch, nonesuch, desc) should have the proper description
+ok 9 - has_inherited_tables(sch, nonesuch, desc) should have the proper diagnostics
+ok 10 - has_inherited_tables(sch, tab) should pass
+ok 11 - has_inherited_tables(sch, tab) should have the proper description
+ok 12 - has_inherited_tables(sch, tab) should have the proper diagnostics
+ok 13 - has_inherited_tables(sch, tab) fail should fail
+ok 14 - has_inherited_tables(sch, tab) fail should have the proper description
+ok 15 - has_inherited_tables(sch, tab) fail should have the proper diagnostics
+ok 16 - has_inherited_tables(sch, nonesuch) should fail
+ok 17 - has_inherited_tables(sch, nonesuch) should have the proper description
+ok 18 - has_inherited_tables(sch, nonesuch) should have the proper diagnostics
+ok 19 - has_inherited_tables(tab, desc) should pass
+ok 20 - has_inherited_tables(tab, desc) should have the proper description
+ok 21 - has_inherited_tables(tab, desc) should have the proper diagnostics
+ok 22 - has_inherited_tables(tab, desc) fail should fail
+ok 23 - has_inherited_tables(tab, desc) fail should have the proper description
+ok 24 - has_inherited_tables(tab, desc) fail should have the proper diagnostics
+ok 25 - has_inherited_tables(nonesuch, desc) should fail
+ok 26 - has_inherited_tables(nonesuch, desc) should have the proper description
+ok 27 - has_inherited_tables(nonesuch, desc) should have the proper diagnostics
+ok 28 - has_inherited_tables(tab) should pass
+ok 29 - has_inherited_tables(tab) should have the proper description
+ok 30 - has_inherited_tables(tab) should have the proper diagnostics
+ok 31 - has_inherited_tables(tab) fail should fail
+ok 32 - has_inherited_tables(tab) fail should have the proper description
+ok 33 - has_inherited_tables(tab) fail should have the proper diagnostics
+ok 34 - has_inherited_tables(nonesuch) should fail
+ok 35 - has_inherited_tables(nonesuch) should have the proper description
+ok 36 - has_inherited_tables(nonesuch) should have the proper diagnostics
+ok 37 - hasnt_inherited_tables(sch, tab, desc) should pass
+ok 38 - hasnt_inherited_tables(sch, tab, desc) should have the proper description
+ok 39 - hasnt_inherited_tables(sch, tab, desc) should have the proper diagnostics
+ok 40 - hasnt_inherited_tables(sch, tab, desc) fail should fail
+ok 41 - hasnt_inherited_tables(sch, tab, desc) fail should have the proper description
+ok 42 - hasnt_inherited_tables(sch, tab, desc) fail should have the proper diagnostics
+ok 43 - hasnt_inherited_tables(sch, nonesuch, desc) should pass
+ok 44 - hasnt_inherited_tables(sch, nonesuch, desc) should have the proper description
+ok 45 - hasnt_inherited_tables(sch, nonesuch, desc) should have the proper diagnostics
+ok 46 - hasnt_inherited_tables(sch, tab) should pass
+ok 47 - hasnt_inherited_tables(sch, tab) should have the proper description
+ok 48 - hasnt_inherited_tables(sch, tab) should have the proper diagnostics
+ok 49 - hasnt_inherited_tables(sch, tab) fail should fail
+ok 50 - hasnt_inherited_tables(sch, tab) fail should have the proper description
+ok 51 - hasnt_inherited_tables(sch, tab) fail should have the proper diagnostics
+ok 52 - hasnt_inherited_tables(sch, nonesuch) should pass
+ok 53 - hasnt_inherited_tables(sch, nonesuch) should have the proper description
+ok 54 - hasnt_inherited_tables(sch, nonesuch) should have the proper diagnostics
+ok 55 - hasnt_inherited_tables(tab, desc) should pass
+ok 56 - hasnt_inherited_tables(tab, desc) should have the proper description
+ok 57 - hasnt_inherited_tables(tab, desc) should have the proper diagnostics
+ok 58 - hasnt_inherited_tables(tab, desc) fail should fail
+ok 59 - hasnt_inherited_tables(tab, desc) fail should have the proper description
+ok 60 - hasnt_inherited_tables(tab, desc) fail should have the proper diagnostics
+ok 61 - hasnt_inherited_tables(nonesuch, desc) should pass
+ok 62 - hasnt_inherited_tables(nonesuch, desc) should have the proper description
+ok 63 - hasnt_inherited_tables(nonesuch, desc) should have the proper diagnostics
+ok 64 - hasnt_inherited_tables(tab) should pass
+ok 65 - hasnt_inherited_tables(tab) should have the proper description
+ok 66 - hasnt_inherited_tables(tab) should have the proper diagnostics
+ok 67 - hasnt_inherited_tables(tab) fail should fail
+ok 68 - hasnt_inherited_tables(tab) fail should have the proper description
+ok 69 - hasnt_inherited_tables(tab) fail should have the proper diagnostics
+ok 70 - hasnt_inherited_tables(nonesuch) should pass
+ok 71 - hasnt_inherited_tables(nonesuch) should have the proper description
+ok 72 - hasnt_inherited_tables(nonesuch) should have the proper diagnostics
+ok 73 - hide.h_parent direct is father of hide.h_child1 should pass
+ok 74 - hide.h_parent direct is father of hide.h_child1 should pass
+ok 75 - hide.h_child1 direct is father of hide.h_child2 should pass
+ok 76 - hide.h_parent is father of hide.h_child2 should pass
+ok 77 - child1 inherits from parent should pass
+ok 78 - hide.h_parent is not father of public.child1 should fail
+ok 79 - public.parent is not father of public.child1 should pass
+ok 80 - hide.h_parent is not father of public.child1 should pass
+ok 81 - parent is not father of public.child1 should fail
+ok 82 - parent is not child1 should pass
+ok 83 - child1 inherits from parent should fail
+ok 84 - hide.h_parent is not child of hide.h_child1 should pass
+ok 85 - hide.h_child1 inherits from hide.h_parent should fail
