@@ -5,6 +5,11 @@ Revision history for pgTAP
 --------------------------
 * Fixed uninstall script generation to properly emit `DROP TYPE` statements.
   Thanks to Kamen Naydenov for the PR (#181)!
+* Added policy test assertion functions for PostgreSQL 9.5 and higher:
+    + `policies_are()`
+    + `policy_roles_are()`
+    + `policy_cmd_is()`
+  Thanks to Kamen Naydenov for the PR (#185).
 
 0.99.0 2018-09-16T20:55:41Z
 ---------------------------
