@@ -1095,270 +1095,6 @@ RETURNS TEXT AS $$
     SELECT hasnt_view( $1, 'View ' || quote_ident($1) || ' should not exist' );
 $$ LANGUAGE SQL;
 
-
-
-/******************** INHERITANCE ***********************************************/
-
-
-/*
- * Internal function to test if the specified table in the
- * specified schema does have an inheritance chain.
- * Returns true or false
- */
-CREATE OR REPLACE FUNCTION _inherited( NAME, NAME )
-RETURNS BOOLEAN AS $$
-  SELECT EXISTS(
-     SELECT true
-     FROM pg_catalog.pg_namespace n
-     JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
-     WHERE c.relkind = 'r'
-     AND   n.nspname = $1
-     AND   c.relname = $2
-     AND   c.relhassubclass = true
-  );
-$$ LANGUAGE SQL;
-
-
-/*
- * Internal function to test if a specific table
- * in the search_path has a inheritance chain.
- * Returns true or false.
- */
-CREATE OR REPLACE FUNCTION _inherited( NAME )
-RETURNS BOOLEAN AS $$
-    SELECT EXISTS(
-           SELECT true
-           FROM pg_catalog.pg_class c
-           WHERE c.relkind = 'r'
-           AND pg_catalog.pg_table_is_visible( c.oid )
-           AND   c.relname = $1
-           AND   c.relhassubclass = true
-    );
-$$ LANGUAGE SQL;
-
--- has_inherited_tables( schema, table, description )
--- has_inherited_tables( schema, table )
-CREATE OR REPLACE FUNCTION has_inherited_tables( NAME, NAME, TEXT DEFAULT NULL )
-RETURNS TEXT AS $$
-       SELECT ok( _inherited( $1,   -- schema
-                              $2 ), -- table
-                  coalesce( $3,
-                            'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) || ' must have children' ) );
-$$ LANGUAGE SQL;
-
-
--- has_inherited_tables( table, description )
--- has_inherited_tables( table )
-CREATE OR REPLACE FUNCTION has_inherited_tables( NAME, TEXT DEFAULT NULL )
-RETURNS TEXT AS $$
-       SELECT ok( _inherited( $1 ),  -- table
-                  coalesce( $2, 'Table ' || quote_ident( $1 ) || ' has children' ) );
-$$ LANGUAGE SQL;
-
--- hasnt_inherited_tables( schema, table, description )
--- hasnt_inherited_tables( schema, table )
-CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME, NAME, TEXT DEFAULT NULL )
-RETURNS TEXT AS $$
-       SELECT ok( NOT _inherited( $1, $2 ),
-                  coalesce( $3,
-                          'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) || 'must not have children' ) );
-$$ LANGUAGE SQL;
-
-
--- hasnt_inherited_tables( table, description )
--- hasnt_inherited_tables( table )
-CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME, TEXT DEFAULT NULL )
-RETURNS TEXT AS $$
-       SELECT ok( NOT _inherited( $1 ),
-                  coalesce( $2, 'Table ' || quote_ident( $1 ) || 'must not have children' ) );
-$$ LANGUAGE SQL;
-
-
-/*
-* Internal function to test if the qualified table is aprent of
-* the other qualified table. The integer value is the
-* length of the inheritance chain: a direct child has a 1 value.
-*/
-CREATE OR REPLACE FUNCTION _parent_of( NAME, NAME, NAME, NAME, INT DEFAULT 1 )
-RETURNS BOOLEAN AS $$
-  WITH RECURSIVE inheritance_chain AS (
-     -- select the parent tuple
-     SELECT i.inhrelid AS child_id
-            , 1 AS inheritance_level
-     FROM   pg_catalog.pg_inherits i
-     WHERE i.inhparent = ( SELECT c1.oid
-                           FROM pg_catalog.pg_class c1
-                           JOIN pg_catalog.pg_namespace n1
-                           ON   c1.relnamespace = n1.oid
-                           WHERE c1.relname = $2
-                           AND   n1.nspname = $1 )
-
-
-     UNION
-
-     -- select the childrens
-     SELECT i.inhrelid AS child_id
-            , p.inheritance_level + 1 AS inheritance_level
-     FROM   pg_catalog.pg_inherits i
-     JOIN   inheritance_chain p
-     ON     p.child_id = i.inhparent
-     WHERE i.inhrelid = ( SELECT c1.oid
-                          FROM pg_catalog.pg_class c1
-                          JOIN pg_catalog.pg_namespace n1
-                          ON   c1.relnamespace = n1.oid
-                          WHERE c1.relname = $4
-                          AND   n1.nspname = $3 )
-  )
-  SELECT EXISTS( SELECT *
-                 FROM inheritance_chain
-                 WHERE inheritance_level = $5
-                 AND   child_id = ( SELECT c1.oid
-                                    FROM pg_catalog.pg_class c1
-                                    JOIN pg_catalog.pg_namespace n1
-                                    ON   c1.relnamespace = n1.oid
-                                    WHERE c1.relname = $4
-                                    AND   n1.nspname = $3 )
-                 );
-
-$$ LANGUAGE SQL STRICT;
-
-/*
- * Internal function to test for a direct child (i.e., inheritance chain
- * length of 1).
- */
-CREATE OR REPLACE FUNCTION _parent_of( NAME, NAME, NAME, NAME )
-RETURNS BOOLEAN AS $$
-        SELECT _parent_of( $1, $2, $3, $4, 1 );
-$$ LANGUAGE SQL;
-
-
-/*
- * Internal function to check if not-qualified tables
- * within the search_path are connected by an inheritance chain.
- */
-CREATE OR REPLACE FUNCTION _parent_of( NAME, NAME, INT DEFAULT 1 )
-RETURNS BOOLEAN AS $$
-  WITH RECURSIVE inheritance_chain AS (
-     -- select the parent tuple
-     SELECT i.inhrelid AS child_id
-            , 1 AS inheritance_level
-     FROM   pg_catalog.pg_inherits i
-     WHERE i.inhparent = ( SELECT c1.oid
-                           FROM pg_catalog.pg_class c1
-                           WHERE c1.relname = $1
-                           AND pg_catalog.pg_table_is_visible( c1.oid ) )
-
-
-     UNION
-
-     -- select the childrens
-     SELECT i.inhrelid AS child_id
-            , p.inheritance_level + 1 AS inheritance_level
-     FROM   pg_catalog.pg_inherits i
-     JOIN   inheritance_chain p
-     ON     p.child_id = i.inhparent
-     WHERE i.inhrelid = ( SELECT c1.oid
-                          FROM pg_catalog.pg_class c1
-                          WHERE c1.relname = $1
-                          AND pg_catalog.pg_table_is_visible( c1.oid ) )
-  )
-  SELECT EXISTS( SELECT *
-                 FROM inheritance_chain
-                 WHERE inheritance_level = $3
-                 AND   child_id = ( SELECT c1.oid
-                                    FROM pg_catalog.pg_class c1
-                                    WHERE c1.relname = $2
-                                    AND pg_catalog.pg_table_is_visible( c1.oid ) )
-                 );
-
-
-$$ LANGUAGE SQL;
-
-
-
--- is_parent_of( schema, table, schema, table, depth, description )
--- is_parent_of( schema, table, schema, table, depth )
--- is_parent_of( schema, table, schema, table )
-CREATE OR REPLACE FUNCTION is_parent_of( NAME, NAME, NAME, NAME, INT DEFAULT 1, TEXT DEFAULT NULL )
-RETURNS TEXT AS $$
-        SELECT ok( _parent_of( $1, $2, $3, $4, $5 ),
-                   coalesce( $6,
-                             'Table '
-                             || quote_ident( $1 ) || '.' || quote_ident( $2 )
-                             || ' is a ' || $5 || '-parent of '
-                             || quote_ident( $3 ) || '.' || quote_ident( $4 ) ) );
-$$ LANGUAGE SQL;
-
-
-
--- is_child_of( schema, table, schema, table, depth, description )
--- is_child_of( schema, table, schema, table, depth )
--- is_child_of( schema, table, schema, table )
-CREATE OR REPLACE FUNCTION is_child_of( NAME, NAME, NAME, NAME, INT DEFAULT 1, TEXT DEFAULT NULL )
-RETURNS TEXT AS $$
-        SELECT is_parent_of( $3, $4, $1, $2, $5,
-               coalesce( $6,
-                        'Table '
-                        || quote_ident( $1 ) || '.' || quote_ident( $2 )
-                        || ' is a ' || $5 || '-child of '
-                        || quote_ident( $3 ) || '.' || quote_ident( $4 ) ) );
-$$ LANGUAGE SQL;
-
-
--- is_parent_of( table, table, depth,  description )
--- is_parent_of( table, table, depth )
--- is_parent_of( table, table )
-CREATE OR REPLACE FUNCTION is_parent_of( NAME, NAME, INT DEFAULT 1, TEXT DEFAULT NULL )
-RETURNS TEXT AS $$
-        SELECT ok( _parent_of( $1, $2, $3 ), $4 );
-$$ LANGUAGE SQL;
-
--- is_child_of( table, table, depth, description )
--- is_child_of( table, table, depth )
--- is_child_of( table, table )
-CREATE OR REPLACE FUNCTION is_child_of( NAME, NAME, INT DEFAULT 1, TEXT DEFAULT NULL )
-RETURNS TEXT AS $$
-        SELECT is_parent_of( $2, $1, $3, $4 );
-$$ LANGUAGE SQL;
-
-
--- isnt_parent_of( schema, table, schema, table, depth, description )
--- isnt_parent_of( schema, table, schema, table, depth )
--- isnt_parent_of( schema, table, schema, table )
-CREATE OR REPLACE FUNCTION isnt_parent_of( NAME, NAME, NAME, NAME, INT DEFAULT 1, TEXT DEFAULT NULL )
-RETURNS TEXT AS $$
-        SELECT ok( NOT _parent_of( $1, $2, $3, $4, $5 ),
-                   $6 );
-$$ LANGUAGE SQL;
-
--- isnt_child_of( schema, table, schema, table, depth, description )
--- isnt_child_of( schema, table, schema, table, depth )
--- isnt_child_of( schema, table, schema, table )
-CREATE OR REPLACE FUNCTION isnt_child_of( NAME, NAME, NAME, NAME, INT DEFAULT 1, TEXT DEFAULT NULL )
-RETURNS TEXT AS $$
-        SELECT isnt_parent_of( $3, $4, $1, $2, $5, $6 );
-$$ LANGUAGE SQL;
-
-
--- isnt_parent_of( table, table, depth, description )
--- isnt_parent_of( table, table, depth )
--- isnt_parent_of( table, table )
-CREATE OR REPLACE FUNCTION isnt_parent_of( NAME, NAME, INT DEFAULT 1, TEXT DEFAULT NULL )
-RETURNS TEXT AS $$
-        SELECT ok( NOT _parent_of( $1, $2, $3 ), $4 );
-$$ LANGUAGE SQL;
-
-
--- isnt_child_of( table, table, depth, description )
--- isnt_child_of( table, table, depth )
--- isnt_child_of( table, table )
-CREATE OR REPLACE FUNCTION isnt_child_of( NAME, NAME, INT DEFAULT 1 , TEXT DEFAULT NULL )
-RETURNS TEXT AS $$
-        SELECT isnt_parent_of( $2, $1, $3, $4 );
-$$ LANGUAGE SQL;
-
-/**************************************************************************/
-
 -- has_sequence( schema, sequence, description )
 CREATE OR REPLACE FUNCTION has_sequence ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
@@ -10536,3 +10272,263 @@ RETURNS TEXT AS $$
         || ' should apply to ' || upper($3) || ' command'
     );
 $$ LANGUAGE sql;
+
+/******************** INHERITANCE ***********************************************/
+/*
+ * Internal function to test whether the specified table in the specified schema
+ * has an inheritance chain. Returns true or false.
+ */
+CREATE OR REPLACE FUNCTION _inherited( NAME, NAME )
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS(
+     SELECT true
+     FROM pg_catalog.pg_namespace n
+     JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+     WHERE c.relkind = 'r'
+     AND   n.nspname = $1
+     AND   c.relname = $2
+     AND   c.relhassubclass = true
+  );
+$$ LANGUAGE SQL;
+
+/*
+ * Internal function to test whether a specific table in the search_path has an
+ * inheritance chain. Returns true or false.
+ */
+CREATE OR REPLACE FUNCTION _inherited( NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+           SELECT true
+           FROM pg_catalog.pg_class c
+           WHERE c.relkind = 'r'
+           AND pg_catalog.pg_table_is_visible( c.oid )
+           AND   c.relname = $1
+           AND   c.relhassubclass = true
+    );
+$$ LANGUAGE SQL;
+
+-- has_inherited_tables( schema, table, description )
+-- has_inherited_tables( schema, table )
+CREATE OR REPLACE FUNCTION has_inherited_tables( NAME, NAME, TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
+       SELECT ok(
+           _inherited( $1, $2 ),
+            COALESCE(
+                $3,
+                'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) || ' must have children'
+            )
+        );
+$$ LANGUAGE SQL;
+
+-- has_inherited_tables( table, description )
+-- has_inherited_tables( table )
+CREATE OR REPLACE FUNCTION has_inherited_tables( NAME, TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
+       SELECT ok(
+           _inherited( $1 ),
+           COALESCE( $2, 'Table ' || quote_ident( $1 ) || ' has children' )
+        );
+$$ LANGUAGE SQL;
+
+-- hasnt_inherited_tables( schema, table, description )
+-- hasnt_inherited_tables( schema, table )
+CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME, NAME, TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
+       SELECT ok(
+           NOT _inherited( $1, $2 ),
+            COALESCE(
+                $3,
+                'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) || 'must not have children'
+            )
+        );
+$$ LANGUAGE SQL;
+
+-- hasnt_inherited_tables( table, description )
+-- hasnt_inherited_tables( table )
+CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME, TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
+       SELECT ok(
+           NOT _inherited( $1 ),
+            COALESCE( $2, 'Table ' || quote_ident( $1 ) || 'must not have children' )
+        );
+$$ LANGUAGE SQL;
+
+/*
+* Internal function to test whether the schema-qualified table is a parent of
+* the other schema-qualified table. The integer value is the length of the
+* inheritance chain: a direct child has a 1 value.
+*/
+CREATE OR REPLACE FUNCTION _parent_of( NAME, NAME, NAME, NAME, INT DEFAULT 1 )
+RETURNS BOOLEAN AS $$
+    WITH RECURSIVE inheritance_chain AS (
+        -- select the parent tuple
+        SELECT i.inhrelid AS child_id, 1 AS inheritance_level
+        FROM   pg_catalog.pg_inherits i
+        WHERE i.inhparent = (
+            SELECT c1.oid
+              FROM pg_catalog.pg_class c1
+              JOIN pg_catalog.pg_namespace n1
+                ON c1.relnamespace = n1.oid
+             WHERE c1.relname = $2
+               AND n1.nspname = $1
+        )
+        UNION
+        -- select the childrens
+        SELECT i.inhrelid AS child_id,
+               p.inheritance_level + 1 AS inheritance_level
+          FROM   pg_catalog.pg_inherits i
+          JOIN   inheritance_chain p
+            ON     p.child_id = i.inhparent
+         WHERE i.inhrelid = (
+            SELECT c1.oid
+              FROM pg_catalog.pg_class c1
+              JOIN pg_catalog.pg_namespace n1
+                ON c1.relnamespace = n1.oid
+             WHERE c1.relname = $4
+               AND n1.nspname = $3
+        )
+    )
+  SELECT EXISTS(
+        SELECT *
+          FROM inheritance_chain
+         WHERE inheritance_level = $5
+           AND child_id = (
+                SELECT c1.oid
+                  FROM pg_catalog.pg_class c1
+                  JOIN pg_catalog.pg_namespace n1
+                    ON c1.relnamespace = n1.oid
+                 WHERE c1.relname = $4
+                   AND n1.nspname = $3
+        )
+    );
+$$ LANGUAGE SQL STRICT;
+
+/*
+ * Internal function to test for a direct child (i.e., inheritance chain
+ * length of 1).
+ */
+CREATE OR REPLACE FUNCTION _parent_of( NAME, NAME, NAME, NAME )
+RETURNS BOOLEAN AS $$
+        SELECT _parent_of( $1, $2, $3, $4, 1 );
+$$ LANGUAGE SQL;
+
+/*
+ * Internal function to check if not-qualified tables
+ * within the search_path are connected by an inheritance chain.
+ */
+CREATE OR REPLACE FUNCTION _parent_of( NAME, NAME, INT DEFAULT 1 )
+RETURNS BOOLEAN AS $$
+    WITH RECURSIVE inheritance_chain AS (
+        -- select the parent tuple
+        SELECT i.inhrelid AS child_id, 1 AS inheritance_level
+          FROM pg_catalog.pg_inherits i
+         WHERE i.inhparent = (
+            SELECT c1.oid
+              FROM pg_catalog.pg_class c1
+             WHERE c1.relname = $1
+               AND pg_catalog.pg_table_is_visible( c1.oid )
+        )
+        UNION
+        -- select the childrens
+        SELECT i.inhrelid AS child_id,
+               p.inheritance_level + 1 AS inheritance_level
+          FROM pg_catalog.pg_inherits i
+          JOIN inheritance_chain p
+            ON p.child_id = i.inhparent
+         WHERE i.inhrelid = (
+            SELECT c1.oid
+              FROM pg_catalog.pg_class c1
+             WHERE c1.relname = $1
+               AND pg_catalog.pg_table_is_visible( c1.oid )
+        )
+    )
+    SELECT EXISTS(
+        SELECT *
+          FROM inheritance_chain
+         WHERE inheritance_level = $3
+           AND   child_id = (
+               SELECT c1.oid
+                 FROM pg_catalog.pg_class c1
+                WHERE c1.relname = $2
+                  AND pg_catalog.pg_table_is_visible( c1.oid )
+        )
+    );
+$$ LANGUAGE SQL;
+
+-- is_parent_of( schema, table, schema, table, depth, description )
+-- is_parent_of( schema, table, schema, table, depth )
+-- is_parent_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION is_parent_of( NAME, NAME, NAME, NAME, INT DEFAULT 1, TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _parent_of( $1, $2, $3, $4, $5 ),
+        COALESCE(
+            $6,
+            'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 )
+            || ' is a ' || $5 || '-parent of '
+            || quote_ident( $3 ) || '.' || quote_ident( $4 )
+        )
+    );
+$$ LANGUAGE SQL;
+
+-- is_child_of( schema, table, schema, table, depth, description )
+-- is_child_of( schema, table, schema, table, depth )
+-- is_child_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION is_child_of( NAME, NAME, NAME, NAME, INT DEFAULT 1, TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
+    SELECT is_parent_of(
+        $3, $4, $1, $2, $5,
+        COALESCE( $6,
+            'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 )
+            || ' is a ' || $5 || '-child of '
+            || quote_ident( $3 ) || '.' || quote_ident( $4 )
+        )
+    );
+$$ LANGUAGE SQL;
+-- is_parent_of( table, table, depth,  description )
+-- is_parent_of( table, table, depth )
+-- is_parent_of( table, table )
+CREATE OR REPLACE FUNCTION is_parent_of( NAME, NAME, INT DEFAULT 1, TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
+        SELECT ok( _parent_of( $1, $2, $3 ), $4 );
+$$ LANGUAGE SQL;
+
+-- is_child_of( table, table, depth, description )
+-- is_child_of( table, table, depth )
+-- is_child_of( table, table )
+CREATE OR REPLACE FUNCTION is_child_of( NAME, NAME, INT DEFAULT 1, TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
+        SELECT is_parent_of( $2, $1, $3, $4 );
+$$ LANGUAGE SQL;
+
+-- isnt_parent_of( schema, table, schema, table, depth, description )
+-- isnt_parent_of( schema, table, schema, table, depth )
+-- isnt_parent_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION isnt_parent_of( NAME, NAME, NAME, NAME, INT DEFAULT 1, TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
+        SELECT ok( NOT _parent_of( $1, $2, $3, $4, $5 ), $6 );
+$$ LANGUAGE SQL;
+
+-- isnt_child_of( schema, table, schema, table, depth, description )
+-- isnt_child_of( schema, table, schema, table, depth )
+-- isnt_child_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION isnt_child_of( NAME, NAME, NAME, NAME, INT DEFAULT 1, TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
+        SELECT isnt_parent_of( $3, $4, $1, $2, $5, $6 );
+$$ LANGUAGE SQL;
+
+-- isnt_parent_of( table, table, depth, description )
+-- isnt_parent_of( table, table, depth )
+-- isnt_parent_of( table, table )
+CREATE OR REPLACE FUNCTION isnt_parent_of( NAME, NAME, INT DEFAULT 1, TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
+        SELECT ok( NOT _parent_of( $1, $2, $3 ), $4 );
+$$ LANGUAGE SQL;
+
+-- isnt_child_of( table, table, depth, description )
+-- isnt_child_of( table, table, depth )
+-- isnt_child_of( table, table )
+CREATE OR REPLACE FUNCTION isnt_child_of( NAME, NAME, INT DEFAULT 1 , TEXT DEFAULT NULL )
+RETURNS TEXT AS $$
+        SELECT isnt_parent_of( $2, $1, $3, $4 );
+$$ LANGUAGE SQL;
