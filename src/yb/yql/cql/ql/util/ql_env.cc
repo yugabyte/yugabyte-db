@@ -218,7 +218,7 @@ Status QLEnv::AlterRole(const std::string& role_name,
 }
 
 Status QLEnv::DeleteRole(const std::string& role_name) {
-  return client_->DeleteRole(role_name);
+  return client_->DeleteRole(role_name, CurrentRoleName());
 }
 
 Status QLEnv::GrantRevokeRole(GrantRevokeStatementType statement_type,

@@ -561,6 +561,8 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       }
 
       error_code = error_not_found;
+    } else if (s.IsNotAuthorized()) {
+      error_code = ErrorCode::UNAUTHORIZED;
     }
 
     return exec_context_->Error(tnode->name(), s, error_code);

@@ -4358,6 +4358,24 @@ Status CatalogManager::DeleteRole(const DeleteRoleRequestPB* req,
   }
 
   auto l = role->LockForWrite();
+
+  if (l->mutable_data()->pb.is_superuser()) {
+    // If the role we are trying to remove is a SUPERUSER, the role trying to remove it has to be
+    // a SUPERUSER too.
+    auto current_role = FindPtrOrNull(roles_map_, req->current_role());
+    if (current_role == nullptr) {
+      s = STATUS_SUBSTITUTE(NotFound, "Internal error: role $0 does not exist",
+                            req->current_role());
+      return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+    }
+
+    auto clr = current_role->LockForRead();
+    if (!clr->data().pb.is_superuser()) {
+      s = STATUS(NotAuthorized, "Only superusers can drop a role with superuser status");
+      return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+    }
+  }
+
   // Write to sys_catalog and in memory.
   RETURN_NOT_OK(sys_catalog_->DeleteItem(role.get()));
   // Remove it from the maps.

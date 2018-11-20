@@ -359,7 +359,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
                            const boost::optional<bool> superuser);
 
   // Delete a role.
-  CHECKED_STATUS DeleteRole(const RoleName& role_name);
+  CHECKED_STATUS DeleteRole(const std::string& role_name, const std::string& current_role_name);
 
   CHECKED_STATUS SetRedisPasswords(const vector<string>& passwords);
   // Fetches the password from the local cache, or from the master if the local cached value
