@@ -9,7 +9,7 @@
             p.prosecdef   AS is_definer,
             p.proretset   AS returns_set,
             p.provolatile::char AS volatility,
-@@ -5647,7 +5647,7 @@
+@@ -5656,7 +5656,7 @@
  
  CREATE OR REPLACE FUNCTION _agg ( NAME, NAME, NAME[] )
  RETURNS BOOLEAN AS $$
@@ -18,7 +18,7 @@
        FROM tap_funky
       WHERE schema = $1
         AND name   = $2
-@@ -5656,12 +5656,12 @@
+@@ -5665,12 +5665,12 @@
  
  CREATE OR REPLACE FUNCTION _agg ( NAME, NAME )
  RETURNS BOOLEAN AS $$
@@ -33,7 +33,7 @@
        FROM tap_funky
       WHERE name = $1
         AND args = array_to_string($2, ',')
-@@ -5670,7 +5670,7 @@
+@@ -5679,7 +5679,7 @@
  
  CREATE OR REPLACE FUNCTION _agg ( NAME )
  RETURNS BOOLEAN AS $$

@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(628);
+SELECT plan(640);
 --SELECT * FROM no_plan();
 
 CREATE SCHEMA someschema;
@@ -83,7 +83,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     has_function( 'pg_catalog', 'now', '{}'::name[], 'whatever' ),
     true,
-    'simple scchma.func with 0 args, desc',
+    'simple schema.func with 0 args, desc',
     'whatever',
     ''
 );
@@ -135,6 +135,41 @@ SELECT * FROM check_test(
     true,
     'custom numeric function',
     'Function __cat__(numeric) should exist',
+    ''
+);
+
+-- Check a custom function with a schema-qualified arugment.
+CREATE DOMAIN public.intword AS TEXT CHECK (VALUE IN ('one', 'two', 'three'));
+CREATE FUNCTION __cat__(intword) RETURNS BOOLEAN AS 'SELECT TRUE' LANGUAGE SQL;
+SELECT * FROM check_test(
+    has_function( '__cat__', '{intword}'::name[] ),
+    true,
+    'custom unqualified function with intword unqualified argument',
+    'Function __cat__(intword) should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_function( '__cat__', '{public.intword}'::name[] ),
+    true,
+    'custom unqualified function with intword qualified argument',
+    'Function __cat__(public.intword) should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_function( 'public', '__cat__', '{intword}'::name[] ),
+    true,
+    'custom qualified function with intword unqualified argument',
+    'Function public.__cat__(intword) should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_function( 'public', '__cat__', '{public.intword}'::text[] ),
+    true,
+    'custom qualified function with intword qualified argument',
+    'Function public.__cat__(public.intword) should exist',
     ''
 );
 
@@ -208,7 +243,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     hasnt_function( 'pg_catalog', 'now', '{}'::name[], 'whatever' ),
     false,
-    'simple scchma.func with 0 args, desc',
+    'simple schema.func with 0 args, desc',
     'whatever',
     ''
 );
