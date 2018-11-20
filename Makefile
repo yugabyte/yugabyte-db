@@ -106,6 +106,12 @@ TESTS   := $(filter-out test/sql/partitions.sql,$(TESTS))
 REGRESS := $(filter-out partitions,$(REGRESS))
 endif
 
+# Row security policy tests not supported by 9.4 and earlier.
+ifeq ($(shell echo $(VERSION) | grep -qE "^9[.][01234]|8[.]" && echo yes || echo no),yes)
+TESTS   := $(filter-out test/sql/policy.sql,$(TESTS))
+REGRESS := $(filter-out policy,$(REGRESS))
+endif
+
 # Determine the OS. Borrowed from Perl's Configure.
 OSNAME := $(shell $(SHELL) ./getos.sh)
 
