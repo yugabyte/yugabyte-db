@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(628);
+SELECT plan(640);
 --SELECT * FROM no_plan();
 
 CREATE SCHEMA someschema;
@@ -138,37 +138,38 @@ SELECT * FROM check_test(
     ''
 );
 
--- Check a custom function with a complex argument
-CREATE TABLE public.complex(a int);
-CREATE FUNCTION __cat__(public.complex) RETURNS BOOLEAN
-AS 'SELECT TRUE'
-LANGUAGE SQL;
+-- Check a custom function with a schema-qualified arugment.
+CREATE DOMAIN public.intword AS TEXT CHECK (VALUE IN ('one', 'two', 'three'));
+CREATE FUNCTION __cat__(intword) RETURNS BOOLEAN AS 'SELECT TRUE' LANGUAGE SQL;
 SELECT * FROM check_test(
-    has_function( '__cat__', '{complex}'::name[] ),
+    has_function( '__cat__', '{intword}'::name[] ),
     true,
-    'custom unqualified function with complex unqualified argument',
-    'Function __cat__(complex) should exist',
+    'custom unqualified function with intword unqualified argument',
+    'Function __cat__(intword) should exist',
     ''
 );
+
 SELECT * FROM check_test(
-    has_function( '__cat__', '{public.complex}'::name[] ),
+    has_function( '__cat__', '{public.intword}'::name[] ),
     true,
-    'custom unqualified function with complex qualified argument',
-    'Function __cat__(public.complex) should exist',
+    'custom unqualified function with intword qualified argument',
+    'Function __cat__(public.intword) should exist',
     ''
 );
+
 SELECT * FROM check_test(
-    has_function( 'public', '__cat__', '{complex}'::name[] ),
+    has_function( 'public', '__cat__', '{intword}'::name[] ),
     true,
-    'custom qualified function with complex unqualified argument',
-    'Function public.__cat__(complex) should exist',
+    'custom qualified function with intword unqualified argument',
+    'Function public.__cat__(intword) should exist',
     ''
 );
+
 SELECT * FROM check_test(
-    has_function( 'public', '__cat__', '{public.complex}'::name[] ),
+    has_function( 'public', '__cat__', '{public.intword}'::text[] ),
     true,
-    'custom qualified function with complex qualified argument',
-    'Function public.__cat__(public.complex) should exist',
+    'custom qualified function with intword qualified argument',
+    'Function public.__cat__(public.intword) should exist',
     ''
 );
 

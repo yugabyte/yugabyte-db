@@ -1,5 +1,5 @@
 \unset ECHO
-1..628
+1..640
 ok 1 - simple function should pass
 ok 2 - simple function should have the proper description
 ok 3 - simple function should have the proper diagnostics
@@ -39,18 +39,18 @@ ok 36 - custom array function should have the proper diagnostics
 ok 37 - custom numeric function should pass
 ok 38 - custom numeric function should have the proper description
 ok 39 - custom numeric function should have the proper diagnostics
-ok 40 - custom unqualified function with complex unqualified argument should pass
-ok 41 - custom unqualified function with complex unqualified argument should have the proper description
-ok 42 - custom unqualified function with complex unqualified argument should have the proper diagnostics
-ok 43 - custom unqualified function with complex qualified argument should pass
-ok 44 - custom unqualified function with complex qualified argument should have the proper description
-ok 45 - custom unqualified function with complex qualified argument should have the proper diagnostics
-ok 46 - custom qualified function with complex unqualified argument should pass
-ok 47 - custom qualified function with complex unqualified argument should have the proper description
-ok 48 - custom qualified function with complex unqualified argument should have the proper diagnostics
-ok 49 - custom qualified function with complex qualified argument should pass
-ok 50 - custom qualified function with complex qualified argument should have the proper description
-ok 51 - custom qualified function with complex qualified argument should have the proper diagnostics
+ok 40 - custom unqualified function with intword unqualified argument should pass
+ok 41 - custom unqualified function with intword unqualified argument should have the proper description
+ok 42 - custom unqualified function with intword unqualified argument should have the proper diagnostics
+ok 43 - custom unqualified function with intword qualified argument should pass
+ok 44 - custom unqualified function with intword qualified argument should have the proper description
+ok 45 - custom unqualified function with intword qualified argument should have the proper diagnostics
+ok 46 - custom qualified function with intword unqualified argument should pass
+ok 47 - custom qualified function with intword unqualified argument should have the proper description
+ok 48 - custom qualified function with intword unqualified argument should have the proper diagnostics
+ok 49 - custom qualified function with intword qualified argument should pass
+ok 50 - custom qualified function with intword qualified argument should have the proper description
+ok 51 - custom qualified function with intword qualified argument should have the proper diagnostics
 ok 52 - failure output should fail
 ok 53 - failure output should have the proper description
 ok 54 - failure output should have the proper diagnostics
@@ -640,4 +640,3 @@ ok 637 - function_volatility(func, immutable, desc) should have the proper diagn
 ok 638 - function_volatility(func, stable, desc) should pass
 ok 639 - function_volatility(func, stable, desc) should have the proper description
 ok 640 - function_volatility(func, stable, desc) should have the proper diagnostics
-# Looks like you planned 628 tests but ran 640

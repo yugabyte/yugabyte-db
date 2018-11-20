@@ -2499,12 +2499,7 @@ RETURNS BOOLEAN AS $$
           FROM tap_funky
          WHERE schema = $1
            AND name   = $2
-           AND args   = (
-            SELECT COALESCE(array_to_string(
-              array_agg(COALESCE(NULLIF(x, '')::regtype::text,'')), ','
-            ), '')
-            FROM unnest($3) x
-           )
+           AND args = array_to_string($3::regtype[], ',')
     );
 $$ LANGUAGE SQL;
 
@@ -2519,12 +2514,7 @@ RETURNS BOOLEAN AS $$
         SELECT TRUE
           FROM tap_funky
          WHERE name = $1
-           AND args   = (
-            SELECT COALESCE(array_to_string(
-              array_agg(COALESCE(NULLIF(x, '')::regtype::text,'')), ','
-            ), '')
-            FROM unnest($2) x
-           )
+           AND args = array_to_string($2::regtype[], ',')
            AND is_visible
     );
 $$ LANGUAGE SQL;
