@@ -410,8 +410,7 @@ CQLResponse* CQLProcessor::ProcessError(const Status& s,
     } else if (ql_errcode < ErrorCode::SUCCESS) {
       if (ql_errcode == ErrorCode::UNAUTHORIZED) {
         return new ErrorResponse(*request_, ErrorResponse::Code::UNAUTHORIZED, s.ToUserMessage());
-      }
-      if (ql_errcode > ErrorCode::LIMITATION_ERROR) {
+      } else if (ql_errcode > ErrorCode::LIMITATION_ERROR) {
         // System errors, internal errors, or crashes.
         return new ErrorResponse(*request_, ErrorResponse::Code::SERVER_ERROR, s.ToUserMessage());
       } else if (ql_errcode > ErrorCode::SEM_ERROR) {
