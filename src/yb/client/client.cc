@@ -674,10 +674,12 @@ CHECKED_STATUS YBClient::AlterRole(const RoleName& role_name,
   return Status::OK();
 }
 
-CHECKED_STATUS YBClient::DeleteRole(const RoleName& role_name) {
+CHECKED_STATUS YBClient::DeleteRole(const std::string& role_name,
+                                    const std::string& current_role_name) {
   // Setting up request.
   DeleteRoleRequestPB req;
   req.set_name(role_name);
+  req.set_current_role(current_role_name);
 
   DeleteRoleResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteRole);

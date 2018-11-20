@@ -1099,6 +1099,9 @@ message AlterRoleResponsePB {
 
 message DeleteRoleRequestPB {
   optional string name = 1;
+
+  // Name of the role trying to drop the role.
+  optional string current_role = 2;
 }
 
 message DeleteRoleResponsePB {
