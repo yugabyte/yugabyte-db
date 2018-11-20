@@ -10272,3 +10272,452 @@ RETURNS TEXT AS $$
         || ' should apply to ' || upper($3) || ' command'
     );
 $$ LANGUAGE sql;
+
+/******************** INHERITANCE ***********************************************/
+/*
+ * Internal function to test whether the specified table in the specified schema
+ * has an inheritance chain. Returns true or false.
+ */
+CREATE OR REPLACE FUNCTION _inherited( NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_namespace n
+          JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+         WHERE c.relkind = 'r'
+           AND n.nspname = $1
+           AND c.relname = $2
+           AND c.relhassubclass = true
+  );
+$$ LANGUAGE SQL;
+
+/*
+ * Internal function to test whether a specific table in the search_path has an
+ * inheritance chain. Returns true or false.
+ */
+CREATE OR REPLACE FUNCTION _inherited( NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_class c
+         WHERE c.relkind = 'r'
+           AND pg_catalog.pg_table_is_visible( c.oid )
+           AND c.relname = $1
+           AND c.relhassubclass = true
+    );
+$$ LANGUAGE SQL;
+
+-- has_inherited_tables( schema, table, description )
+CREATE OR REPLACE FUNCTION has_inherited_tables( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _inherited( $1, $2 ), $3);
+$$ LANGUAGE SQL;
+
+-- has_inherited_tables( schema, table )
+CREATE OR REPLACE FUNCTION has_inherited_tables( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _inherited( $1, $2 ),
+        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) || ' should have descendents'
+    );
+$$ LANGUAGE SQL;
+
+-- has_inherited_tables( table, description )
+CREATE OR REPLACE FUNCTION has_inherited_tables( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _inherited( $1 ), $2 );
+$$ LANGUAGE SQL;
+
+-- has_inherited_tables( table )
+CREATE OR REPLACE FUNCTION has_inherited_tables( NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _inherited( $1 ),
+        'Table ' || quote_ident( $1 ) || ' should have descendents'
+    );
+$$ LANGUAGE SQL;
+
+-- hasnt_inherited_tables( schema, table, description )
+CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+       SELECT ok( NOT _inherited( $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_inherited_tables( schema, table )
+CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT _inherited( $1, $2 ),
+        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) || ' should not have descendents'
+    );
+$$ LANGUAGE SQL;
+
+-- hasnt_inherited_tables( table, description )
+CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _inherited( $1 ), $2 );
+$$ LANGUAGE SQL;
+
+-- hasnt_inherited_tables( table )
+CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT _inherited( $1 ),
+        'Table ' || quote_ident( $1 ) || ' should not have descendents'
+    );
+$$ LANGUAGE SQL;
+
+/*
+* Internal function to test whether the schema-qualified table is an ancestor of
+* the other schema-qualified table. The integer value is the length of the
+* inheritance chain: a direct ancestor has has a chain length of 1.
+*/
+CREATE OR REPLACE FUNCTION _ancestor_of( NAME, NAME, NAME, NAME, INT )
+RETURNS BOOLEAN AS $$
+    WITH RECURSIVE inheritance_chain AS (
+        -- select the ancestor tuple
+        SELECT i.inhrelid AS descendent_id, 1 AS inheritance_level
+          FROM pg_catalog.pg_inherits i
+        WHERE i.inhparent = (
+            SELECT c1.oid
+              FROM pg_catalog.pg_class c1
+              JOIN pg_catalog.pg_namespace n1
+                ON c1.relnamespace = n1.oid
+             WHERE c1.relname = $2
+               AND n1.nspname = $1
+        )
+        UNION
+        -- select the descendents
+        SELECT i.inhrelid AS descendent_id,
+               p.inheritance_level + 1 AS inheritance_level
+          FROM pg_catalog.pg_inherits i
+          JOIN inheritance_chain p
+            ON p.descendent_id = i.inhparent
+         WHERE i.inhrelid = (
+            SELECT c1.oid
+              FROM pg_catalog.pg_class c1
+              JOIN pg_catalog.pg_namespace n1
+                ON c1.relnamespace = n1.oid
+             WHERE c1.relname = $4
+               AND n1.nspname = $3
+        )
+    )
+    SELECT EXISTS(
+        SELECT true
+          FROM inheritance_chain
+         WHERE inheritance_level = COALESCE($5, inheritance_level)
+           AND descendent_id = (
+                SELECT c1.oid
+                  FROM pg_catalog.pg_class c1
+                  JOIN pg_catalog.pg_namespace n1
+                    ON c1.relnamespace = n1.oid
+                 WHERE c1.relname = $4
+                   AND n1.nspname = $3
+        )
+    );
+$$ LANGUAGE SQL;
+
+/*
+ * Internal function to check if not-qualified tables
+ * within the search_path are connected by an inheritance chain.
+ */
+CREATE OR REPLACE FUNCTION _ancestor_of( NAME, NAME, INT )
+RETURNS BOOLEAN AS $$
+    WITH RECURSIVE inheritance_chain AS (
+        -- select the ancestor tuple
+        SELECT i.inhrelid AS descendent_id, 1 AS inheritance_level
+          FROM pg_catalog.pg_inherits i
+        WHERE i.inhparent = (
+            SELECT c1.oid
+              FROM pg_catalog.pg_class c1
+              JOIN pg_catalog.pg_namespace n1
+                ON c1.relnamespace = n1.oid
+             WHERE c1.relname = $1
+               AND pg_catalog.pg_table_is_visible( c1.oid )
+        )
+        UNION
+        -- select the descendents
+        SELECT i.inhrelid AS descendent_id,
+               p.inheritance_level + 1 AS inheritance_level
+          FROM pg_catalog.pg_inherits i
+          JOIN inheritance_chain p
+            ON p.descendent_id = i.inhparent
+         WHERE i.inhrelid = (
+            SELECT c1.oid
+              FROM pg_catalog.pg_class c1
+              JOIN pg_catalog.pg_namespace n1
+                ON c1.relnamespace = n1.oid
+             WHERE c1.relname = $2
+               AND pg_catalog.pg_table_is_visible( c1.oid )
+        )
+    )
+    SELECT EXISTS(
+        SELECT true
+          FROM inheritance_chain
+         WHERE inheritance_level = COALESCE($3, inheritance_level)
+           AND descendent_id = (
+                SELECT c1.oid
+                  FROM pg_catalog.pg_class c1
+                  JOIN pg_catalog.pg_namespace n1
+                    ON c1.relnamespace = n1.oid
+                 WHERE c1.relname = $2
+                   AND pg_catalog.pg_table_is_visible( c1.oid )
+        )
+    );
+$$ LANGUAGE SQL;
+
+-- is_ancestor_of( schema, table, schema, table, depth, description )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME, NAME, NAME, INT, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _ancestor_of( $1, $2, $3, $4, $5 ), $6 );
+$$ LANGUAGE SQL;
+
+-- is_ancestor_of( schema, table, schema, table, depth )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME, NAME, NAME, INT )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _ancestor_of( $1, $2, $3, $4, $5 ),
+        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 )
+        || ' should be ancestor ' || $5 || ' for '
+        || quote_ident( $3 ) || '.' || quote_ident( $4 )
+    );
+$$ LANGUAGE SQL;
+
+-- is_ancestor_of( schema, table, schema, table, description )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _ancestor_of( $1, $2, $3, $4, NULL ), $5 );
+$$ LANGUAGE SQL;
+
+-- is_ancestor_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _ancestor_of( $1, $2, $3, $4, NULL ),
+        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 )
+        || ' should be an ancestor of '
+        || quote_ident( $3 ) || '.' || quote_ident( $4 )
+    );
+$$ LANGUAGE SQL;
+
+-- is_ancestor_of( table, table, depth, description )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME, INT, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _ancestor_of( $1, $2, $3 ), $4 );
+$$ LANGUAGE SQL;
+
+-- is_ancestor_of( table, table, depth )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME, INT )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _ancestor_of( $1, $2, $3 ),
+        'Table ' || quote_ident( $1 ) || ' should be ancestor ' || $3 || ' of ' || quote_ident( $2)
+    );
+$$ LANGUAGE SQL;
+
+-- is_ancestor_of( table, table, description )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _ancestor_of( $1, $2, NULL ), $3 );
+$$ LANGUAGE SQL;
+
+-- is_ancestor_of( table, table )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _ancestor_of( $1, $2, NULL ),
+        'Table ' || quote_ident( $1 ) || ' should be an ancestor of ' || quote_ident( $2)
+    );
+$$ LANGUAGE SQL;
+
+-- isnt_ancestor_of( schema, table, schema, table, depth, description )
+CREATE OR REPLACE FUNCTION isnt_ancestor_of( NAME, NAME, NAME, NAME, INT, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT  _ancestor_of( $1, $2, $3, $4, $5 ), $6 );
+$$ LANGUAGE SQL;
+
+-- isnt_ancestor_of( schema, table, schema, table, depth )
+CREATE OR REPLACE FUNCTION isnt_ancestor_of( NAME, NAME, NAME, NAME, INT )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT  _ancestor_of( $1, $2, $3, $4, $5 ),
+        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 )
+        || ' should not be ancestor ' || $5 || ' for '
+        || quote_ident( $3 ) || '.' || quote_ident( $4 )
+    );
+$$ LANGUAGE SQL;
+
+-- isnt_ancestor_of( schema, table, schema, table, description )
+CREATE OR REPLACE FUNCTION isnt_ancestor_of( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT  _ancestor_of( $1, $2, $3, $4, NULL ), $5 );
+$$ LANGUAGE SQL;
+
+-- isnt_ancestor_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION isnt_ancestor_of( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT  _ancestor_of( $1, $2, $3, $4, NULL ),
+        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 )
+        || ' should not be an ancestor of '
+        || quote_ident( $3 ) || '.' || quote_ident( $4 )
+    );
+$$ LANGUAGE SQL;
+
+-- isnt_ancestor_of( table, table, depth, description )
+CREATE OR REPLACE FUNCTION isnt_ancestor_of( NAME, NAME, INT, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT  _ancestor_of( $1, $2, $3 ), $4 );
+$$ LANGUAGE SQL;
+
+-- isnt_ancestor_of( table, table, depth )
+CREATE OR REPLACE FUNCTION isnt_ancestor_of( NAME, NAME, INT )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT  _ancestor_of( $1, $2, $3 ),
+        'Table ' || quote_ident( $1 ) || ' should not be ancestor ' || $3 || ' of ' || quote_ident( $2)
+    );
+$$ LANGUAGE SQL;
+
+-- isnt_ancestor_of( table, table, description )
+CREATE OR REPLACE FUNCTION isnt_ancestor_of( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT  _ancestor_of( $1, $2, NULL ), $3 );
+$$ LANGUAGE SQL;
+
+-- isnt_ancestor_of( table, table )
+CREATE OR REPLACE FUNCTION isnt_ancestor_of( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT  _ancestor_of( $1, $2, NULL ),
+        'Table ' || quote_ident( $1 ) || ' should not be an ancestor of ' || quote_ident( $2)
+    );
+$$ LANGUAGE SQL;
+
+-- is_descendent_of( schema, table, schema, table, depth, description )
+CREATE OR REPLACE FUNCTION is_descendent_of( NAME, NAME, NAME, NAME, INT, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _ancestor_of( $3, $4, $1, $2, $5 ), $6 );
+$$ LANGUAGE SQL;
+
+-- is_descendent_of( schema, table, schema, table, depth )
+CREATE OR REPLACE FUNCTION is_descendent_of( NAME, NAME, NAME, NAME, INT )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _ancestor_of( $3, $4, $1, $2, $5 ),
+        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 )
+        || ' should be descendent ' || $5 || ' from '
+        || quote_ident( $3 ) || '.' || quote_ident( $4 )
+    );
+$$ LANGUAGE SQL;
+
+-- is_descendent_of( schema, table, schema, table, description )
+CREATE OR REPLACE FUNCTION is_descendent_of( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _ancestor_of( $3, $4, $1, $2, NULL ), $5 );
+$$ LANGUAGE SQL;
+
+-- is_descendent_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION is_descendent_of( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _ancestor_of( $3, $4, $1, $2, NULL ),
+        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 )
+        || ' should be a descendent of '
+        || quote_ident( $3 ) || '.' || quote_ident( $4 )
+    );
+$$ LANGUAGE SQL;
+
+-- is_descendent_of( table, table, depth, description )
+CREATE OR REPLACE FUNCTION is_descendent_of( NAME, NAME, INT, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _ancestor_of( $2, $1, $3 ), $4 );
+$$ LANGUAGE SQL;
+
+-- is_descendent_of( table, table, depth )
+CREATE OR REPLACE FUNCTION is_descendent_of( NAME, NAME, INT )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _ancestor_of( $2, $1, $3 ),
+        'Table ' || quote_ident( $1 ) || ' should be descendent ' || $3 || ' from ' || quote_ident( $2)
+    );
+$$ LANGUAGE SQL;
+
+-- is_descendent_of( table, table, description )
+CREATE OR REPLACE FUNCTION is_descendent_of( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _ancestor_of( $2, $1, NULL ), $3 );
+$$ LANGUAGE SQL;
+
+-- is_descendent_of( table, table )
+CREATE OR REPLACE FUNCTION is_descendent_of( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _ancestor_of( $2, $1, NULL ),
+        'Table ' || quote_ident( $1 ) || ' should be a descendent of ' || quote_ident( $2)
+    );
+$$ LANGUAGE SQL;
+
+-- isnt_descendent_of( schema, table, schema, table, depth, description )
+CREATE OR REPLACE FUNCTION isnt_descendent_of( NAME, NAME, NAME, NAME, INT, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok(NOT  _ancestor_of( $3, $4, $1, $2, $5 ), $6 );
+$$ LANGUAGE SQL;
+
+-- isnt_descendent_of( schema, table, schema, table, depth )
+CREATE OR REPLACE FUNCTION isnt_descendent_of( NAME, NAME, NAME, NAME, INT )
+RETURNS TEXT AS $$
+    SELECT ok(
+       NOT  _ancestor_of( $3, $4, $1, $2, $5 ),
+        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 )
+        || ' should not be descendent ' || $5 || ' from '
+        || quote_ident( $3 ) || '.' || quote_ident( $4 )
+    );
+$$ LANGUAGE SQL;
+
+-- isnt_descendent_of( schema, table, schema, table, description )
+CREATE OR REPLACE FUNCTION isnt_descendent_of( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok(NOT  _ancestor_of( $3, $4, $1, $2, NULL ), $5 );
+$$ LANGUAGE SQL;
+
+-- isnt_descendent_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION isnt_descendent_of( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+       NOT  _ancestor_of( $3, $4, $1, $2, NULL ),
+        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 )
+        || ' should not be a descendent of '
+        || quote_ident( $3 ) || '.' || quote_ident( $4 )
+    );
+$$ LANGUAGE SQL;
+
+-- isnt_descendent_of( table, table, depth, description )
+CREATE OR REPLACE FUNCTION isnt_descendent_of( NAME, NAME, INT, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok(NOT  _ancestor_of( $2, $1, $3 ), $4 );
+$$ LANGUAGE SQL;
+
+-- isnt_descendent_of( table, table, depth )
+CREATE OR REPLACE FUNCTION isnt_descendent_of( NAME, NAME, INT )
+RETURNS TEXT AS $$
+    SELECT ok(
+       NOT  _ancestor_of( $2, $1, $3 ),
+        'Table ' || quote_ident( $1 ) || ' should not be descendent ' || $3 || ' from ' || quote_ident( $2)
+    );
+$$ LANGUAGE SQL;
+
+-- isnt_descendent_of( table, table, description )
+CREATE OR REPLACE FUNCTION isnt_descendent_of( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok(NOT  _ancestor_of( $2, $1, NULL ), $3 );
+$$ LANGUAGE SQL;
+
+-- isnt_descendent_of( table, table )
+CREATE OR REPLACE FUNCTION isnt_descendent_of( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+       NOT  _ancestor_of( $2, $1, NULL ),
+        'Table ' || quote_ident( $1 ) || ' should not be a descendent of ' || quote_ident( $2)
+    );
+$$ LANGUAGE SQL;
