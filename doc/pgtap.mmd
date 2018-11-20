@@ -8321,10 +8321,18 @@ No changes. Everything should just work.
 * These permission-testing functions don't work, because one cannot grant
   permissions on the relevant objects until 8.4:
 
-  + `has_any_column_privilege()`
-  + `has_column_privilege()`
-  + `has_foreign_data_wrapper_privilege()`
-  + `has_server_privilege()`
+    + `has_any_column_privilege()`
+    + `has_column_privilege()`
+    + `has_foreign_data_wrapper_privilege()`
+    + `has_server_privilege()`
+
+* These inheritance-testing functions are not available, because internally
+  the use a recursive common table expression query not supported before 8.4:
+
+    + `is_ancestor_of()`
+    + `isnt_ancestor_of()`
+    + `is_descendent_of()`
+    + `isnt_descendent_of()`
 
 8.2 and Down
 ------------
