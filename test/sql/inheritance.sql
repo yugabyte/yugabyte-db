@@ -1,6 +1,6 @@
 \unset ECHO
 \i test/setup.sql
-SELECT plan( 85 );
+SELECT plan( 156 );
 --SELECT * FROM no_plan();
 SET client_min_messages = warning;
 
@@ -44,7 +44,7 @@ SELECT * FROM check_test(
     has_inherited_tables( 'hide', 'h_parent'::name ),
     true,
     'has_inherited_tables(sch, tab)',
-    'Table hide.h_parent should have children',
+    'Table hide.h_parent should have descendents',
     ''
 );
 
@@ -52,7 +52,7 @@ SELECT * FROM check_test(
     has_inherited_tables( 'hide', 'h_child2'::name ),
     false,
     'has_inherited_tables(sch, tab) fail',
-    'Table hide.h_child2 should have children',
+    'Table hide.h_child2 should have descendents',
     ''
 );
 
@@ -60,7 +60,7 @@ SELECT * FROM check_test(
     has_inherited_tables( 'hide', 'nonesuch'::name ),
     false,
     'has_inherited_tables(sch, nonesuch)',
-    'Table hide.nonesuch should have children',
+    'Table hide.nonesuch should have descendents',
     ''
 );
 
@@ -92,7 +92,7 @@ SELECT * FROM check_test(
     has_inherited_tables( 'parent' ),
     true,
     'has_inherited_tables(tab)',
-    'Table parent should have children',
+    'Table parent should have descendents',
     ''
 );
 
@@ -100,7 +100,7 @@ SELECT * FROM check_test(
     has_inherited_tables( 'child2' ),
     false,
     'has_inherited_tables(tab) fail',
-    'Table child2 should have children',
+    'Table child2 should have descendents',
     ''
 );
 
@@ -108,7 +108,7 @@ SELECT * FROM check_test(
     has_inherited_tables( 'nonesuch' ),
     false,
     'has_inherited_tables(nonesuch)',
-    'Table nonesuch should have children',
+    'Table nonesuch should have descendents',
     ''
 );
 
@@ -141,7 +141,7 @@ SELECT * FROM check_test(
     hasnt_inherited_tables( 'hide', 'h_child2'::name ),
     true,
     'hasnt_inherited_tables(sch, tab)',
-    'Table hide.h_child2 should not have children',
+    'Table hide.h_child2 should not have descendents',
     ''
 );
 
@@ -149,7 +149,7 @@ SELECT * FROM check_test(
     hasnt_inherited_tables( 'hide', 'h_child1'::name ),
     false,
     'hasnt_inherited_tables(sch, tab) fail',
-    'Table hide.h_child1 should not have children',
+    'Table hide.h_child1 should not have descendents',
     ''
 );
 
@@ -157,7 +157,7 @@ SELECT * FROM check_test(
     hasnt_inherited_tables( 'hide', 'nonesuch'::name ),
     true,
     'hasnt_inherited_tables(sch, nonesuch)',
-    'Table hide.nonesuch should not have children',
+    'Table hide.nonesuch should not have descendents',
     ''
 );
 
@@ -189,7 +189,7 @@ SELECT * FROM check_test(
     hasnt_inherited_tables( 'child2' ),
     true,
     'hasnt_inherited_tables(tab)',
-    'Table child2 should not have children',
+    'Table child2 should not have descendents',
     ''
 );
 
@@ -197,7 +197,7 @@ SELECT * FROM check_test(
     hasnt_inherited_tables( 'child1' ),
     false,
     'hasnt_inherited_tables(tab) fail',
-    'Table child1 should not have children',
+    'Table child1 should not have descendents',
     ''
 );
 
@@ -205,90 +205,233 @@ SELECT * FROM check_test(
     hasnt_inherited_tables( 'nonesuch' ),
     true,
     'hasnt_inherited_tables(nonesuch)',
-    'Table nonesuch should not have children',
+    'Table nonesuch should not have descendents',
     ''
 );
 
-
-
-
-
+-- test is_ancestor_of
 SELECT * FROM check_test(
-    is_parent_of( 'hide', 'h_parent', 'hide', 'h_child1', 1, 'Test hide.h_parent->hide.h_child1' ),
-    true, -- expected value
-    'hide.h_parent direct is father of hide.h_child1'
+    is_ancestor_of( 'hide', 'h_parent', 'hide', 'h_child1', 1, 'Lookie' ),
+    true,
+    'is_ancestor_of(psch, ptab, csch, ctab, 1, desc)',
+    'Lookie',
+    ''
 );
 
 SELECT * FROM check_test(
-    is_parent_of( 'hide', 'h_parent', 'hide', 'h_child1', 1 ),
-    true, -- expected value
-    'hide.h_parent direct is father of hide.h_child1'
+    is_ancestor_of( 'hide', 'h_parent', 'hide', 'h_child2', 2, 'Lookie' ),
+    true,
+    'is_ancestor_of(psch, ptab, csch, ctab, 2, desc)',
+    'Lookie',
+    ''
 );
 
 SELECT * FROM check_test(
-    is_parent_of( 'hide', 'h_child1', 'hide', 'h_child2', 1 ),
-    true, -- expected value
-    'hide.h_child1 direct is father of hide.h_child2'
+    is_ancestor_of( 'hide', 'h_parent', 'nope', 'h_child2', 1, 'Lookie' ),
+    false,
+    'is_ancestor_of(psch, nope, csch, ctab, 1, desc)',
+    'Lookie',
+    ''
 );
 
 SELECT * FROM check_test(
-    is_parent_of( 'hide', 'h_parent', 'hide', 'h_child2', 2 ),
-    true, -- expected value
-    'hide.h_parent is father of hide.h_child2'
+    is_ancestor_of( 'hide', 'h_parent', 'hide', 'nope', 1, 'Lookie' ),
+    false,
+    'is_ancestor_of(psch, ptab, csch, nope, desc)',
+    'Lookie',
+    ''
 );
 
 SELECT * FROM check_test(
-    is_parent_of( 'parent', 'child1' ),
-    true, -- expected value
-    'child1 inherits from parent'
+    is_ancestor_of( 'hide', 'h_parent', 'hide', 'h_child1', 1 ),
+    true,
+    'is_ancestor_of(psch, ptab, csch, ctab, 1)',
+    'Table hide.h_parent should be ancestor 1 for hide.h_child1',
+    ''
 );
 
 SELECT * FROM check_test(
-    is_parent_of( 'hide'::name, 'h_parent'::name, 'public'::name, 'child1'::name ),
-    false, -- expected value
-    'hide.h_parent is not father of public.child1'
+    is_ancestor_of( 'hide', 'nope', 'hide', 'h_child1', 1 ),
+    false,
+    'is_ancestor_of(psch, nope, csch, ctab, 1)',
+    'Table hide.nope should be ancestor 1 for hide.h_child1',
+    ''
 );
 
 SELECT * FROM check_test(
-    is_parent_of( 'public'::name, 'parent'::name, 'public'::name, 'child1'::name ),
-    true, -- expected value
-    'public.parent is not father of public.child1'
+    is_ancestor_of( 'hide', 'h_parent', 'hide', 'nope', 1 ),
+    false,
+    'is_ancestor_of(psch, ptab, csch, nope, 1)',
+    'Table hide.h_parent should be ancestor 1 for hide.nope',
+    ''
 );
 
 SELECT * FROM check_test(
-    isnt_child_of( 'hide'::name, 'h_parent'::name, 'public'::name, 'child1'::name ),
-    true, -- expected value
-    'hide.h_parent is not father of public.child1'
+    is_ancestor_of( 'hide', 'h_parent', 'hide', 'h_child2', 2 ),
+    true,
+    'is_ancestor_of(psch, ptab, csch, ctab, 2)',
+    'Table hide.h_parent should be ancestor 2 for hide.h_child2',
+    ''
 );
 
 SELECT * FROM check_test(
-    isnt_parent_of( 'parent', 'child1' ),
-    false, -- expected value
-    'parent is not father of public.child1'
+    is_ancestor_of( 'hide', 'nope', 'hide', 'h_child2', 2 ),
+    false,
+    'is_ancestor_of(psch, nope, csch, ctab, 2)',
+    'Table hide.nope should be ancestor 2 for hide.h_child2',
+    ''
 );
 
 SELECT * FROM check_test(
-    isnt_child_of( 'parent', 'child1' ),
-    true, -- expected value
-    'parent is not child1'
+    is_ancestor_of( 'hide', 'h_parent', 'hide', 'nope', 2 ),
+    false,
+    'is_ancestor_of(psch, ptab, csch, nope, 2)',
+    'Table hide.h_parent should be ancestor 2 for hide.nope',
+    ''
 );
 
 SELECT * FROM check_test(
-    isnt_child_of( 'child1', 'parent' ),
-    false, -- expected value
-    'child1 inherits from parent'
+    is_ancestor_of( 'hide', 'h_parent', 'hide', 'h_child1', 'Howdy' ),
+    true,
+    'is_ancestor_of(psch, ptab, csch, ctab, desc)',
+    'Howdy',
+    ''
 );
 
 SELECT * FROM check_test(
-    isnt_child_of( 'hide'::name, 'h_parent'::name, 'hide'::name, 'h_child1'::name ),
-    true, -- expected value
-    'hide.h_parent is not child of hide.h_child1'
+    is_ancestor_of( 'hide', 'h_parent', 'hide', 'h_child2', 'Howdy' ),
+    true,
+    'is_ancestor_of(psch, ptab, csch, ctab2, desc)',
+    'Howdy',
+    ''
 );
 
 SELECT * FROM check_test(
-    isnt_child_of( 'hide'::name, 'h_child1'::name, 'hide'::name, 'h_parent'::name ),
-    false, -- expected value
-    'hide.h_child1 inherits from hide.h_parent'
+    is_ancestor_of( 'hide', 'h_parent', 'hide', 'h_child1'::name ),
+    true,
+    'is_ancestor_of(psch, ptab, csch, ctab)',
+    'Table hide.h_parent should be an ancestor of hide.h_child1',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_ancestor_of( 'hide', 'h_parent', 'hide', 'h_child2'::name ),
+    true,
+    'is_ancestor_of(psch, ptab, csch, ctab2)',
+    'Table hide.h_parent should be an ancestor of hide.h_child2',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_ancestor_of( 'hide', 'nope', 'hide', 'h_child1'::name ),
+    false,
+    'is_ancestor_of(psch, nope, csch, ctab)',
+    'Table hide.nope should be an ancestor of hide.h_child1',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_ancestor_of( 'hide', 'h_parent', 'hide', 'nope'::name ),
+    false,
+    'is_ancestor_of(psch, ptab, csch, nope)',
+    'Table hide.h_parent should be an ancestor of hide.nope',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_ancestor_of( 'parent', 'child1', 1, 'Howdy' ),
+    true,
+    'is_ancestor_of(ptab, ctab, 1, desc)',
+    'Howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_ancestor_of( 'parent', 'child2', 2, 'Howdy' ),
+    true,
+    'is_ancestor_of(ptab, ctab, 2, desc)',
+    'Howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_ancestor_of( 'parent', 'child2', 1, 'Howdy' ),
+    false,
+    'is_ancestor_of(ptab, ctab, 1, desc) fail',
+    'Howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_ancestor_of( 'parent', 'hope', 1, 'Howdy' ),
+    false,
+    'is_ancestor_of(ptab, nope, 1, desc)',
+    'Howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_ancestor_of( 'parent', 'child1', 1 ),
+    true,
+    'is_ancestor_of(ptab, ctab, 1)',
+    'Table parent should be ancestor 1 of child1',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_ancestor_of( 'parent', 'child2', 2 ),
+    true,
+    'is_ancestor_of(ptab, ctab, 2)',
+    'Table parent should be ancestor 2 of child2',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_ancestor_of( 'parent', 'child2', 1 ),
+    false,
+    'is_ancestor_of(ptab, ctab, 1) fail',
+    'Table parent should be ancestor 1 of child2',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_ancestor_of( 'parent', 'nope', 1 ),
+    false,
+    'is_ancestor_of(ptab, nope, 1)',
+    'Table parent should be ancestor 1 of nope',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_ancestor_of( 'parent', 'child1' ),
+    true,
+    'is_ancestor_of(ptab, ctab)',
+    'Table parent should be an ancestor of child1',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_ancestor_of( 'parent', 'child2' ),
+    true,
+    'is_ancestor_of(ptab, ctab2)',
+    'Table parent should be an ancestor of child2',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_ancestor_of( 'parent', 'nope' ),
+    false,
+    'is_ancestor_of(ptab, nope)',
+    'Table parent should be an ancestor of nope',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_ancestor_of( 'nope', 'child1' ),
+    false,
+    'is_ancestor_of(nope, ctab2)',
+    'Table nope should be an ancestor of child1',
+    ''
 );
 
 /****************************************************************************/

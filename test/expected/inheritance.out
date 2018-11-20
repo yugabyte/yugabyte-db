@@ -1,5 +1,5 @@
 \unset ECHO
-1..85
+1..156
 ok 1 - has_inherited_tables(sch, tab, desc) should pass
 ok 2 - has_inherited_tables(sch, tab, desc) should have the proper description
 ok 3 - has_inherited_tables(sch, tab, desc) should have the proper diagnostics
@@ -72,16 +72,87 @@ ok 69 - hasnt_inherited_tables(tab) fail should have the proper diagnostics
 ok 70 - hasnt_inherited_tables(nonesuch) should pass
 ok 71 - hasnt_inherited_tables(nonesuch) should have the proper description
 ok 72 - hasnt_inherited_tables(nonesuch) should have the proper diagnostics
-ok 73 - hide.h_parent direct is father of hide.h_child1 should pass
-ok 74 - hide.h_parent direct is father of hide.h_child1 should pass
-ok 75 - hide.h_child1 direct is father of hide.h_child2 should pass
-ok 76 - hide.h_parent is father of hide.h_child2 should pass
-ok 77 - child1 inherits from parent should pass
-ok 78 - hide.h_parent is not father of public.child1 should fail
-ok 79 - public.parent is not father of public.child1 should pass
-ok 80 - hide.h_parent is not father of public.child1 should pass
-ok 81 - parent is not father of public.child1 should fail
-ok 82 - parent is not child1 should pass
-ok 83 - child1 inherits from parent should fail
-ok 84 - hide.h_parent is not child of hide.h_child1 should pass
-ok 85 - hide.h_child1 inherits from hide.h_parent should fail
+ok 73 - is_ancestor_of(psch, ptab, csch, ctab, 1, desc) should pass
+ok 74 - is_ancestor_of(psch, ptab, csch, ctab, 1, desc) should have the proper description
+ok 75 - is_ancestor_of(psch, ptab, csch, ctab, 1, desc) should have the proper diagnostics
+ok 76 - is_ancestor_of(psch, ptab, csch, ctab, 2, desc) should pass
+ok 77 - is_ancestor_of(psch, ptab, csch, ctab, 2, desc) should have the proper description
+ok 78 - is_ancestor_of(psch, ptab, csch, ctab, 2, desc) should have the proper diagnostics
+ok 79 - is_ancestor_of(psch, nope, csch, ctab, 1, desc) should fail
+ok 80 - is_ancestor_of(psch, nope, csch, ctab, 1, desc) should have the proper description
+ok 81 - is_ancestor_of(psch, nope, csch, ctab, 1, desc) should have the proper diagnostics
+ok 82 - is_ancestor_of(psch, ptab, csch, nope, desc) should fail
+ok 83 - is_ancestor_of(psch, ptab, csch, nope, desc) should have the proper description
+ok 84 - is_ancestor_of(psch, ptab, csch, nope, desc) should have the proper diagnostics
+ok 85 - is_ancestor_of(psch, ptab, csch, ctab, 1) should pass
+ok 86 - is_ancestor_of(psch, ptab, csch, ctab, 1) should have the proper description
+ok 87 - is_ancestor_of(psch, ptab, csch, ctab, 1) should have the proper diagnostics
+ok 88 - is_ancestor_of(psch, nope, csch, ctab, 1) should fail
+ok 89 - is_ancestor_of(psch, nope, csch, ctab, 1) should have the proper description
+ok 90 - is_ancestor_of(psch, nope, csch, ctab, 1) should have the proper diagnostics
+ok 91 - is_ancestor_of(psch, ptab, csch, nope, 1) should fail
+ok 92 - is_ancestor_of(psch, ptab, csch, nope, 1) should have the proper description
+ok 93 - is_ancestor_of(psch, ptab, csch, nope, 1) should have the proper diagnostics
+ok 94 - is_ancestor_of(psch, ptab, csch, ctab, 2) should pass
+ok 95 - is_ancestor_of(psch, ptab, csch, ctab, 2) should have the proper description
+ok 96 - is_ancestor_of(psch, ptab, csch, ctab, 2) should have the proper diagnostics
+ok 97 - is_ancestor_of(psch, nope, csch, ctab, 2) should fail
+ok 98 - is_ancestor_of(psch, nope, csch, ctab, 2) should have the proper description
+ok 99 - is_ancestor_of(psch, nope, csch, ctab, 2) should have the proper diagnostics
+ok 100 - is_ancestor_of(psch, ptab, csch, nope, 2) should fail
+ok 101 - is_ancestor_of(psch, ptab, csch, nope, 2) should have the proper description
+ok 102 - is_ancestor_of(psch, ptab, csch, nope, 2) should have the proper diagnostics
+ok 103 - is_ancestor_of(psch, ptab, csch, ctab, desc) should pass
+ok 104 - is_ancestor_of(psch, ptab, csch, ctab, desc) should have the proper description
+ok 105 - is_ancestor_of(psch, ptab, csch, ctab, desc) should have the proper diagnostics
+ok 106 - is_ancestor_of(psch, ptab, csch, ctab2, desc) should pass
+ok 107 - is_ancestor_of(psch, ptab, csch, ctab2, desc) should have the proper description
+ok 108 - is_ancestor_of(psch, ptab, csch, ctab2, desc) should have the proper diagnostics
+ok 109 - is_ancestor_of(psch, ptab, csch, ctab) should pass
+ok 110 - is_ancestor_of(psch, ptab, csch, ctab) should have the proper description
+ok 111 - is_ancestor_of(psch, ptab, csch, ctab) should have the proper diagnostics
+ok 112 - is_ancestor_of(psch, ptab, csch, ctab2) should pass
+ok 113 - is_ancestor_of(psch, ptab, csch, ctab2) should have the proper description
+ok 114 - is_ancestor_of(psch, ptab, csch, ctab2) should have the proper diagnostics
+ok 115 - is_ancestor_of(psch, nope, csch, ctab) should fail
+ok 116 - is_ancestor_of(psch, nope, csch, ctab) should have the proper description
+ok 117 - is_ancestor_of(psch, nope, csch, ctab) should have the proper diagnostics
+ok 118 - is_ancestor_of(psch, ptab, csch, nope) should fail
+ok 119 - is_ancestor_of(psch, ptab, csch, nope) should have the proper description
+ok 120 - is_ancestor_of(psch, ptab, csch, nope) should have the proper diagnostics
+ok 121 - is_ancestor_of(ptab, ctab, 1, desc) should pass
+ok 122 - is_ancestor_of(ptab, ctab, 1, desc) should have the proper description
+ok 123 - is_ancestor_of(ptab, ctab, 1, desc) should have the proper diagnostics
+ok 124 - is_ancestor_of(ptab, ctab, 2, desc) should pass
+ok 125 - is_ancestor_of(ptab, ctab, 2, desc) should have the proper description
+ok 126 - is_ancestor_of(ptab, ctab, 2, desc) should have the proper diagnostics
+ok 127 - is_ancestor_of(ptab, ctab, 1, desc) fail should fail
+ok 128 - is_ancestor_of(ptab, ctab, 1, desc) fail should have the proper description
+ok 129 - is_ancestor_of(ptab, ctab, 1, desc) fail should have the proper diagnostics
+ok 130 - is_ancestor_of(ptab, nope, 1, desc) should fail
+ok 131 - is_ancestor_of(ptab, nope, 1, desc) should have the proper description
+ok 132 - is_ancestor_of(ptab, nope, 1, desc) should have the proper diagnostics
+ok 133 - is_ancestor_of(ptab, ctab, 1) should pass
+ok 134 - is_ancestor_of(ptab, ctab, 1) should have the proper description
+ok 135 - is_ancestor_of(ptab, ctab, 1) should have the proper diagnostics
+ok 136 - is_ancestor_of(ptab, ctab, 2) should pass
+ok 137 - is_ancestor_of(ptab, ctab, 2) should have the proper description
+ok 138 - is_ancestor_of(ptab, ctab, 2) should have the proper diagnostics
+ok 139 - is_ancestor_of(ptab, ctab, 1) fail should fail
+ok 140 - is_ancestor_of(ptab, ctab, 1) fail should have the proper description
+ok 141 - is_ancestor_of(ptab, ctab, 1) fail should have the proper diagnostics
+ok 142 - is_ancestor_of(ptab, nope, 1) should fail
+ok 143 - is_ancestor_of(ptab, nope, 1) should have the proper description
+ok 144 - is_ancestor_of(ptab, nope, 1) should have the proper diagnostics
+ok 145 - is_ancestor_of(ptab, ctab) should pass
+ok 146 - is_ancestor_of(ptab, ctab) should have the proper description
+ok 147 - is_ancestor_of(ptab, ctab) should have the proper diagnostics
+ok 148 - is_ancestor_of(ptab, ctab2) should pass
+ok 149 - is_ancestor_of(ptab, ctab2) should have the proper description
+ok 150 - is_ancestor_of(ptab, ctab2) should have the proper diagnostics
+ok 151 - is_ancestor_of(ptab, nope) should fail
+ok 152 - is_ancestor_of(ptab, nope) should have the proper description
+ok 153 - is_ancestor_of(ptab, nope) should have the proper diagnostics
+ok 154 - is_ancestor_of(nope, ctab2) should fail
+ok 155 - is_ancestor_of(nope, ctab2) should have the proper description
+ok 156 - is_ancestor_of(nope, ctab2) should have the proper diagnostics

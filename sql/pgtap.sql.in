@@ -10318,7 +10318,7 @@ CREATE OR REPLACE FUNCTION has_inherited_tables( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
         _inherited( $1, $2 ),
-        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) || ' should have children'
+        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) || ' should have descendents'
     );
 $$ LANGUAGE SQL;
 
@@ -10333,7 +10333,7 @@ CREATE OR REPLACE FUNCTION has_inherited_tables( NAME )
 RETURNS TEXT AS $$
     SELECT ok(
         _inherited( $1 ),
-        'Table ' || quote_ident( $1 ) || ' should have children'
+        'Table ' || quote_ident( $1 ) || ' should have descendents'
     );
 $$ LANGUAGE SQL;
 
@@ -10348,7 +10348,7 @@ CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
         NOT _inherited( $1, $2 ),
-        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) || ' should not have children'
+        'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 ) || ' should not have descendents'
     );
 $$ LANGUAGE SQL;
 
@@ -10363,20 +10363,20 @@ CREATE OR REPLACE FUNCTION hasnt_inherited_tables( NAME )
 RETURNS TEXT AS $$
     SELECT ok(
         NOT _inherited( $1 ),
-        'Table ' || quote_ident( $1 ) || ' should not have children'
+        'Table ' || quote_ident( $1 ) || ' should not have descendents'
     );
 $$ LANGUAGE SQL;
 
 /*
-* Internal function to test whether the schema-qualified table is a parent of
+* Internal function to test whether the schema-qualified table is an ancestor of
 * the other schema-qualified table. The integer value is the length of the
-* inheritance chain: a direct child has a 1 value.
+* inheritance chain: a direct ancestor has has a chain length of 1.
 */
-CREATE OR REPLACE FUNCTION _parent_of( NAME, NAME, NAME, NAME, INT )
+CREATE OR REPLACE FUNCTION _ancestor_of( NAME, NAME, NAME, NAME, INT )
 RETURNS BOOLEAN AS $$
     WITH RECURSIVE inheritance_chain AS (
-        -- select the parent tuple
-        SELECT i.inhrelid AS child_id, 1 AS inheritance_level
+        -- select the ancestor tuple
+        SELECT i.inhrelid AS descendent_id, 1 AS inheritance_level
           FROM pg_catalog.pg_inherits i
         WHERE i.inhparent = (
             SELECT c1.oid
@@ -10387,12 +10387,12 @@ RETURNS BOOLEAN AS $$
                AND n1.nspname = $1
         )
         UNION
-        -- select the children
-        SELECT i.inhrelid AS child_id,
+        -- select the descendents
+        SELECT i.inhrelid AS descendent_id,
                p.inheritance_level + 1 AS inheritance_level
           FROM pg_catalog.pg_inherits i
           JOIN inheritance_chain p
-            ON p.child_id = i.inhparent
+            ON p.descendent_id = i.inhparent
          WHERE i.inhrelid = (
             SELECT c1.oid
               FROM pg_catalog.pg_class c1
@@ -10403,10 +10403,10 @@ RETURNS BOOLEAN AS $$
         )
     )
     SELECT EXISTS(
-        SELECT *
+        SELECT true
           FROM inheritance_chain
-         WHERE inheritance_level = $5
-           AND child_id = (
+         WHERE inheritance_level = COALESCE($5, inheritance_level)
+           AND descendent_id = (
                 SELECT c1.oid
                   FROM pg_catalog.pg_class c1
                   JOIN pg_catalog.pg_namespace n1
@@ -10415,220 +10415,238 @@ RETURNS BOOLEAN AS $$
                    AND n1.nspname = $3
         )
     );
-$$ LANGUAGE SQL STRICT;
-
-/*
- * Internal function to test for a direct child (i.e., inheritance chain
- * length of 1).
- */
-CREATE OR REPLACE FUNCTION _parent_of( NAME, NAME, NAME, NAME )
-RETURNS BOOLEAN AS $$
-    SELECT _parent_of( $1, $2, $3, $4, 1 );
 $$ LANGUAGE SQL;
 
 /*
  * Internal function to check if not-qualified tables
  * within the search_path are connected by an inheritance chain.
  */
-CREATE OR REPLACE FUNCTION _parent_of( NAME, NAME, INT )
+CREATE OR REPLACE FUNCTION _ancestor_of( NAME, NAME, INT )
 RETURNS BOOLEAN AS $$
     WITH RECURSIVE inheritance_chain AS (
-        -- select the parent tuple
-        SELECT i.inhrelid AS child_id, 1 AS inheritance_level
+        -- select the ancestor tuple
+        SELECT i.inhrelid AS descendent_id, 1 AS inheritance_level
           FROM pg_catalog.pg_inherits i
-         WHERE i.inhparent = (
+        WHERE i.inhparent = (
             SELECT c1.oid
               FROM pg_catalog.pg_class c1
+              JOIN pg_catalog.pg_namespace n1
+                ON c1.relnamespace = n1.oid
              WHERE c1.relname = $1
                AND pg_catalog.pg_table_is_visible( c1.oid )
         )
         UNION
-        -- select the children
-        SELECT i.inhrelid AS child_id,
+        -- select the descendents
+        SELECT i.inhrelid AS descendent_id,
                p.inheritance_level + 1 AS inheritance_level
           FROM pg_catalog.pg_inherits i
           JOIN inheritance_chain p
-            ON p.child_id = i.inhparent
+            ON p.descendent_id = i.inhparent
          WHERE i.inhrelid = (
             SELECT c1.oid
               FROM pg_catalog.pg_class c1
-             WHERE c1.relname = $1
+              JOIN pg_catalog.pg_namespace n1
+                ON c1.relnamespace = n1.oid
+             WHERE c1.relname = $2
                AND pg_catalog.pg_table_is_visible( c1.oid )
         )
     )
     SELECT EXISTS(
-        SELECT *
+        SELECT true
           FROM inheritance_chain
-         WHERE inheritance_level = $3
-           AND   child_id = (
-               SELECT c1.oid
-                 FROM pg_catalog.pg_class c1
-                WHERE c1.relname = $2
-                  AND pg_catalog.pg_table_is_visible( c1.oid )
+         WHERE inheritance_level = COALESCE($3, inheritance_level)
+           AND descendent_id = (
+                SELECT c1.oid
+                  FROM pg_catalog.pg_class c1
+                  JOIN pg_catalog.pg_namespace n1
+                    ON c1.relnamespace = n1.oid
+                 WHERE c1.relname = $2
+                   AND pg_catalog.pg_table_is_visible( c1.oid )
         )
     );
 $$ LANGUAGE SQL;
 
--- is_parent_of( schema, table, schema, table, depth, description )
-CREATE OR REPLACE FUNCTION is_parent_of( NAME, NAME, NAME, NAME, INT, TEXT )
+-- is_ancestor_of( schema, table, schema, table, depth, description )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME, NAME, NAME, INT, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok( _parent_of( $1, $2, $3, $4, $5 ), $6 );
+    SELECT ok( _ancestor_of( $1, $2, $3, $4, $5 ), $6 );
 $$ LANGUAGE SQL;
 
--- is_parent_of( schema, table, schema, table, depth )
-CREATE OR REPLACE FUNCTION is_parent_of( NAME, NAME, NAME, NAME, INT )
+-- is_ancestor_of( schema, table, schema, table, depth )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME, NAME, NAME, INT )
 RETURNS TEXT AS $$
     SELECT ok(
-        _parent_of( $1, $2, $3, $4, $5 ),
+        _ancestor_of( $1, $2, $3, $4, $5 ),
         'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 )
-        || ' is a ' || $5 || '-parent of '
+        || ' should be ancestor ' || $5 || ' for '
         || quote_ident( $3 ) || '.' || quote_ident( $4 )
     );
 $$ LANGUAGE SQL;
 
--- is_parent_of( schema, table, schema, table )
-CREATE OR REPLACE FUNCTION is_parent_of( NAME, NAME, NAME, NAME )
+-- is_ancestor_of( schema, table, schema, table, description )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _ancestor_of( $1, $2, $3, $4, NULL ), $5 );
+$$ LANGUAGE SQL;
+
+-- is_ancestor_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME, NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
-        _parent_of( $1, $2, $3, $4, 1 ),
+        _ancestor_of( $1, $2, $3, $4, NULL ),
         'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 )
-        || ' is a ' || '1-parent of '
+        || ' should be an ancestor of '
         || quote_ident( $3 ) || '.' || quote_ident( $4 )
     );
 $$ LANGUAGE SQL;
 
--- is_child_of( schema, table, schema, table, depth, description )
-CREATE OR REPLACE FUNCTION is_child_of( NAME, NAME, NAME, NAME, INT, TEXT )
+-- is_ancestor_of( table, table, depth, description )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME, INT, TEXT )
 RETURNS TEXT AS $$
-    SELECT is_parent_of($3, $4, $1, $2, $5, $6);
+    SELECT ok( _ancestor_of( $1, $2, $3 ), $4 );
 $$ LANGUAGE SQL;
 
--- is_child_of( schema, table, schema, table, depth )
-CREATE OR REPLACE FUNCTION is_child_of( NAME, NAME, NAME, NAME, INT )
+-- is_ancestor_of( table, table, depth )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME, INT )
 RETURNS TEXT AS $$
-    SELECT is_parent_of(
+    SELECT ok(
+        _ancestor_of( $1, $2, $3 ),
+        'Table ' || quote_ident( $1 ) || ' should be ancestor ' || $3 || ' of ' || quote_ident( $2)
+    );
+$$ LANGUAGE SQL;
+
+-- is_ancestor_of( table, table, description )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _ancestor_of( $1, $2, NULL ), $3 );
+$$ LANGUAGE SQL;
+
+-- is_ancestor_of( table, table )
+CREATE OR REPLACE FUNCTION is_ancestor_of( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _ancestor_of( $1, $2, NULL ),
+        'Table ' || quote_ident( $1 ) || ' should be an ancestor of ' || quote_ident( $2)
+    );
+$$ LANGUAGE SQL;
+
+/*
+-- is_descendent_of( schema, table, schema, table, depth, description )
+CREATE OR REPLACE FUNCTION is_descendent_of( NAME, NAME, NAME, NAME, INT, TEXT )
+RETURNS TEXT AS $$
+    SELECT is_ancestor_of($3, $4, $1, $2, $5, $6);
+$$ LANGUAGE SQL;
+
+-- is_descendent_of( schema, table, schema, table, depth )
+CREATE OR REPLACE FUNCTION is_descendent_of( NAME, NAME, NAME, NAME, INT )
+RETURNS TEXT AS $$
+    SELECT is_ancestor_of(
         $3, $4, $1, $2, $5,
         'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 )
-        || ' is a ' || $5 || '-child of '
+        || ' should be ancestor ' || $5 || ' for '
         || quote_ident( $3 ) || '.' || quote_ident( $4 )
     );
 $$ LANGUAGE SQL;
 
--- is_child_of( schema, table, schema, table )
-CREATE OR REPLACE FUNCTION is_child_of( NAME, NAME, NAME, NAME )
+-- is_descendent_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION is_descendent_of( NAME, NAME, NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT is_parent_of(
+    SELECT is_ancestor_of(
         $3, $4, $1, $2, 1,
         'Table ' || quote_ident( $1 ) || '.' || quote_ident( $2 )
-        || ' is a ' || '1-child of '
+        || ' is a ' || '1-descendent of '
         || quote_ident( $3 ) || '.' || quote_ident( $4 )
     );
 $$ LANGUAGE SQL;
 
--- is_parent_of( table, table, depth,  description )
-CREATE OR REPLACE FUNCTION is_parent_of( NAME, NAME, INT, TEXT )
+-- is_descendent_of( table, table, depth, description )
+CREATE OR REPLACE FUNCTION is_descendent_of( NAME, NAME, INT, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok( _parent_of( $1, $2, $3 ), $4 );
+    SELECT is_ancestor_of( $2, $1, $3, $4 );
 $$ LANGUAGE SQL;
 
--- is_parent_of( table, table, depth )
-CREATE OR REPLACE FUNCTION is_parent_of( NAME, NAME, INT )
+-- is_descendent_of( table, table, depth )
+CREATE OR REPLACE FUNCTION is_descendent_of( NAME, NAME, INT )
 RETURNS TEXT AS $$
-    SELECT ok( _parent_of( $1, $2, $3 ), NULL );
+    SELECT is_ancestor_of( $2, $1, $3, NULL );
 $$ LANGUAGE SQL;
 
--- is_parent_of( table, table )
-CREATE OR REPLACE FUNCTION is_parent_of( NAME, NAME )
+-- is_descendent_of( table, table )
+CREATE OR REPLACE FUNCTION is_descendent_of( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT ok( _parent_of( $1, $2, 1 ), NULL );
+    SELECT is_ancestor_of( $2, $1, 1, NULL );
 $$ LANGUAGE SQL;
 
--- is_child_of( table, table, depth, description )
-CREATE OR REPLACE FUNCTION is_child_of( NAME, NAME, INT, TEXT )
+-- isnt_ancestor_of( schema, table, schema, table, depth, description )
+CREATE OR REPLACE FUNCTION isnt_ancestor_of( NAME, NAME, NAME, NAME, INT, TEXT )
 RETURNS TEXT AS $$
-    SELECT is_parent_of( $2, $1, $3, $4 );
+    SELECT ok( NOT _ancestor_of( $1, $2, $3, $4, $5 ), $6 );
 $$ LANGUAGE SQL;
 
--- is_child_of( table, table, depth )
-CREATE OR REPLACE FUNCTION is_child_of( NAME, NAME, INT )
+-- isnt_ancestor_of( schema, table, schema, table, depth )
+CREATE OR REPLACE FUNCTION isnt_ancestor_of( NAME, NAME, NAME, NAME, INT )
 RETURNS TEXT AS $$
-    SELECT is_parent_of( $2, $1, $3, NULL );
+    SELECT ok( NOT _ancestor_of( $1, $2, $3, $4, $5 ), NULL );
 $$ LANGUAGE SQL;
 
--- is_child_of( table, table )
-CREATE OR REPLACE FUNCTION is_child_of( NAME, NAME )
+-- isnt_ancestor_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION isnt_ancestor_of( NAME, NAME, NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT is_parent_of( $2, $1, 1, NULL );
+    SELECT ok( NOT _ancestor_of( $1, $2, $3, $4, 1 ), NULL );
 $$ LANGUAGE SQL;
 
--- isnt_parent_of( schema, table, schema, table, depth, description )
-CREATE OR REPLACE FUNCTION isnt_parent_of( NAME, NAME, NAME, NAME, INT, TEXT )
+-- isnt_descendent_of( schema, table, schema, table, depth, description )
+CREATE OR REPLACE FUNCTION isnt_descendent_of( NAME, NAME, NAME, NAME, INT, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok( NOT _parent_of( $1, $2, $3, $4, $5 ), $6 );
+    SELECT isnt_ancestor_of( $3, $4, $1, $2, $5, $6 );
 $$ LANGUAGE SQL;
 
--- isnt_parent_of( schema, table, schema, table, depth )
-CREATE OR REPLACE FUNCTION isnt_parent_of( NAME, NAME, NAME, NAME, INT )
+-- isnt_descendent_of( schema, table, schema, table, depth )
+CREATE OR REPLACE FUNCTION isnt_descendent_of( NAME, NAME, NAME, NAME, INT )
 RETURNS TEXT AS $$
-    SELECT ok( NOT _parent_of( $1, $2, $3, $4, $5 ), NULL );
+    SELECT isnt_ancestor_of( $3, $4, $1, $2, $5, NULL );
 $$ LANGUAGE SQL;
 
--- isnt_parent_of( schema, table, schema, table )
-CREATE OR REPLACE FUNCTION isnt_parent_of( NAME, NAME, NAME, NAME )
+-- isnt_descendent_of( schema, table, schema, table )
+CREATE OR REPLACE FUNCTION isnt_descendent_of( NAME, NAME, NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT ok( NOT _parent_of( $1, $2, $3, $4, 1 ), NULL );
+    SELECT isnt_ancestor_of( $3, $4, $1, $2, 1, NULL );
 $$ LANGUAGE SQL;
 
--- isnt_child_of( schema, table, schema, table, depth, description )
-CREATE OR REPLACE FUNCTION isnt_child_of( NAME, NAME, NAME, NAME, INT, TEXT )
+-- isnt_ancestor_of( table, table, depth, description )
+CREATE OR REPLACE FUNCTION isnt_ancestor_of( NAME, NAME, INT, TEXT )
 RETURNS TEXT AS $$
-    SELECT isnt_parent_of( $3, $4, $1, $2, $5, $6 );
+    SELECT ok( NOT _ancestor_of( $1, $2, $3 ), $4 );
 $$ LANGUAGE SQL;
 
--- isnt_child_of( schema, table, schema, table, depth )
-CREATE OR REPLACE FUNCTION isnt_child_of( NAME, NAME, NAME, NAME, INT )
+-- isnt_ancestor_of( table, table, depth )
+CREATE OR REPLACE FUNCTION isnt_ancestor_of( NAME, NAME, INT )
 RETURNS TEXT AS $$
-    SELECT isnt_parent_of( $3, $4, $1, $2, $5, NULL );
+    SELECT ok( NOT _ancestor_of( $1, $2, $3 ), NULL );
 $$ LANGUAGE SQL;
 
--- isnt_child_of( schema, table, schema, table )
-CREATE OR REPLACE FUNCTION isnt_child_of( NAME, NAME, NAME, NAME )
+-- isnt_ancestor_of( table, table )
+CREATE OR REPLACE FUNCTION isnt_ancestor_of( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT isnt_parent_of( $3, $4, $1, $2, 1, NULL );
+    SELECT ok( NOT _ancestor_of( $1, $2, 1 ), NULL );
 $$ LANGUAGE SQL;
 
--- isnt_parent_of( table, table, depth, description )
-CREATE OR REPLACE FUNCTION isnt_parent_of( NAME, NAME, INT, TEXT )
+-- isnt_descendent_of( table, table, depth, description )
+CREATE OR REPLACE FUNCTION isnt_descendent_of( NAME, NAME, INT, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok( NOT _parent_of( $1, $2, $3 ), $4 );
+    SELECT isnt_ancestor_of( $2, $1, $3, $4 );
 $$ LANGUAGE SQL;
 
--- isnt_parent_of( table, table, depth )
-CREATE OR REPLACE FUNCTION isnt_parent_of( NAME, NAME, INT )
+-- isnt_descendent_of( table, table, depth )
+CREATE OR REPLACE FUNCTION isnt_descendent_of( NAME, NAME, INT )
 RETURNS TEXT AS $$
-    SELECT ok( NOT _parent_of( $1, $2, $3 ), NULL );
+    SELECT isnt_ancestor_of( $2, $1, $3, NULL );
 $$ LANGUAGE SQL;
 
--- isnt_parent_of( table, table )
-CREATE OR REPLACE FUNCTION isnt_parent_of( NAME, NAME )
+-- isnt_descendent_of( table, table )
+CREATE OR REPLACE FUNCTION isnt_descendent_of( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT ok( NOT _parent_of( $1, $2, 1 ), NULL );
+    SELECT isnt_ancestor_of( $2, $1, 1, NULL );
 $$ LANGUAGE SQL;
 
--- isnt_child_of( table, table, depth, description )
-CREATE OR REPLACE FUNCTION isnt_child_of( NAME, NAME, INT, TEXT )
-RETURNS TEXT AS $$
-    SELECT isnt_parent_of( $2, $1, $3, $4 );
-$$ LANGUAGE SQL;
-
--- isnt_child_of( table, table, depth )
-CREATE OR REPLACE FUNCTION isnt_child_of( NAME, NAME, INT )
-RETURNS TEXT AS $$
-    SELECT isnt_parent_of( $2, $1, $3, NULL );
-$$ LANGUAGE SQL;
-
--- isnt_child_of( table, table )
-CREATE OR REPLACE FUNCTION isnt_child_of( NAME, NAME )
-RETURNS TEXT AS $$
-    SELECT isnt_parent_of( $2, $1, 1, NULL );
-$$ LANGUAGE SQL;
+*/

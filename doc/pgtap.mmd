@@ -2976,139 +2976,146 @@ the `NAME` type:
 
     SELECT hasnt_inherited_tables('myschema', 'sometable'::NAME);
 
-### `is_parent_of()`
+### `is_ancestor_of()`
 
-    SELECT is_parent_of( :parent_schema, :parent_table, :child_schema, :child_table, :depth, :description );
-    SELECT is_parent_of( :parent_schema, :parent_table, :child_schema, :child_table, :depth );
-    SELECT is_parent_of( :parent_schema, :parent_table, :child_schema, :child_table );
-    SELECT is_parent_of( :parent_table, :child_table, :depth, :description );
-    SELECT is_parent_of( :parent_table, :child_table, :depth );
-    SELECT is_parent_of( :parent_table, :child_table );
+    SELECT is_ancestor_of( :ancestor_schema, :ancestor_table, :descendent_schema, :descendent_table, :depth, :description );
+    SELECT is_ancestor_of( :ancestor_schema, :ancestor_table, :descendent_schema, :descendent_table, :depth );
+    SELECT is_ancestor_of( :ancestor_schema, :ancestor_table, :descendent_schema, :descendent_table, :description );
+    SELECT is_ancestor_of( :ancestor_schema, :ancestor_table, :descendent_schema, :descendent_table );
+    SELECT is_ancestor_of( :ancestor_table, :descendent_table, :depth, :description );
+    SELECT is_ancestor_of( :ancestor_table, :descendent_table, :depth );
+    SELECT is_ancestor_of( :ancestor_table, :descendent_table, :description );
+    SELECT is_ancestor_of( :ancestor_table, :descendent_table );
 
 **Parameters**
 
-`:parent_schema`
-: Name of the schema in which the parent table must be found.
+`:ancestor_schema`
+: Name of the schema in which the ancestor table must be found.
 
-`:parent_table`
-: Name of the table that plays the parent role.
+`:ancestor_table`
+: Name of the table that plays the ancestor role.
 
-`:child_schema`
-: Name of the schema in which the child table must be.
+`:descendent_schema`
+: Name of the schema in which the descendent table must be.
 
-`:child_table`
-: Name of the table that is supposed to be child of the other one.
+`:descendent_table`
+: Name of the table that is supposed to be descendent of the other one.
 
 `:description`
 : Description of the test.
 
 `:depth`
-: The position in the inheritance chain of the child table, by default 1 (a
-  direct child).
+: The position in the inheritance chain of the descendent table.
 
-This function checks if the table marked as "parent" is effectively a table from
-which the "child" table inherits from, that is there is an inheritance chain
-between the two tables. The depth argument allows to specify the level in the
-inheritance chain in which the child table must be found.
+This function checks if the table marked as "ancestor" is effectively a table
+from which the "descendent" table inherits --- that there is an inheritance
+chain between the two tables. The optional depth argument specifies the length
+of the inheritance chain between the tables; if not specified, the inheritance
+distance may be of any length.
 
-### `isnt_parent_of()`
+ If you find that the function call seems to be getting confused, cast the
+ sequence to the `NAME` type:
 
-    SELECT isnt_parent_of( :parent_schema, :parent_table, :child_schema, :child_table, :depth, :description );
-    SELECT isnt_parent_of( :parent_schema, :parent_table, :child_schema, :child_table, :depth );
-    SELECT isnt_parent_of( :parent_schema, :parent_table, :child_schema, :child_table );
-    SELECT isnt_parent_of( :parent_table, :child_table, :depth, :description );
-    SELECT isnt_parent_of( :parent_table, :child_table, :depth );
-    SELECT isnt_parent_of( :parent_table, :child_table );
+    SELECT has_sequence('myschema', 'ancestor', 'myschema', 'descendent'::NAME);
+
+### `isnt_ancestor_of()`
+
+    SELECT isnt_ancestor_of( :ancestor_schema, :ancestor_table, :descendent_schema, :descendent_table, :depth, :description );
+    SELECT isnt_ancestor_of( :ancestor_schema, :ancestor_table, :descendent_schema, :descendent_table, :depth );
+    SELECT isnt_ancestor_of( :ancestor_schema, :ancestor_table, :descendent_schema, :descendent_table );
+    SELECT isnt_ancestor_of( :ancestor_table, :descendent_table, :depth, :description );
+    SELECT isnt_ancestor_of( :ancestor_table, :descendent_table, :depth );
+    SELECT isnt_ancestor_of( :ancestor_table, :descendent_table );
 
 **Parameters**
 
-`:parent_schema`
-: Name of the schema in which the parent table must be found.
+`:ancestor_schema`
+: Name of the schema in which the ancestor table must be found.
 
-`:parent_table`
-: Name of the table that plays the parent role.
+`:ancestor_table`
+: Name of the table that plays the ancestor role.
 
-`:child_schema`
-: Name of the schema in which the child table must be.
+`:descendent_schema`
+: Name of the schema in which the descendent table must be.
 
-`:child_table`
-: Name of the table that is supposed to be child of the other one.
+`:descendent_table`
+: Name of the table that is supposed to be descendent of the other one.
 
 `:description`
 : Description of the test.
 
 `:depth`
-: The position within the inheritance chain where the child table is expected
+: The position within the inheritance chain where the descendent table is expected
   to be (by default 1).
 
-This function ensures that the table marked as "parent" is not a table from
-which "child" inherits from, that there no inheritance chain between the two
-tables. The function does the opposite of `is_parent_of()`.
+This function ensures that the table marked as "ancestor" is not a table from
+which "descendent" inherits from, that there no inheritance chain between the two
+tables. The function does the opposite of `is_ancestor_of()`.
 
-### `is_child_of()`
+### `is_descendent_of()`
 
-    SELECT is_child_of( :child_schema, :child_table, :parent_schema, :parent_table, :depth, :description );
-    SELECT is_child_of( :child_schema, :child_table, :parent_schema, :parent_table, :description );
-    SELECT is_child_of( :child_schema, :child_table, :parent_schema, :parent_table );
-    SELECT is_child_of( :child_table,  :parent_table, :depth, :description );
-    SELECT is_child_of( :child_table,  :parent_table, :depth );
-    SELECT is_child_of( :child_table,  :parent_table );
+    SELECT is_descendent_of( :descendent_schema, :descendent_table, :ancestor_schema, :ancestor_table, :depth, :description );
+    SELECT is_descendent_of( :descendent_schema, :descendent_table, :ancestor_schema, :ancestor_table, :description );
+    SELECT is_descendent_of( :descendent_schema, :descendent_table, :ancestor_schema, :ancestor_table );
+    SELECT is_descendent_of( :descendent_table,  :ancestor_table, :depth, :description );
+    SELECT is_descendent_of( :descendent_table,  :ancestor_table, :depth );
+    SELECT is_descendent_of( :descendent_table,  :ancestor_table );
 
 **Parameters**
 
-`:parent_schema`
-: Name of the schema in which the parent table must be found.
+`:ancestor_schema`
+: Name of the schema in which the ancestor table must be found.
 
-`:parent_table`
-: Name of the table that plays the parent role.
+`:ancestor_table`
+: Name of the table that plays the ancestor role.
 
-`:child_schema`
-: Name of the schema in which the child table must be.
+`:descendent_schema`
+: Name of the schema in which the descendent table must be.
 
-`:child_table`
-: Name of the table that is supposed to be child of the other one.
+`:descendent_table`
+: Name of the table that is supposed to be descendent of the other one.
 
 `:description`
 : Description of the test.
 
 `:depth`
-: The position where the child table is expected to be in the inheritance chain
+: The position where the descendent table is expected to be in the inheritance chain
   (by default 1 for a direct son).
 
-This function does the same of `is_parent_of()`, with swapped arguments.
+This function does the same of `is_ancestor_of()`, with swapped arguments.
 
-### `isnt_child_of()`
+### `isnt_descendent_of()`
 
-    SELECT isnt_child_of( :child_schema, :child_table, :parent_schema, :parent_table, :depth, :description );
-    SELECT isnt_child_of( :child_schema, :child_table, :parent_schema, :parent_table, :depth );
-    SELECT isnt_child_of( :child_schema, :child_table, :parent_schema, :parent_table );
-    SELECT isnt_child_of( :child_table,  :parent_table, :depth, :description );
-    SELECT isnt_child_of( :child_table,  :parent_table, :depth );
-    SELECT isnt_child_of( :child_table,  :parent_table );
+    SELECT isnt_descendent_of( :descendent_schema, :descendent_table, :ancestor_schema, :ancestor_table, :depth, :description );
+    SELECT isnt_descendent_of( :descendent_schema, :descendent_table, :ancestor_schema, :ancestor_table, :depth );
+    SELECT isnt_descendent_of( :descendent_schema, :descendent_table, :ancestor_schema, :ancestor_table );
+    SELECT isnt_descendent_of( :descendent_table,  :ancestor_table, :depth, :description );
+    SELECT isnt_descendent_of( :descendent_table,  :ancestor_table, :depth );
+    SELECT isnt_descendent_of( :descendent_table,  :ancestor_table );
 
 **Parameters**
 
-`:parent_schema`
-: Name of the schema in which the parent table must be found.
+`:ancestor_schema`
+: Name of the schema in which the ancestor table must be found.
 
-`:parent_table`
-: Name of the table that plays the parent role.
+`:ancestor_table`
+: Name of the table that plays the ancestor role.
 
-`:child_schema`
-: Name of the schema in which the child table must be.
+`:descendent_schema`
+: Name of the schema in which the descendent table must be.
 
-`:child_table`
-: Name of the table that is supposed to be child of the other one.
+`:descendent_table`
+: Name of the table that is supposed to be descendent of the other one.
 
 `:description`
 : Description of the test.
 
 `:depth`
 : The position where the inheriting table is expected to be along the
-  inheritance chain with respect to the parent table (by default 1 for a direct
-  child).
+  inheritance chain with respect to the ancestor table (by default 1 for a direct
+  descendent).
 
-This function does the same of `isnt_parent_of()`, with swapped arguments.
+This function does the same of `isnt_ancestor_of()`, with swapped arguments.
 
 ### `has_sequence()` ###
 
@@ -3463,7 +3470,7 @@ and the description. The columns argument may be a string naming one column or
 expression, or an array of column names and/or expressions. For expressions,
 you must use lowercase for all SQL keywords and functions to properly compare
 to PostgreSQL's internal form of the expression. Non-functional expressions
-should also be wrapped in parentheses. A few examples:
+should also be wrapped in ancestorheses. A few examples:
 
     SELECT has_index(
         'myschema',
@@ -4955,10 +4962,10 @@ specified table is *not* partitioned, or if it does not exist.
 
 ### `is_partition_of()` ###
 
-    SELECT is_parent( :child_schema, :child, :parent_schema, :parent_table, :description );
-    SELECT is_parent( :child_schema, :child, :parent_schema, :parent_table );
-    SELECT is_parent( :child, :parent_table, :description );
-    SELECT is_parent( :child, :parent_table );
+    SELECT is_ancestor( :child_schema, :child, :ancestor_schema, :ancestor_table, :description );
+    SELECT is_ancestor( :child_schema, :child, :ancestor_schema, :ancestor_table );
+    SELECT is_ancestor( :child, :ancestor_table, :description );
+    SELECT is_ancestor( :child, :ancestor_table );
 
 **Parameters**
 
@@ -4968,20 +4975,20 @@ specified table is *not* partitioned, or if it does not exist.
 `:child`
 : Name of a partition table.
 
-`:parent_schema`
+`:ancestor_schema`
 : Schema in which to find the partitioned table.
 
-`:parent_table`
+`:ancestor_table`
 : Name of a partitioned table.
 
 `:description`
 : A short description of the test.
 
 Tests that one table is a partition of another table. The partition (or child)
-table is specified first, the partitioned (or parent) table second. Without the
+table is specified first, the partitioned (or ancestor) table second. Without the
 schema parameters, both tables must be visible in the search path. If the
 test description is omitted, it will be set to "Table `:child_table` should be
-a partition of `:parent_table`". Note that this test will fail if either table
+a partition of `:ancestor_table`". Note that this test will fail if either table
 does not exist.
 
 ### `is_clustered()` ###
