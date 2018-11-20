@@ -11,7 +11,7 @@
      RETURN ok( FALSE, descr ) || E'\n' || diag(
             '    died: ' || _error_diag(SQLSTATE, SQLERRM, detail, hint, context, schname, tabname, colname, chkname, typname)
      );
-@@ -6365,10 +6361,6 @@
+@@ -6374,10 +6370,6 @@
                  -- Something went wrong. Record that fact.
                  errstate := SQLSTATE;
                  errmsg := SQLERRM;

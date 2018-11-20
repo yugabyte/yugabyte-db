@@ -18,7 +18,7 @@
      -- There should have been no exception.
      GET STACKED DIAGNOSTICS
          detail  = PG_EXCEPTION_DETAIL,
-@@ -9905,231 +9905,4 @@
+@@ -9914,231 +9914,4 @@
            FROM generate_series(1, array_upper($1, 1)) s(i)
           ORDER BY $1[i]
      ), $2);

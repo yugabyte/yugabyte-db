@@ -10,6 +10,9 @@ Revision history for pgTAP
     + `policy_roles_are()`
     + `policy_cmd_is()`
   Thanks to Kamen Naydenov for the PR (#185).
+* Fixed an issue with `has_function()` where a test would fail if arguments
+  are schema-qualified even though the schema is in the search path. Thanks to
+  Sandro Santilli for the bug report (#179) and PR (#180).
 
 0.99.0 2018-09-16T20:55:41Z
 ---------------------------
