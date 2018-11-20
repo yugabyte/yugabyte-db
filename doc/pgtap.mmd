@@ -2993,38 +2993,41 @@ the `NAME` type:
 : Name of the schema in which the ancestor table must be found.
 
 `:ancestor_table`
-: Name of the table that plays the ancestor role.
+: Name of the ancestor table.
 
 `:descendent_schema`
-: Name of the schema in which the descendent table must be.
+: Name of the schema in which the descendent table must be found.
 
 `:descendent_table`
-: Name of the table that is supposed to be descendent of the other one.
+: Name of the descendent table.
+
+`:depth`
+: The inheritance distance between the two tables.
 
 `:description`
 : Description of the test.
-
-`:depth`
-: The position in the inheritance chain of the descendent table.
 
 This function checks if the table marked as "ancestor" is effectively a table
 from which the "descendent" table inherits --- that there is an inheritance
 chain between the two tables. The optional depth argument specifies the length
 of the inheritance chain between the tables; if not specified, the inheritance
-distance may be of any length.
+distance may be of any length.  If the `:description` is omitted, a reasonable
+substitute will be created.
 
  If you find that the function call seems to be getting confused, cast the
  sequence to the `NAME` type:
 
-    SELECT has_sequence('myschema', 'ancestor', 'myschema', 'descendent'::NAME);
+    SELECT is_ancestor_of('myschema', 'ancestor', 'myschema', 'descendent'::NAME);
 
 ### `isnt_ancestor_of()`
 
     SELECT isnt_ancestor_of( :ancestor_schema, :ancestor_table, :descendent_schema, :descendent_table, :depth, :description );
     SELECT isnt_ancestor_of( :ancestor_schema, :ancestor_table, :descendent_schema, :descendent_table, :depth );
+    SELECT isnt_ancestor_of( :ancestor_schema, :ancestor_table, :descendent_schema, :descendent_table, :description );
     SELECT isnt_ancestor_of( :ancestor_schema, :ancestor_table, :descendent_schema, :descendent_table );
     SELECT isnt_ancestor_of( :ancestor_table, :descendent_table, :depth, :description );
     SELECT isnt_ancestor_of( :ancestor_table, :descendent_table, :depth );
+    SELECT isnt_ancestor_of( :ancestor_table, :descendent_table, :description );
     SELECT isnt_ancestor_of( :ancestor_table, :descendent_table );
 
 **Parameters**
@@ -3033,64 +3036,74 @@ distance may be of any length.
 : Name of the schema in which the ancestor table must be found.
 
 `:ancestor_table`
-: Name of the table that plays the ancestor role.
+: Name of the ancestor table.
 
 `:descendent_schema`
-: Name of the schema in which the descendent table must be.
+: Name of the schema in which the descendent table must be found.
 
 `:descendent_table`
-: Name of the table that is supposed to be descendent of the other one.
+: Name of the descendent table.
+
+`:depth`
+: The inheritance distance between the two tables.
 
 `:description`
 : Description of the test.
 
-`:depth`
-: The position within the inheritance chain where the descendent table is expected
-  to be (by default 1).
-
 This function ensures that the table marked as "ancestor" is not a table from
-which "descendent" inherits from, that there no inheritance chain between the two
-tables. The function does the opposite of `is_ancestor_of()`.
+which "descendent" inherits --- that there is no inheritance chain between the
+two tables. If the optional depth argument is passed, the test enbsures only
+that the two tablesa are not related at that distance; they still might be an
+inheritance relationship between them. If the `:description` is omitted, a
+reasonable substitute will be created.
+
+ If you find that the function call seems to be getting confused, cast the
+ sequence to the `NAME` type:
+
+    SELECT isnt_ancestor_of('myschema', 'ancestor', 'myschema', 'descendent'::NAME);
 
 ### `is_descendent_of()`
 
     SELECT is_descendent_of( :descendent_schema, :descendent_table, :ancestor_schema, :ancestor_table, :depth, :description );
+    SELECT is_descendent_of( :descendent_schema, :descendent_table, :ancestor_schema, :ancestor_table, :depth );
     SELECT is_descendent_of( :descendent_schema, :descendent_table, :ancestor_schema, :ancestor_table, :description );
     SELECT is_descendent_of( :descendent_schema, :descendent_table, :ancestor_schema, :ancestor_table );
     SELECT is_descendent_of( :descendent_table,  :ancestor_table, :depth, :description );
     SELECT is_descendent_of( :descendent_table,  :ancestor_table, :depth );
+    SELECT is_descendent_of( :descendent_table,  :ancestor_table, :description );
     SELECT is_descendent_of( :descendent_table,  :ancestor_table );
 
 **Parameters**
+
+`:descendent_schema`
+: Name of the schema in which the descendent table must be found.
+
+`:descendent_table`
+: Name of the descendent table.
 
 `:ancestor_schema`
 : Name of the schema in which the ancestor table must be found.
 
 `:ancestor_table`
-: Name of the table that plays the ancestor role.
+: Name of the ancestor table.
 
-`:descendent_schema`
-: Name of the schema in which the descendent table must be.
-
-`:descendent_table`
-: Name of the table that is supposed to be descendent of the other one.
+`:depth`
+: The inheritance distance between the two tables.
 
 `:description`
 : Description of the test.
 
-`:depth`
-: The position where the descendent table is expected to be in the inheritance chain
-  (by default 1 for a direct son).
-
-This function does the same of `is_ancestor_of()`, with swapped arguments.
+This function provide exactly the same functionality as `is_ancestor_of()`, but
+with the ancestor and descendent arguments swapped.
 
 ### `isnt_descendent_of()`
 
     SELECT isnt_descendent_of( :descendent_schema, :descendent_table, :ancestor_schema, :ancestor_table, :depth, :description );
     SELECT isnt_descendent_of( :descendent_schema, :descendent_table, :ancestor_schema, :ancestor_table, :depth );
-    SELECT isnt_descendent_of( :descendent_schema, :descendent_table, :ancestor_schema, :ancestor_table );
+    SELECT isnt_descendent_of( :descendent_schema, :descendent_table, :ancestor_schema, :ancestor_table, :description );
     SELECT isnt_descendent_of( :descendent_table,  :ancestor_table, :depth, :description );
     SELECT isnt_descendent_of( :descendent_table,  :ancestor_table, :depth );
+    SELECT isnt_descendent_of( :descendent_table,  :ancestor_table, :description );
     SELECT isnt_descendent_of( :descendent_table,  :ancestor_table );
 
 **Parameters**
@@ -3099,23 +3112,22 @@ This function does the same of `is_ancestor_of()`, with swapped arguments.
 : Name of the schema in which the ancestor table must be found.
 
 `:ancestor_table`
-: Name of the table that plays the ancestor role.
+: Name of the ancestor table.
 
 `:descendent_schema`
-: Name of the schema in which the descendent table must be.
+: Name of the schema in which the descendent table must be found.
 
 `:descendent_table`
-: Name of the table that is supposed to be descendent of the other one.
+: Name of the descendent table.
+
+`:depth`
+: The inheritance distance between the two tables.
 
 `:description`
 : Description of the test.
 
-`:depth`
-: The position where the inheriting table is expected to be along the
-  inheritance chain with respect to the ancestor table (by default 1 for a direct
-  descendent).
-
-This function does the same of `isnt_ancestor_of()`, with swapped arguments.
+This function provide exactly the same functionality as `isnt_ancestor_of()`,
+but with the ancestor and descendent arguments swapped.
 
 ### `has_sequence()` ###
 

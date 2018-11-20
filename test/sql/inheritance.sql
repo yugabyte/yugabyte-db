@@ -1,6 +1,6 @@
 \unset ECHO
 \i test/setup.sql
-SELECT plan( 156 );
+SELECT plan( 240 );
 --SELECT * FROM no_plan();
 SET client_min_messages = warning;
 
@@ -363,7 +363,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_ancestor_of( 'parent', 'hope', 1, 'Howdy' ),
+    is_ancestor_of( 'parent', 'nope', 1, 'Howdy' ),
     false,
     'is_ancestor_of(ptab, nope, 1, desc)',
     'Howdy',
@@ -431,6 +431,231 @@ SELECT * FROM check_test(
     false,
     'is_ancestor_of(nope, ctab2)',
     'Table nope should be an ancestor of child1',
+    ''
+);
+
+-- test is_descendent_of
+SELECT * FROM check_test(
+    is_descendent_of( 'hide', 'h_child1', 'hide', 'h_parent', 1, 'Lookie' ),
+    true,
+    'is_descendent_of(csch, ctab, psch, ptab, 1, desc)',
+    'Lookie',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'hide', 'h_child2', 'hide', 'h_parent', 2, 'Lookie' ),
+    true,
+    'is_descendent_of(csch, ctab, psch, ptab, 2, desc)',
+    'Lookie',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'nope', 'h_child2', 'hide', 'h_parent', 1, 'Lookie' ),
+    false,
+    'is_descendent_of(csch, ctab, psch, nope, 1, desc)',
+    'Lookie',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'hide', 'nope', 'hide', 'h_parent', 1, 'Lookie' ),
+    false,
+    'is_descendent_of(csch, nope, psch, ptab, desc)',
+    'Lookie',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'hide', 'h_child1', 'hide', 'h_parent', 1 ),
+    true,
+    'is_descendent_of(csch, ctab, psch, ptab, 1)',
+    'Table hide.h_child1 should be descendent 1 from hide.h_parent',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'hide', 'h_child1', 'hide', 'nope', 1 ),
+    false,
+    'is_descendent_of(csch, ctab, psch, nope, 1)',
+    'Table hide.h_child1 should be descendent 1 from hide.nope',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'hide', 'nope', 'hide', 'h_parent', 1 ),
+    false,
+    'is_descendent_of(csch, nope, psch, ptab, 1)',
+    'Table hide.nope should be descendent 1 from hide.h_parent',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'hide', 'h_child2', 'hide', 'h_parent', 2 ),
+    true,
+    'is_descendent_of(csch, ctab, psch, ptab, 2)',
+    'Table hide.h_child2 should be descendent 2 from hide.h_parent',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'hide', 'h_child2', 'hide', 'nope', 2 ),
+    false,
+    'is_descendent_of(csch, ctab, psch, nope, 2)',
+    'Table hide.h_child2 should be descendent 2 from hide.nope',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'hide', 'nope', 'hide', 'h_parent', 2 ),
+    false,
+    'is_descendent_of(csch, nope, psch, ptab, 2)',
+    'Table hide.nope should be descendent 2 from hide.h_parent',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'hide', 'h_child1', 'hide', 'h_parent', 'Howdy' ),
+    true,
+    'is_descendent_of(csch, ctab, psch, ptab, desc)',
+    'Howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'hide', 'h_child2', 'hide', 'h_parent', 'Howdy' ),
+    true,
+    'is_descendent_of(csch, ctab2, psch, ptab, desc)',
+    'Howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'hide', 'h_child1', 'hide', 'h_parent'::name ),
+    true,
+    'is_descendent_of(csch, ctab, psch, ptab)',
+    'Table hide.h_child1 should be a descendent of hide.h_parent',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'hide', 'h_child2', 'hide', 'h_parent'::name ),
+    true,
+    'is_descendent_of(csch, ctab2, psch, ptab)',
+    'Table hide.h_child2 should be a descendent of hide.h_parent',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'hide', 'h_child1', 'hide', 'nope'::name ),
+    false,
+    'is_descendent_of(csch, ctab, psch, nope)',
+    'Table hide.h_child1 should be a descendent of hide.nope',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'hide', 'nope', 'hide', 'h_parent'::name ),
+    false,
+    'is_descendent_of(csch, nope, psch, ptab)',
+    'Table hide.nope should be a descendent of hide.h_parent',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'child1', 'parent', 1, 'Howdy' ),
+    true,
+    'is_descendent_of(ctab, ptab, 1, desc)',
+    'Howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'child2', 'parent', 2, 'Howdy' ),
+    true,
+    'is_descendent_of(ctab, ptab, 2, desc)',
+    'Howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'child2', 'parent', 1, 'Howdy' ),
+    false,
+    'is_descendent_of(ctab, ptab, 1, desc) fail',
+    'Howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'nope', 'parent', 1, 'Howdy' ),
+    false,
+    'is_descendent_of(nope, ptab, 1, desc)',
+    'Howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'child1', 'parent', 1 ),
+    true,
+    'is_descendent_of(ctab, ptab, 1)',
+    'Table child1 should be descendent 1 from parent',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'child2', 'parent', 2 ),
+    true,
+    'is_descendent_of(ctab, ptab, 2)',
+    'Table child2 should be descendent 2 from parent',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'child2', 'parent', 1 ),
+    false,
+    'is_descendent_of(ctab, ptab, 1) fail',
+    'Table child2 should be descendent 1 from parent',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'nope', 'parent', 1 ),
+    false,
+    'is_descendent_of(nope, ptab, 1)',
+    'Table nope should be descendent 1 from parent',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'child1', 'parent' ),
+    true,
+    'is_descendent_of(ctab, ptab)',
+    'Table child1 should be a descendent of parent',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'child2', 'parent' ),
+    true,
+    'is_descendent_of( ctab2, ptab )',
+    'Table child2 should be a descendent of parent',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'nope', 'parent' ),
+    false,
+    'is_descendent_of(nope, ptab)',
+    'Table nope should be a descendent of parent',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_descendent_of( 'child1', 'nope' ),
+    false,
+    'is_descendent_of(ctab2, nope)',
+    'Table child1 should be a descendent of nope',
     ''
 );
 
