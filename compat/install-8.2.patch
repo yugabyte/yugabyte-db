@@ -1,5 +1,5 @@
---- sql/pgtap.sql	2018-11-20 11:45:47.000000000 -0500
-+++ sql/pgtap.sql.saf	2018-11-20 11:45:32.000000000 -0500
+--- sql/pgtap.sql
++++ sql/pgtap.sql
 @@ -5,6 +5,71 @@
  --
  -- http://pgtap.org/

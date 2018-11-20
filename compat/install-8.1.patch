@@ -1,6 +1,6 @@
 --- sql/pgtap.sql
 +++ sql/pgtap.sql
-@@ -2266,13 +2266,13 @@
+@@ -2278,13 +2278,13 @@
  CREATE OR REPLACE FUNCTION _constraint ( NAME, NAME, CHAR, NAME[], TEXT, TEXT )
  RETURNS TEXT AS $$
  DECLARE
@@ -18,7 +18,7 @@
      END LOOP;
      IF array_upper(keys, 0) = 1 THEN
          have := 'No ' || $6 || ' constraints';
-@@ -2290,13 +2290,13 @@
+@@ -2302,13 +2302,13 @@
  CREATE OR REPLACE FUNCTION _constraint ( NAME, CHAR, NAME[], TEXT, TEXT )
  RETURNS TEXT AS $$
  DECLARE
@@ -36,7 +36,7 @@
      END LOOP;
      IF array_upper(keys, 0) = 1 THEN
          have := 'No ' || $5 || ' constraints';
-@@ -6186,7 +6186,7 @@
+@@ -6207,7 +6207,7 @@
  CREATE OR REPLACE FUNCTION _runem( text[], boolean )
  RETURNS SETOF TEXT AS $$
  DECLARE
@@ -45,7 +45,7 @@
      lbound int := array_lower($1, 1);
  BEGIN
      IF lbound IS NULL THEN RETURN; END IF;
-@@ -6194,8 +6194,8 @@
+@@ -6215,8 +6215,8 @@
          -- Send the name of the function to diag if warranted.
          IF $2 THEN RETURN NEXT diag( $1[i] || '()' ); END IF;
          -- Execute the tap function and return its results.
@@ -56,7 +56,7 @@
          END LOOP;
      END LOOP;
      RETURN;
-@@ -6264,7 +6264,7 @@
+@@ -6285,7 +6285,7 @@
      setup    ALIAS FOR $3;
      teardown ALIAS FOR $4;
      tests    ALIAS FOR $5;
@@ -65,7 +65,7 @@
      tfaild   INTEGER := 0;
      ffaild   INTEGER := 0;
      tnumb    INTEGER := 0;
-@@ -6274,7 +6274,7 @@
+@@ -6295,7 +6295,7 @@
      BEGIN
          -- No plan support.
          PERFORM * FROM no_plan();
@@ -74,7 +74,7 @@
      EXCEPTION
          -- Catch all exceptions and simply rethrow custom exceptions. This
          -- will roll back everything in the above block.
-@@ -6313,18 +6313,18 @@
+@@ -6334,18 +6334,18 @@
          BEGIN
              BEGIN
                  -- Run the setup functions.
@@ -99,7 +99,7 @@
                  END LOOP;
  
                  -- Emit the plan.
-@@ -6380,11 +6380,11 @@
+@@ -6401,11 +6401,11 @@
      END LOOP;
  
      -- Run the shutdown functions.
@@ -114,7 +114,7 @@
      END LOOP;
  
      -- Clean up and return.
-@@ -7642,7 +7642,7 @@
+@@ -7663,7 +7663,7 @@
  DECLARE
      rec    RECORD;
  BEGIN
