@@ -13,6 +13,14 @@ Revision history for pgTAP
 * Fixed an issue with `has_function()` where a test would fail if arguments
   are schema-qualified even though the schema is in the search path. Thanks to
   Sandro Santilli for the bug report (#179) and PR (#180).
+* Added table inheritance testing functions:
+    + `has_inherited_tables()`
+    + `hasnt_inherited_tables()`
+    + `is_ancestor_of()`
+    + `isnt_ancestor_of()`
+    + `is_descendent_of()`
+    + `isnt_descendent_of()`
+  Thanks to Luca Ferrari for the inspiration.
 
 0.99.0 2018-09-16T20:55:41Z
 ---------------------------
