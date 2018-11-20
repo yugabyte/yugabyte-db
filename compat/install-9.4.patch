@@ -18,12 +18,10 @@
      -- There should have been no exception.
      GET STACKED DIAGNOSTICS
          detail  = PG_EXCEPTION_DETAIL,
-@@ -9914,231 +9914,4 @@
-           FROM generate_series(1, array_upper($1, 1)) s(i)
-          ORDER BY $1[i]
+@@ -9916,233 +9916,6 @@
      ), $2);
--$$ LANGUAGE SQL immutable;
--
+ $$ LANGUAGE SQL immutable;
+ 
 --- policies_are( schema, table, policies[], description )
 -CREATE OR REPLACE FUNCTION policies_are( NAME, NAME, NAME[], TEXT )
 -RETURNS TEXT AS $$
@@ -250,4 +248,7 @@
 -        || ' should apply to ' || upper($3) || ' command'
 -    );
 -$$ LANGUAGE sql;
-+$$ LANGUAGE SQL immutable;
+-
+ /******************** INHERITANCE ***********************************************/
+ /*
+  * Internal function to test whether the specified table in the specified schema
