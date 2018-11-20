@@ -1813,7 +1813,7 @@ _PG_init(void)
     if (inited)
         return;
 
-    /* Must be loaded with shared_preload_libaries */
+    /* Must be loaded with shared_preload_libraries */
     if (!process_shared_preload_libraries_in_progress)
         ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
                 errmsg("pgaudit must be loaded via shared_preload_libraries")));
