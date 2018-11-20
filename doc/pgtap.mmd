@@ -2942,11 +2942,14 @@ specified materialized view does *not* exist.
 `:table`
 : Name of the table that must have children.
 
-`:description
+`:description`
 : A description of the test.
 
-This function checks that the specified table has at least one other table that
-inherits from it.
+This function checks that the specified table has other tables that inherit from
+it. If you find that the function call confuses the table name for a
+description, cast the table to the `NAME` type:
+
+    SELECT has_inherited_tables('myschema', 'sometable'::NAME);
 
 ### `hasnt_inherited_tables()`
 
@@ -2963,11 +2966,15 @@ inherits from it.
 `:table`
 : Name of the table that must not have children.
 
-`:description
+`:description`
 : A description of the test.
 
 This function checks that the specified table has no tables inheriting from it.
-It is the opposite of the function `has_inherited_tables()`.
+It is the opposite of the function `has_inherited_tables()`. If you find that
+the function call confuses the table name for a description, cast the table to
+the `NAME` type:
+
+    SELECT hasnt_inherited_tables('myschema', 'sometable'::NAME);
 
 ### `is_parent_of()`
 
