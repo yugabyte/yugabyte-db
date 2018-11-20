@@ -12,6 +12,15 @@
  CREATE OR REPLACE FUNCTION pg_version_num()
  RETURNS integer AS $$
      SELECT current_setting('server_version_num')::integer;
+@@ -2483,7 +2488,7 @@
+       JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
+ ;
+ 
+-CREATE OR REPLACE FUNCTION _funkargs ( NAME[] )
++CREATE OR REPLACE FUNCTION _funkargs ( TEXT[] )
+ RETURNS TEXT AS $$
+ BEGIN
+     RETURN array_to_string($1::regtype[], ',');
 @@ -6819,7 +6824,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;

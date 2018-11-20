@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION _funkargs ( TEXT[] )
+CREATE OR REPLACE FUNCTION _funkargs ( NAME[] )
 RETURNS TEXT AS $$
 BEGIN
     RETURN array_to_string($1::regtype[], ',');
