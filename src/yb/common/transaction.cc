@@ -92,9 +92,13 @@ std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata)
                        metadata.status_tablet, metadata.priority, metadata.start_time);
 }
 
+MonoDelta TransactionRpcTimeout() {
+  return 5s * kTimeMultiplier;
+}
+
 // TODO(dtxn) correct deadline should be calculated and propagated.
 MonoTime TransactionRpcDeadline() {
-  return MonoTime::Now() + 5s * kTimeMultiplier;
+  return MonoTime::Now() + TransactionRpcTimeout();
 }
 
 bool TransactionOperationContext::transactional() const {
