@@ -45,6 +45,7 @@ import socket
 import sys
 import time
 import traceback
+import subprocess
 from collections import defaultdict
 
 BUILD_SUPPORT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -278,7 +279,21 @@ def get_username():
         logging.warning(("Got an OSError trying to get the current user name, " +
                          "trying a workaround: {}").format(ex))
         # https://github.com/gitpython-developers/gitpython/issues/39
-        return pwd.getpwuid(os.getuid()).pw_name
+        try:
+            return pwd.getpwuid(os.getuid()).pw_name
+        except KeyError, ex:
+            user_from_env = os.getenv('USER')
+            if user_from_env:
+                return user_from_env
+            id_output = subprocess.check_output('id').strip()
+            ID_OUTPUT_RE = re.compile(r'^uid=\d+[(]([^)]+)[)]\s.*')
+            match = ID_OUTPUT_RE.match(id_output)
+            if match:
+                return match.group(1)
+            logging.warning(
+                "Could not get user name from the environment, and could not parse 'id' output: %s",
+                id_output)
+            raise ex
 
 
 def get_jenkins_job_name():
@@ -341,12 +356,19 @@ def save_report(report_base_dir, results, total_elapsed_time_sec, spark_succeede
                     pass
                 raise
 
+        try:
+            username = get_username()
+        except:  # noqa
+            logging.error("Could not get username, using 'unknown_user':\n%s",
+                          traceback.format_exc())
+            username = "unknown_user"
+
         historical_report_path = os.path.join(
                 historical_report_parent_dir,
                 '{}_{}__user_{}__build_{}.json'.format(
                     global_conf.build_type,
                     time.strftime('%Y-%m-%dT%H_%M_%S'),
-                    get_username(),
+                    username,
                     get_jenkins_job_name_path_component(),
                     os.environ.get('BUILD_ID', 'unknown')))
 

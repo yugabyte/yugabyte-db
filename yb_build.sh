@@ -920,6 +920,7 @@ log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
 if "$verbose"; then
   log "build_type=$build_type, cmake_build_type=$cmake_build_type"
 fi
+export BUILD_TYPE=$build_type
 
 if "$force_run_cmake" && "$force_no_run_cmake"; then
   fatal "--force-run-cmake and --force-no-run-cmake are incompatible"
