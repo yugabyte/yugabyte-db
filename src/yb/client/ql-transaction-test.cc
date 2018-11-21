@@ -63,6 +63,7 @@ DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
 DECLARE_int32(load_balancer_max_concurrent_adds);
+DECLARE_int32(master_inject_latency_on_transactional_tablet_lookups_ms);
 
 namespace yb {
 namespace client {
@@ -348,6 +349,17 @@ TEST_F(QLTransactionTest, Simple) {
   VerifyData();
   ASSERT_OK(cluster_->RestartSync());
   CheckNoRunningTransactions();
+}
+
+TEST_F(QLTransactionTest, LookupTabletFailure) {
+  google::FlagSaver saver;
+  FLAGS_master_inject_latency_on_transactional_tablet_lookups_ms =
+      TransactionRpcTimeout().ToMilliseconds();
+
+  auto txn = CreateTransaction();
+  auto result = WriteRow(CreateSession(txn), 0 /* key */, 1 /* value */);
+
+  ASSERT_TRUE(!result.ok() && result.status().IsTimedOut()) << "Result: " << result;
 }
 
 TEST_F(QLTransactionTest, ReadWithTimeInFuture) {
