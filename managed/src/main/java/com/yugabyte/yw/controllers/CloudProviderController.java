@@ -343,8 +343,7 @@ public class CloudProviderController extends AuthenticatedController {
         provider.setConfig(config);
         provider.save();
       } else if (provider.code.equals("aws")) {
-        return ApiResponse.error(
-            BAD_REQUEST, "For AWS provider, destVpcId requires hostVpcRegion");
+        taskParams.destVpcId = null;
       }
     }
 

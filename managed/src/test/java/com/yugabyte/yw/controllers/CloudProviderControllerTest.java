@@ -132,6 +132,13 @@ public class CloudProviderControllerTest extends FakeDBApplication {
             "/api/customers/" + customer.uuid + "/providers/"+ providerUUID + "/edit", customer.createAuthToken(), bodyJson);
   }
 
+  private Result bootstrapProvider(JsonNode bodyJson, Provider provider) {
+    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST",
+        "/api/customers/" + customer.uuid + "/providers/" + provider.uuid + "/bootstrap",
+        customer.createAuthToken(),
+        bodyJson);
+  }
+
   @Test
   public void testListEmptyProviders() {
     Result result = listProviders();
@@ -429,13 +436,22 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     prepareBootstrap(bodyJson, provider, false);
   }
 
+  @Test
+  public void testAwsBootstrapWithDestVpcId() {
+    Provider provider = ModelFactory.awsProvider(customer);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("destVpcId", "nofail");
+    Result result = bootstrapProvider(bodyJson, provider);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertNotNull(json);
+    assertNotNull(json.get("taskUUID"));
+  }
+
   private void prepareBootstrap(
       ObjectNode bodyJson, Provider provider, boolean expectCallToGetRegions) {
     when(mockQueryHelper.getRegions(provider.uuid)).thenReturn(Json.parse("[\"region1\",\"region2\"]"));
-    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("POST",
-        "/api/customers/" + customer.uuid + "/providers/" + provider.uuid + "/bootstrap",
-        customer.createAuthToken(),
-        bodyJson);
+    Result result = bootstrapProvider(bodyJson, provider);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertNotNull(json);
