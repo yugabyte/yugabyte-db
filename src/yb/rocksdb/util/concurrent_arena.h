@@ -21,6 +21,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#ifndef YB_ROCKSDB_UTIL_CONCURRENT_ARENA_H
+#define YB_ROCKSDB_UTIL_CONCURRENT_ARENA_H
+
 #pragma once
 #include <atomic>
 #include <memory>
@@ -38,6 +41,12 @@
 #else
 #define ROCKSDB_FIELD_UNUSED
 #endif  // __clang__
+
+namespace yb {
+
+class MemTracker;
+
+}
 
 namespace rocksdb {
 
@@ -97,6 +106,8 @@ class ConcurrentArena : public Allocator {
   }
 
   size_t BlockSize() const override { return arena_.BlockSize(); }
+
+  void SetMemTracker(std::shared_ptr<yb::MemTracker> mem_tracker);
 
  private:
   struct Shard {
@@ -212,3 +223,5 @@ class ConcurrentArena : public Allocator {
 };
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_UTIL_CONCURRENT_ARENA_H

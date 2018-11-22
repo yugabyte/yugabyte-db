@@ -42,6 +42,12 @@
 #undef max
 #endif
 
+namespace yb {
+
+class MemTracker;
+
+}
+
 namespace rocksdb {
 
 class BoundaryValuesExtractor;
@@ -1318,6 +1324,9 @@ struct DBOptions {
 
   // A prefix for log messages, usually containing the tablet id.
   std::string log_prefix;
+
+  // This RocksDB instance root mem tracker.
+  std::shared_ptr<yb::MemTracker> mem_tracker;
 };
 
 // Options to control the behavior of a database (passed to DB::Open)

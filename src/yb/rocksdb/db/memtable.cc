@@ -48,6 +48,8 @@
 
 #include "yb/gutil/macros.h"
 
+#include "yb/util/mem_tracker.h"
+
 using std::ostringstream;
 
 namespace rocksdb {
@@ -69,7 +71,11 @@ MemTableOptions::MemTableOptions(
     filter_deletes(mutable_cf_options.filter_deletes),
     statistics(ioptions.statistics),
     merge_operator(ioptions.merge_operator),
-    info_log(ioptions.info_log) {}
+    info_log(ioptions.info_log) {
+  if (ioptions.mem_tracker) {
+    mem_tracker = yb::MemTracker::FindOrCreateTracker("MemTable", ioptions.mem_tracker);
+  }
+}
 
 MemTable::MemTable(const InternalKeyComparator& cmp,
                    const ImmutableCFOptions& ioptions,
@@ -110,6 +116,10 @@ MemTable::MemTable(const InternalKeyComparator& cmp,
         moptions_.memtable_prefix_bloom_probes, nullptr,
         moptions_.memtable_prefix_bloom_huge_page_tlb_size,
         ioptions.info_log));
+  }
+
+  if (moptions_.mem_tracker) {
+    arena_.SetMemTracker(moptions_.mem_tracker);
   }
 }
 

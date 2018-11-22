@@ -25,17 +25,28 @@
 // it allocates a block with pre-defined block size. For a request of big
 // size, it uses malloc to directly get the requested size.
 
+#ifndef YB_ROCKSDB_UTIL_ARENA_H
+#define YB_ROCKSDB_UTIL_ARENA_H
+
 #pragma once
 #ifndef OS_WIN
 #include <sys/mman.h>
 #endif
+#include <assert.h>
+#include <stdint.h>
+
 #include <cstddef>
 #include <cerrno>
 #include <vector>
-#include <assert.h>
-#include <stdint.h>
+
 #include "yb/rocksdb/util/allocator.h"
 #include "yb/rocksdb/util/mutexlock.h"
+
+namespace yb {
+
+class MemTracker;
+
+}
 
 namespace rocksdb {
 
@@ -56,6 +67,8 @@ class Arena : public Allocator {
   ~Arena();
 
   char* Allocate(size_t bytes) override;
+
+  void SetMemTracker(std::shared_ptr<yb::MemTracker> mem_tracker);
 
   // huge_page_size: if >0, will try to allocate from huage page TLB.
   // The argument will be the size of the page size for huge page TLB. Bytes
@@ -91,6 +104,8 @@ class Arena : public Allocator {
   size_t BlockSize() const override { return kBlockSize; }
 
  private:
+  void Consumed(size_t size);
+
   char inline_block_[kInlineSize] __attribute__((__aligned__(sizeof(void*))));
   // Number of bytes allocated in one block
   const size_t kBlockSize;
@@ -126,6 +141,7 @@ class Arena : public Allocator {
 
   // Bytes of memory in blocks allocated so far
   size_t blocks_memory_ = 0;
+  std::shared_ptr<yb::MemTracker> mem_tracker_;
 };
 
 inline char* Arena::Allocate(size_t bytes) {
@@ -147,3 +163,5 @@ inline char* Arena::Allocate(size_t bytes) {
 extern size_t OptimizeBlockSize(size_t block_size);
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_UTIL_ARENA_H
