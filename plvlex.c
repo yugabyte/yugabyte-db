@@ -228,7 +228,15 @@ plvlex_tokens(PG_FUNCTION_ARGS)
 		fctx->values  [4] = (char*) palloc (255 * sizeof (char));
 		fctx->values  [5] = (char*) palloc (255 * sizeof (char));
 
-		tupdesc = CreateTemplateTupleDesc (6 , false);
+#if PG_VERSION_NUM >= 120000
+
+		tupdesc = CreateTemplateTupleDesc (6);
+
+#else
+
+		tupdesc = CreateTemplateTupleDesc (6, false);
+
+#endif
 
 		TupleDescInitEntry (tupdesc,  1, "start_pos", INT4OID, -1, 0);
 		TupleDescInitEntry (tupdesc,  2, "token",     TEXTOID, -1, 0);

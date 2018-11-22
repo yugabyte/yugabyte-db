@@ -1016,7 +1016,16 @@ dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
 		funcctx->user_fctx = fctx;
 		fctx->pipe_nth = 0;
 
-		tupdesc = CreateTemplateTupleDesc(DB_PIPES_COLS , false);
+#if PG_VERSION_NUM >= 120000
+
+		tupdesc = CreateTemplateTupleDesc(DB_PIPES_COLS);
+
+#else
+
+		tupdesc = CreateTemplateTupleDesc(DB_PIPES_COLS, false);
+
+#endif
+
 		i = 0;
 		TupleDescInitEntry(tupdesc, ++i, "name",    VARCHAROID, -1, 0);
 		TupleDescInitEntry(tupdesc, ++i, "items",   INT4OID,    -1, 0);

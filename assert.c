@@ -6,6 +6,13 @@
 #include "utils/builtins.h"
 #include "utils/syscache.h"
 #include "catalog/namespace.h"
+
+#if PG_VERSION_NUM >= 120000
+
+#include "catalog/pg_namespace_d.h"
+
+#endif
+
 #include "ctype.h"
 #include "string.h"
 #include "orafce.h"
@@ -263,9 +270,20 @@ dbms_assert_schema_name(PG_FUNCTION_ARGS)
 	if (list_length(names) != 1)
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
+#if PG_VERSION_NUM >= 120000
+
+	namespaceId = GetSysCacheOid(NAMESPACENAME, Anum_pg_namespace_oid,
+							CStringGetDatum(strVal(linitial(names))),
+							0, 0, 0);
+
+#else
+
 	namespaceId = GetSysCacheOid(NAMESPACENAME,
 							CStringGetDatum(strVal(linitial(names))),
 							0, 0, 0);
+
+#endif
+
 	if (!OidIsValid(namespaceId))
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
