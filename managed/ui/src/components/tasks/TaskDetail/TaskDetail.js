@@ -62,7 +62,7 @@ class TaskDetail extends Component {
     const getTruncatedErrorString = function(errorString) {
       return (
         <Highlight className='json'>
-          {_.trunc(errorString, {
+          {_.truncate(errorString, {
             'length': 400,
             'separator': /,? +/
           })}
