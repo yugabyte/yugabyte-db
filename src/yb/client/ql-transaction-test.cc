@@ -354,7 +354,7 @@ TEST_F(QLTransactionTest, Simple) {
 TEST_F(QLTransactionTest, LookupTabletFailure) {
   google::FlagSaver saver;
   FLAGS_master_inject_latency_on_transactional_tablet_lookups_ms =
-      TransactionRpcTimeout().ToMilliseconds();
+      TransactionRpcTimeout().ToMilliseconds() + 500;
 
   auto txn = CreateTransaction();
   auto result = WriteRow(CreateSession(txn), 0 /* key */, 1 /* value */);

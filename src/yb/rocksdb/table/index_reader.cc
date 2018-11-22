@@ -26,10 +26,11 @@ Status BinarySearchIndexReader::Create(
     RandomAccessFileReader* file, const Footer& footer,
     const BlockHandle& index_handle, Env* env,
     const ComparatorPtr& comparator,
-    std::unique_ptr<IndexReader>* index_reader) {
+    std::unique_ptr<IndexReader>* index_reader,
+    const std::shared_ptr<yb::MemTracker>& mem_tracker) {
   std::unique_ptr<Block> index_block;
   auto s = block_based_table::ReadBlockFromFile(
-      file, footer, ReadOptions::kDefault, index_handle, &index_block, env);
+      file, footer, ReadOptions::kDefault, index_handle, &index_block, env, mem_tracker);
 
   if (s.ok()) {
     index_reader->reset(new BinarySearchIndexReader(comparator, std::move(index_block)));
@@ -44,10 +45,11 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
                        const BlockHandle& index_handle,
                        InternalIterator* meta_index_iter,
                        std::unique_ptr<IndexReader>* index_reader,
-                       bool hash_index_allow_collision) {
+                       bool hash_index_allow_collision,
+                       const std::shared_ptr<yb::MemTracker>& mem_tracker) {
   std::unique_ptr<Block> index_block;
   auto s = block_based_table::ReadBlockFromFile(file, footer, ReadOptions::kDefault, index_handle,
-                             &index_block, env);
+                             &index_block, env, mem_tracker);
 
   if (!s.ok()) {
     return s;
@@ -80,13 +82,13 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
   // Read contents for the blocks
   BlockContents prefixes_contents;
   s = ReadBlockContents(file, footer, ReadOptions::kDefault, prefixes_handle,
-                        &prefixes_contents, env, true /* do decompression */);
+                        &prefixes_contents, env, mem_tracker, true /* do decompression */);
   if (!s.ok()) {
     return s;
   }
   BlockContents prefixes_meta_contents;
   s = ReadBlockContents(file, footer, ReadOptions::kDefault, prefixes_meta_handle,
-                        &prefixes_meta_contents, env,
+                        &prefixes_meta_contents, env, mem_tracker,
                         true /* do decompression */);
   if (!s.ok()) {
     LOG(ERROR) << "Failed to read hash index prefixes metadata block: " << s;
@@ -278,10 +280,12 @@ class MultiLevelIterator : public InternalIterator {
 
 Result<std::unique_ptr<MultiLevelIndexReader>> MultiLevelIndexReader::Create(
     RandomAccessFileReader* file, const Footer& footer, const int num_levels,
-    const BlockHandle& top_level_index_handle, Env* env, const ComparatorPtr& comparator) {
+    const BlockHandle& top_level_index_handle, Env* env, const ComparatorPtr& comparator,
+    const std::shared_ptr<yb::MemTracker>& mem_tracker) {
   std::unique_ptr<Block> index_block;
   RETURN_NOT_OK(block_based_table::ReadBlockFromFile(
-      file, footer, ReadOptions::kDefault, top_level_index_handle, &index_block, env));
+      file, footer, ReadOptions::kDefault, top_level_index_handle, &index_block, env,
+      mem_tracker));
 
   return std::make_unique<MultiLevelIndexReader>(comparator, num_levels, std::move(index_block));
 }

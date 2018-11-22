@@ -61,4 +61,8 @@ ConcurrentArena::Shard* ConcurrentArena::Repick() {
   return &shards_[cpuid & index_mask_];
 }
 
+void ConcurrentArena::SetMemTracker(std::shared_ptr<yb::MemTracker> mem_tracker) {
+  arena_.SetMemTracker(std::move(mem_tracker));
+}
+
 }  // namespace rocksdb

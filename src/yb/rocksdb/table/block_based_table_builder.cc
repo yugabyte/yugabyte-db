@@ -55,12 +55,14 @@
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/rocksdb/table/table_builder.h"
 
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/xxhash.h"
+
+#include "yb/util/mem_tracker.h"
+#include "yb/util/string_util.h"
 
 #include "yb/gutil/macros.h"
 
@@ -299,6 +301,8 @@ struct BlockBasedTableBuilder::Rep {
 
   std::vector<std::unique_ptr<IntTblPropCollector>> table_properties_collectors;
 
+  yb::MemTrackerPtr mem_tracker;
+
   Rep(const ImmutableCFOptions& _ioptions,
       const BlockBasedTableOptions& table_opt,
       const InternalKeyComparatorPtr& icomparator,
@@ -367,6 +371,11 @@ BlockBasedTableBuilder::Rep::Rep(
       flush_block_policy(
           table_options.flush_block_policy_factory->NewFlushBlockPolicy(
               table_options, data_block_builder)) {
+  if (_ioptions.mem_tracker) {
+    mem_tracker = yb::MemTracker::FindOrCreateTracker(
+        "BlockBasedTableBuilder", _ioptions.mem_tracker);
+  }
+
   metadata_writer = std::make_shared<FileWriterWithOffsetAndCachePrefix>();
   metadata_writer->writer = metadata_file;
   if (data_file != nullptr) {
@@ -664,7 +673,7 @@ Status BlockBasedTableBuilder::InsertBlockInCache(const Slice& block_contents,
     memcpy(ubuf.get(), block_contents.data(), size);
     ubuf[size] = type;
 
-    BlockContents results(std::move(ubuf), size, true, type);
+    BlockContents results(std::move(ubuf), size, true, type, r->mem_tracker);
 
     Block* block = new Block(std::move(results));
 

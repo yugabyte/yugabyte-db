@@ -34,9 +34,11 @@
 #include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/xxhash.h"
+
 #include "yb/util/format.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 
@@ -321,10 +323,49 @@ Status ReadBlock(RandomAccessFileReader* file, const Footer& footer,
 
 }  // namespace
 
+TrackedAllocation::TrackedAllocation()
+    : size_(0) {
+}
+
+TrackedAllocation::TrackedAllocation(
+    std::unique_ptr<char[]>&& data, size_t size, yb::MemTrackerPtr mem_tracker)
+    : holder_(std::move(data)), size_(size), mem_tracker_(std::move(mem_tracker)) {
+  if (holder_ && mem_tracker_) {
+    mem_tracker_->Consume(size_);
+  }
+}
+
+TrackedAllocation::~TrackedAllocation() {
+  if (holder_ && mem_tracker_) {
+    mem_tracker_->Release(size_);
+  }
+}
+
+TrackedAllocation& TrackedAllocation::operator=(TrackedAllocation&& other) {
+  if (holder_ && mem_tracker_) {
+    mem_tracker_->Release(size_);
+  }
+
+  holder_ = std::move(other.holder_);
+  size_ = other.size_;
+  mem_tracker_ = std::move(other.mem_tracker_);
+
+  return *this;
+}
+
+BlockContents::BlockContents(
+    std::unique_ptr<char[]>&& _data, size_t _size, bool _cachable,
+    CompressionType _compression_type, yb::MemTrackerPtr mem_tracker)
+    : data(_data.get(), _size),
+      cachable(_cachable),
+      compression_type(_compression_type),
+      allocation(std::move(_data), _size, std::move(mem_tracker)) {
+}
+
 Status ReadBlockContents(RandomAccessFileReader* file, const Footer& footer,
                          const ReadOptions& options, const BlockHandle& handle,
                          BlockContents* contents, Env* env,
-                         bool decompression_requested) {
+                         const yb::MemTrackerPtr& mem_tracker, bool decompression_requested) {
   Status status;
   Slice slice;
   size_t n = static_cast<size_t>(handle.size());
@@ -354,7 +395,7 @@ Status ReadBlockContents(RandomAccessFileReader* file, const Footer& footer,
   compression_type = static_cast<rocksdb::CompressionType>(slice.data()[n]);
 
   if (decompression_requested && compression_type != kNoCompression) {
-    return UncompressBlockContents(slice.cdata(), n, contents, footer.version());
+    return UncompressBlockContents(slice.cdata(), n, contents, footer.version(), mem_tracker);
   }
 
   if (slice.cdata() != used_buf) {
@@ -367,7 +408,7 @@ Status ReadBlockContents(RandomAccessFileReader* file, const Footer& footer,
     memcpy(heap_buf.get(), stack_buf, n);
   }
 
-  *contents = BlockContents(std::move(heap_buf), n, true, compression_type);
+  *contents = BlockContents(std::move(heap_buf), n, true, compression_type, mem_tracker);
   return status;
 }
 
@@ -380,7 +421,8 @@ Status ReadBlockContents(RandomAccessFileReader* file, const Footer& footer,
 // format_version is the block format as defined in include/rocksdb/table.h
 Status UncompressBlockContents(const char* data, size_t n,
                                BlockContents* contents,
-                               uint32_t format_version) {
+                               uint32_t format_version,
+                               const std::shared_ptr<yb::MemTracker>& mem_tracker) {
   std::unique_ptr<char[]> ubuf;
   int decompress_size = 0;
   assert(data[n] != kNoCompression);
@@ -396,7 +438,7 @@ Status UncompressBlockContents(const char* data, size_t n,
       if (!Snappy_Uncompress(data, n, ubuf.get())) {
         return STATUS(Corruption, snappy_corrupt_msg);
       }
-      *contents = BlockContents(std::move(ubuf), ulength, true, kNoCompression);
+      *contents = BlockContents(std::move(ubuf), ulength, true, kNoCompression, mem_tracker);
       break;
     }
     case kZlibCompression:
@@ -409,7 +451,7 @@ Status UncompressBlockContents(const char* data, size_t n,
         return STATUS(Corruption, zlib_corrupt_msg);
       }
       *contents =
-          BlockContents(std::move(ubuf), decompress_size, true, kNoCompression);
+          BlockContents(std::move(ubuf), decompress_size, true, kNoCompression, mem_tracker);
       break;
     case kBZip2Compression:
       ubuf = std::unique_ptr<char[]>(BZip2_Uncompress(
@@ -421,7 +463,7 @@ Status UncompressBlockContents(const char* data, size_t n,
         return STATUS(Corruption, bzip2_corrupt_msg);
       }
       *contents =
-          BlockContents(std::move(ubuf), decompress_size, true, kNoCompression);
+          BlockContents(std::move(ubuf), decompress_size, true, kNoCompression, mem_tracker);
       break;
     case kLZ4Compression:
       ubuf = std::unique_ptr<char[]>(LZ4_Uncompress(
@@ -433,7 +475,7 @@ Status UncompressBlockContents(const char* data, size_t n,
         return STATUS(Corruption, lz4_corrupt_msg);
       }
       *contents =
-          BlockContents(std::move(ubuf), decompress_size, true, kNoCompression);
+          BlockContents(std::move(ubuf), decompress_size, true, kNoCompression, mem_tracker);
       break;
     case kLZ4HCCompression:
       ubuf = std::unique_ptr<char[]>(LZ4_Uncompress(
@@ -445,7 +487,7 @@ Status UncompressBlockContents(const char* data, size_t n,
         return STATUS(Corruption, lz4hc_corrupt_msg);
       }
       *contents =
-          BlockContents(std::move(ubuf), decompress_size, true, kNoCompression);
+          BlockContents(std::move(ubuf), decompress_size, true, kNoCompression, mem_tracker);
       break;
     case kZSTDNotFinalCompression:
       ubuf =
@@ -456,7 +498,7 @@ Status UncompressBlockContents(const char* data, size_t n,
         return STATUS(Corruption, zstd_corrupt_msg);
       }
       *contents =
-          BlockContents(std::move(ubuf), decompress_size, true, kNoCompression);
+          BlockContents(std::move(ubuf), decompress_size, true, kNoCompression, mem_tracker);
       break;
     default:
       return STATUS(Corruption, "bad block type");

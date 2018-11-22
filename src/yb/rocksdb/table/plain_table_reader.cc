@@ -52,6 +52,8 @@
 #include "yb/rocksdb/util/murmurhash.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/stop_watch.h"
+
+#include "yb/util/mem_tracker.h"
 #include "yb/util/string_util.h"
 
 
@@ -123,9 +125,16 @@ PlainTableReader::PlainTableReader(const ImmutableCFOptions& ioptions,
                  static_cast<uint32_t>(table_properties->data_size)),
       ioptions_(ioptions),
       file_size_(file_size),
-      table_properties_(nullptr) {}
+      table_properties_(nullptr) {
+  if (ioptions.mem_tracker) {
+    mem_tracker_ = yb::MemTracker::FindOrCreateTracker("PlainTableReader", ioptions.mem_tracker);
+  }
+}
 
 PlainTableReader::~PlainTableReader() {
+  if (mem_tracker_ && tracked_consumption_) {
+    mem_tracker_->Release(tracked_consumption_);
+  }
 }
 
 Status PlainTableReader::Open(const ImmutableCFOptions& ioptions,
@@ -309,13 +318,13 @@ Status PlainTableReader::PopulateIndex(TableProperties* props,
   BlockContents bloom_block_contents;
   auto s = ReadMetaBlock(file_info_.file.get(), file_size_,
                          kPlainTableMagicNumber, ioptions_.env,
-                         BloomBlockBuilder::kBloomBlock, &bloom_block_contents);
+                         BloomBlockBuilder::kBloomBlock, mem_tracker_, &bloom_block_contents);
   bool index_in_file = s.ok();
 
   BlockContents index_block_contents;
   s = ReadMetaBlock(
       file_info_.file.get(), file_size_, kPlainTableMagicNumber, ioptions_.env,
-      PlainTableIndexBuilder::kPlainTableIndexBlock, &index_block_contents);
+      PlainTableIndexBuilder::kPlainTableIndexBlock, mem_tracker_, &index_block_contents);
 
   index_in_file &= s.ok();
 
@@ -326,6 +335,7 @@ Status PlainTableReader::PopulateIndex(TableProperties* props,
     // It needs to be kept alive to keep `bloom_block` valid.
     bloom_block_alloc_ = std::move(bloom_block_contents.allocation);
     bloom_block = &bloom_block_contents.data;
+    tracked_consumption_ += bloom_block->size();
   } else {
     bloom_block = nullptr;
   }
