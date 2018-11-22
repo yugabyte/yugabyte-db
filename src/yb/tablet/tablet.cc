@@ -478,6 +478,7 @@ std::string Tablet::LogPrefix() const {
 Status Tablet::OpenKeyValueTablet() {
   rocksdb::Options rocksdb_options;
   docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, tablet_options_);
+  rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker("RegularDB", mem_tracker_);
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
   // to this tablet. So, we ensure that rocksdb_ is reset before this tablet gets destroyed.
@@ -517,6 +518,8 @@ Status Tablet::OpenKeyValueTablet() {
     rocksdb_options.compaction_filter_factory =
         FLAGS_tablet_do_compaction_cleanup_for_intents ?
         std::make_shared<docdb::DocDBIntentsCompactionFilterFactory>(this) : nullptr;
+
+    rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker("IntentsDB", mem_tracker_);
 
     rocksdb::DB* intents_db = nullptr;
     RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options, db_dir + kIntentsDBSuffix, &intents_db));

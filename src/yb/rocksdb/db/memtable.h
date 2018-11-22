@@ -46,6 +46,12 @@
 #include "yb/rocksdb/util/instrumented_mutex.h"
 #include "yb/rocksdb/util/mutable_cf_options.h"
 
+namespace yb {
+
+class MemTracker;
+
+}
+
 namespace rocksdb {
 
 class Mutex;
@@ -74,6 +80,7 @@ struct MemTableOptions {
   Statistics* statistics;
   MergeOperator* merge_operator;
   Logger* info_log;
+  std::shared_ptr<yb::MemTracker> mem_tracker;
 };
 
 YB_DEFINE_ENUM(FlushState, (kNotRequested)(kRequested)(kScheduled));

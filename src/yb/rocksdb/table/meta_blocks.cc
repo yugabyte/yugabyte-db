@@ -164,7 +164,7 @@ Status ReadProperties(const Slice& handle_value, RandomAccessFileReader* file,
   read_options.verify_checksums = false;
   Status s;
   s = ReadBlockContents(file, footer, read_options, handle, &block_contents,
-                        env, false);
+                        env, nullptr /* mem_tracker */, false);
 
   if (!s.ok()) {
     return s;
@@ -250,7 +250,7 @@ Status ReadTableProperties(RandomAccessFileReader* file, uint64_t file_size,
   ReadOptions read_options;
   read_options.verify_checksums = false;
   s = ReadBlockContents(file, footer, read_options, metaindex_handle,
-                        &metaindex_contents, env, false);
+                        &metaindex_contents, env, nullptr /* mem_tracker */, false);
   if (!s.ok()) {
     return s;
   }
@@ -292,6 +292,7 @@ Status FindMetaBlock(InternalIterator* meta_index_iter,
 Status FindMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
                      uint64_t table_magic_number, Env* env,
                      const std::string& meta_block_name,
+                     const std::shared_ptr<yb::MemTracker>& mem_tracker,
                      BlockHandle* block_handle) {
   Footer footer;
   auto s = ReadFooterFromFile(file, file_size, &footer, table_magic_number);
@@ -304,7 +305,7 @@ Status FindMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
   ReadOptions read_options;
   read_options.verify_checksums = false;
   s = ReadBlockContents(file, footer, read_options, metaindex_handle,
-                        &metaindex_contents, env, false);
+                        &metaindex_contents, env, mem_tracker, false);
   if (!s.ok()) {
     return s;
   }
@@ -319,6 +320,7 @@ Status FindMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
 Status ReadMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
                      uint64_t table_magic_number, Env* env,
                      const std::string& meta_block_name,
+                     const std::shared_ptr<yb::MemTracker>& mem_tracker,
                      BlockContents* contents) {
   Status status;
   Footer footer;
@@ -333,7 +335,7 @@ Status ReadMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
   ReadOptions read_options;
   read_options.verify_checksums = false;
   status = ReadBlockContents(file, footer, read_options, metaindex_handle,
-                             &metaindex_contents, env, false);
+                             &metaindex_contents, env, mem_tracker, false);
   if (!status.ok()) {
     return status;
   }
@@ -352,8 +354,8 @@ Status ReadMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
   }
 
   // Reading metablock
-  return ReadBlockContents(file, footer, read_options, block_handle, contents,
-                           env, false);
+  return ReadBlockContents(
+      file, footer, read_options, block_handle, contents, env, mem_tracker, false);
 }
 
 }  // namespace rocksdb

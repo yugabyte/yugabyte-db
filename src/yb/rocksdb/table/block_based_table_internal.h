@@ -33,10 +33,11 @@ constexpr char kFixedSizeFilterBlockPrefix[] = "fixedsizefilter.";
 inline CHECKED_STATUS ReadBlockFromFile(
     RandomAccessFileReader* file, const Footer& footer, const ReadOptions& options,
     const BlockHandle& handle, std::unique_ptr<Block>* result, Env* env,
+    const std::shared_ptr<yb::MemTracker>& mem_tracker,
     bool do_uncompress = true) {
   BlockContents contents;
   Status s = ReadBlockContents(file, footer, options, handle, &contents, env,
-                               do_uncompress);
+                               mem_tracker, do_uncompress);
   if (s.ok()) {
     result->reset(new Block(std::move(contents)));
   }

@@ -345,13 +345,14 @@ class TestPlainTableFactory : public PlainTableFactory {
       BlockHandle bloom_block_handle;
       s = FindMetaBlock(file.get(), file_size, kPlainTableMagicNumber,
                         table_reader_options.ioptions.env,
-                        BloomBlockBuilder::kBloomBlock, &bloom_block_handle);
+                        BloomBlockBuilder::kBloomBlock, nullptr /* mem_tracker */,
+                        &bloom_block_handle);
       EXPECT_TRUE(s.ok());
 
       BlockHandle index_block_handle;
       s = FindMetaBlock(file.get(), file_size, kPlainTableMagicNumber,
                         table_reader_options.ioptions.env,
-                        PlainTableIndexBuilder::kPlainTableIndexBlock,
+                        PlainTableIndexBuilder::kPlainTableIndexBlock, nullptr /* mem_tracker */,
                         &index_block_handle);
       EXPECT_TRUE(s.ok());
     }

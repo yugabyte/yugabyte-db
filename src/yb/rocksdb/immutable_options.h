@@ -18,11 +18,20 @@
 // under the License.
 //
 
+#ifndef YB_ROCKSDB_IMMUTABLE_OPTIONS_H
+#define YB_ROCKSDB_IMMUTABLE_OPTIONS_H
+
 #pragma once
 
 #include <string>
 #include <vector>
 #include "yb/rocksdb/options.h"
+
+namespace yb {
+
+class MemTracker;
+
+}
 
 namespace rocksdb {
 
@@ -119,6 +128,10 @@ struct ImmutableCFOptions {
   std::vector<std::shared_ptr<EventListener>> listeners;
 
   std::shared_ptr<Cache> row_cache;
+
+  std::shared_ptr<yb::MemTracker> mem_tracker;
 };
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_IMMUTABLE_OPTIONS_H
