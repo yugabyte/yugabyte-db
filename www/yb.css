@@ -129,6 +129,10 @@ body {
   margin-left: 180px;
 }
 
+.yb-bottom-spacer {
+  height: 60px;
+}
+
 .sidebar-wrapper {
   background: #151838;
   height: 100%;
@@ -193,4 +197,26 @@ body {
 
 .dbg-caption>h3 {
   margin-top: 0px;
+}
+
+.level0 td:first-child {
+    padding-left: 15px;
+}
+.level1 td:first-child {
+    padding-left: 30px;
+}
+.level2 td:first-child {
+    padding-left: 45px;
+}
+.level3 td:first-child {
+    padding-left: 60px;
+}
+.level4 td:first-child {
+    padding-left: 75px;
+}
+.level5 td:first-child {
+    padding-left: 90px;
+}
+.level6 td:first-child {
+    padding-left: 105px;
 }
