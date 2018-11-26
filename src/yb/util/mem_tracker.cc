@@ -382,7 +382,14 @@ shared_ptr<MemTracker> MemTracker::FindOrCreateTracker(int64_t byte_limit,
   return real_parent->CreateChild(byte_limit, id, MayExist::kTrue, add_to_parent, create_metrics);
 }
 
-void MemTracker::ListDescendantTrackers(std::vector<MemTrackerPtr>* out) {
+std::vector<MemTrackerPtr> MemTracker::ListChildren() {
+  std::vector<MemTrackerPtr> result;
+  ListDescendantTrackers(&result, OnlyChildren::kTrue);
+  return result;
+}
+
+void MemTracker::ListDescendantTrackers(
+    std::vector<MemTrackerPtr>* out, OnlyChildren only_children) {
   size_t begin = out->size();
   {
     std::lock_guard<std::mutex> lock(child_trackers_mutex_);
@@ -396,10 +403,20 @@ void MemTracker::ListDescendantTrackers(std::vector<MemTrackerPtr>* out) {
       }
     }
   }
-  size_t end = out->size();
-  for (size_t i = begin; i != end; ++i) {
-    (*out)[i]->ListDescendantTrackers(out);
+  if (!only_children) {
+    size_t end = out->size();
+    for (size_t i = begin; i != end; ++i) {
+      (*out)[i]->ListDescendantTrackers(out);
+    }
   }
+}
+
+std::vector<MemTrackerPtr> MemTracker::ListTrackers() {
+  std::vector<MemTrackerPtr> result;
+  auto root = GetRootTracker();
+  result.push_back(root);
+  root->ListDescendantTrackers(&result);
+  return result;
 }
 
 bool MemTracker::UpdateConsumption() {
