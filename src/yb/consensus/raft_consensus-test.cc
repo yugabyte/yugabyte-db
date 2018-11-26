@@ -153,8 +153,7 @@ class RaftConsensusSpy : public RaftConsensus {
                     log,
                     parent_mem_tracker,
                     mark_dirty_clbk,
-                    YQL_TABLE_TYPE,
-                    LostLeadershipListener()) {
+                    YQL_TABLE_TYPE) {
     // These "aliases" allow us to count invocations and assert on them.
     ON_CALL(*this, StartConsensusOnlyRoundUnlocked(_))
         .WillByDefault(Invoke(this,

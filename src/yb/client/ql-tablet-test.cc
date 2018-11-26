@@ -48,6 +48,8 @@ DECLARE_uint64(initial_seqno);
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_string(time_source);
+DECLARE_int32(TEST_delay_execute_async_ms);
+DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 
 namespace yb {
 namespace client {
@@ -103,7 +105,9 @@ class QLTabletTest : public QLDmlTestBase {
       return boost::none;
     }
     EXPECT_EQ(1, rowblock->row_count());
-    return rowblock->row(0).column(0).int32_value();
+    const auto& value = rowblock->row(0).column(0);
+    EXPECT_TRUE(value.value().has_int32_value()) << "Value: " << value.value().ShortDebugString();
+    return value.int32_value();
   }
 
   std::shared_ptr<YBqlReadOp> CreateReadOp(int32_t key, TableHandle* table) {
@@ -650,6 +654,96 @@ TEST_F(QLTabletTest, SkewedClocks) {
 
   cluster_->Shutdown(); // Need to shutdown cluster before resetting clock back.
   cluster_.reset();
+}
+
+TEST_F(QLTabletTest, LeaderChange) {
+  const int32_t kKey = 1;
+  const int32_t kValue1 = 2;
+  const int32_t kValue2 = 3;
+  const int32_t kValue3 = 4;
+  const int kNumTablets = 1;
+
+  TableHandle table;
+  CreateTable(kTable1Name, &table, kNumTablets);
+  auto session = client_->NewSession();
+  session->SetTimeout(60s);
+
+  // Write kValue1
+  SetValue(session, kKey, kValue1, &table);
+
+  std::string leader_id;
+  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    auto server = cluster_->mini_tablet_server(i)->server();
+    auto peers = server->tablet_manager()->GetTabletPeers();
+    for (const auto& peer : peers) {
+      if (peer->LeaderStatus() != consensus::Consensus::LeaderStatus::NOT_LEADER) {
+        leader_id = server->permanent_uuid();
+        break;
+      }
+    }
+  }
+
+  LOG(INFO) << "Current leader: " << leader_id;
+
+  ASSERT_NE(leader_id, "");
+
+  LOG(INFO) << "CAS " << kValue1 << " => " << kValue2;
+  const auto write_op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  auto* const req = write_op->mutable_request();
+  QLAddInt32HashValue(req, kKey);
+  table.AddInt32ColumnValue(req, kValue, kValue2);
+
+  table.SetColumn(req->add_column_values(), kValue);
+  table.SetInt32Condition(
+    req->mutable_if_expr()->mutable_condition(), kValue, QL_OP_EQUAL, kValue1);
+  req->mutable_column_refs()->add_ids(table.ColumnId(kValue));
+  ASSERT_OK(session->Apply(write_op));
+  FLAGS_retryable_rpc_single_call_timeout_ms = 60000;
+
+  SetAtomicFlag(30000, &FLAGS_TEST_delay_execute_async_ms);
+  auto flush_future = session->FlushFuture();
+  std::this_thread::sleep_for(2s);
+
+  SetAtomicFlag(0, &FLAGS_TEST_delay_execute_async_ms);
+
+  LOG(INFO) << "Step down old leader";
+  StepDownAllTablets(cluster_.get());
+
+  // Write other key to refresh leader cache.
+  // Otherwise we would hang of locking the key.
+  LOG(INFO) << "Write other key";
+  SetValue(session, kKey + 1, kValue1, &table);
+
+  LOG(INFO) << "Write " << kValue3;
+  SetValue(session, kKey, kValue3, &table);
+
+  ASSERT_EQ(GetValue(session, kKey, &table), kValue3);
+
+  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    auto server = cluster_->mini_tablet_server(i)->server();
+    auto peers = server->tablet_manager()->GetTabletPeers();
+    bool found = false;
+    for (const auto& peer : peers) {
+      if (peer->LeaderStatus() != consensus::Consensus::LeaderStatus::NOT_LEADER) {
+        LOG(INFO) << "Request step down: " << server->permanent_uuid() << " => " << leader_id;
+        consensus::LeaderStepDownRequestPB req;
+        req.set_tablet_id(peer->tablet_id());
+        req.set_new_leader_uuid(leader_id);
+        consensus::LeaderStepDownResponsePB resp;
+        ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
+        found = true;
+        break;
+      }
+    }
+    if (found) {
+      break;
+    }
+  }
+
+  ASSERT_OK(flush_future.get());
+  ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, write_op->response().status());
+
+  ASSERT_EQ(GetValue(session, kKey, &table), kValue3);
 }
 
 } // namespace client

@@ -33,6 +33,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/metrics.h"
+#include "yb/util/opid.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -66,7 +67,7 @@ class TransactionCoordinatorContext {
   virtual const std::string& tablet_id() const = 0;
   virtual const std::shared_future<client::YBClientPtr>& client_future() const = 0;
   virtual server::Clock& clock() const = 0;
-  virtual consensus::Consensus::LeaderStatus LeaderStatus() const = 0;
+  virtual int64_t LeaderTerm() const = 0;
 
   // Returns current hybrid time lease expiration.
   // Valid only if we are leader.
@@ -75,7 +76,8 @@ class TransactionCoordinatorContext {
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual std::unique_ptr<UpdateTxnOperationState> CreateUpdateTransactionState(
       tserver::TransactionStatePB* request) = 0;
-  virtual void SubmitUpdateTransaction(std::unique_ptr<UpdateTxnOperationState> state) = 0;
+  virtual void SubmitUpdateTransaction(
+      std::unique_ptr<UpdateTxnOperationState> state, int64_t term) = 0;
 
  protected:
   ~TransactionCoordinatorContext() {}
@@ -96,17 +98,18 @@ class TransactionCoordinator {
 
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {
-    ProcessingMode mode;
+    int64_t leader_term;
     const tserver::TransactionStatePB& state;
     const consensus::OpId& op_id;
     HybridTime hybrid_time;
+
+    std::string ToString() const;
   };
 
   // Process new transaction state.
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
 
   struct AbortedData {
-    ProcessingMode mode;
     const tserver::TransactionStatePB& state;
     const consensus::OpId& op_id;
   };
@@ -114,11 +117,8 @@ class TransactionCoordinator {
   // Process transaction state replication aborted.
   void ProcessAborted(const AbortedData& data);
 
-  // Clears locks for transaction updates. Used when leader changes.
-  void ClearLocks(const Status& status);
-
   // Handles new request for transaction update.
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request);
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term);
 
   // Prepares log garbage collection. Return min index that should be preserved.
   int64_t PrepareGC();
@@ -133,7 +133,7 @@ class TransactionCoordinator {
   CHECKED_STATUS GetStatus(const std::string& transaction_id,
                            tserver::GetTransactionStatusResponsePB* response);
 
-  void Abort(const std::string& transaction_id, TransactionAbortCallback callback);
+  void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback);
 
   // Returns count of managed transactions. Used in tests.
   size_t test_count_transactions() const;

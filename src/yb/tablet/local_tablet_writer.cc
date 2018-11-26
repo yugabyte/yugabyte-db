@@ -52,19 +52,19 @@ Status LocalTabletWriter::WriteBatch(Batch* batch) {
 
   auto state = std::make_unique<WriteOperationState>(tablet_, &req_, &resp_);
   auto operation = std::make_unique<WriteOperation>(
-      std::move(state), consensus::DriverType::LEADER, MonoTime::Max() /* deadline */, this);
+      std::move(state), OpId::kUnknownTerm, MonoTime::Max() /* deadline */, this);
   write_promise_ = std::promise<Status>();
   tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
 
   return write_promise_.get_future().get();
 }
 
-void LocalTabletWriter::StartExecution(std::unique_ptr<Operation> operation) {
+void LocalTabletWriter::Submit(std::unique_ptr<Operation> operation, int64_t term) {
   auto state = down_cast<WriteOperationState*>(operation->state());
   tablet_->StartOperation(state);
 
   // Create a "fake" OpId and set it in the OperationState for anchoring.
-  state->mutable_op_id()->set_term(0);
+  state->mutable_op_id()->set_term(term);
   state->mutable_op_id()->set_index(Singleton<AutoIncrementingCounter>::get()->GetAndIncrement());
 
   tablet_->ApplyRowOperations(state);

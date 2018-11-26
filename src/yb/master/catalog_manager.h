@@ -916,6 +916,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS CreateRoleUnlocked(const std::string& role_name,
                                     const std::string& salted_hash,
                                     const bool login, const bool superuser,
+                                    int64_t term,
                                     // This value is only set to false during the creation of the
                                     // default role when it doesn't exist.
                                     const bool increment_roles_version = true);
@@ -1125,7 +1126,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Clears out the existing metadata ('table_names_map_', 'table_ids_map_',
   // and 'tablet_map_'), loads tables metadata into memory and if successful
   // loads the tablets metadata.
-  CHECKED_STATUS VisitSysCatalog();
+  CHECKED_STATUS VisitSysCatalog(int64_t term);
   virtual CHECKED_STATUS RunLoaders();
 
   // Waits for the worker queue to finish processing, returns OK if worker queue is idle before
@@ -1194,29 +1195,31 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // first leader election of the cluster.
   //
   // Sets the version field of the SysClusterConfigEntryPB to 0.
-  CHECKED_STATUS PrepareDefaultClusterConfig();
+  CHECKED_STATUS PrepareDefaultClusterConfig(int64_t term);
 
   // Sets up various system configs.
-  CHECKED_STATUS PrepareDefaultSysConfig();
+  CHECKED_STATUS PrepareDefaultSysConfig(int64_t term);
 
-  CHECKED_STATUS PrepareDefaultNamespaces();
+  CHECKED_STATUS PrepareDefaultNamespaces(int64_t term);
 
-  CHECKED_STATUS PrepareSystemTables();
+  CHECKED_STATUS PrepareSystemTables(int64_t term);
 
-  CHECKED_STATUS PrepareDefaultRoles();
+  CHECKED_STATUS PrepareDefaultRoles(int64_t term);
 
   template <class T>
   CHECKED_STATUS PrepareSystemTableTemplate(const TableName& table_name,
                                             const NamespaceName& namespace_name,
-                                            const NamespaceId& namespace_id);
+                                            const NamespaceId& namespace_id,
+                                            int64_t term);
 
   CHECKED_STATUS PrepareSystemTable(const TableName& table_name,
                                     const NamespaceName& namespace_name,
                                     const NamespaceId& namespace_id,
                                     const Schema& schema,
+                                    int64_t term,
                                     YQLVirtualTable* vtable);
 
-  CHECKED_STATUS PrepareNamespace(const NamespaceName& name, const NamespaceId& id);
+  CHECKED_STATUS PrepareNamespace(const NamespaceName& name, const NamespaceId& id, int64_t term);
 
   CHECKED_STATUS ConsensusStateToTabletLocations(const consensus::ConsensusStatePB& cstate,
                                                  TabletLocationsPB* locs_pb);
@@ -1501,7 +1504,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Calculate the total number of replicas which are being handled by blacklisted servers.
   int64_t GetNumBlacklistReplicas();
 
-  int leader_ready_term() {
+  int64_t leader_ready_term() {
     std::lock_guard<simple_spinlock> l(state_lock_);
     return leader_ready_term_;
   }

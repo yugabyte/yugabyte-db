@@ -647,8 +647,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
 std::string TransactionApplyData::ToString() const {
   return Format(
-      "{ mode: $0 transacton_id: $1 op_id: $2 commit_ht: $3 log_ht: $4 status_tablet: $5}",
-      mode, transaction_id, op_id, commit_ht, log_ht, status_tablet);
+      "{ transaction_id: $0 op_id: $1 commit_ht: $2 log_ht: $3 status_tablet: $4 }",
+      transaction_id, op_id, commit_ht, log_ht, status_tablet);
 }
 
 class TransactionParticipant::Impl : public RunningTransactionContext {
@@ -810,36 +810,36 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     lock_and_iterator.transaction().Abort(client(), std::move(callback), &lock_and_iterator.lock);
   }
 
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> state) {
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> state, int64_t term) {
     if (state->request()->status() == TransactionStatus::APPLYING) {
       if (RandomActWithProbability(GetAtomicFlag(
           &FLAGS_transaction_ignore_applying_probability_in_tests))) {
-        state->completion_callback()->CompleteWithStatus(Status::OK());
+        state->CompleteWithStatus(Status::OK());
         return;
       }
-      participant_context_.SubmitUpdateTransaction(std::move(state));
+      participant_context_.SubmitUpdateTransaction(std::move(state), term);
       return;
     }
 
     if (state->request()->status() == TransactionStatus::CLEANUP) {
       auto id = FullyDecodeTransactionId(state->request()->transaction_id());
       if (!id.ok()) {
-        state->completion_callback()->CompleteWithStatus(id.status());
+        state->CompleteWithStatus(id.status());
         return;
       }
       TransactionApplyData data = {
-          ProcessingMode::LEADER, *id, consensus::OpId(), HybridTime(), HybridTime(),
+          term, *id, consensus::OpId(), HybridTime(), HybridTime(),
           std::string() };
       WARN_NOT_OK(ProcessCleanup(data, false /* force_remove */),
                   "Process cleanup failed");
-      state->completion_callback()->CompleteWithStatus(Status::OK());
+      state->CompleteWithStatus(Status::OK());
       return;
     }
 
     auto status = STATUS_FORMAT(
         InvalidArgument, "Unexpected status in transaction participant Handle: $0", *state);
     LOG(DFATAL) << status;
-    state->completion_callback()->CompleteWithStatus(status);
+    state->CompleteWithStatus(status);
   }
 
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data) {
@@ -856,7 +856,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       }
       HybridTime commit_time(data.state.commit_hybrid_time());
       TransactionApplyData apply_data = {
-          data.mode, *id, data.op_id, commit_time, data.hybrid_time, data.state.tablets(0) };
+          data.leader_term, *id, data.op_id, commit_time, data.hybrid_time, data.state.tablets(0) };
       if (!data.already_applied) {
         return ProcessApply(apply_data);
       } else {
@@ -912,7 +912,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   void NotifyApplied(const TransactionApplyData& data) {
     VLOG_WITH_PREFIX(4) << Format("NotifyApplied($0)", data);
 
-    if (data.mode == ProcessingMode::LEADER) {
+    if (data.leader_term != OpId::kUnknownTerm) {
       tserver::UpdateTransactionRequestPB req;
       req.set_tablet_id(data.status_tablet);
       auto& state = *req.mutable_state();
@@ -1188,8 +1188,9 @@ void TransactionParticipant::Abort(const TransactionId& id,
   return impl_->Abort(id, std::move(callback));
 }
 
-void TransactionParticipant::Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
-  impl_->Handle(std::move(request));
+void TransactionParticipant::Handle(
+    std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term) {
+  impl_->Handle(std::move(request), term);
 }
 
 void TransactionParticipant::Cleanup(TransactionIdSet&& set) {

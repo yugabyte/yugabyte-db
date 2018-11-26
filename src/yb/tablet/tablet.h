@@ -467,8 +467,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return last_committed_write_index_.load(std::memory_order_acquire);
   }
 
-  void LostLeadership();
-
   uint64_t GetTotalSSTFileSizes() const;
   uint64_t GetUncompressedSSTFileSizes() const;
 

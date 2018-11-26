@@ -61,7 +61,7 @@ class TransactionIntentApplier;
 class UpdateTxnOperationState;
 
 struct TransactionApplyData {
-  ProcessingMode mode;
+  int64_t leader_term;
   TransactionId transaction_id;
   consensus::OpId op_id;
   HybridTime commit_ht;
@@ -92,7 +92,8 @@ class TransactionParticipantContext {
   virtual HybridTime Now() = 0;
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual bool IsLeader() = 0;
-  virtual void SubmitUpdateTransaction(std::unique_ptr<UpdateTxnOperationState> state) = 0;
+  virtual void SubmitUpdateTransaction(
+      std::unique_ptr<UpdateTxnOperationState> state, int64_t term) = 0;
 
  protected:
   ~TransactionParticipantContext() {}
@@ -123,7 +124,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override;
 
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request);
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term);
 
   void Cleanup(TransactionIdSet&& set) override;
 
@@ -131,7 +132,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {
-    ProcessingMode mode;
+    int64_t leader_term;
     const tserver::TransactionStatePB& state;
     const consensus::OpId& op_id;
     HybridTime hybrid_time;

@@ -221,6 +221,8 @@ class Status {
   // Same as CloneAndPrepend, but appends to the message instead.
   Status CloneAndAppend(const Slice& msg) const;
 
+  Status CloneAndChangeErrorCode(int64_t error_code) const;
+
   // Returns the memory usage of this object without the object itself. Should
   // be used when embedded inside another object.
   size_t memory_footprint_excluding_this() const;

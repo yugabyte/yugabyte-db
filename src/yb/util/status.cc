@@ -201,6 +201,11 @@ Status Status::CloneAndPrepend(const Slice& msg) const {
                 DupFileName(file_name_duplicated()));
 }
 
+Status Status::CloneAndChangeErrorCode(int64_t error_code) const {
+  return Status(code(), state_->file_name, state_->line_number, message(), Slice(), error_code,
+                DupFileName(file_name_duplicated()));
+}
+
 Status Status::CloneAndAppend(const Slice& msg) const {
   return Status(code(), state_->file_name, state_->line_number, message(), msg, error_code(),
                 DupFileName(file_name_duplicated()));

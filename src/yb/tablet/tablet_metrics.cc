@@ -104,6 +104,11 @@ METRIC_DEFINE_histogram(tablet, delta_major_compact_rs_duration,
   yb::MetricUnit::kSeconds,
   "Seconds spent major delta compacting.", 60000000LU, 2);
 
+METRIC_DEFINE_counter(tablet, not_leader_rejections,
+  "Not Leader Rejections",
+  yb::MetricUnit::kRequests,
+  "Number of RPC requests rejected due to fact that this node is not LEADER.");
+
 METRIC_DEFINE_counter(tablet, leader_memory_pressure_rejections,
   "Leader Memory Pressure Rejections",
   yb::MetricUnit::kRequests,
@@ -136,6 +141,7 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& entity)
     MINIT(ql_read_latency),
     MINIT(write_lock_latency),
     MINIT(write_op_duration_client_propagated_consistency),
+    MINIT(not_leader_rejections),
     MINIT(leader_memory_pressure_rejections),
     MINIT(transaction_conflicts),
     MINIT(expired_transactions),

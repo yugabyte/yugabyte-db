@@ -58,7 +58,7 @@ class LocalTabletWriter : public WriteOperationContext {
   CHECKED_STATUS WriteBatch(Batch* batch);
 
  private:
-  void StartExecution(std::unique_ptr<Operation> operation) override;
+  void Submit(std::unique_ptr<Operation> operation, int64_t term) override;
   HybridTime ReportReadRestart() override;
 
   Tablet* const tablet_;

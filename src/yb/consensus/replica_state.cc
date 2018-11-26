@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <gflags/gflags.h>
 
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/replica_state.h"
@@ -184,37 +185,58 @@ Status ReplicaState::LockForMajorityReplicatedIndexUpdate(UniqueLock* lock) cons
   return Status::OK();
 }
 
-Status ReplicaState::CheckActiveLeaderUnlocked(LeaderLeaseCheckMode lease_check_mode) const {
-  const RaftPeerPB::Role role = GetActiveRoleUnlocked();
-  if (role == RaftPeerPB::LEADER) {
-    // We don't need to check the lease in some cases, e.g. when replicating the NoOp entry.
-    if (lease_check_mode == LeaderLeaseCheckMode::DONT_NEED_LEASE)
-      return Status::OK();
+LeaderState ReplicaState::GetLeaderState(LeaderLeaseCheckMode lease_check_mode) const {
+  auto lock = LockForRead();
+  return GetLeaderStateUnlocked(lease_check_mode);
+}
 
-    MonoDelta remaining_old_leader_lease;
-    const auto lease_status = GetLeaderLeaseStatusUnlocked(&remaining_old_leader_lease);
-    switch (lease_status) {
-      case LeaderLeaseStatus::HAS_LEASE:
-        return Status::OK();
-      case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE:
-        // We return LeaderNotReady so that the client would retry on the same server.
-        return STATUS(LeaderNotReadyToServe,
-            Substitute("Previous leader's lease might still be active ($0 remaining).",
-                       remaining_old_leader_lease.ToString()));
-      case LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE:
-        // We are returning a NotTheLeader as opposed to LeaderNotReady, because there is a chance
-        // that we're a partitioned-away leader, and the client needs to do another leader lookup.
-        return STATUS(LeaderHasNoLease, "This leader has not yet acquired a lease.");
-    }
-    FATAL_INVALID_ENUM_VALUE(LeaderLeaseStatus, lease_status);
-  } else {
-    ConsensusStatePB cstate = ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE);
-    return STATUS(IllegalState, Substitute("Replica $0 is not leader of this config. Role: $1. "
-                                           "Consensus state: $2",
-                                           peer_uuid_,
-                                           RaftPeerPB::Role_Name(role),
-                                           cstate.ShortDebugString()));
+LeaderState ReplicaState::GetLeaderStateUnlocked(LeaderLeaseCheckMode lease_check_mode) const {
+  LeaderState result;
+
+  if (GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
+    return result.MakeNotReadyLeader(Consensus::LeaderStatus::NOT_LEADER);
   }
+
+  if (!leader_no_op_committed_) {
+    // This will cause the client to retry on the same server (won't try to find the new leader).
+    return result.MakeNotReadyLeader(Consensus::LeaderStatus::LEADER_BUT_NO_OP_NOT_COMMITTED);
+  }
+
+  const auto lease_status = lease_check_mode != LeaderLeaseCheckMode::DONT_NEED_LEASE
+      ? GetLeaderLeaseStatusUnlocked(&result.remaining_old_leader_lease)
+      : LeaderLeaseStatus::HAS_LEASE;
+  switch (lease_status) {
+    case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE:
+      // Will retry on the same server.
+      VLOG(1) << "Old leader lease might still be active for "
+              << result.remaining_old_leader_lease.ToString();
+      return result.MakeNotReadyLeader(
+          Consensus::LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE);
+
+    case LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE:
+      // Will retry to look up the leader, because it might have changed.
+      return result.MakeNotReadyLeader(
+          Consensus::LeaderStatus::LEADER_BUT_NO_MAJORITY_REPLICATED_LEASE);
+
+    case LeaderLeaseStatus::HAS_LEASE:
+      result.status = Consensus::LeaderStatus::LEADER_AND_READY;
+      result.term = GetCurrentTermUnlocked();
+      return result;
+  }
+
+  FATAL_INVALID_ENUM_VALUE(LeaderLeaseStatus, lease_status);
+}
+
+Status ReplicaState::CheckActiveLeaderUnlocked(LeaderLeaseCheckMode lease_check_mode) const {
+  auto state = GetLeaderStateUnlocked(lease_check_mode);
+  if (state.status == Consensus::LeaderStatus::NOT_LEADER) {
+    ConsensusStatePB cstate = ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE);
+    return STATUS_FORMAT(IllegalState,
+                         "Replica $0 is not leader of this config. Role: $1. Consensus state: $2",
+                         peer_uuid_, RaftPeerPB::Role_Name(GetActiveRoleUnlocked()), cstate);
+  }
+
+  return state.CreateStatus();
 }
 
 Status ReplicaState::LockForConfigChange(UniqueLock* lock) const {
@@ -478,12 +500,13 @@ Status ReplicaState::CancelPendingOperations() {
 
     LOG_WITH_PREFIX(INFO) << "Trying to abort " << pending_operations_.size()
                           << " pending operations.";
+    auto abort_status = STATUS(Aborted, "Operation aborted");
     for (const auto& operation : pending_operations_) {
       const scoped_refptr<ConsensusRound>& round = operation.second;
       // We cancel only operations whose applies have not yet been triggered.
       LOG_WITH_PREFIX(INFO) << "Aborting operation as it isn't in flight: "
                             << operation.second->replicate_msg()->ShortDebugString();
-      round->NotifyReplicationFinished(STATUS(Aborted, "Operation aborted"));
+      round->NotifyReplicationFinished(abort_status, yb::OpId::kUnknownTerm);
     }
   }
   return Status::OK();
@@ -516,14 +539,15 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
   last_received_op_id_current_leader_ = last_received_op_id_;
   next_index_ = new_preceding.index() + 1;
 
-  for (; iter != pending_operations_.end();) {
-    const scoped_refptr<ConsensusRound>& round = (*iter).second;
+  auto abort_status = STATUS(Aborted, "Operation aborted by new leader");
+  for (auto it = iter; it != pending_operations_.end(); ++it) {
+    const scoped_refptr<ConsensusRound>& round = it->second;
     LOG_WITH_PREFIX(INFO) << "Aborting uncommitted operation due to leader change: "
                           << round->replicate_msg()->id();
-    round->NotifyReplicationFinished(STATUS(Aborted, "Operation aborted by new leader"));
-    // Erase the entry from pendings.
-    pending_operations_.erase(iter++);
+    round->NotifyReplicationFinished(abort_status, yb::OpId::kUnknownTerm);
   }
+  // Clear entries from pendings.
+  pending_operations_.erase(iter, pending_operations_.end());
 
   return Status::OK();
 }
@@ -780,6 +804,7 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(IndexToRoundMap::iterator it
   if (!safe_op_id_waiter_) {
     max_allowed_op_id.index = std::numeric_limits<int64_t>::max();
   }
+  auto leader_term = GetLeaderStateUnlocked().term;
 
   while (iter != end_iter) {
     scoped_refptr<ConsensusRound> round = (*iter).second; // Make a copy.
@@ -809,7 +834,7 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(IndexToRoundMap::iterator it
     }
 
     prev_id.CopyFrom(round->id());
-    round->NotifyReplicationFinished(Status::OK());
+    round->NotifyReplicationFinished(Status::OK(), leader_term);
   }
 
   SetLastCommittedIndexUnlocked(committed_index);
