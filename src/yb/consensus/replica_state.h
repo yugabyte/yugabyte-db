@@ -162,6 +162,12 @@ class ReplicaState {
   // Returns OK if leader, IllegalState otherwise.
   CHECKED_STATUS CheckActiveLeaderUnlocked(LeaderLeaseCheckMode lease_check_mode) const;
 
+  LeaderState GetLeaderState(
+      LeaderLeaseCheckMode lease_check_mode = LeaderLeaseCheckMode::NEED_LEASE) const;
+
+  LeaderState GetLeaderStateUnlocked(
+      LeaderLeaseCheckMode lease_check_mode = LeaderLeaseCheckMode::NEED_LEASE) const;
+
   // Completes the Shutdown() of this replica. No more operations, local
   // or otherwise can happen after this point.
   // Called after the quiescing phase (started with LockForShutdown())
@@ -386,6 +392,10 @@ class ReplicaState {
   // The on-disk size of the consensus metadata.
   uint64_t OnDiskSize() const;
 
+  void SetLeaderNoOpCommittedUnlocked(bool value) {
+    leader_no_op_committed_ = value;
+  }
+
  private:
 
   template <class Policy>
@@ -489,6 +499,10 @@ class ReplicaState {
   // The leader is allowed to add new log entries only when lease of old leader is expired.
   std::atomic<MicrosTime> majority_replicated_ht_lease_expiration_
       {HybridTime::kMin.GetPhysicalValueMicros()};
+
+  // This leader is ready to serve only if NoOp was successfully committed
+  // after the new leader successful election.
+  bool leader_no_op_committed_ = false;
 };
 
 }  // namespace consensus

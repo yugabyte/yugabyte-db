@@ -73,15 +73,11 @@ class Operation {
   };
 
   Operation(std::unique_ptr<OperationState> state,
-            consensus::DriverType type,
             OperationType operation_type);
 
   // Returns the OperationState for this transaction.
   virtual OperationState* state() { return state_.get(); }
   virtual const OperationState* state() const { return state_.get(); }
-
-  // Returns whether this transaction is being executed on the leader or on a replica.
-  consensus::DriverType type() const { return type_; }
 
   // Returns this transaction's type.
   OperationType operation_type() const { return operation_type_; }
@@ -105,7 +101,7 @@ class Operation {
 
   // Executes the Apply() phase of the transaction, the actual actions of this phase depend on the
   // transaction type, but usually this is the method where data-structures are changed.
-  virtual CHECKED_STATUS Apply() = 0;
+  virtual CHECKED_STATUS Apply(int64_t leader_term) = 0;
 
   // Executed after Apply() but before the commit is submitted to consensus.  Some transactions use
   // this to perform pre-commit actions (e.g. write transactions perform early lock release on this
@@ -132,7 +128,6 @@ class Operation {
   // A private version of this transaction's transaction state so that we can use base
   // OperationState methods on destructors.
   std::unique_ptr<OperationState> state_;
-  const consensus::DriverType type_;
   const OperationType operation_type_;
 };
 
@@ -169,11 +164,6 @@ class OperationState {
 
   void set_completion_callback(std::unique_ptr<OperationCompletionCallback> completion_clbk) {
     completion_clbk_ = std::move(completion_clbk);
-  }
-
-  // Returns the completion callback.
-  OperationCompletionCallback* completion_callback() {
-    return DCHECK_NOTNULL(completion_clbk_.get());
   }
 
   // Sets a heap object to be managed by this transaction's AutoReleasePool.
@@ -226,6 +216,13 @@ class OperationState {
     return op_id_;
   }
 
+  bool has_completion_callback() const {
+    return completion_clbk_ != nullptr;
+  }
+
+  void CompleteWithStatus(const Status& status) const;
+  void SetError(const Status& status, tserver::TabletServerErrorPB::Code code) const;
+
   virtual ~OperationState();
 
  protected:
@@ -243,7 +240,7 @@ class OperationState {
   HybridTime hybrid_time_;
 
   // The clock error when hybrid_time_ was read.
-  uint64_t hybrid_time_error_;
+  uint64_t hybrid_time_error_ = 0;
 
   boost::optional<Arena> arena_;
 
@@ -282,7 +279,7 @@ class OperationCompletionCallback {
   const tserver::TabletServerErrorPB::Code error_code() const;
 
   // Subclasses should override this.
-  virtual void OperationCompleted();
+  virtual void OperationCompleted() = 0;
 
   void CompleteWithStatus(const Status& status) {
     set_error(status);

@@ -102,29 +102,30 @@ class SysCatalogTable {
   // Templated CRUD methods for items in sys.catalog.
   // ==================================================================
   template <class Item>
-  CHECKED_STATUS AddItem(Item* item);
+  CHECKED_STATUS AddItem(Item* item, int64_t leader_term);
 
   template <class Item>
-  CHECKED_STATUS AddItems(const vector<Item*>& items);
+  CHECKED_STATUS AddItems(const vector<Item*>& items, int64_t leader_term);
 
   template <class Item>
-  CHECKED_STATUS UpdateItem(Item* item);
+  CHECKED_STATUS UpdateItem(Item* item, int64_t leader_term);
   template <class Item>
-  CHECKED_STATUS UpdateItems(const vector<Item*>& items);
+  CHECKED_STATUS UpdateItems(const vector<Item*>& items, int64_t leader_term);
 
   template <class Item>
   CHECKED_STATUS AddAndUpdateItems(
       const vector<Item*>& added_items,
-      const vector<Item*>& updated_items);
+      const vector<Item*>& updated_items,
+      int64_t leader_term);
 
   template <class Item>
-  CHECKED_STATUS DeleteItem(Item* item);
+  CHECKED_STATUS DeleteItem(Item* item, int64_t leader_term);
   template <class Item>
-  CHECKED_STATUS DeleteItems(const vector<Item*>& items);
+  CHECKED_STATUS DeleteItems(const vector<Item*>& items, int64_t leader_term);
 
   template <class Item>
   CHECKED_STATUS MutateItems(
-      const vector<Item*>& items, const QLWriteRequestPB::QLStmtType& op_type);
+      const vector<Item*>& items, const QLWriteRequestPB::QLStmtType& op_type, int64_t leader_term);
 
   // ==================================================================
   // Static schema related methods.
@@ -161,7 +162,7 @@ class SysCatalogTable {
  private:
   friend class CatalogManager;
 
-  inline std::unique_ptr<SysCatalogWriter> NewWriter();
+  inline std::unique_ptr<SysCatalogWriter> NewWriter(int64_t leader_term);
 
   const char *table_name() const { return "sys.catalog"; }
 

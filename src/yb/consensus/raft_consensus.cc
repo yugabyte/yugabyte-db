@@ -194,7 +194,6 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     const shared_ptr<MemTracker>& parent_mem_tracker,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    LostLeadershipListener lost_leadership_listener,
     ThreadPool* raft_pool) {
   gscoped_ptr<PeerProxyFactory> rpc_factory(new RpcPeerProxyFactory(
       messenger, proxy_cache, local_peer_pb.cloud_info()));
@@ -244,8 +243,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       log,
       parent_mem_tracker,
       mark_dirty_clbk,
-      table_type,
-      std::move(lost_leadership_listener));
+      table_type);
 }
 
 RaftConsensus::RaftConsensus(
@@ -258,8 +256,7 @@ RaftConsensus::RaftConsensus(
     ReplicaOperationFactory* operation_factory, const scoped_refptr<log::Log>& log,
     shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
-    TableType table_type,
-    LostLeadershipListener lost_leadership_listener)
+    TableType table_type)
     : raft_pool_token_(std::move(raft_pool_token)),
       log_(log),
       clock_(clock),
@@ -277,7 +274,6 @@ RaftConsensus::RaftConsensus(
                                                     cmeta->current_term())),
       parent_mem_tracker_(std::move(parent_mem_tracker)),
       table_type_(table_type),
-      lost_leadership_listener_(std::move(lost_leadership_listener)),
       update_raft_config_dns_latency_(
           METRIC_dns_resolve_latency_during_update_raft_config.Instantiate(metric_entity)) {
   DCHECK_NOTNULL(log_.get());
@@ -529,7 +525,7 @@ Status RaftConsensus::WaitUntilLeaderForTests(const MonoDelta& timeout) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);
   while (MonoTime::Now().ComesBefore(deadline)) {
-    if (leader_status() == LeaderStatus::LEADER_AND_READY) {
+    if (GetLeaderStatus() == LeaderStatus::LEADER_AND_READY) {
       return Status::OK();
     }
     SleepFor(MonoDelta::FromMilliseconds(10));
@@ -783,7 +779,7 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   // Don't vote for anyone if we're a leader.
   withhold_votes_until_ = MonoTime::Max();
 
-  leader_no_op_committed_ = false;
+  state_->SetLeaderNoOpCommittedUnlocked(false);
   queue_->RegisterObserver(this);
   RefreshConsensusQueueAndPeersUnlocked();
 
@@ -839,10 +835,6 @@ Status RaftConsensus::BecomeReplicaUnlocked(const std::string& new_leader_uuid) 
 
   peer_manager_->Close();
 
-  if (lost_leadership_listener_) {
-    lost_leadership_listener_();
-  }
-
   return Status::OK();
 }
 
@@ -871,31 +863,6 @@ Status RaftConsensus::ReplicateBatch(const ConsensusRounds& rounds) {
 
   peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
   RETURN_NOT_OK(ExecuteHook(POST_REPLICATE));
-  return Status::OK();
-}
-
-Status RaftConsensus::CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRound>& round) {
-  // We are using a lock-free GetRoleAndTerm, and therefore we might be in the middle of an
-  // operation that is holding the consensus state lock and is about to modify the role + term
-  // atomic field (e.g. if we've stopped being leader, and optionally, if the term has increased).
-  // However, we'll handle that in CheckBoundTerm, which is only executed while holding the state
-  // lock, and that error should be a rare occurrence.
-  const auto role_and_term = state_->GetRoleAndTerm();
-  const auto role = role_and_term.first;
-  const auto term = role_and_term.second;
-  if (role != RaftPeerPB::Role::RaftPeerPB_Role_LEADER) {
-    // OK to take the lock here, because this error case should be rare.
-    ReplicaState::UniqueLock lock;
-    RETURN_NOT_OK(state_->LockForReplicate(&lock, *round->replicate_msg()));
-    const ConsensusStatePB cstate = state_->ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE);
-    return STATUS(IllegalState, Substitute("Replica $0 is not leader of this config. Role: $1. "
-                                           "Consensus state: $2",
-                                           peer_uuid(),
-                                           RaftPeerPB::Role_Name(role),
-                                           cstate.ShortDebugString()));
-  }
-
-  round->BindToTerm(term);
   return Status::OK();
 }
 
@@ -2367,12 +2334,11 @@ Status RaftConsensus::RequestVoteRespondLastOpIdTooOld(const OpId& local_last_lo
 Status RaftConsensus::RequestVoteRespondLeaderIsAlive(const VoteRequestPB* request,
                                                       VoteResponsePB* response) {
   FillVoteResponseVoteDenied(ConsensusErrorPB::LEADER_IS_ALIVE, response);
-  string msg = Substitute("$0: Denying vote to candidate $1 for term $2 because "
-                          "replica is either leader or believes a valid leader to "
-                          "be alive.",
-                          GetRequestVoteLogPrefix(),
-                          request->candidate_uuid(),
-                          request->candidate_term());
+  std::string msg = Format(
+      "$0: Denying vote to candidate $1 for term $2 because replica is either leader or believes a "
+      "valid leader to be alive. Time left: $3",
+      GetRequestVoteLogPrefix(), request->candidate_uuid(), request->candidate_term(),
+      withhold_votes_until_ - MonoTime::Now());
   LOG(INFO) << msg;
   StatusToPB(STATUS(InvalidArgument, msg), response->mutable_consensus_error()->mutable_status());
   return Status::OK();
@@ -2427,36 +2393,8 @@ RaftPeerPB::Role RaftConsensus::role() const {
   return GetRoleUnlocked();
 }
 
-Consensus::LeaderStatus RaftConsensus::leader_status() const {
-  auto lock = state_->LockForRead();
-
-  if (GetRoleUnlocked() != RaftPeerPB::LEADER) {
-    return LeaderStatus::NOT_LEADER;
-  }
-
-  if (!leader_no_op_committed_) {
-    // This will cause the client to retry on the same server (won't try to find the new leader).
-    return LeaderStatus::LEADER_BUT_NOT_READY;
-  }
-
-  MonoDelta remaining_old_leader_lease;
-  const auto lease_status = state_->GetLeaderLeaseStatusUnlocked(&remaining_old_leader_lease);
-  switch (lease_status) {
-    case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE:
-      // Will retry on the same server.
-      VLOG(1) << "Old leader lease might still be active for "
-              << remaining_old_leader_lease.ToString();
-      return LeaderStatus::LEADER_BUT_NOT_READY;
-
-    case LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE:
-      // Will retry to look up the leader, because it might have changed.
-      return LeaderStatus::NOT_LEADER;
-
-    case LeaderLeaseStatus::HAS_LEASE:
-      return LeaderStatus::LEADER_AND_READY;
-  }
-
-  FATAL_INVALID_ENUM_VALUE(LeaderLeaseStatus, lease_status);
+LeaderState RaftConsensus::GetLeaderState() const {
+  return state_->GetLeaderState();
 }
 
 std::string RaftConsensus::LogPrefix() {
@@ -2723,7 +2661,7 @@ Status RaftConsensus::GetLastOpId(OpIdType type, OpId* id) {
 }
 
 void RaftConsensus::MarkDirty(std::shared_ptr<StateChangeContext> context) {
-  LOG(INFO) << "Calling mark dirty synchronously for reason code " << context->reason;
+  LOG_WITH_PREFIX(INFO) << "Calling mark dirty synchronously for reason code " << context->reason;
   mark_dirty_clbk_.Run(context);
 }
 
@@ -2765,7 +2703,7 @@ void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
   // and only if the term is up-to-date.
   if (op_type == NO_OP && round->id().has_term() &&
       round->id().term() == state_->GetCurrentTermUnlocked()) {
-    leader_no_op_committed_ = true;
+    state_->SetLeaderNoOpCommittedUnlocked(true);
   }
 }
 
@@ -2784,8 +2722,8 @@ void RaftConsensus::DisableFailureDetector() {
 void RaftConsensus::SnoozeFailureDetector(AllowLogging allow_logging, MonoDelta delta) {
   if (PREDICT_TRUE(GetAtomicFlag(&FLAGS_enable_leader_failure_detection))) {
     if (allow_logging == ALLOW_LOGGING) {
-      LOG(INFO) << Substitute("Snoozing failure detection for $0",
-                              delta.Initialized() ? delta.ToString() : "election timeout");
+      LOG_WITH_PREFIX(INFO) << Format("Snoozing failure detection for $0",
+                                      delta.Initialized() ? delta.ToString() : "election timeout");
     }
 
     if (!delta.Initialized()) {

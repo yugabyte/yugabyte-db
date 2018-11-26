@@ -191,8 +191,7 @@ class RaftConsensusQuorumTest : public YBTest {
                             logs_[i],
                             parent_mem_trackers_[i],
                             Bind(&DoNothing),
-                            DEFAULT_TABLE_TYPE,
-                            LostLeadershipListener()));
+                            DEFAULT_TABLE_TYPE));
 
       operation_factory->SetConsensus(peer.get());
       operation_factories_.emplace_back(operation_factory);
@@ -259,7 +258,9 @@ class RaftConsensusQuorumTest : public YBTest {
 
     // Use a latch in place of a Transaction callback.
     gscoped_ptr<Synchronizer> sync(new Synchronizer());
-    *round = peer->NewRound(std::move(msg), sync->AsStdStatusCallback());
+    *round = peer->NewRound(std::move(msg), [sync = sync.get()](const Status& status, int64_t) {
+      sync->StatusCB(status);
+    });
     InsertOrDie(&syncs_, round->get(), sync.release());
     RETURN_NOT_OK_PREPEND(peer->TEST_Replicate(round->get()),
                           Substitute("Unable to replicate to peer $0", peer_idx));

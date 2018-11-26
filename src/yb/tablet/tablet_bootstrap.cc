@@ -904,7 +904,7 @@ Status TabletBootstrap::PlayUpdateTransactionRequest(
   if (operation_state.request()->status() == TransactionStatus::APPLYING) {
     auto transaction_participant = tablet_->transaction_participant();
     TransactionParticipant::ReplicatedData replicated_data = {
-        ProcessingMode::NON_LEADER,
+        yb::OpId::kUnknownTerm,
         *operation_state.request(),
         operation_state.op_id(),
         operation_state.hybrid_time(),
@@ -914,7 +914,7 @@ Status TabletBootstrap::PlayUpdateTransactionRequest(
   } else {
     auto transaction_coordinator = tablet_->transaction_coordinator();
     TransactionCoordinator::ReplicatedData replicated_data = {
-        ProcessingMode::NON_LEADER,
+        yb::OpId::kUnknownTerm,
         *operation_state.request(),
         operation_state.op_id(),
         operation_state.hybrid_time()

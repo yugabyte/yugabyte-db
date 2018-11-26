@@ -82,7 +82,7 @@ DECLARE_int32(ht_lease_duration_ms);
 DECLARE_int32(rpc_timeout);
 
 METRIC_DECLARE_entity(tablet);
-METRIC_DECLARE_counter(operation_memory_pressure_rejections);
+METRIC_DECLARE_counter(not_leader_rejections);
 METRIC_DECLARE_gauge_int64(raft_term);
 
 namespace yb {
@@ -638,7 +638,7 @@ TEST_F(RaftConsensusITest, TestInsertOnNonLeader) {
   ASSERT_TRUE(resp.has_error());
   Status s = StatusFromPB(resp.error().status());
   EXPECT_TRUE(s.IsIllegalState());
-  ASSERT_STR_CONTAINS(s.ToString(), "is not leader of this config. Role: FOLLOWER");
+  ASSERT_STR_CONTAINS(s.message().ToBuffer(), "Not the leader");
   // TODO: need to change the error code to be something like REPLICA_NOT_LEADER
   // so that the client can properly handle this case! plumbing this is a little difficult
   // so not addressing at the moment.
@@ -2426,8 +2426,9 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
 
   // Start the cluster with a low per-tablet transaction memory limit, so that
   // the test can complete faster.
-  vector<string> flags;
-  flags.push_back("--tablet_operation_memory_limit_mb=2");
+  std::vector<std:: string> flags = {
+      "--tablet_operation_memory_limit_mb=2"s
+  };
 
   ASSERT_NO_FATALS(BuildAndStart(flags));
 
@@ -2459,7 +2460,7 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
   workload.Setup();
   workload.Start();
 
-  // Run until the leader has rejected several transactions.
+  // Run until the former leader has rejected several transactions.
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(kMaxWaitTime);
   while (true) {
@@ -2467,7 +2468,7 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
     ASSERT_OK(cluster_->tablet_server(leader_ts_idx)->GetInt64Metric(
         &METRIC_ENTITY_tablet,
         nullptr,
-        &METRIC_operation_memory_pressure_rejections,
+        &METRIC_not_leader_rejections,
         "value",
         &num_rejections));
     if (num_rejections >= kMinRejections) {
@@ -2652,8 +2653,9 @@ TEST_F(RaftConsensusITest, TestChangeConfigRejectedUnlessNoopReplicated) {
                                  timeout,
                                  nullptr /* error_code */,
                                  false /* retry */);
-  ASSERT_TRUE(!s.ok()) << s.ToString();
-  ASSERT_STR_CONTAINS(s.ToString(), "Leader is not ready for Config Change");
+  ASSERT_TRUE(s.IsLeaderNotReadyToServe()) << s;
+  ASSERT_STR_CONTAINS(s.message().ToBuffer(),
+                      "Leader not yet replicated NoOp to be ready to serve requests");
 }
 
 // Test that if for some reason none of the transactions can be prepared, that it will come back as

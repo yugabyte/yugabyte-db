@@ -80,6 +80,7 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 
+using namespace std::placeholders;
 using std::shared_ptr;
 using std::string;
 
@@ -222,7 +223,6 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
         tablet_->mem_tracker(),
         mark_dirty_clbk_,
         tablet_->table_type(),
-        std::bind(&Tablet::LostLeadership, tablet.get()),
         raft_pool);
     has_consensus_.store(true, std::memory_order_release);
     auto ht_lease_provider = [this](MicrosTime min_allowed, MonoTime deadline) {
@@ -398,6 +398,7 @@ Status TabletPeer::CheckRunning() const {
     return STATUS(IllegalState, Substitute("The tablet is not in a running state: $0",
                                            TabletStatePB_Name(state_)));
   }
+
   return Status::OK();
 }
 
@@ -407,6 +408,7 @@ Status TabletPeer::CheckShutdownOrNotStarted() const {
     return STATUS(IllegalState, Substitute("The tablet is not in a shutdown state: $0",
                                            TabletStatePB_Name(value)));
   }
+
   return Status::OK();
 }
 
@@ -438,25 +440,20 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
   return Status::OK();
 }
 
-void TabletPeer::WriteAsync(std::unique_ptr<WriteOperationState> state, MonoTime deadline) {
-  auto status = CheckRunning();
-  if (!status.ok()) {
-    state->completion_callback()->CompleteWithStatus(status);
+void TabletPeer::WriteAsync(
+    std::unique_ptr<WriteOperationState> state, int64_t term, MonoTime deadline) {
+  if (term == yb::OpId::kUnknownTerm) {
+    state->CompleteWithStatus(STATUS(IllegalState, "Write while not leader"));
     return;
   }
-  auto operation = std::make_unique<WriteOperation>(
-      std::move(state), consensus::LEADER, deadline, this);
-  tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
-}
 
-void TabletPeer::StartExecution(std::unique_ptr<Operation> operation) {
-  auto driver = NewLeaderOperationDriver(&operation);
-  if (driver.ok()) {
-    (**driver).ExecuteAsync();
-  } else {
-    auto status = driver.status();
-    operation->state()->completion_callback()->CompleteWithStatus(status);
+  auto status = CheckRunning();
+  if (!status.ok()) {
+    state->CompleteWithStatus(status);
+    return;
   }
+  auto operation = std::make_unique<WriteOperation>(std::move(state), term, deadline, this);
+  tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
 }
 
 HybridTime TabletPeer::ReportReadRestart() {
@@ -464,11 +461,11 @@ HybridTime TabletPeer::ReportReadRestart() {
   return tablet_->SafeTime(RequireLease::kTrue);
 }
 
-void TabletPeer::Submit(std::unique_ptr<Operation> operation) {
+void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
   auto status = CheckRunning();
 
   if (status.ok()) {
-    auto driver = NewLeaderOperationDriver(&operation);
+    auto driver = NewLeaderOperationDriver(&operation, term);
     if (driver.ok()) {
       (**driver).ExecuteAsync();
     } else {
@@ -477,12 +474,14 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation) {
   }
   if (!status.ok()) {
     operation->Finish(Operation::ABORTED);
-    operation->state()->completion_callback()->CompleteWithStatus(status);
+    operation->state()->CompleteWithStatus(status);
   }
 }
 
-void TabletPeer::SubmitUpdateTransaction(std::unique_ptr<UpdateTxnOperationState> state) {
-  Submit(std::make_unique<tablet::UpdateTxnOperation>(std::move(state), consensus::LEADER));
+void TabletPeer::SubmitUpdateTransaction(
+    std::unique_ptr<UpdateTxnOperationState> state, int64_t term) {
+  auto operation = std::make_unique<tablet::UpdateTxnOperation>(std::move(state));
+  Submit(std::move(operation), term);
 }
 
 HybridTime TabletPeer::Now() {
@@ -700,26 +699,26 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
       DCHECK(replicate_msg->has_write_request()) << "WRITE_OP replica"
           " operation must receive a WriteRequestPB";
       return std::make_unique<WriteOperation>(
-          std::make_unique<WriteOperationState>(tablet()), consensus::REPLICA, MonoTime::Max(),
+          std::make_unique<WriteOperationState>(tablet()), yb::OpId::kUnknownTerm, MonoTime::Max(),
           this);
 
     case consensus::ALTER_SCHEMA_OP:
       DCHECK(replicate_msg->has_alter_schema_request()) << "ALTER_SCHEMA_OP replica"
           " operation must receive an AlterSchemaRequestPB";
       return std::make_unique<AlterSchemaOperation>(
-          std::make_unique<AlterSchemaOperationState>(tablet(), log()), consensus::REPLICA);
+          std::make_unique<AlterSchemaOperationState>(tablet(), log()));
 
     case consensus::UPDATE_TRANSACTION_OP:
       DCHECK(replicate_msg->has_transaction_state()) << "UPDATE_TRANSACTION_OP replica"
           " operation must receive an TransactionStatePB";
       return std::make_unique<UpdateTxnOperation>(
-          std::make_unique<UpdateTxnOperationState>(tablet()), consensus::REPLICA);
+          std::make_unique<UpdateTxnOperationState>(tablet()));
 
     case consensus::TRUNCATE_OP:
       DCHECK(replicate_msg->has_truncate_request()) << "TRUNCATE_OP replica"
           " operation must receive an TruncateRequestPB";
       return std::make_unique<TruncateOperation>(
-          std::make_unique<TruncateOperationState>(tablet()), consensus::REPLICA);
+          std::make_unique<TruncateOperationState>(tablet()));
 
     case consensus::SNAPSHOT_OP: FALLTHROUGH_INTENDED;
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
@@ -757,7 +756,7 @@ Status TabletPeer::StartReplicaOperation(
 
   // Unretained is required to avoid a refcount cycle.
   state->consensus_round()->SetConsensusReplicatedCallback(
-      std::bind(&OperationDriver::ReplicationFinished, driver.get(), std::placeholders::_1));
+      std::bind(&OperationDriver::ReplicationFinished, driver.get(), _1, _2));
 
   if (propagated_safe_time) {
     driver->SetPropagatedSafeTime(propagated_safe_time, tablet_->mvcc_manager());
@@ -787,19 +786,19 @@ shared_ptr<consensus::Consensus> TabletPeer::shared_consensus() const {
 }
 
 Result<OperationDriverPtr> TabletPeer::NewLeaderOperationDriver(
-    std::unique_ptr<Operation>* operation) {
-  return NewOperationDriver(operation, consensus::LEADER);
+    std::unique_ptr<Operation>* operation, int64_t term) {
+  return NewOperationDriver(operation, term);
 }
 
 Result<OperationDriverPtr> TabletPeer::NewReplicaOperationDriver(
     std::unique_ptr<Operation>* operation) {
-  return NewOperationDriver(operation, consensus::REPLICA);
+  return NewOperationDriver(operation, yb::OpId::kUnknownTerm);
 }
 
 Result<OperationDriverPtr> TabletPeer::NewOperationDriver(std::unique_ptr<Operation>* operation,
-                                                          consensus::DriverType type) {
+                                                          int64_t term) {
   auto operation_driver = CreateOperationDriver();
-  RETURN_NOT_OK(operation_driver->Init(operation, type));
+  RETURN_NOT_OK(operation_driver->Init(operation, term));
   return operation_driver;
 }
 
@@ -864,13 +863,22 @@ scoped_refptr<OperationDriver> TabletPeer::CreateOperationDriver() {
       tablet_->table_type()));
 }
 
+int64_t TabletPeer::LeaderTerm() const {
+  shared_ptr<consensus::Consensus> consensus;
+  {
+    std::lock_guard<simple_spinlock> lock(lock_);
+    consensus = consensus_;
+  }
+  return consensus ? consensus->LeaderTerm() : yb::OpId::kUnknownTerm;
+}
+
 consensus::Consensus::LeaderStatus TabletPeer::LeaderStatus() const {
   shared_ptr<consensus::Consensus> consensus;
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     consensus = consensus_;
   }
-  return consensus ? consensus->leader_status() : consensus::Consensus::LeaderStatus::NOT_LEADER;
+  return consensus ? consensus->GetLeaderStatus() : consensus::Consensus::LeaderStatus::NOT_LEADER;
 }
 
 HybridTime TabletPeer::HtLeaseExpiration() const {

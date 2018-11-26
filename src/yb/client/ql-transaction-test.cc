@@ -254,7 +254,8 @@ class QLTransactionTest : public KeyValueTableTest {
       auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
       auto peers = tablet_manager->GetTabletPeers();
       for (const auto& peer : peers) {
-        if (peer->consensus()->leader_status() != consensus::Consensus::LeaderStatus::NOT_LEADER &&
+        if (peer->consensus()->GetLeaderStatus() !=
+                consensus::Consensus::LeaderStatus::NOT_LEADER &&
             peer->tablet()->transaction_coordinator()) {
           result += peer->tablet()->transaction_coordinator()->test_count_transactions();
         }
@@ -1486,7 +1487,8 @@ TEST_F(QLTransactionTest, ChangeLeader) {
       cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
       for (const auto& peer : peers) {
         if (peer->consensus() &&
-            peer->consensus()->leader_status() != consensus::Consensus::LeaderStatus::NOT_LEADER &&
+            peer->consensus()->GetLeaderStatus() !=
+                consensus::Consensus::LeaderStatus::NOT_LEADER &&
             peer->tablet()->transaction_coordinator() &&
             peer->tablet()->transaction_coordinator()->test_count_transactions()) {
           consensus::LeaderStepDownRequestPB req;
