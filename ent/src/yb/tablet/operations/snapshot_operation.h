@@ -65,8 +65,7 @@ class SnapshotOperationState : public OperationState {
 // Executes the TabletSnapshotOp operation.
 class SnapshotOperation : public Operation {
  public:
-  SnapshotOperation(std::unique_ptr<SnapshotOperationState> tx_state,
-                    consensus::DriverType type);
+  explicit SnapshotOperation(std::unique_ptr<SnapshotOperationState> tx_state);
 
   SnapshotOperationState* state() override {
     return down_cast<SnapshotOperationState*>(Operation::state());
@@ -81,7 +80,7 @@ class SnapshotOperation : public Operation {
   CHECKED_STATUS Prepare() override;
 
   // Executes an Apply for the TabletSnapshotOp operation
-  CHECKED_STATUS Apply() override;
+  CHECKED_STATUS Apply(int64_t leader_term) override;
 
   // Actually commits the operation.
   void Finish(OperationResult result) override;
