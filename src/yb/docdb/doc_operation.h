@@ -199,6 +199,9 @@ class RedisReadOperation {
 
   int ApplyIndex(int32_t index, const int32_t len);
   CHECKED_STATUS ExecuteGet();
+  CHECKED_STATUS ExecuteGet(const RedisGetRequestPB& get_request);
+  CHECKED_STATUS ExecuteGet(RedisGetRequestPB::GetRequestType type);
+  CHECKED_STATUS ExecuteGetForRename();
   CHECKED_STATUS ExecuteGetTtl();
   // Used to implement HGETALL, HKEYS, HVALS, SMEMBERS, HLEN, SCARD
   CHECKED_STATUS ExecuteHGetAllLikeCommands(
@@ -209,6 +212,11 @@ class RedisReadOperation {
   CHECKED_STATUS ExecuteExists();
   CHECKED_STATUS ExecuteGetRange();
   CHECKED_STATUS ExecuteCollectionGetRange();
+  CHECKED_STATUS ExecuteCollectionGetRangeByBounds(
+      RedisCollectionGetRangeRequestPB::GetRangeRequestType request_type, bool add_keys);
+  CHECKED_STATUS ExecuteCollectionGetRangeByBounds(
+      RedisCollectionGetRangeRequestPB::GetRangeRequestType request_type,
+      const RedisSubKeyBoundPB& lower_bound, const RedisSubKeyBoundPB& upper_bound, bool add_keys);
   CHECKED_STATUS ExecuteKeys();
 
   rocksdb::QueryId redis_query_id() { return reinterpret_cast<rocksdb::QueryId> (&request_); }

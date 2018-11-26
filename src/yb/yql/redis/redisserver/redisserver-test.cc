@@ -214,8 +214,9 @@ class TestRedisService : public RedisTableTestBase {
                 expected[i].as_string() == "IGNORED") {
               continue;
             }
-            ASSERT_EQ(expected[i], replies[i]) << "Originator: " << __FILE__ << ":" << line
-                                               << ", i: " << i;
+            ASSERT_EQ(expected[i], replies[i])
+                << "Originator: " << __FILE__ << ":" << line << ", i: " << i << " expected[i] "
+                << yb::ToString(expected[i]) << " replies[i] " << yb::ToString(replies[i]);
           }
         }
     );
@@ -2643,6 +2644,7 @@ TEST_F(TestRedisService, TestPasswordChangeWithDelay) {
   constexpr uint32 kCachingDurationMs = 1000;
   FLAGS_redis_password_caching_duration_ms = kCachingDurationMs;
   const char* kRedisAuthPassword = "redis-password";
+  auto start = std::chrono::steady_clock::now();
   shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
 
   UseClient(rc1);
@@ -2651,8 +2653,13 @@ TEST_F(TestRedisService, TestPasswordChangeWithDelay) {
   UseClient(nullptr);
 
   // Proxy may not realize the password change immediately.
-  ConnectWithPassword(this, nullptr, true, true);
-  ConnectWithPassword(this, kRedisAuthPassword, false, true);
+  // Expect the old password to work only if we haven't taken too long to get here.
+  const std::chrono::milliseconds kNotTooLong(kCachingDurationMs / 2);
+  auto now = std::chrono::steady_clock::now();
+  if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start) < kNotTooLong) {
+    ConnectWithPassword(this, nullptr, true, true);
+    ConnectWithPassword(this, kRedisAuthPassword, false, true);
+  }
 
   // Wait for the cached redis credentials in the redis proxy to expire.
   constexpr uint32 kDelayMs = 100;
@@ -2663,6 +2670,180 @@ TEST_F(TestRedisService, TestPasswordChangeWithDelay) {
   ConnectWithPassword(this, kRedisAuthPassword, true, true);
 
   VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestRename) {
+  DoRedisTestOk(__LINE__, {"SET", "k1", "5"});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIRE", "k1", "100"}, 1);
+  SyncClient();
+
+  DoRedisTestBulkString(__LINE__, {"GET", "k1"}, "5");
+  DoRedisTestNull(__LINE__, {"GET", "k2"});
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k1"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k2"}, -2);
+  SyncClient();
+
+  DoRedisTestOk(__LINE__, {"RENAME", "k1", "k2"});
+  SyncClient();
+
+  DoRedisTestNull(__LINE__, {"GET", "k1"});
+  DoRedisTestBulkString(__LINE__, {"GET", "k2"}, "5");
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k2"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k1"}, -2);
+  SyncClient();
+
+  // Degenerate case src == dest.
+  DoRedisTestOk(__LINE__, {"RENAME", "k2", "k2"});
+  SyncClient();
+  DoRedisTestBulkString(__LINE__, {"GET", "k2"}, "5");
+  SyncClient();
+
+  // Failure cases.
+  DoRedisTestExpectError(__LINE__, {"RENAME", "non-existent", "k2"});
+  SyncClient();
+  DoRedisTestBulkString(__LINE__, {"GET", "k2"}, "5");
+  SyncClient();
+}
+
+TEST_F(TestRedisService, TestRenameSameTablet) {
+  // Rename to a key in the same tablet
+  // specify prefix to ensure that the keys are on the same tablet.
+  DoRedisTestOk(__LINE__, {"SET", "{k}0", "5"});
+  DoRedisTestOk(__LINE__, {"RENAME", "{k}0", "{k}xxxxxx"});
+  SyncClient();
+  DoRedisTestNull(__LINE__, {"GET", "{k}0"});
+  DoRedisTestBulkString(__LINE__, {"GET", "{k}xxxxxx"}, "5");
+  SyncClient();
+}
+
+TEST_F(TestRedisService, TestRenameSameTabletRandomized) {
+  // Rename to a key in the same tablet
+  // randomized 1/24 odds of being in the same tablet as k0.
+  for (int i = 1; i < 100; i++) {
+    const string dest = strings::Substitute("k$0", i);
+    VLOG(1) << "Renaming from k0 to " << dest;
+    DoRedisTestOk(__LINE__, {"SET", "k0", "5"});
+    SyncClient();
+    DoRedisTestOk(__LINE__, {"RENAME", "k0", dest});
+    SyncClient();
+    DoRedisTestNull(__LINE__, {"GET", "k0"});
+    DoRedisTestBulkString(__LINE__, {"GET", dest}, "5");
+    SyncClient();
+  }
+}
+
+TEST_F(TestRedisService, TestRenamePipeline) {
+  // Pipeline case.
+  DoRedisTestOk(__LINE__, {"SET", "ka", "4"});
+  SyncClient();
+
+  DoRedisTestOk(__LINE__, {"SET", "ka", "5"});
+  DoRedisTestOk(__LINE__, {"RENAME", "ka", "kb"});
+  DoRedisTestBulkString(__LINE__, {"GET", "kb"}, "5");
+  DoRedisTestNull(__LINE__, {"GET", "ka"});
+  SyncClient();
+}
+
+TEST_F(TestRedisService, TestRenameHash) {
+  DoRedisTestInt(__LINE__, {"HSET", "k1", "s1", "5"}, 1);
+  DoRedisTestInt(__LINE__, {"HSET", "k1", "s2", "6"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIRE", "k1", "100"}, 1);
+
+  SyncClient();
+  DoRedisTestOk(__LINE__, {"SET", "k2", "x"});
+  SyncClient();
+
+  DoRedisTestBulkString(__LINE__, {"HGET", "k1", "s1"}, "5");
+  DoRedisTestBulkString(__LINE__, {"HGET", "k1", "s2"}, "6");
+  DoRedisTestBulkString(__LINE__, {"GET", "k2"}, "x");
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k1"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k2"}, -1);
+  SyncClient();
+
+  DoRedisTestOk(__LINE__, {"RENAME", "k1", "k2"});
+  SyncClient();
+
+  DoRedisTestBulkString(__LINE__, {"HGET", "k2", "s1"}, "5");
+  DoRedisTestBulkString(__LINE__, {"HGET", "k2", "s2"}, "6");
+  DoRedisTestNull(__LINE__, {"GET", "k1"});
+  DoRedisTestNull(__LINE__, {"HGET", "k1", "s1"});
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k2"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k1"}, -2);
+  SyncClient();
+}
+
+TEST_F(TestRedisService, TestRenameSet) {
+  DoRedisTestInt(__LINE__, {"SADD", "k1", "s1", "s2"}, 2);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIRE", "k1", "100"}, 1);
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"SMEMBERS", "k1"}, {"s1", "s2"});
+  DoRedisTestNull(__LINE__, {"GET", "k2"});
+  DoRedisTestArray(__LINE__, {"SMEMBERS", "k2"}, {});
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k1"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k2"}, -2);
+  SyncClient();
+
+  DoRedisTestOk(__LINE__, {"RENAME", "k1", "k2"});
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"SMEMBERS", "k2"}, {"s1", "s2"});
+  DoRedisTestNull(__LINE__, {"GET", "k1"});
+  DoRedisTestArray(__LINE__, {"SMEMBERS", "k1"}, {});
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k2"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k1"}, -2);
+  SyncClient();
+}
+
+TEST_F(TestRedisService, TestRenameSortedSet) {
+  DoRedisTestInt(__LINE__, {"ZADD", "k1", "-2", "sk1", "2", "sk2"}, 2);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIRE", "k1", "100"}, 1);
+  SyncClient();
+
+  DoRedisTestScoreValueArray(
+      __LINE__, {"ZRANGEBYSCORE", "k1", "-inf", "+inf", "WITHSCORES"}, {-2, 2}, {"sk1", "sk2"});
+  DoRedisTestNull(__LINE__, {"GET", "k2"});
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k1"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k2"}, -2);
+  SyncClient();
+
+  DoRedisTestOk(__LINE__, {"RENAME", "k1", "k2"});
+  SyncClient();
+
+  DoRedisTestScoreValueArray(
+      __LINE__, {"ZRANGEBYSCORE", "k2", "-inf", "+inf", "WITHSCORES"}, {-2, 2}, {"sk1", "sk2"});
+  DoRedisTestNull(__LINE__, {"GET", "k1"});
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k2"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k1"}, -2);
+  SyncClient();
+}
+
+TEST_F(TestRedisService, TestRenameTSType) {
+  DoRedisTestOk(__LINE__, {"TSADD", "k1", "2", "sk1", "-2", "sk2"});
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME", "k1", "-inf", "+inf"}, {"-2", "sk2", "2", "sk1"});
+  DoRedisTestNull(__LINE__, {"GET", "k2"});
+  SyncClient();
+
+  DoRedisTestOk(__LINE__, {"RENAME", "k1", "k2"});
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME", "k2", "-inf", "+inf"}, {"-2", "sk2", "2", "sk1"});
+  DoRedisTestNull(__LINE__, {"GET", "k1"});
+  SyncClient();
 }
 
 TEST_F(TestRedisService, TestIncr) {
