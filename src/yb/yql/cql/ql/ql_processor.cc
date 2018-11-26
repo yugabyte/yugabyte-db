@@ -363,7 +363,9 @@ void QLProcessor::Reschedule(rpc::ThreadPoolTask* task) {
   // directly while disabling thread restrictions.
   const bool allowed = ThreadRestrictions::SetWaitAllowed(true);
   task->Run();
-  task->Done(Status::OK());
+  // In such tests QLProcessor is deleted right after Run is executed, since QLProcessor tasks
+  // do nothing in Done we could just don't execute it.
+  // task->Done(Status::OK());
   ThreadRestrictions::SetWaitAllowed(allowed);
 }
 
