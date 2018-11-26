@@ -53,6 +53,7 @@ message RedisReadRequestPB {
     RedisCollectionGetRangeRequestPB get_collection_range_request = 9;
     RedisGetTtlRequestPB get_ttl_request = 11;
     RedisKeysRequestPB keys_request = 12;
+    RedisGetForRenameRequestPB get_for_rename_request = 13;
   }
 
   optional RedisKeyValuePB key_value = 6;
@@ -244,6 +245,10 @@ message RedisKeysRequestPB {
   optional int32 threshold = 2;
 }
 
+// RENAME
+message RedisGetForRenameRequestPB {
+}
+
 // GETSET
 message RedisGetSetRequestPB {
 }
@@ -336,6 +341,7 @@ message RedisResponsePB {
   }
 
   optional bytes error_message = 6;
+  optional RedisDataType type = 8;
 }
 
 message RedisArrayPB {
