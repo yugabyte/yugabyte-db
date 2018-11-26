@@ -7,7 +7,7 @@ To build your Java application using the YugaByte DB Cassandra driver, add the f
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>cassandra-driver-core</artifactId>
-  <version>3.2.0-yb-12</version>
+  <version>3.2.0-yb-18</version>
 </dependency>
 ```
 
@@ -43,7 +43,7 @@ Create a maven build file `pom.xml` and add the following content into it.
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>cassandra-driver-core</artifactId>
-      <version>3.2.0-yb-12</version>
+      <version>3.2.0-yb-18</version>
     </dependency>
   </dependencies>
 
