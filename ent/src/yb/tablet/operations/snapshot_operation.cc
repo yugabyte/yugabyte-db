@@ -44,9 +44,8 @@ void SnapshotOperationState::ReleaseSchemaLock() {
   TRACE("Released schema lock");
 }
 
-SnapshotOperation::SnapshotOperation(std::unique_ptr<SnapshotOperationState> state,
-                                     DriverType type)
-    : Operation(std::move(state), type, OperationType::kSnapshot) {}
+SnapshotOperation::SnapshotOperation(std::unique_ptr<SnapshotOperationState> state)
+    : Operation(std::move(state), OperationType::kSnapshot) {}
 
 consensus::ReplicateMsgPtr SnapshotOperation::NewReplicateMsg() {
   auto result = std::make_shared<ReplicateMsg>();
@@ -71,7 +70,7 @@ void SnapshotOperation::DoStart() {
       server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }
 
-Status SnapshotOperation::Apply() {
+Status SnapshotOperation::Apply(int64_t leader_term) {
   TRACE("APPLY SNAPSHOT: Starting");
   TabletClass* const tablet = down_cast<TabletClass*>(state()->tablet());
   bool handled = false;

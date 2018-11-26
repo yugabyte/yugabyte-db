@@ -46,21 +46,20 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
             << " from " << context.requestor_string();
   VLOG(1) << "Full request: " << req->DebugString();
 
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, &context,
-                                 &tablet_peer)) {
+  auto tablet = LookupLeaderTabletOrRespond(tablet_manager_, req->tablet_id(), resp, &context);
+  if (!tablet) {
     return;
   }
 
-  auto tx_state = std::make_unique<SnapshotOperationState>(tablet_peer->tablet(), req);
+  auto tx_state = std::make_unique<SnapshotOperationState>(tablet.peer->tablet(), req);
 
   auto clock = tablet_manager_->server()->Clock();
   tx_state->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, clock));
 
   // Submit the create snapshot op. The RPC will be responded to asynchronously.
-  tablet_peer->Submit(
-      std::make_unique<tablet::SnapshotOperation>(std::move(tx_state), consensus::LEADER));
+  tablet.peer->Submit(
+      std::make_unique<tablet::SnapshotOperation>(std::move(tx_state)), tablet.leader_term);
 }
 
 }  // namespace tserver
