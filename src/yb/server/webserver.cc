@@ -411,8 +411,8 @@ const char* const PAGE_HEADER = "<!DOCTYPE html>"
 "    <link rel='shortcut icon' href='/favicon.ico'>"
 "    <link href='/bootstrap/css/bootstrap.min.css' rel='stylesheet' media='screen' />"
 "    <link href='/bootstrap/css/bootstrap-theme.min.css' rel='stylesheet' media='screen' />"
-"    <link rel=\"stylesheet\" href=\"/font-awesome/css/font-awesome.min.css\" />"
-"    <link href='/yb.css' rel='stylesheet' />"
+"    <link href='/font-awesome/css/font-awesome.min.css' rel='stylesheet' media='screen' />"
+"    <link href='/yb.css' rel='stylesheet' media='screen' />"
 "  </head>"
 "\n"
 "<body>"
@@ -462,9 +462,9 @@ void Webserver::set_footer_html(const std::string& html) {
 
 void Webserver::BootstrapPageFooter(stringstream* output) {
   boost::shared_lock<boost::shared_mutex> l(lock_);
-  *output << "</div>\n"; // end bootstrap 'container' div
+  *output << "<div class='yb-bottom-spacer'></div></div>\n"; // end bootstrap 'container' div
   if (!footer_html_.empty()) {
-    *output << "<footer class=\"footer\"><div class=\"yb-footer container text-muted\">";
+    *output << "<footer class='footer'><div class='yb-footer container text-muted'>";
     *output << footer_html_;
     *output << "</div></footer>";
   }
