@@ -46,11 +46,6 @@ using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
 
 inline TransactionId GenerateTransactionId() { return Uuid::Generate(); }
 
-// Processing mode:
-//   LEADER - processing in leader.
-//   NON_LEADER - processing in non leader.
-YB_DEFINE_ENUM(ProcessingMode, (NON_LEADER)(LEADER));
-
 // Decodes transaction id from its binary representation.
 // Checks that slice contains only TransactionId.
 Result<TransactionId> FullyDecodeTransactionId(const Slice& slice);

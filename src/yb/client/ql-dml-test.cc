@@ -1209,9 +1209,9 @@ TEST_F(QLDmlTest, OpenRecentlyCreatedTable) {
 TEST_F(QLDmlTest, ReadFollower) {
   DontVerifyClusterBeforeNextTearDown();
   FLAGS_flush_rocksdb_on_shutdown = false;
-  constexpr int kNumRows = 5000;
+  constexpr int kNumRows = RegularBuildVsSanitizers(5000, 1000);
 
-  InsertRows(kNumRows);
+  ASSERT_NO_FATALS(InsertRows(kNumRows));
 
   auto must_see_all_rows_after_this_deadline = MonoTime::Now() + 5s * kTimeMultiplier;
   auto session = NewSession();

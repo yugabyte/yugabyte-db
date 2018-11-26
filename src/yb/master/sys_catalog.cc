@@ -545,10 +545,10 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   auto txn_callback = std::make_unique<LatchOperationCompletionCallback<WriteResponsePB>>(
       &latch, &resp);
   auto operation_state = std::make_unique<tablet::WriteOperationState>(
-      tablet_peer()->tablet(), &writer->req_, &resp);
+      tablet_peer()->tablet(), &writer->req(), &resp);
   operation_state->set_completion_callback(std::move(txn_callback));
 
-  tablet_peer()->WriteAsync(std::move(operation_state), MonoTime::Max());
+  tablet_peer()->WriteAsync(std::move(operation_state), writer->leader_term(), MonoTime::Max());
 
   {
     int num_iterations = 0;

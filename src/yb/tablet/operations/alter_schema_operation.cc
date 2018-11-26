@@ -81,9 +81,8 @@ void AlterSchemaOperationState::ReleaseSchemaLock() {
 }
 
 
-AlterSchemaOperation::AlterSchemaOperation(std::unique_ptr<AlterSchemaOperationState> state,
-                                           DriverType type)
-    : Operation(std::move(state), type, OperationType::kAlterSchema) {}
+AlterSchemaOperation::AlterSchemaOperation(std::unique_ptr<AlterSchemaOperationState> state)
+    : Operation(std::move(state), OperationType::kAlterSchema) {}
 
 consensus::ReplicateMsgPtr AlterSchemaOperation::NewReplicateMsg() {
   auto result = std::make_shared<ReplicateMsg>();
@@ -99,7 +98,7 @@ Status AlterSchemaOperation::Prepare() {
   gscoped_ptr<Schema> schema(new Schema);
   Status s = SchemaFromPB(state()->request()->schema(), schema.get());
   if (!s.ok()) {
-    state()->completion_callback()->set_error(s, TabletServerErrorPB::INVALID_SCHEMA);
+    state()->SetError(s, TabletServerErrorPB::INVALID_SCHEMA);
     return s;
   }
 
@@ -120,7 +119,7 @@ void AlterSchemaOperation::DoStart() {
       server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }
 
-Status AlterSchemaOperation::Apply() {
+Status AlterSchemaOperation::Apply(int64_t leader_term) {
   TRACE("APPLY ALTER-SCHEMA: Starting");
 
   Tablet* tablet = state()->tablet();

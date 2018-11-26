@@ -42,14 +42,22 @@
 #include "yb/tablet/operations/operation_tracker.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 
+using namespace std::literals;
+
+DEFINE_test_flag(int32, TEST_delay_execute_async_ms, 0,
+                 "Delay execution of ExecuteAsync for specified amount of milliseconds during "
+                     "tests");
+
 namespace yb {
 namespace tablet {
 
+using namespace std::placeholders;
 using std::shared_ptr;
 
 using consensus::Consensus;
@@ -84,12 +92,12 @@ OperationDriver::OperationDriver(OperationTracker *operation_tracker,
   }
 }
 
-Status OperationDriver::Init(std::unique_ptr<Operation>* operation, DriverType type) {
+Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term) {
   if (operation) {
     operation_ = std::move(*operation);
   }
 
-  if (type == consensus::REPLICA) {
+  if (term == OpId::kUnknownTerm) {
     std::lock_guard<simple_spinlock> lock(opid_lock_);
     if (operation_) {
       op_id_copy_ = operation_->state()->op_id();
@@ -97,14 +105,13 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, DriverType t
     }
     replication_state_ = REPLICATING;
   } else {
-    DCHECK_EQ(type, consensus::LEADER);
     if (consensus_) {  // sometimes NULL in tests
       // Unretained is required to avoid a refcount cycle.
       consensus::ReplicateMsgPtr replicate_msg = operation_->NewReplicateMsg();
       mutable_state()->set_consensus_round(
         consensus_->NewRound(std::move(replicate_msg),
-                             std::bind(&OperationDriver::ReplicationFinished, this,
-                                       std::placeholders::_1)));
+                             std::bind(&OperationDriver::ReplicationFinished, this, _1, _2)));
+      mutable_state()->consensus_round()->BindToTerm(term);
       mutable_state()->consensus_round()->SetAppendCallback(this);
     }
   }
@@ -155,19 +162,16 @@ void OperationDriver::ExecuteAsync() {
   TRACE_EVENT_FLOW_BEGIN0("operation", "ExecuteAsync", this);
   ADOPT_TRACE(trace());
 
-  Status s;
-  if (replication_state_ == NOT_REPLICATING) {
-    // We're a leader operation. Before submitting, check that we are the leader and
-    // determine the current term.
-    // CheckLeadershipAndBindTerm could rarely acquire lock, so we should allow wait here.
-    const bool allowed = ThreadRestrictions::SetWaitAllowed(true);
-    s = consensus_->CheckLeadershipAndBindTerm(mutable_state()->consensus_round());
-    ThreadRestrictions::SetWaitAllowed(allowed);
+  auto delay = GetAtomicFlag(&FLAGS_TEST_delay_execute_async_ms);
+  if (delay != 0 &&
+      operation_type() == OperationType::kWrite &&
+      operation_->state()->tablet()->tablet_id() != "00000000000000000000000000000000") {
+    LOG(INFO) << "T " << operation_->state()->tablet()->tablet_id()
+              << " Debug sleep for: " << MonoDelta(1ms * delay) << "\n" << GetStackTrace();
+    std::this_thread::sleep_for(1ms * delay);
   }
 
-  if (s.ok()) {
-    s = preparer_->Submit(this);
-  }
+  auto s = preparer_->Submit(this);
 
   if (!s.ok()) {
     HandleFailure(s);
@@ -278,7 +282,7 @@ Status OperationDriver::PrepareAndStart() {
     {
       // We can move on to apply.  Note that ApplyOperation() will handle the error status in the
       // REPLICATION_FAILED case.
-      return ApplyOperation();
+      return ApplyOperation(yb::OpId::kUnknownTerm);
     }
   }
   FATAL_INVALID_ENUM_VALUE(ReplicationState, repl_state_copy);
@@ -320,7 +324,7 @@ void OperationDriver::HandleFailure(Status status) {
       VLOG_WITH_PREFIX(1) << "Operation " << ToString() << " failed prior to "
           "replication success: " << status;
       operation_->Finish(Operation::ABORTED);
-      mutable_state()->completion_callback()->CompleteWithStatus(status);
+      mutable_state()->CompleteWithStatus(status);
       operation_tracker_->Release(this);
       return;
     }
@@ -334,7 +338,7 @@ void OperationDriver::HandleFailure(Status status) {
   }
 }
 
-void OperationDriver::ReplicationFinished(const Status& status) {
+void OperationDriver::ReplicationFinished(const Status& status, int64_t leader_term) {
   consensus::OpId op_id_local;
   {
     std::lock_guard<simple_spinlock> op_id_lock(opid_lock_);
@@ -370,7 +374,7 @@ void OperationDriver::ReplicationFinished(const Status& status) {
   if (prepare_state_copy == PREPARED) {
     // We likely need to do cleanup if this fails so for now just
     // CHECK_OK
-    CHECK_OK(ApplyOperation());
+    CHECK_OK(ApplyOperation(leader_term));
   }
 }
 
@@ -394,7 +398,7 @@ void OperationDriver::Abort(const Status& status) {
   }
 }
 
-Status OperationDriver::ApplyOperation() {
+Status OperationDriver::ApplyOperation(int64_t leader_term) {
   {
     std::unique_lock<simple_spinlock> lock(lock_);
     DCHECK_EQ(prepare_state_, PREPARED);
@@ -415,11 +419,11 @@ Status OperationDriver::ApplyOperation() {
 
   // RocksDB-backed tables require that we apply changes in the same order they appear in the Raft
   // log.
-  ApplyTask();
+  ApplyTask(leader_term);
   return Status::OK();
 }
 
-void OperationDriver::ApplyTask() {
+void OperationDriver::ApplyTask(int64_t leader_term) {
   TRACE_EVENT_FLOW_END0("operation", "ApplyTask", this);
   ADOPT_TRACE(trace());
 
@@ -436,7 +440,7 @@ void OperationDriver::ApplyTask() {
   scoped_refptr<OperationDriver> ref(this);
 
   {
-    CHECK_OK(operation_->Apply());
+    CHECK_OK(operation_->Apply(leader_term));
 
     operation_->PreCommit();
 
@@ -451,7 +455,7 @@ void OperationDriver::Finalize() {
   scoped_refptr<OperationDriver> ref(this);
   std::lock_guard<simple_spinlock> lock(lock_);
   operation_->Finish(Operation::COMMITTED);
-  mutable_state()->completion_callback()->OperationCompleted();
+  mutable_state()->CompleteWithStatus(Status::OK());
   operation_tracker_->Release(this);
 }
 

@@ -118,14 +118,11 @@ class TabletServiceImpl : public TabletServerServiceIf {
 
  private:
   // Check if the tablet peer is the leader and is in ready state for servicing IOs.
-  CHECKED_STATUS CheckPeerIsLeaderAndReady(const tablet::TabletPeer& tablet_peer,
-                                           TabletServerErrorPB::Code* error_code);
+  CHECKED_STATUS CheckPeerIsLeaderAndReady(const tablet::TabletPeer& tablet_peer);
 
-  CHECKED_STATUS CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer,
-                                   TabletServerErrorPB::Code* error_code);
+  CHECKED_STATUS CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer);
 
-  CHECKED_STATUS CheckPeerIsReady(const tablet::TabletPeer& tablet_peer,
-                                  TabletServerErrorPB::Code* error_code);
+  CHECKED_STATUS CheckPeerIsReady(const tablet::TabletPeer& tablet_peer);
 
   template <class Req, class Resp>
   bool DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::RpcContext* context,
@@ -136,12 +133,9 @@ class TabletServiceImpl : public TabletServerServiceIf {
                                   rpc::RpcContext* context,
                                   std::shared_ptr<tablet::AbstractTablet>* tablet);
 
-  template<class Req, class Resp>
-  bool PrepareModify(const Req& req,
-                     Resp* resp,
-                     rpc::RpcContext* context,
-                     tablet::TabletPeerPtr* tablet_peer,
-                     tablet::TabletPtr* tablet);
+  template<class Resp>
+  bool CheckMemoryPressure(
+      tablet::Tablet* tablet, Resp* resp, rpc::RpcContext* context);
 
   // Read implementation. If restart is required returns restart time, in case of success
   // returns invalid ReadHybridTime. Otherwise returns error status.

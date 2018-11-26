@@ -963,13 +963,13 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
         child_transaction_data = &write_op->request().child_transaction_data();
         if (!transaction_manager_) {
           auto status = STATUS(Corruption, "Transaction manager is not present for index update");
-          operation->state()->completion_callback()->CompleteWithStatus(status);
+          operation->state()->CompleteWithStatus(status);
           return;
         }
         auto child_data = ChildTransactionData::FromPB(
             write_op->request().child_transaction_data());
         if (!child_data.ok()) {
-          operation->state()->completion_callback()->CompleteWithStatus(child_data.status());
+          operation->state()->CompleteWithStatus(child_data.status());
           return;
         }
         txn = std::make_shared<YBTransaction>(&transaction_manager_.get(), *child_data);
@@ -992,7 +992,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       bool cache_used_ignored = false;
       if (!metadata_cache_) {
         auto status = STATUS(Corruption, "Table metadata cache is not present for index update");
-        operation->state()->completion_callback()->CompleteWithStatus(status);
+        operation->state()->CompleteWithStatus(status);
         return;
       }
       // TODO create async version of GetTable.
@@ -1000,7 +1000,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       auto status = metadata_cache_->GetTable(pair.first->table_id(), &index_table,
                                               &cache_used_ignored);
       if (!status.ok()) {
-        operation->state()->completion_callback()->CompleteWithStatus(status);
+        operation->state()->CompleteWithStatus(status);
         return;
       }
       shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
@@ -1008,7 +1008,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       index_op->mutable_request()->MergeFrom(pair.second);
       status = session->Apply(index_op);
       if (!status.ok()) {
-        operation->state()->completion_callback()->CompleteWithStatus(status);
+        operation->state()->CompleteWithStatus(status);
         return;
       }
       index_ops.emplace_back(std::move(index_op), write_op);
@@ -1031,11 +1031,11 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       if (status.IsIOError()) {
         for (const auto& error : session->GetPendingErrors()) {
           // return just the first error seen.
-          operation->state()->completion_callback()->CompleteWithStatus(error->status());
+          operation->state()->CompleteWithStatus(error->status());
           return;
         }
       }
-      operation->state()->completion_callback()->CompleteWithStatus(status);
+      operation->state()->CompleteWithStatus(status);
       return;
     }
 
@@ -1043,7 +1043,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
     if (txn) {
       auto finish_result = txn->FinishChild();
       if (!finish_result.ok()) {
-        operation->state()->completion_callback()->CompleteWithStatus(finish_result.status());
+        operation->state()->CompleteWithStatus(finish_result.status());
         return;
       }
       child_result = std::move(*finish_result);
@@ -1184,7 +1184,7 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
       return;
     }
     case TableType::TRANSACTION_STATUS_TABLE_TYPE: {
-      operation->state()->completion_callback()->CompleteWithStatus(
+      operation->state()->CompleteWithStatus(
           STATUS(NotSupported, "Transaction status table does not support write"));
       return;
     }
@@ -1704,13 +1704,6 @@ void Tablet::ForceRocksDBCompactInTest() {
 
 std::string Tablet::DocDBDumpStrInTest() {
   return docdb::DocDBDebugDumpToStr(regular_db_.get());
-}
-
-void Tablet::LostLeadership() {
-  if (transaction_coordinator_) {
-    transaction_coordinator_->ClearLocks(STATUS(IllegalState,
-                                                "Transaction coordinator leader changed"));
-  }
 }
 
 uint64_t Tablet::GetTotalSSTFileSizes() const {

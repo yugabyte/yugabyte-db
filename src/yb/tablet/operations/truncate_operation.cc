@@ -35,8 +35,8 @@ string TruncateOperationState::ToString() const {
   return Format("TruncateOperationState [hybrid_time=$0]", hybrid_time_even_if_unset());
 }
 
-TruncateOperation::TruncateOperation(std::unique_ptr<TruncateOperationState> state, DriverType type)
-    : Operation(std::move(state), type, OperationType::kTruncate) {
+TruncateOperation::TruncateOperation(std::unique_ptr<TruncateOperationState> state)
+    : Operation(std::move(state), OperationType::kTruncate) {
 }
 
 consensus::ReplicateMsgPtr TruncateOperation::NewReplicateMsg() {
@@ -53,7 +53,7 @@ void TruncateOperation::DoStart() {
         server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }
 
-Status TruncateOperation::Apply() {
+Status TruncateOperation::Apply(int64_t leader_term) {
   TRACE("APPLY TRUNCATE: started");
 
   RETURN_NOT_OK(state()->tablet()->Truncate(state()));

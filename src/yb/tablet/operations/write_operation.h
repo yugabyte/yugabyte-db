@@ -185,7 +185,7 @@ class WriteOperationState : public OperationState {
 class WriteOperationContext {
  public:
   // When operation completes, its callback is executed.
-  virtual void StartExecution(std::unique_ptr<Operation> operation) = 0;
+  virtual void Submit(std::unique_ptr<Operation> operation, int64_t term) = 0;
   virtual HybridTime ReportReadRestart() = 0;
 
   virtual ~WriteOperationContext() {}
@@ -194,7 +194,7 @@ class WriteOperationContext {
 // Executes a write transaction.
 class WriteOperation : public Operation {
  public:
-  WriteOperation(std::unique_ptr<WriteOperationState> operation_state, consensus::DriverType type,
+  WriteOperation(std::unique_ptr<WriteOperationState> operation_state, int64_t term,
                  MonoTime deadline, WriteOperationContext* context);
 
   WriteOperationState* state() override {
@@ -231,7 +231,7 @@ class WriteOperation : public Operation {
   // are placed in the queue (but not necessarily in the same order of the
   // original requests) which is already a requirement of the consensus
   // algorithm.
-  CHECKED_STATUS Apply() override;
+  CHECKED_STATUS Apply(int64_t leader_term) override;
 
   // Releases the row locks (Early Lock Release).
   void PreCommit() override;
@@ -282,6 +282,7 @@ class WriteOperation : public Operation {
   void DoStartSynchronization(const Status& status);
 
   WriteOperationContext& context_;
+  const int64_t term_;
   const MonoTime deadline_;
 
   // this transaction's start time

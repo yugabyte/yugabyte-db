@@ -89,7 +89,7 @@ class ReplicaOperationFactory;
 
 typedef int64_t ConsensusTerm;
 
-typedef StdStatusCallback ConsensusReplicatedCallback;
+typedef std::function<void(const Status& status, int64_t leader_term)> ConsensusReplicatedCallback;
 
 typedef scoped_refptr<ConsensusRound> ConsensusRoundPtr;
 typedef std::vector<ConsensusRoundPtr> ConsensusRounds;
@@ -131,6 +131,8 @@ class ConsensusAppendCallback {
 };
 
 YB_STRONGLY_TYPED_BOOL(TEST_SuppressVoteRequest);
+
+struct LeaderState;
 
 // The external interface for a consensus peer.
 //
@@ -178,7 +180,9 @@ class Consensus {
   // Not-ready status means that the leader is not ready to serve up-to-date read requests.
   enum class LeaderStatus {
     NOT_LEADER,
-    LEADER_BUT_NOT_READY,
+    LEADER_BUT_NO_OP_NOT_COMMITTED,
+    LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE,
+    LEADER_BUT_NO_MAJORITY_REPLICATED_LEASE,
     LEADER_AND_READY
   };
 
@@ -258,16 +262,6 @@ class Consensus {
   // A batch version of Replicate, which is what we try to use as much as possible for performance.
   virtual CHECKED_STATUS ReplicateBatch(const ConsensusRounds& rounds) = 0;
 
-  // Ensures that the consensus implementation is currently acting as LEADER,
-  // and thus is allowed to submit operations to be prepared before they are
-  // replicated. To avoid a time-of-check-to-time-of-use (TOCTOU) race, the
-  // implementation also stores the current term inside the round's "bound_term"
-  // member. When we eventually are about to replicate the transaction, we verify
-  // that the term has not changed in the meantime.
-  virtual CHECKED_STATUS CheckLeadershipAndBindTerm(const ConsensusRoundPtr& round) {
-    return Status::OK();
-  }
-
   // Messages sent from LEADER to FOLLOWERS and LEARNERS to update their
   // state machines. This is equivalent to "AppendEntries()" in Raft
   // terminology.
@@ -312,7 +306,11 @@ class Consensus {
   virtual RaftPeerPB::Role role() const = 0;
 
   // Returns the leader status (see LeaderStatus type description for details).
-  virtual LeaderStatus leader_status() const = 0;
+  // If leader is ready, then also returns term, otherwise OpId::kUnknownTerm is returned.
+  virtual LeaderState GetLeaderState() const = 0;
+
+  LeaderStatus GetLeaderStatus() const;
+  int64_t LeaderTerm() const;
 
   // Returns the uuid of this peer.
   virtual std::string peer_uuid() const = 0;
@@ -574,7 +572,7 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   }
 
   // If a continuation was set, notifies it that the round has been replicated.
-  void NotifyReplicationFinished(const Status& status);
+  void NotifyReplicationFinished(const Status& status, int64_t leader_term);
 
   // Binds this round such that it may not be eventually executed in any term
   // other than 'term'.
@@ -642,6 +640,24 @@ class SafeOpIdWaiter {
  protected:
   ~SafeOpIdWaiter() {}
 };
+
+struct LeaderState {
+  Consensus::LeaderStatus status;
+  int64_t term;
+  MonoDelta remaining_old_leader_lease;
+
+  LeaderState& MakeNotReadyLeader(Consensus::LeaderStatus status);
+
+  bool ok() const {
+    return status == Consensus::LeaderStatus::LEADER_AND_READY;
+  }
+
+  CHECKED_STATUS CreateStatus() const;
+};
+
+inline CHECKED_STATUS MoveStatus(LeaderState&& state) {
+  return state.CreateStatus();
+}
 
 } // namespace consensus
 } // namespace yb

@@ -25,6 +25,7 @@ namespace yb {
 namespace tablet {
 
 void UpdateTxnOperationState::UpdateRequestFromConsensusRound() {
+  VLOG_WITH_PREFIX(2) << "UpdateRequestFromConsensusRound";
   request_.store(consensus_round()->replicate_msg()->mutable_transaction_state(),
                  std::memory_order_release);
 }
@@ -42,10 +43,12 @@ consensus::ReplicateMsgPtr UpdateTxnOperation::NewReplicateMsg() {
 }
 
 Status UpdateTxnOperation::Prepare() {
+  VLOG_WITH_PREFIX(2) << "Prepare";
   return Status::OK();
 }
 
 void UpdateTxnOperation::DoStart() {
+  VLOG_WITH_PREFIX(2) << "DoStart";
   state()->TrySetHybridTimeFromClock();
 }
 
@@ -53,18 +56,15 @@ TransactionCoordinator& UpdateTxnOperation::transaction_coordinator() const {
   return *state()->tablet()->transaction_coordinator();
 }
 
-ProcessingMode UpdateTxnOperation::mode() const {
-  return type() == consensus::LEADER ? ProcessingMode::LEADER : ProcessingMode::NON_LEADER;
-}
-
-Status UpdateTxnOperation::Apply() {
+Status UpdateTxnOperation::Apply(int64_t leader_term) {
+  VLOG_WITH_PREFIX(2) << "Apply";
   auto* state = this->state();
   // APPLYING is handled separately, because it is received for transactions not managed by
   // this tablet as a transaction status tablet, but tablets that are involved in the data
   // path (receive write intents) for this transaction.
   if (state->request()->status() == TransactionStatus::APPLYING) {
     TransactionParticipant::ReplicatedData data = {
-        mode(),
+        leader_term,
         *state->request(),
         state->op_id(),
         state->hybrid_time(),
@@ -73,7 +73,7 @@ Status UpdateTxnOperation::Apply() {
     return state->tablet()->transaction_participant()->ProcessReplicated(data);
   } else {
     TransactionCoordinator::ReplicatedData data = {
-        mode(),
+        leader_term,
         *state->request(),
         state->op_id(),
         state->hybrid_time()
@@ -83,15 +83,14 @@ Status UpdateTxnOperation::Apply() {
 }
 
 string UpdateTxnOperation::ToString() const {
-  return Format("UpdateTxnOperation { state: $0 type: $1 }", *state(), type());
+  return Format("UpdateTxnOperation { state: $0 }", *state());
 }
 
 void UpdateTxnOperation::Finish(OperationResult result) {
   if (result == OperationResult::ABORTED &&
       state()->tablet()->transaction_coordinator()) {
     LOG_WITH_PREFIX(INFO) << "Aborted";
-    TransactionCoordinator:: AbortedData data = {
-      mode(),
+    TransactionCoordinator::AbortedData data = {
       *state()->request(),
       state()->op_id(),
     };

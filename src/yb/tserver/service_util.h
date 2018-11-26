@@ -33,6 +33,12 @@ void SetupErrorAndRespond(TabletServerErrorPB* error,
                           TabletServerErrorPB::Code code,
                           rpc::RpcContext* context);
 
+void SetupErrorAndRespond(TabletServerErrorPB* error,
+                          const Status& s,
+                          rpc::RpcContext* context);
+
+Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer);
+
 // Template helpers.
 
 template<class ReqClass, class RespClass>
@@ -171,6 +177,36 @@ std::unique_ptr<tablet::OperationCompletionCallback> MakeRpcOperationCompletionC
     const server::ClockPtr& clock) {
   return std::make_unique<RpcOperationCompletionCallback<Response>>(
       std::move(context), response, clock);
+}
+
+struct LeaderTabletPeer {
+  tablet::TabletPeerPtr peer;
+  int64_t leader_term;
+
+  bool operator!() const {
+    return !peer;
+  }
+
+  bool FillTerm(TabletServerErrorPB* error, rpc::RpcContext* context);
+};
+
+template<class RespClass>
+LeaderTabletPeer LookupLeaderTabletOrRespond(
+    TabletPeerLookupIf* tablet_manager,
+    const std::string& tablet_id,
+    RespClass* resp,
+    rpc::RpcContext* context) {
+  LeaderTabletPeer result;
+  if (!LookupTabletPeerOrRespond(tablet_manager, tablet_id, resp, context, &result.peer)) {
+    return LeaderTabletPeer();
+  }
+
+  if (!result.FillTerm(resp->mutable_error(), context)) {
+    return LeaderTabletPeer();
+  }
+  resp->clear_error();
+
+  return result;
 }
 
 }  // namespace tserver

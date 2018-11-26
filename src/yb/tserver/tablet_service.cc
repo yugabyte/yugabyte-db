@@ -213,34 +213,14 @@ Status GetTabletRef(const TabletPeerPtr& tablet_peer,
 
 } // namespace
 
-// Prepares modification operation, checks limits, fetches tablet_peer and tablet etc.
-template<class Req, class Resp>
-bool TabletServiceImpl::PrepareModify(
-    const Req& req,
-    Resp* resp,
-    rpc::RpcContext* context,
-    tablet::TabletPeerPtr* tablet_peer,
-    tablet::TabletPtr* tablet) {
-  UpdateClock(req, server_->Clock());
-
-  if (!LookupTabletPeerOrRespond(
-      server_->tablet_manager(), req.tablet_id(), resp, context, tablet_peer)) {
-    return false;
-  }
-
-  TabletServerErrorPB::Code error_code;
-  Status s = GetTabletRef(*tablet_peer, tablet, &error_code);
-  if (PREDICT_FALSE(!s.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
-    return false;
-  }
-
-  TRACE("Found Tablet");
+template<class Resp>
+bool TabletServiceImpl::CheckMemoryPressure(
+    tablet::Tablet* tablet, Resp* resp, rpc::RpcContext* context) {
   // Check for memory pressure; don't bother doing any additional work if we've
   // exceeded the limit.
   double capacity_pct;
-  if ((*tablet)->mem_tracker()->AnySoftLimitExceeded(&capacity_pct)) {
-    (*tablet)->metrics()->leader_memory_pressure_rejections->Increment();
+  if (tablet->mem_tracker()->AnySoftLimitExceeded(&capacity_pct)) {
+    tablet->metrics()->leader_memory_pressure_rejections->Increment();
     string msg = StringPrintf(
         "Soft memory limit exceeded (at %.2f%% of capacity)",
         capacity_pct);
@@ -259,24 +239,6 @@ bool TabletServiceImpl::PrepareModify(
 }
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
-
-void SetupErrorAndRespond(TabletServerErrorPB* error,
-                          const Status& s,
-                          TabletServerErrorPB::Code code,
-                          rpc::RpcContext* context) {
-  // Generic "service unavailable" errors will cause the client to retry later.
-  if (code == TabletServerErrorPB::UNKNOWN_ERROR && s.IsServiceUnavailable()) {
-    context->RespondRpcFailure(rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY, s);
-    return;
-  }
-
-  StatusToPB(s, error->mutable_status());
-  error->set_code(code);
-  // TODO: rename RespondSuccess() to just "Respond" or
-  // "SendResponse" since we use it for application-level error
-  // responses, and this just looks confusing!
-  context->RespondSuccess();
-}
 
 class WriteOperationCompletionCallback : public OperationCompletionCallback {
  public:
@@ -389,13 +351,13 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
 
   server::UpdateClock(*req, server_->Clock());
 
-  TabletPeerPtr tablet_peer;
-  if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, &context,
-                                 &tablet_peer)) {
+  auto tablet = LookupLeaderTabletOrRespond(
+      server_->tablet_manager(), req->tablet_id(), resp, &context);
+  if (!tablet) {
     return;
   }
 
-  uint32_t schema_version = tablet_peer->tablet_metadata()->schema_version();
+  uint32_t schema_version = tablet.peer->tablet_metadata()->schema_version();
 
   // If the schema was already applied, respond as succeeded
   if (schema_version == req->schema_version()) {
@@ -409,13 +371,13 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
       return;
     }
 
-    Schema tablet_schema = tablet_peer->tablet_metadata()->schema();
+    Schema tablet_schema = tablet.peer->tablet_metadata()->schema();
     if (req_schema.Equals(tablet_schema)) {
       context.RespondSuccess();
       return;
     }
 
-    schema_version = tablet_peer->tablet_metadata()->schema_version();
+    schema_version = tablet.peer->tablet_metadata()->schema_version();
     if (schema_version == req->schema_version()) {
       LOG(ERROR) << "The current schema does not match the request schema."
                  << " version=" << schema_version
@@ -438,14 +400,14 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
   }
 
   auto operation_state = std::make_unique<AlterSchemaOperationState>(
-      tablet_peer->tablet(), tablet_peer->log(), req);
+      tablet.peer->tablet(), tablet.peer->log(), req);
 
   operation_state->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
 
   // Submit the alter schema op. The RPC will be responded to asynchronously.
-  tablet_peer->Submit(std::make_unique<tablet::AlterSchemaOperation>(
-      std::move(operation_state), consensus::LEADER));
+  tablet.peer->Submit(std::make_unique<tablet::AlterSchemaOperation>(
+      std::move(operation_state)), tablet.leader_term);
 }
 
 void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
@@ -453,33 +415,33 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
                                           rpc::RpcContext context) {
   TRACE("UpdateTransaction");
 
-  tablet::TabletPeerPtr tablet_peer;
-  tablet::TabletPtr tablet;
-  if (!PrepareModify(*req, resp, &context, &tablet_peer, &tablet)) {
-    return;
-  }
-
   VLOG(1) << "UpdateTransaction: " << req->ShortDebugString()
           << ", context: " << context.ToString();
+  UpdateClock(*req, server_->Clock());
 
-  TabletServerErrorPB::Code error_code;
-  auto status = req->state().status() == CLEANUP
-      ? Status::OK() : CheckPeerIsLeader(*tablet_peer, &error_code);
-  if (!status.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), status, error_code, &context);
+  LeaderTabletPeer tablet;
+  if (req->state().status() != CLEANUP) {
+    tablet = LookupLeaderTabletOrRespond(
+        server_->tablet_manager(), req->tablet_id(), resp, &context);
+  } else {
+    LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, &context,
+        &tablet.peer);
+    tablet.leader_term = OpId::kUnknownTerm;
+  }
+  if (!tablet || !CheckMemoryPressure(tablet.peer->tablet(), resp, &context)) {
     return;
   }
 
-  auto state = std::make_unique<tablet::UpdateTxnOperationState>(tablet_peer->tablet(),
+  auto state = std::make_unique<tablet::UpdateTxnOperationState>(tablet.peer->tablet(),
                                                                  &req->state());
   state->set_completion_callback(MakeRpcOperationCompletionCallback(
       std::move(context), resp, server_->Clock()));
 
   if (req->state().status() == TransactionStatus::APPLYING ||
       req->state().status() == TransactionStatus::CLEANUP) {
-    tablet_peer->tablet()->transaction_participant()->Handle(std::move(state));
+    tablet.peer->tablet()->transaction_participant()->Handle(std::move(state), tablet.leader_term);
   } else {
-    tablet_peer->tablet()->transaction_coordinator()->Handle(std::move(state));
+    tablet.peer->tablet()->transaction_coordinator()->Handle(std::move(state), tablet.leader_term);
   }
 }
 
@@ -499,10 +461,9 @@ void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB
     return;
   }
 
-  TabletServerErrorPB::Code error_code;
-  auto status = CheckPeerIsLeaderAndReady(*tablet_peer, &error_code);
+  auto status = CheckPeerIsLeaderAndReady(*tablet_peer);
   if (!status.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), status, error_code, &context);
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
     return;
   }
 
@@ -524,26 +485,17 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
 
   UpdateClock(*req, server_->Clock());
 
-  tablet::TabletPeerPtr tablet_peer;
-  if (!LookupTabletPeerOrRespond(server_->tablet_manager(),
-                                 req->tablet_id(),
-                                 resp,
-                                 &context,
-                                 &tablet_peer)) {
-    return;
-  }
-
-  TabletServerErrorPB::Code error_code;
-  auto status = CheckPeerIsLeaderAndReady(*tablet_peer, &error_code);
-  if (!status.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), status, error_code, &context);
+  auto tablet = LookupLeaderTabletOrRespond(
+      server_->tablet_manager(), req->tablet_id(), resp, &context);
+  if (!tablet) {
     return;
   }
 
   server::ClockPtr clock(server_->Clock());
   auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
-  tablet_peer->tablet()->transaction_coordinator()->Abort(
+  tablet.peer->tablet()->transaction_coordinator()->Abort(
       req->transaction_id(),
+      tablet.leader_term,
       [resp, context_ptr, clock](Result<TransactionStatusResult> result) {
         resp->set_propagated_hybrid_time(clock->Now().ToUint64());
         if (result.ok()) {
@@ -568,22 +520,20 @@ void TabletServiceImpl::Truncate(const TruncateRequestPB* req,
 
   UpdateClock(*req, server_->Clock());
 
-  TabletPeerPtr tablet_peer;
-  if (!LookupTabletPeerOrRespond(server_->tablet_manager(),
-                                 req->tablet_id(),
-                                 resp, &context,
-                                 &tablet_peer)) {
+  auto tablet = LookupLeaderTabletOrRespond(
+      server_->tablet_manager(), req->tablet_id(), resp, &context);
+  if (!tablet) {
     return;
   }
 
-  auto tx_state = std::make_unique<TruncateOperationState>(tablet_peer->tablet(), req);
+  auto tx_state = std::make_unique<TruncateOperationState>(tablet.peer->tablet(), req);
 
   tx_state->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
 
   // Submit the truncate tablet op. The RPC will be responded to asynchronously.
-  tablet_peer->Submit(
-      std::make_unique<tablet::TruncateOperation>(std::move(tx_state), consensus::LEADER));
+  tablet.peer->Submit(
+      std::make_unique<tablet::TruncateOperation>(std::move(tx_state)), tablet.leader_term);
 }
 
 void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
@@ -746,10 +696,11 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   TRACE_EVENT1("tserver", "TabletServiceImpl::Write",
                "tablet_id", req->tablet_id());
   DVLOG(3) << "Received Write RPC: " << req->DebugString();
+  UpdateClock(*req, server_->Clock());
 
-  tablet::TabletPeerPtr tablet_peer;
-  tablet::TabletPtr tablet;
-  if (!PrepareModify(*req, resp, &context, &tablet_peer, &tablet)) {
+  auto tablet = LookupLeaderTabletOrRespond(
+      server_->tablet_manager(), req->tablet_id(), resp, &context);
+  if (!tablet || !CheckMemoryPressure(tablet.peer->tablet(), resp, &context)) {
     return;
   }
 
@@ -770,7 +721,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   bool has_operations = (req->ql_write_batch_size() != 0 ||
                          req->redis_write_batch_size() != 0 ||
                          req->pgsql_write_batch_size());
-  if (!has_operations && tablet->table_type() != TableType::REDIS_TABLE_TYPE) {
+  if (!has_operations && tablet.peer->tablet()->table_type() != TableType::REDIS_TABLE_TYPE) {
     // An empty request. This is fine, can just exit early with ok status instead of working hard.
     // This doesn't need to go to Raft log.
     RpcOperationCompletionCallback<WriteResponsePB> callback(
@@ -779,62 +730,40 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  auto operation_state = std::make_unique<WriteOperationState>(tablet_peer->tablet(), req, resp);
+  auto operation_state = std::make_unique<WriteOperationState>(tablet.peer->tablet(), req, resp);
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(context));
   operation_state->set_completion_callback(
       std::make_unique<WriteOperationCompletionCallback>(
           context_ptr, resp, operation_state.get(), server_->Clock(), req->include_trace()));
-  tablet_peer->WriteAsync(std::move(operation_state), context_ptr->GetClientDeadline());
+  tablet.peer->WriteAsync(
+      std::move(operation_state), tablet.leader_term, context_ptr->GetClientDeadline());
 }
 
-Status TabletServiceImpl::CheckPeerIsReady(const TabletPeer& tablet_peer,
-                                           TabletServerErrorPB::Code* error_code) {
+Status TabletServiceImpl::CheckPeerIsReady(const TabletPeer& tablet_peer) {
   shared_ptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
   if (!consensus) {
-    *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
-    return STATUS_SUBSTITUTE(IllegalState,
-                             "Consensus not available for tablet $0.", tablet_peer.tablet_id());
+    return STATUS(
+        IllegalState, Format("Consensus not available for tablet $0.", tablet_peer.tablet_id()),
+        Slice(), TabletServerErrorPB::TABLET_NOT_RUNNING);
   }
 
   Status s = tablet_peer.CheckRunning();
   if (!s.ok()) {
-    *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
-    return s;
+    return s.CloneAndChangeErrorCode(TabletServerErrorPB::TABLET_NOT_RUNNING);
   }
   return Status::OK();
 }
 
-Status TabletServiceImpl::CheckPeerIsLeader(const TabletPeer& tablet_peer,
-                                            TabletServerErrorPB::Code* error_code) {
-  shared_ptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
-  const Consensus::LeaderStatus leader_status = consensus->leader_status();
-
-  VLOG(1) << "Check for " << Format(
-      "tablet $0 peer $1. Peer role is $2. Leader status is $3.",
-      tablet_peer.tablet_id(), tablet_peer.permanent_uuid(),
-      consensus->role(), static_cast<int>(leader_status));
-
-  switch (leader_status) {
-    case Consensus::LeaderStatus::NOT_LEADER:
-      *error_code = TabletServerErrorPB::NOT_THE_LEADER;
-      return STATUS(IllegalState, "Not the leader");
-
-    case Consensus::LeaderStatus::LEADER_BUT_NOT_READY:
-      *error_code = TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE;
-      return STATUS(ServiceUnavailable, "Leader is not ready");
-
-    case Consensus::LeaderStatus::LEADER_AND_READY:
-      return Status::OK();
-  }
-  FATAL_INVALID_ENUM_VALUE(consensus::Consensus::LeaderStatus, leader_status);
+Status TabletServiceImpl::CheckPeerIsLeader(const TabletPeer& tablet_peer) {
+  RETURN_NOT_OK(LeaderTerm(tablet_peer));
+  return Status::OK();
 }
 
-Status TabletServiceImpl::CheckPeerIsLeaderAndReady(const TabletPeer& tablet_peer,
-                                                    TabletServerErrorPB::Code* error_code) {
-  RETURN_NOT_OK(CheckPeerIsReady(tablet_peer, error_code));
+Status TabletServiceImpl::CheckPeerIsLeaderAndReady(const TabletPeer& tablet_peer) {
+  RETURN_NOT_OK(CheckPeerIsReady(tablet_peer));
 
-  return CheckPeerIsLeader(tablet_peer, error_code);
+  return CheckPeerIsLeader(tablet_peer);
 }
 
 bool TabletServiceImpl::GetTabletOrRespond(const ReadRequestPB* req,
@@ -853,10 +782,9 @@ bool TabletServiceImpl::DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::Rp
     return false;
   }
 
-  TabletServerErrorPB::Code error_code;
-  Status s = CheckPeerIsReady(*tablet_peer.get(), &error_code);
+  Status s = CheckPeerIsReady(*tablet_peer.get());
   if (PREDICT_FALSE(!s.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
+    SetupErrorAndRespond(resp->mutable_error(), s, context);
     return false;
   }
 
@@ -872,13 +800,13 @@ bool TabletServiceImpl::DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::Rp
                     "consistency level is invalid: YBConsistencyLevel::STRONG";
     }
 
-    s = CheckPeerIsLeader(*tablet_peer.get(), &error_code);
+    s = CheckPeerIsLeader(*tablet_peer.get());
     if (PREDICT_FALSE(!s.ok())) {
-      SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
+      SetupErrorAndRespond(resp->mutable_error(), s, context);
       return false;
     }
   } else {
-    s = CheckPeerIsLeader(*tablet_peer.get(), &error_code);
+    s = CheckPeerIsLeader(*tablet_peer.get());
 
     // Peer is not the leader, so check that the time since it last heard from the leader is less
     // than FLAGS_max_stale_read_bound_time_ms.
@@ -927,6 +855,7 @@ bool TabletServiceImpl::DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::Rp
   }
 
   shared_ptr<tablet::Tablet> ptr;
+  TabletServerErrorPB::Code error_code;
   s = GetTabletRef(tablet_peer, &ptr, &error_code);
   if (PREDICT_FALSE(!s.ok())) {
     SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);

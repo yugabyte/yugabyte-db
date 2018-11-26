@@ -55,8 +55,8 @@ class UpdateTxnOperationState : public OperationState {
 
 class UpdateTxnOperation : public Operation {
  public:
-  UpdateTxnOperation(std::unique_ptr<UpdateTxnOperationState> state, consensus::DriverType type)
-      : Operation(std::move(state), type, OperationType::kUpdateTransaction) {}
+  explicit UpdateTxnOperation(std::unique_ptr<UpdateTxnOperationState> state)
+      : Operation(std::move(state), OperationType::kUpdateTransaction) {}
 
   UpdateTxnOperationState* state() override {
     return down_cast<UpdateTxnOperationState*>(Operation::state());
@@ -68,12 +68,11 @@ class UpdateTxnOperation : public Operation {
 
  private:
   TransactionCoordinator& transaction_coordinator() const;
-  ProcessingMode mode() const;
 
   consensus::ReplicateMsgPtr NewReplicateMsg() override;
   CHECKED_STATUS Prepare() override;
   void DoStart() override;
-  CHECKED_STATUS Apply() override;
+  CHECKED_STATUS Apply(int64_t leader_term) override;
   std::string ToString() const override;
   void Finish(OperationResult result) override;
 };
