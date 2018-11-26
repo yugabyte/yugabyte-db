@@ -47,6 +47,7 @@ cqlsh> DROP KEYSPACE IF EXISTS example;
 ```
 
 ## See Also
+[`ALTER KEYSPACE`](../ddl_alter_keyspace)
 [`CREATE KEYSPACE`](../ddl_create_keyspace)
 [`USE`](../ddl_use)
 [Other CQL Statements](..)

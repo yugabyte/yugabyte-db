@@ -1,21 +1,21 @@
 ---
-title: CREATE ROLE
-summary: Create a new role
-description: CREATE ROLE
+title: DROP ROLE
+summary: Drop role
+description: DROP ROLE
 menu:
   latest:
     parent: api-cassandra
-    weight: 1235
+    weight: 1265
 aliases:
-  - api/cassandra/ddl_create_role
-  - api/cql/ddl_create_role
-  - api/ycql/ddl_create_role
+  - api/cassandra/ddl_drop_role
+  - api/cql/ddl_drop_role
+  - api/ycql/ddl_drop_role
 ---
 
 ## Synopsis
 The `DROP ROLE` deletes an existing role.
 
-This statment is enabled by setting the yb-tserver gflag [`use_cassandra_authentication`](../../../admin/yb-tserver/#config-flags) to `true`.
+This statement is enabled by setting the yb-tserver gflag [`use_cassandra_authentication`](../../../admin/yb-tserver/#config-flags) to `true`.
 
 ## Syntax
 

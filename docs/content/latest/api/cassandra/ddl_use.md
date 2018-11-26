@@ -70,6 +70,7 @@ cqlsh:example> SELECT * FROM other_keyspace.test;
 ```
 
 ## See Also
+[`ALTER KEYSPACE`](../ddl_alter_keyspace)
 [`CREATE KEYSPACE`](../ddl_create_keyspace)
 [`DROP KEYSPACE`](../ddl_drop_keyspace)
 [Other CQL Statements](..)

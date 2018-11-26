@@ -33,6 +33,7 @@ Data definition language (DDL) statements are instructions for the following dat
 Statement | Description |
 ----------|-------------|
 [`ALTER TABLE`](ddl_alter_table) | Alter a table |
+[`ALTER KEYSPACE`](ddl_alter_keyspace) | Alter a keyspace |
 [`CREATE INDEX`](ddl_create_index) | Create a new index on a table |
 [`CREATE KEYSPACE`](ddl_create_keyspace) | Create a new keyspace |
 [`CREATE TABLE`](ddl_create_table) | Create a new table |
