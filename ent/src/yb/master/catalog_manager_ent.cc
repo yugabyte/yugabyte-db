@@ -123,7 +123,7 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
           << ": PB=" << snapshot->mutable_metadata()->mutable_dirty()->pb.DebugString();
 
   // Write the snapshot data descriptor to the system catalog (in "creating" state).
-  Status s = sys_catalog_->AddItem(snapshot.get());
+  Status s = sys_catalog_->AddItem(snapshot.get(), leader_ready_term_);
   if (!s.ok()) {
     s = s.CloneAndPrepend(Substitute("An error occurred while inserting to sys-tablets: $0",
                                      s.ToString()));
@@ -288,7 +288,7 @@ Status CatalogManager::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
   SetTabletSnapshotsState(SysSnapshotEntryPB::RESTORING, &snapshot_pb);
 
   // Update sys-catalog with the updated snapshot state.
-  Status s = sys_catalog_->UpdateItem(snapshot.get());
+  Status s = sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term_);
   if (!s.ok()) {
     // The mutation will be aborted when 'l' exits the scope on early return.
     s = s.CloneAndPrepend(Substitute("An error occurred while updating sys tables: $0",
@@ -408,7 +408,7 @@ Status CatalogManager::DeleteSnapshot(const DeleteSnapshotRequestPB* req,
   SetTabletSnapshotsState(SysSnapshotEntryPB::DELETING, &snapshot_pb);
 
   // Update sys-catalog with the updated snapshot state.
-  Status s = sys_catalog_->UpdateItem(snapshot.get());
+  Status s = sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term_);
   if (!s.ok()) {
     // The mutation will be aborted when 'l' exits the scope on early return.
     s = s.CloneAndPrepend(Substitute("An error occurred while updating sys tables: $0",
@@ -800,7 +800,7 @@ void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool
           << " PB: " << l->mutable_data()->pb.DebugString()
           << " Complete " << num_tablets_complete << " tablets from " << tablet_snapshots->size();
 
-  const Status s = sys_catalog_->UpdateItem(snapshot.get());
+  const Status s = sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term_);
   if (!s.ok()) {
     LOG(WARNING) << "An error occurred while updating sys-tables: " << s.ToString();
     return;
@@ -878,7 +878,7 @@ void CatalogManager::HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, boo
           << " PB: " << l->mutable_data()->pb.DebugString()
           << " Complete " << num_tablets_complete << " tablets from " << tablet_snapshots->size();
 
-  const Status s = sys_catalog_->UpdateItem(snapshot.get());
+  const Status s = sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term_);
   if (!s.ok()) {
     LOG(WARNING) << "An error occurred while updating sys-tables: " << s.ToString();
     return;
@@ -937,7 +937,7 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
     l->mutable_data()->pb.set_state(SysSnapshotEntryPB::DELETED);
     LOG(INFO) << "Deleted snapshot " << snapshot->id();
 
-    s = sys_catalog_->DeleteItem(snapshot.get());
+    s = sys_catalog_->DeleteItem(snapshot.get(), leader_ready_term_);
 
     std::lock_guard<LockType> manager_l(lock_);
     TRACE("Acquired catalog manager lock");
@@ -955,7 +955,7 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
     l->mutable_data()->pb.set_state(SysSnapshotEntryPB::FAILED);
     LOG(WARNING) << "Failed snapshot " << snapshot->id() << " deletion on tablet " << tablet->id();
 
-    s = sys_catalog_->UpdateItem(snapshot.get());
+    s = sys_catalog_->UpdateItem(snapshot.get(), leader_ready_term_);
   }
 
   if (!s.ok()) {
