@@ -18,7 +18,7 @@ menu:
     <a class="section-link icon-offset" href="tools/">
       <div class="head">
        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="articles">1 article</div>
+        <div class="articles">2 articles</div>
         <div class="title">Tools</div>
       </div>
       <div class="body">
@@ -42,7 +42,7 @@ menu:
     <a class="section-link icon-offset" href="learn/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="articles">5 articles</div>
+        <div class="articles">6 articles</div>
         <div class="title">Learn</div>
       </div>
       <div class="body">
@@ -54,7 +54,7 @@ menu:
     <a class="section-link icon-offset" href="ecosystem-integrations/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/ecosystem-integrations.png" aria-hidden="true" />
-        <div class="articles">3 articles</div>
+        <div class="articles">6 articles</div>
         <div class="title">Ecosystem Integrations</div>
       </div>
       <div class="body">
@@ -66,7 +66,7 @@ menu:
     <a class="section-link icon-offset" href="realworld-apps/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
-        <div class="articles">2 articles</div>
+        <div class="articles">3 articles</div>
         <div class="title">Real World Examples</div>
       </div>
       <div class="body">

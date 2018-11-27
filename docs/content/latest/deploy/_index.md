@@ -40,6 +40,7 @@ menu:
     <a class="section-link icon-offset" href="kubernetes/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/kubernetes.png" aria-hidden="true" />
+        <div class="articles">2 articles</div>
         <div class="title">Kubernetes</div>
       </div>
       <div class="body">
@@ -74,7 +75,7 @@ menu:
     <a class="section-link icon-offset" href="enterprise-edition/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise.png" aria-hidden="true" />
-        <div class="articles">3 articles</div>
+        <div class="articles">4 articles</div>
         <div class="title">Enterprise Edition</div>
       </div>
       <div class="body">
