@@ -276,4 +276,32 @@ public class TestAuthentication extends BaseAuthenticationCQLTest {
     Session s2 = getSession(roleName, password);
     s2.execute("CREATE ROLE some_superuser_role WITH SUPERUSER = true");
   }
+
+  @Test
+  public void testAlterSuperuserFieldOfSuperuserRole() throws Exception {
+    String password = "abc";
+    String superuser = "alter_superuser_test_superuser";
+    String nonSuperuser = "alter_superuser_test_non_superuser";
+
+    // Initially create this user with the superuser status, so that it can create another
+    // another superuser. We will remove this role' superuser status before trying to alter a
+    // superuser role.
+    testCreateRoleHelper(nonSuperuser, password, true, true);
+
+    Session s2 = getSession(nonSuperuser, password);
+
+    // Using nonSuperuser role to create superuser so that it automatically acquires all the
+    // permissions on superuser.
+    testCreateRoleHelperWithSession(superuser, password, true, true, true, s2);
+
+    // Remove the superuser status from nonSuperuser to trigger the failure.
+    getDefaultSession().execute(String.format("ALTER ROLE %s WITH SUPERUSER = FALSE",
+                                              nonSuperuser));
+
+    // A non-superuser role tries to alter the superuser field of a superuser role.
+    String alterStmt = String.format("ALTER ROLE %s WITH SUPERUSER = FALSE", superuser);
+    thrown.expect(com.datastax.driver.core.exceptions.UnauthorizedException.class);
+    thrown.expectMessage("Only superusers are allowed to alter superuser status");
+    s2.execute(alterStmt);
+  }
 }
