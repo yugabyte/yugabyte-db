@@ -108,6 +108,9 @@ class YBTabletServer;
 class YBValue;
 class YBOperation;
 
+// Postgres object identifier (OID).
+typedef uint32_t PgOid;
+
 namespace internal {
 class Batcher;
 class GetTableSchemaRpc;
@@ -312,7 +315,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Except for testing we should use proper database_types for all creations.
   CHECKED_STATUS CreateNamespace(const std::string& namespace_name,
                                  YQLDatabase database_type = YQL_DATABASE_UNDEFINED,
-                                 const std::string& creator_role_name = "");
+                                 const std::string& creator_role_name = "",
+                                 boost::optional<PgOid> pg_database_oid = boost::none);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
@@ -666,6 +670,11 @@ class YBTableCreator {
 
   // Sets the name of the role creating this table.
   YBTableCreator& creator_role_name(const RoleName& creator_role_name);
+
+  // For Postgres: sets the OIDs of the table and the Postgres schema it belongs to.
+  YBTableCreator& pg_schema_oid(PgOid schema_oid);
+  YBTableCreator& pg_table_oid(PgOid table_oid);
+  YBTableCreator& is_pg_catalog_table();
 
   // Sets the partition hash schema.
   YBTableCreator& hash_schema(YBHashSchema hash_schema);

@@ -62,6 +62,7 @@ class SysCatalogWriter;
 
 static const char* const kSysCatalogTabletId = "00000000000000000000000000000000";
 static const char* const kSysCatalogTableId = "sys.catalog.uuid";
+static const char* const kSysCatalogTableName = "catalog";
 static const char* const kSysCatalogTableColType = "entry_type";
 static const char* const kSysCatalogTableColId = "entry_id";
 static const char* const kSysCatalogTableColMetadata = "metadata";

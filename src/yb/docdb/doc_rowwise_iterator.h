@@ -55,8 +55,8 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
                      const ReadHybridTime& read_time,
                      yb::util::PendingOperationCounter* pending_op_counter = nullptr)
       : DocRowwiseIterator(
-          *projection, schema, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter) {
+            *projection, schema, txn_op_context, doc_db, deadline, read_time,
+            pending_op_counter) {
     projection_owner_ = std::move(projection);
   }
 

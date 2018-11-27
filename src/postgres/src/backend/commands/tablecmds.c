@@ -769,7 +769,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
   // TODO We don't have template1 in YB yet.
   if (IsYugaByteEnabled() && MyDatabaseId != TemplateDbOid)
 	{
-		YBCCreateTable(stmt, relkind, relationId);
+		YBCCreateTable(stmt, relkind, namespaceId, relationId);
 	}
 
 	/* Store inheritance information for new rel. */

@@ -272,9 +272,9 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   remote_committed_cstate_.reset(resp.release_initial_committed_cstate());
 
   Schema schema;
-  RETURN_NOT_OK_PREPEND(SchemaFromPB(superblock_->schema(), &schema),
+  RETURN_NOT_OK_PREPEND(SchemaFromPB(superblock_->deprecated_schema(), &schema),
                         "Cannot deserialize schema from remote superblock");
-  const string table_id = superblock_->table_id();
+  const string table_id = superblock_->primary_table_id();
   string data_root_dir;
   string wal_root_dir;
   if (replace_tombstoned_tablet_) {
@@ -319,29 +319,31 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     Partition partition;
     Partition::FromPB(superblock_->partition(), &partition);
     PartitionSchema partition_schema;
-    RETURN_NOT_OK(PartitionSchema::FromPB(superblock_->partition_schema(),
+    RETURN_NOT_OK(PartitionSchema::FromPB(superblock_->deprecated_partition_schema(),
                                           schema, &partition_schema));
     // Create the superblock on disk.
     if (ts_manager != nullptr) {
       ts_manager->GetAndRegisterDataAndWalDir(fs_manager_,
                                               table_id,
                                               tablet_id_,
-                                              superblock_->table_type(),
+                                              superblock_->deprecated_table_type(),
                                               &data_root_dir,
                                               &wal_root_dir);
     }
     Status create_status = TabletMetadata::CreateNew(fs_manager_,
                                                      table_id,
                                                      tablet_id_,
-                                                     superblock_->table_name(),
-                                                     superblock_->table_type(),
+                                                     superblock_->deprecated_table_name(),
+                                                     superblock_->deprecated_table_type(),
                                                      schema,
+                                                     IndexMap(superblock_->deprecated_indexes()),
                                                      partition_schema,
                                                      partition,
-                                                     superblock_->has_index_info() ?
+                                                     superblock_->has_deprecated_index_info() ?
                                                      boost::optional<IndexInfo>(
-                                                         superblock_->index_info()) :
+                                                         superblock_->deprecated_index_info()) :
                                                      boost::none,
+                                                     superblock_->deprecated_schema_version(),
                                                      tablet::TABLET_DATA_COPYING,
                                                      &meta_,
                                                      data_root_dir,
@@ -349,13 +351,22 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     if (ts_manager != nullptr && !create_status.ok()) {
       ts_manager->UnregisterDataWalDir(table_id,
                                        tablet_id_,
-                                       superblock_->table_type(),
+                                       superblock_->deprecated_table_type(),
                                        data_root_dir,
                                        wal_root_dir);
     }
     RETURN_NOT_OK(create_status);
 
-    meta_->SetIndexMap(IndexMap(superblock_->indexes()));
+    vector<DeletedColumn> deleted_cols;
+    for (const DeletedColumnPB& col_pb : superblock_->deprecated_deleted_cols()) {
+      DeletedColumn col;
+      RETURN_NOT_OK(DeletedColumn::FromPB(col_pb, &col));
+      deleted_cols.push_back(col);
+    }
+    meta_->SetSchema(schema,
+                     IndexMap(superblock_->deprecated_indexes()),
+                     deleted_cols,
+                     superblock_->deprecated_schema_version());
 
     // Replace rocksdb_dir in the received superblock with our rocksdb_dir.
     superblock_->set_rocksdb_dir(meta_->rocksdb_dir());

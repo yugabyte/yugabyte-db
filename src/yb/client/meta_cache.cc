@@ -639,52 +639,58 @@ RemoteTabletPtr MetaCache::ProcessTabletLocations(
   {
     std::lock_guard<decltype(mutex_)> l(mutex_);
     for (const TabletLocationsPB& loc : locations) {
-      auto& table_data = tables_[loc.table_id()];
-      auto& tablets_by_key = table_data.tablets_by_partition;
-      // First, update the tserver cache, needed for the Refresh calls below.
-      for (const TabletLocationsPB_ReplicaPB& r : loc.replicas()) {
-        UpdateTabletServerUnlocked(r.ts_info());
-      }
+      for (const std::string& table_id : loc.table_ids()) {
+        auto& table_data = tables_[table_id];
+        auto& tablets_by_key = table_data.tablets_by_partition;
+        // First, update the tserver cache, needed for the Refresh calls below.
+        for (const TabletLocationsPB_ReplicaPB& r : loc.replicas()) {
+          UpdateTabletServerUnlocked(r.ts_info());
+        }
 
-      // Next, update the tablet caches.
-      const std::string& tablet_id = loc.tablet_id();
-      RemoteTabletPtr remote = FindPtrOrNull(tablets_by_id_, tablet_id);
-      if (remote) {
-        // Partition should not have changed.
-        DCHECK_EQ(loc.partition().partition_key_start(), remote->partition().partition_key_start());
-        DCHECK_EQ(loc.partition().partition_key_end(), remote->partition().partition_key_end());
+        // Next, update the tablet caches.
+        const std::string& tablet_id = loc.tablet_id();
+        RemoteTabletPtr remote = FindPtrOrNull(tablets_by_id_, tablet_id);
+        if (remote) {
+          // Partition should not have changed.
+          DCHECK_EQ(loc.partition().partition_key_start(),
+                    remote->partition().partition_key_start());
+          DCHECK_EQ(loc.partition().partition_key_end(),
+                    remote->partition().partition_key_end());
 
-        VLOG(3) << "Refreshing tablet " << tablet_id << ": " << loc.ShortDebugString();
-      } else {
-        VLOG(3) << "Caching tablet " << tablet_id << ": " << loc.ShortDebugString();
+          VLOG(3) << "Refreshing tablet " << tablet_id << ": " << loc.ShortDebugString();
+        } else {
+          VLOG(3) << "Caching tablet " << tablet_id << ": " << loc.ShortDebugString();
 
-        Partition partition;
-        Partition::FromPB(loc.partition(), &partition);
-        remote = new RemoteTablet(tablet_id, partition);
+          Partition partition;
+          Partition::FromPB(loc.partition(), &partition);
+          remote = new RemoteTablet(tablet_id, partition);
 
-        CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
-        CHECK(tablets_by_key.emplace(partition.partition_key_start(), remote).second);
-      }
-      remote->Refresh(ts_cache_, loc.replicas());
+          CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
+          CHECK(tablets_by_key.emplace(partition.partition_key_start(), remote).second);
+        }
+        remote->Refresh(ts_cache_, loc.replicas());
 
-      if (first) {
-        result = remote;
-        first = false;
-      }
+        if (first) {
+          result = remote;
+          first = false;
+        }
 
-      if (partition_group_start) {
-        auto lookup_by_group_iter = table_data.tablet_lookups_by_group.find(*partition_group_start);
-        if (lookup_by_group_iter != table_data.tablet_lookups_by_group.end()) {
-          auto& lookups_by_partition_key = lookup_by_group_iter->second;
-          auto lookups_iter = lookups_by_partition_key.find(loc.partition().partition_key_start());
-          if (lookups_iter != lookups_by_partition_key.end()) {
-            for (auto& lookup : lookups_iter->second) {
-              to_notify.emplace_back(std::move(lookup.callback), remote);
+        if (partition_group_start) {
+          auto lookup_by_group_iter =
+              table_data.tablet_lookups_by_group.find(*partition_group_start);
+          if (lookup_by_group_iter != table_data.tablet_lookups_by_group.end()) {
+            auto& lookups_by_partition_key = lookup_by_group_iter->second;
+            auto lookups_iter =
+                lookups_by_partition_key.find(loc.partition().partition_key_start());
+            if (lookups_iter != lookups_by_partition_key.end()) {
+              for (auto& lookup : lookups_iter->second) {
+                to_notify.emplace_back(std::move(lookup.callback), remote);
+              }
+              lookups_by_partition_key.erase(lookups_iter);
             }
-            lookups_by_partition_key.erase(lookups_iter);
-          }
-          if (lookups_by_partition_key.empty()) {
-            table_data.tablet_lookups_by_group.erase(lookup_by_group_iter);
+            if (lookups_by_partition_key.empty()) {
+              table_data.tablet_lookups_by_group.erase(lookup_by_group_iter);
+            }
           }
         }
       }

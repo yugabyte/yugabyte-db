@@ -45,7 +45,9 @@ class PgCreateDatabase : public PgDdl {
   typedef std::unique_ptr<const PgCreateDatabase> UniPtrConst;
 
   // Constructors.
-  PgCreateDatabase(PgSession::ScopedRefPtr pg_session, const char *database_name);
+  PgCreateDatabase(PgSession::ScopedRefPtr pg_session,
+                   const char *database_name,
+                   client::PgOid database_oid);
   virtual ~PgCreateDatabase();
 
   // Execute.
@@ -53,6 +55,7 @@ class PgCreateDatabase : public PgDdl {
 
  private:
   const char *database_name_;
+  const client::PgOid database_oid_;
 };
 
 class PgDropDatabase : public PgDdl {
@@ -151,7 +154,9 @@ class PgCreateTable : public PgDdl {
                 const char *database_name,
                 const char *schema_name,
                 const char *table_name,
-                bool if_not_exist);
+                client::PgOid schema_oid,
+                client::PgOid table_oid,
+               bool if_not_exist);
   virtual ~PgCreateTable();
 
   CHECKED_STATUS AddColumn(const char *attr_name, int attr_num, int attr_ybtype,
@@ -162,6 +167,9 @@ class PgCreateTable : public PgDdl {
 
  private:
   client::YBTableName table_name_;
+  const client::PgOid schema_oid_;
+  const client::PgOid table_oid_;
+  bool is_pg_catalog_table_;
   bool if_not_exist_;
   client::YBSchemaBuilder schema_builder_;
 };

@@ -2608,9 +2608,12 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
             request_.hashed_column_values(), schema_, 0,
             schema_.num_hash_key_columns(), &hashed_components));
 
+        boost::optional<int32_t> hash_code = request_.has_hash_code()
+                                             ? boost::make_optional<int32_t>(request_.hash_code())
+                                             : boost::none;
         DocQLScanSpec spec(projection,
-                           request_.hash_code(),
-                           request_.hash_code(), // max hash code.
+                           hash_code,
+                           hash_code, // max hash code.
                            hashed_components,
                            request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
                            request_.query_id());
@@ -3046,9 +3049,11 @@ CHECKED_STATUS QLReadOperation::AddRowToResult(const std::unique_ptr<common::QLS
 // Pgsql support.
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PgsqlDocOperation::CreateProjections(const Schema& schema,
-                                                    const PgsqlColumnRefsPB& column_refs,
-                                                    Schema* column_projection) {
+namespace {
+
+CHECKED_STATUS CreateProjections(const Schema& schema,
+                                 const PgsqlColumnRefsPB& column_refs,
+                                 Schema* column_projection) {
   // The projection schemas are used to scan docdb. Keep the columns to fetch in sorted order for
   // more efficient scan in the iterator.
   set<ColumnId> regular_columns;
@@ -3068,6 +3073,8 @@ CHECKED_STATUS PgsqlDocOperation::CreateProjections(const Schema& schema,
   return Status::OK();
 }
 
+} // namespace
+
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* response) {
@@ -3086,7 +3093,9 @@ CHECKED_STATUS PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResp
 
   // We only need the hash key if the range key is not specified.
   if (request_.range_column_values().size() == 0) {
-    hashed_doc_key_ = make_unique<DocKey>(request_.hash_code(), hashed_components);
+    hashed_doc_key_ = make_unique<DocKey>(schema_,
+                                          request_.hash_code(),
+                                          hashed_components);
     hashed_doc_path_ = make_unique<DocPath>(hashed_doc_key_->Encode());
   }
 
@@ -3095,7 +3104,13 @@ CHECKED_STATUS PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResp
                                              schema_,
                                              schema_.num_hash_key_columns(),
                                              &range_components));
-  range_doc_key_ = make_unique<DocKey>(request_.hash_code(), hashed_components, range_components);
+  range_doc_key_ = hashed_components.empty()
+                   ? make_unique<DocKey>(schema_, range_components)
+                   : make_unique<DocKey>(schema_,
+                                         request_.hash_code(),
+                                         hashed_components,
+                                         range_components);
+
   range_doc_path_ = make_unique<DocPath>(range_doc_key_->Encode());
 
   return Status::OK();
@@ -3232,11 +3247,14 @@ CHECKED_STATUS PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& dat
                                                schema_,
                                                0,
                                                &hashed_components));
+    boost::optional<int32_t> hash_code = request_.has_hash_code()
+                                         ? boost::make_optional<int32_t>(request_.hash_code())
+                                         : boost::none;
     DocPgsqlScanSpec spec(projection,
                           request_.stmt_id(),
                           hashed_components,
-                          request_.hash_code(),
-                          request_.hash_code(),
+                          hash_code,
+                          hash_code,
                           request_.mutable_where_expr());
     DocRowwiseIterator iterator(projection,
                                 schema_,

@@ -20,18 +20,32 @@
 namespace yb {
 namespace master {
 
+class Master;
+
 // Master's version of a TabletServer which is required to support virtual tables in the Master.
 // This isn't really an actual server and is just a nice way of overriding the default tablet
 // server interface to support virtual tables.
-class MasterTabletServer : public tserver::TabletServerIf {
+class MasterTabletServer : public tserver::TabletServerIf,
+                           public tserver::TabletPeerLookupIf {
  public:
-  explicit MasterTabletServer(scoped_refptr<MetricEntity> metric_entity);
+  MasterTabletServer(Master* master, scoped_refptr<MetricEntity> metric_entity);
   tserver::TSTabletManager* tablet_manager() override;
+  tserver::TabletPeerLookupIf* tablet_peer_lookup() override;
 
   server::Clock* Clock() override;
   const scoped_refptr<MetricEntity>& MetricEnt() const override;
 
+  CHECKED_STATUS GetTabletPeer(const std::string& tablet_id,
+                               std::shared_ptr<tablet::TabletPeer>* tablet_peer) const override;
+
+  const NodeInstancePB& NodeInstance() const override;
+
+  CHECKED_STATUS GetRegistration(ServerRegistrationPB* reg) const override;
+
+  CHECKED_STATUS StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) override;
+
  private:
+  Master* master_ = nullptr;
   std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
 };

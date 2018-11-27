@@ -513,8 +513,9 @@ Status YBClient::GetTableSchema(const YBTableName& table_name,
 }
 
 Status YBClient::CreateNamespace(const std::string& namespace_name,
-                                 YQLDatabase database_type,
-                                 const std::string& creator_role_name) {
+                                 const YQLDatabase database_type,
+                                 const std::string& creator_role_name,
+                                 const boost::optional<PgOid> pg_database_oid) {
   CreateNamespaceRequestPB req;
   CreateNamespaceResponsePB resp;
   req.set_name(namespace_name);
@@ -523,6 +524,9 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
   }
   if (database_type != YQL_DATABASE_UNDEFINED) {
     req.set_database_type(database_type);
+  }
+  if (pg_database_oid) {
+    req.set_pg_database_oid(*pg_database_oid);
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateNamespace);
   return Status::OK();
@@ -1300,6 +1304,21 @@ YBTableCreator& YBTableCreator::creator_role_name(const RoleName& creator_role_n
   return *this;
 }
 
+YBTableCreator& YBTableCreator::pg_schema_oid(const PgOid schema_oid) {
+  data_->pg_schema_oid_ = schema_oid;
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::pg_table_oid(const PgOid table_oid) {
+  data_->pg_table_oid_ = table_oid;
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::is_pg_catalog_table() {
+  data_->is_pg_catalog_table_ = true;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::hash_schema(YBHashSchema hash_schema) {
   switch (hash_schema) {
     case YBHashSchema::kMultiColumnHash:
@@ -1421,6 +1440,16 @@ Status YBTableCreator::Create() {
 
   if (!data_->creator_role_name_.empty()) {
     req.set_creator_role_name(data_->creator_role_name_);
+  }
+
+  if (data_->pg_schema_oid_) {
+    req.set_pg_schema_oid(*data_->pg_schema_oid_);
+  }
+  if (data_->pg_table_oid_) {
+    req.set_pg_table_oid(*data_->pg_table_oid_);
+  }
+  if (data_->is_pg_catalog_table_) {
+    req.set_is_pg_catalog_table(*data_->is_pg_catalog_table_);
   }
 
   // Note that the check that the sum of min_num_replicas for each placement block being less or

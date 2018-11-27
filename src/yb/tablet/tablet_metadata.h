@@ -63,6 +63,50 @@ namespace tablet {
 
 extern const int64 kNoDurableMemStore;
 
+  // Table info.
+struct TableInfo {
+  // Table id, name and type.
+  std::string table_id;
+  std::string table_name;
+  TableType table_type;
+
+  // The table schema, secondary index map, index info (for index table only) and schema version.
+  Schema schema;
+  IndexMap index_map;
+  std::unique_ptr<IndexInfo> index_info;
+  uint32_t schema_version = 0;
+
+  // Partition schema of the table.
+  PartitionSchema partition_schema;
+
+  // A vector of column IDs that have been deleted, so that the compaction filter can free the
+  // associated memory. At present, deleted column IDs are persisted forever, even if all the
+  // associated data has been discarded. In the future, we can garbage collect such column IDs
+  // to make sure this vector doesn't grow too large.
+  std::vector<DeletedColumn> deleted_cols;
+
+  TableInfo() = default;
+  TableInfo(std::string table_id,
+            std::string table_name,
+            TableType table_type,
+            const Schema& schema,
+            const IndexMap& index_map,
+            const boost::optional<IndexInfo>& index_info,
+            uint32_t schema_version,
+            PartitionSchema partition_schema);
+  TableInfo(const TableInfo& other,
+            const Schema& schema,
+            const IndexMap& index_map,
+            const std::vector<DeletedColumn>& deleted_cols,
+            uint32_t schema_version);
+
+  CHECKED_STATUS LoadFromSuperBlock(const TabletSuperBlockPB& superblock);
+  CHECKED_STATUS ToSuperBlock(TabletSuperBlockPB* superblock);
+
+  CHECKED_STATUS LoadFromPB(const TableInfoPB& pb);
+  CHECKED_STATUS ToPB(TableInfoPB* pb);
+};
+
 // Manages the "blocks tracking" for the specified tablet.
 //
 // TabletMetadata is owned by the Tablet. As new blocks are written to store
@@ -86,9 +130,11 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
                                   const std::string& table_name,
                                   const TableType table_type,
                                   const Schema& schema,
+                                  const IndexMap& index_map,
                                   const PartitionSchema& partition_schema,
                                   const Partition& partition,
                                   const boost::optional<IndexInfo>& index_info,
+                                  const uint32_t schema_version,
                                   const TabletDataState& initial_tablet_data_state,
                                   scoped_refptr<TabletMetadata>* metadata,
                                   const std::string& data_root_dir = std::string(),
@@ -116,6 +162,10 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
                                      const TabletDataState& initial_tablet_data_state,
                                      scoped_refptr<TabletMetadata>* metadata);
 
+  Result<const TableInfo*> GetTableInfo(const std::string& table_id) const;
+
+  Result<TableInfo*> GetTableInfo(const std::string& table_id);
+
   const std::string& tablet_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
     return tablet_id_;
@@ -123,40 +173,77 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
 
   // Returns the partition of the tablet.
   const Partition& partition() const {
+    DCHECK_NE(state_, kNotLoadedYet);
     return partition_;
   }
 
+  // Returns the primary table id. For co-located tables, the primary table is the table this tablet
+  // was first created for. For single-tenant table, it is the primary table.
   const std::string& table_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return table_id_;
+    return primary_table_id_;
   }
 
-  std::string table_name() const;
+  // Returns the name, type, schema, index map, schema, etc of the primary table.
+  std::string table_name() const {
+    DCHECK_NE(state_, kNotLoadedYet);
+    return primary_table_info()->table_name;
+  }
 
   TableType table_type() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return table_type_;
+    return primary_table_info()->table_type;
+  }
+
+  const Schema& schema() const {
+    DCHECK_NE(state_, kNotLoadedYet);
+    return primary_table_info()->schema;
+  }
+
+  const IndexMap& index_map() const {
+    DCHECK_NE(state_, kNotLoadedYet);
+    return primary_table_info()->index_map;
+  }
+
+  uint32_t schema_version() const {
+    DCHECK_NE(state_, kNotLoadedYet);
+    return primary_table_info()->schema_version;
   }
 
   const std::string& indexed_tablet_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
     static const std::string kEmptyString = "";
-    return index_info_ ? index_info_->indexed_table_id() : kEmptyString;
+    const auto* index_info = primary_table_info()->index_info.get();
+    return index_info ? index_info->indexed_table_id() : kEmptyString;
   }
 
   bool is_local_index() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return index_info_ && index_info_->is_local();
+    const auto* index_info = primary_table_info()->index_info.get();
+    return index_info && index_info->is_local();
   }
 
   bool is_unique_index() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return index_info_ && index_info_->is_unique();
+    const auto* index_info = primary_table_info()->index_info.get();
+    return index_info && index_info->is_unique();
   }
 
   std::vector<ColumnId> index_key_column_ids() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return index_info_ ? index_info_->index_key_column_ids() : std::vector<ColumnId>();
+    const auto* index_info = primary_table_info()->index_info.get();
+    return index_info ? index_info->index_key_column_ids() : std::vector<ColumnId>();
+  }
+
+  // Returns the partition schema of the tablet's table.
+  const PartitionSchema& partition_schema() const {
+    DCHECK_NE(state_, kNotLoadedYet);
+    return primary_table_info()->partition_schema;
+  }
+
+  const std::vector<DeletedColumn>& deleted_cols() const {
+    DCHECK_NE(state_, kNotLoadedYet);
+    return primary_table_info()->deleted_cols;
   }
 
   std::string rocksdb_dir() const { return rocksdb_dir_; }
@@ -175,28 +262,24 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   //  Returns /mnt/d0/tserver/wal1/wals
   std::string wal_root_dir() const;
 
-  uint32_t schema_version() const;
+  void SetSchema(const Schema& schema,
+                 const IndexMap& index_map,
+                 const std::vector<DeletedColumn>& deleted_cols,
+                 const uint32_t version);
 
-  void SetSchema(const Schema& schema, uint32_t version);
-
-  const IndexMap& index_map() const { return index_map_; }
-  void SetIndexMap(IndexMap&& index_map);
+  void SetPartitionSchema(const PartitionSchema& partition_schema);
 
   void SetTableName(const std::string& table_name);
 
-  // Return a reference to the current schema.
-  // This pointer will be valid until the TabletMetadata is destructed,
-  // even if the schema is changed.
-  const Schema& schema() const {
-    const Schema* s = reinterpret_cast<const Schema*>(
-        base::subtle::Acquire_Load(reinterpret_cast<const AtomicWord*>(&schema_)));
-    return *s;
-  }
-
-  // Returns the partition schema of the tablet's table.
-  const PartitionSchema& partition_schema() const {
-    return partition_schema_;
-  }
+  void AddTable(const std::string& table_id,
+                const std::string& table_name,
+                const TableType table_type,
+                const Schema& schema,
+                const IndexMap& index_map,
+                const PartitionSchema& partition_schema,
+                const Partition& partition,
+                const boost::optional<IndexInfo>& index_info,
+                const uint32_t schema_version);
 
   // Set / get the remote bootstrap / tablet data state.
   void set_tablet_data_state(TabletDataState state);
@@ -259,19 +342,11 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // Loads the currently-flushed superblock from disk into the given protobuf.
   CHECKED_STATUS ReadSuperBlockFromDisk(TabletSuperBlockPB* superblock) const;
 
-  // Sets *super_block to the serialized form of the current metadata.
-  CHECKED_STATUS ToSuperBlock(TabletSuperBlockPB* super_block) const;
+  // Sets *superblock to the serialized form of the current metadata.
+  CHECKED_STATUS ToSuperBlock(TabletSuperBlockPB* superblock) const;
 
   // Fully replace a superblock (used for bootstrap).
   CHECKED_STATUS ReplaceSuperBlock(const TabletSuperBlockPB &pb);
-
-  const std::vector<DeletedColumn>& GetDeletedColumns() const {
-    return deleted_cols_;
-  }
-
-  void AddDeletedColumn(const DeletedColumn& col) {
-    deleted_cols_.push_back(col);
-  }
 
  private:
   friend class RefCountedThreadSafe<TabletMetadata>;
@@ -292,15 +367,15 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
                  const std::string rocksdb_dir,
                  const std::string wal_dir,
                  const Schema& schema,
+                 const IndexMap& index_map,
                  PartitionSchema partition_schema,
                  Partition partition,
                  const boost::optional<IndexInfo>& index_info,
+                 const uint32_t schema_version,
                  const TabletDataState& tablet_data_state);
 
   // Constructor for loading an existing tablet.
   TabletMetadata(FsManager* fs_manager, std::string tablet_id);
-
-  void SetSchemaUnlocked(gscoped_ptr<Schema> schema, uint32_t version);
 
   CHECKED_STATUS LoadFromDisk();
 
@@ -314,7 +389,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   CHECKED_STATUS ReplaceSuperBlockUnlocked(const TabletSuperBlockPB &pb);
 
   // Requires 'data_lock_'.
-  CHECKED_STATUS ToSuperBlockUnlocked(TabletSuperBlockPB* super_block) const;
+  CHECKED_STATUS ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) const;
 
   // Requires 'data_lock_'.
   void AddOrphanedBlocksUnlocked(const std::vector<BlockId>& block_ids);
@@ -329,6 +404,15 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
 
   // Return standard "T xxx P yyy" log prefix.
   std::string LogPrefix() const;
+
+  // Return a pointer to the primary table info. This pointer will be valid until the TabletMetadata
+  // is destructed, even if the schema is changed.
+  const TableInfo* primary_table_info() const {
+    std::lock_guard<LockType> l(data_lock_);
+    const auto itr = tables_.find(primary_table_id_);
+    DCHECK(itr != tables_.end());
+    return itr->second.get();
+  }
 
   enum State {
     kNotLoadedYet,
@@ -345,23 +429,28 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // If taken together with 'data_lock_', must be acquired first.
   mutable Mutex flush_lock_;
 
-  std::string table_id_;
+  // The tablet id and partition.
   const std::string tablet_id_;
-
   Partition partition_;
+
+  // The primary table id. Primary table is the first table this tablet is created for. Additional
+  // tables can be added to this tablet to co-locate with this table.
+  string primary_table_id_;
+
+  // Map of tables co-located in this tablet indexed by the table id.
+  std::unordered_map<std::string, std::unique_ptr<TableInfo>> tables_;
+
+  // Old versions of TableInfo that have since been altered. They are kept alive so that callers of
+  // schema() and index_map(), etc don't need to worry about reference counting or locking.
+  //
+  // TODO: These TableInfo's are currently kept alive forever, under the assumption that a given
+  // tablet won't have thousands of "alter table" calls. Replace the raw pointer with shared_ptr and
+  // modify the callers to hold the shared_ptr at the top of the calls (e.g. tserver rpc calls).
+  std::vector<std::unique_ptr<TableInfo>> old_tables_;
 
   FsManager* const fs_manager_;
 
   int64_t last_durable_mrs_id_;
-
-  // The current schema version. This is owned by this class.
-  // We don't use gscoped_ptr so that we can do an atomic swap.
-  Schema* schema_;
-  IndexMap index_map_;
-  uint32_t schema_version_;
-  std::string table_name_;
-  TableType table_type_;
-  boost::optional<IndexInfo> index_info_;
 
   // The directory where the RocksDB data for this tablet is stored.
   std::string rocksdb_dir_;
@@ -369,39 +458,22 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // The directory where the write-ahead log for this tablet is stored.
   std::string wal_dir_;
 
-  PartitionSchema partition_schema_;
-
-  // Previous values of 'schema_'.
-  // These are currently kept alive forever, under the assumption that
-  // a given tablet won't have thousands of "alter table" calls.
-  // They are kept alive so that callers of schema() don't need to
-  // worry about reference counting or locking.
-  std::vector<Schema*> old_schemas_;
-
   // Protected by 'data_lock_'.
   std::unordered_set<BlockId, BlockIdHash, BlockIdEqual> orphaned_blocks_;
 
   // The current state of remote bootstrap for the tablet.
   TabletDataState tablet_data_state_;
 
-  // Record of the last opid logged by the tablet before it was last
-  // tombstoned. Has no meaning for non-tombstoned tablets.
+  // Record of the last opid logged by the tablet before it was last tombstoned. Has no meaning for
+  // non-tombstoned tablets.
   yb::OpId tombstone_last_logged_opid_;
 
-  // If this counter is > 0 then Flush() will not write any data to
-  // disk.
+  // If this counter is > 0 then Flush() will not write any data to disk.
   int32_t num_flush_pins_ = 0;
 
-  // Set if Flush() is called when num_flush_pins_ is > 0; if true,
-  // then next UnPinFlush will call Flush() again to ensure the
-  // metadata is persisted.
+  // Set if Flush() is called when num_flush_pins_ is > 0; if true, then next UnPinFlush will call
+  // Flush() again to ensure the metadata is persisted.
   bool needs_flush_ = false;
-
-  // A vector of column IDs that have been deleted, so that the compaction filter can free the
-  // associated memory. At present, deleted column IDs are persisted forever, even if all the
-  // associated data has been discarded. In the future, we can garbage collect such column IDs
-  // to make sure this vector doesn't grow too large.
-  std::vector<DeletedColumn> deleted_cols_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletMetadata);
 };

@@ -93,6 +93,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   std::string ToString() const override;
 
   TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
+  TabletPeerLookupIf* tablet_peer_lookup() override { return tablet_manager_.get(); }
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
 

@@ -69,7 +69,7 @@ Status DocRowwiseIterator::Init() {
       doc_db_, BloomFilterMode::DONT_USE_BLOOM_FILTER,
       boost::none /* user_key_for_filter */, query_id, txn_op_context_, deadline_, read_time_);
 
-  row_key_ = DocKey();
+  row_key_ = DocKey(schema_);
   db_iter_->Seek(row_key_);
   row_ready_ = false;
   has_bound_key_ = false;
@@ -273,7 +273,8 @@ bool DocRowwiseIterator::HasNext() const {
       status_ = dockey_size.status();
       return true;
     }
-    if (has_bound_key_ && is_forward_scan_ == (row_key_ >= bound_key_)) {
+    if (!row_key_.BelongsTo(schema_) ||
+        (has_bound_key_ && is_forward_scan_ == (row_key_ >= bound_key_))) {
       done_ = true;
       return false;
     }

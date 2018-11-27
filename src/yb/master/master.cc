@@ -134,7 +134,7 @@ Master::Master(const MasterOptions& opts)
     maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
     metric_entity_cluster_(METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(),
                                                              "yb.cluster")),
-    master_tablet_server_(new MasterTabletServer(metric_entity())) {
+    master_tablet_server_(new MasterTabletServer(this, metric_entity())) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       GetAtomicFlag(&FLAGS_inbound_rpc_block_size),
       GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit),

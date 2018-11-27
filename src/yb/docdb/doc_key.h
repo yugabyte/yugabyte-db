@@ -84,6 +84,13 @@ class DocKey {
          const std::vector<PrimitiveValue>& hashed_components,
          const std::vector<PrimitiveValue>& range_components = std::vector<PrimitiveValue>());
 
+  // Constructors to create a DocKey for the given schema to support co-located tables.
+  explicit DocKey(const Schema& schema);
+  DocKey(const Schema& schema, const std::vector<PrimitiveValue>& range_components);
+  DocKey(const Schema& schema, DocKeyHash hash,
+         const std::vector<PrimitiveValue>& hashed_components,
+         const std::vector<PrimitiveValue>& range_components = std::vector<PrimitiveValue>());
+
   KeyBytes Encode() const;
   void AppendTo(KeyBytes* out) const;
 
@@ -169,6 +176,10 @@ class DocKey {
     return CompareTo(other) >= 0;
   }
 
+  bool BelongsTo(const Schema& schema) const {
+    return cotable_id_ == schema.cotable_id();
+  }
+
   // Converts a redis string key to a doc key
   static DocKey FromRedisKey(uint16_t hash, const string& key);
   static KeyBytes EncodedFromRedisKey(uint16_t hash, const std::string &key);
@@ -181,6 +192,10 @@ class DocKey {
   static CHECKED_STATUS DoDecode(rocksdb::Slice* slice,
                                  DocKeyPart part_to_decode,
                                  const Callback& callback);
+
+  // Uuid of the non-primary table this DocKey belongs to co-located in a tablet. Nil for the
+  // primary or single-tenant table.
+  Uuid cotable_id_;
 
   bool hash_present_;
   DocKeyHash hash_;

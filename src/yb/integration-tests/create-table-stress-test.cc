@@ -371,6 +371,7 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
       unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
       s = table_creator->table_name(table_name)
           .schema(&schema_)
+          .hash_schema(YBHashSchema::kMultiColumnHash)
           .set_range_partition_columns({ "key" })
           .num_tablets(1)
           .wait(false)

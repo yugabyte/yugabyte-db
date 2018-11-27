@@ -93,6 +93,7 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
     TABLE_ENTRY(System, Local), \
     TABLE_ENTRY(System, Partitions), \
     TABLE_ENTRY(System, SizeEstimates), \
+    std::make_tuple(kSysCatalogTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId), \
     TABLE_ENTRY(SystemSchema, Aggregates), \
     TABLE_ENTRY(SystemSchema, Columns), \
     TABLE_ENTRY(SystemSchema, Functions), \
@@ -438,6 +439,7 @@ Status MasterTest::DoCreateTable(const NamespaceName& namespace_name,
   if (!namespace_name.empty()) {
     request->mutable_namespace_()->set_name(namespace_name);
   }
+  request->mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
   request->set_num_tablets(8);
 
   // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer

@@ -66,7 +66,11 @@ bool MasterTabletServiceImpl::GetTabletOrRespond(const tserver::ReadRequestPB* r
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
                                     tserver::WriteResponsePB* resp,
                                     rpc::RpcContext context)  {
-  HandleUnsupportedMethod("Write", resp, &context);
+  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {
+    return;
+  }
+  tserver::TabletServiceImpl::Write(req, resp, std::move(context));
 }
 
 void MasterTabletServiceImpl::NoOp(const tserver::NoOpRequestPB* req,

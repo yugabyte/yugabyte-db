@@ -111,6 +111,7 @@ namespace docdb {
     ((kUserTimestamp, 'u'))  /* ASCII code 117 */ \
     ((kWriteId, 'w')) /* ASCII code 119 */ \
     ((kTransactionId, 'x')) /* ASCII code 120 */ \
+    ((kTableId, 'y')) /* ASCII code 121 */ \
     \
     ((kObject, '{'))  /* ASCII code 123 */ \
     \

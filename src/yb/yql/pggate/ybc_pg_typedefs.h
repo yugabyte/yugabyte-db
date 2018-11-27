@@ -93,6 +93,13 @@ enum YBCPgDataType {
 
 typedef enum YBCPgDataType YBCPgDataType;
 
+// Postgres object identifier (OID) defined in Postgres' postgres_ext.h
+typedef unsigned int YBCPgOid;
+#define YBCPgInvalidOid ((YBCPgOid) 0)
+
+// Postgres pg_catalog oid defined in Postgres' pg_namespace.h
+#define YBCPgCatalogOid ((YBCPgOid) 11)
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

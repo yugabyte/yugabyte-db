@@ -27,6 +27,7 @@ using std::shared_ptr;
 using std::string;
 using namespace std::literals;  // NOLINT
 
+using client::PgOid;
 using client::YBClient;
 using client::YBSession;
 using client::YBMetaDataCache;
@@ -80,8 +81,11 @@ CHECKED_STATUS PgSession::ConnectDatabase(const string& database_name) {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PgSession::CreateDatabase(const std::string& database_name) {
-  return client_->CreateNamespace(database_name, YQL_DATABASE_PGSQL);
+CHECKED_STATUS PgSession::CreateDatabase(const string& database_name, const PgOid database_oid) {
+  return client_->CreateNamespace(database_name,
+                                  YQL_DATABASE_PGSQL,
+                                  "" /* creator_role_name */,
+                                  database_oid);
 }
 
 CHECKED_STATUS PgSession::DropDatabase(const string& database_name, bool if_exist) {
