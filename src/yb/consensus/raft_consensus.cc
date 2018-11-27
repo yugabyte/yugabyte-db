@@ -170,6 +170,12 @@ DEFINE_int32(min_leader_stepdown_retry_interval_ms,
              "to avoid infinite leader stepdown loops when the current leader never has a chance "
              "to update the intended leader with its latest records.");
 
+DEFINE_test_flag(bool, pause_update_replica, false,
+                 "Pause RaftConsensus::UpdateReplica processing before snoozing failure detector.");
+
+DEFINE_test_flag(bool, pause_update_majority_replicated, false,
+                 "Pause RaftConsensus::UpdateMajorityReplicated.");
+
 namespace yb {
 namespace consensus {
 
@@ -939,6 +945,7 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
 void RaftConsensus::UpdateMajorityReplicated(
     const MajorityReplicatedData& majority_replicated_data,
     OpId* committed_op_id) {
+  TEST_PAUSE_IF_FLAG(pause_update_majority_replicated);
   ReplicaState::UniqueLock lock;
   Status s = state_->LockForMajorityReplicatedIndexUpdate(&lock);
   if (PREDICT_FALSE(!s.ok())) {
@@ -1481,6 +1488,8 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
       FillConsensusResponseOKUnlocked(response);
       return Status::OK();
     }
+
+    TEST_PAUSE_IF_FLAG(pause_update_replica);
 
     // Snooze the failure detector as soon as we decide to accept the message.
     // We are guaranteed to be acting as a FOLLOWER at this point by the above

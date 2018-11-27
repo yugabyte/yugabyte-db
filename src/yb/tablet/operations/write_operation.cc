@@ -48,13 +48,17 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"
 #include "yb/util/trace.h"
 
 DEFINE_test_flag(int32, tablet_inject_latency_on_apply_write_txn_ms, 0,
                  "How much latency to inject when a write operation is applied.");
+DEFINE_test_flag(bool, tablet_pause_apply_write_ops, false,
+                 "Pause applying of write operations.");
 TAG_FLAG(tablet_inject_latency_on_apply_write_txn_ms, runtime);
+TAG_FLAG(tablet_pause_apply_write_ops, runtime);
 
 namespace yb {
 namespace tablet {
@@ -102,9 +106,11 @@ Status WriteOperation::Apply(int64_t leader_term) {
 
   if (PREDICT_FALSE(
           ANNOTATE_UNPROTECTED_READ(FLAGS_tablet_inject_latency_on_apply_write_txn_ms) > 0)) {
-    TRACE("Injecting $0ms of latency due to --tablet_inject_latency_on_apply_write_txn_ms",
-          FLAGS_tablet_inject_latency_on_apply_write_txn_ms);
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_tablet_inject_latency_on_apply_write_txn_ms));
+      TRACE("Injecting $0ms of latency due to --tablet_inject_latency_on_apply_write_txn_ms",
+            FLAGS_tablet_inject_latency_on_apply_write_txn_ms);
+      SleepFor(MonoDelta::FromMilliseconds(FLAGS_tablet_inject_latency_on_apply_write_txn_ms));
+  } else {
+    TEST_PAUSE_IF_FLAG(tablet_pause_apply_write_ops);
   }
 
   Tablet* tablet = state()->tablet();

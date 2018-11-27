@@ -429,6 +429,12 @@ class ExternalMiniCluster : public MiniClusterBase {
 
 class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
  public:
+  class StringListener {
+   public:
+    virtual void Handle(const GStringPiece& s) = 0;
+    virtual ~StringListener() {}
+  };
+
   ExternalDaemon(
       std::string daemon_id,
       std::shared_ptr<rpc::Messenger> messenger,
@@ -445,6 +451,8 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   // Return the pid of the running process.  Causes a CHECK failure if the process is not running.
   pid_t pid() const;
+
+  const std::string& id() const { return daemon_id_; }
 
   // Sends a SIGSTOP signal to the daemon.
   CHECKED_STATUS Pause();
@@ -481,6 +489,10 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
                         int64_t* value) const;
 
   std::string LogPrefix();
+
+  void SetLogListener(StringListener* listener);
+
+  void RemoveLogListener(StringListener* listener);
 
  protected:
   friend class RefCountedThreadSafe<ExternalDaemon>;
@@ -528,6 +540,24 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   std::unique_ptr<LogTailerThread> stdout_tailer_thread_, stderr_tailer_thread_;
 
   DISALLOW_COPY_AND_ASSIGN(ExternalDaemon);
+};
+
+// Utility class for waiting for logging events.
+class LogWaiter : public ExternalDaemon::StringListener {
+ public:
+  LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait);
+
+  CHECKED_STATUS WaitFor(MonoDelta timeout);
+  bool IsEventOccurred() { return event_occurred_; }
+
+  ~LogWaiter();
+
+ private:
+  void Handle(const GStringPiece& s) override;
+
+  ExternalDaemon* daemon_;
+  std::atomic<bool> event_occurred_{false};
+  std::string string_to_wait_;
 };
 
 // Resumes a daemon that was stopped with ExteranlDaemon::Pause() upon
