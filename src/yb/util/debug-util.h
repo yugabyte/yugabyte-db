@@ -232,6 +232,15 @@ struct SourceLocation {
 
 #define SOURCE_LOCATION() SourceLocation {__FILE__, __LINE__}
 
+#define TEST_PAUSE_IF_FLAG(flag_name) \
+    if (PREDICT_FALSE(ANNOTATE_UNPROTECTED_READ(BOOST_PP_CAT(FLAGS_, flag_name)))) { \
+      LOG(INFO) << "Pausing due to flag " << #flag_name; \
+      do { \
+        SleepFor(MonoDelta::FromMilliseconds(100)); \
+      } while (ANNOTATE_UNPROTECTED_READ(BOOST_PP_CAT(FLAGS_, flag_name))); \
+      LOG(INFO) << "Resuming due to flag " << #flag_name; \
+    }
+
 } // namespace yb
 
 #endif  // YB_UTIL_DEBUG_UTIL_H
