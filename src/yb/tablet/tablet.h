@@ -435,8 +435,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return clock_;
   }
 
-  const Schema& SchemaRef() const override {
-    return metadata_->schema();
+  const Schema& SchemaRef(const std::string& table_id = "") const override {
+    return CHECK_RESULT(metadata_->GetTableInfo(table_id))->schema;
   }
 
   const common::YQLStorageIf& QLStorage() const override {
@@ -466,8 +466,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   int64_t last_committed_write_index() const {
     return last_committed_write_index_.load(std::memory_order_acquire);
   }
-
-  void LostLeadership();
 
   uint64_t GetTotalSSTFileSizes() const;
   uint64_t GetUncompressedSSTFileSizes() const;

@@ -25,6 +25,7 @@
 
 #include "miscadmin.h"
 #include "catalog/pg_class.h"
+#include "catalog/pg_namespace.h"
 #include "commands/dbcommands.h"
 #include "commands/ybccmds.h"
 #include "commands/ybctype.h"
@@ -46,7 +47,7 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid)
 		dbname);
 	PG_TRY();
 	{
-		HandleYBStatus(YBCPgNewCreateDatabase(ybc_pg_session, dbname, &handle));
+		HandleYBStatus(YBCPgNewCreateDatabase(ybc_pg_session, dbname, dboid, &handle));
 		HandleYBStatus(YBCPgExecCreateDatabase(handle));
 	}
 	PG_CATCH();
@@ -85,10 +86,11 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 
 /* Utility function to add columns to the YB create statement */
 static void CreateTableAddColumns(YBCPgStatement handle,
-																	CreateStmt *stmt,
-																	Constraint *primary_key,
-																	bool include_hash,
-																	bool include_primary)
+								  CreateStmt *stmt,
+								  Oid namespaceId,
+								  Constraint *primary_key,
+								  bool include_hash,
+								  bool include_primary)
 {
 	ListCell *lc;
 	int      attnum = 1;
@@ -116,11 +118,12 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 			}
 		}
 
-		/* TODO For now, assume the first primary key column is the hash. */
-		bool is_hash = is_primary && is_first;
+		/* TODO For now, assume the first primary key column is the hash, except for pg_catalog
+		 * tables which are not hash-partitioned.
+		 */
+		bool is_hash = is_primary && is_first && (namespaceId != PG_CATALOG_NAMESPACE);
 		if (include_hash == is_hash && include_primary == is_primary)
 		{
-
 			HandleYBStmtStatus(YBCPgCreateTableAddColumn(handle,
 			                                             colDef->colname,
 			                                             attnum,
@@ -133,7 +136,7 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 }
 
 void
-YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
+YBCCreateTable(CreateStmt *stmt, char relkind, Oid namespaceId, Oid relationId)
 {
 	if (relkind != RELKIND_RELATION)
 	{
@@ -149,9 +152,9 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 	 */
 	char *db_name = get_database_name(MyDatabaseId);
 	YBC_LOG_INFO("Creating Table %s, %s, %s",
-	           db_name,
-	           stmt->relation->schemaname,
-	           stmt->relation->relname);
+				 db_name,
+				 stmt->relation->schemaname,
+				 stmt->relation->relname);
 
 	Constraint *primary_key = NULL;
 
@@ -182,6 +185,8 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 	                                   db_name,
 	                                   stmt->relation->schemaname,
 	                                   stmt->relation->relname,
+	                                   namespaceId,
+	                                   relationId,
 	                                   false, /* if_not_exists */
 	                                   &handle));
 
@@ -189,24 +194,26 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId)
 	 * Process the table columns. They need to be sent in order, first hash
 	 * columns, then rest of primary key columns, then regular columns
 	 */
+    CreateTableAddColumns(handle,
+                          stmt,
+                          namespaceId,
+                          primary_key,
+                          true /* is_hash */,
+                          true /* is_primary */);
 
-	CreateTableAddColumns(handle,
-	                      stmt,
-	                      primary_key,
-	                      true /* is_hash */,
-	                      true /* is_primary */);
+    CreateTableAddColumns(handle,
+                          stmt,
+                          namespaceId,
+                          primary_key,
+                          false /* is_hash */,
+                          true /* is_primary */);
 
-	CreateTableAddColumns(handle,
-	                      stmt,
-	                      primary_key,
-	                      false /* is_hash */,
-	                      true /* is_primary */);
-
-	CreateTableAddColumns(handle,
-	                      stmt,
-	                      primary_key,
-	                      false /* is_hash */,
-	                      false /* is_primary */);
+    CreateTableAddColumns(handle,
+                          stmt,
+                          namespaceId,
+                          primary_key,
+                          false /* is_hash */,
+                          false /* is_primary */);
 
 	/* Create the table. */
 	HandleYBStmtStatus(YBCPgExecCreateTable(handle), handle);

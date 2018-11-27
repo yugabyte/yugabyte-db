@@ -145,9 +145,10 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // to the RPC WriteRequest, WriteResponse, RpcContext and to the tablet's
   // MvccManager.
   // The operation_state is deallocated after use by this function.
-  void WriteAsync(std::unique_ptr<WriteOperationState> operation_state, MonoTime deadline);
+  void WriteAsync(
+      std::unique_ptr<WriteOperationState> operation_state, int64_t term, MonoTime deadline);
 
-  void Submit(std::unique_ptr<Operation> operation);
+  void Submit(std::unique_ptr<Operation> operation, int64_t term) override;
 
   HybridTime Now() override;
 
@@ -156,7 +157,8 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   std::unique_ptr<UpdateTxnOperationState> CreateUpdateTransactionState(
       tserver::TransactionStatePB* request) override;
 
-  void SubmitUpdateTransaction(std::unique_ptr<UpdateTxnOperationState> state) override;
+  void SubmitUpdateTransaction(
+      std::unique_ptr<UpdateTxnOperationState> state, int64_t term) override;
 
   void GetTabletStatusPB(TabletStatusPB* status_pb_out) const;
 
@@ -273,7 +275,8 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
     return client_future_;
   }
 
-  consensus::Consensus::LeaderStatus LeaderStatus() const override;
+  int64_t LeaderTerm() const override;
+  consensus::Consensus::LeaderStatus LeaderStatus() const;
 
   HybridTime HtLeaseExpiration() const override;
 
@@ -292,9 +295,10 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   }
 
   Result<OperationDriverPtr> NewOperationDriver(std::unique_ptr<Operation>* operation,
-                                                consensus::DriverType type);
+                                                int64_t term);
 
-  Result<OperationDriverPtr> NewLeaderOperationDriver(std::unique_ptr<Operation>* operation);
+  Result<OperationDriverPtr> NewLeaderOperationDriver(
+      std::unique_ptr<Operation>* operation, int64_t term);
   Result<OperationDriverPtr> NewReplicaOperationDriver(std::unique_ptr<Operation>* operation);
 
   // Tells the tablet's log to garbage collect.
@@ -403,11 +407,10 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   rpc::ThreadPool* service_thread_pool_;
 
  private:
-  void StartExecution(std::unique_ptr<Operation> operation) override;
   HybridTime ReportReadRestart() override;
 
   bool IsLeader() override {
-    return LeaderStatus() == consensus::Consensus::LeaderStatus::LEADER_AND_READY;
+    return LeaderTerm() != OpId::kUnknownTerm;
   }
 
   std::shared_future<client::YBClientPtr> client_future_;

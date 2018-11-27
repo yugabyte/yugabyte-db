@@ -190,7 +190,6 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   ASSERT_OK(c.FetchURL(Substitute("http://$0/tablets", addr),
                        &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), kTabletId);
-  ASSERT_STR_CONTAINS(buf.ToString(), "<td>hash_split: [&lt;start&gt;, &lt;end&gt;)</td>");
 
   // Tablet page should include the schema.
   ASSERT_OK(c.FetchURL(Substitute("http://$0/tablet?id=$1", addr, kTabletId),
@@ -213,7 +212,6 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     // Check that the tablet entry shows up.
     ASSERT_STR_CONTAINS(buf.ToString(), "\"type\": \"tablet\"");
     ASSERT_STR_CONTAINS(buf.ToString(), "\"id\": \"test-tablet\"");
-    ASSERT_STR_CONTAINS(buf.ToString(), "\"partition\": \"hash_split: [<start>, <end>)\"");
 
     // Check entity attributes.
     ASSERT_STR_CONTAINS(buf.ToString(), "\"table_name\": \"test-table\"");

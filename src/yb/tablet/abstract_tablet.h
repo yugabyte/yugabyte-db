@@ -39,7 +39,7 @@ class AbstractTablet {
  public:
   virtual ~AbstractTablet() {}
 
-  virtual const Schema& SchemaRef() const = 0;
+  virtual const Schema& SchemaRef(const std::string& table_id = "") const = 0;
 
   virtual const common::YQLStorageIf& QLStorage() const = 0;
 

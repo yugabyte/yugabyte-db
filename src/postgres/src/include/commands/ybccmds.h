@@ -40,7 +40,7 @@ extern void YBCDropDatabase(Oid dboid, const char *dbname);
 
 /*  Table Functions ----------------------------------------------------------------------------- */
 
-extern void YBCCreateTable(CreateStmt *stmt, char relkind, Oid relationId);
+extern void YBCCreateTable(CreateStmt *stmt, char relkind, Oid namespaceId, Oid relationId);
 
 extern void YBCDropTable(Oid relationId, const char *relname, const char *schemaname);
 

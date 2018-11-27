@@ -201,6 +201,8 @@ string PrimitiveValue::ToString() const {
     case ValueType::kRedisList: FALLTHROUGH_INTENDED;
     case ValueType::kArray:
       return "[]";
+    case ValueType::kTableId:
+      return Format("TableId($0)", uuid_val_.ToString());
     case ValueType::kTransactionId:
       return Substitute("TransactionId($0)", uuid_val_.ToString());
     case ValueType::kWriteId:
@@ -341,6 +343,7 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
     }
 
     case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
+    case ValueType::kTableId: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: {
       std::string bytes;
       CHECK_OK(uuid_val_.EncodeToComparable(&bytes));
@@ -495,6 +498,7 @@ string PrimitiveValue::ToValue() const {
 
     case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
+    case ValueType::kTableId: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: {
       std::string bytes;
       CHECK_OK(uuid_val_.EncodeToComparable(&bytes))
@@ -776,6 +780,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
     }
 
     case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
+    case ValueType::kTableId: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: {
       if (out) {
         string bytes;
@@ -1039,6 +1044,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     }
 
     case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
+    case ValueType::kTableId: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: {
       if (slice.size() != kUuidSize) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes to decode Uuid: $0, need $1",
@@ -1175,6 +1181,12 @@ PrimitiveValue PrimitiveValue::TransactionId(Uuid transaction_id) {
   return primitive_value;
 }
 
+PrimitiveValue PrimitiveValue::TableId(Uuid table_id) {
+  PrimitiveValue primitive_value(table_id);
+  primitive_value.type_ = ValueType::kTableId;
+  return primitive_value;
+}
+
 PrimitiveValue PrimitiveValue::IntentTypeValue(IntentType intent_type) {
   PrimitiveValue primitive_value(static_cast<uint16_t>(intent_type));
   primitive_value.type_ = ValueType::kIntentType;
@@ -1255,6 +1267,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
     case ValueType::kInetaddress: return *inetaddress_val_ == *(other.inetaddress_val_);
     case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
+    case ValueType::kTableId: FALLTHROUGH_INTENDED;
     case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: return uuid_val_ == other.uuid_val_;
 
@@ -1349,6 +1362,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       }
     }
     case ValueType::kTransactionId: FALLTHROUGH_INTENDED;
+    case ValueType::kTableId: FALLTHROUGH_INTENDED;
     case ValueType::kUuidDescending:
       return CompareUsingLessThan(other.uuid_val_, uuid_val_);
     case ValueType::kUuid:

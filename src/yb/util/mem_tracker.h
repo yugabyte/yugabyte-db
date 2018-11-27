@@ -72,6 +72,7 @@ class GarbageCollector {
 YB_STRONGLY_TYPED_BOOL(MayExist);
 YB_STRONGLY_TYPED_BOOL(AddToParent);
 YB_STRONGLY_TYPED_BOOL(CreateMetrics);
+YB_STRONGLY_TYPED_BOOL(OnlyChildren);
 
 // A MemTracker tracks memory consumption; it contains an optional limit and is
 // arranged into a tree structure such that the consumption tracked by a
@@ -221,16 +222,14 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
     return FindOrCreateTracker(-1 /* byte_limit */, id, parent, add_to_parent, create_metrics);
   }
 
-  void ListDescendantTrackers(std::vector<MemTrackerPtr>* trackers);
+  void ListDescendantTrackers(
+      std::vector<MemTrackerPtr>* trackers, OnlyChildren only_children = OnlyChildren::kFalse);
+
+  // Returns a list of all children of this tracker.
+  std::vector<MemTrackerPtr> ListChildren();
 
   // Returns a list of all the valid trackers.
-  static std::vector<MemTrackerPtr> ListTrackers() {
-    std::vector<MemTrackerPtr> result;
-    auto root = GetRootTracker();
-    result.push_back(root);
-    root->ListDescendantTrackers(&result);
-    return result;
-  }
+  static std::vector<MemTrackerPtr> ListTrackers();
 
   // Gets a shared_ptr to the "root" tracker, creating it if necessary.
   static MemTrackerPtr GetRootTracker();

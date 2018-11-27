@@ -191,8 +191,13 @@ class PartitionSchema {
                                   std::vector<Partition>* partitions,
                                   int32_t max_partition_key = kMaxPartitionKey) const;
 
+  bool IsHashPartitioning() const {
+    return hash_schema_ != boost::none;
+  }
+
   YBHashSchema hash_schema() const {
-    return hash_schema_;
+    CHECK(hash_schema_);
+    return *hash_schema_;
   }
 
   // Encodes the given uint16 value into a 2 byte string.
@@ -326,7 +331,7 @@ class PartitionSchema {
 
   std::vector<HashBucketSchema> hash_bucket_schemas_;
   RangeSchema range_schema_;
-  YBHashSchema hash_schema_ = YBHashSchema::kMultiColumnHash;
+  boost::optional<YBHashSchema> hash_schema_; // Defined only for table that is hash-partitioned.
 };
 
 } // namespace yb

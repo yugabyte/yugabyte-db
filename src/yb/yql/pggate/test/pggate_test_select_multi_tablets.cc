@@ -26,12 +26,14 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   CHECK_OK(Init("TestSelectMultiTablet"));
 
   const char *tabname = "basic_table";
+  const YBCPgOid tab_oid = 3;
   YBCPgStatement pg_stmt;
 
   // Create table in the connected database.
   int col_count = 0;
-  CHECK_YBC_STATUS(YBCPgNewCreateTable(pg_session_, nullptr, nullptr, tabname,
-                                       true /* if_not_exist */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewCreateTable(pg_session_, kDefaultDatabase, kDefaultSchema, tabname,
+                                       kDefaultSchemaOid, tab_oid, true /* if_not_exist */,
+                                       &pg_stmt));
   CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "hash_key", ++col_count,
                                              DataType::INT64, true, true));
   CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "id", ++col_count,

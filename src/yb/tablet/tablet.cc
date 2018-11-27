@@ -478,6 +478,7 @@ std::string Tablet::LogPrefix() const {
 Status Tablet::OpenKeyValueTablet() {
   rocksdb::Options rocksdb_options;
   docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, tablet_options_);
+  rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker("RegularDB", mem_tracker_);
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
   // to this tablet. So, we ensure that rocksdb_ is reset before this tablet gets destroyed.
@@ -517,6 +518,8 @@ Status Tablet::OpenKeyValueTablet() {
     rocksdb_options.compaction_filter_factory =
         FLAGS_tablet_do_compaction_cleanup_for_intents ?
         std::make_shared<docdb::DocDBIntentsCompactionFilterFactory>(this) : nullptr;
+
+    rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker("IntentsDB", mem_tracker_);
 
     rocksdb::DB* intents_db = nullptr;
     RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options, db_dir + kIntentsDBSuffix, &intents_db));
@@ -669,7 +672,6 @@ void Tablet::PrepareTransactionWriteBatch(
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     rocksdb::WriteBatch* rocksdb_write_batch) {
-  RequestScope request_scope(transaction_participant_.get());
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
     transaction_participant()->Add(
@@ -702,6 +704,7 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
 
   rocksdb::WriteBatch write_batch;
   if (put_batch.has_transaction()) {
+    RequestScope request_scope(transaction_participant_.get());
     PrepareTransactionWriteBatch(put_batch, hybrid_time, &write_batch);
     WriteBatch(frontiers, hybrid_time, &write_batch, intents_db_.get());
   } else {
@@ -960,13 +963,13 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
         child_transaction_data = &write_op->request().child_transaction_data();
         if (!transaction_manager_) {
           auto status = STATUS(Corruption, "Transaction manager is not present for index update");
-          operation->state()->completion_callback()->CompleteWithStatus(status);
+          operation->state()->CompleteWithStatus(status);
           return;
         }
         auto child_data = ChildTransactionData::FromPB(
             write_op->request().child_transaction_data());
         if (!child_data.ok()) {
-          operation->state()->completion_callback()->CompleteWithStatus(child_data.status());
+          operation->state()->CompleteWithStatus(child_data.status());
           return;
         }
         txn = std::make_shared<YBTransaction>(&transaction_manager_.get(), *child_data);
@@ -989,7 +992,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       bool cache_used_ignored = false;
       if (!metadata_cache_) {
         auto status = STATUS(Corruption, "Table metadata cache is not present for index update");
-        operation->state()->completion_callback()->CompleteWithStatus(status);
+        operation->state()->CompleteWithStatus(status);
         return;
       }
       // TODO create async version of GetTable.
@@ -997,7 +1000,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       auto status = metadata_cache_->GetTable(pair.first->table_id(), &index_table,
                                               &cache_used_ignored);
       if (!status.ok()) {
-        operation->state()->completion_callback()->CompleteWithStatus(status);
+        operation->state()->CompleteWithStatus(status);
         return;
       }
       shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
@@ -1005,7 +1008,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       index_op->mutable_request()->MergeFrom(pair.second);
       status = session->Apply(index_op);
       if (!status.ok()) {
-        operation->state()->completion_callback()->CompleteWithStatus(status);
+        operation->state()->CompleteWithStatus(status);
         return;
       }
       index_ops.emplace_back(std::move(index_op), write_op);
@@ -1028,11 +1031,11 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       if (status.IsIOError()) {
         for (const auto& error : session->GetPendingErrors()) {
           // return just the first error seen.
-          operation->state()->completion_callback()->CompleteWithStatus(error->status());
+          operation->state()->CompleteWithStatus(error->status());
           return;
         }
       }
-      operation->state()->completion_callback()->CompleteWithStatus(status);
+      operation->state()->CompleteWithStatus(status);
       return;
     }
 
@@ -1040,7 +1043,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
     if (txn) {
       auto finish_result = txn->FinishChild();
       if (!finish_result.ok()) {
-        operation->state()->completion_callback()->CompleteWithStatus(finish_result.status());
+        operation->state()->CompleteWithStatus(finish_result.status());
         return;
       }
       child_result = std::move(*finish_result);
@@ -1079,7 +1082,11 @@ Status Tablet::HandlePgsqlReadRequest(
   // TODO(neil) Work on metrics for PGSQL.
   // ScopedTabletMetricsTracker metrics_tracker(metrics_->pgsql_read_latency);
 
-  if (metadata()->schema_version() != pgsql_read_request.schema_version()) {
+  const tablet::TableInfo* table_info =
+      VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read_request.table_id()));
+  // Assert the table is a Postgres table.
+  DCHECK_EQ(table_info->table_type, TableType::PGSQL_TABLE_TYPE);
+  if (table_info->schema_version != pgsql_read_request.schema_version()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
     return Status::OK();
   }
@@ -1135,11 +1142,11 @@ Status Tablet::KeyValueBatchFromPgsqlWriteBatch(WriteOperation* operation) {
   for (size_t i = 0; i < pgsql_write_batch->size(); i++) {
     PgsqlWriteRequestPB* req = pgsql_write_batch->Mutable(i);
     PgsqlResponsePB* resp = operation->response()->add_pgsql_response_batch();
-    if (metadata_->schema_version() != req->schema_version()) {
+    const tablet::TableInfo* table_info = VERIFY_RESULT(metadata_->GetTableInfo(req->table_id()));
+    if (table_info->schema_version != req->schema_version()) {
       resp->set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
     } else {
-      const auto& schema = metadata_->schema();
-      auto write_op = std::make_unique<PgsqlWriteOperation>(schema, *txn_op_ctx);
+      auto write_op = std::make_unique<PgsqlWriteOperation>(table_info->schema, *txn_op_ctx);
       RETURN_NOT_OK(write_op->Init(req, resp));
       doc_ops.emplace_back(std::move(write_op));
     }
@@ -1164,30 +1171,27 @@ Status Tablet::KeyValueBatchFromPgsqlWriteBatch(WriteOperation* operation) {
 void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation> operation) {
   WriteRequestPB* key_value_write_request = operation->state()->mutable_request();
 
-  switch (table_type_) {
-    case TableType::REDIS_TABLE_TYPE: {
-      auto status = KeyValueBatchFromRedisWriteBatch(operation.get());
-      WriteOperation::StartSynchronization(std::move(operation), status);
-      return;
-    }
-    case TableType::YQL_TABLE_TYPE: {
-      CHECK_GT(key_value_write_request->ql_write_batch_size(), 0);
-      KeyValueBatchFromQLWriteBatch(std::move(operation));
-      return;
-    }
-    case TableType::PGSQL_TABLE_TYPE: {
-      auto status = KeyValueBatchFromPgsqlWriteBatch(operation.get());
-      WriteOperation::StartSynchronization(std::move(operation), status);
-      return;
-    }
-    case TableType::TRANSACTION_STATUS_TABLE_TYPE: {
-      operation->state()->completion_callback()->CompleteWithStatus(
-          STATUS(NotSupported, "Transaction status table does not support write"));
-      return;
-    }
+  if (!key_value_write_request->redis_write_batch().empty()) {
+    auto status = KeyValueBatchFromRedisWriteBatch(operation.get());
+    WriteOperation::StartSynchronization(std::move(operation), status);
+    return;
+  }
+  if (!key_value_write_request->ql_write_batch().empty()) {
+    KeyValueBatchFromQLWriteBatch(std::move(operation));
+    return;
+  }
+  if (!key_value_write_request->pgsql_write_batch().empty()) {
+    auto status = KeyValueBatchFromPgsqlWriteBatch(operation.get());
+    WriteOperation::StartSynchronization(std::move(operation), status);
+    return;
+  }
+  if (table_type_ == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    operation->state()->CompleteWithStatus(
+        STATUS(NotSupported, "Transaction status table does not support write"));
+    return;
   }
 
-  FATAL_INVALID_ENUM_VALUE(TableType, table_type_);
+  operation->state()->CompleteWithStatus(Status::OK());
 }
 
 Status Tablet::Flush(FlushMode mode, FlushFlags flags) {
@@ -1319,15 +1323,16 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
   DCHECK(schema_lock_.is_locked());
 
   // Find out which columns have been deleted in this schema change, and add them to metadata.
+  vector<DeletedColumn> deleted_cols;
   for (const auto& col : schema()->column_ids()) {
     if (operation_state->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
-      DeletedColumn deleted_col(col, clock_->Now());
-      LOG_WITH_PREFIX(INFO) << "Column " << col.ToString() << " recorded as deleted.";
-      metadata_->AddDeletedColumn(deleted_col);
+      deleted_cols.emplace_back(col, clock_->Now());
+      LOG_WITH_PREFIX(INFO) << "Column " << col << " recorded as deleted.";
     }
   }
 
-  metadata_->SetSchema(*operation_state->schema(), operation_state->schema_version());
+  metadata_->SetSchema(*operation_state->schema(), operation_state->index_map(), deleted_cols,
+                       operation_state->schema_version());
   if (operation_state->has_new_table_name()) {
     metadata_->SetTableName(operation_state->new_table_name());
     if (metric_entity_) {
@@ -1337,9 +1342,6 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
 
   // Clear old index table metadata cache.
   metadata_cache_ = boost::none;
-
-  // Update the index info.
-  metadata_->SetIndexMap(std::move(operation_state->index_map()));
 
   // Create transaction manager and index table metadata cache for secondary index update.
   if (!metadata_->index_map().empty()) {
@@ -1701,13 +1703,6 @@ void Tablet::ForceRocksDBCompactInTest() {
 
 std::string Tablet::DocDBDumpStrInTest() {
   return docdb::DocDBDebugDumpToStr(regular_db_.get());
-}
-
-void Tablet::LostLeadership() {
-  if (transaction_coordinator_) {
-    transaction_coordinator_->ClearLocks(STATUS(IllegalState,
-                                                "Transaction coordinator leader changed"));
-  }
 }
 
 uint64_t Tablet::GetTotalSSTFileSizes() const {

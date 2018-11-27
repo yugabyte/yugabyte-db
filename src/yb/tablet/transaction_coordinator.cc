@@ -106,6 +106,8 @@ class TransactionStateContext {
 
   virtual void CompleteWithStatus(UpdateTxnOperationState* request, Status status) = 0;
 
+  virtual bool leader() const = 0;
+
  protected:
   ~TransactionStateContext() {}
 };
@@ -186,32 +188,31 @@ class TransactionState {
   // Applies new state to transaction.
   CHECKED_STATUS ProcessReplicated(const TransactionCoordinator::ReplicatedData& data) {
     VLOG_WITH_PREFIX(4)
-        << Format("ProcessReplicated: $0, replicating: $1", data.mode, replicating_);
-    if (data.mode == ProcessingMode::LEADER) {
-      DCHECK(replicating_ == nullptr || consensus::OpIdEquals(replicating_->op_id(), data.op_id));
-      replicating_ = nullptr;
-    }
+        << Format("ProcessReplicated: $0, replicating: $1", data, replicating_);
+
+    DCHECK(replicating_ == nullptr || consensus::OpIdEquals(replicating_->op_id(), data.op_id));
+    replicating_ = nullptr;
 
     auto status = DoProcessReplicated(data);
 
-    if (data.mode == ProcessingMode::LEADER) {
+    if (data.leader_term != OpId::kUnknownTerm) {
       ProcessQueue();
+    } else {
+      ClearRequests(STATUS(Aborted, "Leader changed"));
     }
 
     return status;
   }
 
   void ProcessAborted(const TransactionCoordinator::AbortedData& data) {
-    VLOG_WITH_PREFIX(4) << Format("ProcessAborted: $0, replicating: $1", data.mode, replicating_);
-    if (data.state.status() == TransactionStatus::ABORTED) {
-      NotifyAbortWaiters(STATUS(Aborted, "Replication failed"));
-    }
-    if (data.mode == ProcessingMode::LEADER) {
-      DCHECK(replicating_ == nullptr || !replicating_->op_id().IsInitialized() ||
-             consensus::OpIdEquals(replicating_->op_id(), data.op_id));
-      replicating_ = nullptr;
-      ProcessQueue();
-    }
+    VLOG_WITH_PREFIX(4) << Format("ProcessAborted: $0, replicating: $1", data.state, replicating_);
+
+    DCHECK(replicating_ == nullptr || !replicating_->op_id().IsInitialized() ||
+           consensus::OpIdEquals(replicating_->op_id(), data.op_id));
+    replicating_ = nullptr;
+
+    // We are not leader, so could abort all queued requests.
+    ClearRequests(STATUS(Aborted, "Replication failed"));
   }
 
   // Clear requests of this transaction.
@@ -293,7 +294,11 @@ class TransactionState {
     if (ShouldBeAborted()) {
       return;
     }
-    CHECK_EQ(status_, TransactionStatus::PENDING);
+    if (status_ != TransactionStatus::PENDING) {
+      LOG_WITH_PREFIX(DFATAL) << "Unexpected status during abort: "
+                              << TransactionStatus_Name(status_);
+      return;
+    }
     SubmitUpdateStatus(TransactionStatus::ABORTED);
   }
 
@@ -466,7 +471,15 @@ class TransactionState {
   }
 
   CHECKED_STATUS CommittedReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
-    CHECK_EQ(status_, TransactionStatus::PENDING);
+    if (status_ != TransactionStatus::PENDING) {
+      auto status = STATUS_FORMAT(
+          IllegalState,
+          "Unexpected status during CommittedReplicationFinished: $0",
+          TransactionStatus_Name(status_));
+      LOG_WITH_PREFIX(DFATAL) << status;
+      return status;
+    }
+
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
     VLOG_WITH_PREFIX(4) << "Commit time: " << commit_time_;
@@ -484,28 +497,44 @@ class TransactionState {
 
   CHECKED_STATUS AppliedInAllInvolvedTabletsReplicationFinished(
       const TransactionCoordinator::ReplicatedData& data) {
-    CHECK_EQ(status_, TransactionStatus::COMMITTED);
+    if (status_ != TransactionStatus::COMMITTED) {
+      // That could happen in old version, because we could drop all entries before
+      // APPLIED_IN_ALL_INVOLVED_TABLETS.
+      LOG_WITH_PREFIX(DFATAL)
+          << "AppliedInAllInvolvedTabletsReplicationFinished in wrong state: "
+          << TransactionStatus_Name(status_) << ", request: " << data.state.ShortDebugString();
+      CHECK_EQ(status_, TransactionStatus::PENDING);
+    }
     last_touch_ = data.hybrid_time;
     status_ = TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS;
-    first_entry_raft_index_ = data.op_id.index();
     return Status::OK();
   }
 
   // Used for PENDING and CREATED records. Because when we apply replicated operations they have
   // the same meaning.
   CHECKED_STATUS PendingReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
-    if (data.mode == ProcessingMode::LEADER && ExpiredAt(data.hybrid_time)) {
+    if (context_.leader() && ExpiredAt(data.hybrid_time)) {
       Abort();
       return Status::OK();
     }
-    CHECK_EQ(status_, TransactionStatus::PENDING) << "Transaction id: " << id_;
+    if (status_ != TransactionStatus::PENDING) {
+      LOG_WITH_PREFIX(DFATAL) << "Bad status during PendingReplicationFinished: "
+                              << TransactionStatus_Name(status_);
+      return Status::OK();
+    }
     last_touch_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index();
     return Status::OK();
   }
 
   CHECKED_STATUS AppliedInOneOfInvolvedTablets(const tserver::TransactionStatePB& state) {
-    CHECK_EQ(status_, TransactionStatus::COMMITTED);
+    if (status_ != TransactionStatus::COMMITTED) {
+      // We could ignore this request, because it will be resend if required.
+      LOG_WITH_PREFIX(DFATAL)
+          << "AppliedInOneOfInvolvedTablets in wrong state: " << TransactionStatus_Name(status_)
+          << ", request: " << state.ShortDebugString();
+      return Status::OK();
+    }
     DCHECK_EQ(state.tablets_size(), 1);
     unnotified_tablets_.erase(state.tablets(0));
     if (unnotified_tablets_.empty()) {
@@ -550,7 +579,7 @@ struct CompleteWithStatusEntry {
 
 // Contains actions that should be executed after lock in transaction coordinator is released.
 struct PostponedLeaderActions {
-  bool leader = false;
+  int64_t leader_term = OpId::kUnknownTerm;
   // List of tablets with transaction id, that should be notified that this transaction
   // is applying.
   std::vector<NotifyApplyingData> notify_applying;
@@ -560,10 +589,14 @@ struct PostponedLeaderActions {
   std::vector<CompleteWithStatusEntry> complete_with_status;
 
   void Swap(PostponedLeaderActions* other) {
-    std::swap(leader, other->leader);
+    std::swap(leader_term, other->leader_term);
     notify_applying.swap(other->notify_applying);
     updates.swap(other->updates);
     complete_with_status.swap(other->complete_with_status);
+  }
+
+  bool leader() const {
+    return leader_term != OpId::kUnknownTerm;
   }
 };
 
@@ -619,7 +652,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     return it->GetStatus(response);
   }
 
-  void Abort(const std::string& transaction_id, TransactionAbortCallback callback) {
+  void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback) {
     auto id = FullyDecodeTransactionId(transaction_id);
     if (!id.ok()) {
       callback(id.status());
@@ -635,7 +668,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         callback(TransactionStatusResult{TransactionStatus::ABORTED});
         return;
       }
-      postponed_leader_actions_.leader = true;
+      postponed_leader_actions_.leader_term = term;
       auto status = Modify(it).Abort(&callback);
       if (callback) {
         callback(TransactionStatusResult{status});
@@ -663,7 +696,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     Status result;
     {
       std::lock_guard<std::mutex> lock(managed_mutex_);
-      postponed_leader_actions_.leader = data.mode == ProcessingMode::LEADER;
+      postponed_leader_actions_.leader_term = data.leader_term;
       auto it = GetTransaction(*id, data.state.status(), data.hybrid_time);
       if (it == managed_transactions_.end()) {
         return Status::OK();
@@ -674,7 +707,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     }
     ExecutePostponedLeaderActions(&actions);
 
-    VLOG_WITH_PREFIX(1) << "Processed: " << data.mode << ", " << data.state.ShortDebugString();
+    VLOG_WITH_PREFIX(1) << "Processed: " << data.ToString();
     return result;
   }
 
@@ -689,7 +722,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     PostponedLeaderActions actions;
     {
       std::lock_guard<std::mutex> lock(managed_mutex_);
-      postponed_leader_actions_.leader = data.mode == ProcessingMode::LEADER;
+      postponed_leader_actions_.leader_term = OpId::kUnknownTerm;
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
         LOG_WITH_PREFIX(WARNING) << "Aborted operation for unknown transaction: " << *id;
@@ -704,19 +737,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     }
     ExecutePostponedLeaderActions(&actions);
 
-    VLOG_WITH_PREFIX(1) << "Aborted, mode: " << yb::ToString(data.mode)
-                        << ", state: " << data.state.ShortDebugString();
-  }
-
-  void ClearLocks(const Status& status) {
-    PostponedLeaderActions actions;
-    {
-      std::lock_guard<std::mutex> lock(managed_mutex_);
-      for (auto it = managed_transactions_.begin(); it != managed_transactions_.end(); ++it) {
-        managed_transactions_.modify(it, std::bind(&TransactionState::ClearRequests, _1, status));
-      }
-    }
-    ExecutePostponedLeaderActions(&actions);
+    VLOG_WITH_PREFIX(1) << "Aborted, state: " << data.state.ShortDebugString()
+                        << ", op id: " << data.op_id;
   }
 
   void Start() {
@@ -726,19 +748,19 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     }
   }
 
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term) {
     auto& state = *request->request();
     auto id = FullyDecodeTransactionId(state.transaction_id());
     if (!id.ok()) {
       LOG(WARNING) << "Failed to decode id from " << state.ShortDebugString() << ": " << id;
-      request->completion_callback()->CompleteWithStatus(id.status());
+      request->CompleteWithStatus(id.status());
       return;
     }
 
     PostponedLeaderActions actions;
     {
       std::unique_lock<std::mutex> lock(managed_mutex_);
-      postponed_leader_actions_.leader = true;
+      postponed_leader_actions_.leader_term = term;
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
         if (state.status() == TransactionStatus::CREATED) {
@@ -749,8 +771,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
               << LogPrefix() << "Request to unknown transaction " << id << ": "
               << state.ShortDebugString();
-          request->completion_callback()->CompleteWithStatus(
-              STATUS(Expired, "Transaction expired"));
+          request->CompleteWithStatus(STATUS(Expired, "Transaction expired"));
           return;
         }
       }
@@ -807,10 +828,10 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
   void ExecutePostponedLeaderActions(PostponedLeaderActions* actions) {
     for (const auto& p : actions->complete_with_status) {
-      p.request->completion_callback()->CompleteWithStatus(p.status);
+      p.request->CompleteWithStatus(p.status);
     }
 
-    if (!actions->leader) {
+    if (!actions->leader()) {
       return;
     }
 
@@ -845,7 +866,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     }
 
     for (auto& update : actions->updates) {
-      context_.SubmitUpdateTransaction(std::move(update));
+      context_.SubmitUpdateTransaction(std::move(update), actions->leader_term);
     }
   }
 
@@ -872,13 +893,13 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
   MUST_USE_RESULT bool SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperationState> state) override {
-    if (postponed_leader_actions_.leader) {
+    if (postponed_leader_actions_.leader()) {
       postponed_leader_actions_.updates.push_back(std::move(state));
       return true;
     } else {
       auto status = STATUS(IllegalState, "Submit update transaction on non leader");
       VLOG_WITH_PREFIX(1) << status;
-      state->completion_callback()->CompleteWithStatus(status);
+      state->CompleteWithStatus(status);
       return false;
     }
   }
@@ -893,6 +914,10 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   void CompleteWithStatus(UpdateTxnOperationState* request, Status status) override {
     postponed_leader_actions_.complete_with_status.push_back({
         nullptr /* holder */, request, std::move(status)});
+  }
+
+  bool leader() const override {
+    return postponed_leader_actions_.leader_term != OpId::kUnknownTerm;
   }
 
   Counter& expired_metric() override {
@@ -912,7 +937,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     } BOOST_SCOPE_EXIT_END;
     auto now = context_.clock().Now();
 
-    bool leader = context_.LeaderStatus() == consensus::Consensus::LeaderStatus::LEADER_AND_READY;
+    auto leader_term = context_.LeaderTerm();
     PostponedLeaderActions actions;
     {
       std::lock_guard<std::mutex> lock(managed_mutex_);
@@ -922,7 +947,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         cond_.notify_one();
         return;
       }
-      postponed_leader_actions_.leader = leader;
+      postponed_leader_actions_.leader_term = leader_term;
 
       auto& index = managed_transactions_.get<LastTouchTag>();
 
@@ -939,7 +964,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       }
       auto now_physical = MonoTime::Now();
       for (auto& transaction : managed_transactions_) {
-        const_cast<TransactionState&>(transaction).Poll(leader, now_physical);
+        const_cast<TransactionState&>(transaction).Poll(
+            leader_term != OpId::kUnknownTerm, now_physical);
       }
       postponed_leader_actions_.Swap(&actions);
 
@@ -1000,12 +1026,9 @@ size_t TransactionCoordinator::test_count_transactions() const {
   return impl_->test_count_transactions();
 }
 
-void TransactionCoordinator::Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
-  impl_->Handle(std::move(request));
-}
-
-void TransactionCoordinator::ClearLocks(const Status& status) {
-  impl_->ClearLocks(status);
+void TransactionCoordinator::Handle(
+    std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term) {
+  impl_->Handle(std::move(request), term);
 }
 
 void TransactionCoordinator::Start() {
@@ -1022,8 +1045,14 @@ Status TransactionCoordinator::GetStatus(const std::string& transaction_id,
 }
 
 void TransactionCoordinator::Abort(const std::string& transaction_id,
+                                   int64_t term,
                                    TransactionAbortCallback callback) {
-  impl_->Abort(transaction_id, std::move(callback));
+  impl_->Abort(transaction_id, term, std::move(callback));
+}
+
+std::string TransactionCoordinator::ReplicatedData::ToString() const {
+  return Format("{ state: $0 op_id: $1 hybrid_time: $2 }",
+                state, op_id, hybrid_time);
 }
 
 } // namespace tablet

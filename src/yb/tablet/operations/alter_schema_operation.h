@@ -132,8 +132,7 @@ class AlterSchemaOperationState : public OperationState {
 // Executes the alter schema transaction,.
 class AlterSchemaOperation : public Operation {
  public:
-  AlterSchemaOperation(std::unique_ptr<AlterSchemaOperationState> operation_state,
-                       consensus::DriverType type);
+  explicit AlterSchemaOperation(std::unique_ptr<AlterSchemaOperationState> operation_state);
 
   AlterSchemaOperationState* state() override {
     return down_cast<AlterSchemaOperationState*>(Operation::state());
@@ -152,7 +151,7 @@ class AlterSchemaOperation : public Operation {
   CHECKED_STATUS Prepare() override;
 
   // Executes an Apply for the alter schema transaction
-  CHECKED_STATUS Apply() override;
+  CHECKED_STATUS Apply(int64_t leader_term) override;
 
   // Actually commits the transaction.
   void Finish(OperationResult result) override;

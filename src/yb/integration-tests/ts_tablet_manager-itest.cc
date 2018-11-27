@@ -137,6 +137,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&schema_)
+            .hash_schema(YBHashSchema::kMultiColumnHash)
             .num_tablets(1)
             .Create());
   ASSERT_OK(client_->OpenTable(kTableName, &table));

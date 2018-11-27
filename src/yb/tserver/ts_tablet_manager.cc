@@ -535,9 +535,11 @@ Status TSTabletManager::CreateNewTablet(
                                                    table_name,
                                                    table_type,
                                                    schema,
+                                                   IndexMap(),
                                                    partition_schema,
                                                    partition,
                                                    index_info,
+                                                   0 /* schema_version */,
                                                    TABLET_DATA_READY,
                                                    &meta,
                                                    data_root_dir,
@@ -1167,7 +1169,7 @@ void TSTabletManager::PreserveLocalLeadersOnly(std::vector<const std::string*>* 
       return true;
     }
     auto leader_status = it->second->LeaderStatus();
-    return leader_status == consensus::Consensus::LeaderStatus::NOT_LEADER;
+    return leader_status != consensus::Consensus::LeaderStatus::LEADER_AND_READY;
   };
   tablet_ids->erase(std::remove_if(tablet_ids->begin(), tablet_ids->end(), filter),
                     tablet_ids->end());

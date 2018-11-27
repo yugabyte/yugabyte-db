@@ -170,8 +170,8 @@ const vector<BFDecl> kBFDirectory = {
   { "ConvertTimeuuidToUnixTimestamp", "unixtimestampof", "", INT64, {TIMEUUID}, TSOpcode::kNoOp},
 
   // Converting date-time literals.
-  { "ConvertToMaxTimeuuid", "maxtimeuuid", "", TIMEUUID, {TIMESTAMP}, TSOpcode::kNoOp, false },
-  { "ConvertToMinTimeuuid", "mintimeuuid", "", TIMEUUID, {TIMESTAMP}, TSOpcode::kNoOp, false },
+  { "ConvertToMaxTimeuuid", "maxtimeuuid", "", TIMEUUID, {TIMESTAMP}, TSOpcode::kNoOp },
+  { "ConvertToMinTimeuuid", "mintimeuuid", "", TIMEUUID, {TIMESTAMP}, TSOpcode::kNoOp },
 
   //------------------------------------------------------------------------------------------------
   // CQL standard functions.

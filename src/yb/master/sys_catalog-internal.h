@@ -62,9 +62,9 @@ class Visitor : public VisitorBase {
 
 class SysCatalogWriter {
  public:
-  explicit SysCatalogWriter(
-      const std::string& tablet_id, const Schema& schema_with_ids)
-      : schema_with_ids_(schema_with_ids) {
+  SysCatalogWriter(
+      const std::string& tablet_id, const Schema& schema_with_ids, int64_t leader_term)
+      : schema_with_ids_(schema_with_ids), leader_term_(leader_term) {
     req_.set_tablet_id(tablet_id);
   }
 
@@ -121,31 +121,41 @@ class SysCatalogWriter {
     expr_pb->mutable_value()->set_int8_value(int8_value);
   }
 
-  const Schema& schema_with_ids_;
-  tserver::WriteRequestPB req_;
+  const tserver::WriteRequestPB& req() const {
+    return req_;
+  }
+
+  int64_t leader_term() const {
+    return leader_term_;
+  }
 
  private:
+  const Schema& schema_with_ids_;
+  tserver::WriteRequestPB req_;
+  const int64_t leader_term_;
+
   DISALLOW_COPY_AND_ASSIGN(SysCatalogWriter);
 };
 
 // Template method defintions must go into a header file.
 template <class Item>
-CHECKED_STATUS SysCatalogTable::AddItem(Item* item) {
+CHECKED_STATUS SysCatalogTable::AddItem(Item* item, int64_t leader_term) {
   TRACE_EVENT1("master", "SysCatalogTable::Add",
                "table", item->ToString());
-  return AddItems(std::vector<Item*>({ item }));
+  return AddItems(std::vector<Item*>({ item }), leader_term);
 }
 
 template <class Item>
-CHECKED_STATUS SysCatalogTable::AddItems(const vector<Item*>& items) {
-  return MutateItems(items, QLWriteRequestPB::QL_STMT_INSERT);
+CHECKED_STATUS SysCatalogTable::AddItems(const vector<Item*>& items, int64_t leader_term) {
+  return MutateItems(items, QLWriteRequestPB::QL_STMT_INSERT, leader_term);
 }
 
 template <class Item>
 CHECKED_STATUS SysCatalogTable::AddAndUpdateItems(
     const vector<Item*>& added_items,
-    const vector<Item*>& updated_items) {
-  auto w = NewWriter();
+    const vector<Item*>& updated_items,
+    int64_t leader_term) {
+  auto w = NewWriter(leader_term);
   for (const auto& item : added_items) {
     RETURN_NOT_OK(w->MutateItem(item, QLWriteRequestPB::QL_STMT_INSERT));
   }
@@ -156,41 +166,41 @@ CHECKED_STATUS SysCatalogTable::AddAndUpdateItems(
 }
 
 template <class Item>
-CHECKED_STATUS SysCatalogTable::UpdateItem(Item* item) {
+CHECKED_STATUS SysCatalogTable::UpdateItem(Item* item, int64_t leader_term) {
   TRACE_EVENT1("master", "SysCatalogTable::Update",
                "table", item->ToString());
-  return UpdateItems(std::vector<Item*>({ item }));
+  return UpdateItems(std::vector<Item*>({ item }), leader_term);
 }
 
 template <class Item>
-CHECKED_STATUS SysCatalogTable::UpdateItems(const vector<Item*>& items) {
-  return MutateItems(items, QLWriteRequestPB::QL_STMT_UPDATE);
+CHECKED_STATUS SysCatalogTable::UpdateItems(const vector<Item*>& items, int64_t leader_term) {
+  return MutateItems(items, QLWriteRequestPB::QL_STMT_UPDATE, leader_term);
 }
 
 template <class Item>
-CHECKED_STATUS SysCatalogTable::DeleteItem(Item* item) {
+CHECKED_STATUS SysCatalogTable::DeleteItem(Item* item, int64_t leader_term) {
   TRACE_EVENT1("master", "SysCatalogTable::Delete",
                "table", item->ToString());
-  return DeleteItems(std::vector<Item*>({ item }));
+  return DeleteItems(std::vector<Item*>({ item }), leader_term);
 }
 
 template <class Item>
-CHECKED_STATUS SysCatalogTable::DeleteItems(const vector<Item*>& items) {
-  return MutateItems(items, QLWriteRequestPB::QL_STMT_DELETE);
+CHECKED_STATUS SysCatalogTable::DeleteItems(const vector<Item*>& items, int64_t leader_term) {
+  return MutateItems(items, QLWriteRequestPB::QL_STMT_DELETE, leader_term);
 }
 
 template <class Item>
 CHECKED_STATUS SysCatalogTable::MutateItems(
-    const vector<Item*>& items, const QLWriteRequestPB::QLStmtType& op_type) {
-  auto w = NewWriter();
+    const vector<Item*>& items, const QLWriteRequestPB::QLStmtType& op_type, int64_t leader_term) {
+  auto w = NewWriter(leader_term);
   for (const auto& item : items) {
     RETURN_NOT_OK(w->MutateItem(item, op_type));
   }
   return SyncWrite(w.get());
 }
 
-std::unique_ptr<SysCatalogWriter> SysCatalogTable::NewWriter() {
-  return std::make_unique<SysCatalogWriter>(kSysCatalogTabletId, schema_with_ids_);
+std::unique_ptr<SysCatalogWriter> SysCatalogTable::NewWriter(int64_t leader_term) {
+  return std::make_unique<SysCatalogWriter>(kSysCatalogTabletId, schema_with_ids_, leader_term);
 }
 
 } // namespace master

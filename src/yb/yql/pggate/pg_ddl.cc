@@ -24,6 +24,7 @@ using std::shared_ptr;
 using std::string;
 using namespace std::literals;  // NOLINT
 
+using client::PgOid;
 using client::YBClient;
 using client::YBSession;
 using client::YBMetaDataCache;
@@ -35,16 +36,19 @@ static MonoDelta kSessionTimeout = 60s;
 // PgCreateDatabase
 //--------------------------------------------------------------------------------------------------
 
-PgCreateDatabase::PgCreateDatabase(PgSession::ScopedRefPtr pg_session, const char *database_name)
+PgCreateDatabase::PgCreateDatabase(PgSession::ScopedRefPtr pg_session,
+                                   const char *database_name,
+                                   const PgOid database_oid)
     : PgDdl(std::move(pg_session), StmtOp::STMT_CREATE_DATABASE),
-      database_name_(database_name) {
+      database_name_(database_name),
+      database_oid_(database_oid) {
 }
 
 PgCreateDatabase::~PgCreateDatabase() {
 }
 
 CHECKED_STATUS PgCreateDatabase::Exec() {
-  return pg_session_->CreateDatabase(database_name_);
+  return pg_session_->CreateDatabase(database_name_, database_oid_);
 }
 
 PgDropDatabase::PgDropDatabase(PgSession::ScopedRefPtr pg_session,
@@ -112,9 +116,15 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              const char *database_name,
                              const char *schema_name,
                              const char *table_name,
+                             const client::PgOid schema_oid,
+                             const client::PgOid table_oid,
                              bool if_not_exist)
     : PgDdl(pg_session, StmtOp::STMT_CREATE_TABLE),
       table_name_(database_name, table_name),
+      schema_oid_(schema_oid),
+      table_oid_(table_oid),
+      is_pg_catalog_table_(strcmp(schema_name, "pg_catalog") == 0 ||
+                           strcmp(schema_name, "information_schema") == 0),
       if_not_exist_(if_not_exist) {
 }
 
@@ -124,12 +134,11 @@ PgCreateTable::~PgCreateTable() {
 CHECKED_STATUS PgCreateTable::AddColumn(const char *attr_name, int attr_num, int attr_ybtype,
                                         bool is_hash, bool is_range) {
   shared_ptr<QLType> yb_type = QLType::Create(static_cast<DataType>(attr_ybtype));
+  client::YBColumnSpec* col = schema_builder_.AddColumn(attr_name)->Type(yb_type)->Order(attr_num);
   if (is_hash) {
-    schema_builder_.AddColumn(attr_name)->Type(yb_type)->Order(attr_num)->HashPrimaryKey();
+    col->HashPrimaryKey();
   } else if (is_range) {
-    schema_builder_.AddColumn(attr_name)->Type(yb_type)->Order(attr_num)->PrimaryKey();
-  } else {
-    schema_builder_.AddColumn(attr_name)->Type(yb_type)->Order(attr_num);
+    col->PrimaryKey();
   }
   return Status::OK();
 }
@@ -137,8 +146,7 @@ CHECKED_STATUS PgCreateTable::AddColumn(const char *attr_name, int attr_num, int
 CHECKED_STATUS PgCreateTable::Exec() {
   // Construct schema.
   client::YBSchema schema;
-
-  {
+  if (!is_pg_catalog_table_) {
     TableProperties table_properties;
     table_properties.SetTransactional(true);
     schema_builder_.SetTableProperties(table_properties);
@@ -149,22 +157,27 @@ CHECKED_STATUS PgCreateTable::Exec() {
   shared_ptr<client::YBTableCreator> table_creator(pg_session_->NewTableCreator());
   table_creator->table_name(table_name_).table_type(client::YBTableType::PGSQL_TABLE_TYPE)
                                         .schema(&schema)
-                                        .hash_schema(YBHashSchema::kPgsqlHash);
+                                        .pg_schema_oid(schema_oid_)
+                                        .pg_table_oid(table_oid_)
+                                        .schema(&schema);
+  if (is_pg_catalog_table_) {
+    table_creator->is_pg_catalog_table();
+  } else {
+    table_creator->hash_schema(YBHashSchema::kPgsqlHash);
+  }
 
-  Status s = table_creator->Create();
+  const Status s = table_creator->Create();
   if (PREDICT_FALSE(!s.ok())) {
-    const char *errmsg = "Server error";
     if (s.IsAlreadyPresent()) {
       if (if_not_exist_) {
         return Status::OK();
       }
-      errmsg = "Duplicate table";
-    } else if (s.IsNotFound()) {
-      errmsg = "Schema not found";
-    } else {
-      errmsg = strings::Substitute("Invalid table definition. $0", s.ToString()).c_str();
+      return STATUS(InvalidArgument, "Duplicate table");
     }
-    return STATUS(InvalidArgument, errmsg);
+    if (s.IsNotFound()) {
+      return STATUS(InvalidArgument, "Schema not found");
+    }
+    return STATUS_FORMAT(InvalidArgument, "Invalid table definition: $0", s.ToString());
   }
 
   return Status::OK();

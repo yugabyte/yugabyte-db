@@ -17,6 +17,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
+#ifndef YB_ROCKSDB_TABLE_META_BLOCKS_H
+#define YB_ROCKSDB_TABLE_META_BLOCKS_H
+
 #pragma once
 
 #include <map>
@@ -129,6 +133,7 @@ Status FindMetaBlock(InternalIterator* meta_index_iter,
 Status FindMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
                      uint64_t table_magic_number, Env* env,
                      const std::string& meta_block_name,
+                     const std::shared_ptr<yb::MemTracker>& mem_tracker,
                      BlockHandle* block_handle);
 
 // Read the specified meta block with name meta_block_name
@@ -137,6 +142,9 @@ Status FindMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
 Status ReadMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
                      uint64_t table_magic_number, Env* env,
                      const std::string& meta_block_name,
+                     const std::shared_ptr<yb::MemTracker>& mem_tracker,
                      BlockContents* contents);
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_TABLE_META_BLOCKS_H

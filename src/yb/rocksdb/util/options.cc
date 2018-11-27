@@ -101,7 +101,8 @@ ImmutableCFOptions::ImmutableCFOptions(const Options& options)
       num_levels(options.num_levels),
       optimize_filters_for_hits(options.optimize_filters_for_hits),
       listeners(options.listeners),
-      row_cache(options.row_cache) {}
+      row_cache(options.row_cache),
+      mem_tracker(options.mem_tracker) {}
 
 ColumnFamilyOptions::ColumnFamilyOptions()
     : comparator(BytewiseComparator()),

@@ -76,7 +76,7 @@ CHECKED_STATUS AbstractTablet::HandlePgsqlReadRequest(
   docdb::PgsqlReadOperation doc_op(pgsql_read_request, txn_op_context);
 
   // Form a schema of columns that are referenced by this query.
-  const Schema &schema = SchemaRef();
+  const Schema &schema = SchemaRef(pgsql_read_request.table_id());
   Schema query_schema;
   const PgsqlColumnRefsPB& column_pbs = pgsql_read_request.column_refs();
   vector<ColumnId> column_refs;

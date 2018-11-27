@@ -54,7 +54,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   //------------------------------------------------------------------------------------------------
 
   // API for database operations.
-  CHECKED_STATUS CreateDatabase(const std::string& database_name);
+  CHECKED_STATUS CreateDatabase(const std::string& database_name, client::PgOid database_oid);
   CHECKED_STATUS DropDatabase(const std::string& database_name, bool if_exist);
 
   // API for schema operations.

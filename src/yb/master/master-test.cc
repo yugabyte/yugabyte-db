@@ -93,6 +93,7 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
     TABLE_ENTRY(System, Local), \
     TABLE_ENTRY(System, Partitions), \
     TABLE_ENTRY(System, SizeEstimates), \
+    std::make_tuple(kSysCatalogTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId), \
     TABLE_ENTRY(SystemSchema, Aggregates), \
     TABLE_ENTRY(SystemSchema, Columns), \
     TABLE_ENTRY(SystemSchema, Functions), \
@@ -438,6 +439,7 @@ Status MasterTest::DoCreateTable(const NamespaceName& namespace_name,
   if (!namespace_name.empty()) {
     request->mutable_namespace_()->set_name(namespace_name);
   }
+  request->mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
   request->set_num_tablets(8);
 
   // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
@@ -501,7 +503,7 @@ TEST_F(MasterTest, TestCatalog) {
 
   ListTablesResponsePB tables;
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
@@ -535,7 +537,7 @@ TEST_F(MasterTest, TestCatalog) {
 
   // List tables, should show only system table
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           EXPECTED_SYSTEM_TABLES
@@ -549,7 +551,7 @@ TEST_F(MasterTest, TestCatalog) {
   ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
@@ -904,7 +906,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
 
   ListTablesResponsePB tables;
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           std::make_tuple(kTableName, other_ns_name, other_ns_id),
@@ -964,7 +966,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
 
   // List tables, should show only system table.
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           EXPECTED_SYSTEM_TABLES
@@ -998,7 +1000,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   ASSERT_OK(CreateTable(kTableName, kTableSchema));
 
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
@@ -1010,7 +1012,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
 
   // List tables, should show 1 table.
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           EXPECTED_SYSTEM_TABLES
@@ -1020,7 +1022,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   ASSERT_OK(CreateTable(default_namespace_name, kTableName, kTableSchema));
 
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
@@ -1032,7 +1034,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
 
   // List tables, should show 1 table.
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           EXPECTED_SYSTEM_TABLES
@@ -1047,7 +1049,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
 
   // List tables, should show 1 table.
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           EXPECTED_SYSTEM_TABLES
@@ -1077,7 +1079,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   ASSERT_OK(CreateTable(other_ns_name, kTableName, kTableSchema));
 
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           std::make_tuple(kTableName, other_ns_name, other_ns_id),
@@ -1099,7 +1101,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "Keyspace name not found");
   }
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           std::make_tuple(kTableName, other_ns_name, other_ns_id),
@@ -1121,7 +1123,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "Keyspace identifier not found");
   }
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           std::make_tuple(kTableName, other_ns_name, other_ns_id),
@@ -1140,7 +1142,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     ASSERT_FALSE(resp.has_error());
   }
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
@@ -1152,7 +1154,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
 
   // List tables, should show 1 table.
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           EXPECTED_SYSTEM_TABLES
@@ -1186,7 +1188,7 @@ TEST_F(MasterTest, TestFullTableName) {
   ASSERT_OK(CreateTable(default_namespace_name, kTableName, kTableSchema));
 
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
@@ -1217,7 +1219,7 @@ TEST_F(MasterTest, TestFullTableName) {
   ASSERT_OK(CreateTable(other_ns_name, kTableName, kTableSchema));
 
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(2 + mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(2 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
@@ -1260,7 +1262,7 @@ TEST_F(MasterTest, TestFullTableName) {
   }
   // Check that nothing's changed (still have 3 tables).
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(2 + mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(2 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           std::make_tuple(kTableName, other_ns_name, other_ns_id),
@@ -1272,7 +1274,7 @@ TEST_F(MasterTest, TestFullTableName) {
   ASSERT_OK(DeleteTable(other_ns_name, kTableName));
 
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
@@ -1299,7 +1301,7 @@ TEST_F(MasterTest, TestFullTableName) {
 
   // List tables, should show only system tables.
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           EXPECTED_SYSTEM_TABLES
@@ -1351,7 +1353,7 @@ TEST_F(MasterTest, TestGetTableSchema) {
 
   ListTablesResponsePB tables;
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           std::make_tuple(kTableName, other_ns_name, other_ns_id),
@@ -1414,7 +1416,7 @@ TEST_F(MasterTest, TestGetTableSchema) {
 
   // List tables, should show only system tables.
   ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
+  ASSERT_EQ(kNumSystemTables, tables.tables_size());
   CheckTables(
       {
           EXPECTED_SYSTEM_TABLES

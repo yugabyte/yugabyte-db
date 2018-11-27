@@ -205,6 +205,16 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
     return(STATUS(Corruption, "Unexpected schema", metadata->schema().ToString()));
   }
 
+  // Update partition schema of old SysCatalogTable. SysCatalogTable should be non-partitioned.
+  if (metadata->partition_schema().IsHashPartitioning()) {
+    LOG(INFO) << "Updating partition schema of SysCatalogTable ...";
+    PartitionSchema partition_schema;
+    RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), metadata->schema(),
+                                          &partition_schema));
+    metadata->SetPartitionSchema(partition_schema);
+    RETURN_NOT_OK(metadata->Flush());
+  }
+
   // TODO(bogdan) we should revisit this as well as next step to understand what happens if you
   // started on this local config, but the consensus layer has a different config? (essentially,
   // if your local cmeta is stale...
@@ -268,9 +278,12 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
     kSysCatalogTabletId,
     table_name(),
     TableType::YQL_TABLE_TYPE,
-    schema, partition_schema,
+    schema,
+    IndexMap(),
+    partition_schema,
     partitions[0],
     boost::none /* index_info */,
+    0 /* schema_version */,
     tablet::TABLET_DATA_READY,
     &metadata));
 
@@ -545,10 +558,10 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   auto txn_callback = std::make_unique<LatchOperationCompletionCallback<WriteResponsePB>>(
       &latch, &resp);
   auto operation_state = std::make_unique<tablet::WriteOperationState>(
-      tablet_peer()->tablet(), &writer->req_, &resp);
+      tablet_peer()->tablet(), &writer->req(), &resp);
   operation_state->set_completion_callback(std::move(txn_callback));
 
-  tablet_peer()->WriteAsync(std::move(operation_state), MonoTime::Max());
+  tablet_peer()->WriteAsync(std::move(operation_state), writer->leader_term(), MonoTime::Max());
 
   {
     int num_iterations = 0;

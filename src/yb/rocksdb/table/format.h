@@ -31,6 +31,12 @@
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table.h"
 
+namespace yb {
+
+class MemTracker;
+
+}
+
 namespace rocksdb {
 
 class Block;
@@ -197,11 +203,31 @@ Status ReadFooterFromFile(RandomAccessFileReader* file, uint64_t file_size,
 // 1-byte type + 32-bit crc
 static const size_t kBlockTrailerSize = 5;
 
+class TrackedAllocation {
+ public:
+  TrackedAllocation();
+  TrackedAllocation(std::unique_ptr<char[]>&& data, size_t size,
+                    std::shared_ptr<yb::MemTracker> mem_tracker);
+  TrackedAllocation(TrackedAllocation&& other) = default;
+
+  TrackedAllocation& operator=(TrackedAllocation&& other);
+
+  ~TrackedAllocation();
+
+  char* get() const {
+    return holder_.get();
+  }
+ private:
+  std::unique_ptr<char[]> holder_;
+  size_t size_;
+  std::shared_ptr<yb::MemTracker> mem_tracker_;
+};
+
 struct BlockContents {
   Slice data;           // Actual contents of data
   bool cachable;        // True iff data can be cached
   CompressionType compression_type;
-  std::unique_ptr<char[]> allocation;
+  TrackedAllocation allocation;
 
   BlockContents() : cachable(false), compression_type(kNoCompression) {}
 
@@ -210,21 +236,11 @@ struct BlockContents {
       : data(_data), cachable(_cachable), compression_type(_compression_type) {}
 
   BlockContents(std::unique_ptr<char[]>&& _data, size_t _size, bool _cachable,
-                CompressionType _compression_type)
-      : data(_data.get(), _size),
-        cachable(_cachable),
-        compression_type(_compression_type),
-        allocation(std::move(_data)) {}
+                CompressionType _compression_type, std::shared_ptr<yb::MemTracker> _mem_tracker);
 
-  BlockContents(BlockContents&& other) { *this = std::move(other); }
+  BlockContents(BlockContents&& other) = default;
 
-  BlockContents& operator=(BlockContents&& other) {
-    data = std::move(other.data);
-    cachable = other.cachable;
-    compression_type = other.compression_type;
-    allocation = std::move(other.allocation);
-    return *this;
-  }
+  BlockContents& operator=(BlockContents&& other) = default;
 };
 
 // Read the block identified by "handle" from "file".  On failure
@@ -234,6 +250,7 @@ extern Status ReadBlockContents(RandomAccessFileReader* file,
                                 const ReadOptions& options,
                                 const BlockHandle& handle,
                                 BlockContents* contents, Env* env,
+                                const std::shared_ptr<yb::MemTracker>& mem_tracker,
                                 bool do_uncompress);
 
 // The 'data' points to the raw block contents read in from file.
@@ -245,7 +262,8 @@ extern Status ReadBlockContents(RandomAccessFileReader* file,
 // util/compression.h
 extern Status UncompressBlockContents(const char* data, size_t n,
                                       BlockContents* contents,
-                                      uint32_t compress_format_version);
+                                      uint32_t compress_format_version,
+                                      const std::shared_ptr<yb::MemTracker>& mem_tracker);
 
 // Implementation details follow.  Clients should ignore,
 

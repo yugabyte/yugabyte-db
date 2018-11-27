@@ -568,31 +568,27 @@ class YBTransaction::Impl final {
                           const YBTransactionPtr& transaction) {
     VLOG_WITH_PREFIX(2) << "Picked status tablet: " << tablet;
 
-    if (tablet.ok()) {
-      manager_->client()->LookupTabletById(
-          *tablet,
-          TransactionRpcDeadline(),
-          std::bind(&Impl::LookupTabletDone, this, _1, transaction),
-          client::UseCache::kTrue);
-    } else {
-      std::vector<Waiter> waiters;
-      {
-        std::lock_guard<std::mutex> lock(mutex_);
-        SetError(tablet.status(), &lock);
-        waiters_.swap(waiters);
-      }
-      for (const auto& waiter : waiters) {
-        waiter(tablet.status());
-      }
+    if (!tablet.ok()) {
+      NotifyWaiters(tablet.status());
+      return;
     }
+
+    manager_->client()->LookupTabletById(
+        *tablet,
+        TransactionRpcDeadline(),
+        std::bind(&Impl::LookupTabletDone, this, _1, transaction),
+        client::UseCache::kTrue);
   }
 
   void LookupTabletDone(const Result<client::internal::RemoteTabletPtr>& result,
                         const YBTransactionPtr& transaction) {
     VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << yb::ToString(result);
 
-    // TODO(dtxn) Handle failure here.
-    CHECK_OK(result);
+    if (!result.ok()) {
+      NotifyWaiters(result.status());
+      return;
+    }
+
     {
       std::lock_guard<std::mutex> lock(mutex_);
       status_tablet_ = std::move(*result);
@@ -600,6 +596,18 @@ class YBTransaction::Impl final {
     }
     SendHeartbeat(TransactionStatus::CREATED, metadata_.transaction_id,
                   transaction_->shared_from_this());
+  }
+
+  void NotifyWaiters(const Status& status) {
+    std::vector<Waiter> waiters;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      SetError(status, &lock);
+      waiters_.swap(waiters);
+    }
+    for (const auto& waiter : waiters) {
+      waiter(status);
+    }
   }
 
   void SendHeartbeat(TransactionStatus status,

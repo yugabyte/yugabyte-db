@@ -462,7 +462,7 @@ TEST_F(ClientTest, TestListTables) {
   std::sort(tables.begin(), tables.end(), [](const YBTableName& n1, const YBTableName& n2) {
     return n1.ToString() < n2.ToString();
   });
-  ASSERT_EQ(2 + cluster_->leader_mini_master()->NumSystemTables(), tables.size());
+  ASSERT_EQ(2 + master::kNumSystemTables, tables.size());
   ASSERT_EQ(kTableName, tables[0]) << "Tables:" << ToString(tables);
   ASSERT_EQ(kTable2Name, tables[1]) << "Tables:" << ToString(tables);
   tables.clear();
@@ -910,8 +910,6 @@ TEST_F(ClientTest, TestWriteTimeout) {
     auto error = GetSingleErrorFromSession(session.get());
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_STR_CONTAINS(error->status().ToString(), "Failed Write");
-    ASSERT_STR_CONTAINS(error->status().ToString(), "Write RPC to 127.0.0.");
-    ASSERT_STR_CONTAINS(error->status().ToString(), "after 1 attempt");
   }
 }
 

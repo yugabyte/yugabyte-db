@@ -53,7 +53,7 @@ public class TestYBTable extends BaseYBClientTest {
 
   private static final String BASE_TABLE_NAME = TestYBTable.class.getName();
 
-  private static Schema schema = getBasicSchema();
+  private static Schema schema = getHashKeySchema();
 
   private static long testTTL = 5000L;
 
@@ -63,6 +63,7 @@ public class TestYBTable extends BaseYBClientTest {
         .setId(0)
         .setName("key")
         .setType(ProtobufHelper.QLTypeToPb(QLType.INT32))
+        .setIsHashKey(true)
         .setIsKey(true)
         .build());
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
@@ -95,7 +96,10 @@ public class TestYBTable extends BaseYBClientTest {
   }
 
   public static Schema getSortOrderSchema(ColumnSchema.SortOrder sortOrder) {
-    ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>(5);
+    ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>(6);
+    columns.add(new ColumnSchema.ColumnSchemaBuilder("hash", Type.INT32)
+                .hashKey(true)
+        .build());
     columns.add(new ColumnSchema.ColumnSchemaBuilder("key1", Type.INT32)
         .rangeKey(true, sortOrder)
         .build());

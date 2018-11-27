@@ -81,8 +81,9 @@ YBCStatus YBCPgConnectDatabase(YBCPgSession pg_session, const char *database_nam
 
 YBCStatus YBCPgNewCreateDatabase(YBCPgSession pg_session,
                                  const char *database_name,
+                                 const YBCPgOid database_oid,
                                  YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->NewCreateDatabase(pg_session, database_name, handle));
+  return ToYBCStatus(pgapi->NewCreateDatabase(pg_session, database_name, database_oid, handle));
 }
 
 YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle) {
@@ -159,10 +160,12 @@ YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
                               const char *database_name,
                               const char *schema_name,
                               const char *table_name,
+                              const YBCPgOid schema_oid,
+                              const YBCPgOid table_oid,
                               bool if_not_exist,
                               YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateTable(pg_session, database_name, schema_name, table_name,
-                                           if_not_exist, handle));
+                                           schema_oid, table_oid, if_not_exist, handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,

@@ -15,8 +15,11 @@
 #
 . "${BASH_SOURCE%/*}/../build-support/common-build-env.sh"
 
-detect_linuxbrew
+detect_brew
 
-if "$YB_USING_LINUXBREW"; then
+if using_linuxbrew; then
   echo "$YB_LINUXBREW_DIR"
+fi
+if using_custom_homebrew; then
+  echo "$YB_CUSTOM_HOMEBREW_DIR"
 fi

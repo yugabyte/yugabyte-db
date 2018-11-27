@@ -13,6 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <yb/yql/cql/ql/util/errcodes.h>
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ql_processor.h"
 #include "yb/client/client.h"
@@ -246,11 +247,14 @@ Status Executor::ExecPTNode(const PTCreateRole *tnode) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
     if (s.IsAlreadyPresent()) {
       error_code = ErrorCode::DUPLICATE_ROLE;
+    } else if (s.IsNotAuthorized()) {
+      error_code = ErrorCode::UNAUTHORIZED;
     }
 
     if (tnode->create_if_not_exists() && error_code == ErrorCode::DUPLICATE_ROLE) {
       return Status::OK();
     }
+
     // TODO (Bristy) : Set result_ properly.
     return exec_context_->Error(tnode, s, error_code);
   }
@@ -265,6 +269,9 @@ Status Executor::ExecPTNode(const PTAlterRole *tnode) {
                                       tnode->superuser());
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::ROLE_NOT_FOUND;
+    if (s.IsNotAuthorized()) {
+      error_code = ErrorCode::UNAUTHORIZED;
+    }
     return exec_context_->Error(tnode, s, error_code);
   }
 
@@ -558,6 +565,8 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       }
 
       error_code = error_not_found;
+    } else if (s.IsNotAuthorized()) {
+      error_code = ErrorCode::UNAUTHORIZED;
     }
 
     return exec_context_->Error(tnode->name(), s, error_code);
@@ -1349,7 +1358,7 @@ void Executor::CommitDone(Status s, ExecContext* exec_context) {
     }
   } else {
     if (NeedsRestart(s)) {
-      exec_context->Reset(client::Restart::kTrue);
+      exec_context->Reset(client::Restart::kTrue, rescheduler_);
     } else {
       std::lock_guard<std::mutex> lock(status_mutex_);
       async_status_ = s;
@@ -1543,7 +1552,7 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
         const auto& result = response.child_transaction_result();
         const Status s = exec_context_->ApplyChildTransactionResult(result);
         if (NeedsRestart(s)) {
-          exec_context_->Reset(client::Restart::kTrue);
+          exec_context_->Reset(client::Restart::kTrue, rescheduler_);
           break;
         }
         RETURN_NOT_OK(s);
@@ -1944,7 +1953,7 @@ Status Executor::ProcessAsyncStatus(const OpErrors& op_errors, ExecContext* exec
             s = ProcessOpStatus(static_cast<const PTDmlStmt *>(tnode), op, exec_context);
           }
           if (NeedsRestart(s)) {
-            exec_context->Reset(client::Restart::kTrue);
+            exec_context->Reset(client::Restart::kTrue, rescheduler_);
             return true; // done
           }
           RETURN_NOT_OK(ProcessStatementStatus(exec_context->parse_tree(), s));

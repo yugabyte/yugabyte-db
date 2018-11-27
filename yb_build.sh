@@ -265,8 +265,11 @@ print_report() {
       print_report_line "%s" "Build directory" "${BUILD_ROOT:-undefined}"
       print_report_line "%s" "Edition" "${YB_EDITION:-undefined}"
       print_report_line "%s" "Third-party dir" "${YB_THIRDPARTY_DIR:-undefined}"
-      if ! is_mac; then
+      if using_linuxbrew; then
         print_report_line "%s" "Linuxbrew dir" "${YB_LINUXBREW_DIR:-undefined}"
+      fi
+      if using_custom_homebrew; then
+        print_report_line "%s" "Custom Homebrew dir" "${YB_CUSTOM_HOMEBREW_DIR:-undefined}"
       fi
 
       set +u
@@ -291,6 +294,10 @@ print_report() {
         echo "NO COMPILATION WAS DONE AS PART OF THIS BUILD (--skip-build)"
         echo
       fi
+
+      if [[ -n ${YB_BUILD_EXIT_CODE:-} && $YB_BUILD_EXIT_CODE -ne 0 ]]; then
+        print_report_line "%s" "Exit code" "$YB_BUILD_EXIT_CODE"
+      fi
       horizontal_line
     ) >&2
   fi
@@ -311,8 +318,11 @@ build_root: "$BUILD_ROOT"
 compiler_type: "$YB_COMPILER_TYPE"
 thirdparty_dir: "${YB_THIRDPARTY_DIR:-$YB_SRC_ROOT/thirdparty}"
 EOT
-    if ! is_mac; then
+    if using_linuxbrew; then
       echo "linuxbrew_dir: \"${YB_LINUXBREW_DIR:-}\"" >>"$build_descriptor_path"
+    fi
+    if using_custom_homebrew; then
+      echo "custom_homebrew_dir: \"${YB_CUSTOM_HOMEBREW_DIR:-}\"" >>"$build_descriptor_path"
     fi
     log "Created a build descriptor file at '$build_descriptor_path'"
   fi
@@ -502,6 +512,12 @@ run_cxx_test() {
   else
     run_repeat_unit_test "$build_type" "$test_binary_name"
   fi
+}
+
+cleanup() {
+  local YB_BUILD_EXIT_CODE=$?
+  print_report
+  return "$YB_BUILD_EXIT_CODE"
 }
 
 # -------------------------------------------------------------------------------------------------
@@ -904,6 +920,7 @@ log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
 if "$verbose"; then
   log "build_type=$build_type, cmake_build_type=$cmake_build_type"
 fi
+export BUILD_TYPE=$build_type
 
 if "$force_run_cmake" && "$force_no_run_cmake"; then
   fatal "--force-run-cmake and --force-no-run-cmake are incompatible"
@@ -1011,7 +1028,8 @@ if "$save_log"; then
   rm -f "$latest_log_symlink_path"
   ln -s "$log_path" "$latest_log_symlink_path"
 
-  echo "Logging to $log_path (also symlinked to $latest_log_symlink_path)" >&2
+  heading "Logging to $log_path (also symlinked to $latest_log_symlink_path)"
+
   filtered_args=()
   for arg in "${original_args[@]}"; do
     if [[ "$arg" != "--save-log" ]]; then
@@ -1022,8 +1040,10 @@ if "$save_log"; then
   set +eu
   ( set -x; "$0" "${filtered_args[@]}" ) 2>&1 | tee "$log_path"
   exit_code=$?
-  echo "Log saved to $log_path (also symlinked to $latest_log_symlink_path)" >&2
-  print_report
+
+  heading "Log saved to $log_path (also symlinked to $latest_log_symlink_path)"
+
+  # No need to print a report here, because the recursive script invocation should have done so.
   exit "$exit_code"
 fi
 
@@ -1091,6 +1111,10 @@ mkdir_safe "$BUILD_ROOT"
 mkdir_safe "thirdparty/installed/uninstrumented/include"
 mkdir_safe "thirdparty/installed-deps/include"
 
+# Install the cleanup handler that will print a report at the end, even if we terminate with an
+# error.
+trap cleanup EXIT
+
 cd "$BUILD_ROOT"
 
 activate_virtualenv
@@ -1117,7 +1141,7 @@ detect_num_cpus_and_set_make_parallelism
 log "Using make parallelism of $YB_MAKE_PARALLELISM" \
     "(YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined})"
 
-set_build_env_vars
+add_brew_bin_to_path
 
 create_build_descriptor_file
 
@@ -1190,5 +1214,3 @@ if ! "$ran_tests_remotely"; then
     capture_sec_timestamp ctest_end
   fi
 fi
-
-print_report

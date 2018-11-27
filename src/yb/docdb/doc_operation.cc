@@ -33,6 +33,7 @@
 
 #include "yb/server/hybrid_clock.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/trace.h"
 #include "yb/util/redis_util.h"
@@ -47,6 +48,9 @@ DEFINE_bool(emulate_redis_responses,
     "returning OK for commands that might require us to read additional records viz. SADD, HSET, "
     "and HDEL. If emulate_redis_responses is true, we read the required records to compute the "
     "response as specified by the official Redis API documentation. https://redis.io/commands");
+
+DEFINE_test_flag(bool, pause_write_apply_after_if, false,
+                 "Pause application of QLWriteOperation after evaluating if condition.");
 
 namespace yb {
 namespace docdb {
@@ -2477,6 +2481,8 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
       response_->set_status(QLResponsePB::YQL_STATUS_OK);
       return Status::OK();
     }
+
+    TEST_PAUSE_IF_FLAG(pause_write_apply_after_if);
   } else if (RequireReadForExpressions(request_) || request_.returns_status()) {
     RETURN_NOT_OK(ReadColumns(data, nullptr, nullptr, &existing_row));
     if (request_.returns_status()) {
@@ -2608,9 +2614,12 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
             request_.hashed_column_values(), schema_, 0,
             schema_.num_hash_key_columns(), &hashed_components));
 
+        boost::optional<int32_t> hash_code = request_.has_hash_code()
+                                             ? boost::make_optional<int32_t>(request_.hash_code())
+                                             : boost::none;
         DocQLScanSpec spec(projection,
-                           request_.hash_code(),
-                           request_.hash_code(), // max hash code.
+                           hash_code,
+                           hash_code, // max hash code.
                            hashed_components,
                            request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
                            request_.query_id());
@@ -3046,9 +3055,11 @@ CHECKED_STATUS QLReadOperation::AddRowToResult(const std::unique_ptr<common::QLS
 // Pgsql support.
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PgsqlDocOperation::CreateProjections(const Schema& schema,
-                                                    const PgsqlColumnRefsPB& column_refs,
-                                                    Schema* column_projection) {
+namespace {
+
+CHECKED_STATUS CreateProjections(const Schema& schema,
+                                 const PgsqlColumnRefsPB& column_refs,
+                                 Schema* column_projection) {
   // The projection schemas are used to scan docdb. Keep the columns to fetch in sorted order for
   // more efficient scan in the iterator.
   set<ColumnId> regular_columns;
@@ -3068,6 +3079,8 @@ CHECKED_STATUS PgsqlDocOperation::CreateProjections(const Schema& schema,
   return Status::OK();
 }
 
+} // namespace
+
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* response) {
@@ -3086,7 +3099,9 @@ CHECKED_STATUS PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResp
 
   // We only need the hash key if the range key is not specified.
   if (request_.range_column_values().size() == 0) {
-    hashed_doc_key_ = make_unique<DocKey>(request_.hash_code(), hashed_components);
+    hashed_doc_key_ = make_unique<DocKey>(schema_,
+                                          request_.hash_code(),
+                                          hashed_components);
     hashed_doc_path_ = make_unique<DocPath>(hashed_doc_key_->Encode());
   }
 
@@ -3095,7 +3110,13 @@ CHECKED_STATUS PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResp
                                              schema_,
                                              schema_.num_hash_key_columns(),
                                              &range_components));
-  range_doc_key_ = make_unique<DocKey>(request_.hash_code(), hashed_components, range_components);
+  range_doc_key_ = hashed_components.empty()
+                   ? make_unique<DocKey>(schema_, range_components)
+                   : make_unique<DocKey>(schema_,
+                                         request_.hash_code(),
+                                         hashed_components,
+                                         range_components);
+
   range_doc_path_ = make_unique<DocPath>(range_doc_key_->Encode());
 
   return Status::OK();
@@ -3232,11 +3253,14 @@ CHECKED_STATUS PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& dat
                                                schema_,
                                                0,
                                                &hashed_components));
+    boost::optional<int32_t> hash_code = request_.has_hash_code()
+                                         ? boost::make_optional<int32_t>(request_.hash_code())
+                                         : boost::none;
     DocPgsqlScanSpec spec(projection,
                           request_.stmt_id(),
                           hashed_components,
-                          request_.hash_code(),
-                          request_.hash_code(),
+                          hash_code,
+                          hash_code,
                           request_.mutable_where_expr());
     DocRowwiseIterator iterator(projection,
                                 schema_,

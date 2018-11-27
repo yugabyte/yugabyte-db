@@ -68,14 +68,38 @@ enum TabletDataState {
   TABLET_DATA_TOMBSTONED = 3;
 }
 
+// Table information.
+message TableInfoPB {
+  // Table id, name, and type.
+  optional bytes table_id = 1;
+  optional string table_name = 2;
+  optional TableType table_type = 3 [ default = DEFAULT_TABLE_TYPE ];
+
+  // Table schema and version.
+  optional SchemaPB schema = 4;
+  optional uint32 schema_version = 5;
+
+  // Table's partitioning schema.
+  optional PartitionSchemaPB partition_schema = 6;
+
+  // Secondary indexes of the table.
+  repeated IndexInfoPB indexes = 7;
+
+  // For index table: information about this index.
+  optional IndexInfoPB index_info = 8;
+
+  // Deleted column IDs with timestamps so that memory can be cleaned up.
+  repeated DeletedColumnPB deleted_cols = 9;
+}
+
 // The super-block keeps track of the tablet data blocks.
 // A tablet contains one or more RowSets, which contain
 // a set of blocks (one for each column), a set of delta blocks
 // and optionally a block containing the bloom filter
 // and a block containing the compound-keys.
 message TabletSuperBlockPB {
-  // Table ID of the table this tablet is part of.
-  required bytes table_id = 1;
+  // Table ID of the primary table in this tablet.
+  required bytes primary_table_id = 1;
 
   // Tablet Id
   required bytes tablet_id = 2;
@@ -83,11 +107,8 @@ message TabletSuperBlockPB {
   // The latest durable MemRowSet id
   required int64 last_durable_mrs_id = 3;
 
-  // DEPRECATED.
-  optional bytes start_key = 4;
-
-  // DEPRECATED.
-  optional bytes end_key = 5;
+  // Reserved for deprecated start_key and end_key.
+  reserved 4, 5;
 
   // The partition of the table.
   optional PartitionPB partition = 13;
@@ -95,13 +116,13 @@ message TabletSuperBlockPB {
   // The latest schema
   // TODO: maybe this should be TableSchemaPB? Need to actually put those attributes
   // into use throughout the code. Using the simpler one for now.
-  required string table_name = 7;
-  optional TableType table_type = 15 [ default = DEFAULT_TABLE_TYPE ];
-  required SchemaPB schema = 8;
-  required uint32 schema_version = 9;
+  required string DEPRECATED_table_name = 7;
+  optional TableType DEPRECATED_table_type = 15 [ default = DEFAULT_TABLE_TYPE ];
+  required SchemaPB DEPRECATED_schema = 8;
+  required uint32 DEPRECATED_schema_version = 9;
 
   // The partition schema of the table.
-  optional PartitionSchemaPB partition_schema = 14;
+  optional PartitionSchemaPB DEPRECATED_partition_schema = 14;
 
   // The current state of the tablet's data.
   optional TabletDataState tablet_data_state = 10 [ default = TABLET_DATA_UNKNOWN ];
@@ -131,13 +152,16 @@ message TabletSuperBlockPB {
   optional OpIdPB tombstone_last_logged_opid = 12;
 
   // Deleted column IDs with timestamps so that memory can be cleaned up.
-  repeated DeletedColumnPB deleted_cols = 19;
+  repeated DeletedColumnPB DEPRECATED_deleted_cols = 19;
 
   // Secondary indexes of the table.
-  repeated IndexInfoPB indexes = 21;
+  repeated IndexInfoPB DEPRECATED_indexes = 21;
 
   // For index table: information about this index.
-  optional IndexInfoPB index_info = 22;
+  optional IndexInfoPB DEPRECATED_index_info = 22;
+
+  // Tables co-located in this tablet.
+  repeated TableInfoPB tables = 23;
 }
 
 message FilePB {

@@ -33,9 +33,12 @@
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table_properties.h"
+
+#include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/table_reader.h"
 #include "yb/rocksdb/table/plain_table_factory.h"
 #include "yb/rocksdb/table/plain_table_index.h"
+
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/dynamic_bloom.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
@@ -168,12 +171,14 @@ class PlainTableReader: public TableReader {
   DynamicBloom bloom_;
   PlainTableReaderFileInfo file_info_;
   Arena arena_;
-  std::unique_ptr<char[]> index_block_alloc_;
-  std::unique_ptr<char[]> bloom_block_alloc_;
+  TrackedAllocation index_block_alloc_;
+  TrackedAllocation bloom_block_alloc_;
 
   const ImmutableCFOptions& ioptions_;
   uint64_t file_size_;
   std::shared_ptr<const TableProperties> table_properties_;
+  std::shared_ptr<yb::MemTracker> mem_tracker_;
+  size_t tracked_consumption_ = 0;
 
   bool IsFixedLength() const {
     return user_key_len_ != kPlainTableVariableLength;

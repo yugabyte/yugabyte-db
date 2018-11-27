@@ -11,10 +11,10 @@
 // under the License.
 //
 
-#include "yb/common/ql_value.h"
-#include "yb/common/redis_constants_common.h"
-#include "yb/master/catalog_manager.h"
 #include "yb/master/yql_columns_vtable.h"
+
+#include "yb/common/ql_value.h"
+#include "yb/master/catalog_manager.h"
 
 namespace yb {
 namespace master {
@@ -45,6 +45,12 @@ Status YQLColumnsVTable::RetrieveData(const QLReadRequestPB& request,
   std::vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables, true);
   for (scoped_refptr<TableInfo> table : tables) {
+
+    // Skip non-YQL tables.
+    if (!CatalogManager::IsYcqlTable(*table)) {
+      continue;
+    }
+
     Schema schema;
     RETURN_NOT_OK(table->GetSchema(&schema));
 
@@ -56,11 +62,6 @@ Status YQLColumnsVTable::RetrieveData(const QLReadRequestPB& request,
 
     const string& keyspace_name = nsInfo->name();
     const string& table_name = table->name();
-
-    // Hide redis table from YQL.
-    if (table->GetTableType() != TableType::YQL_TABLE_TYPE) {
-      continue;
-    }
 
     // Fill in the hash keys first.
     int32_t num_hash_columns = schema.num_hash_key_columns();

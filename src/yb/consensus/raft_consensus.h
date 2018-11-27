@@ -79,8 +79,6 @@ class PeerManager;
 class ReplicaState;
 struct ElectionResult;
 
-typedef std::function<void()> LostLeadershipListener;
-
 constexpr int32_t kDefaultLeaderLeaseDurationMs = 2000;
 
 YB_STRONGLY_TYPED_BOOL(WriteEmpty);
@@ -105,7 +103,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    LostLeadershipListener lost_leadership_listener,
     ThreadPool* raft_pool);
 
   RaftConsensus(const ConsensusOptions& options,
@@ -121,8 +118,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const scoped_refptr<log::Log>& log,
     std::shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
-    TableType table_type,
-    LostLeadershipListener lost_leadership_listener);
+    TableType table_type);
 
   virtual ~RaftConsensus();
 
@@ -146,8 +142,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   CHECKED_STATUS TEST_Replicate(const ConsensusRoundPtr& round) override;
   CHECKED_STATUS ReplicateBatch(const ConsensusRounds& rounds) override;
 
-  CHECKED_STATUS CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRound>& round) override;
-
   CHECKED_STATUS Update(
       ConsensusRequestPB* request,
       ConsensusResponsePB* response) override;
@@ -164,7 +158,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   RaftPeerPB::Role role() const override;
 
-  LeaderStatus leader_status() const override;
+  LeaderState GetLeaderState() const override;
 
   std::string peer_uuid() const override;
 
@@ -587,10 +581,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // nodes from disturbing the healthy leader.
   MonoTime withhold_votes_until_;
 
-  // This leader is ready to serve only if NoOp was successfully committed
-  // after the new leader successful election.
-  bool leader_no_op_committed_ = false;
-
   // UUID of new desired leader during stepdown.
   TabletServerId protege_leader_uuid_;
 
@@ -624,8 +614,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Mutex / condition used for waiting for acquiring a valid leader lease.
   std::mutex leader_lease_wait_mtx_;
   std::condition_variable leader_lease_wait_cond_;
-
-  std::function<void()> lost_leadership_listener_;
 
   // This is called every time majority-replicated watermarks (OpId / leader leases) change. This is
   // used for updating the "propagated safe time" value in MvccManager and unblocking readers

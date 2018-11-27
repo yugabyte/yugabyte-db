@@ -27,6 +27,7 @@ class TabletServerIf {
   virtual ~TabletServerIf() {}
 
   virtual TSTabletManager* tablet_manager() = 0;
+  virtual TabletPeerLookupIf* tablet_peer_lookup() = 0;
 
   virtual server::Clock* Clock() = 0;
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;

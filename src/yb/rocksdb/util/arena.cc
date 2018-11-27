@@ -22,15 +22,20 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/util/arena.h"
+
+#include <algorithm>
+
 #ifdef ROCKSDB_MALLOC_USABLE_SIZE
 #include <malloc.h>
 #endif
 #ifndef OS_WIN
 #include <sys/mman.h>
 #endif
+
 #include "yb/rocksdb/port/port.h"
-#include <algorithm>
 #include "yb/rocksdb/env.h"
+
+#include "yb/util/mem_tracker.h"
 
 namespace rocksdb {
 
@@ -85,6 +90,10 @@ Arena::~Arena() {
     }
   }
 #endif
+
+  if (mem_tracker_) {
+    mem_tracker_->Release(blocks_memory_);
+  }
 }
 
 char* Arena::AllocateFallback(size_t bytes, bool aligned) {
@@ -140,7 +149,6 @@ char* Arena::AllocateFromHugePage(size_t bytes) {
   }
   // the following shouldn't throw because of the above reserve()
   huge_blocks_.emplace_back(MmapInfo(addr, bytes));
-  blocks_memory_ += bytes;
   return reinterpret_cast<char*>(addr);
 #else
   return nullptr;
@@ -198,13 +206,25 @@ char* Arena::AllocateNewBlock(size_t block_bytes) {
   char* block = new char[block_bytes];
 
 #ifdef ROCKSDB_MALLOC_USABLE_SIZE
-  blocks_memory_ += malloc_usable_size(block);
+  Consumed(malloc_usable_size(block));
 #else
-  blocks_memory_ += block_bytes;
+  Consumed(block_bytes);
 #endif  // ROCKSDB_MALLOC_USABLE_SIZE
   // the following shouldn't throw because of the above reserve()
   blocks_.push_back(block);
   return block;
+}
+
+void Arena::Consumed(size_t size) {
+  blocks_memory_ += size;
+  if (mem_tracker_) {
+    mem_tracker_->Consume(size);
+  }
+}
+
+void Arena::SetMemTracker(yb::MemTrackerPtr mem_tracker) {
+  mem_tracker_ = std::move(mem_tracker);
+  mem_tracker_->Consume(blocks_memory_);
 }
 
 }  // namespace rocksdb

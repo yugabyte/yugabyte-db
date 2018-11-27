@@ -42,6 +42,7 @@ namespace yb {
 
 class HostPort;
 class NodeInstancePB;
+class ServerRegistrationPB;
 
 namespace consensus {
 class StartRemoteBootstrapRequestPB;

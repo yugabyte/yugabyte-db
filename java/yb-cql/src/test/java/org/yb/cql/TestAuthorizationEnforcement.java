@@ -16,6 +16,7 @@ import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
+import com.datastax.driver.core.exceptions.SyntaxError;
 import com.datastax.driver.core.exceptions.UnauthorizedException;
 import org.junit.*;
 import org.junit.rules.TestName;
@@ -44,31 +45,11 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   // Value that we insert into the table.
   private static final int VALUE = 5;
 
-  // Type of resources.
-  private static final String ALL_KEYSPACES = "ALL KEYSPACES";
-  private static final String KEYSPACE = "KEYSPACE";
-  private static final String TABLE = "TABLE";
-  private static final String ALL_ROLES = "ALL ROLES";
-  private static final String ROLE = "ROLE";
-
   // Used for GRANT/REVOKE roles.
   private static final String GRANT = "grant";
   private static final String REVOKE = "revoke";
 
-  // Permissions.
-  private static final String ALL = "ALL";
-  private static final String ALTER = "ALTER";
-  private static final String AUTHORIZE = "AUTHORIZE";
-  private static final String CREATE = "CREATE";
-  private static final String DESCRIBE = "DESCRIBE";
-  private static final String DROP = "DROP";
-  private static final String MODIFY = "MODIFY";
-  private static final String SELECT = "SELECT";
-  // Permissions in the same order as in catalog_manager.cc.
-  private static final List<String> ALL_PERMISSIONS =
-      Arrays.asList(ALTER, AUTHORIZE, CREATE, DESCRIBE, DROP, MODIFY, SELECT);
-
-  // Session using 'cassandra' role.
+   // Session using 'cassandra' role.
   private Session s = null;
 
   // Session using the created role.
@@ -165,7 +146,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
   private void grantPermission(String permission, String resourceType, String resource,
                                String role) throws Exception {
-    s.execute(String.format("GRANT %s ON %s %s TO %s", permission, resourceType, resource, role));
+    grantPermission(permission, resourceType, resource, role, s);
   }
 
   private void grantAllPermissionsExcept(List<String> exceptions, String resourceType,
@@ -2130,5 +2111,51 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     // on role1 role.
     thrown.expect(UnauthorizedException.class);
     s2.execute(String.format("GRANT %s to %s", role1, role3));
+  }
+
+  // Test that we can grant and revoke permissions on a table without using the keyword TABLE before
+  // the table name.
+  @Test
+  public void testGrantPermissionOnTableWithoutUsingKeywordTable() throws Exception {
+    createTableAndVerify(s, keyspace, table);
+    s.execute(String.format("GRANT MODIFY ON %s.%s TO %s", keyspace, table, username));
+    String canonicalResource = String.format("data/%s/%s", keyspace, table);
+    assertPermissionsGranted(s, username, canonicalResource, Arrays.asList(MODIFY));
+  }
+
+  @Test
+  public void testRevokePermissionOnTableWithoutUsingKeywordTable() throws Exception {
+    createTableAndVerify(s, keyspace, table);
+    String canonicalResource = String.format("data/%s/%s", keyspace, table);
+
+    grantPermission(SELECT, TABLE, String.format("%s.%s", keyspace, table), username);
+    assertPermissionsGranted(s, username, canonicalResource, Arrays.asList(SELECT));
+
+    s.execute(String.format("REVOKE SELECT ON %s.%s FROM %s", keyspace, table, username));
+    assertPermissionsGranted(s, username, canonicalResource, Arrays.asList());
+  }
+
+  // This tests the fix for issue https://github.com/YugaByte/yugabyte-db/issues/592.
+  @Test
+  public void testAlterStmtFailsWihoutProperties() throws Exception {
+    thrown.expect(SyntaxError.class);
+    thrown.expectMessage("expecting WITH");
+    s.execute(String.format("ALTER ROLE %s", username));
+  }
+
+  @Test
+  public void testAlterModifiesProperties() throws Exception {
+    testCreateRoleHelperWithSession(anotherUsername, "", false, false, false, s);
+    String newPassword = "p";
+    s.execute(String.format(
+        "ALTER ROLE %s WITH LOGIN = true AND SUPERUSER = true AND PASSWORD = '%s'",
+        anotherUsername, newPassword));
+    ResultSet rs = s.execute(String.format("SELECT * FROM system_auth.roles WHERE role = '%s'",
+        anotherUsername));
+    List<Row> list = rs.all();
+    assertEquals(1, list.size());
+    assert(list.get(0).getBool("can_login"));
+    assert(list.get(0).getBool("is_superuser"));
+    checkConnectivity(true, anotherUsername, newPassword, false);
   }
 }

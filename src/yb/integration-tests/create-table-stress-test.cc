@@ -357,7 +357,7 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
 
   thread reload_metadata_thread([&]() {
     while (!stop.Load()) {
-      CHECK_OK(cluster_->mini_master()->master()->catalog_manager()->VisitSysCatalog());
+      CHECK_OK(cluster_->mini_master()->master()->catalog_manager()->VisitSysCatalog(0));
       // Give table creation a chance to run.
       SleepFor(MonoDelta::FromMilliseconds(yb::NonTsanVsTsan(1, 5)));
     }
@@ -371,6 +371,7 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
       unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
       s = table_creator->table_name(table_name)
           .schema(&schema_)
+          .hash_schema(YBHashSchema::kMultiColumnHash)
           .set_range_partition_columns({ "key" })
           .num_tablets(1)
           .wait(false)

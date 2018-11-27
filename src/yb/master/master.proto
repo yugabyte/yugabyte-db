@@ -113,11 +113,11 @@ message MasterErrorPB {
     PARALLEL_SNAPSHOT_OPERATION = 25;
     SNAPSHOT_IS_NOT_READY = 26;
 
-    // Invalid Roles
+    // Roles and permissions errors.
     ROLE_ALREADY_PRESENT = 27;
     ROLE_NOT_FOUND = 28;
     INVALID_REQUEST = 29;
-    PERMISSION_NOT_FOUND = 32;
+    NOT_AUTHORIZED = 32;
 
     // Indicator to client that the are leaders on preferred only operation can be retried.
     CAN_RETRY_ARE_LEADERS_ON_PREFERRED_ONLY_CHECK = 30;
@@ -572,6 +572,8 @@ message TabletLocationsPB {
   required bool stale = 5;
 
   optional bytes table_id = 7;
+  // Table ids for all the tables on this tablet.
+  repeated bytes table_ids = 8;
 }
 
 // Info about a single tablet server, returned to the client as part
@@ -631,6 +633,11 @@ message CreateTableRequestPB {
 
   // For RBAC.
   optional string creator_role_name = 12;
+
+  // For Postgres:
+  optional uint32 pg_schema_oid = 13; // OID of schema this table belongs to.
+  optional uint32 pg_table_oid = 14;  // OID of this table.
+  optional bool is_pg_catalog_table = 15 [ default = false ]; // Is this a sys catalog table?
 }
 
 message CreateTableResponsePB {
@@ -1032,6 +1039,9 @@ message CreateNamespaceRequestPB {
 
   // For RBAC.
   optional string creator_role_name = 3;
+
+  // For Postgres:
+  optional uint32 pg_database_oid = 4; // OID of the database this namespace represents.
 }
 
 message CreateNamespaceResponsePB {
@@ -1090,6 +1100,9 @@ message AlterRoleRequestPB {
   optional string salted_hash = 2;
   optional bool login = 3;
   optional bool superuser = 4;
+
+  // Name of the role trying to alter the role.
+  optional string current_role = 5;
 }
 
 message AlterRoleResponsePB {
@@ -1099,6 +1112,9 @@ message AlterRoleResponsePB {
 
 message DeleteRoleRequestPB {
   optional string name = 1;
+
+  // Name of the role trying to drop the role.
+  optional string current_role = 2;
 }
 
 message DeleteRoleResponsePB {

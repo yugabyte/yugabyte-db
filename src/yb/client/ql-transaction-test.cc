@@ -63,6 +63,7 @@ DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
 DECLARE_int32(load_balancer_max_concurrent_adds);
+DECLARE_int32(master_inject_latency_on_transactional_tablet_lookups_ms);
 
 namespace yb {
 namespace client {
@@ -253,7 +254,8 @@ class QLTransactionTest : public KeyValueTableTest {
       auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
       auto peers = tablet_manager->GetTabletPeers();
       for (const auto& peer : peers) {
-        if (peer->consensus()->leader_status() != consensus::Consensus::LeaderStatus::NOT_LEADER &&
+        if (peer->consensus()->GetLeaderStatus() !=
+                consensus::Consensus::LeaderStatus::NOT_LEADER &&
             peer->tablet()->transaction_coordinator()) {
           result += peer->tablet()->transaction_coordinator()->test_count_transactions();
         }
@@ -348,6 +350,17 @@ TEST_F(QLTransactionTest, Simple) {
   VerifyData();
   ASSERT_OK(cluster_->RestartSync());
   CheckNoRunningTransactions();
+}
+
+TEST_F(QLTransactionTest, LookupTabletFailure) {
+  google::FlagSaver saver;
+  FLAGS_master_inject_latency_on_transactional_tablet_lookups_ms =
+      TransactionRpcTimeout().ToMilliseconds() + 500;
+
+  auto txn = CreateTransaction();
+  auto result = WriteRow(CreateSession(txn), 0 /* key */, 1 /* value */);
+
+  ASSERT_TRUE(!result.ok() && result.status().IsTimedOut()) << "Result: " << result;
 }
 
 TEST_F(QLTransactionTest, ReadWithTimeInFuture) {
@@ -1474,7 +1487,8 @@ TEST_F(QLTransactionTest, ChangeLeader) {
       cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
       for (const auto& peer : peers) {
         if (peer->consensus() &&
-            peer->consensus()->leader_status() != consensus::Consensus::LeaderStatus::NOT_LEADER &&
+            peer->consensus()->GetLeaderStatus() !=
+                consensus::Consensus::LeaderStatus::NOT_LEADER &&
             peer->tablet()->transaction_coordinator() &&
             peer->tablet()->transaction_coordinator()->test_count_transactions()) {
           consensus::LeaderStepDownRequestPB req;

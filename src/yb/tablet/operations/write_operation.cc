@@ -48,13 +48,17 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"
 #include "yb/util/trace.h"
 
 DEFINE_test_flag(int32, tablet_inject_latency_on_apply_write_txn_ms, 0,
                  "How much latency to inject when a write operation is applied.");
+DEFINE_test_flag(bool, tablet_pause_apply_write_ops, false,
+                 "Pause applying of write operations.");
 TAG_FLAG(tablet_inject_latency_on_apply_write_txn_ms, runtime);
+TAG_FLAG(tablet_pause_apply_write_ops, runtime);
 
 namespace yb {
 namespace tablet {
@@ -71,10 +75,10 @@ using tserver::WriteResponsePB;
 using strings::Substitute;
 
 WriteOperation::WriteOperation(
-    std::unique_ptr<WriteOperationState> state, DriverType type,
-    MonoTime deadline, WriteOperationContext* context)
-    : Operation(std::move(state), type, OperationType::kWrite),
-      context_(*context), deadline_(deadline), start_time_(MonoTime::Now()) {
+    std::unique_ptr<WriteOperationState> state, int64_t term, MonoTime deadline,
+    WriteOperationContext* context)
+    : Operation(std::move(state), OperationType::kWrite),
+      context_(*context), term_(term), deadline_(deadline), start_time_(MonoTime::Now()) {
 }
 
 consensus::ReplicateMsgPtr WriteOperation::NewReplicateMsg() {
@@ -96,15 +100,17 @@ void WriteOperation::DoStart() {
 
 // FIXME: Since this is called as a void in a thread-pool callback,
 // it seems pointless to return a Status!
-Status WriteOperation::Apply() {
+Status WriteOperation::Apply(int64_t leader_term) {
   TRACE_EVENT0("txn", "WriteOperation::Apply");
   TRACE("APPLY: Starting");
 
   if (PREDICT_FALSE(
           ANNOTATE_UNPROTECTED_READ(FLAGS_tablet_inject_latency_on_apply_write_txn_ms) > 0)) {
-    TRACE("Injecting $0ms of latency due to --tablet_inject_latency_on_apply_write_txn_ms",
-          FLAGS_tablet_inject_latency_on_apply_write_txn_ms);
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_tablet_inject_latency_on_apply_write_txn_ms));
+      TRACE("Injecting $0ms of latency due to --tablet_inject_latency_on_apply_write_txn_ms",
+            FLAGS_tablet_inject_latency_on_apply_write_txn_ms);
+      SleepFor(MonoDelta::FromMilliseconds(FLAGS_tablet_inject_latency_on_apply_write_txn_ms));
+  } else {
+    TEST_PAUSE_IF_FLAG(tablet_pause_apply_write_ops);
   }
 
   Tablet* tablet = state()->tablet();
@@ -136,7 +142,7 @@ void WriteOperation::Finish(OperationResult result) {
   state()->Commit();
 
   TabletMetrics* metrics = tablet()->metrics();
-  if (metrics && type() == consensus::LEADER) {
+  if (metrics && state()->has_completion_callback()) {
     auto op_duration_usec = MonoTime::Now().GetDeltaSince(start_time_).ToMicroseconds();
     metrics->write_op_duration_client_propagated_consistency->Increment(op_duration_usec);
   }
@@ -148,8 +154,8 @@ string WriteOperation::ToString() const {
   WallTime abs_time = WallTime_Now() - d.ToSeconds();
   string abs_time_formatted;
   StringAppendStrftime(&abs_time_formatted, "%Y-%m-%d %H:%M:%S", (time_t)abs_time, true);
-  return Substitute("WriteOperation [type=$0, start_time=$1, state=$2]",
-                    DriverType_Name(type()), abs_time_formatted, state()->ToString());
+  return Substitute("WriteOperation { start_time: $0 state: $1 }",
+                    abs_time_formatted, state()->ToString());
 }
 
 void WriteOperation::DoStartSynchronization(const Status& status) {
@@ -162,16 +168,16 @@ void WriteOperation::DoStartSynchronization(const Status& status) {
     auto local_limit = context_.ReportReadRestart();
     restart_time->set_local_limit_ht(local_limit.ToUint64());
     // Global limit is ignored by caller, so we don't set it.
-    state()->completion_callback()->OperationCompleted();
+    state()->CompleteWithStatus(Status::OK());
     return;
   }
 
   if (!status.ok()) {
-    state()->completion_callback()->CompleteWithStatus(status);
+    state()->CompleteWithStatus(status);
     return;
   }
 
-  context_.StartExecution(std::move(self));
+  context_.Submit(std::move(self), term_);
 }
 
 WriteOperationState::WriteOperationState(Tablet* tablet,

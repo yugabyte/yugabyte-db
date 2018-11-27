@@ -921,7 +921,7 @@ Status ExternalMiniCluster::WaitForTabletServerCount(int count, const MonoDelta&
           }
         }
       }
-      if (match_count == count) {
+      if (match_count >= count) {
         LOG(INFO) << count << " TS(s) registered with Master";
         return Status::OK();
       }
@@ -1278,6 +1278,10 @@ class ExternalDaemon::LogTailerThread {
             if (stopped->load()) break;
             // Make sure we always output an end-of-line character.
             *out << line_prefix << " " << buf << maybe_end_of_line;
+            auto listener = listener_.load();
+            if (listener) {
+              listener->Handle(GStringPiece(buf, maybe_end_of_line ? l : l - 1));
+            }
           }
           fclose(fp);
           if (!stopped->load()) {
@@ -1289,6 +1293,14 @@ class ExternalDaemon::LogTailerThread {
           }
         }) {
     thread_.detach();
+  }
+
+  void SetListener(StringListener* listener) {
+    listener_ = listener;
+  }
+
+  void RemoveListener(StringListener* listener) {
+    listener_.compare_exchange_strong(listener, nullptr);
   }
 
   ~LogTailerThread() {
@@ -1323,6 +1335,7 @@ class ExternalDaemon::LogTailerThread {
   atomic<bool>* const stopped_;
   const string thread_desc_;  // A human-readable description of this thread.
   thread thread_;
+  std::atomic<StringListener*> listener_{nullptr};
 };
 
 ExternalDaemon::ExternalDaemon(
@@ -1699,6 +1712,39 @@ Status ExternalDaemon::GetInt64Metric(const MetricEntityPrototype* entity_proto,
 
 string ExternalDaemon::LogPrefix() {
   return Format("{ daemon_id: $0 bound_rpc: $1 } ", daemon_id_, bound_rpc_);
+}
+
+void ExternalDaemon::SetLogListener(StringListener* listener) {
+  stdout_tailer_thread_->SetListener(listener);
+  stderr_tailer_thread_->SetListener(listener);
+}
+
+void ExternalDaemon::RemoveLogListener(StringListener* listener) {
+  stdout_tailer_thread_->RemoveListener(listener);
+  stderr_tailer_thread_->RemoveListener(listener);
+}
+
+LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :
+    daemon_(daemon), string_to_wait_(string_to_wait) {
+  daemon_->SetLogListener(this);
+}
+
+void LogWaiter::Handle(const GStringPiece& s) {
+  if (s.contains(string_to_wait_)) {
+    event_occurred_ = true;
+  }
+}
+
+Status LogWaiter::WaitFor(const MonoDelta timeout) {
+  constexpr auto kInitialWaitPeriod = 100ms;
+  return ::yb::WaitFor(
+      [this]{ return event_occurred_.load(); }, timeout,
+      Format("Waiting for log record '$0' on $1...", string_to_wait_, daemon_->id()),
+      kInitialWaitPeriod);
+}
+
+LogWaiter::~LogWaiter() {
+  daemon_->RemoveLogListener(this);
 }
 
 //------------------------------------------------------------

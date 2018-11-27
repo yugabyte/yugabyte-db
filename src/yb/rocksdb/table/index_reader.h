@@ -81,7 +81,8 @@ class BinarySearchIndexReader : public IndexReader {
   // unmodified.
   static CHECKED_STATUS Create(
       RandomAccessFileReader* file, const Footer& footer, const BlockHandle& index_handle, Env* env,
-      const ComparatorPtr& comparator, std::unique_ptr<IndexReader>* index_reader);
+      const ComparatorPtr& comparator, std::unique_ptr<IndexReader>* index_reader,
+      const std::shared_ptr<yb::MemTracker>& mem_tracker);
 
   InternalIterator* NewIterator(
       BlockIter* iter = nullptr,
@@ -126,7 +127,7 @@ class HashIndexReader : public IndexReader {
       const SliceTransform* hash_key_extractor, const Footer& footer, RandomAccessFileReader* file,
       Env* env, const ComparatorPtr& comparator, const BlockHandle& index_handle,
       InternalIterator* meta_index_iter, std::unique_ptr<IndexReader>* index_reader,
-      bool hash_index_allow_collision);
+      bool hash_index_allow_collision, const std::shared_ptr<yb::MemTracker>& mem_tracker);
 
   InternalIterator* NewIterator(
       BlockIter* iter = nullptr, TwoLevelIteratorState* state = nullptr,
@@ -172,7 +173,8 @@ class MultiLevelIndexReader : public IndexReader {
   // Read the top level index from the file and create an instance for `MultiLevelIndexReader`.
   static Result<std::unique_ptr<MultiLevelIndexReader>> Create(
       RandomAccessFileReader* file, const Footer& footer, int num_levels,
-      const BlockHandle& top_level_index_handle, Env* env, const ComparatorPtr& comparator);
+      const BlockHandle& top_level_index_handle, Env* env, const ComparatorPtr& comparator,
+      const std::shared_ptr<yb::MemTracker>& mem_tracker);
 
   MultiLevelIndexReader(
       const ComparatorPtr& comparator, int num_levels,
