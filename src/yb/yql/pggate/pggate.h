@@ -96,6 +96,7 @@ class PgApiImpl {
   // Create database.
   CHECKED_STATUS NewCreateDatabase(PgSession *pg_session,
                                    const char *database_name,
+                                   client::PgOid database_oid,
                                    PgStatement **handle);
   CHECKED_STATUS ExecCreateDatabase(PgStatement *handle);
 
@@ -131,6 +132,8 @@ class PgApiImpl {
                                 const char *database_name,
                                 const char *schema_name,
                                 const char *table_name,
+                                client::PgOid schema_oid,
+                                client::PgOid table_oid,
                                 bool if_not_exist,
                                 PgStatement **handle);
 

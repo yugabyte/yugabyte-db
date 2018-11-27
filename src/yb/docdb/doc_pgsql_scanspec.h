@@ -67,13 +67,13 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   // Return inclusive lower/upper range doc key considering the start_doc_key.
   CHECKED_STATUS GetBoundKey(const bool lower_bound, DocKey* key) const;
 
-  // Returns the lower/upper doc key based on the range components.
-  DocKey bound_key(const bool lower_bound) const;
-
   // Returns the lower/upper range components of the key.
   std::vector<PrimitiveValue> range_components(const bool lower_bound) const;
 
  private:
+  // Returns the lower/upper doc key based on the range components.
+  DocKey bound_key(const Schema& schema, const bool lower_bound) const;
+
   // Query ID of this scan.
   const rocksdb::QueryId query_id_;
 

@@ -32,8 +32,10 @@
 package org.yb.client;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executor;
 
 import org.slf4j.Logger;
@@ -946,6 +948,21 @@ public class YBClient implements AutoCloseable {
   public YBTable openTable(final String keyspace, final String name) throws Exception {
     Deferred<YBTable> d = asyncClient.openTable(keyspace, name);
     return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Get the list of tablet UUIDs of a table with the given name.
+   * @param keyspace the keyspace name to which the table belongs.
+   * @param name the table name
+   * @return the set of tablet UUIDs of the table.
+   */
+  public Set<String> getTabletUUIDs(final String keyspace, final String name) throws Exception {
+    Set<String> ids = new HashSet<>();
+    YBTable table = openTable(keyspace, name);
+    for (LocatedTablet tablet : table.getTabletsLocations(getDefaultAdminOperationTimeoutMs())) {
+      ids.add(new String(tablet.getTabletId()));
+    }
+    return ids;
   }
 
   /**

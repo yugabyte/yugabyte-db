@@ -36,7 +36,6 @@ using TabletServerId = PeerId;
 using TabletId = std::string;
 
 using NamespaceIdTableNamePair = std::pair<NamespaceId, TableName>;
-using SystemTableSet = std::set<NamespaceIdTableNamePair>;
 
 using FlushRequestId = std::string;
 

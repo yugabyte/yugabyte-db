@@ -34,8 +34,11 @@ namespace pggate {
 
 class PggateTest : public YBTest {
  public:
-  static const int kNumOfTablets = 3;
-  static const std::string kDefaultDatabase;
+  static constexpr int kNumOfTablets = 3;
+  static constexpr const char* kDefaultDatabase = "pggate_test_database";
+  static constexpr const char* kDefaultSchema = "pggate_test_schema";
+  static constexpr client::PgOid kDefaultDatabaseOid = 1;
+  static constexpr client::PgOid kDefaultSchemaOid = 2;
 
   PggateTest();
   virtual ~PggateTest();
@@ -56,9 +59,11 @@ class PggateTest : public YBTest {
 
   //------------------------------------------------------------------------------------------------
   // Setup the database for testing.
-  void SetupDB(const string& db_name = "PGGATE_TEST");
-  void CreateDB(const string& db_name = "PGGATE_TEST");
-  void ConnectDB(const string& db_name = "PGGATE_TEST");
+  void SetupDB(const string& db_name = kDefaultDatabase,
+               client::PgOid db_oid = kDefaultDatabaseOid);
+  void CreateDB(const string& db_name = kDefaultDatabase,
+                client::PgOid db_oid = kDefaultDatabaseOid);
+  void ConnectDB(const string& db_name = kDefaultDatabase);
 
  protected:
   //------------------------------------------------------------------------------------------------

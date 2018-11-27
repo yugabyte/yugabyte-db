@@ -43,7 +43,7 @@ ColumnIdsPtr TabletRetentionPolicy::GetDeletedColumns() {
   // means that we might not compact all the columns we should be able to at the present time, but
   // those will be processed in the next compaction.
   std::shared_ptr<ColumnIds> deleted_before_history_cutoff = std::make_shared<ColumnIds>();
-  for (auto deleted_col : tablet_->metadata()->GetDeletedColumns()) {
+  for (auto deleted_col : tablet_->metadata()->deleted_cols()) {
     if (deleted_col.ht < history_cutoff) {
       deleted_before_history_cutoff->insert(deleted_col.id);
     }

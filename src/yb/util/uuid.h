@@ -115,6 +115,10 @@ class Uuid {
                              "Not a type 1 UUID. Current type: $0", boost_uuid_.version());
   }
 
+  bool IsNil() const {
+    return boost_uuid_.is_nil();
+  }
+
   bool operator==(const Uuid& other) const {
     return (boost_uuid_ == other.boost_uuid_);
   }

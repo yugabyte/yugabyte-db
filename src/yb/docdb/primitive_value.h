@@ -244,6 +244,7 @@ class PrimitiveValue {
   static PrimitiveValue Int32(int32_t v, SortOrder sort_order = SortOrder::kAscending);
   static PrimitiveValue UInt32(uint32_t v, SortOrder sort_order = SortOrder::kAscending);
   static PrimitiveValue TransactionId(Uuid transaction_id);
+  static PrimitiveValue TableId(Uuid table_id);
   static PrimitiveValue IntentTypeValue(IntentType intent_type);
   static PrimitiveValue Jsonb(const std::string& json);
 
@@ -349,7 +350,7 @@ class PrimitiveValue {
 
   const Uuid& GetUuid() const {
     DCHECK(type_ == ValueType::kUuid || type_ == ValueType::kUuidDescending ||
-        type_ == ValueType::kTransactionId);
+           type_ == ValueType::kTransactionId || type_ == ValueType::kTableId);
     return uuid_val_;
   }
 

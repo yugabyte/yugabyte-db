@@ -634,17 +634,11 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return totalMetrics;
   }
 
-  private Set<String> getTableIds(String keyspaceName, String tableName) {
-    Set<String> ids = new HashSet<>();
-    for (Row row : session.execute("SELECT id FROM system.partitions " +
-                                   "WHERE keyspace_name = ? and table_name = ?;",
-                                   keyspaceName, tableName).all()) {
-      ids.add(ServerInfo.UUIDToHostString(row.getUUID("id")));
-    }
-    return ids;
+  private Set<String> getTableIds(String keyspaceName, String tableName)  throws Exception {
+    return miniCluster.getClient().getTabletUUIDs(keyspaceName, tableName);
   }
 
-  public RocksDBMetrics getRocksDBMetric(String tableName) throws IOException {
+  public RocksDBMetrics getRocksDBMetric(String tableName) throws Exception {
     Set<String> tabletIds = getTableIds(DEFAULT_TEST_KEYSPACE, tableName);
     RocksDBMetrics metrics = new RocksDBMetrics();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
@@ -671,7 +665,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
   public int getTableCounterMetric(String keyspaceName,
                                    String tableName,
-                                   String metricName) throws IOException {
+                                   String metricName) throws Exception {
     int value = 0;
     Set<String> tabletIds = getTableIds(keyspaceName, tableName);
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {

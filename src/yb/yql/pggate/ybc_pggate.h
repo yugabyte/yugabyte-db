@@ -59,25 +59,26 @@ YBCStatus YBCPgConnectDatabase(YBCPgSession pg_session, const char *database_nam
 
 // Create database.
 YBCStatus YBCPgNewCreateDatabase(YBCPgSession pg_session,
-                                   const char *database_name,
-                                   YBCPgStatement *handle);
+                                 const char *database_name,
+                                 YBCPgOid database_oid,
+                                 YBCPgStatement *handle);
 YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle);
 
 // Drop database.
 YBCStatus YBCPgNewDropDatabase(YBCPgSession pg_session,
-                                 const char *database_name,
-                                 bool if_exist,
-                                 YBCPgStatement *handle);
+                               const char *database_name,
+                               bool if_exist,
+                               YBCPgStatement *handle);
 YBCStatus YBCPgExecDropDatabase(YBCPgStatement handle);
 
 // SCHENA ------------------------------------------------------------------------------------------
 // Create schema "database_name.schema_name".
 // - When "database_name" is NULL, the connected database name is used.
 YBCStatus YBCPgNewCreateSchema(YBCPgSession pg_session,
-                                 const char *database_name,
-                                 const char *schema_name,
-                                 bool if_not_exist,
-                                 YBCPgStatement *handle);
+                               const char *database_name,
+                               const char *schema_name,
+                               bool if_not_exist,
+                               YBCPgStatement *handle);
 YBCStatus YBCPgExecCreateSchema(YBCPgStatement handle);
 
 // Drop schema "database_name.schema_name".
@@ -93,11 +94,13 @@ YBCStatus YBCPgExecDropSchema(YBCPgStatement handle);
 // - When "schema_name" is NULL, the table "database_name.table_name" is created.
 // - When "database_name" is NULL, the table "connected_database_name.table_name" is created.
 YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
-                                const char *database_name,
-                                const char *schema_name,
-                                const char *table_name,
-                                bool if_not_exist,
-                                YBCPgStatement *handle);
+                              const char *database_name,
+                              const char *schema_name,
+                              const char *table_name,
+                              YBCPgOid schema_oid,
+                              YBCPgOid table_oid,
+                              bool if_not_exist,
+                              YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
                                     int attr_type, bool is_hash, bool is_range);
@@ -105,11 +108,11 @@ YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
 YBCStatus YBCPgNewDropTable(YBCPgSession pg_session,
-                              const char *database_name,
-                              const char *schema_name,
-                              const char *table_name,
-                              bool if_exist,
-                              YBCPgStatement *handle);
+                            const char *database_name,
+                            const char *schema_name,
+                            const char *table_name,
+                            bool if_exist,
+                            YBCPgStatement *handle);
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
 

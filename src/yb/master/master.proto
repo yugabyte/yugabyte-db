@@ -572,6 +572,8 @@ message TabletLocationsPB {
   required bool stale = 5;
 
   optional bytes table_id = 7;
+  // Table ids for all the tables on this tablet.
+  repeated bytes table_ids = 8;
 }
 
 // Info about a single tablet server, returned to the client as part
@@ -631,6 +633,11 @@ message CreateTableRequestPB {
 
   // For RBAC.
   optional string creator_role_name = 12;
+
+  // For Postgres:
+  optional uint32 pg_schema_oid = 13; // OID of schema this table belongs to.
+  optional uint32 pg_table_oid = 14;  // OID of this table.
+  optional bool is_pg_catalog_table = 15 [ default = false ]; // Is this a sys catalog table?
 }
 
 message CreateTableResponsePB {
@@ -1032,6 +1039,9 @@ message CreateNamespaceRequestPB {
 
   // For RBAC.
   optional string creator_role_name = 3;
+
+  // For Postgres:
+  optional uint32 pg_database_oid = 4; // OID of the database this namespace represents.
 }
 
 message CreateNamespaceResponsePB {

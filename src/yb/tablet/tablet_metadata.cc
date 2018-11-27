@@ -87,15 +87,147 @@ const std::string kIntentsDBSuffix = ".intents";
 //  Tablet Metadata
 // ============================================================================
 
+TableInfo::TableInfo(std::string table_id,
+                     std::string table_name,
+                     TableType table_type,
+                     const Schema& schema,
+                     const IndexMap& index_map,
+                     const boost::optional<IndexInfo>& index_info,
+                     const uint32_t schema_version,
+                     PartitionSchema partition_schema)
+    : table_id(std::move(table_id)),
+      table_name(std::move(table_name)),
+      table_type(table_type),
+      schema(schema),
+      index_map(index_map),
+      index_info(index_info ? new IndexInfo(*index_info) : nullptr),
+      schema_version(schema_version),
+      partition_schema(std::move(partition_schema)) {
+}
+
+TableInfo::TableInfo(const TableInfo& other,
+                     const Schema& schema,
+                     const IndexMap& index_map,
+                     const std::vector<DeletedColumn>& deleted_cols,
+                     const uint32_t schema_version)
+    : table_id(other.table_id),
+      table_name(other.table_name),
+      table_type(other.table_type),
+      schema(schema),
+      index_map(index_map),
+      index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
+      schema_version(schema_version),
+      partition_schema(other.partition_schema),
+      deleted_cols(other.deleted_cols) {
+  this->deleted_cols.insert(this->deleted_cols.end(), deleted_cols.begin(), deleted_cols.end());
+}
+
+Status TableInfo::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) {
+  table_id = superblock.primary_table_id();
+  table_name = superblock.deprecated_table_name();
+  table_type = superblock.deprecated_table_type();
+
+  RETURN_NOT_OK(SchemaFromPB(superblock.deprecated_schema(), &schema));
+  if (superblock.has_deprecated_index_info()) {
+    index_info.reset(new IndexInfo(superblock.deprecated_index_info()));
+  }
+  index_map.FromPB(superblock.deprecated_indexes());
+  schema_version = superblock.deprecated_schema_version();
+
+  RETURN_NOT_OK(PartitionSchema::FromPB(superblock.deprecated_partition_schema(),
+                                        schema, &partition_schema));
+
+  for (const DeletedColumnPB& deleted_col : superblock.deprecated_deleted_cols()) {
+    DeletedColumn col;
+    RETURN_NOT_OK(DeletedColumn::FromPB(deleted_col, &col));
+    deleted_cols.push_back(col);
+  }
+
+  return Status::OK();
+}
+
+Status TableInfo::ToSuperBlock(TabletSuperBlockPB* superblock) {
+  superblock->set_primary_table_id(table_id);
+  superblock->set_deprecated_table_name(table_name);
+  superblock->set_deprecated_table_type(table_type);
+
+  DCHECK(schema.has_column_ids());
+  RETURN_NOT_OK_PREPEND(SchemaToPB(schema, superblock->mutable_deprecated_schema()),
+                        "Couldn't serialize schema into superblock");
+  if (index_info) {
+    index_info->ToPB(superblock->mutable_deprecated_index_info());
+  }
+  index_map.ToPB(superblock->mutable_deprecated_indexes());
+  superblock->set_deprecated_schema_version(schema_version);
+
+  partition_schema.ToPB(superblock->mutable_deprecated_partition_schema());
+
+  for (const DeletedColumn& deleted_col : deleted_cols) {
+    deleted_col.CopyToPB(superblock->mutable_deprecated_deleted_cols()->Add());
+  }
+
+  return Status::OK();
+}
+
+Status TableInfo::LoadFromPB(const TableInfoPB& pb) {
+  table_id = pb.table_id();
+  table_name = pb.table_name();
+  table_type = pb.table_type();
+
+  RETURN_NOT_OK(SchemaFromPB(pb.schema(), &schema));
+  if (pb.has_index_info()) {
+    index_info.reset(new IndexInfo(pb.index_info()));
+  }
+  index_map.FromPB(pb.indexes());
+  schema_version = pb.schema_version();
+
+  RETURN_NOT_OK(PartitionSchema::FromPB(pb.partition_schema(), schema, &partition_schema));
+
+  for (const DeletedColumnPB& deleted_col : pb.deleted_cols()) {
+    DeletedColumn col;
+    RETURN_NOT_OK(DeletedColumn::FromPB(deleted_col, &col));
+    deleted_cols.push_back(col);
+  }
+
+  return Status::OK();
+}
+
+Status TableInfo::ToPB(TableInfoPB* pb) {
+  pb->set_table_id(table_id);
+  pb->set_table_name(table_name);
+  pb->set_table_type(table_type);
+
+  DCHECK(schema.has_column_ids());
+  RETURN_NOT_OK_PREPEND(SchemaToPB(schema, pb->mutable_schema()),
+                        "Couldn't serialize schema into protocol buffer");
+  if (index_info) {
+    index_info->ToPB(pb->mutable_index_info());
+  }
+  index_map.ToPB(pb->mutable_indexes());
+  pb->set_schema_version(schema_version);
+
+  partition_schema.ToPB(pb->mutable_partition_schema());
+
+  for (const DeletedColumn& deleted_col : deleted_cols) {
+    deleted_col.CopyToPB(pb->mutable_deleted_cols()->Add());
+  }
+
+  return Status::OK();
+}
+
+// ============================================================================
+
 Status TabletMetadata::CreateNew(FsManager* fs_manager,
                                  const string& table_id,
                                  const string& tablet_id,
                                  const string& table_name,
                                  const TableType table_type,
                                  const Schema& schema,
+                                 const IndexMap& index_map,
                                  const PartitionSchema& partition_schema,
                                  const Partition& partition,
                                  const boost::optional<IndexInfo>& index_info,
+                                 const uint32_t schema_version,
                                  const TabletDataState& initial_tablet_data_state,
                                  scoped_refptr<TabletMetadata>* metadata,
                                  const string& data_root_dir,
@@ -139,9 +271,11 @@ Status TabletMetadata::CreateNew(FsManager* fs_manager,
                                                        rocksdb_dir,
                                                        wal_dir,
                                                        schema,
+                                                       index_map,
                                                        partition_schema,
                                                        partition,
                                                        index_info,
+                                                       schema_version,
                                                        initial_tablet_data_state));
   RETURN_NOT_OK(ret->Flush());
   metadata->swap(ret);
@@ -178,11 +312,29 @@ Status TabletMetadata::LoadOrCreate(FsManager* fs_manager,
     return Status::OK();
   } else if (s.IsNotFound()) {
     return CreateNew(fs_manager, table_id, tablet_id, table_name, table_type,
-                     schema, partition_schema, partition, index_info,
-                     initial_tablet_data_state, metadata);
+                     schema, IndexMap(), partition_schema, partition, index_info,
+                     0 /* schema_version */, initial_tablet_data_state, metadata);
   } else {
     return s;
   }
+}
+
+Result<const TableInfo*> TabletMetadata::GetTableInfo(const std::string& table_id) const {
+  std::lock_guard<LockType> l(data_lock_);
+  const auto iter = tables_.find(!table_id.empty() ? table_id : primary_table_id_);
+  if (iter == tables_.end()) {
+    return STATUS_FORMAT(NotFound, "table $0 not found in tablet $1", table_id, tablet_id_);
+  }
+  return iter->second.get();
+}
+
+Result<TableInfo*> TabletMetadata::GetTableInfo(const std::string& table_id) {
+  std::lock_guard<LockType> l(data_lock_);
+  const auto iter = tables_.find(!table_id.empty() ? table_id : primary_table_id_);
+  if (iter == tables_.end()) {
+    return STATUS_FORMAT(NotFound, "table $0 not found in tablet $1", table_id, tablet_id_);
+  }
+  return iter->second.get();
 }
 
 Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
@@ -274,39 +426,42 @@ TabletMetadata::TabletMetadata(FsManager* fs_manager,
                                const string rocksdb_dir,
                                const string wal_dir,
                                const Schema& schema,
+                               const IndexMap& index_map,
                                PartitionSchema partition_schema,
                                Partition partition,
                                const boost::optional<IndexInfo>& index_info,
+                               const uint32_t schema_version,
                                const TabletDataState& tablet_data_state)
     : state_(kNotWrittenYet),
-      table_id_(std::move(table_id)),
       tablet_id_(std::move(tablet_id)),
       partition_(std::move(partition)),
       fs_manager_(fs_manager),
       last_durable_mrs_id_(kNoDurableMemStore),
-      schema_(new Schema(schema)),
-      schema_version_(0),
-      table_name_(std::move(table_name)),
-      table_type_(table_type),
-      index_info_(index_info),
       rocksdb_dir_(rocksdb_dir),
       wal_dir_(wal_dir),
-      partition_schema_(std::move(partition_schema)),
       tablet_data_state_(tablet_data_state) {
-  CHECK(schema_->has_column_ids());
-  CHECK_GT(schema_->num_key_columns(), 0);
+  CHECK(schema.has_column_ids());
+  CHECK_GT(schema.num_key_columns(), 0);
+  primary_table_id_ = table_id;
+  tables_.emplace(primary_table_id_,
+                  std::make_unique<TableInfo>(std::move(table_id),
+                                              std::move(table_name),
+                                              table_type,
+                                              schema,
+                                              index_map,
+                                              index_info,
+                                              schema_version,
+                                              std::move(partition_schema)));
 }
 
 TabletMetadata::~TabletMetadata() {
-  STLDeleteElements(&old_schemas_);
-  delete schema_;
 }
 
 TabletMetadata::TabletMetadata(FsManager* fs_manager, string tablet_id)
     : state_(kNotLoadedYet),
       tablet_id_(std::move(tablet_id)),
-      fs_manager_(fs_manager),
-      schema_(nullptr) {}
+      fs_manager_(fs_manager) {
+}
 
 Status TabletMetadata::LoadFromDisk() {
   TRACE_EVENT1("tablet", "TabletMetadata::LoadFromDisk",
@@ -328,6 +483,7 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
   VLOG(2) << "Loading TabletMetadata from SuperBlockPB:" << std::endl
           << superblock.DebugString();
 
+  bool need_flush = false;
   {
     std::lock_guard<LockType> l(data_lock_);
 
@@ -337,44 +493,22 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
                                 " found " + superblock.tablet_id(),
                                 superblock.DebugString());
     }
-
-    table_id_ = superblock.table_id();
-    last_durable_mrs_id_ = superblock.last_durable_mrs_id();
-
-    table_name_ = superblock.table_name();
-    table_type_ = superblock.table_type();
-    index_map_.FromPB(superblock.indexes());
-    if (superblock.has_index_info()) {
-      index_info_.emplace(superblock.index_info());
+    Partition::FromPB(superblock.partition(), &partition_);
+    for (const TableInfoPB& pb : superblock.tables()) {
+      std::unique_ptr<TableInfo> table_info(new TableInfo());
+      RETURN_NOT_OK(table_info->LoadFromPB(pb));
+      if (table_info->table_id != superblock.primary_table_id()) {
+        Uuid cotable_id;
+        CHECK_OK(cotable_id.FromHexString(table_info->table_id));
+        table_info->schema.set_cotable_id(cotable_id);
+      }
+      tables_[table_info->table_id] = std::move(table_info);
     }
+
+    last_durable_mrs_id_ = superblock.last_durable_mrs_id();
     rocksdb_dir_ = superblock.rocksdb_dir();
     wal_dir_ = superblock.wal_dir();
-
-    uint32_t schema_version = superblock.schema_version();
-    gscoped_ptr<Schema> schema(new Schema());
-    RETURN_NOT_OK_PREPEND(SchemaFromPB(superblock.schema(), schema.get()),
-                          "Failed to parse Schema from superblock " +
-                          superblock.ShortDebugString());
-    SetSchemaUnlocked(schema.Pass(), schema_version);
-
-    // This check provides backwards compatibility with the
-    // flexible-partitioning changes introduced in KUDU-818.
-    if (superblock.has_partition()) {
-      RETURN_NOT_OK(PartitionSchema::FromPB(superblock.partition_schema(),
-                                            *schema_, &partition_schema_));
-      Partition::FromPB(superblock.partition(), &partition_);
-    } else {
-      LOG(FATAL) << "partition field must be set in superblock: " << superblock.ShortDebugString();
-    }
-
     tablet_data_state_ = superblock.tablet_data_state();
-
-    deleted_cols_.clear();
-    for (const DeletedColumnPB& deleted_col : superblock.deleted_cols()) {
-      DeletedColumn col;
-      RETURN_NOT_OK(DeletedColumn::FromPB(deleted_col, &col));
-      deleted_cols_.push_back(col);
-    }
 
     for (const BlockIdPB& block_pb : superblock.orphaned_blocks()) {
       orphaned_blocks.push_back(BlockId::FromPB(block_pb));
@@ -386,6 +520,18 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
     } else {
       tombstone_last_logged_opid_ = OpId();
     }
+
+    std::unique_ptr<TableInfo> table_info(new TableInfo());
+    RETURN_NOT_OK(table_info->LoadFromSuperBlock(superblock));
+    primary_table_id_ = table_info->table_id;
+    if (tables_.count(primary_table_id_) == 0) {
+      tables_[primary_table_id_] = std::move(table_info);
+      need_flush = true;
+    }
+  }
+
+  if (need_flush) {
+    RETURN_NOT_OK(Flush());
   }
 
   // Now is a good time to clean up any orphaned blocks that may have been
@@ -525,42 +671,33 @@ Status TabletMetadata::ReadSuperBlockFromDisk(TabletSuperBlockPB* superblock) co
   RETURN_NOT_OK_PREPEND(
       pb_util::ReadPBContainerFromPath(fs_manager_->env(), path, superblock),
       Substitute("Could not load tablet metadata from $0", path));
-  if (superblock->table_type() == TableType::REDIS_TABLE_TYPE &&
-      superblock->table_name() == kTransactionsTableName) {
-    superblock->set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
+  if (superblock->deprecated_table_type() == TableType::REDIS_TABLE_TYPE &&
+      superblock->deprecated_table_name() == kTransactionsTableName) {
+    superblock->set_deprecated_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
   }
   return Status::OK();
 }
 
-Status TabletMetadata::ToSuperBlock(TabletSuperBlockPB* super_block) const {
+Status TabletMetadata::ToSuperBlock(TabletSuperBlockPB* superblock) const {
   // acquire the lock so that rowsets_ doesn't get changed until we're finished.
   std::lock_guard<LockType> l(data_lock_);
-  return ToSuperBlockUnlocked(super_block);
+  return ToSuperBlockUnlocked(superblock);
 }
 
-Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* super_block) const {
+Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) const {
   DCHECK(data_lock_.is_locked());
   // Convert to protobuf
   TabletSuperBlockPB pb;
-  pb.set_table_id(table_id_);
   pb.set_tablet_id(tablet_id_);
   partition_.ToPB(pb.mutable_partition());
-  pb.set_last_durable_mrs_id(last_durable_mrs_id_);
-  pb.set_schema_version(schema_version_);
-  partition_schema_.ToPB(pb.mutable_partition_schema());
-  pb.set_table_name(table_name_);
-  pb.set_table_type(table_type_);
-  index_map_.ToPB(pb.mutable_indexes());
-  if (index_info_) {
-    index_info_->ToPB(pb.mutable_index_info());
+
+  for (const auto& iter : tables_) {
+    RETURN_NOT_OK(iter.second->ToPB(pb.add_tables()));
   }
+
+  pb.set_last_durable_mrs_id(last_durable_mrs_id_);
   pb.set_rocksdb_dir(rocksdb_dir_);
   pb.set_wal_dir(wal_dir_);
-
-  DCHECK(schema_->has_column_ids());
-  RETURN_NOT_OK_PREPEND(SchemaToPB(*schema_, pb.mutable_schema()),
-                        "Couldn't serialize schema into superblock");
-
   pb.set_tablet_data_state(tablet_data_state_);
   if (tombstone_last_logged_opid_) {
     tombstone_last_logged_opid_.ToPB(pb.mutable_tombstone_last_logged_opid());
@@ -570,54 +707,66 @@ Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* super_block) con
     block_id.CopyToPB(pb.mutable_orphaned_blocks()->Add());
   }
 
-  for (const DeletedColumn& deleted_col : deleted_cols_) {
-    deleted_col.CopyToPB(pb.mutable_deleted_cols()->Add());
-  }
+  RETURN_NOT_OK(tables_.at(primary_table_id_)->ToSuperBlock(&pb));
 
-  super_block->Swap(&pb);
+  superblock->Swap(&pb);
   return Status::OK();
 }
 
-void TabletMetadata::SetSchema(const Schema& schema, uint32_t version) {
-  gscoped_ptr<Schema> new_schema(new Schema(schema));
+void TabletMetadata::SetSchema(const Schema& schema,
+                               const IndexMap& index_map,
+                               const std::vector<DeletedColumn>& deleted_cols,
+                               const uint32_t version) {
+  DCHECK(schema.has_column_ids());
+  std::unique_ptr<TableInfo> new_table_info(new TableInfo(*primary_table_info(),
+                                                          schema,
+                                                          index_map,
+                                                          deleted_cols,
+                                                          version));
   std::lock_guard<LockType> l(data_lock_);
-  SetSchemaUnlocked(new_schema.Pass(), version);
-}
-
-void TabletMetadata::SetIndexMap(IndexMap&& index_map) {
-  std::lock_guard<LockType> l(data_lock_);
-  index_map_ = std::move(index_map);
-}
-
-void TabletMetadata::SetSchemaUnlocked(gscoped_ptr<Schema> new_schema, uint32_t version) {
-  DCHECK(new_schema->has_column_ids());
-
-  Schema* old_schema = schema_;
-  // "Release" barrier ensures that, when we publish the new Schema object,
-  // all of its initialization is also visible.
-  base::subtle::Release_Store(reinterpret_cast<AtomicWord*>(&schema_),
-                              reinterpret_cast<AtomicWord>(new_schema.release()));
-  if (PREDICT_TRUE(old_schema)) {
-    old_schemas_.push_back(old_schema);
+  tables_[primary_table_id_].swap(new_table_info);
+  if (new_table_info) {
+    old_tables_.push_back(std::move(new_table_info));
   }
-  schema_version_ = version;
+}
+
+void TabletMetadata::SetPartitionSchema(const PartitionSchema& partition_schema) {
+  std::lock_guard<LockType> l(data_lock_);
+  DCHECK(tables_.find(primary_table_id_) != tables_.end());
+  tables_[primary_table_id_]->partition_schema = partition_schema;
 }
 
 void TabletMetadata::SetTableName(const string& table_name) {
   std::lock_guard<LockType> l(data_lock_);
-  table_name_ = table_name;
+  tables_.at(primary_table_id_)->table_name = table_name;
 }
 
-string TabletMetadata::table_name() const {
+void TabletMetadata::AddTable(const std::string& table_id,
+                              const std::string& table_name,
+                              const TableType table_type,
+                              const Schema& schema,
+                              const IndexMap& index_map,
+                              const PartitionSchema& partition_schema,
+                              const Partition& partition,
+                              const boost::optional<IndexInfo>& index_info,
+                              const uint32_t schema_version) {
+  DCHECK(schema.has_column_ids());
+  std::unique_ptr<TableInfo> new_table_info(new TableInfo(table_id,
+                                                          table_name,
+                                                          table_type,
+                                                          schema,
+                                                          index_map,
+                                                          index_info,
+                                                          schema_version,
+                                                          partition_schema));
+  if (table_id != primary_table_id_) {
+    Uuid cotable_id;
+    CHECK_OK(cotable_id.FromHexString(table_id));
+    new_table_info->schema.set_cotable_id(cotable_id);
+  }
   std::lock_guard<LockType> l(data_lock_);
-  DCHECK_NE(state_, kNotLoadedYet);
-  return table_name_;
-}
-
-uint32_t TabletMetadata::schema_version() const {
-  std::lock_guard<LockType> l(data_lock_);
-  DCHECK_NE(state_, kNotLoadedYet);
-  return schema_version_;
+  tables_[table_id].swap(new_table_info);
+  DCHECK(!new_table_info) << "table " << table_id << " already exists";
 }
 
 string TabletMetadata::data_root_dir() const {

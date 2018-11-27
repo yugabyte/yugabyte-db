@@ -14,8 +14,6 @@
 #include "yb/master/yql_partitions_vtable.h"
 
 #include "yb/common/ql_value.h"
-#include "yb/common/redis_constants_common.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_util.h"
 
@@ -40,8 +38,8 @@ Status YQLPartitionsVTable::RetrieveData(const QLReadRequestPB& request,
     scoped_refptr<NamespaceInfo> nsInfo;
     RETURN_NOT_OK(catalog_manager->FindNamespace(nsId, &nsInfo));
 
-    // Hide redis table from YQL.
-    if (nsInfo->name() == common::kRedisKeyspaceName && table->name() == common::kRedisTableName) {
+    // Skip non-YQL tables.
+    if (!CatalogManager::IsYcqlTable(*table)) {
       continue;
     }
 
