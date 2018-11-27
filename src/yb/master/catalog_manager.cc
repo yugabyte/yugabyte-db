@@ -4440,6 +4440,29 @@ Status CatalogManager::AlterRole(const AlterRoleRequestPB* req,
 
   // Modify the role.
   auto l = role->LockForWrite();
+
+  // If the role we are trying to alter is a SUPERUSER, and the request is trying to alter the
+  // SUPERUSER field for that role, the role requesting the alter operation must be a SUPERUSER
+  // too.
+  // TODO(hector): Once "ENG-2663 Support for REVOKE PERMISSIONS and REVOKE ROLE commands" gets
+  // committed, we need to enhance this codepath to also check that current_role is not trying to
+  // alter the SUPERUSER field of any of the roles granted to it either directly or indirectly
+  // through inheritance.
+  if (l->mutable_data()->pb.is_superuser() && req->has_superuser()) {
+    auto current_role = FindPtrOrNull(roles_map_, req->current_role());
+    if (current_role == nullptr) {
+      s = STATUS_SUBSTITUTE(NotFound, "Internal error: role $0 does not exist",
+                            req->current_role());
+      return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+    }
+
+    auto clr = current_role->LockForRead();
+    if (!clr->data().pb.is_superuser()) {
+      s = STATUS(NotAuthorized, "Only superusers are allowed to alter superuser status");
+      return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+    }
+  }
+
   if (req->has_login()) {
     l->mutable_data()->pb.set_can_login(req->login());
   }

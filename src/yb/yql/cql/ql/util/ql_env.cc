@@ -214,7 +214,7 @@ Status QLEnv::AlterRole(const std::string& role_name,
                         const boost::optional<std::string>& salted_hash,
                         const boost::optional<bool> login,
                         const boost::optional<bool> superuser) {
-  return client_->AlterRole(role_name, salted_hash, login, superuser);
+  return client_->AlterRole(role_name, salted_hash, login, superuser, CurrentRoleName());
 }
 
 Status QLEnv::DeleteRole(const std::string& role_name) {

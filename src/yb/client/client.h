@@ -360,7 +360,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   CHECKED_STATUS AlterRole(const RoleName& role_name,
                            const boost::optional<std::string>& salted_hash,
                            const boost::optional<bool> login,
-                           const boost::optional<bool> superuser);
+                           const boost::optional<bool> superuser,
+                           const RoleName& current_role_name);
 
   // Delete a role.
   CHECKED_STATUS DeleteRole(const std::string& role_name, const std::string& current_role_name);

@@ -13,6 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <yb/yql/cql/ql/util/errcodes.h>
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ql_processor.h"
 #include "yb/client/client.h"
@@ -268,6 +269,9 @@ Status Executor::ExecPTNode(const PTAlterRole *tnode) {
                                       tnode->superuser());
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::ROLE_NOT_FOUND;
+    if (s.IsNotAuthorized()) {
+      error_code = ErrorCode::UNAUTHORIZED;
+    }
     return exec_context_->Error(tnode, s, error_code);
   }
 
