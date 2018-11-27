@@ -127,6 +127,7 @@ std::string FormatForComparisonFailureMessage(const MonoDelta& op, const MonoDel
 
 inline MonoDelta operator-(MonoDelta lhs, MonoDelta rhs) { return lhs -= rhs; }
 inline MonoDelta operator+(MonoDelta lhs, MonoDelta rhs) { return lhs += rhs; }
+inline MonoDelta operator*(MonoDelta lhs, int64_t rhs) { return lhs *= rhs; }
 
 inline std::ostream& operator<<(std::ostream& out, MonoDelta delta) {
   return out << delta.ToString();

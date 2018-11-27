@@ -33,6 +33,7 @@
 
 #include "yb/server/hybrid_clock.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/trace.h"
 #include "yb/util/redis_util.h"
@@ -47,6 +48,9 @@ DEFINE_bool(emulate_redis_responses,
     "returning OK for commands that might require us to read additional records viz. SADD, HSET, "
     "and HDEL. If emulate_redis_responses is true, we read the required records to compute the "
     "response as specified by the official Redis API documentation. https://redis.io/commands");
+
+DEFINE_test_flag(bool, pause_write_apply_after_if, false,
+                 "Pause application of QLWriteOperation after evaluating if condition.");
 
 namespace yb {
 namespace docdb {
@@ -2477,6 +2481,8 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
       response_->set_status(QLResponsePB::YQL_STATUS_OK);
       return Status::OK();
     }
+
+    TEST_PAUSE_IF_FLAG(pause_write_apply_after_if);
   } else if (RequireReadForExpressions(request_) || request_.returns_status()) {
     RETURN_NOT_OK(ReadColumns(data, nullptr, nullptr, &existing_row));
     if (request_.returns_status()) {
