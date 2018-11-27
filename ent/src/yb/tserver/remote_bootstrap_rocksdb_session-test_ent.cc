@@ -53,7 +53,7 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
 TEST_F(RemoteBootstrapRocksDBTest, CheckSuperBlockHasSnapshotFields) {
   auto superblock = session_->tablet_superblock();
   LOG(INFO) << superblock.ShortDebugString();
-  ASSERT_TRUE(superblock.table_type() == YQL_TABLE_TYPE);
+  ASSERT_TRUE(superblock.deprecated_table_type() == YQL_TABLE_TYPE);
   ASSERT_TRUE(superblock.has_rocksdb_dir());
 
   const string& rocksdb_dir = superblock.rocksdb_dir();
