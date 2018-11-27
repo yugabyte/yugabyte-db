@@ -659,7 +659,8 @@ CHECKED_STATUS YBClient::CreateRole(const RoleName& role_name,
 CHECKED_STATUS YBClient::AlterRole(const RoleName& role_name,
                                    const boost::optional<std::string>& salted_hash,
                                    const boost::optional<bool> login,
-                                   const boost::optional<bool> superuser) {
+                                   const boost::optional<bool> superuser,
+                                   const RoleName& current_role_name) {
   // Setting up request.
   AlterRoleRequestPB req;
   req.set_name(role_name);
@@ -672,6 +673,7 @@ CHECKED_STATUS YBClient::AlterRole(const RoleName& role_name,
   if (superuser) {
     req.set_superuser(*superuser);
   }
+  req.set_current_role(current_role_name);
 
   AlterRoleResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, AlterRole);

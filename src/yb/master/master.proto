@@ -1100,6 +1100,9 @@ message AlterRoleRequestPB {
   optional string salted_hash = 2;
   optional bool login = 3;
   optional bool superuser = 4;
+
+  // Name of the role trying to alter the role.
+  optional string current_role = 5;
 }
 
 message AlterRoleResponsePB {
