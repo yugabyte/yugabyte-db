@@ -44,6 +44,7 @@
 #include <boost/functional/hash.hpp>
 
 #include "yb/common/entity_ids.h"
+#include "yb/common/index.h"
 #include "yb/common/partition.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/gutil/macros.h"
@@ -51,6 +52,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_virtual_table.h"
 #include "yb/server/monitored_task.h"
@@ -243,9 +245,6 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // No synchronization needed.
   std::string ToString() const override;
 
-  // Determines whether or not this tablet belongs to a system table.
-  bool IsSupportedSystemTable(const SystemTableSet& supported_system_tables) const;
-
   // This is called when a leader stepdown request fails. Optionally, takes an amount of time since
   // the stepdown failure, in case it happened in the past (e.g. we talked to a tablet server and
   // it told us that it previously tried to step down in favor of this server and that server lost
@@ -338,9 +337,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
  public:
   explicit TableInfo(TableId table_id);
 
-  // Determines whether or not this table is a system table supported by the master.
-  bool IsSupportedSystemTable(const SystemTableSet& supported_system_tables) const;
-
   const TableName name() const;
 
   bool is_running() const;
@@ -379,8 +375,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool RemoveTablet(const std::string& partition_key_start);
 
   // This only returns tablets which are in RUNNING state.
-  void GetTabletsInRange(const GetTableLocationsRequestPB* req,
-                         TabletInfos *ret) const;
+  void GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos *ret) const;
 
   void GetAllTablets(TabletInfos *ret) const;
 
@@ -779,6 +774,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void Shutdown();
   CHECKED_STATUS CheckOnline() const;
 
+  // Create Postgres sys catalog table.
+  CHECKED_STATUS CreateTablePgsqlSysTable(const CreateTableRequestPB* req,
+                                          CreateTableResponsePB* resp,
+                                          rpc::RpcContext* rpc);
+
   // Create a new Table with the specified attributes.
   //
   // The RPC context is provided for logging/tracing purposes,
@@ -937,11 +937,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                 rpc::RpcContext* rpc);
 
   // Set Redis Config
-  CHECKED_STATUS RedisConfigSet(
-      const RedisConfigSetRequestPB* req, RedisConfigSetResponsePB* resp, rpc::RpcContext* rpc);
+  CHECKED_STATUS RedisConfigSet(const RedisConfigSetRequestPB* req,
+                                RedisConfigSetResponsePB* resp,
+                                rpc::RpcContext* rpc);
+
   // Get Redis Config
-  CHECKED_STATUS RedisConfigGet(
-      const RedisConfigGetRequestPB* req, RedisConfigGetResponsePB* resp, rpc::RpcContext* rpc);
+  CHECKED_STATUS RedisConfigGet(const RedisConfigGetRequestPB* req,
+                                RedisConfigGetResponsePB* resp,
+                                rpc::RpcContext* rpc);
 
   // Create a new User-Defined Type with the specified attributes.
   //
@@ -1134,6 +1137,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS WaitForWorkerPoolTests(
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const;
 
+  // Returns whether the table is a YCQL table.
+  static bool IsYcqlTable(const TableInfo& table);
+
   CHECKED_STATUS FindNamespace(const NamespaceIdentifierPB& ns_identifier,
                                scoped_refptr<NamespaceInfo>* ns_info) const;
 
@@ -1204,6 +1210,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   CHECKED_STATUS PrepareSystemTables(int64_t term);
 
+  CHECKED_STATUS PrepareSysCatalogTable(int64_t term);
+
   CHECKED_STATUS PrepareDefaultRoles(int64_t term);
 
   template <class T>
@@ -1229,7 +1237,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS CreateTableInMemory(const CreateTableRequestPB& req,
                                      const Schema& schema,
                                      const PartitionSchema& partition_schema,
-                                     const bool is_copartitioned,
+                                     const bool create_tablets,
                                      const NamespaceId& namespace_id,
                                      const vector<Partition>& partitions,
                                      IndexInfoPB* index_info,

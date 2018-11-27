@@ -457,6 +457,7 @@ static YBPgsqlWriteOp *NewYBPgsqlWriteOp(const shared_ptr<YBTable>& table,
   PgsqlWriteRequestPB *req = op->mutable_request();
   req->set_stmt_type(stmt_type);
   req->set_client(YQL_CLIENT_PGSQL);
+  req->set_table_id(table->id());
   req->set_schema_version(table->schema().version());
 
   return op;
@@ -502,6 +503,7 @@ YBPgsqlReadOp *YBPgsqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
   YBPgsqlReadOp *op = new YBPgsqlReadOp(table);
   PgsqlReadRequestPB *req = op->mutable_request();
   req->set_client(YQL_CLIENT_PGSQL);
+  req->set_table_id(table->id());
   req->set_schema_version(table->schema().version());
 
   return op;

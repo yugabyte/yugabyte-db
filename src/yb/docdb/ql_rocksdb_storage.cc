@@ -146,9 +146,12 @@ CHECKED_STATUS QLRocksDBStorage::BuildYQLScanSpec(const PgsqlReadRequestPB& requ
                                                &range_components));
     spec->reset(new DocPgsqlScanSpec(schema,
                                      request.stmt_id(),
-                                     DocKey(request.hash_code(),
-                                            hashed_components,
-                                            range_components)));
+                                     hashed_components.empty()
+                                     ? DocKey(schema, range_components)
+                                     : DocKey(schema,
+                                              request.hash_code(),
+                                              hashed_components,
+                                              range_components)));
   } else {
     SubDocKey start_sub_doc_key;
     // Decode the start SubDocKey from the paging state and set scan start key and hybrid time.

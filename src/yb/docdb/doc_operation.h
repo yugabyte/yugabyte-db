@@ -96,7 +96,6 @@ const int kNilSubkeyIndex = -1;
 class DocOperation {
  public:
   enum Type {
-    PGSQL_DOC_OPERATION,
     PGSQL_WRITE_OPERATION,
     PGSQL_READ_OPERATION,
     QL_WRITE_OPERATION,
@@ -399,15 +398,8 @@ class QLReadOperation : public DocExprExecutor {
 //--------------------------------------------------------------------------------------------------
 // PGSQL support.
 //--------------------------------------------------------------------------------------------------
-class PgsqlDocOperation : public DocOperation, public DocExprExecutor {
- public:
-  CHECKED_STATUS CreateProjections(const Schema& schema,
-                                   const PgsqlColumnRefsPB& column_refs,
-                                   Schema* column_projection);
-  Type OpType() override { return Type::PGSQL_DOC_OPERATION; }
-};
 
-class PgsqlWriteOperation : public PgsqlDocOperation {
+class PgsqlWriteOperation : public DocOperation, public DocExprExecutor {
  public:
   PgsqlWriteOperation(const Schema& schema,
                       const TransactionOperationContextOpt& txn_op_context)
@@ -467,7 +459,7 @@ class PgsqlWriteOperation : public PgsqlDocOperation {
   std::shared_ptr<DocPath> range_doc_path_;
 };
 
-class PgsqlReadOperation : public PgsqlDocOperation {
+class PgsqlReadOperation : public DocOperation, public DocExprExecutor {
  public:
   // Construct and access methods.
   PgsqlReadOperation(const PgsqlReadRequestPB& request,

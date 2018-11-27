@@ -105,6 +105,9 @@ message PgsqlWriteRequestPB {
   optional uint64 stmt_id = 2;     // client request id.
   optional PgsqlStmtType stmt_type = 3;    // required
 
+  // Table id.
+  optional bytes table_id = 14; // required
+
   // Table schema version.
   optional uint32 schema_version = 4; // required
 
@@ -194,6 +197,9 @@ message PgsqlReadRequestPB {
 
   // Statement info. There's only SELECT, so we don't need different request type.
   optional uint64 stmt_id = 2; // required
+
+  // Table id.
+  optional bytes table_id = 19; // required
 
   // Table schema version
   optional uint32 schema_version = 3; // required

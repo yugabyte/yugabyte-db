@@ -86,9 +86,9 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
       query_id_(query_id),
       hashed_components_(nullptr),
       doc_key_(doc_key),
-      start_doc_key_(DocKey()),
-      lower_doc_key_(DocKey()),
-      upper_doc_key_(DocKey()),
+      start_doc_key_(DocKey(schema)),
+      lower_doc_key_(DocKey(schema)),
+      upper_doc_key_(DocKey(schema)),
       is_forward_scan_(is_forward_scan) {
 }
 
@@ -107,8 +107,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
       max_hash_code_(max_hash_code),
       doc_key_(),
       start_doc_key_(start_doc_key),
-      lower_doc_key_(bound_key(true)),
-      upper_doc_key_(bound_key(false)),
+      lower_doc_key_(bound_key(schema, true)),
+      upper_doc_key_(bound_key(schema, false)),
       is_forward_scan_(is_forward_scan) {
   if (where_expr_) {
     // Should never get here until WHERE clause is supported.
@@ -116,18 +116,18 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
   }
 }
 
-DocKey DocPgsqlScanSpec::bound_key(const bool lower_bound) const {
+DocKey DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_bound) const {
   // If no hashed_component use hash lower/upper bounds if set.
   if (hashed_components_->empty()) {
     // use lower bound hash code if set in request (for scans using token)
     if (lower_bound && hash_code_) {
-      return DocKey(*hash_code_, {PrimitiveValue(ValueType::kLowest)}, {});
+      return DocKey(schema, *hash_code_, {PrimitiveValue(ValueType::kLowest)}, {});
     }
     // use upper bound hash code if set in request (for scans using token)
     if (!lower_bound && max_hash_code_) {
-      return DocKey(*max_hash_code_, {PrimitiveValue(ValueType::kHighest)}, {});
+      return DocKey(schema, *max_hash_code_, {PrimitiveValue(ValueType::kHighest)}, {});
     }
-    return DocKey();
+    return DocKey(schema);
   }
 
   DocKeyHash min_hash = hash_code_ ?
@@ -137,7 +137,8 @@ DocKey DocPgsqlScanSpec::bound_key(const bool lower_bound) const {
 
 
   // if hash_code not set (-1) default to 0 (start from the beginning)
-  return DocKey(lower_bound ? min_hash : max_hash,
+  return DocKey(schema,
+                lower_bound ? min_hash : max_hash,
                 *hashed_components_,
                 range_components(lower_bound));
 }

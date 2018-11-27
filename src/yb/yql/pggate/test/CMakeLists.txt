@@ -25,6 +25,7 @@ ADD_YB_TEST(pggate_test_select)
 ADD_YB_TEST(pggate_test_select_multi_tablets)
 ADD_YB_TEST(pggate_test_delete)
 ADD_YB_TEST(pggate_test_update)
+ADD_YB_TEST(pggate_test_catalog)
 
 ADD_COMMON_YB_TEST_DEPENDENCIES(pggate_test_select
                                 pggate_test_select_multi_tablets

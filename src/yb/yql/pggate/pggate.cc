@@ -45,6 +45,7 @@ namespace yb {
 namespace pggate {
 
 using std::make_shared;
+using client::PgOid;
 using client::YBSession;
 
 //--------------------------------------------------------------------------------------------------
@@ -147,8 +148,9 @@ CHECKED_STATUS PgApiImpl::ConnectDatabase(PgSession *pg_session, const char *dat
 
 CHECKED_STATUS PgApiImpl::NewCreateDatabase(PgSession *pg_session,
                                             const char *database_name,
+                                            const PgOid database_oid,
                                             PgStatement **handle) {
-  auto stmt = make_scoped_refptr<PgCreateDatabase>(pg_session, database_name);
+  auto stmt = make_scoped_refptr<PgCreateDatabase>(pg_session, database_name, database_oid);
   *handle = stmt.detach();
   return Status::OK();
 }
@@ -229,6 +231,8 @@ CHECKED_STATUS PgApiImpl::NewCreateTable(PgSession *pg_session,
                                          const char *database_name,
                                          const char *schema_name,
                                          const char *table_name,
+                                         const PgOid schema_oid,
+                                         const PgOid table_oid,
                                          bool if_not_exist,
                                          PgStatement **handle) {
   if (database_name == nullptr) {
@@ -236,7 +240,7 @@ CHECKED_STATUS PgApiImpl::NewCreateTable(PgSession *pg_session,
   }
 
   auto stmt = make_scoped_refptr<PgCreateTable>(
-      pg_session, database_name, schema_name, table_name, if_not_exist);
+      pg_session, database_name, schema_name, table_name, schema_oid, table_oid, if_not_exist);
   *handle = stmt.detach();
   return Status::OK();
 }

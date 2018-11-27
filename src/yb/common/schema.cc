@@ -165,6 +165,7 @@ void Schema::CopyFrom(const Schema& other) {
   has_nullables_ = other.has_nullables_;
   has_statics_ = other.has_statics_;
   table_properties_ = other.table_properties_;
+  cotable_id_ = other.cotable_id_;
 }
 
 void Schema::swap(Schema& other) {
@@ -178,16 +179,19 @@ void Schema::swap(Schema& other) {
   std::swap(has_nullables_, other.has_nullables_);
   std::swap(has_statics_, other.has_statics_);
   std::swap(table_properties_, other.table_properties_);
+  std::swap(cotable_id_, other.cotable_id_);
 }
 
 Status Schema::Reset(const vector<ColumnSchema>& cols,
                      const vector<ColumnId>& ids,
                      int key_columns,
-                     const TableProperties& table_properties) {
+                     const TableProperties& table_properties,
+                     const Uuid& cotable_id) {
   cols_ = cols;
   num_key_columns_ = key_columns;
   num_hash_key_columns_ = 0;
   table_properties_ = table_properties;
+  cotable_id_ = cotable_id;
 
   // Determine whether any column is nullable or static, and count number of hash columns.
   has_nullables_ = false;
@@ -293,7 +297,7 @@ Status Schema::CreateProjectionByNames(const std::vector<GStringPiece>& col_name
     }
     cols.push_back(column(idx));
   }
-  return out->Reset(cols, ids, num_key_columns);
+  return out->Reset(cols, ids, num_key_columns, TableProperties(), cotable_id_);
 }
 
 Status Schema::CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& col_ids,
@@ -308,7 +312,7 @@ Status Schema::CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& c
     cols.push_back(column(idx));
     filtered_col_ids.push_back(id);
   }
-  return out->Reset(cols, filtered_col_ids, 0);
+  return out->Reset(cols, filtered_col_ids, 0, TableProperties(), cotable_id_);
 }
 
 Schema Schema::CopyWithColumnIds() const {
@@ -317,12 +321,12 @@ Schema Schema::CopyWithColumnIds() const {
   for (int32_t i = 0; i < num_columns(); i++) {
     ids.push_back(ColumnId(kFirstColumnId + i));
   }
-  return Schema(cols_, ids, num_key_columns_, table_properties_);
+  return Schema(cols_, ids, num_key_columns_, table_properties_, cotable_id_);
 }
 
 Schema Schema::CopyWithoutColumnIds() const {
   CHECK(has_column_ids());
-  return Schema(cols_, num_key_columns_, table_properties_);
+  return Schema(cols_, num_key_columns_, table_properties_, cotable_id_);
 }
 
 Status Schema::VerifyProjectionCompatibility(const Schema& projection) const {
@@ -395,7 +399,8 @@ string Schema::ToString() const {
   return StrCat("Schema [\n\t",
                 JoinStrings(col_strs, ",\n\t"),
                 "\n]\nproperties: ",
-                tablet_properties_pb.ShortDebugString());
+                tablet_properties_pb.ShortDebugString(),
+                cotable_id_.IsNil() ? "" : ("\ncotable_id: " + cotable_id_.ToString()));
 }
 
 Status Schema::DecodeRowKey(Slice encoded_key,

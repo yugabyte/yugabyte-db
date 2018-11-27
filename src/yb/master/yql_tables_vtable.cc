@@ -11,10 +11,10 @@
 // under the License.
 //
 
-#include "yb/common/redis_constants_common.h"
+#include "yb/master/yql_tables_vtable.h"
+
 #include "yb/common/ql_value.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/yql_tables_vtable.h"
 
 namespace yb {
 namespace master {
@@ -30,6 +30,11 @@ Status YQLTablesVTable::RetrieveData(const QLReadRequestPB& request,
   master_->catalog_manager()->GetAllTables(&tables, true);
   for (scoped_refptr<TableInfo> table : tables) {
 
+    // Skip non-YQL tables.
+    if (!CatalogManager::IsYcqlTable(*table)) {
+      continue;
+    }
+
     // Skip index table.
     if (!table->indexed_table_id().empty()) {
       continue;
@@ -40,11 +45,6 @@ Status YQLTablesVTable::RetrieveData(const QLReadRequestPB& request,
     nsId.set_id(table->namespace_id());
     scoped_refptr<NamespaceInfo> nsInfo;
     RETURN_NOT_OK(master_->catalog_manager()->FindNamespace(nsId, &nsInfo));
-
-    // Hide non-YQL tables.
-    if (table->GetTableType() != TableType::YQL_TABLE_TYPE) {
-      continue;
-    }
 
     // Create appropriate row for the table;
     QLRow& row = (*vtable)->Extend();

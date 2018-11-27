@@ -80,6 +80,7 @@ class PlacementInfoTest : public YBTest {
     table_name_->set_namespace_name(yb::master::kSystemNamespaceName);
     CHECK_OK(table_creator->table_name(*table_name_)
                  .schema(&schema)
+                 .hash_schema(YBHashSchema::kMultiColumnHash)
                  .wait(true)
                  .num_tablets(1)
                  .Create());

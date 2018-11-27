@@ -56,7 +56,7 @@ public class TestAsyncYBClient extends BaseYBClientTest {
   protected void afterStartingMiniCluster() throws Exception {
     super.afterStartingMiniCluster();
     CreateTableOptions options = new CreateTableOptions();
-    table = createTable(TABLE_NAME, basicSchema, options);
+    table = createTable(TABLE_NAME, hashKeySchema, options);
   }
 
   @Test

@@ -29,7 +29,7 @@ class SystemTablet : public tablet::AbstractTablet {
   SystemTablet(const Schema& schema, std::unique_ptr<YQLVirtualTable> yql_virtual_table,
                const TabletId& tablet_id);
 
-  const Schema& SchemaRef() const override;
+  const Schema& SchemaRef(const std::string& table_id = "") const override;
 
   const common::YQLStorageIf& QLStorage() const override;
 

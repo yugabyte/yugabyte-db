@@ -25,6 +25,8 @@ DECLARE_string(test_leave_files);
 namespace yb {
 namespace pggate {
 
+using client::PgOid;
+
 PggateTest::PggateTest() {
 }
 
@@ -121,14 +123,14 @@ CHECKED_STATUS PggateTest::CreateCluster(int num_tablet_servers) {
 
 //--------------------------------------------------------------------------------------------------
 
-void PggateTest::SetupDB(const string& db_name) {
-  CreateDB(db_name);
+void PggateTest::SetupDB(const string& db_name, const PgOid db_oid) {
+  CreateDB(db_name, db_oid);
   ConnectDB(db_name);
 }
 
-void PggateTest::CreateDB(const string& db_name) {
+void PggateTest::CreateDB(const string& db_name, const PgOid db_oid) {
   YBCPgStatement pg_stmt;
-  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(pg_session_, db_name.c_str(), &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(pg_session_, db_name.c_str(), db_oid, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
 }

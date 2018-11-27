@@ -435,8 +435,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return clock_;
   }
 
-  const Schema& SchemaRef() const override {
-    return metadata_->schema();
+  const Schema& SchemaRef(const std::string& table_id = "") const override {
+    return CHECK_RESULT(metadata_->GetTableInfo(table_id))->schema;
   }
 
   const common::YQLStorageIf& QLStorage() const override {

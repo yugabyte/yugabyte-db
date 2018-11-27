@@ -629,7 +629,8 @@ public class TestYBClient extends BaseYBClientTest {
   public void testCreateDeleteTable() throws Exception {
     LOG.info("Starting testCreateDeleteTable");
     // Check that we can create a table.
-    syncClient.createTable(DEFAULT_KEYSPACE_NAME, tableName, basicSchema, new CreateTableOptions());
+    syncClient.createTable(DEFAULT_KEYSPACE_NAME, tableName, hashKeySchema,
+                           new CreateTableOptions());
     assertFalse(syncClient.getTablesList().getTablesList().isEmpty());
     assertTrue(syncClient.getTablesList().getTablesList().contains(tableName));
 
@@ -638,7 +639,7 @@ public class TestYBClient extends BaseYBClientTest {
     assertFalse(syncClient.getTablesList().getTablesList().contains(tableName));
 
     // Check that we can re-recreate it, with a different schema.
-    List<ColumnSchema> columns = new ArrayList<>(basicSchema.getColumns());
+    List<ColumnSchema> columns = new ArrayList<>(hashKeySchema.getColumns());
     columns.add(new ColumnSchema.ColumnSchemaBuilder("one more", Type.STRING).build());
     Schema newSchema = new Schema(columns);
     syncClient.createTable(DEFAULT_KEYSPACE_NAME, tableName, newSchema);

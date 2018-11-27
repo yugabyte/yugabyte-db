@@ -24,7 +24,8 @@ SystemTablet::SystemTablet(const Schema& schema, std::unique_ptr<YQLVirtualTable
       tablet_id_(tablet_id) {
 }
 
-const Schema& SystemTablet::SchemaRef() const {
+const Schema& SystemTablet::SchemaRef(const std::string& table_id) const {
+  // table_id is ignored. It should match the system table's id.
   return schema_;
 }
 

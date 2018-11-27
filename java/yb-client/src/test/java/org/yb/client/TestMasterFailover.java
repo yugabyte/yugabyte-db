@@ -53,7 +53,7 @@ public class TestMasterFailover extends BaseYBClientTest {
   protected void afterStartingMiniCluster() throws Exception {
     super.afterStartingMiniCluster();
 
-    createTable(TABLE_NAME, basicSchema, new CreateTableOptions());
+    createTable(TABLE_NAME, hashKeySchema, new CreateTableOptions());
   }
 
   @Override
@@ -77,7 +77,7 @@ public class TestMasterFailover extends BaseYBClientTest {
 
     // Test that we can create a new table when one of the masters is down.
     String newTableName = TABLE_NAME + "-afterLeaderIsDead";
-    createTable(newTableName, basicSchema, new CreateTableOptions());
+    createTable(newTableName, hashKeySchema, new CreateTableOptions());
 
     // Test that we can initialize a client when one of the masters specified in the
     // connection string is down.

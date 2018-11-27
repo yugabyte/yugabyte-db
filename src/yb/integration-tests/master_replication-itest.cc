@@ -127,6 +127,7 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
     gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
     return table_creator->table_name(table_name)
         .schema(&schema)
+        .hash_schema(YBHashSchema::kMultiColumnHash)
         .Create();
   }
 

@@ -95,18 +95,41 @@ Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice,
 // DocKey
 // ------------------------------------------------------------------------------------------------
 
-DocKey::DocKey() : hash_present_(false) {
+DocKey::DocKey() : cotable_id_(boost::uuids::nil_uuid()), hash_present_(false) {
 }
 
 DocKey::DocKey(const vector<PrimitiveValue>& range_components)
-    : hash_present_(false),
+    : cotable_id_(boost::uuids::nil_uuid()),
+      hash_present_(false),
       range_group_(range_components) {
 }
 
 DocKey::DocKey(DocKeyHash hash,
                const vector<PrimitiveValue>& hashed_components,
                const vector<PrimitiveValue>& range_components)
-    : hash_present_(true),
+    : cotable_id_(boost::uuids::nil_uuid()),
+      hash_present_(true),
+      hash_(hash),
+      hashed_group_(hashed_components),
+      range_group_(range_components) {
+}
+
+DocKey::DocKey(const Schema& schema)
+    : cotable_id_(schema.cotable_id()),
+      hash_present_(false) {
+}
+
+DocKey::DocKey(const Schema& schema, const vector<PrimitiveValue>& range_components)
+    : cotable_id_(schema.cotable_id()),
+      hash_present_(false),
+      range_group_(range_components) {
+}
+
+DocKey::DocKey(const Schema& schema, DocKeyHash hash,
+               const vector<PrimitiveValue>& hashed_components,
+               const vector<PrimitiveValue>& range_components)
+    : cotable_id_(schema.cotable_id()),
+      hash_present_(true),
       hash_(hash),
       hashed_group_(hashed_components),
       range_group_(range_components) {
@@ -119,6 +142,12 @@ KeyBytes DocKey::Encode() const {
 }
 
 void DocKey::AppendTo(KeyBytes* out) const {
+  if (!cotable_id_.IsNil()) {
+    std::string bytes;
+    CHECK_OK(cotable_id_.EncodeToComparable(&bytes))
+    out->AppendValueType(ValueType::kTableId);
+    out->AppendString(bytes);
+  }
   if (hash_present_) {
     // We are not setting the "more items in group" bit on the hash field because it is not part
     // of "hashed" or "range" groups.
@@ -159,6 +188,9 @@ class DecodeDocKeyCallback {
   }
 
   void SetHash(...) const {}
+
+  void SetCoTableId(const Uuid cotable_id) const {}
+
  private:
   boost::container::small_vector_base<Slice>* out_;
 };
@@ -174,6 +206,8 @@ class DummyCallback {
   }
 
   void SetHash(...) const {}
+
+  void SetCoTableId(const Uuid cotable_id) const {}
 
   PrimitiveValue* AddSubkey() const {
     return nullptr;
@@ -213,6 +247,10 @@ class DocKey::DecodeFromCallback {
       key_->hash_ = hash;
     }
   }
+  void SetCoTableId(const Uuid cotable_id) const {
+    key_->cotable_id_ = cotable_id;
+  }
+
  private:
   DocKey* key_;
 };
@@ -237,7 +275,17 @@ yb::Status DocKey::DoDecode(rocksdb::Slice *slice,
     return STATUS(Corruption, "Document key is empty");
   }
 
-  const ValueType first_value_type = static_cast<ValueType>(*slice->data());
+  ValueType first_value_type = static_cast<ValueType>(*slice->data());
+
+  if (first_value_type == ValueType::kTableId) {
+    Uuid cotable_id;
+    string bytes;
+    slice->remove_prefix(1);
+    RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
+    RETURN_NOT_OK(cotable_id.DecodeFromComparable(bytes));
+    callback.SetCoTableId(cotable_id);
+    first_value_type = static_cast<ValueType>(*slice->data());
+  }
 
   if (!IsPrimitiveValueType(first_value_type) && first_value_type != ValueType::kGroupEnd) {
     return STATUS_FORMAT(Corruption,
@@ -292,6 +340,11 @@ yb::Status DocKey::FullyDecodeFrom(const rocksdb::Slice& slice) {
 
 string DocKey::ToString() const {
   string result = "DocKey(";
+  if (!cotable_id_.IsNil()) {
+    result += "CoTableId=";
+    result += cotable_id_.ToString();
+    result += ", ";
+  }
   if (hash_present_) {
     result += StringPrintf("0x%04x", hash_);
     result += ", ";
@@ -305,7 +358,9 @@ string DocKey::ToString() const {
 }
 
 bool DocKey::operator ==(const DocKey& other) const {
-  return HashedComponentsEqual(other) && range_group_ == other.range_group_;
+  return cotable_id_ == other.cotable_id_ &&
+         HashedComponentsEqual(other) &&
+         range_group_ == other.range_group_;
 }
 
 bool DocKey::HashedComponentsEqual(const DocKey& other) const {
@@ -324,6 +379,9 @@ void DocKey::SetRangeComponent(const PrimitiveValue& val, int idx) {
 }
 
 int DocKey::CompareTo(const DocKey& other) const {
+  int result = CompareUsingLessThan(cotable_id_, other.cotable_id_);
+  if (result != 0) return result;
+
   // Each table will only contain keys with hash present or absent, so we should never compare
   // keys from both categories.
   //
@@ -331,8 +389,6 @@ int DocKey::CompareTo(const DocKey& other) const {
   //       if we decide to rethink DocDB's implementation of hash components as part of end-to-end
   //       integration of CQL's hash partition keys in December 2016.
   DCHECK_EQ(hash_present_, other.hash_present_);
-
-  int result = 0;
   if (hash_present_) {
     result = CompareUsingLessThan(hash_, other.hash_);
     if (result != 0) return result;
