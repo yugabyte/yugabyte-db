@@ -69,6 +69,10 @@ CHECKED_STATUS PTDropStmt::Analyze(SemContext *sem_context) {
       case OBJECT_ROLE:
         RETURN_NOT_OK(sem_context->CheckHasRolePermission(loc(), PermissionType::DROP_PERMISSION,
             name()->QLName()));
+        if (sem_context->CurrentRoleName() == name()->QLName()) {
+          return sem_context->Error(this, "Cannot DROP primary role for current login",
+              ErrorCode::INVALID_REQUEST);
+        }
         break;
       default:
         return sem_context->Error(this, ErrorCode::FEATURE_NOT_SUPPORTED);

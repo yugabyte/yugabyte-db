@@ -304,4 +304,17 @@ public class TestAuthentication extends BaseAuthenticationCQLTest {
     thrown.expectMessage("Only superusers are allowed to alter superuser status");
     s2.execute(alterStmt);
   }
+
+  @Test
+  public void testRoleCannotDeleteItself() throws Exception {
+    String user = "delete_itself_role";
+    String password = "abc";
+
+    testCreateRoleHelper(user, password, true, true);
+
+    Session s2 = getSession(user, password);
+    thrown.expect(com.datastax.driver.core.exceptions.InvalidQueryException.class);
+    thrown.expectMessage("Cannot DROP primary role for current login");
+    s2.execute(String.format("DROP ROLE %s", user));
+  }
 }
