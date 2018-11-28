@@ -133,3 +133,10 @@ SELECT lengthb(NULL) IS NULL;
  t
 (1 row)
 
+-- null safe concat
+SELECT NULL || 'hello'::varchar2 || NULL;
+ ?column? 
+----------
+ hello
+(1 row)
+

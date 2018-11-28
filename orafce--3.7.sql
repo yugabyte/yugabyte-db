@@ -2175,6 +2175,12 @@ typmod_out = varchar2typmodout,
 collatable = true
 );
 
+CREATE FUNCTION oracle.orafce_concat2(varchar2, varchar2)
+RETURNS varchar2
+AS 'MODULE_PATHNAME','orafce_concat2'
+LANGUAGE C IMMUTABLE;
+
+
 /* CREATE CAST */
 CREATE CAST (varchar2 AS text)
 WITHOUT FUNCTION
@@ -2378,6 +2384,11 @@ typmod_out = nvarchar2typmodout,
 collatable = true
 );
 
+CREATE FUNCTION oracle.orafce_concat2(nvarchar2, nvarchar2)
+RETURNS nvarchar2
+AS 'MODULE_PATHNAME','orafce_concat2'
+LANGUAGE C IMMUTABLE;
+
 /* CREATE CAST */
 CREATE CAST (nvarchar2 AS text)
 WITHOUT FUNCTION
@@ -2483,18 +2494,8 @@ UPDATE pg_proc
 SET protransform=(SELECT oid FROM pg_proc WHERE proname='varchar2_transform')
 WHERE proname='nvarchar2';
 
-CREATE FUNCTION concat2(varchar2, varchar2)
-RETURNS varchar2 AS $$
-SELECT pg_catalog.concat($1::text, $2::text)
-$$ LANGUAGE sql;
-
-CREATE FUNCTION concat2(nvarchar2, nvarchar2)
-RETURNS varchar2 AS $$
-SELECT pg_catalog.concat($1::text, $2::text)
-$$ LANGUAGE sql;
-
-CREATE OPERATOR || (function = concat2, leftarg = varchar2, rightarg = varchar2);
-CREATE OPERATOR || (function = concat2, leftarg = nvarchar2, rightarg = nvarchar2);
+CREATE OPERATOR || (function = oracle.orafce_concat2, leftarg = varchar2, rightarg = varchar2);
+CREATE OPERATOR || (function = oracle.orafce_concat2, leftarg = nvarchar2, rightarg = nvarchar2);
 
 /* PAD */
 

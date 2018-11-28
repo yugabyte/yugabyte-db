@@ -93,3 +93,6 @@ SELECT lengthb('');
 
 -- returs 't'
 SELECT lengthb(NULL) IS NULL;
+
+-- null safe concat
+SELECT NULL || 'hello'::varchar2 || NULL;

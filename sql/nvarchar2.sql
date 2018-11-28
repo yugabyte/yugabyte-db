@@ -55,4 +55,5 @@ SELECT 'abcde   '::NVARCHAR2(10) = 'abcde   '::NVARCHAR2(10);
 -- not equal
 SELECT 'abcde  '::NVARCHAR2(10) = 'abcde   '::NVARCHAR2(10);
 
-
+-- null safe concat
+SELECT NULL || 'hello'::varchar2 || NULL;
