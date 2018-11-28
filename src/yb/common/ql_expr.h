@@ -13,6 +13,22 @@
 
 namespace yb {
 
+// In addition to regular columns, YB support for postgres also have virtual columns.
+// Virtual columns are just expression that is evaluated by DocDB in "doc_expr.cc".
+enum class PgSystemAttrNum : int {
+  // Postgres system columns.
+  kSelfItemPointerAttributeNumber = -1, // ctid.
+  kObjectIdAttributeNumber = -2, // oid.
+  kMinTransactionIdAttributeNumber = -3, // xmin
+  kMinCommandIdAttributeNumber = -4, // cmin
+  kMaxTransactionIdAttributeNumber = -5, // xmax
+  kMaxCommandIdAttributeNumber = -6, // cmax
+  kTableOidAttributeNumber = -7, // tableoid
+
+  // YugaByte system columns.
+  kYBTupleId = -8, // yb_ctid.
+};
+
 // TODO(neil)
 // - This should be maping directly from "int32_t" to QLValue.
 //   using ValueMap = std::unordered_map<int32_t, const QLValuePB>;
@@ -165,6 +181,11 @@ class QLExprExecutor {
   CHECKED_STATUS ReadExprValue(const QLExpressionPB& ql_expr,
                                const QLTableRow& table_row,
                                QLValue *result);
+
+  // Evaluate column reference.
+  virtual CHECKED_STATUS EvalColumnRef(ColumnIdRep col_id,
+                                       const QLTableRow::SharedPtrConst& table_row,
+                                       QLValue *result);
 
   // Evaluate call to regular builtin operator.
   virtual CHECKED_STATUS EvalBFCall(const QLBCallPB& ql_expr,

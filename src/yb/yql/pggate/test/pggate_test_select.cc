@@ -46,6 +46,9 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
                                              DataType::FLOAT, false, false));
   CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "job", ++col_count,
                                              DataType::STRING, false, false));
+  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "oid", -2,
+                                             DataType::INT32, false, false));
+  ++col_count;
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
@@ -69,7 +72,9 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   CHECK_YBC_STATUS(YBCPgNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
   YBCPgExpr expr_job;
   string job = strings::Substitute("Job_title_$0", seed);
-  CHECK_YBC_STATUS(YBCPgNewConstantChar(pg_stmt, job.c_str(), job.size(), false, &expr_job));
+  CHECK_YBC_STATUS(YBCPgNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
+  YBCPgExpr expr_oid;
+  CHECK_YBC_STATUS(YBCPgNewConstantInt4(pg_stmt, seed, false, &expr_oid));
 
   // Set column value to be inserted.
   int attr_num = 0;
@@ -79,6 +84,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_projcnt));
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_salary));
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_job));
+  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, -2, expr_oid));
+  ++attr_num;
   CHECK_EQ(attr_num, col_count);
 
   const int insert_row_count = 7;
@@ -94,7 +101,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false);
     YBCPgUpdateConstFloat4(expr_salary, seed + 1.0*seed/10.0, false);
     job = strings::Substitute("Job_title_$0", seed);
-    YBCPgUpdateConstChar(expr_job, job.c_str(), job.size(), false);
+    YBCPgUpdateConstText(expr_job, job.c_str(), false);
+    YBCPgUpdateConstInt4(expr_oid, seed, false);
   }
 
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
@@ -118,6 +126,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
   YBCPgNewColumnRef(pg_stmt, 6, &colref);
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, -2, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Set partition and range columns for SELECT to select a specific row.
   // SELECT ... WHERE hash = 0 AND id = seed.
@@ -135,9 +145,10 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
   bool *isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   int select_row_count = 0;
+  YBCPgSysColumns syscols;
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, values, isnulls, &has_data);
+    YBCPgDmlFetch(pg_stmt, values, isnulls, &syscols, &has_data);
     if (!has_data) {
       break;
     }
@@ -150,7 +161,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
               << ", dependent count = " << values[2]
               << ", project count = " << values[3]
               << ", salary = " << *reinterpret_cast<float*>(&values[4])
-              << ", job = (" << values[5] << ")";
+              << ", job = (" << values[5] << ")"
+              << ", oid = " << syscols.oid;
 
     // Check result.
     int col_index = 0;
@@ -167,6 +179,9 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
     string expected_job_name = strings::Substitute("Job_title_$0", id);
     CHECK_EQ(selected_job_name, expected_job_name);
+
+    int32_t oid = static_cast<int32_t>(syscols.oid);
+    CHECK_EQ(oid, id) << "Unexpected result for OID column";
   }
   CHECK_EQ(select_row_count, 1) << "Unexpected row count";
 
@@ -190,6 +205,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
   YBCPgNewColumnRef(pg_stmt, 6, &colref);
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, -2, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Set partition column for SELECT.
   CHECK_YBC_STATUS(YBCPgNewConstantInt8(pg_stmt, 0, false, &expr_hash));
@@ -203,7 +220,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, values, isnulls, &has_data);
+    YBCPgDmlFetch(pg_stmt, values, isnulls, &syscols, &has_data);
     CHECK(has_data) << "Not all inserted rows are fetch";
 
     // Print result
@@ -213,7 +230,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
               << ", dependent count = " << values[2]
               << ", project count = " << values[3]
               << ", salary = " << *reinterpret_cast<float*>(&values[4])
-              << ", job = (" << values[5] << ")";
+              << ", job = (" << values[5] << ")"
+              << ", oid = " << syscols.oid;
 
     // Check result.
     int col_index = 0;
@@ -229,6 +247,9 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
     string expected_job_name = strings::Substitute("Job_title_$0", id);
     CHECK_EQ(selected_job_name, expected_job_name);
+
+    int32_t oid = static_cast<int32_t>(syscols.oid);
+    CHECK_EQ(oid, id) << "Unexpected result for OID column";
   }
 
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));

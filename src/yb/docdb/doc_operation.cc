@@ -3223,78 +3223,13 @@ CHECKED_STATUS PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& dat
   QLTableRow::SharedPtr table_row = make_shared<QLTableRow>();
   RETURN_NOT_OK(ReadColumns(data, table_row));
 
-  if (request_.column_values_size() > 0) {
-    return STATUS(InvalidArgument, "WHERE clause condition is not yet fully supported");
+  // TODO(neil) Add support for WHERE clause.
+  CHECK(request_.column_values_size() == 0) << "WHERE clause condition is not yet fully supported";
+  CHECK(!request_.missing_primary_key()) << "WHERE clause condition is not yet fully supported";
 
-    // TODO(neil) Uncomment the following code when proxy server supports where clause.
-#if 0
-    for (const auto& column_value : request_.column_values()) {
-      const ColumnId column_id(column_value.column_id());
-      const auto column = schema_.column_by_id(column_id);
-      RETURN_NOT_OK(column);
-      const DocPath sub_path(range_doc_path_->encoded_doc_key(), PrimitiveValue(column_id));
-      RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path, data.read_time, data.deadline,
-                                                       request_.stmt_id()));
-    }
-#endif
-  } else if (request_.missing_primary_key()) {
-    return STATUS(InvalidArgument, "WHERE clause condition is not yet fully supported");
-
-    // TODO(neil) Uncomment the following code when proxy server supports where clause.
-#if 0
-    // Create the schema projection -- range deletes cannot reference non-primary key columns,
-    // so the non-static projection is all we need, it should contain all referenced columns.
-    Schema projection;
-    RETURN_NOT_OK(CreateProjections(schema_, request_.column_refs(), &projection));
-
-    // Construct the scan spec basing on the WHERE condition.
-    vector<PrimitiveValue> hashed_components;
-    RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.partition_column_values(),
-                                               schema_,
-                                               0,
-                                               &hashed_components));
-    boost::optional<int32_t> hash_code = request_.has_hash_code()
-                                         ? boost::make_optional<int32_t>(request_.hash_code())
-                                         : boost::none;
-    DocPgsqlScanSpec spec(projection,
-                          request_.stmt_id(),
-                          hashed_components,
-                          hash_code,
-                          hash_code,
-                          request_.mutable_where_expr());
-    DocRowwiseIterator iterator(projection,
-                                schema_,
-                                txn_op_context_,
-                                data.doc_write_batch->doc_db(),
-                                data.deadline,
-                                data.read_time);
-    RETURN_NOT_OK(iterator.Init(spec));
-
-    // Iterate through rows and delete those that match the condition.
-    // TODO We do not lock here, so other write transactions coming in might appear partially
-    // applied if they happen in the middle of a ranged delete.
-    while (iterator.HasNext()) {
-      table_row->Clear();
-      RETURN_NOT_OK(iterator.NextRow(table_row.get()));
-
-      // Match the row with the where condition before deleting it.
-      QLValue match;
-      RETURN_NOT_OK(EvalExpr(*spec.where_expr(), table_row, &match));
-      if (match.bool_value()) {
-        const DocKey& row_key = iterator.row_key();
-        const DocPath row_path(row_key.Encode());
-        RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(row_path, data.read_time, data.deadline));
-      }
-    }
-    data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
-#endif
-
-  } else {
-    // Otherwise, delete the referenced row (all columns).
-    RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(*range_doc_path_, data.read_time,
-                                                     data.deadline));
-  }
-
+  // Otherwise, delete the referenced row (all columns).
+  RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(*range_doc_path_, data.read_time,
+                                                   data.deadline));
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }
@@ -3368,12 +3303,12 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   RETURN_NOT_OK(CreateProjections(schema, request_.column_refs(), &projection));
 
   // Construct scan specification and iterator.
-  common::YQLRowwiseIteratorIf::UniPtr iter;
+  current_tuple_ = nullptr;
   common::PgsqlScanSpec::UniPtr spec;
   ReadHybridTime req_read_time;
   RETURN_NOT_OK(ql_storage.BuildYQLScanSpec(request_, read_time, schema, &spec, &req_read_time));
   RETURN_NOT_OK(ql_storage.GetIterator(request_, query_schema, schema, txn_op_context_,
-                                       deadline, req_read_time, *spec, &iter));
+                                       deadline, req_read_time, *spec, &current_tuple_));
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
   }
@@ -3381,11 +3316,11 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   // Fetching data.
   int match_count = 0;
   QLTableRow::SharedPtr selected_row = make_shared<QLTableRow>();
-  while (resultset->rsrow_count() < row_count_limit && iter->HasNext()) {
+  while (resultset->rsrow_count() < row_count_limit && current_tuple_->HasNext()) {
     // The filtering process runs in the following order.
     // <hash_code><hash_components><range_components><regular_column_id> -> value;
     selected_row->Clear();
-    RETURN_NOT_OK(iter->NextRow(projection, selected_row.get()));
+    RETURN_NOT_OK(current_tuple_->NextRow(projection, selected_row.get()));
 
     // Match the row with the where condition before adding to the row block.
     bool is_match = true;
@@ -3411,10 +3346,10 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   if (FLAGS_trace_docdb_calls) {
     TRACE("Fetched $0 rows.", resultset->rsrow_count());
   }
-  *restart_read_ht = iter->RestartReadHt();
+  *restart_read_ht = current_tuple_->RestartReadHt();
 
   if (resultset->rsrow_count() >= row_count_limit && !request_.is_aggregate()) {
-    RETURN_NOT_OK(iter->SetPagingStateIfNecessary(request_, &response_));
+    RETURN_NOT_OK(current_tuple_->SetPagingStateIfNecessary(request_, &response_));
   }
 
   return Status::OK();
@@ -3431,6 +3366,20 @@ CHECKED_STATUS PgsqlReadOperation::PopulateResultSet(const QLTableRow::SharedPtr
     rscol_index++;
   }
 
+  return Status::OK();
+}
+
+CHECKED_STATUS PgsqlReadOperation::GetTupleId(QLValue *result) const {
+  // TODO(neil) Check if we need to append a table_id and other info to TupleID. For example, we
+  // might need info to make sure the TupleId by itself is a valid reference to a specific row of
+  // a valid table.
+  faststring tuple_id;
+
+  // Get DocKey content.
+  RETURN_NOT_OK(current_tuple_->GetKeyContent(&tuple_id));
+
+  // Save to QLValue.
+  result->set_binary_value(tuple_id.data(), tuple_id.size());
   return Status::OK();
 }
 

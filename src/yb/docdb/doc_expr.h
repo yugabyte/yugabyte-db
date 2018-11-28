@@ -10,6 +10,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/schema.h"
+#include "yb/docdb/key_bytes.h"
 
 namespace yb {
 namespace docdb {
@@ -25,6 +26,11 @@ class DocExprExecutor : public QLExprExecutor {
   DocExprExecutor() { }
   virtual ~DocExprExecutor() { }
 
+  // Evaluate column reference.
+  virtual CHECKED_STATUS EvalColumnRef(ColumnIdRep col_id,
+                                       const QLTableRow::SharedPtrConst& table_row,
+                                       QLValue *result) override;
+
   // Evaluate call to tablet-server builtin operator.
   virtual CHECKED_STATUS EvalTSCall(const QLBCallPB& ql_expr,
                                     const QLTableRow& table_row,
@@ -38,6 +44,7 @@ class DocExprExecutor : public QLExprExecutor {
   CHECKED_STATUS EvalAvg(const QLValue& val, QLValue *aggr_avg);
 
  protected:
+  virtual CHECKED_STATUS GetTupleId(QLValue *result) const;
   vector<QLValue> aggr_result_;
 };
 

@@ -91,9 +91,44 @@ class PgExpr {
 
   static void TranslateText(Slice *yb_cursor, const PgWireDataHeader& header,
                             PgTuple *pg_tuple, int index);
-  static void TranslateComplex(Slice *wire_data, const PgWireDataHeader& header,
-                               PgTuple *pg_tuple, int index);
+  static void TranslateBinary(Slice *yb_cursor, const PgWireDataHeader& header,
+                              PgTuple *pg_tuple, int index);
 
+  // Translate system column.
+  template<typename data_type>
+  static void TranslateSysCol(Slice *yb_cursor, const PgWireDataHeader& header, data_type *value) {
+    *value = 0;
+    if (header.is_null()) {
+      // 0 is an invalid OID.
+      return;
+    }
+    size_t read_size = PgDocData::ReadNumber(yb_cursor, value);
+    yb_cursor->remove_prefix(read_size);
+  }
+
+  static void TranslateSysCol(Slice *yb_cursor, const PgWireDataHeader& header,
+                              PgTuple *pg_tuple, uint8_t **value);
+  static void TranslateCtid(Slice *yb_cursor, const PgWireDataHeader& header,
+                            PgTuple *pg_tuple, int index);
+  static void TranslateOid(Slice *yb_cursor, const PgWireDataHeader& header,
+                           PgTuple *pg_tuple, int index);
+  static void TranslateXmin(Slice *yb_cursor, const PgWireDataHeader& header,
+                            PgTuple *pg_tuple, int index);
+  static void TranslateCmin(Slice *yb_cursor, const PgWireDataHeader& header,
+                            PgTuple *pg_tuple, int index);
+  static void TranslateXmax(Slice *yb_cursor, const PgWireDataHeader& header,
+                            PgTuple *pg_tuple, int index);
+  static void TranslateCmax(Slice *yb_cursor, const PgWireDataHeader& header,
+                            PgTuple *pg_tuple, int index);
+  static void TranslateTableoid(Slice *yb_cursor, const PgWireDataHeader& header,
+                                PgTuple *pg_tuple, int index);
+  static void TranslateYBCtid(Slice *yb_cursor, const PgWireDataHeader& header,
+                              PgTuple *pg_tuple, int index);
+
+  // Read hash_value.
+  static CHECKED_STATUS ReadHashValue(const char *doc_key, int key_size, uint16_t *hash_value);
+
+  // Get expression type.
   InternalType internal_type() const {
     return internal_type_;
   }
@@ -127,7 +162,7 @@ class PgConstant : public PgExpr {
 
   // Character string constant.
   PgConstant(const char *value, bool is_null);
-  PgConstant(const char *value, size_t bytes, bool is_null);
+  PgConstant(const void *value, size_t bytes, bool is_null);
 
   // Destructor.
   virtual ~PgConstant();
@@ -141,7 +176,7 @@ class PgConstant : public PgExpr {
 
   // Update text.
   void UpdateConstant(const char *value, bool is_null);
-  void UpdateConstant(const char *value, size_t bytes, bool is_null);
+  void UpdateConstant(const void *value, size_t bytes, bool is_null);
 
   // Expression to PB.
   virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);

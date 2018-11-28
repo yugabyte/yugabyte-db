@@ -38,8 +38,11 @@ class PgWire {
 
   static size_t ReadNumber(Slice *cursor, bool *value);
   static size_t ReadNumber(Slice *cursor, uint8 *value);
+  static size_t ReadNumber(Slice *cursor, uint16 *value);
   static size_t ReadNumber(Slice *cursor, int16 *value);
+  static size_t ReadNumber(Slice *cursor, uint32 *value);
   static size_t ReadNumber(Slice *cursor, int32 *value);
+  static size_t ReadNumber(Slice *cursor, uint64 *value);
   static size_t ReadNumber(Slice *cursor, int64 *value);
   static size_t ReadNumber(Slice *cursor, float *value);
   static size_t ReadNumber(Slice *cursor, double *value);
@@ -58,14 +61,20 @@ class PgWire {
 
   static void WriteBool(bool value, faststring *buffer);
   static void WriteUint8(uint8_t value, faststring *buffer);
+  static void WriteUint16(uint16_t value, faststring *buffer);
   static void WriteInt16(int16_t value, faststring *buffer);
+  static void WriteUint32(uint32_t value, faststring *buffer);
   static void WriteInt32(int32_t value, faststring *buffer);
+  static void WriteUint64(uint64_t value, faststring *buffer);
   static void WriteInt64(int64_t value, faststring *buffer);
   static void WriteFloat(float value, faststring *buffer);
   static void WriteDouble(double value, faststring *buffer);
 
   // Write Text Data
   static void WriteText(const string& value, faststring *buffer);
+
+  // Write Text Data
+  static void WriteBinary(const string& value, faststring *buffer);
 };
 
 // Just in case we change the serialization format. Different versions of DocDB and Postgres

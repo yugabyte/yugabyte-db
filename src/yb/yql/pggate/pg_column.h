@@ -20,13 +20,20 @@
 
 #include "yb/yql/pggate/pg_coldesc.h"
 #include "yb/yql/pggate/pg_expr.h"
+#include "yb/common/ql_expr.h"
 
 namespace yb {
 namespace pggate {
 
 class PgColumn {
  public:
+  // Constructor & Destructor.
   PgColumn();
+  virtual ~PgColumn() {
+  }
+
+  // Initialize hidden columns.
+  void Init(PgSystemAttrNum attr_num);
 
   // Bindings for write requests.
   PgsqlExpressionPB *AllocPrimaryBindPB(PgsqlWriteRequestPB *write_req);
@@ -50,6 +57,10 @@ class PgColumn {
     return bind_pb_;
   }
 
+  const string& attr_name() const {
+    return desc_.name();
+  }
+
   int attr_num() const {
     return desc_.attr_num();
   }
@@ -69,6 +80,12 @@ class PgColumn {
   bool set_read_requested(bool value) {
     return read_requested_ = value;
   }
+
+  bool is_system_column() {
+    return attr_num() < 0;
+  }
+
+  bool is_virtual_column();
 
  private:
   ColumnDesc desc_;

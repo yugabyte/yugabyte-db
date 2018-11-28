@@ -116,7 +116,6 @@ YBCStatus YBCPgNewDropTable(YBCPgSession pg_session,
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
 
-
 YBCStatus YBCPgGetTableDesc(YBCPgSession pg_session,
                             const char *database_name,
                             const char *table_name,
@@ -161,7 +160,8 @@ YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle,
 
 // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
 // by YBCPgDmlBindColumn().
-YBCStatus YBCPgDmlFetch(YBCPgStatement handle, uint64_t *values, bool *isnulls, bool *has_data);
+YBCStatus YBCPgDmlFetch(YBCPgStatement handle, uint64_t *values, bool *isnulls,
+                        YBCPgSysColumns *syscols, bool *has_data);
 
 // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
 // + The following operations are run by DocDB.
@@ -233,8 +233,8 @@ YBCStatus YBCPgNewConstantFloat8(YBCPgStatement stmt, double value, bool is_null
                                  YBCPgExpr *expr_handle);
 YBCStatus YBCPgNewConstantText(YBCPgStatement stmt, const char *value, bool is_null,
                                YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantChar(YBCPgStatement stmt, const char *value, int64_t bytes,
-                               bool is_null, YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstantBinary(YBCPgStatement stmt, const void *value, int64_t bytes,
+                                 bool is_null, YBCPgExpr *expr_handle);
 
 // The following update functions only work for constants.
 // Overwriting the constant expression with new value.

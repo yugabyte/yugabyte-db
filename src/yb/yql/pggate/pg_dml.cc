@@ -100,7 +100,7 @@ Status PgDml::PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb,
 
   // Make sure that ProtoBuf has only one entry per column ID instead of one per reference.
   //   SELECT col, col, col FROM a_table;
-  if (!pg_col->read_requested()) {
+  if (!pg_col->read_requested() && !pg_col->is_virtual_column()) {
     pg_col->set_read_requested(true);
     column_refs_->add_ids(pg_col->id());
   }
@@ -123,7 +123,6 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
   PgsqlExpressionPB *bind_pb = col->bind_pb();
   if (bind_pb == nullptr) {
     bind_pb = AllocColumnBindPB(col);
-    bind_pb = col->bind_pb();
   } else {
     if (expr_binds_.find(bind_pb) != expr_binds_.end()) {
       return STATUS_SUBSTITUTE(InvalidArgument,
@@ -161,11 +160,14 @@ Status PgDml::UpdateBindPBs() {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgDml::Fetch(uint64_t *values, bool *isnulls, bool *has_data) {
+Status PgDml::Fetch(uint64_t *values, bool *isnulls, PgSysColumns *syscols, bool *has_data) {
 
   // Each isnulls and values correspond (in order) to columns from the table schema.
   // Initialize to nulls for any columns not present in result.
   memset(isnulls, true, table_desc_->num_columns() * sizeof(bool));
+  if (syscols) {
+    memset(syscols, 0, sizeof(PgSysColumns));
+  }
 
   // Load data from cache in doc_op_ to cursor_ if it is not pointing to any data.
   if (cursor_.empty()) {
@@ -188,7 +190,7 @@ Status PgDml::Fetch(uint64_t *values, bool *isnulls, bool *has_data) {
 
   // Read the tuple from cached buffer and write it to postgres buffer.
   *has_data = true;
-  PgTuple pg_tuple(values, isnulls);
+  PgTuple pg_tuple(values, isnulls, syscols);
   RETURN_NOT_OK(WritePgTuple(&pg_tuple));
 
   return Status::OK();

@@ -27,6 +27,8 @@
 #include "yb/rocksdb/db/compaction.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 
+#include "yb/yql/pggate/util/pg_doc_data.h"
+
 using std::string;
 
 using yb::FormatRocksDBSliceAsStr;
@@ -588,6 +590,13 @@ void DocRowwiseIterator::GoToScanTarget(const DocKey &new_target) const {
     current_scan_target_idxs_[i] = range_cols_scan_options_->at(i).begin();
     current_scan_target_.SetRangeComponent(*current_scan_target_idxs_[i], i);
   }
+}
+
+CHECKED_STATUS DocRowwiseIterator::GetKeyContent(faststring *key_content) const {
+  KeyBytes key_bytes;
+  row_key_.AppendTo(&key_bytes);
+  key_content->append(key_bytes.data());
+  return Status::OK();
 }
 
 }  // namespace docdb
