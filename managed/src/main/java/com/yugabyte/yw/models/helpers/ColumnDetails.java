@@ -71,6 +71,8 @@ public class ColumnDetails {
     UUID("uuid"),
     TIMEUUID ("timeuuid"),
     FROZEN("frozen"),
+    DATE("date"),
+    TIME("time"),
     JSONB("jsonb"),
     USER_DEFINED_TYPE("user_defined_type");
 
@@ -136,6 +138,10 @@ public class ColumnDetails {
           return TIMEUUID;
         case FROZEN:
           return FROZEN;
+        case DATE:
+          return DATE;
+        case TIME:
+          return TIME;
         case JSONB:
           return JSONB;
         case USER_DEFINED_TYPE:
