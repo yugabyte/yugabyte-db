@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { DropdownButton } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
@@ -64,11 +64,19 @@ export default class ListBackups extends Component {
     return (
       <YBPanelItem
         header={
-          <Fragment>
-            <h2 className="task-list-header content-title pull-left">{title}</h2>
-            <TableAction actionType="create-backup" isMenuItem={false} className="pull-right"/>
-          </Fragment>
-
+          <div className="container-title clearfix">
+            <div className="pull-left">
+              <h2 className="task-list-header content-title pull-left">{title}</h2>
+            </div>
+            <div className="pull-right">
+              <div className="backup-action-btn-group">
+                <TableAction className="table-action" btnClass={"btn-primary"}
+                             actionType="create-backup" isMenuItem={false} />
+                <TableAction className="table-action" btnClass={"btn-default"}
+                             actionType="restore-backup" isMenuItem={false} />
+              </div>
+            </div>
+          </div>
         }
         body={
           <BootstrapTable data={backupInfos} pagination={true} className="backup-list-table">

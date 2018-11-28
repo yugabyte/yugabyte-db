@@ -3,7 +3,7 @@
 import { connect } from 'react-redux';
 import { CreateBackup } from '../';
 import { createTableBackup, createTableBackupResponse } from '../../../actions/tables';
-import { reduxForm } from 'redux-form';
+import { isNonEmptyArray, isNonEmptyObject } from "utils/ObjectUtils";
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -17,34 +17,26 @@ const mapDispatchToProps = (dispatch) => {
 };
 
 function mapStateToProps(state, ownProps) {
-  const { customer: { configs } } = state;
+  const { customer: { configs }, tables: { universeTablesList } } = state;
   const storageConfigs = configs.data.filter( (config) => config.type === "STORAGE");
+  const initialFormValues = {};
+
+  if (isNonEmptyObject(ownProps.tableInfo)) {
+    initialFormValues.backupTableUUID = ownProps.tableInfo.tableID;
+  } else if (isNonEmptyArray(universeTablesList.data)) {
+    initialFormValues.backupTableUUID = universeTablesList.tableUUID;
+  }
+
+  if (isNonEmptyArray(storageConfigs)) {
+    initialFormValues.storageConfigUUID = storageConfigs[0].configUUID;
+  }
+
   return {
     storageConfigs: storageConfigs,
     universeDetails: state.universe.currentUniverse.data.universeDetails,
     universeTables: state.tables.universeTablesList,
-    initialFormValues: {}
+    initialValues: initialFormValues
   };
 }
 
-function validate(values) {
-  const errors = {};
-  let hasErrors = false;
-  if (!values.storageConfigUUID) {
-    errors.storageConfigUUID = 'Storage Config is required.';
-    hasErrors = true;
-  }
-  if (!values.backupTableUUID) {
-    errors.backupTableUUID = 'Backup table is required.';
-    hasErrors = true;
-  }
-  return hasErrors && errors;
-}
-
-const createBackupForm = reduxForm({
-  form: 'CreateBackup',
-  fields: ['storageConfigUUID', 'backupTableUUID'],
-  validate
-});
-
-export default connect(mapStateToProps, mapDispatchToProps)(createBackupForm(CreateBackup));
+export default connect(mapStateToProps, mapDispatchToProps)(CreateBackup);

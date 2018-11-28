@@ -3,100 +3,84 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { browserHistory } from 'react-router';
-import { Field, change } from 'redux-form';
-import { YBModal, YBSelectWithLabel } from '../../common/forms/fields';
-import { isNonEmptyObject, isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
+import { YBFormSelect } from '../../common/forms/fields';
+import { isNonEmptyObject, isDefinedNotNull } from 'utils/ObjectUtils';
+import { Field } from 'formik';
+import { YBModalForm } from '../../common/forms';
+import * as Yup from "yup";
 
 export default class CreateBackup extends Component {
   static propTypes = {
     tableInfo: PropTypes.object
   };
 
-  updateFormField = (field, value) => {
-    this.props.dispatch(change("CreateBackup", field, value));
-  };
-
   createBackup = values => {
     const {
       universeDetails: { universeUUID },
-      tableInfo,
       onHide,
       createTableBackup,
       universeTables
     } = this.props;
 
-    let payload = {
-      "storageConfigUUID": values.storageConfigUUID,
-      "actionType": "CREATE"
-    };
-    let tableUUID = null;
-    if (isNonEmptyObject(tableInfo)) {
-      payload = Object.assign(payload, {
-        "tableName": tableInfo.tableName,
-        "keyspace": tableInfo.keySpace
-      });
-      tableUUID = tableInfo.tableID;
-    } else if (isDefinedNotNull(values.backupTableUUID)) {
+    if (isDefinedNotNull(values.backupTableUUID) &&
+        isDefinedNotNull(values.storageConfigUUID)) {
       const backupTable = universeTables.find((table) => table.tableUUID === values.backupTableUUID);
-      payload = Object.assign(payload, {
+      const payload = {
+        "storageConfigUUID": values.storageConfigUUID,
+        "actionType": "CREATE",
         "tableName": backupTable.tableName,
         "keyspace": backupTable.keySpace
-      });
-      tableUUID = backupTable.tableUUID;
+      };
+      createTableBackup(universeUUID, backupTable.tableUUID, payload);
+      onHide();
+      browserHistory.push('/universes/' + universeUUID + "?tab=backups");
     }
-    createTableBackup(universeUUID, tableUUID, payload);
-    onHide();
-    browserHistory.push('/universes/' + universeUUID + "?tab=backups");
   };
 
-  componentDidUpdate(prevProps, prevState, snapshot) {
-    if (!this.props.submitSucceeded) {
-      const { storageConfigs, universeTables } = this.props;
-      if (isNonEmptyArray(storageConfigs)) {
-        this.updateFormField("storageConfigUUID", storageConfigs[0].configUUID);
-      }
-      if (isNonEmptyArray(universeTables)) {
-        this.updateFormField("backupTableUUID", universeTables[0].tableUUID);
-      }
-    }
-  }
-
   render() {
-    const { visible, onHide, handleSubmit, tableInfo, storageConfigs, universeTables } = this.props;
-    const storageOptions = storageConfigs.map((config, idx) => {
-      return <option key={idx} value={config.configUUID}>{config.name + " Storage"}</option>;
+    const { visible, onHide, tableInfo, storageConfigs, universeTables } = this.props;
+    const storageOptions = storageConfigs.map((config) => {
+      return {value: config.configUUID, label: config.name + " Storage"};
     });
     let tableOptions = [];
     let modalTitle = "Create Backup";
     if (isNonEmptyObject(tableInfo)) {
-      tableOptions = (
-        <option key={tableInfo.tableID} value={tableInfo.tableID}>
-          {tableInfo.keySpace + "." + tableInfo.tableName}
-        </option>);
+      tableOptions = [{
+        value: tableInfo.tableID,
+        label: tableInfo.keySpace + "." + tableInfo.tableName
+      }];
       modalTitle = modalTitle + " for " + tableInfo.keySpace + "." + tableInfo.tableName;
     } else {
-      tableOptions = universeTables.map((tableInfo, idx) => {
-        return (
-          <option key={idx} value={tableInfo.tableUUID}>
-            {tableInfo.keySpace + "." + tableInfo.tableName}
-          </option>
-        );
+      tableOptions = universeTables.map((tableInfo) => {
+        return {value: tableInfo.tableUUID, label: tableInfo.keySpace + "." + tableInfo.tableName};
       });
     }
 
     return (
       <div className="universe-apps-modal">
-        <YBModal title={modalTitle}
+        <YBModalForm title={modalTitle}
                  visible={visible}
                  onHide={onHide}
                  showCancelButton={true}
                  cancelLabel={"Cancel"}
-                 onFormSubmit={handleSubmit(this.createBackup)}>
-          <Field name="backupTableUUID" component={YBSelectWithLabel}
-                 label={"Table"} options={tableOptions} />
-          <Field name="storageConfigUUID" component={YBSelectWithLabel}
-                 label={"Storage"} options={storageOptions} />
-        </YBModal>
+                 onFormSubmit={this.createBackup}
+                 initialValues= {this.props.initialValues}
+                 validationSchema={
+                   Yup.object().shape({
+                     backupTableUUID: Yup.string()
+                     .required('Backup Table is Required'),
+                     storageConfigUUID: Yup.string()
+                     .required('Storage Config is Required'),
+                   })
+                 }>
+          <Field name="storageConfigUUID" component={YBFormSelect}
+                 label={"Storage"}
+                 onInputChanged={this.storageConfigChanged}
+                 options={storageOptions}  />
+          <Field name="backupTableUUID" component={YBFormSelect}
+                 label={"Table"} options={tableOptions}
+                 onInputChanged={this.backupTableChanged} />
+        </YBModalForm>
       </div>
     );
   }

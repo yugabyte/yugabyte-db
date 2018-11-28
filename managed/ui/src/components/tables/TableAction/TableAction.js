@@ -22,11 +22,13 @@ export default class TableAction extends Component {
   static propTypes = {
     currentRow: PropTypes.object,
     isMenuItem: PropTypes.bool,
+    btnClass: PropTypes.string,
     actionType: PropTypes.oneOf(['drop', 'import', 'create-backup', 'restore-backup'])
   };
 
   static defaultProps = {
-    isMenuItem: true
+    isMenuItem: true,
+    btnClass: 'btn-default'
   };
 
   openModal() {
@@ -101,7 +103,7 @@ export default class TableAction extends Component {
     return (
       <div className={this.props.className}>
         <YBButton btnText={btnLabel} btnIcon={btnIcon}
-                btnClass={"btn btn-orange"} onClick={this.openModal} />
+                btnClass={'btn ' + this.props.btnClass} onClick={this.openModal} />
         {modalContainer}
       </div>
     );

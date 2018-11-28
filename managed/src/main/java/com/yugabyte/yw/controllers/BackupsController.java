@@ -37,7 +37,7 @@ public class BackupsController extends AuthenticatedController {
     return ApiResponse.success(backups);
   }
 
-  public Result restore(UUID customerUUID, UUID universeUUID, UUID backupUUID) {
+  public Result restore(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
       String errMsg = "Invalid Customer UUID: " + customerUUID;
@@ -51,20 +51,20 @@ public class BackupsController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
-    Backup backup = Backup.get(customerUUID, backupUUID);
-    if (backup == null) {
-      String errMsg = "Invalid Backup UUID: " + backupUUID;
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
-
     Form<BackupTableParams> formData = formFactory.form(BackupTableParams.class)
         .bindFromRequest();
 
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
-
     BackupTableParams taskParams = formData.get();
+    // Since we hit the restore endpoint, lets default the action type to RESTORE
+    taskParams.actionType = BackupTableParams.ActionType.RESTORE;
+    if (taskParams.storageLocation == null) {
+      String errMsg = "Storage Location is required";
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+
     CustomerConfig storageConfig = CustomerConfig.get(customerUUID, taskParams.storageConfigUUID);
     if (storageConfig == null) {
       String errMsg = "Invalid StorageConfig UUID: " + taskParams.storageConfigUUID;
@@ -74,8 +74,7 @@ public class BackupsController extends AuthenticatedController {
 
     Backup newBackup = Backup.create(customerUUID, taskParams);
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
-    LOG.info("Submitted task to restore table backup {}.{} to {}.{}, task uuid = {}.",
-        backup.getBackupInfo().keyspace, backup.getBackupInfo().tableName,
+    LOG.info("Submitted task to restore table backup to {}.{}, task uuid = {}.",
         taskParams.keyspace, taskParams.tableName, taskUUID);
     newBackup.setTaskUUID(taskUUID);
     CustomerTask.create(customer,

@@ -226,6 +226,11 @@
   .Select-placeholder {
     line-height: 40px;
   }
+
+
+  .Select-menu-outer {
+    z-index: 2;
+  }
 }
 
 .help-block {
