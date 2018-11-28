@@ -20,7 +20,8 @@
 namespace yb {
 namespace pggate {
 
-PgTuple::PgTuple(uint64_t *datums, bool *isnulls) : datums_(datums), isnulls_(isnulls) {
+PgTuple::PgTuple(uint64_t *datums, bool *isnulls, PgSysColumns *syscols)
+    : datums_(datums), isnulls_(isnulls), syscols_(syscols) {
 }
 
 void PgTuple::WriteNull(int index, const PgWireDataHeader& header) {
@@ -69,12 +70,31 @@ void PgTuple::Write(int index, const PgWireDataHeader& header, const char *value
   datums_[index] = (uint64_t) YBCCStringToTextWithLen(value, static_cast<int>(bytes));
 }
 
+void PgTuple::Write(uint8_t **pgbuf, const PgWireDataHeader& header, const uint8_t *value,
+                    int64_t bytes) {
+  // PostgreSQL can represent text strings up to 1 GB minus a four-byte header.
+  const int64_t kMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
+
+  // TODO: return a status instead of crashing.
+  CHECK_LE(bytes, kMaxPostgresTextSizeBytes);
+  CHECK_GE(bytes, 0);
+  *pgbuf = static_cast<uint8_t*>(YBCCStringToTextWithLen(reinterpret_cast<const char*>(value),
+                                                         static_cast<int>(bytes)));
+}
+
 // TODO(neil) Once we serialize and deserialize binary types on Postgres side, we can implement
 // this function properly. Raise exception for now.
 void PgTuple::Write(int index, const PgWireDataHeader& header, const uint8_t *value,
                     int64_t bytes) {
   isnulls_[index] = false;
-  LOG(FATAL) << "Not yet supported";
+
+  // PostgreSQL can represent text strings up to 1 GB minus a four-byte header.
+  const int64_t kMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
+  // TODO: return a status instead of crashing.
+  CHECK_LE(bytes, kMaxPostgresTextSizeBytes);
+  CHECK_GE(bytes, 0);
+  datums_[index] = (uint64_t) YBCCStringToTextWithLen(reinterpret_cast<const char*>(value),
+                                                      static_cast<int>(bytes));
 }
 
 }  // namespace pggate

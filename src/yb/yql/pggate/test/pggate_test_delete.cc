@@ -69,7 +69,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   CHECK_YBC_STATUS(YBCPgNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
   YBCPgExpr expr_job;
   string job = strings::Substitute("Job_title_$0", seed);
-  CHECK_YBC_STATUS(YBCPgNewConstantChar(pg_stmt, job.c_str(), job.size(), false, &expr_job));
+  CHECK_YBC_STATUS(YBCPgNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
   // Set column value to be inserted.
   int attr_num = 0;
@@ -159,7 +159,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   int select_row_count = 0;
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, values, isnulls, &has_data);
+    YBCPgDmlFetch(pg_stmt, values, isnulls, nullptr, &has_data);
     if (!has_data) {
       break;
     }

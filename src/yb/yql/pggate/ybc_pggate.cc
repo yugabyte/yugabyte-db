@@ -228,8 +228,9 @@ YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle,
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }
 
-YBCStatus YBCPgDmlFetch(YBCPgStatement handle, uint64_t *values, bool *isnulls, bool *has_data) {
-  return ToYBCStatus(pgapi->DmlFetch(handle, values, isnulls, has_data));
+YBCStatus YBCPgDmlFetch(YBCPgStatement handle, uint64_t *values, bool *isnulls,
+                        YBCPgSysColumns *syscols, bool *has_data) {
+  return ToYBCStatus(pgapi->DmlFetch(handle, values, isnulls, syscols, has_data));
 }
 
 // INSERT Operations -------------------------------------------------------------------------------
@@ -343,8 +344,8 @@ YBCStatus YBCPgNewConstantText(YBCPgStatement stmt, const char *value, bool is_n
   return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
 }
 
-YBCStatus YBCPgNewConstantChar(YBCPgStatement stmt, const char *value, int64_t bytes, bool is_null,
-                               YBCPgExpr *expr_handle) {
+YBCStatus YBCPgNewConstantBinary(YBCPgStatement stmt, const void *value, int64_t bytes,
+                                 bool is_null, YBCPgExpr *expr_handle) {
   return ToYBCStatus(pgapi->NewConstant(stmt, value, bytes, is_null, expr_handle));
 }
 
@@ -376,7 +377,6 @@ YBCStatus YBCPgUpdateConstText(YBCPgExpr expr, const char *value, bool is_null) 
 YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value,  int64_t bytes, bool is_null) {
   return ToYBCStatus(pgapi->UpdateConstant(expr, value, bytes, is_null));
 }
-
 
 YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname, YBCPgExpr *op_handle) {
   return ToYBCStatus(pgapi->NewOperator(stmt, opname, op_handle));

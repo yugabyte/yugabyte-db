@@ -18,10 +18,6 @@
 #ifndef YB_YQL_PGGATE_PG_COLDESC_H_
 #define YB_YQL_PGGATE_PG_COLDESC_H_
 
-// #include "yb/common/types.h"
-// #include "yb/util/memory/mc_types.h"
-
-// #include "yb/common/ql_type.h"
 #include "yb/client/client.h"
 
 namespace yb {

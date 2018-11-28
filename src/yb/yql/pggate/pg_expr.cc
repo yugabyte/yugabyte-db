@@ -97,18 +97,84 @@ void PgExpr::TranslateText(Slice *yb_cursor, const PgWireDataHeader& header,
   yb_cursor->remove_prefix(text_size);
 }
 
-void PgExpr::TranslateComplex(Slice *yb_cursor, const PgWireDataHeader& header,
-                              PgTuple *pg_tuple, int index) {
+void PgExpr::TranslateBinary(Slice *yb_cursor, const PgWireDataHeader& header,
+                             PgTuple *pg_tuple, int index) {
   if (header.is_null()) {
     return pg_tuple->WriteNull(index, header);
   }
 
-  int64_t binary_size;
-  size_t read_size = PgDocData::ReadNumber(yb_cursor, &binary_size);
+  int64_t data_size;
+  size_t read_size = PgDocData::ReadNumber(yb_cursor, &data_size);
   yb_cursor->remove_prefix(read_size);
 
-  pg_tuple->Write(index, header, yb_cursor->data(), binary_size);
-  yb_cursor->remove_prefix(binary_size);
+  pg_tuple->Write(index, header, yb_cursor->data(), data_size);
+  yb_cursor->remove_prefix(data_size);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Translating system columns.
+void PgExpr::TranslateSysCol(Slice *yb_cursor, const PgWireDataHeader& header, PgTuple *pg_tuple,
+                             uint8_t **pgbuf) {
+  *pgbuf = nullptr;
+  if (header.is_null()) {
+    return;
+  }
+
+  int64_t data_size;
+  size_t read_size = PgDocData::ReadNumber(yb_cursor, &data_size);
+  yb_cursor->remove_prefix(read_size);
+
+  pg_tuple->Write(pgbuf, header, yb_cursor->data(), data_size);
+  yb_cursor->remove_prefix(data_size);
+}
+
+void PgExpr::TranslateCtid(Slice *yb_cursor, const PgWireDataHeader& header,
+                           PgTuple *pg_tuple, int index) {
+  TranslateSysCol<uint64_t>(yb_cursor, header, &pg_tuple->syscols()->ctid);
+}
+
+void PgExpr::TranslateOid(Slice *yb_cursor, const PgWireDataHeader& header,
+                          PgTuple *pg_tuple, int index) {
+  TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->oid);
+}
+
+void PgExpr::TranslateTableoid(Slice *yb_cursor, const PgWireDataHeader& header,
+                               PgTuple *pg_tuple, int index) {
+  TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->tableoid);
+}
+
+void PgExpr::TranslateXmin(Slice *yb_cursor, const PgWireDataHeader& header,
+                           PgTuple *pg_tuple, int index) {
+  TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->xmin);
+}
+
+void PgExpr::TranslateCmin(Slice *yb_cursor, const PgWireDataHeader& header,
+                           PgTuple *pg_tuple, int index) {
+  TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->cmin);
+}
+
+void PgExpr::TranslateXmax(Slice *yb_cursor, const PgWireDataHeader& header,
+                           PgTuple *pg_tuple, int index) {
+  TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->xmax);
+}
+
+void PgExpr::TranslateCmax(Slice *yb_cursor, const PgWireDataHeader& header,
+                           PgTuple *pg_tuple, int index) {
+  TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->cmax);
+}
+
+void PgExpr::TranslateYBCtid(Slice *yb_cursor, const PgWireDataHeader& header,
+                             PgTuple *pg_tuple, int index) {
+  TranslateSysCol(yb_cursor, header, pg_tuple, &pg_tuple->syscols()->yb_ctid);
+}
+
+Status PgExpr::ReadHashValue(const char *doc_key, int key_size, uint16_t *hash_value) {
+  // Because DocDB is using its own encoding for the key, we hack the system to read hash_value.
+  if (doc_key == NULL || key_size < sizeof(hash_value) + 1) {
+    return STATUS(InvalidArgument, "Key has unexpected size");
+  }
+  *hash_value = BigEndian::Load16(doc_key + 1);
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -169,12 +235,12 @@ PgConstant::PgConstant(const char *value, bool is_null)
   TranslateData = TranslateText;
 }
 
-PgConstant::PgConstant(const char *value, size_t bytes, bool is_null)
+PgConstant::PgConstant(const void *value, size_t bytes, bool is_null)
     : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kStringValue) {
   if (!is_null) {
     ql_value_.set_binary_value(value, bytes);
   }
-  TranslateData = TranslateText;
+  TranslateData = TranslateBinary;
 }
 
 PgConstant::~PgConstant() {
@@ -228,11 +294,11 @@ void PgConstant::UpdateConstant(const char *value, bool is_null) {
   }
 }
 
-void PgConstant::UpdateConstant(const char *value, size_t bytes, bool is_null) {
+void PgConstant::UpdateConstant(const void *value, size_t bytes, bool is_null) {
   if (is_null) {
     ql_value_.Clear();
   } else {
-    ql_value_.set_string_value(value, bytes);
+    ql_value_.set_binary_value(value, bytes);
   }
 }
 
@@ -255,54 +321,86 @@ Status PgColumnRef::Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   const PgColumn *col;
   RETURN_NOT_OK(pg_stmt->PrepareColumnForRead(attr_num_, expr_pb, &col));
 
-  switch (col->internal_type()) {
-    case QLValue::InternalType::kBoolValue:
-      TranslateData = TranslateNumber<bool>;
-      break;
-    case QLValue::InternalType::kInt16Value:
-      TranslateData = TranslateNumber<int16_t>;
-      break;
-    case QLValue::InternalType::kInt32Value:
-      TranslateData = TranslateNumber<int32_t>;
-      break;
-    case QLValue::InternalType::kInt64Value:
-      TranslateData = TranslateNumber<int64_t>;
-      break;
-    case QLValue::InternalType::kFloatValue:
-      TranslateData = TranslateNumber<float>;
-      break;
-    case QLValue::InternalType::kDoubleValue:
-      TranslateData = TranslateNumber<double>;
-      break;
-    case QLValue::InternalType::kStringValue:
+  if (attr_num_ < 0) {
+    // Setup system columns.
+    switch (attr_num_) {
+      case static_cast<int>(PgSystemAttrNum::kSelfItemPointerAttributeNumber):
+        TranslateData = TranslateCtid;
+        break;
+      case static_cast<int>(PgSystemAttrNum::kObjectIdAttributeNumber):
+        TranslateData = TranslateOid;
+        break;
+      case static_cast<int>(PgSystemAttrNum::kMinTransactionIdAttributeNumber):
+        TranslateData = TranslateXmin;
+        break;
+      case static_cast<int>(PgSystemAttrNum::kMinCommandIdAttributeNumber):
+        TranslateData = TranslateCmin;
+        break;
+      case static_cast<int>(PgSystemAttrNum::kMaxTransactionIdAttributeNumber):
+        TranslateData = TranslateXmax;
+        break;
+      case static_cast<int>(PgSystemAttrNum::kMaxCommandIdAttributeNumber):
+        TranslateData = TranslateCmax;
+        break;
+      case static_cast<int>(PgSystemAttrNum::kTableOidAttributeNumber):
+        TranslateData = TranslateTableoid;
+        break;
+      case static_cast<int>(PgSystemAttrNum::kYBTupleId):
+        TranslateData = TranslateYBCtid;
+        break;
+    }
+  } else {
+    // Setup regular columns.
+    switch (col->internal_type()) {
+      case QLValue::InternalType::kBoolValue:
+        TranslateData = TranslateNumber<bool>;
+        break;
+      case QLValue::InternalType::kInt16Value:
+        TranslateData = TranslateNumber<int16_t>;
+        break;
+      case QLValue::InternalType::kInt32Value:
+        TranslateData = TranslateNumber<int32_t>;
+        break;
+      case QLValue::InternalType::kInt64Value:
+        TranslateData = TranslateNumber<int64_t>;
+        break;
+      case QLValue::InternalType::kFloatValue:
+        TranslateData = TranslateNumber<float>;
+        break;
+      case QLValue::InternalType::kDoubleValue:
+        TranslateData = TranslateNumber<double>;
+        break;
+      case QLValue::InternalType::kStringValue:
+        TranslateData = TranslateText;
+        break;
+      case QLValue::InternalType::kBinaryValue:
+        TranslateData = TranslateBinary;
+        break;
 
-      TranslateData = TranslateText;
+      case QLValue::InternalType::kDecimalValue: FALLTHROUGH_INTENDED;
+      case QLValue::InternalType::kTimestampValue: FALLTHROUGH_INTENDED;
+      case QLValue::InternalType::kDateValue: FALLTHROUGH_INTENDED;
+      case QLValue::InternalType::kTimeValue: FALLTHROUGH_INTENDED;
+      case QLValue::InternalType::kInetaddressValue: FALLTHROUGH_INTENDED;
+      case QLValue::InternalType::kJsonbValue: FALLTHROUGH_INTENDED;
+      case QLValue::InternalType::kUuidValue: FALLTHROUGH_INTENDED;
+      case QLValue::InternalType::kTimeuuidValue: FALLTHROUGH_INTENDED;
+      case QLValue::InternalType::kVarintValue:
+        return STATUS_SUBSTITUTE(NotSupported, "Datatype $0 is not yet supported",
+                                 col->internal_type());
+
+      case QLValue::InternalType::kInt8Value: FALLTHROUGH_INTENDED;
+      case QLValue::InternalType::kMapValue: FALLTHROUGH_INTENDED;
+      case QLValue::InternalType::kSetValue: FALLTHROUGH_INTENDED;
+      case QLValue::InternalType::kListValue: FALLTHROUGH_INTENDED;
+      case QLValue::InternalType::kFrozenValue:
+        return STATUS_SUBSTITUTE(NotSupported, "CQL type $0 is not supported in Postgres",
+                                 col->internal_type());
+
+      case QLValue::InternalType::VALUE_NOT_SET:
+        return STATUS(Corruption, "Unexpected code path");
       break;
-
-    case QLValue::InternalType::kDecimalValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kTimestampValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kDateValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kTimeValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kInetaddressValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kJsonbValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kUuidValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kTimeuuidValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kBinaryValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kVarintValue:
-      return STATUS_SUBSTITUTE(NotSupported, "Datatype $0 is not yet supported",
-                               col->internal_type());
-
-    case QLValue::InternalType::kInt8Value: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kMapValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kSetValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kListValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kFrozenValue:
-      return STATUS_SUBSTITUTE(NotSupported, "CQL type $0 is not supported in Postgres",
-                               col->internal_type());
-
-    case QLValue::InternalType::VALUE_NOT_SET:
-      return STATUS(Corruption, "Unexpected code path");
-      break;
+    }
   }
 
   return Status::OK();

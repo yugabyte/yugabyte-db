@@ -69,7 +69,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   CHECK_YBC_STATUS(YBCPgNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
   YBCPgExpr expr_job;
   string job = strings::Substitute("Job_title_$0", seed);
-  CHECK_YBC_STATUS(YBCPgNewConstantChar(pg_stmt, job.c_str(), job.size(), false, &expr_job));
+  CHECK_YBC_STATUS(YBCPgNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
   // Set column value to be inserted.
   int attr_num = 0;
@@ -134,7 +134,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   bool *isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   int select_row_count = 0;
   bool has_data = false;
-  YBCPgDmlFetch(pg_stmt, values, isnulls, &has_data);
+  YBCPgDmlFetch(pg_stmt, values, isnulls, nullptr, &has_data);
   CHECK(has_data);
 
   // Print result
@@ -162,7 +162,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   string expected_job_name = strings::Substitute("Job_title_$0", empid);
   CHECK_EQ(selected_job_name, expected_job_name);
 
-  YBCPgDmlFetch(pg_stmt, values, isnulls, &has_data);
+  YBCPgDmlFetch(pg_stmt, values, isnulls, nullptr, &has_data);
   CHECK(!has_data);
 
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
@@ -194,7 +194,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, values, isnulls, &has_data);
+    YBCPgDmlFetch(pg_stmt, values, isnulls, nullptr, &has_data);
     CHECK(has_data) << "Not all inserted rows are fetch";
 
     // Print result
@@ -238,7 +238,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   CHECK_YBC_STATUS(YBCPgNewConstantInt4(pg_stmt, 77 + 100 + seed, false, &expr_projcnt));
   CHECK_YBC_STATUS(YBCPgNewConstantFloat4(pg_stmt, 77 + seed + 1.0*seed/10.0, false, &expr_salary));
   job = strings::Substitute("Job_title_$0", seed + 77);
-  CHECK_YBC_STATUS(YBCPgNewConstantChar(pg_stmt, job.c_str(), job.size(), false, &expr_job));
+  CHECK_YBC_STATUS(YBCPgNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
   attr_num = 0;
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_compid));
@@ -294,7 +294,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   select_row_count = 0;
   for (int i = 0; i < insert_row_count; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, values, isnulls, &has_data);
+    YBCPgDmlFetch(pg_stmt, values, isnulls, nullptr, &has_data);
     if (!has_data) {
       break;
     }
