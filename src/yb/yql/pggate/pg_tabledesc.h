@@ -44,6 +44,8 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
     return table_;
   }
 
+  static int ToPgAttrNum(const string &attr_name, int attr_num);
+
   std::vector<PgColumn>& columns() {
     return columns_;
   }
@@ -76,34 +78,19 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
     return table_->NewPgsqlDelete();
   }
 
-  Result<PgColumn *> FindColumn(int attr_num) {
-    for (auto& col : columns_) {
-      if (col.attr_num() == attr_num) {
-        return &col;
-      }
-    }
+  // Find the column given the postgres attr number.
+  Result<PgColumn *> FindColumn(int attr_num);
 
-    return STATUS_SUBSTITUTE(InvalidArgument, "Invalid column number $0", attr_num);
-  }
-
-  CHECKED_STATUS GetColumnInfo(int16_t attr_number, bool *is_primary, bool *is_hash) const {
-    for (int i = 0; i < num_key_columns(); i++) {
-      if (columns_[i].attr_num() == attr_number) {
-        *is_primary = true;
-        *is_hash = i < num_hash_key_columns();
-        return Status::OK();
-      }
-    }
-    *is_primary = false;
-    *is_hash = false;
-    return Status::OK();
-  }
+  CHECKED_STATUS GetColumnInfo(int16_t attr_number, bool *is_primary, bool *is_hash) const;
 
  private:
   std::shared_ptr<client::YBTable> table_;
 
   // TODO(neil) Considering the posibility of indexing columns_ by attr_num instead of ID.
   std::vector<PgColumn> columns_;
+
+  // Hidden columns.
+  PgColumn column_yb_ctid_;
 };
 
 }  // namespace pggate

@@ -21,6 +21,39 @@ namespace pggate {
 PgColumn::PgColumn() {
 }
 
+void PgColumn::Init(PgSystemAttrNum attr_num) {
+  switch (attr_num) {
+    case PgSystemAttrNum::kSelfItemPointerAttributeNumber:
+    case PgSystemAttrNum::kObjectIdAttributeNumber:
+    case PgSystemAttrNum::kMinTransactionIdAttributeNumber:
+    case PgSystemAttrNum::kMinCommandIdAttributeNumber:
+    case PgSystemAttrNum::kMaxTransactionIdAttributeNumber:
+    case PgSystemAttrNum::kMaxCommandIdAttributeNumber:
+    case PgSystemAttrNum::kTableOidAttributeNumber:
+      break;
+
+    case PgSystemAttrNum::kYBTupleId: {
+      int idx = static_cast<int>(PgSystemAttrNum::kYBTupleId);
+      desc_.Init(idx,
+                 idx,
+                 "yb_ctid",
+                 false,
+                 false,
+                 idx,
+                 QLType::Create(DataType::BINARY),
+                 InternalType::kBinaryValue);
+      return;
+    }
+  }
+
+  LOG(FATAL) << "Invalid attribute number for hidden column";
+}
+
+bool PgColumn::is_virtual_column() {
+  // Currently only yb_ctid is a virtual column.
+  return attr_num() == static_cast<int>(PgSystemAttrNum::kYBTupleId);
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PgsqlExpressionPB *PgColumn::AllocPrimaryBindPB(PgsqlWriteRequestPB *write_req) {

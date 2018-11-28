@@ -104,6 +104,8 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   HybridTime RestartReadHt() override;
 
+  virtual CHECKED_STATUS GetKeyContent(faststring *key_content) const override;
+
  private:
 
   // Retrieves the next key to read after the iterator finishes for the given page.

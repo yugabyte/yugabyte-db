@@ -100,6 +100,21 @@ typedef unsigned int YBCPgOid;
 // Postgres pg_catalog oid defined in Postgres' pg_namespace.h
 #define YBCPgCatalogOid ((YBCPgOid) 11)
 
+// Structure to hold the values of hidden columns when passing tuple from YB to PG.
+typedef struct PgSysColumns {
+  // Postgres system columns.
+  uint32_t oid;
+  uint32_t tableoid;
+  uint32_t xmin;
+  uint32_t cmin;
+  uint32_t xmax;
+  uint32_t cmax;
+  uint64_t ctid;
+
+  // Yugabyte system columns.
+  uint8_t *yb_ctid;
+} YBCPgSysColumns;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

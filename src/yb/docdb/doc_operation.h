@@ -491,6 +491,8 @@ class PgsqlReadOperation : public DocOperation, public DocExprExecutor {
 
   Type OpType() override { return Type::PGSQL_READ_OPERATION; }
 
+  virtual CHECKED_STATUS GetTupleId(QLValue *result) const override;
+
  private:
   CHECKED_STATUS PopulateResultSet(const QLTableRow::SharedPtr& table_row,
                                    PgsqlResultSet *result_set);
@@ -504,6 +506,7 @@ class PgsqlReadOperation : public DocOperation, public DocExprExecutor {
   const PgsqlReadRequestPB& request_;
   const TransactionOperationContextOpt txn_op_context_;
   PgsqlResponsePB response_;
+  common::YQLRowwiseIteratorIf::UniPtr current_tuple_;
 };
 
 }  // namespace docdb

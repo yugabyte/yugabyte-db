@@ -555,6 +555,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 	HandleYBStmtStatus(YBCPgDmlFetch(ybc_state->handle,
 	                                 (uint64_t *) slot->tts_values,
 	                                 slot->tts_isnull,
+																	 NULL,
 	                                 &has_data), ybc_state->handle);
 
 	/* If we have result(s) update the tuple slot. */
