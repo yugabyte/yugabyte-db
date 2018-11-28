@@ -672,6 +672,7 @@ orafce's VARCHAR2 implements parts of Oracle database specification about VARCHA
 * Unit of type modifier = 'bytes' (for character semantics, see NVARCHAR2)
 * Unlike PostgreSQL varchar, implicit cast to VARCHAR2 does not truncate
   white spaces over declared maximum length
+* for these types there are prepared NULL safe || concat operator. Attention - any empty string is replaced by NULL as result.
 
 Please note that PostgreSQL does not allow to dynamically specify how we
 interpret varchar strings. It always interprets them as 'character' strings
