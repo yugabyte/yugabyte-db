@@ -191,6 +191,8 @@ void TabletServerTestBase::InsertTestRowsRemote(int tid,
                                                 vector<uint64_t>* write_hybrid_times_collector,
                                                 TimeSeries *ts,
                                                 bool string_field_defined) {
+  const int kNumRetries = 10;
+
   if (!proxy) {
     proxy = proxy_.get();
   }
@@ -207,30 +209,38 @@ void TabletServerTestBase::InsertTestRowsRemote(int tid,
 
   uint64_t inserted_since_last_report = 0;
   for (int i = 0; i < num_batches; ++i) {
-    // reset the controller and the request
-    controller.Reset();
-    controller.set_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout));
-    req.clear_ql_write_batch();
+    for (int r = kNumRetries; r-- > 0;) {
+      // reset the controller and the request
+      controller.Reset();
+      controller.set_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout));
+      req.clear_ql_write_batch();
 
-    uint64_t first_row_in_batch = first_row + (i * count / num_batches);
-    uint64_t last_row_in_batch = first_row_in_batch + count / num_batches;
+      uint64_t first_row_in_batch = first_row + (i * count / num_batches);
+      uint64_t last_row_in_batch = first_row_in_batch + count / num_batches;
 
-    for (int j = first_row_in_batch; j < last_row_in_batch; j++) {
-      if (!string_field_defined) {
-        AddTestRowInsert(j, j, &req);
-      } else {
-        AddTestRowInsert(j, j, strings::Substitute("original$0", j), &req);
+      for (int j = first_row_in_batch; j < last_row_in_batch; j++) {
+        if (!string_field_defined) {
+          AddTestRowInsert(j, j, &req);
+        } else {
+          AddTestRowInsert(j, j, strings::Substitute("original$0", j), &req);
+        }
       }
-    }
-    CHECK_OK(DCHECK_NOTNULL(proxy)->Write(req, &resp, &controller));
-    if (write_hybrid_times_collector) {
-      write_hybrid_times_collector->push_back(resp.propagated_hybrid_time());
-    }
+      CHECK_OK(DCHECK_NOTNULL(proxy)->Write(req, &resp, &controller));
+      if (write_hybrid_times_collector) {
+        write_hybrid_times_collector->push_back(resp.propagated_hybrid_time());
+      }
 
-    if (resp.has_error() || resp.per_row_errors_size() > 0) {
-      LOG(FATAL) << "Failed to insert batch "
-                 << first_row_in_batch << "-" << last_row_in_batch
-                 << ": " << resp.DebugString();
+      if (!resp.has_error() && resp.per_row_errors_size() == 0) {
+        break;
+      }
+
+      if (r == 0) {
+        LOG(FATAL) << "Failed to insert batch "
+                   << first_row_in_batch << "-" << last_row_in_batch
+                   << ": " << resp.DebugString();
+      } else {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
     }
 
     inserted_since_last_report += count / num_batches;
