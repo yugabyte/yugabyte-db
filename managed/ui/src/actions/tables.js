@@ -198,10 +198,10 @@ export function createTableBackupResponse(response) {
   };
 }
 
-export function restoreTableBackup(universeUUID, backupUUID, formValues) {
+export function restoreTableBackup(universeUUID, formValues) {
   const baseUrl = getUniverseEndpoint(universeUUID);
   const request = axios.post(
-    `${baseUrl}/backups/${backupUUID}/restore`, formValues
+    `${baseUrl}/backups/restore`, formValues
   );
   return {
     type: RESTORE_TABLE_BACKUP,

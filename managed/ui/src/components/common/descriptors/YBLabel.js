@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import {isNonEmptyString} from "../../../utils/ObjectUtils";
+import {isNonEmptyObject , isNonEmptyString} from "../../../utils/ObjectUtils";
 import YBInfoTip from "./YBInfoTip";
 
 export default class YBLabel extends Component {
@@ -11,7 +11,7 @@ export default class YBLabel extends Component {
   };
 
   render() {
-    const { label, insetError, meta: { touched, error, invalid }, onLabelClick, infoContent, infoTitle, infoPlacement
+    const { label, insetError, meta, form, field, onLabelClick, infoContent, infoTitle, infoPlacement
     } = this.props;
 
     let infoTip = <span />;
@@ -19,8 +19,20 @@ export default class YBLabel extends Component {
       infoTip = <span>&nbsp;<YBInfoTip content={infoContent} title={infoTitle} placement={infoPlacement} /></span>;
     }
 
+    let errorMsg;
+    let hasError = false;
+    if (isNonEmptyObject(meta)) {
+      const touched = meta.touched;
+      errorMsg = meta.error;
+      hasError = errorMsg && touched;
+    } else if (isNonEmptyObject(form)) {
+      // In case for Formik field, touched might be undefined but when
+      // form validation happens it can have errors.
+      errorMsg = form.errors[field.name];
+      hasError = isNonEmptyString(errorMsg);
+    }
     return (
-      <div className={`form-group ${ touched && invalid ? 'has-error' : ''}`} onClick={onLabelClick}>
+      <div className={`form-group ${ hasError ? 'has-error' : ''}`} onClick={onLabelClick}>
         {label &&
           <label className="form-item-label">
             {label}
@@ -28,9 +40,9 @@ export default class YBLabel extends Component {
         }
         <div className="yb-field-group">
           {this.props.children}
-          {touched && error &&
+          {hasError &&
             <div className={`help-block ${insetError ? 'embed-error' : 'standard-error'}`}>
-              <span>{error}</span>
+              <span>{errorMsg}</span>
             </div>
           }
         </div>

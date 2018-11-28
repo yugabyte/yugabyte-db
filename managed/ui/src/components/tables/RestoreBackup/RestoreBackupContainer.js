@@ -3,50 +3,55 @@
 import { connect } from 'react-redux';
 import { RestoreBackup } from '../';
 import { restoreTableBackup, restoreTableBackupResponse } from '../../../actions/tables';
-import { reduxForm } from 'redux-form';
-import { isDefinedNotNull } from "../../../utils/ObjectUtils";
+import { isNonEmptyArray, isNonEmptyObject } from "utils/ObjectUtils";
+import { getPromiseState } from '../../../utils/PromiseUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    restoreTableBackup: (universeUUID, backupUUID, payload) => {
-      dispatch(restoreTableBackup(universeUUID, backupUUID, payload)).then((response) => {
+    restoreTableBackup: (universeUUID, payload) => {
+      dispatch(restoreTableBackup(universeUUID, payload)).then((response) => {
         dispatch(restoreTableBackupResponse(response.payload));
       });
     }
   };
 };
 
-function mapStateToProps(state) {
+function mapStateToProps(state, ownProps) {
+  const initialFormValues = {
+    restoreToUniverseUUID: '',
+    restoreToTableName: '',
+    restoreToKeyspace: '',
+    storageConfigUUID: '',
+    storageLocation: ''
+  };
+  const { customer: { configs }, universe: { currentUniverse, universeList} } = state;
+  const storageConfigs = configs.data.filter( (config) => config.type === "STORAGE");
+
+  if (isNonEmptyObject(ownProps.backupInfo)) {
+    const { backupInfo : {
+      storageConfigUUID, storageLocation, universeUUID, keyspace, tableName }
+    } = ownProps;
+    initialFormValues.restoreToUniverseUUID = universeUUID;
+    initialFormValues.restoreToTableName = tableName;
+    initialFormValues.restoreToKeyspace = keyspace;
+    initialFormValues.storageConfigUUID = storageConfigUUID;
+    initialFormValues.storageLocation = storageLocation;
+  } else {
+    if (getPromiseState(currentUniverse).isSuccess() &&
+        isNonEmptyObject(currentUniverse.data)) {
+      initialFormValues.restoreToUniverseUUID = currentUniverse.data.universeUUID;
+    }
+    if (isNonEmptyArray(storageConfigs)) {
+      initialFormValues.storageConfigUUID = storageConfigs[0].configUUID;
+    }
+  }
+
   return {
-    universeDetails: state.universe.currentUniverse.data.universeDetails,
-    universeList: state.universe.universeList
+    storageConfigs: storageConfigs,
+    currentUniverse: currentUniverse,
+    universeList: universeList,
+    initialValues: initialFormValues
   };
 }
 
-function validate(values) {
-  const errors = {};
-  let hasErrors = false;
-
-  if (!isDefinedNotNull(values.restoreUniverseUUID)) {
-    errors.restoreUniverseUUID = 'Restore to Universe is required.';
-    hasErrors = true;
-  }
-  if (!isDefinedNotNull(values.restoreKeyspace)) {
-    errors.restoreKeyspace = 'Restore to Keyspace is required.';
-    hasErrors = true;
-  }
-  if (!isDefinedNotNull(values.restoreTableName)) {
-    errors.restoreTableName = 'Restore to TableName is required.';
-    hasErrors = true;
-  }
-
-  return hasErrors && errors;
-}
-
-const restoreBackupForm = reduxForm({
-  form: 'restoreBackupForm',
-  fields: ['restoreUniverseUUID', 'restoreKeyspace', 'restoreTableName'],
-  validate
-});
-
-export default connect(mapStateToProps, mapDispatchToProps)(restoreBackupForm(RestoreBackup));
+export default connect(mapStateToProps, mapDispatchToProps)(RestoreBackup);
