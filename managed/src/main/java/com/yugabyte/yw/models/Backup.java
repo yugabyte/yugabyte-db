@@ -3,8 +3,10 @@
 package com.yugabyte.yw.models;
 
 import com.avaje.ebean.Model;
+import com.avaje.ebean.annotation.CreatedTimestamp;
 import com.avaje.ebean.annotation.DbJson;
 import com.avaje.ebean.annotation.EnumValue;
+import com.avaje.ebean.annotation.UpdatedTimestamp;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -66,13 +68,11 @@ public class Backup extends Model {
     return Json.fromJson(this.backupInfo, BackupTableParams.class);
   }
 
-  @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd hh:mm:ss")
+  @CreatedTimestamp
   private Date createTime;
   public Date getCreateTime() { return createTime; }
 
-  @Column
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd hh:mm:ss")
+  @UpdatedTimestamp
   private Date updateTime;
   public Date getUpdateTime() { return updateTime; }
 
@@ -114,7 +114,6 @@ public class Backup extends Model {
     backup.backupUUID = UUID.randomUUID();
     backup.customerUUID = customerUUID;
     backup.state = BackupState.InProgress;
-    backup.createTime = new Date();
     if (params.storageLocation == null) {
       // We would derive the storage location based on the parameters
       backup.updateStorageLocation(params);
@@ -153,7 +152,6 @@ public class Backup extends Model {
     if ((this.state == BackupState.InProgress && this.state != newState) ||
         (this.state == BackupState.Completed && newState == BackupState.Deleted)) {
       this.state = newState;
-      this.updateTime = new Date();
       save();
     }
   }

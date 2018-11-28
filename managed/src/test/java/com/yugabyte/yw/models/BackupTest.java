@@ -11,6 +11,7 @@ import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
 
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -169,24 +170,30 @@ public class BackupTest extends FakeDBApplication {
 
 
   @Test
-  public void testTransitionStateValid() {
+  public void testTransitionStateValid() throws InterruptedException {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Backup b = createBackup(u.universeUUID);
-    assertNull(b.getUpdateTime());
+    Date beforeUpdateTime  = b.getUpdateTime();
+    assertNotNull(beforeUpdateTime);
+    Thread.sleep(1);
     b.transitionState(Backup.BackupState.Completed);
     assertEquals(Completed, b.state);
     assertNotNull(b.getUpdateTime());
+    assertNotEquals(beforeUpdateTime, b.getUpdateTime());
     b.transitionState(Deleted);
     assertEquals(Deleted, b.state);
   }
 
   @Test
-  public void testTransitionStateInvalid() {
+  public void testTransitionStateInvalid() throws InterruptedException {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Backup b = createBackup(u.universeUUID);
-    assertNull(b.getUpdateTime());
+    Date beforeUpdateTime  = b.getUpdateTime();
+    assertNotNull(b.getUpdateTime());
+    Thread.sleep(1);
     b.transitionState(Backup.BackupState.Completed);
     assertNotNull(b.getUpdateTime());
+    assertNotEquals(beforeUpdateTime, b.getUpdateTime());
     b.transitionState(Failed);
     assertNotEquals(Failed, b.state);
   }

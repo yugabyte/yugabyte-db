@@ -386,7 +386,6 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     }
 
     Map<String, Object> annotations = new HashMap<String, Object>();
-    System.out.println(Json.toJson(config));
     if (config.containsKey("KUBECONFIG_ANNOTATIONS")) {
       annotations =(HashMap<String, Object>) yaml.load(
           config.get("KUBECONFIG_ANNOTATIONS"));

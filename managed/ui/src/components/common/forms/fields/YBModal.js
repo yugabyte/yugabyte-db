@@ -55,6 +55,7 @@ YBModal.propTypes = {
   size: PropTypes.oneOf(['large', 'small', 'xsmall']),
   formName: PropTypes.string,
   onFormSubmit: PropTypes.func,
+  onHide: PropTypes.func,
   submitLabel: PropTypes.string,
   cancelLabel: PropTypes.string,
   footerAccessory: PropTypes.object,

@@ -1,88 +1,113 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
-import { Field, change } from 'redux-form';
-import { YBModal, YBSelectWithLabel, YBTextInputWithLabel } from '../../common/forms/fields';
+import { browserHistory } from 'react-router';
+import { YBFormSelect, YBFormInput } from '../../common/forms/fields';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from 'utils/ObjectUtils';
+import { isNonEmptyArray, isNonEmptyObject, isEmptyString } from 'utils/ObjectUtils';
+import { YBModalForm } from '../../common/forms';
+import { Field } from 'formik';
+import * as Yup from "yup";
 
 export default class RestoreBackup extends Component {
   static propTypes = {
     backupInfo: PropTypes.object
   };
 
-  constructor(props) {
-    super(props);
-    this.updateFormField = this.updateFormField.bind(this);
-  }
-
-  updateFormField = (field, value) => {
-    this.props.dispatch(change("restoreBackupForm", field, value));
-  };
-
   restoreBackup = values => {
     const {
-      backupInfo : {backupUUID, storageConfigUUID, storageLocation },
       onHide,
       restoreTableBackup
     } = this.props;
-    const { restoreUniverseUUID, restoreKeyspace, restoreTableName } = values;
-    if (isDefinedNotNull(restoreKeyspace) &&
-        isDefinedNotNull(restoreTableName) &&
-        isDefinedNotNull(restoreUniverseUUID)) {
+
+    if (!isEmptyString(values.storageConfigUUID) &&
+        !isEmptyString(values.storageLocation)) {
+      const { restoreToUniverseUUID } = values;
       const payload = {
-        keyspace: restoreKeyspace,
-        tableName: restoreTableName,
-        storageConfigUUID: storageConfigUUID,
-        storageLocation: storageLocation,
-        actionType: "RESTORE"
+        storageConfigUUID: values.storageConfigUUID,
+        storageLocation:  values.storageLocation,
+        actionType: 'RESTORE',
+        keyspace: values.restoreToKeyspace,
+        tableName: values.restoreToTableName
       };
       onHide();
-      restoreTableBackup(restoreUniverseUUID, backupUUID, payload);
+      restoreTableBackup(restoreToUniverseUUID, payload);
+      browserHistory.push('/universes/' + restoreToUniverseUUID + "?tab=backups");
     }
   }
-
-  componentDidUpdate(prevProps, prevState, snapshot) {
-    if (isNonEmptyObject(this.props.backupInfo) &&
-        this.props.backupInfo !== prevProps.backupInfo) {
-      const { backupInfo : { universeUUID, keyspace, tableName }} = this.props;
-      this.updateFormField("restoreUniverseUUID", universeUUID);
-      this.updateFormField("restoreTableName", tableName);
-      this.updateFormField("restoreKeyspace", keyspace);
-    }
+  hasBackupInfo = () => {
+    return isNonEmptyObject(this.props.backupInfo);
   }
 
   render() {
-    const { visible, onHide, handleSubmit, universeList } = this.props;
+    const { visible, onHide, universeList, storageConfigs, currentUniverse } = this.props;
+
+    // If the backup information is not provided, most likely we are trying to load the backup
+    // from pre-existing location (specified by the user) into the current universe in context.
     let universeOptions = [];
-    if (getPromiseState(universeList).isSuccess() && isNonEmptyArray(universeList.data)) {
-      universeOptions = universeList.data.map((universe, idx) => {
-        return (
-          <option key={idx} value={universe.universeUUID} >
-            {universe.name}
-          </option>
-        );
+    let backupStorageInfo = null;
+    const validationSchema = Yup.object().shape({
+      restoreToUniverseUUID: Yup.string()
+      .required('Restore To Universe is Required'),
+      restoreToKeyspace: Yup.string()
+      .required('Restore To Keyspace is Required'),
+      restoreToTableName: Yup.string()
+      .required('Restore To Tablename is Required'),
+      storageConfigUUID: Yup.string()
+      .required('Storage Config is Required'),
+      storageLocation: Yup.string()
+      .required('Storage Location is Required')
+    });
+
+    if (!this.hasBackupInfo()) {
+      const storageOptions = storageConfigs.map((config) => {
+        return {value: config.configUUID, label: config.name + " Storage"};
       });
+      if (getPromiseState(currentUniverse).isSuccess() && isNonEmptyObject(currentUniverse.data)) {
+        universeOptions = [{
+          value: currentUniverse.data.universeUUID,
+          label: currentUniverse.data.name}];
+      }
+
+      backupStorageInfo = (
+        <Fragment>
+          <Field name="storageConfigUUID" component={YBFormSelect}
+                 label={"Storage"} options={storageOptions} />
+          <Field name="storageLocation" component={YBFormInput}
+                 componentClass="textarea"
+                 className="storage-location"
+                 label={"Storage Location"} />
+        </Fragment>
+      );
+    } else {
+      if (getPromiseState(universeList).isSuccess() && isNonEmptyArray(universeList.data)) {
+        universeOptions = universeList.data.map((universe) => {
+          return ({value: universe.universeUUID, label: universe.name});
+        });
+      }
     }
 
     return (
       <div className="universe-apps-modal">
-        <YBModal title={"Restore backup To"}
+        <YBModalForm title={"Restore backup To"}
                  visible={visible}
                  onHide={onHide}
                  showCancelButton={true}
                  cancelLabel={"Cancel"}
-                 onFormSubmit={handleSubmit(this.restoreBackup)}>
-          <Field name="restoreUniverseUUID" component={YBSelectWithLabel}
+                 onFormSubmit={this.restoreBackup}
+                 initialValues= {this.props.initialValues}
+                 validationSchema={validationSchema}>
+          {backupStorageInfo}
+          <Field name="restoreToUniverseUUID" component={YBFormSelect}
                  label={"Universe"} options={universeOptions} />
-          <Field name="restoreKeyspace"
-                 component={YBTextInputWithLabel}
+          <Field name="restoreToKeyspace"
+                 component={YBFormInput}
                  label={"Keyspace"} />
-          <Field name="restoreTableName"
-                 component={YBTextInputWithLabel}
+          <Field name="restoreToTableName"
+                 component={YBFormInput}
                  label={"Table"}/>
-        </YBModal>
+        </YBModalForm>
       </div>
     );
   }
