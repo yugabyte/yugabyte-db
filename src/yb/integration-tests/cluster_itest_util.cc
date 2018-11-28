@@ -436,6 +436,8 @@ Status GetConsensusState(const TServerDetails* replica,
                          const MonoDelta& timeout,
                          ConsensusStatePB* consensus_state,
                          LeaderLeaseStatus* leader_lease_status) {
+  DCHECK_ONLY_NOTNULL(replica);
+
   GetConsensusStateRequestPB req;
   GetConsensusStateResponsePB resp;
   RpcController controller;
@@ -470,9 +472,10 @@ Status WaitUntilCommittedConfigMemberTypeIs(int config_size,
                                            const std::string& tablet_id,
                                            const MonoDelta& timeout,
                                            RaftPeerPB::MemberType member_type) {
+  DCHECK_ONLY_NOTNULL(replica);
+
   MonoTime start = MonoTime::Now();
-  MonoTime deadline = start;
-  deadline.AddDelta(timeout);
+  MonoTime deadline = start + timeout;
 
   int backoff_exp = 0;
   const int kMaxBackoffExp = 7;

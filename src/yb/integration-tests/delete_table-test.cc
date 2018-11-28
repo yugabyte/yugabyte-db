@@ -78,6 +78,8 @@ using std::unordered_map;
 using std::vector;
 using strings::Substitute;
 
+using namespace std::literals;
+
 namespace yb {
 
 class DeleteTableTest : public ExternalMiniClusterITestBase {
@@ -135,10 +137,21 @@ class DeleteTableTest : public ExternalMiniClusterITestBase {
 
 string DeleteTableTest::GetLeaderUUID(const string& ts_uuid, const string& tablet_id) {
   ConsensusStatePB cstate;
-  CHECK_OK(itest::GetConsensusState(ts_map_[ts_uuid].get(),
-                                    tablet_id,
-                                    CONSENSUS_CONFIG_COMMITTED,
-                                    MonoDelta::FromSeconds(10), &cstate));
+  auto deadline = MonoTime::Now() + 10s;
+  for (;;) {
+    CHECK_OK(itest::GetConsensusState(
+        ts_map_[ts_uuid].get(),
+        tablet_id,
+        CONSENSUS_CONFIG_COMMITTED,
+        deadline - MonoTime::Now(),
+        &cstate));
+    if (!cstate.leader_uuid().empty()) {
+      break;
+    }
+    CHECK(MonoTime::Now() <= deadline);
+    std::this_thread::sleep_for(100ms);
+  }
+  CHECK(!cstate.leader_uuid().empty());
   return cstate.leader_uuid();
 }
 
@@ -593,7 +606,10 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   // transition_in_progress_ has been cleared and we'll get error
   // "State transition of tablet XXX already in progress: remote bootstrapping tablet".
   leader_uuid = GetLeaderUUID(cluster_->tablet_server(1)->uuid(), tablet_id);
-  leader = ts_map_[leader_uuid].get();
+  auto leader_it = ts_map_.find(leader_uuid);
+  ASSERT_NE(leader_it, ts_map_.end())
+      << "Leader UUID: " << leader_uuid << ", ts map: " << yb::ToString(ts_map_);
+  leader = leader_it->second.get();
   ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(3, leader, tablet_id, timeout));
 
   ClusterVerifier cluster_verifier(cluster_.get());
