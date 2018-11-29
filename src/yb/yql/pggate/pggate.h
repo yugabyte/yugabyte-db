@@ -188,7 +188,8 @@ class PgApiImpl {
 
   // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
   // by YBCPgDmlBindColumn().
-  CHECKED_STATUS DmlFetch(PgStatement *handle, uint64_t *values, bool *isnulls, bool *has_data);
+  CHECKED_STATUS DmlFetch(PgStatement *handle, uint64_t *values, bool *isnulls,
+                          PgSysColumns *syscols, bool *has_data);
 
   // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
   // + The following operations are run by DocDB.
@@ -278,10 +279,12 @@ class PgApiImpl {
   // Constant expressions - text.
   CHECKED_STATUS NewConstant(PgStatement *stmt, const char *value, bool is_null,
                              PgExpr **expr_handle);
-  CHECKED_STATUS NewConstant(PgStatement *stmt, const char *value, int64_t bytes, bool is_null,
-                             PgExpr **expr_handle);
   CHECKED_STATUS UpdateConstant(PgExpr *expr, const char *value, bool is_null);
-  CHECKED_STATUS UpdateConstant(PgExpr *expr, const char *value, int64_t bytes, bool is_null);
+
+  // Constant expressions - binary.
+  CHECKED_STATUS NewConstant(PgStatement *stmt, const void *value, int64_t bytes, bool is_null,
+                             PgExpr **expr_handle);
+  CHECKED_STATUS UpdateConstant(PgExpr *expr, const void *value, int64_t bytes, bool is_null);
 
   // Operators.
   CHECKED_STATUS NewOperator(PgStatement *stmt, const char *opname, PgExpr **op_handle);

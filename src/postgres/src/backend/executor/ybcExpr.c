@@ -53,7 +53,7 @@ YBCNewBinaryConstant(
 
 	}
 	YBCPgExpr expr = NULL;
-	HandleYBStatus(YBCPgNewConstantChar(ybc_stmt, data, size, is_null, &expr));
+	HandleYBStatus(YBCPgNewConstantBinary(ybc_stmt, data, size, is_null, &expr));
 	return expr;
 }
 

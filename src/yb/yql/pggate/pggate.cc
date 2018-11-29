@@ -329,8 +329,9 @@ CHECKED_STATUS PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExp
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
 }
 
-Status PgApiImpl::DmlFetch(PgStatement *handle, uint64_t *values, bool *isnulls, bool *has_data) {
-  return down_cast<PgDml*>(handle)->Fetch(values, isnulls, has_data);
+Status PgApiImpl::DmlFetch(PgStatement *handle, uint64_t *values, bool *isnulls,
+                           PgSysColumns *syscols, bool *has_data) {
+  return down_cast<PgDml*>(handle)->Fetch(values, isnulls, syscols, has_data);
 }
 
 // Insert ------------------------------------------------------------------------------------------
@@ -483,7 +484,7 @@ Status PgApiImpl::UpdateConstant(PgExpr *expr, const char *value, bool is_null) 
   return Status::OK();
 }
 
-Status PgApiImpl::NewConstant(PgStatement *stmt, const char *value, int64_t bytes, bool is_null,
+Status PgApiImpl::NewConstant(PgStatement *stmt, const void *value, int64_t bytes, bool is_null,
                               PgExpr **expr_handle) {
   if (!stmt) {
     // Invalid handle.
@@ -496,7 +497,7 @@ Status PgApiImpl::NewConstant(PgStatement *stmt, const char *value, int64_t byte
   return Status::OK();
 }
 
-Status PgApiImpl::UpdateConstant(PgExpr *expr, const char *value, int64_t bytes, bool is_null) {
+Status PgApiImpl::UpdateConstant(PgExpr *expr, const void *value, int64_t bytes, bool is_null) {
   if (expr->opcode() != PgExpr::Opcode::PG_EXPR_CONSTANT) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid expression handle for constant");

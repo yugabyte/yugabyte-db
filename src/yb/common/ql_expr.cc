@@ -350,12 +350,7 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const PgsqlExpressionPB& ql_expr,
       break;
 
     case PgsqlExpressionPB::ExprCase::kColumnId:
-      if (table_row == nullptr) {
-        result->SetNull();
-      } else {
-        RETURN_NOT_OK(table_row->ReadColumn(ql_expr.column_id(), result));
-      }
-      break;
+      return EvalColumnRef(ql_expr.column_id(), table_row, result);
 
     case PgsqlExpressionPB::ExprCase::kBfcall:
       return EvalBFCall(ql_expr.bfcall(), table_row, result);
@@ -382,6 +377,19 @@ CHECKED_STATUS QLExprExecutor::ReadExprValue(const PgsqlExpressionPB& ql_expr,
   } else {
     return EvalExpr(ql_expr, table_row, result);
   }
+}
+
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS QLExprExecutor::EvalColumnRef(ColumnIdRep col_id,
+                                             const QLTableRow::SharedPtrConst& table_row,
+                                             QLValue *result) {
+  if (table_row == nullptr) {
+    result->SetNull();
+  } else {
+    RETURN_NOT_OK(table_row->ReadColumn(col_id, result));
+  }
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------

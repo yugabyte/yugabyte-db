@@ -18,6 +18,35 @@ using yb::util::Decimal;
 
 //--------------------------------------------------------------------------------------------------
 
+CHECKED_STATUS DocExprExecutor::EvalColumnRef(ColumnIdRep col_id,
+                                              const QLTableRow::SharedPtrConst& table_row,
+                                              QLValue *result) {
+  // Return NULL value if row is not provided.
+  if (table_row == nullptr) {
+    result->SetNull();
+    return Status::OK();
+  }
+
+  // Read value from given row.
+  if (col_id >= 0) {
+    return table_row->ReadColumn(col_id, result);
+  }
+
+  // Read key of the given row.
+  if (col_id == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
+    return GetTupleId(result);
+  }
+
+  return STATUS_SUBSTITUTE(InvalidArgument, "Invalid column ID: $0", col_id);
+}
+
+CHECKED_STATUS DocExprExecutor::GetTupleId(QLValue *result) const {
+  result->SetNull();
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
                                            const QLTableRow& table_row,
                                            QLValue *result) {

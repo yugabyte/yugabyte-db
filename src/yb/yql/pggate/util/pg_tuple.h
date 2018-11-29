@@ -16,6 +16,7 @@
 #define YB_YQL_PGGATE_UTIL_PG_TUPLE_H_
 
 #include "yb/yql/pggate/util/pg_wire.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {
@@ -28,7 +29,7 @@ namespace pggate {
 // Currently we allocate one individual buffer per column and write result there.
 class PgTuple {
  public:
-  PgTuple(uint64_t *datums, bool *isnulls);
+  PgTuple(uint64_t *datums, bool *isnulls, PgSysColumns *syscols);
 
   // Write null value.
   void WriteNull(int index, const PgWireDataHeader& header);
@@ -41,41 +42,17 @@ class PgTuple {
   void Write(int index, const PgWireDataHeader& header, float value);
   void Write(int index, const PgWireDataHeader& header, double value);
   void Write(int index, const PgWireDataHeader& header, const char *value, int64_t bytes);
+  void Write(uint8_t **pgbuf, const PgWireDataHeader& header, const uint8_t *value, int64_t bytes);
   void Write(int index, const PgWireDataHeader& header, const uint8_t *value, int64_t bytes);
+
+  PgSysColumns *syscols() {
+    return syscols_;
+  }
 
  private:
   uint64_t *datums_;
   bool *isnulls_;
-
-
-  // TODO(neil) The following code supports allocating one buffer and write result to the buffer
-  // with correct alignment for each type of data.
-#if 0
-  uint8_t *buffer_;
-  int64_t buffer_bytes_;
-  int64_t offset_;
-
-  template<uint64_t alignof_type>
-  static uint64_t AlignedSize(uint64_t bytes) {
-    return (bytes + alignof_type - 1) & ~(alignof_type - 1);
-  }
-
-  template<typename data_type>
-  static uint64_t TypeAlignedSize(uint64_t bytes) {
-    return AlignedSize<alignof(data_type)>(bytes);
-  }
-
-  template<uint64_t alignof_type>
-  uint8_t *AlignedBuffer() {
-    offset_ = (offset_ + alignof_type - 1) & ~(alignof_type - 1);
-    return buffer_ + offset_;
-  }
-
-  template<typename data_type>
-  uint8_t *TypeAlignedBuffer() {
-    return AlignedBuffer<alignof(data_type)>();
-  }
-#endif
+  PgSysColumns *syscols_;
 };
 
 }  // namespace pggate

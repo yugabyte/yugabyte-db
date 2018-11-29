@@ -75,6 +75,10 @@ class YQLRowwiseIteratorIf {
     return Status::OK();
   }
 
+  virtual CHECKED_STATUS GetKeyContent(faststring *key_content) const {
+    return STATUS(NotSupported, "This iterator does not provide row-key");
+  }
+
   //------------------------------------------------------------------------------------------------
   // Common API methods.
   //------------------------------------------------------------------------------------------------
