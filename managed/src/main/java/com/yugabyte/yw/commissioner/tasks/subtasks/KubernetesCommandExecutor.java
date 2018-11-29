@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
@@ -30,6 +31,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -71,7 +73,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         case VOLUME_DELETE:
           return UserTaskDetails.SubTaskGroupType.KubernetesVolumeDelete.name();
         case NAMESPACE_DELETE:
-          return UserTaskDetails.SubTaskGroupType.KubernetesNamespaceDelete.name();
+          return UserTaskDetails.SubTaskGroupType.KubernetesNamespaceDelete.name(); 
         case POD_INFO:
           return UserTaskDetails.SubTaskGroupType.KubernetesPodInfo.name();
       }
@@ -116,32 +118,36 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
   @Override
   public void run() {
     String overridesFile;
+    boolean flag = false;
     // TODO: add checks for the shell process handler return values.
+    ShellProcessHandler.ShellResponse response = null;
     switch (taskParams().commandType) {
       case CREATE_NAMESPACE:
-        kubernetesManager.createNamespace(taskParams().providerUUID, taskParams().nodePrefix);
+        response = kubernetesManager.createNamespace(taskParams().providerUUID, taskParams().nodePrefix);
         break;
       case APPLY_SECRET:
         String pullSecret = this.getPullSecret();
         if (pullSecret != null) {
-          kubernetesManager.applySecret(taskParams().providerUUID, taskParams().nodePrefix, pullSecret);
+          response = kubernetesManager.applySecret(taskParams().providerUUID, taskParams().nodePrefix, pullSecret);
         }
         break;
       case HELM_INIT:
-        kubernetesManager.helmInit(taskParams().providerUUID);
+        response = kubernetesManager.helmInit(taskParams().providerUUID);
         break;
       case HELM_INSTALL:
         overridesFile = this.generateHelmOverride();
-        kubernetesManager.helmInstall(taskParams().providerUUID, taskParams().nodePrefix, overridesFile);
+        response = kubernetesManager.helmInstall(taskParams().providerUUID, taskParams().nodePrefix, overridesFile);
+        flag = true;
         break;
       case HELM_UPGRADE:
         overridesFile = this.generateHelmOverride();
-        kubernetesManager.helmUpgrade(taskParams().providerUUID, taskParams().nodePrefix, overridesFile);
+        response = kubernetesManager.helmUpgrade(taskParams().providerUUID, taskParams().nodePrefix, overridesFile);
+        flag = true;
         break;
       case UPDATE_NUM_NODES:
         int numNodes = this.getNumNodes();
         if (numNodes > 0) {
-          kubernetesManager.updateNumNodes(taskParams().providerUUID, taskParams().nodePrefix, numNodes);
+          response = kubernetesManager.updateNumNodes(taskParams().providerUUID, taskParams().nodePrefix, numNodes);
         }
         break;
       case HELM_DELETE:
@@ -157,6 +163,46 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         processNodeInfo();
         break;
     }
+    if (response != null) {
+      if (response.code != 0 && flag) {
+        response = getPodError();
+      }
+      logShellResponse(response);
+    }
+  }
+
+  private ShellProcessHandler.ShellResponse getPodError() {
+    ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
+    response.code = -1;
+    ShellProcessHandler.ShellResponse podResponse = kubernetesManager.getPodInfos(taskParams().providerUUID, taskParams().nodePrefix);
+    JsonNode podInfos = parseShellResponseAsJson(podResponse);
+    boolean flag = false;
+    for (JsonNode podInfo: podInfos.path("items")) {
+      flag = true;
+      ObjectNode pod = Json.newObject();
+      JsonNode statusNode =  podInfo.path("status");
+      String podStatus = statusNode.path("phase").asText();
+      if (!podStatus.equals("Running")) {
+        JsonNode podConditions = statusNode.path("conditions");
+        ArrayList conditions = Json.fromJson(podConditions, ArrayList.class);
+        Iterator iter = conditions.iterator();
+        while (iter.hasNext()) {
+          JsonNode info = Json.toJson(iter.next());
+          String status = info.path("status").asText();
+          if (status.equals("False")) {
+            response.message = info.path("message").asText();
+            return response;
+          }
+        }
+      }      
+    }
+    if (!flag) {
+      response.message = "No pods even scheduled. Previous step(s) incomplete";
+    }
+    else {
+      response.message = "Pods are ready. Services still not running";
+    }
+    return response;
   }
 
   private void processNodeInfo() {
