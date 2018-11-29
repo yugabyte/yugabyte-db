@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudCleanup;
+import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -180,6 +181,7 @@ public class CloudProviderController extends AuthenticatedController {
           case "kubernetes":
             updateKubeConfig(provider, config);
             createKubernetesInstanceTypes(provider);
+            kubernetesProvision(provider, customerUUID);
             break;
         }
       }
@@ -234,6 +236,23 @@ public class CloudProviderController extends AuthenticatedController {
           idt
       );
     }
+  }
+
+  /* Function to create Commissioner task for provisioning K8s providers
+  // Will also be helpful to provision regions/AZs in the future
+  */
+  private void kubernetesProvision(Provider provider, UUID customerUUID) {
+    CloudTaskParams taskParams = new CloudTaskParams();
+    taskParams.providerUUID = provider.uuid;
+    Customer customer = Customer.get(customerUUID);
+    UUID taskUUID = commissioner.submit(TaskType.KubernetesProvision, taskParams);
+    CustomerTask.create(customer,
+      provider.uuid,
+      taskUUID,
+      CustomerTask.TargetType.Provider,
+      CustomerTask.TaskType.Create,
+      provider.name);
+
   }
 
   private void updateKubeConfig(Provider provider, Map<String, String> config) {

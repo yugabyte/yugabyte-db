@@ -379,7 +379,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     verify(kubernetesManager, times(1))
         .deleteNamespace(defaultProvider.uuid, defaultUniverse.getUniverseDetails().nodePrefix);
   }
-  
+
   @Test
   public void testPodInfo() {
     ShellProcessHandler.ShellResponse shellResponse = new ShellProcessHandler.ShellResponse();
