@@ -103,33 +103,34 @@ StdStatusCallback BindHandleResponse(RespType* resp,
 //
 // Returns true if successful.
 template<class RespClass>
-bool LookupTabletPeerOrRespond(TabletPeerLookupIf* tablet_manager,
-                               const string& tablet_id,
-                               RespClass* resp,
-                               rpc::RpcContext* context,
-                               std::shared_ptr<tablet::TabletPeer>* peer) {
-  Status status = tablet_manager->GetTabletPeer(tablet_id, peer);
+Result<std::shared_ptr<tablet::TabletPeer>> LookupTabletPeerOrRespond(
+    TabletPeerLookupIf* tablet_manager,
+    const string& tablet_id,
+    RespClass* resp,
+    rpc::RpcContext* context) {
+  std::shared_ptr<tablet::TabletPeer> result;
+  Status status = tablet_manager->GetTabletPeer(tablet_id, &result);
   if (PREDICT_FALSE(!status.ok())) {
     TabletServerErrorPB::Code code = status.IsServiceUnavailable() ?
                                      TabletServerErrorPB::UNKNOWN_ERROR :
                                      TabletServerErrorPB::TABLET_NOT_FOUND;
     SetupErrorAndRespond(resp->mutable_error(), status, code, context);
-    return false;
+    return status;
   }
 
   // Check RUNNING state.
-  tablet::TabletStatePB state = (*peer)->state();
+  tablet::TabletStatePB state = result->state();
   if (PREDICT_FALSE(state != tablet::RUNNING)) {
-    Status s = STATUS(IllegalState, "Tablet not RUNNING",
-                      tablet::TabletStatePB_Name(state));
+    Status s = STATUS(IllegalState, "Tablet not RUNNING", tablet::TabletStatePB_Name(state));
     if (state == tablet::FAILED) {
-      s = s.CloneAndAppend((*peer)->error().ToString());
+      s = s.CloneAndAppend(result->error().ToString());
     }
     SetupErrorAndRespond(resp->mutable_error(), s,
                          TabletServerErrorPB::TABLET_NOT_RUNNING, context);
-    return false;
+    return s;
   }
-  return true;
+
+  return result;
 }
 
 // A transaction completion callback that responds to the client when transactions
@@ -196,10 +197,12 @@ LeaderTabletPeer LookupLeaderTabletOrRespond(
     const std::string& tablet_id,
     RespClass* resp,
     rpc::RpcContext* context) {
-  LeaderTabletPeer result;
-  if (!LookupTabletPeerOrRespond(tablet_manager, tablet_id, resp, context, &result.peer)) {
+  auto peer = LookupTabletPeerOrRespond(tablet_manager, tablet_id, resp, context);
+  if (!peer.ok()) {
     return LeaderTabletPeer();
   }
+  LeaderTabletPeer result;
+  result.peer = *peer;
 
   if (!result.FillTerm(resp->mutable_error(), context)) {
     return LeaderTabletPeer();

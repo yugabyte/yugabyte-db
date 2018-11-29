@@ -128,10 +128,11 @@ class TabletServiceImpl : public TabletServerServiceIf {
   bool DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::RpcContext* context,
                             std::shared_ptr<tablet::AbstractTablet>* tablet);
 
-  virtual bool GetTabletOrRespond(const ReadRequestPB* req,
-                                  ReadResponsePB* resp,
-                                  rpc::RpcContext* context,
-                                  std::shared_ptr<tablet::AbstractTablet>* tablet);
+  virtual WARN_UNUSED_RESULT bool GetTabletOrRespond(
+      const ReadRequestPB* req,
+      ReadResponsePB* resp,
+      rpc::RpcContext* context,
+      std::shared_ptr<tablet::AbstractTablet>* tablet);
 
   template<class Resp>
   bool CheckMemoryPressure(
