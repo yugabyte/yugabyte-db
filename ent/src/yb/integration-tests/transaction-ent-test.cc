@@ -75,7 +75,7 @@ TEST_F(TransactionEntTest, RandomErrorClock) {
   RandomErrorClockShare share;
   for (int32_t key = 0; key != share.values.size(); ++key) {
     share.values[key].store(0, std::memory_order_release);
-    WriteRow(CreateSession(), key, 0);
+    ASSERT_OK(WriteRow(CreateSession(), key, 0));
   }
 
   while (threads.size() < share.values.size()) {
@@ -88,7 +88,10 @@ TEST_F(TransactionEntTest, RandomErrorClock) {
         session->SetTransaction(transaction);
         auto value = share.values[key].load(std::memory_order_acquire);
         auto new_value = value + 1;
-        WriteRow(session, key, new_value);
+        auto write_result = WriteRow(session, key, new_value);
+        if (!write_result.ok()) {
+          continue;
+        }
         auto status = transaction->CommitFuture().get();
         if (status.ok()) {
           share.values[key].store(new_value, std::memory_order_release);
