@@ -129,6 +129,13 @@ public class KubernetesManager {
     // TODO: check the execCommand outputs.
   }
 
+  public void deleteNamespace(UUID providerUUID, String universePrefix) {
+    // Delete Namespace
+    List<String> masterCommandList = ImmutableList.of("kubectl",  "delete", "namespace",
+        universePrefix);
+    execCommand(providerUUID, masterCommandList);
+  }
+  
   private ShellProcessHandler.ShellResponse execCommand(UUID providerUUID, List<String> command) {
     Provider provider = Provider.get(providerUUID);
     Map<String, String> config = provider.getConfig();
