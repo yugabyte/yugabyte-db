@@ -45,7 +45,6 @@ public class CreateKubernetesUniverse extends UniverseDefinitionTaskBase {
       // Helm install the YugaByte helm chart and fetch the pod info for the IP addresses.
       createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE);
       createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.APPLY_SECRET);
-      createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.HELM_INIT);
       createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
       createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO);
 

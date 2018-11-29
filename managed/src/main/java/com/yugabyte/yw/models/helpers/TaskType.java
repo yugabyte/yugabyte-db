@@ -33,6 +33,8 @@ public enum TaskType {
 
   EditKubernetesUniverse("EditKubernetesUniverse"),
 
+  KubernetesProvision("KubernetesProvision"),
+
   ImportIntoTable("ImportIntoTable"),
 
   UpgradeUniverse("UpgradeUniverse"),

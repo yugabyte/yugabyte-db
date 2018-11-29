@@ -279,7 +279,7 @@ public class UserTaskDetails {
       case KubernetesNamespaceDelete:
         title = "Delete Kubernetes Namespace";
         description = "Delete Kubernetes Namespace";
-        break; 
+        break;  
       case KubernetesWaitForPod:
         title = "Wait for Kubernetes pod to run";
         description = "Wait for Kubernetes pod to run";
