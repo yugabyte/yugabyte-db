@@ -30,6 +30,7 @@ import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.HELM_DELETE;
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.VOLUME_DELETE;
+import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
@@ -72,12 +73,14 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   List<TaskType> KUBERNETES_DESTROY_UNIVERSE_TASKS = ImmutableList.of(
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesCommandExecutor,
+      TaskType.KubernetesCommandExecutor,
       TaskType.RemoveUniverseEntry);
 
 
   List<JsonNode> KUBERNETES_DESTROY_UNIVERSE_EXPECTED_RESULTS = ImmutableList.of(
       Json.toJson(ImmutableMap.of("commandType", HELM_DELETE.name())),
       Json.toJson(ImmutableMap.of("commandType", VOLUME_DELETE.name())),
+      Json.toJson(ImmutableMap.of("commandType", NAMESPACE_DELETE.name())),
       Json.toJson(ImmutableMap.of())
   );
 
@@ -121,6 +124,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams);
     verify(mockKubernetesManager, times(1)).helmDelete(defaultProvider.uuid, nodePrefix);
     verify(mockKubernetesManager, times(1)).deleteStorage(defaultProvider.uuid, nodePrefix);
+    verify(mockKubernetesManager, times(1)).deleteNamespace(defaultProvider.uuid, nodePrefix);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
@@ -150,6 +154,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams);
     verify(mockKubernetesManager, times(1)).helmDelete(defaultProvider.uuid, nodePrefix);
     verify(mockKubernetesManager, times(1)).deleteStorage(defaultProvider.uuid, nodePrefix);
+    verify(mockKubernetesManager, times(1)).deleteNamespace(defaultProvider.uuid, nodePrefix);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));

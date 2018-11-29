@@ -372,6 +372,15 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   @Test
+  public void testNamespaceDelete() {
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE);
+    kubernetesCommandExecutor.run();
+    verify(kubernetesManager, times(1))
+        .deleteNamespace(defaultProvider.uuid, defaultUniverse.getUniverseDetails().nodePrefix);
+  }
+  
+  @Test
   public void testPodInfo() {
     ShellProcessHandler.ShellResponse shellResponse = new ShellProcessHandler.ShellResponse();
     shellResponse.message =
