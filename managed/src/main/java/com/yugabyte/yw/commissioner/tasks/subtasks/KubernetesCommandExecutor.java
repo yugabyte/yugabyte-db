@@ -49,6 +49,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     UPDATE_NUM_NODES,
     HELM_DELETE,
     VOLUME_DELETE,
+    NAMESPACE_DELETE,
     POD_INFO;
 
     public String getSubTaskGroupName() {
@@ -69,6 +70,8 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
           return UserTaskDetails.SubTaskGroupType.HelmDelete.name();
         case VOLUME_DELETE:
           return UserTaskDetails.SubTaskGroupType.KubernetesVolumeDelete.name();
+        case NAMESPACE_DELETE:
+          return UserTaskDetails.SubTaskGroupType.KubernetesNamespaceDelete.name();
         case POD_INFO:
           return UserTaskDetails.SubTaskGroupType.KubernetesPodInfo.name();
       }
@@ -147,6 +150,9 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       case VOLUME_DELETE:
         kubernetesManager.deleteStorage(taskParams().providerUUID, taskParams().nodePrefix);
         break;
+      case NAMESPACE_DELETE:
+        kubernetesManager.deleteNamespace(taskParams().providerUUID, taskParams().nodePrefix);
+        break; 
       case POD_INFO:
         processNodeInfo();
         break;

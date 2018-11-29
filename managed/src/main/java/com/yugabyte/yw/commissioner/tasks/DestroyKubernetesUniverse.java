@@ -42,6 +42,9 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       createDestroyKubernetesTask(providerUUID,
           universe.getUniverseDetails().nodePrefix,
           KubernetesCommandExecutor.CommandType.VOLUME_DELETE);
+      createDestroyKubernetesTask(providerUUID,
+          universe.getUniverseDetails().nodePrefix,
+          KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE);
 
       // Create tasks to remove the universe entry from the Universe table.
       createRemoveUniverseEntryTask()

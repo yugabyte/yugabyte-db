@@ -120,6 +120,9 @@ public class UserTaskDetails {
     // Delete Kubernetes volumes created by helm chart.
     KubernetesVolumeDelete,
 
+    // Delete kubernetes namespace
+    KubernetesNamespaceDelete,
+
     // Fetch the Kubernetes pod information.
     KubernetesPodInfo,
 
@@ -273,6 +276,10 @@ public class UserTaskDetails {
         title = "Delete Kubernetes Volumes";
         description = "Delete Kubernetes Volumes";
         break;
+      case KubernetesNamespaceDelete:
+        title = "Delete Kubernetes Namespace";
+        description = "Delete Kubernetes Namespace";
+        break; 
       case KubernetesWaitForPod:
         title = "Wait for Kubernetes pod to run";
         description = "Wait for Kubernetes pod to run";
