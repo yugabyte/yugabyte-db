@@ -32,9 +32,7 @@ class SnapshotOperationState : public OperationState {
         tserver::TabletSnapshotOpRequestPB::UNKNOWN : request_->operation();
   }
 
-  void UpdateRequestFromConsensusRound() override {
-    request_ = consensus_round()->replicate_msg()->mutable_snapshot_request();
-  }
+  void UpdateRequestFromConsensusRound() override;
 
   void AcquireSchemaLock(rw_semaphore* l);
 

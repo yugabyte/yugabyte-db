@@ -5,6 +5,7 @@
 #include "yb/tablet/operations/snapshot_operation.h"
 
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
@@ -46,6 +47,10 @@ void SnapshotOperationState::ReleaseSchemaLock() {
 
 SnapshotOperation::SnapshotOperation(std::unique_ptr<SnapshotOperationState> state)
     : Operation(std::move(state), OperationType::kSnapshot) {}
+
+void SnapshotOperationState::UpdateRequestFromConsensusRound() {
+  request_ = consensus_round()->replicate_msg()->mutable_snapshot_request();
+}
 
 consensus::ReplicateMsgPtr SnapshotOperation::NewReplicateMsg() {
   auto result = std::make_shared<ReplicateMsg>();
