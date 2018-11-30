@@ -169,7 +169,7 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
 
   auto now = CoarseMonoClock::Now();
 
-  CoarseMonoClock::TimePoint deadline = CoarseMonoClock::TimePoint::max();
+  CoarseTimePoint deadline = CoarseTimePoint::max();
   if (!stream_->IsConnected()) {
     const MonoDelta timeout = FLAGS_rpc_connection_timeout_ms * 1ms;
     deadline = last_activity_time_ + timeout;
@@ -198,7 +198,7 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
     deadline = std::min(deadline, expiration_queue_.top().first);
   }
 
-  if (deadline != CoarseMonoClock::TimePoint::max()) {
+  if (deadline != CoarseTimePoint::max()) {
     StartTimer(deadline - now, &timer_);
   }
 }

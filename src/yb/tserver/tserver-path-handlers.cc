@@ -39,6 +39,7 @@
 #include <string>
 #include <vector>
 
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/gutil/map-util.h"

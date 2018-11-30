@@ -293,7 +293,7 @@ void TableIterator::HandleError(const Status& status) {
                  << ", status: " << error->status();
     }
 
-    LOG(FATAL) << "Failure: " << status;
+    LOG(FATAL) << "Failed: " << status;
   }
 }
 

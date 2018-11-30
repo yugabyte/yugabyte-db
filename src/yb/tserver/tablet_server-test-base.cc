@@ -17,6 +17,7 @@
 
 #include "yb/common/wire_protocol-test-util.h"
 
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"

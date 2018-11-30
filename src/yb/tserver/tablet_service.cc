@@ -140,6 +140,9 @@ DEFINE_test_flag(bool, simulate_time_out_failures, false, "If true, we will rand
                  "as failed to simulate time out failures. The periodic refresh of the lookup "
                  "cache will eventually mark them as available");
 
+DEFINE_test_flag(double, respond_write_failed_probability, 0.0,
+                 "Probability to respond that write request is failed");
+
 DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
@@ -732,9 +735,15 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   auto operation_state = std::make_unique<WriteOperationState>(tablet.peer->tablet(), req, resp);
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(context));
-  operation_state->set_completion_callback(
-      std::make_unique<WriteOperationCompletionCallback>(
-          context_ptr, resp, operation_state.get(), server_->Clock(), req->include_trace()));
+  if (RandomActWithProbability(GetAtomicFlag(&FLAGS_respond_write_failed_probability))) {
+    operation_state->set_completion_callback(nullptr);
+    SetupErrorAndRespond(resp->mutable_error(), STATUS(LeaderHasNoLease, "TEST: Random failure"),
+                         TabletServerErrorPB::UNKNOWN_ERROR, context_ptr.get());
+  } else {
+    operation_state->set_completion_callback(
+        std::make_unique<WriteOperationCompletionCallback>(
+            context_ptr, resp, operation_state.get(), server_->Clock(), req->include_trace()));
+  }
   tablet.peer->WriteAsync(
       std::move(operation_state), tablet.leader_term, context_ptr->GetClientDeadline());
 }

@@ -48,6 +48,7 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb.h"
@@ -160,7 +161,8 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
                                   const scoped_refptr<Log> &log,
                                   const scoped_refptr<MetricEntity> &metric_entity,
                                   ThreadPool* raft_pool,
-                                  ThreadPool* tablet_prepare_pool) {
+                                  ThreadPool* tablet_prepare_pool,
+                                  consensus::RetryableRequests* retryable_requests) {
 
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
@@ -210,6 +212,10 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
     RETURN_NOT_OK(ConsensusMetadata::Load(meta_->fs_manager(), tablet_id_,
                                           meta_->fs_manager()->uuid(), &cmeta));
 
+    if (retryable_requests) {
+      retryable_requests->SetMetricEntity(tablet->GetMetricEntity());
+    }
+
     consensus_ = RaftConsensus::Create(
         options,
         std::move(cmeta),
@@ -223,7 +229,8 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
         tablet_->mem_tracker(),
         mark_dirty_clbk_,
         tablet_->table_type(),
-        raft_pool);
+        raft_pool,
+        retryable_requests);
     has_consensus_.store(true, std::memory_order_release);
     auto ht_lease_provider = [this](MicrosTime min_allowed, MonoTime deadline) {
       MicrosTime lease_micros {
@@ -627,6 +634,8 @@ Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
     }
   }
 
+  *min_index = std::min(*min_index, consensus_->MinRetryableRequestOpId().index);
+
   auto* transaction_coordinator = tablet()->transaction_coordinator();
   if (transaction_coordinator) {
     *min_index = std::min(*min_index, transaction_coordinator->PrepareGC());
@@ -872,13 +881,13 @@ int64_t TabletPeer::LeaderTerm() const {
   return consensus ? consensus->LeaderTerm() : yb::OpId::kUnknownTerm;
 }
 
-consensus::Consensus::LeaderStatus TabletPeer::LeaderStatus() const {
+consensus::LeaderStatus TabletPeer::LeaderStatus() const {
   shared_ptr<consensus::Consensus> consensus;
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     consensus = consensus_;
   }
-  return consensus ? consensus->GetLeaderStatus() : consensus::Consensus::LeaderStatus::NOT_LEADER;
+  return consensus ? consensus->GetLeaderStatus() : consensus::LeaderStatus::NOT_LEADER;
 }
 
 HybridTime TabletPeer::HtLeaseExpiration() const {

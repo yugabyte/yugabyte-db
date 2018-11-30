@@ -94,14 +94,22 @@ RaftPeerPB::Role UnpackRole(ReplicaState::PackedRoleAndTerm role_and_term) {
 ReplicaState::ReplicaState(ConsensusOptions options, string peer_uuid,
                            std::unique_ptr<ConsensusMetadata> cmeta,
                            ReplicaOperationFactory* operation_factory,
-                           SafeOpIdWaiter* safe_op_id_waiter)
+                           SafeOpIdWaiter* safe_op_id_waiter,
+                           RetryableRequests* retryable_requests)
     : options_(std::move(options)),
       peer_uuid_(std::move(peer_uuid)),
       cmeta_(std::move(cmeta)),
       operation_factory_(operation_factory),
       safe_op_id_waiter_(safe_op_id_waiter) {
   CHECK(cmeta_) << "ConsensusMeta passed as NULL";
+  if (retryable_requests) {
+    retryable_requests_ = std::move(*retryable_requests);
+  }
+
   StoreRoleAndTerm(cmeta_->active_role(), cmeta_->current_term());
+}
+
+ReplicaState::~ReplicaState() {
 }
 
 Status ReplicaState::StartUnlocked(const OpId& last_id_in_wal) {
@@ -194,12 +202,12 @@ LeaderState ReplicaState::GetLeaderStateUnlocked(LeaderLeaseCheckMode lease_chec
   LeaderState result;
 
   if (GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
-    return result.MakeNotReadyLeader(Consensus::LeaderStatus::NOT_LEADER);
+    return result.MakeNotReadyLeader(LeaderStatus::NOT_LEADER);
   }
 
   if (!leader_no_op_committed_) {
     // This will cause the client to retry on the same server (won't try to find the new leader).
-    return result.MakeNotReadyLeader(Consensus::LeaderStatus::LEADER_BUT_NO_OP_NOT_COMMITTED);
+    return result.MakeNotReadyLeader(LeaderStatus::LEADER_BUT_NO_OP_NOT_COMMITTED);
   }
 
   const auto lease_status = lease_check_mode != LeaderLeaseCheckMode::DONT_NEED_LEASE
@@ -211,15 +219,15 @@ LeaderState ReplicaState::GetLeaderStateUnlocked(LeaderLeaseCheckMode lease_chec
       VLOG(1) << "Old leader lease might still be active for "
               << result.remaining_old_leader_lease.ToString();
       return result.MakeNotReadyLeader(
-          Consensus::LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE);
+          LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE);
 
     case LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE:
       // Will retry to look up the leader, because it might have changed.
       return result.MakeNotReadyLeader(
-          Consensus::LeaderStatus::LEADER_BUT_NO_MAJORITY_REPLICATED_LEASE);
+          LeaderStatus::LEADER_BUT_NO_MAJORITY_REPLICATED_LEASE);
 
     case LeaderLeaseStatus::HAS_LEASE:
-      result.status = Consensus::LeaderStatus::LEADER_AND_READY;
+      result.status = LeaderStatus::LEADER_AND_READY;
       result.term = GetCurrentTermUnlocked();
       return result;
   }
@@ -229,7 +237,7 @@ LeaderState ReplicaState::GetLeaderStateUnlocked(LeaderLeaseCheckMode lease_chec
 
 Status ReplicaState::CheckActiveLeaderUnlocked(LeaderLeaseCheckMode lease_check_mode) const {
   auto state = GetLeaderStateUnlocked(lease_check_mode);
-  if (state.status == Consensus::LeaderStatus::NOT_LEADER) {
+  if (state.status == LeaderStatus::NOT_LEADER) {
     ConsensusStatePB cstate = ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE);
     return STATUS_FORMAT(IllegalState,
                          "Replica $0 is not leader of this config. Role: $1. Consensus state: $2",
@@ -506,7 +514,7 @@ Status ReplicaState::CancelPendingOperations() {
       // We cancel only operations whose applies have not yet been triggered.
       LOG_WITH_PREFIX(INFO) << "Aborting operation as it isn't in flight: "
                             << operation.second->replicate_msg()->ShortDebugString();
-      round->NotifyReplicationFinished(abort_status, yb::OpId::kUnknownTerm);
+      NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm);
     }
   }
   return Status::OK();
@@ -544,7 +552,7 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
     const scoped_refptr<ConsensusRound>& round = it->second;
     LOG_WITH_PREFIX(INFO) << "Aborting uncommitted operation due to leader change: "
                           << round->replicate_msg()->id();
-    round->NotifyReplicationFinished(abort_status, yb::OpId::kUnknownTerm);
+    NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm);
   }
   // Clear entries from pendings.
   pending_operations_.erase(iter, pending_operations_.end());
@@ -621,6 +629,8 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
             << "New config: { " << new_config.ShortDebugString() << " }";
       }
     }
+  } else if (op_type == WRITE_OP) {
+    retryable_requests_.Register(*round->replicate_msg());
   }
 
   InsertOrDie(&pending_operations_, round->replicate_msg()->id().index(), round);
@@ -834,7 +844,7 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(IndexToRoundMap::iterator it
     }
 
     prev_id.CopyFrom(round->id());
-    round->NotifyReplicationFinished(Status::OK(), leader_term);
+    NotifyReplicationFinishedUnlocked(round, Status::OK(), leader_term);
   }
 
   SetLastCommittedIndexUnlocked(committed_index);
@@ -888,6 +898,15 @@ void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {
 const OpId& ReplicaState::GetCommittedOpIdUnlocked() const {
   DCHECK(IsLocked());
   return last_committed_index_;
+}
+
+RestartSafeCoarseMonoClock& ReplicaState::Clock() {
+  return retryable_requests_.Clock();
+}
+
+RetryableRequestsCounts ReplicaState::TEST_CountRetryableRequests() {
+  auto lock = LockForRead();
+  return retryable_requests_.TEST_Counts();
 }
 
 bool ReplicaState::AreCommittedAndCurrentTermsSameUnlocked() const {
@@ -1185,6 +1204,26 @@ void ReplicaState::SetMajorityReplicatedLeaseExpirationUnlocked(
 
 uint64_t ReplicaState::OnDiskSize() const {
   return cmeta_->on_disk_size();
+}
+
+bool ReplicaState::ShouldReplicateRoundUnlocked(const ConsensusRoundPtr& round) {
+  return retryable_requests_.ShouldReplicateRound(round);
+}
+
+yb::OpId ReplicaState::MinRetryableRequestOpId() {
+  UniqueLock lock;
+  auto status = LockForUpdate(&lock);
+  if (!status.ok()) {
+    return yb::OpId(); // return minimal op id, that prevents log from cleaning
+  }
+  return retryable_requests_.CleanExpiredReplicatedAndGetMinOpId();
+}
+
+void ReplicaState::NotifyReplicationFinishedUnlocked(
+    const ConsensusRoundPtr& round, const Status& status, int64_t leader_term) {
+  round->NotifyReplicationFinished(status, leader_term);
+
+  retryable_requests_.ReplicationFinished(*round->replicate_msg(), status, leader_term);
 }
 
 }  // namespace consensus

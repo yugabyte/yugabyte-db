@@ -45,6 +45,7 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/consensus/log_anchor_registry.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/opid_util.h"
@@ -509,7 +510,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
                                                      log,
                                                      tablet->GetMetricEntity(),
                                                      raft_pool(),
-                                                     tablet_prepare_pool()),
+                                                     tablet_prepare_pool(),
+                                                     nullptr /* retryable_requests */),
                         "Failed to Init() TabletPeer");
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info),

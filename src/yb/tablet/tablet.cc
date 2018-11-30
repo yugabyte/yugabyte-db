@@ -61,6 +61,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
+
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
@@ -753,6 +755,12 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
   }
   write_request->mutable_write_batch()->set_may_have_metadata(
       batch_request->write_batch().may_have_metadata());
+  if (batch_request->has_request_id()) {
+    write_request->set_client_id1(batch_request->client_id1());
+    write_request->set_client_id2(batch_request->client_id2());
+    write_request->set_request_id(batch_request->request_id());
+    write_request->set_min_running_request_id(batch_request->min_running_request_id());
+  }
 }
 
 } // namespace
@@ -1703,6 +1711,18 @@ void Tablet::ForceRocksDBCompactInTest() {
 
 std::string Tablet::DocDBDumpStrInTest() {
   return docdb::DocDBDebugDumpToStr(regular_db_.get());
+}
+
+size_t Tablet::TEST_CountRocksDBRecords() {
+  rocksdb::ReadOptions read_opts;
+  read_opts.query_id = rocksdb::kDefaultQueryId;
+  std::unique_ptr<rocksdb::Iterator> iter(regular_db_->NewIterator(read_opts));
+
+  size_t result = 0;
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    ++result;
+  }
+  return result;
 }
 
 uint64_t Tablet::GetTotalSSTFileSizes() const {

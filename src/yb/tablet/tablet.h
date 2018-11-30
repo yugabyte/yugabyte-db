@@ -460,6 +460,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::string DocDBDumpStrInTest();
 
+  size_t TEST_CountRocksDBRecords();
+
   // Returns last committed write index.
   // The main purpose of this method is to make correct log cleanup when tablet does not have
   // writes.

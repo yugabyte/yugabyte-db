@@ -21,6 +21,7 @@
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/table_handle.h"
 
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -50,6 +51,7 @@ DECLARE_int64(db_write_buffer_size);
 DECLARE_string(time_source);
 DECLARE_int32(TEST_delay_execute_async_ms);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
+DECLARE_int32(retryable_request_timeout_secs);
 
 namespace yb {
 namespace client {
@@ -421,24 +423,28 @@ void VerifyLogIndicies(MiniCluster* cluster) {
 }
 
 TEST_F(QLTabletTest, GCLogWithoutWrites) {
+  FLAGS_retryable_request_timeout_secs = 4;
+
   TableHandle table;
   CreateTable(kTable1Name, &table);
 
   FillTable(0, kTotalKeys, &table);
 
-  std::this_thread::sleep_for(5s);
+  std::this_thread::sleep_for(1s * (FLAGS_retryable_request_timeout_secs + 1));
   ASSERT_OK(cluster_->FlushTablets());
   DoStepDowns(cluster_.get());
   VerifyLogIndicies(cluster_.get());
 }
 
 TEST_F(QLTabletTest, GCLogWithRestartWithoutWrites) {
+  FLAGS_retryable_request_timeout_secs = 4;
+
   TableHandle table;
   CreateTable(kTable1Name, &table);
 
   FillTable(0, kTotalKeys, &table);
 
-  std::this_thread::sleep_for(5s);
+  std::this_thread::sleep_for(1s * (FLAGS_retryable_request_timeout_secs + 1));
   ASSERT_OK(cluster_->FlushTablets());
 
   ASSERT_OK(cluster_->RestartSync());
@@ -511,7 +517,7 @@ TEST_F(QLTabletTest, WaitFlush) {
   bool leader_found = false;
   while (!leader_found) {
     for (size_t i = 0; i != peers.size(); ++i) {
-      if (peers[i]->LeaderStatus() == consensus::Consensus::LeaderStatus::LEADER_AND_READY) {
+      if (peers[i]->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
         peers[(i + 1) % peers.size()]->log()->TEST_SetSleepDuration(500ms);
         leader_found = true;
         break;
@@ -676,7 +682,7 @@ TEST_F(QLTabletTest, LeaderChange) {
     auto server = cluster_->mini_tablet_server(i)->server();
     auto peers = server->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
-      if (peer->LeaderStatus() != consensus::Consensus::LeaderStatus::NOT_LEADER) {
+      if (peer->LeaderStatus() != consensus::LeaderStatus::NOT_LEADER) {
         leader_id = server->permanent_uuid();
         break;
       }
@@ -724,7 +730,7 @@ TEST_F(QLTabletTest, LeaderChange) {
     auto peers = server->tablet_manager()->GetTabletPeers();
     bool found = false;
     for (const auto& peer : peers) {
-      if (peer->LeaderStatus() != consensus::Consensus::LeaderStatus::NOT_LEADER) {
+      if (peer->LeaderStatus() != consensus::LeaderStatus::NOT_LEADER) {
         LOG(INFO) << "Request step down: " << server->permanent_uuid() << " => " << leader_id;
         consensus::LeaderStepDownRequestPB req;
         req.set_tablet_id(peer->tablet_id());

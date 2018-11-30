@@ -18,10 +18,9 @@
 #include <thread>
 #include <vector>
 
-#include <boost/lockfree/queue.hpp>
-
 #include <gflags/gflags.h>
 
+#include "yb/consensus/consensus.h"
 #include "yb/tablet/preparer.h"
 #include "yb/tablet/operations/operation_driver.h"
 #include "yb/util/logging.h"
@@ -279,7 +278,7 @@ void PreparerImpl::ReplicateSubBatch(
     rounds_to_replicate_.push_back((*batch_iter)->consensus_round());
   }
 
-  const Status s = consensus_->ReplicateBatch(rounds_to_replicate_);
+  const Status s = consensus_->ReplicateBatch(&rounds_to_replicate_);
   rounds_to_replicate_.clear();
 
   if (PREDICT_FALSE(!s.ok())) {
@@ -288,8 +287,7 @@ void PreparerImpl::ReplicateSubBatch(
             << "failed with that status";
     // Treat all the operations in the batch as failed.
     for (auto batch_iter = batch_begin; batch_iter != batch_end; ++batch_iter) {
-      (*batch_iter)->SetReplicationFailed(s);
-      (*batch_iter)->HandleFailure();
+      (*batch_iter)->ReplicationFailed(s);
     }
   }
 }

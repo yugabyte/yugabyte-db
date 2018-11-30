@@ -181,6 +181,12 @@ message WriteRequestPB {
   optional bool include_trace = 6 [ default = false ];
 
   optional ReadHybridTimePB read_time = 12;
+
+  // Use 2 int64 to represent UUID.
+  optional fixed64 client_id1 = 14;
+  optional fixed64 client_id2 = 15;
+  optional int64 request_id = 16;
+  optional int64 min_running_request_id = 17;
 }
 
 message WriteResponsePB {

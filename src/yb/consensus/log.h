@@ -42,14 +42,15 @@
 #include <boost/thread/shared_mutex.hpp>
 
 #include "yb/common/schema.h"
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/consensus/ref_counted_replicate.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/spinlock.h"
 #include "yb/util/async_util.h"
 #include "yb/util/blocking_queue.h"
 #include "yb/util/locks.h"
+#include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 #include "yb/util/promise.h"
 #include "yb/util/status.h"
@@ -133,6 +134,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // Append the given set of replicate messages, asynchronously.  This requires that the replicates
   // have already been assigned OpIds.
   CHECKED_STATUS AsyncAppendReplicates(const ReplicateMsgs& replicates, const OpId& committed_op_id,
+                                       RestartSafeCoarseTimePoint batch_mono_time,
                                        const StatusCallback& callback);
 
   // Blocks the current thread until all the entries in the log queue are flushed and fsynced (if

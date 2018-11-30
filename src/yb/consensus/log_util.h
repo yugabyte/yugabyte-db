@@ -43,13 +43,14 @@
 #include <gtest/gtest.h>
 
 #include "yb/consensus/log.pb.h"
-#include "yb/consensus/ref_counted_replicate.h"
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/atomic.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
+#include "yb/util/restart_safe_clock.h"
 
 // Used by other classes, now part of the API.
 DECLARE_bool(durable_wal_write);
@@ -107,6 +108,22 @@ struct LogOptions {
 typedef std::vector<scoped_refptr<ReadableLogSegment> > SegmentSequence;
 typedef std::vector<std::unique_ptr<LogEntryPB>> LogEntries;
 
+struct ReadEntriesResult {
+  // Read entries
+  LogEntries entries;
+
+  // Time of respective entry
+  std::vector<RestartSafeCoarseTimePoint> entry_times;
+
+  // Where we finished reading
+  int64_t end_offset;
+
+  yb::OpId committed_op_id;
+
+  // Failure status
+  Status status;
+};
+
 // A segment of the log can either be a ReadableLogSegment (for replay and
 // consensus catch-up) or a WritableLogSegment (where the Log actually stores
 // state). LogSegments have a maximum size defined in LogOptions (set from the
@@ -136,26 +153,23 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // This initializer provides methods for avoiding disk IO when creating a
   // ReadableLogSegment from a WritableLogSegment (i.e. for log rolling).
   CHECKED_STATUS Init(const LogSegmentHeaderPB& header,
-              const LogSegmentFooterPB& footer,
-              int64_t first_entry_offset);
+                      const LogSegmentFooterPB& footer,
+                      int64_t first_entry_offset);
 
   // Initialize the ReadableLogSegment.
   // This initializer will parse the log segment header and footer.
   // Note: This returns Status and may fail.
   CHECKED_STATUS Init();
 
-  // Reads all entries of the provided segment & adds them the 'entries' vector.
-  // The 'entries' vector owns the read entries.
+  // Reads all entries of the provided segment.
   //
   // If the log is corrupted (i.e. the returned 'Status' is 'Corruption') all
   // the log entries read up to the corrupted one are returned in the 'entries'
   // vector.
   //
-  // If 'end_offset' is not NULL, then returns the file offset following the last
-  // successfully read entry.
-  CHECKED_STATUS ReadEntries(LogEntries* entries,
-                             int64_t* end_offset = nullptr,
-                             yb::OpId* committed_op_id = nullptr);
+  // All gathered information is returned in result.
+  // In case of failure status field of result is not ok.
+  ReadEntriesResult ReadEntries();
 
   // Rebuilds this segment's footer by scanning its entries.
   // This is an expensive operation as it reads and parses the whole segment

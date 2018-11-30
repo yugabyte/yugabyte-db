@@ -104,9 +104,7 @@ class WriteOperationState : public OperationState {
     return request_;
   }
 
-  void UpdateRequestFromConsensusRound() override {
-    request_ = consensus_round()->replicate_msg()->mutable_write_request();
-  }
+  void UpdateRequestFromConsensusRound() override;
 
   // Returns the prepared response to the client that will be sent when this
   // transaction is completed, if this transaction was started by a client.

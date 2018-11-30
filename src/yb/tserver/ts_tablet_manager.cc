@@ -45,12 +45,14 @@
 #include "yb/client/client.h"
 
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+#include "yb/consensus/retryable_requests.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -725,7 +727,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   TOMBSTONE_NOT_OK(rb_client->Finish(),
                    meta,
                    fs_manager_->uuid(),
-                   "Remote bootstrap: Failure calling Finish()",
+                   "Remote bootstrap: Failed calling Finish()",
                    this);
 
   LOG(INFO) << kLogPrefix << "Remote bootstrap: Opening tablet";
@@ -931,6 +933,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
 
   consensus::ConsensusBootstrapInfo bootstrap_info;
   Status s;
+  consensus::RetryableRequests retryable_requests;
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
     // TODO: handle crash mid-creation of tablet? do we ever end up with a
     // partially created tablet here?
@@ -952,7 +955,8 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
         tablet_peer.get(),
         std::bind(&TSTabletManager::PreserveLocalLeadersOnly, this, _1),
         tablet_peer.get(),
-        append_pool()};
+        append_pool(),
+        &retryable_requests};
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to bootstrap: "
@@ -973,7 +977,8 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
                                     log,
                                     tablet->GetMetricEntity(),
                                     raft_pool(),
-                                    tablet_prepare_pool());
+                                    tablet_prepare_pool(),
+                                    &retryable_requests);
 
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to init: "
@@ -1169,7 +1174,7 @@ void TSTabletManager::PreserveLocalLeadersOnly(std::vector<const std::string*>* 
       return true;
     }
     auto leader_status = it->second->LeaderStatus();
-    return leader_status != consensus::Consensus::LeaderStatus::LEADER_AND_READY;
+    return leader_status != consensus::LeaderStatus::LEADER_AND_READY;
   };
   tablet_ids->erase(std::remove_if(tablet_ids->begin(), tablet_ids->end(), filter),
                     tablet_ids->end());
@@ -1217,8 +1222,8 @@ int TSTabletManager::GetLeaderCount() const {
   int count = 0;
   boost::shared_lock<RWMutex> lock(lock_);
   for (const auto& entry : tablet_map_) {
-    consensus::Consensus::LeaderStatus leader_status = entry.second->LeaderStatus();
-    if (leader_status != consensus::Consensus::LeaderStatus::NOT_LEADER) {
+    consensus::LeaderStatus leader_status = entry.second->LeaderStatus();
+    if (leader_status != consensus::LeaderStatus::NOT_LEADER) {
       count++;
     }
   }

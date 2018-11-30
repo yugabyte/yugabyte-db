@@ -158,6 +158,12 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   const std::string& proxy_uuid() const;
 
+  const ClientId& client_id() const;
+
+  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId(
+      const TabletId& tablet_id);
+  void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
+
  private:
   friend class RefCountedThreadSafe<Batcher>;
   friend class AsyncRpc;

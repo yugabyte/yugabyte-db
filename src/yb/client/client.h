@@ -42,11 +42,11 @@
 
 #include <boost/function.hpp>
 #include <boost/functional/hash/hash.hpp>
-#include <boost/thread/shared_mutex.hpp>
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/schema.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/wire_protocol.h"
 
 #ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
@@ -506,8 +506,6 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
 
   CHECKED_STATUS SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
-  const std::string& client_id() const { return client_id_; }
-
   void LookupTabletByKey(const YBTable* table,
                          const std::string& partition_key,
                          const MonoTime& deadline,
@@ -525,6 +523,13 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   rpc::ProxyCache& proxy_cache() const;
 
   const std::string& proxy_uuid() const;
+
+  // Id of this client instance.
+  const ClientId& id() const;
+
+  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId(
+      const TabletId& tablet_id);
+  void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
 
  private:
   class Data;
@@ -558,13 +563,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
 
   ThreadPool* callback_threadpool();
 
-  // Owned.
-  Data* data_;
-
-  // Unique identifier for this client. This will be constant for the lifetime of this client
-  // instance and is used in cases such as the load tester, for binding reads and writes from the
-  // same client to the same data.
-  const std::string client_id_;
+  std::unique_ptr<Data> data_;
 
   DISALLOW_COPY_AND_ASSIGN(YBClient);
 };
