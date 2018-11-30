@@ -6,7 +6,7 @@ import { Field, FieldArray } from 'redux-form';
 import {browserHistory} from 'react-router';
 import _ from 'lodash';
 import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, isEmptyObject,
-         isNonEmptyArray, normalizeToPositiveFloat } from 'utils/ObjectUtils';
+         isNonEmptyArray, normalizeToPositiveFloat, trimSpecialChars } from 'utils/ObjectUtils';
 import { YBTextInput, YBTextInputWithLabel, YBSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
          YBToggle, YBUnControlledNumericInput, YBControlledNumericInputWithLabel } from 'components/common/forms/fields';
 import {getPromiseState} from 'utils/PromiseUtils';
@@ -1047,7 +1047,9 @@ export default class ClusterFields extends Component {
     }
     let universeNameField = <span/>;
     if (clusterType === "primary") {
-      universeNameField = <Field name={`${clusterType}.universeName`} type="text" component={YBTextInputWithLabel} label="Name" isReadOnly={isFieldReadOnly}/>;
+      universeNameField = (<Field name={`${clusterType}.universeName`}
+      type="text" normalize={trimSpecialChars} component={YBTextInputWithLabel}
+      label="Name" isReadOnly={isFieldReadOnly}/>);
     }
 
     // Instance Type is read-only if use spot price is selected

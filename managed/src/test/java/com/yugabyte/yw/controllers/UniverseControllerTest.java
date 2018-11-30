@@ -277,13 +277,37 @@ public class UniverseControllerTest extends WithApplication {
   }
 
   @Test
+  public void testUniverseCreateWithInvalidUniverseName() {
+    String url = "/api/customers/" + customer.uuid + "/universes";
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson = Json.newObject()
+        .put("universeName", "Foo_Bar")
+        .put("instanceType", i.getInstanceTypeCode())
+        .put("replicationFactor", 3)
+        .put("numNodes", 3)
+        .put("provider", p.uuid.toString());
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertBadRequest(result, "Invalid Universe Name, valid characters [a-zA-Z0-9-]");
+  }
+
+  @Test
   public void testUniverseCreateWithoutAvailabilityZone() {
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
-      .put("universeName", "Single UserUniverse")
+      .put("universeName", "SingleUserUniverse")
       .put("instanceType", "a-instance")
       .put("replicationFactor", 3)
       .put("numNodes", 3)
@@ -314,7 +338,7 @@ public class UniverseControllerTest extends WithApplication {
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
-      .put("universeName", "Single UserUniverse")
+      .put("universeName", "SingleUserUniverse")
       .put("instanceType", i.getInstanceTypeCode())
       .put("replicationFactor", 3)
       .put("numNodes", 3)
@@ -334,7 +358,7 @@ public class UniverseControllerTest extends WithApplication {
     CustomerTask th = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
     assertNotNull(th);
     assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
-    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Single UserUniverse")));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("SingleUserUniverse")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Create)));
   }
 
