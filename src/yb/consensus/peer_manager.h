@@ -36,7 +36,6 @@
 #include <unordered_map>
 
 #include "yb/consensus/consensus_util.h"
-#include "yb/consensus/raft_consensus.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -53,6 +52,7 @@ class Log;
 
 namespace consensus {
 
+class Consensus;
 class Peer;
 class PeerMessageQueue;
 class PeerProxyFactory;

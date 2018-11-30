@@ -34,6 +34,8 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_reader.h"
+#include "yb/consensus/retryable_requests.h"
+
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
@@ -498,7 +500,9 @@ Status TabletBootstrap::OpenNewLog() {
 
 // Handle the given log entry. If OK is returned, then takes ownership of 'entry'.  Otherwise,
 // caller frees.
-Status TabletBootstrap::HandleEntry(ReplayState* state, std::unique_ptr<LogEntryPB>* entry_ptr) {
+Status TabletBootstrap::HandleEntry(
+    RestartSafeCoarseTimePoint entry_time, ReplayState* state,
+    std::unique_ptr<LogEntryPB>* entry_ptr) {
   auto& entry = **entry_ptr;
   if (VLOG_IS_ON(1)) {
     VLOG_WITH_PREFIX(1) << "Handling entry: " << entry.ShortDebugString();
@@ -506,7 +510,7 @@ Status TabletBootstrap::HandleEntry(ReplayState* state, std::unique_ptr<LogEntry
 
   switch (entry.type()) {
     case log::REPLICATE:
-      RETURN_NOT_OK(HandleReplicateMessage(state, entry_ptr));
+      RETURN_NOT_OK(HandleReplicateMessage(entry_time, state, entry_ptr));
       break;
     default:
       return STATUS(Corruption, Substitute("Unexpected log entry type: $0", entry.type()));
@@ -516,8 +520,9 @@ Status TabletBootstrap::HandleEntry(ReplayState* state, std::unique_ptr<LogEntry
 }
 
 // Takes ownership of 'replicate_entry' on OK status.
-Status TabletBootstrap::HandleReplicateMessage(ReplayState* state,
-                                               std::unique_ptr<LogEntryPB>* replicate_entry_ptr) {
+Status TabletBootstrap::HandleReplicateMessage(
+    RestartSafeCoarseTimePoint entry_time, ReplayState* state,
+    std::unique_ptr<LogEntryPB>* replicate_entry_ptr) {
   auto& replicate_entry = **replicate_entry_ptr;
   stats_.ops_read++;
 
@@ -558,6 +563,9 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state,
 
   auto min_index = std::min(
       state->regular_stored_op_id.index(), state->intents_stored_op_id.index());
+  if (data_.retryable_requests && replicate_entry.replicate().has_write_request()) {
+    data_.retryable_requests->Register(replicate, entry_time);
+  }
   if (op_id.index() <= min_index) {
     // Do not update the bootstrap in-memory state for log records that have already been applied to
     // RocksDB, or were overwritten by a later entry with a higher term that has already been
@@ -595,6 +603,15 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state,
 
   state->ApplyCommittedPendingReplicates(
       std::bind(&TabletBootstrap::HandleEntryPair, this, state, _1));
+
+  const auto kBlockSizeForRetryableRequests = 100;
+  if (data_.retryable_requests &&
+      state->committed_op_id.index() >=
+          last_committed_op_id_known_by_retryable_requests_.index +
+              kBlockSizeForRetryableRequests) {
+    last_committed_op_id_known_by_retryable_requests_ = yb::OpId::FromPB(state->committed_op_id);
+    data_.retryable_requests->MarkReplicatedUpTo(last_committed_op_id_known_by_retryable_requests_);
+  }
 
   return Status::OK();
 }
@@ -719,36 +736,39 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
 
   int segment_count = 0;
   yb::OpId last_committed_op_id;
+  RestartSafeCoarseTimePoint last_entry_time;
   for (const scoped_refptr<ReadableLogSegment>& segment : segments) {
-    log::LogEntries entries;
-    // TODO: Optimize this to not read the whole thing into memory?
-    yb::OpId committed_op_id;
-    Status read_status = segment->ReadEntries(&entries, nullptr /* end_offset */, &committed_op_id);
-    last_committed_op_id = std::max(last_committed_op_id, committed_op_id);
-    for (int entry_idx = 0; entry_idx < entries.size(); ++entry_idx) {
-      Status s = HandleEntry(&state, &entries[entry_idx]);
+    auto read_result = segment->ReadEntries();
+    last_committed_op_id = std::max(last_committed_op_id, read_result.committed_op_id);
+    for (int entry_idx = 0; entry_idx < read_result.entries.size(); ++entry_idx) {
+      Status s = HandleEntry(
+          read_result.entry_times[entry_idx], &state, &read_result.entries[entry_idx]);
       if (!s.ok()) {
         LOG(INFO) << "Dumping replay state to log";
         DumpReplayStateToLog(state);
         RETURN_NOT_OK_PREPEND(s, DebugInfo(tablet_->tablet_id(),
                                            segment->header().sequence_number(),
                                            entry_idx, segment->path(),
-                                           *entries[entry_idx]));
+                                           *read_result.entries[entry_idx]));
       }
+    }
+    if (!read_result.entry_times.empty()) {
+      last_entry_time = read_result.entry_times.back();
     }
 
     // If the LogReader failed to read for some reason, we'll still try to replay as many entries as
     // possible, and then fail with Corruption.
     // TODO: this is sort of scary -- why doesn't LogReader expose an entry-by-entry iterator-like
     // API instead? Seems better to avoid exposing the idea of segments to callers.
-    if (PREDICT_FALSE(!read_status.ok())) {
-      return STATUS(Corruption, Substitute("Error reading Log Segment of tablet $0: $1 "
-                                           "(Read up to entry $2 of segment $3, in path $4)",
-                                           tablet_->tablet_id(),
-                                           read_status.ToString(),
-                                           entries.size(),
-                                           segment->header().sequence_number(),
-                                           segment->path()));
+    if (PREDICT_FALSE(!read_result.status.ok())) {
+      return STATUS_FORMAT(Corruption,
+                           "Error reading Log Segment of tablet $0: $1 "
+                               "(Read up to entry $2 of segment $3, in path $4)",
+                           tablet_->tablet_id(),
+                           read_result.status,
+                           read_result.entries.size(),
+                           segment->header().sequence_number(),
+                           segment->path());
     }
 
     // TODO: could be more granular here and log during the segments as well, plus give info about
@@ -804,6 +824,11 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   tablet_->mvcc_manager()->SetLastReplicated(state.max_committed_hybrid_time);
   consensus_info->last_id = state.prev_op_id;
   consensus_info->last_committed_id = state.committed_op_id;
+
+  if (data_.retryable_requests) {
+    data_.retryable_requests->MarkReplicatedUpTo(yb::OpId::FromPB(state.committed_op_id));
+    data_.retryable_requests->Clock().Adjust(last_entry_time);
+  }
 
   return Status::OK();
 }

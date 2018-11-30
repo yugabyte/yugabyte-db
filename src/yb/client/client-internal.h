@@ -48,6 +48,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/threadpool.h"
 
 namespace yb {
@@ -300,6 +301,18 @@ class YBClient::Data {
   TabletServerId uuid_;
 
   std::unique_ptr<ThreadPool> cb_threadpool_;
+
+  const ClientId id_;
+
+  // Used to track requests that were sent to a particular tablet, so it could track different
+  // RPCs related to the same write operation and reject duplicates.
+  struct TabletRequests {
+    RetryableRequestId request_id_seq = 0;
+    std::set<RetryableRequestId> running_requests;
+  };
+
+  simple_spinlock tablet_requests_mutex_;
+  std::unordered_map<TabletId, TabletRequests> tablet_requests_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);

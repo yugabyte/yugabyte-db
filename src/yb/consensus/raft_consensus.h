@@ -41,6 +41,7 @@
 #include <vector>
 
 #include <boost/optional/optional_fwd.hpp>
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_peers.h"
@@ -103,9 +104,11 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    ThreadPool* raft_pool);
+    ThreadPool* raft_pool,
+    RetryableRequests* retryable_requests);
 
-  RaftConsensus(const ConsensusOptions& options,
+  RaftConsensus(
+    const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
     gscoped_ptr<PeerProxyFactory> peer_proxy_factory,
     gscoped_ptr<PeerMessageQueue> queue,
@@ -118,7 +121,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const scoped_refptr<log::Log>& log,
     std::shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
-    TableType table_type);
+    TableType table_type,
+    RetryableRequests* retryable_requests);
 
   virtual ~RaftConsensus();
 
@@ -140,7 +144,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                           LeaderStepDownResponsePB* resp) override;
 
   CHECKED_STATUS TEST_Replicate(const ConsensusRoundPtr& round) override;
-  CHECKED_STATUS ReplicateBatch(const ConsensusRounds& rounds) override;
+  CHECKED_STATUS ReplicateBatch(ConsensusRounds* rounds) override;
 
   CHECKED_STATUS Update(
       ConsensusRequestPB* request,
@@ -218,6 +222,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   void SetPropagatedSafeTimeProvider(std::function<HybridTime()> provider);
 
   void SetMajorityReplicatedListener(std::function<void()> updater);
+
+  yb::OpId MinRetryableRequestOpId();
+
+  RetryableRequestsCounts TEST_CountRetryableRequests();
 
  protected:
   // Trigger that a non-Operation ConsensusRound has finished replication.

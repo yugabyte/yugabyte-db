@@ -130,7 +130,8 @@ class LogCacheTest : public YBTest {
       int index = i;
       ReplicateMsgs msgs = { CreateDummyReplicate(term, index, clock_->Now(), payload_size) };
       RETURN_NOT_OK(cache_->AppendOperations(
-          msgs, yb::OpId() /* committed_op_id */, Bind(&FatalOnError)));
+          msgs, yb::OpId() /* committed_op_id */, RestartSafeCoarseTimePoint(),
+          Bind(&FatalOnError)));
     }
     return Status::OK();
   }

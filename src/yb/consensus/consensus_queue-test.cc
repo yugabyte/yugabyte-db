@@ -679,7 +679,7 @@ TEST_F(ConsensusQueueTest, TestQueueMovesWatermarksBackward) {
   Synchronizer synch;
   ASSERT_OK(queue_->AppendOperations(
       { CreateDummyReplicate(2, 5, clock_->Now(), 0) }, yb::OpId() /* committed_op_id */,
-      synch.AsStatusCallback()));
+      RestartSafeCoarseTimePoint(), synch.AsStatusCallback()));
 
   // Wait for the operation to be in the log.
   ASSERT_OK(synch.Wait());
@@ -689,7 +689,7 @@ TEST_F(ConsensusQueueTest, TestQueueMovesWatermarksBackward) {
   synch.Reset();
   ASSERT_OK(queue_->AppendOperations(
       { CreateDummyReplicate(2, 6, clock_->Now(), 0) }, yb::OpId() /* committed_op_id */,
-      synch.AsStatusCallback()));
+      RestartSafeCoarseTimePoint(), synch.AsStatusCallback()));
 
   // Wait for the operation to be in the log.
   ASSERT_OK(synch.Wait());

@@ -288,11 +288,17 @@ Status OperationDriver::PrepareAndStart() {
   FATAL_INVALID_ENUM_VALUE(ReplicationState, repl_state_copy);
 }
 
-void OperationDriver::SetReplicationFailed(const Status& replication_status) {
-  std::lock_guard<simple_spinlock> lock(lock_);
-  CHECK_EQ(replication_state_, REPLICATING);
-  operation_status_ = replication_status;
-  replication_state_ = REPLICATION_FAILED;
+void OperationDriver::ReplicationFailed(const Status& replication_status) {
+  {
+    std::lock_guard<simple_spinlock> lock(lock_);
+    if (replication_state_ == REPLICATION_FAILED) {
+      return;
+    }
+    CHECK_EQ(replication_state_, REPLICATING);
+    operation_status_ = replication_status;
+    replication_state_ = REPLICATION_FAILED;
+  }
+  HandleFailure();
 }
 
 void OperationDriver::HandleFailure(Status status) {
@@ -346,7 +352,7 @@ void OperationDriver::ReplicationFinished(const Status& status, int64_t leader_t
     // one here, one in ConsensusRound, and one in OperationState.
 
     op_id_copy_ = DCHECK_NOTNULL(mutable_state()->consensus_round())->id();
-    DCHECK(op_id_copy_.IsInitialized());
+    DCHECK(!status.ok() || op_id_copy_.IsInitialized());
     // We can't update mutable_state()->mutable_op_id() here, because it is guarded by a different
     // lock. Instead, we save it in a local variable and write it to the other location when
     // holding the other lock.

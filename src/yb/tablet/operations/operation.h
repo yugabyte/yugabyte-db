@@ -40,7 +40,9 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/util/auto_release_pool.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
@@ -142,11 +144,7 @@ class OperationState {
 
   // Sets the ConsensusRound for this transaction, if this transaction is being executed through the
   // consensus system.
-  void set_consensus_round(const scoped_refptr<consensus::ConsensusRound>& consensus_round) {
-    consensus_round_ = consensus_round;
-    op_id_ = consensus_round_->id();
-    UpdateRequestFromConsensusRound();
-  }
+  void set_consensus_round(const scoped_refptr<consensus::ConsensusRound>& consensus_round);
 
   // Each subclass should provide a way to update the internal reference to the Message* request, so
   // we can avoid copying the request object all the time.

@@ -41,6 +41,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/status.h"
 #include "yb/util/net/net_fwd.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
 
@@ -286,5 +287,9 @@ static inline uint8_t Load8(const void* p) {
 
 #undef RETURN_NOT_ENOUGH
 
+YB_STRONGLY_TYPED_UUID(ClientId);
+typedef int64_t RetryableRequestId;
+
 } // namespace yb
+
 #endif  // YB_COMMON_WIRE_PROTOCOL_H

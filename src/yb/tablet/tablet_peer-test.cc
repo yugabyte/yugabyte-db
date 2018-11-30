@@ -37,6 +37,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
@@ -170,7 +171,8 @@ class TabletPeerTest : public YBTabletTest,
                                            log,
                                            metric_entity_,
                                            raft_pool_.get(),
-                                           tablet_prepare_pool_.get()));
+                                           tablet_prepare_pool_.get(),
+                                           nullptr /* retryable_requests */));
   }
 
   Status StartPeer(const ConsensusBootstrapInfo& info) {

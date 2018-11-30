@@ -24,6 +24,8 @@
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/transaction_manager.h"
 
+#include "yb/consensus/consensus.h"
+
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -41,7 +43,7 @@
 
 #include "yb/util/random_util.h"
 
-using namespace std::literals; // NOLINT
+using namespace std::literals;
 
 using yb::tablet::GetTransactionTimeout;
 using yb::tablet::TabletPeer;
@@ -255,7 +257,7 @@ class QLTransactionTest : public KeyValueTableTest {
       auto peers = tablet_manager->GetTabletPeers();
       for (const auto& peer : peers) {
         if (peer->consensus()->GetLeaderStatus() !=
-                consensus::Consensus::LeaderStatus::NOT_LEADER &&
+                consensus::LeaderStatus::NOT_LEADER &&
             peer->tablet()->transaction_coordinator()) {
           result += peer->tablet()->transaction_coordinator()->test_count_transactions();
         }
@@ -1490,7 +1492,7 @@ TEST_F(QLTransactionTest, ChangeLeader) {
       for (const auto& peer : peers) {
         if (peer->consensus() &&
             peer->consensus()->GetLeaderStatus() !=
-                consensus::Consensus::LeaderStatus::NOT_LEADER &&
+                consensus::LeaderStatus::NOT_LEADER &&
             peer->tablet()->transaction_coordinator() &&
             peer->tablet()->transaction_coordinator()->test_count_transactions()) {
           consensus::LeaderStepDownRequestPB req;

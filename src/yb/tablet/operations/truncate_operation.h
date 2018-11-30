@@ -43,9 +43,7 @@ class TruncateOperationState : public OperationState {
 
   const tserver::TruncateRequestPB* request() const override { return request_; }
 
-  void UpdateRequestFromConsensusRound() override {
-    request_ = consensus_round()->replicate_msg()->mutable_truncate_request();
-  }
+  void UpdateRequestFromConsensusRound() override;
 
   virtual std::string ToString() const override;
 

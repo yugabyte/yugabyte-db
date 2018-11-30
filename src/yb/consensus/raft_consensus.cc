@@ -200,7 +200,8 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     const shared_ptr<MemTracker>& parent_mem_tracker,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    ThreadPool* raft_pool) {
+    ThreadPool* raft_pool,
+    RetryableRequests* retryable_requests) {
   gscoped_ptr<PeerProxyFactory> rpc_factory(new RpcPeerProxyFactory(
       messenger, proxy_cache, local_peer_pb.cloud_info()));
 
@@ -249,7 +250,8 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       log,
       parent_mem_tracker,
       mark_dirty_clbk,
-      table_type);
+      table_type,
+      retryable_requests);
 }
 
 RaftConsensus::RaftConsensus(
@@ -262,7 +264,8 @@ RaftConsensus::RaftConsensus(
     ReplicaOperationFactory* operation_factory, const scoped_refptr<log::Log>& log,
     shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
-    TableType table_type)
+    TableType table_type,
+    RetryableRequests* retryable_requests)
     : raft_pool_token_(std::move(raft_pool_token)),
       log_(log),
       clock_(clock),
@@ -293,7 +296,8 @@ RaftConsensus::RaftConsensus(
                                 peer_uuid,
                                 std::move(cmeta),
                                 DCHECK_NOTNULL(operation_factory),
-                                this));
+                                this,
+                                retryable_requests));
 
   peer_manager_->SetConsensus(this);
 }
@@ -845,15 +849,16 @@ Status RaftConsensus::BecomeReplicaUnlocked(const std::string& new_leader_uuid) 
 }
 
 Status RaftConsensus::TEST_Replicate(const ConsensusRoundPtr& round) {
-  return ReplicateBatch({ round });
+  ConsensusRounds rounds = { round };
+  return ReplicateBatch(&rounds);
 }
 
-Status RaftConsensus::ReplicateBatch(const ConsensusRounds& rounds) {
+Status RaftConsensus::ReplicateBatch(ConsensusRounds* rounds) {
   RETURN_NOT_OK(ExecuteHook(PRE_REPLICATE));
   {
     ReplicaState::UniqueLock lock;
 #ifndef NDEBUG
-    for (const auto& round : rounds) {
+    for (const auto& round : *rounds) {
       DCHECK(!round->replicate_msg()->has_id()) << "Should not have an OpId yet: "
                                                 << round->replicate_msg()->DebugString();
     }
@@ -861,10 +866,24 @@ Status RaftConsensus::ReplicateBatch(const ConsensusRounds& rounds) {
     RETURN_NOT_OK(state_->LockForReplicate(&lock));
     auto current_term = state_->GetCurrentTermUnlocked();
 
-    for (const auto& round : rounds) {
+    for (const auto& round : *rounds) {
       RETURN_NOT_OK(round->CheckBoundTerm(current_term));
     }
-    RETURN_NOT_OK(AppendNewRoundsToQueueUnlocked(rounds));
+    auto write_iterator = rounds->begin();
+    for (auto i = rounds->begin(); i != rounds->end(); ++i) {
+      if (state_->ShouldReplicateRoundUnlocked((*i).get())) {
+        if (write_iterator != i) {
+          *write_iterator = std::move(*i);
+        }
+        ++write_iterator;
+      }
+    }
+    if (write_iterator == rounds->begin()) {
+      rounds->clear();
+      return Status::OK(); // all operations were filtered
+    }
+    rounds->erase(write_iterator, rounds->end());
+    RETURN_NOT_OK(AppendNewRoundsToQueueUnlocked(*rounds));
   }
 
   peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
@@ -921,7 +940,7 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   }
   Status s = queue_->AppendOperations(
       replicate_msgs, yb::OpId::FromPB(state_->GetCommittedOpIdUnlocked()),
-      Bind(DoNothingStatusCB));
+      state_->Clock().Now(), Bind(DoNothingStatusCB));
 
   // Handle Status::ServiceUnavailable(), which means the queue is full.
   // TODO: what are we doing about other errors here? Should we also release OpIds in those cases?
@@ -983,7 +1002,7 @@ void RaftConsensus::UpdateMajorityReplicated(
     // This affects only our local log, because followers have different logic in this scenario.
     if (OpIdEquals(*committed_op_id, state_->GetLastReceivedOpIdUnlocked())) {
       auto status = queue_->AppendOperations(
-          {}, yb::OpId::FromPB(*committed_op_id), Bind(DoNothingStatusCB));
+          {}, yb::OpId::FromPB(*committed_op_id), state_->Clock().Now(), Bind(DoNothingStatusCB));
       LOG_IF_WITH_PREFIX(DFATAL, !status.ok() && !status.IsServiceUnavailable())
           << "Failed to append empty batch: " << status;
     }
@@ -999,7 +1018,7 @@ void RaftConsensus::AppendEmptyBatchToLeaderLog() {
   auto committed_op_id = state_->GetCommittedOpIdUnlocked();
   if (OpIdEquals(committed_op_id, state_->GetLastReceivedOpIdUnlocked())) {
     auto status = queue_->AppendOperations(
-        {}, yb::OpId::FromPB(committed_op_id), Bind(DoNothingStatusCB));
+        {}, yb::OpId::FromPB(committed_op_id), state_->Clock().Now(), Bind(DoNothingStatusCB));
     LOG_IF_WITH_PREFIX(DFATAL, !status.ok()) << "Failed to append empty batch: " << status;
   }
 }
@@ -1679,7 +1698,8 @@ OpId RaftConsensus::EnqueueWritesUnlocked(const LeaderRequest& deduped_req,
     //
     // Since we've prepared, we need to be able to append (or we risk trying to apply
     // later something that wasn't logged). We crash if we can't.
-    CHECK_OK(queue_->AppendOperations(deduped_req.messages, committed_op_id, sync_status_cb));
+    CHECK_OK(queue_->AppendOperations(
+        deduped_req.messages, committed_op_id, state_->Clock().Now(), sync_status_cb));
   }
 
 
@@ -2818,6 +2838,14 @@ void RaftConsensus::SetPropagatedSafeTimeProvider(std::function<HybridTime()> pr
 
 void RaftConsensus::SetMajorityReplicatedListener(std::function<void()> updater) {
   majority_replicated_listener_ = std::move(updater);
+}
+
+yb::OpId RaftConsensus::MinRetryableRequestOpId() {
+  return state_->MinRetryableRequestOpId();
+}
+
+RetryableRequestsCounts RaftConsensus::TEST_CountRetryableRequests() {
+  return state_->TEST_CountRetryableRequests();
 }
 
 }  // namespace consensus

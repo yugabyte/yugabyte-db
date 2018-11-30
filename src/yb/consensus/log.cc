@@ -494,10 +494,15 @@ Status Log::AsyncAppend(LogEntryBatch* entry_batch, const StatusCallback& callba
 }
 
 Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
+                                  RestartSafeCoarseTimePoint batch_mono_time,
                                   const StatusCallback& callback) {
   auto batch = CreateBatchFromAllocatedOperations(msgs);
   if (committed_op_id) {
     committed_op_id.ToPB(batch.mutable_committed_op_id());
+  }
+  // Set batch mono time if it was specified.
+  if (batch_mono_time != RestartSafeCoarseTimePoint()) {
+    batch.set_mono_time(batch_mono_time.ToUInt64());
   }
 
   LogEntryBatch* reserved_entry_batch;

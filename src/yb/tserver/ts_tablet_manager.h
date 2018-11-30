@@ -46,8 +46,10 @@
 #include "yb/rocksdb/options.h"
 #include "yb/client/async_initializer.h"
 #include "yb/client/client_fwd.h"
-#include "yb/consensus/consensus.h"
+
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tablet/tablet_fwd.h"
@@ -121,7 +123,7 @@ class TransitionInProgressDeleter;
 // as re-opening all the tablets at startup, etc.
 class TSTabletManager : public tserver::TabletPeerLookupIf {
  public:
-    typedef std::vector<std::shared_ptr<tablet::TabletPeer>> TabletPeers;
+  typedef std::vector<std::shared_ptr<tablet::TabletPeer>> TabletPeers;
 
   // Construct the tablet manager.
   // 'fs_manager' must remain valid until this object is destructed.

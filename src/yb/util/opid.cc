@@ -17,6 +17,8 @@
 
 #include <iostream>
 
+#include <boost/functional/hash.hpp>
+
 #include <glog/logging.h>
 
 namespace yb {
@@ -51,6 +53,15 @@ void OpId::MakeAtMost(const OpId& rhs) {
 
 std::ostream& operator<<(std::ostream& out, const OpId& op_id) {
   return out << "{ term: " << op_id.term << " index: " << op_id.index << " }";
+}
+
+size_t hash_value(const OpId& op_id) noexcept {
+  size_t result = 0;
+
+  boost::hash_combine(result, op_id.term);
+  boost::hash_combine(result, op_id.index);
+
+  return result;
 }
 
 } // namespace yb
