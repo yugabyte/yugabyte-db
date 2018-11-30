@@ -182,6 +182,11 @@ public class UniverseController extends AuthenticatedController {
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
+
+    if (!taskParams.getPrimaryCluster().userIntent.universeName.matches("^[a-zA-Z0-9-]*$")) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Universe Name, valid characters [a-zA-Z0-9-]");
+    }
+
     try {
       // Set the provider code.
       for (Cluster c : taskParams.clusters) {

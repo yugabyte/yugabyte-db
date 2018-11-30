@@ -217,6 +217,10 @@ export function convertSpaceToDash(string) {
   return string && string.replace(/\s+/g, '-');
 }
 
+export function trimSpecialChars(string) {
+  return string && string.replace(/[^a-zA-Z0-9/-]+/g, '');
+}
+
 export function sortInstanceTypeList(instanceTypeArr) {
   return instanceTypeArr.sort(function(a, b) {
     return a.instanceTypeCode.localeCompare(
