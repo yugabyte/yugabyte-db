@@ -36,6 +36,7 @@
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/fs/block_id.h"

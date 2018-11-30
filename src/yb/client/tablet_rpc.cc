@@ -303,7 +303,7 @@ bool TabletInvoker::Done(Status* status) {
                tablet_id_,
                current_ts_string,
                retrier_->attempt_num()));
-    if (status->IsTryAgain() || status->IsExpired()) {
+    if (status->IsTryAgain() || status->IsExpired() || status->IsAlreadyPresent()) {
       YB_LOG_EVERY_N_SECS(INFO, 1) << *status;
     } else {
       LOG(WARNING) << *status;

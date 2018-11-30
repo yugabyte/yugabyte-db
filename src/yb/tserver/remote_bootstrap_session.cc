@@ -34,6 +34,7 @@
 #include <algorithm>
 #include <boost/optional.hpp>
 
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/fs/block_manager.h"

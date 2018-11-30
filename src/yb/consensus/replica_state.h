@@ -41,10 +41,11 @@
 #include <vector>
 
 #include "yb/common/hybrid_time.h"
-#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
+#include "yb/consensus/consensus_types.h"
+#include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/leader_lease.h"
 #include "yb/gutil/port.h"
@@ -59,6 +60,8 @@ class ReplicaState;
 class ThreadPool;
 
 namespace consensus {
+
+class RetryableRequests;
 
 // Class that coordinates access to the replica state (independently of Role).
 // This has a 1-1 relationship with RaftConsensus and is essentially responsible for
@@ -112,7 +115,10 @@ class ReplicaState {
   ReplicaState(ConsensusOptions options, std::string peer_uuid,
                std::unique_ptr<ConsensusMetadata> cmeta,
                ReplicaOperationFactory* operation_factory,
-               SafeOpIdWaiter* safe_op_id_waiter);
+               SafeOpIdWaiter* safe_op_id_waiter,
+               RetryableRequests* retryable_requests);
+
+  ~ReplicaState();
 
   CHECKED_STATUS StartUnlocked(const OpId& last_in_wal);
 
@@ -392,12 +398,20 @@ class ReplicaState {
   // The on-disk size of the consensus metadata.
   uint64_t OnDiskSize() const;
 
+  // See RetryableRequests::ShouldReplicateRound
+  bool ShouldReplicateRoundUnlocked(const ConsensusRoundPtr& round);
+
+  yb::OpId MinRetryableRequestOpId();
+
+  RestartSafeCoarseMonoClock& Clock();
+
+  RetryableRequestsCounts TEST_CountRetryableRequests();
+
   void SetLeaderNoOpCommittedUnlocked(bool value) {
     leader_no_op_committed_ = value;
   }
 
  private:
-
   template <class Policy>
   LeaderLeaseStatus GetLeaseStatusUnlocked(Policy policy) const;
 
@@ -421,6 +435,9 @@ class ReplicaState {
 
   // Applies committed config change.
   void ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round);
+
+  void NotifyReplicationFinishedUnlocked(
+      const ConsensusRoundPtr& round, const Status& status, int64_t leader_term);
 
   const ConsensusOptions options_;
 
@@ -499,6 +516,8 @@ class ReplicaState {
   // The leader is allowed to add new log entries only when lease of old leader is expired.
   std::atomic<MicrosTime> majority_replicated_ht_lease_expiration_
       {HybridTime::kMin.GetPhysicalValueMicros()};
+
+  RetryableRequests retryable_requests_;
 
   // This leader is ready to serve only if NoOp was successfully committed
   // after the new leader successful election.

@@ -41,8 +41,9 @@
 #include <string>
 #include <vector>
 
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/consensus_types.h"
 #include "yb/consensus/log.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
@@ -115,7 +116,8 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
                                 const scoped_refptr<log::Log> &log,
                                 const scoped_refptr<MetricEntity> &metric_entity,
                                 ThreadPool* raft_pool,
-                                ThreadPool* tablet_prepare_pool);
+                                ThreadPool* tablet_prepare_pool,
+                                consensus::RetryableRequests* retryable_requests);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
@@ -276,7 +278,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   }
 
   int64_t LeaderTerm() const override;
-  consensus::Consensus::LeaderStatus LeaderStatus() const;
+  consensus::LeaderStatus LeaderStatus() const;
 
   HybridTime HtLeaseExpiration() const override;
 

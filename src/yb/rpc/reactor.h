@@ -315,7 +315,7 @@ class Reactor {
 
   Messenger *messenger() const { return messenger_.get(); }
 
-  CoarseMonoClock::TimePoint cur_time() const { return cur_time_; }
+  CoarseTimePoint cur_time() const { return cur_time_; }
 
   // Drop all connections with remote address. Used in tests with broken connectivity.
   void DropWithRemoteAddress(const IpAddress& address);
@@ -455,10 +455,10 @@ class Reactor {
   ReactorTasks async_handler_tasks_;
 
   // The current monotonic time.  Updated every coarse_timer_granularity_.
-  CoarseMonoClock::TimePoint cur_time_;
+  CoarseTimePoint cur_time_;
 
   // last time we did TCP timeouts.
-  CoarseMonoClock::TimePoint last_unused_tcp_scan_;
+  CoarseTimePoint last_unused_tcp_scan_;
 
   // Map of sockaddrs to Connection objects for outbound (client) connections.
   ConnectionMap client_conns_;
@@ -482,7 +482,7 @@ class Reactor {
   // the reactor thread.
   bool stopping_ = false;
 
-  CoarseMonoClock::TimePoint stop_start_time_;
+  CoarseTimePoint stop_start_time_;
 
   std::vector<OutboundCallPtr> outbound_queue_;
 

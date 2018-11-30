@@ -123,7 +123,8 @@ set(CONSENSUS_SRCS
   peer_manager.cc
   quorum_util.cc
   raft_consensus.cc
-  replica_state.cc)
+  replica_state.cc
+  retryable_requests.cc)
 
 add_library(consensus ${CONSENSUS_SRCS})
 cotire(consensus)

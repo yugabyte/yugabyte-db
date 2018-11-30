@@ -18,7 +18,10 @@
 
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <boost/uuid/nil_generator.hpp>
 #include <boost/uuid/random_generator.hpp>
+
+#include "yb/gutil/endian.h"
 
 #include "yb/util/result.h"
 
@@ -27,95 +30,123 @@
 // specified instead of just UUID. Conversion from strongly-typed UUIDs
 // to regular UUIDs is automatic, but the reverse conversion is always explicit.
 #define YB_STRONGLY_TYPED_UUID(TypeName) \
-  struct BOOST_PP_CAT(TypeName, _Tag) { static const std::string name; }; \
-  const std::string BOOST_PP_CAT(TypeName, _Tag)::name = BOOST_PP_STRINGIZE(TypeName); \
-  typedef ::yb::StronglyTypedUuid<BOOST_PP_CAT(TypeName, _Tag)> TypeName;
+  struct BOOST_PP_CAT(TypeName, _Tag); \
+  typedef ::yb::StronglyTypedUuid<BOOST_PP_CAT(TypeName, _Tag)> TypeName; \
+  typedef boost::hash<TypeName> BOOST_PP_CAT(TypeName, Hash);
 
 namespace yb {
 
 template <class Tag>
 class StronglyTypedUuid {
  public:
-  // Represents an invalid UUID.
-  static const StronglyTypedUuid<Tag> kUndefined;
-
   // This is public so that we can construct a strongly-typed UUID value out of a regular one.
   // In that case we'll have to spell out the class name, which will enforce readability.
-  explicit StronglyTypedUuid(boost::optional<boost::uuids::uuid> uuid) : uuid_(uuid) {}
+  explicit StronglyTypedUuid(const boost::uuids::uuid& uuid) : uuid_(uuid) {}
+
+  StronglyTypedUuid<Tag>(uint64_t pb1, uint64_t pb2) {
+    pb1 = LittleEndian::FromHost64(pb1);
+    pb2 = LittleEndian::FromHost64(pb2);
+    memcpy(uuid_.data, &pb1, sizeof(pb1));
+    memcpy(uuid_.data + sizeof(pb1), &pb2, sizeof(pb2));
+  }
 
   // Gets the underlying UUID, only if not undefined.
-  boost::uuids::uuid operator * () const {
-    CHECK(uuid_);
-    return uuid_.get();
-  }
-
-  // Converts a string to a StronglyTypedUuid, if such a conversion exists.
-  // The empty string maps to undefined.
-  static Result<StronglyTypedUuid<Tag>> GenerateUuidFromString(const std::string& strval) {
-    if (strval == "") {
-      return kUndefined;
-    }
-    try {
-      boost::optional<boost::uuids::uuid> uuid = boost::lexical_cast<boost::uuids::uuid>(strval);
-      return StronglyTypedUuid(uuid);
-    } catch (std::exception& e) {
-      return STATUS_SUBSTITUTE(InvalidArgument, "String $0 cannot be converted to a uuid", strval);
-    }
-  }
-
-  // Generate a random StronglyTypedUuid.
-  static StronglyTypedUuid<Tag> GenerateRandomUuid() {
-    return StronglyTypedUuid(boost::uuids::random_generator()());
+  const boost::uuids::uuid& operator *() const {
+    return uuid_;
   }
 
   // Converts a UUID to a string, returns "<Undefined{ClassName}>" if UUID is undefined, where
   // {ClassName} is the name associated with the Tag class.
   std::string ToString() const {
-    if (uuid_) {
-      return boost::lexical_cast<std::string>(*uuid_);
-    } else {
-      return "<Undefined" + Tag::name + ">";
+    return to_string(uuid_);
+  }
+
+  // Returns true iff the UUID is nil.
+  bool IsNil() const {
+    return uuid_.is_nil();
+  }
+
+  // Represent UUID as pair of uint64 for protobuf serialization.
+  // This serialization is independent of the byte order on the machine.
+  // For instance we could convert UUID to pair of uint64 on little endian machine, transfer them
+  // to big endian machine and UUID created from them will be the same.
+  std::pair<uint64_t, uint64_t> ToUInt64Pair() const {
+    std::pair<uint64_t, uint64_t> result;
+    memcpy(&result.first, uuid_.data, sizeof(result.first));
+    memcpy(&result.second, uuid_.data + sizeof(result.first), sizeof(result.second));
+    return std::pair<uint64_t, uint64_t>(
+        LittleEndian::ToHost64(result.first), LittleEndian::ToHost64(result.second));
+  }
+
+  // Represents an invalid UUID.
+  static StronglyTypedUuid<Tag> Nil() {
+    return StronglyTypedUuid(boost::uuids::nil_uuid());
+  }
+
+  // Converts a string to a StronglyTypedUuid, if such a conversion exists.
+  // The empty string maps to undefined.
+  static Result<StronglyTypedUuid<Tag>> FromString(const std::string& strval) {
+    if (strval.empty()) {
+      return StronglyTypedUuid<Tag>::Nil();
+    }
+    try {
+      return StronglyTypedUuid(boost::lexical_cast<boost::uuids::uuid>(strval));
+    } catch (std::exception& e) {
+      return STATUS_FORMAT(
+          InvalidArgument, "String '$0' cannot be converted to a uuid: $1", strval, e.what());
     }
   }
 
-  // Returns true iff the UUID is defined.
-  bool IsValid() const {
-    return static_cast<bool>(uuid_);
+  // Generate a random StronglyTypedUuid.
+  static StronglyTypedUuid<Tag> GenerateRandom() {
+    return StronglyTypedUuid(boost::uuids::random_generator()());
   }
 
  private:
   // Represented as an optional UUID.
-  boost::optional<boost::uuids::uuid> uuid_;
+  boost::uuids::uuid uuid_;
 };
 
 template <class Tag>
 std::ostream& operator << (std::ostream& out, const StronglyTypedUuid<Tag>& uuid) {
-  out << uuid.ToString();
+  out << *uuid;
   return out;
 }
 
-// Returns true iff the StronglyTypedUuids are equal.
 template <class Tag>
-bool operator == (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) {
-  bool lhs_valid = lhs.IsValid();
-  bool rhs_valid = rhs.IsValid();
-  if (!lhs_valid && !rhs_valid) {
-    return true;
-  }
-  if (lhs_valid != rhs_valid) {
-    return false;
-  }
+bool operator == (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
   return *lhs == *rhs;
 }
 
 template <class Tag>
-bool operator != (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) {
+bool operator != (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
   return !(lhs == rhs);
 }
 
 template <class Tag>
-const StronglyTypedUuid<Tag>
-StronglyTypedUuid<Tag>::kUndefined(boost::optional<boost::uuids::uuid>{});
+bool operator < (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
+  return *lhs < *rhs;
+}
+
+template <class Tag>
+bool operator > (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
+  return rhs < lhs;
+}
+
+template <class Tag>
+bool operator <= (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
+  return !(rhs < lhs);
+}
+
+template <class Tag>
+bool operator >= (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
+  return !(lhs < rhs);
+}
+
+template <class Tag>
+std::size_t hash_value(const StronglyTypedUuid<Tag>& u) noexcept {
+  return hash_value(*u);
+}
 
 } // namespace yb
 

@@ -80,7 +80,7 @@ Status ConsensusRound::CheckBoundTerm(int64_t current_term) const {
   return Status::OK();
 }
 
-Consensus::LeaderStatus Consensus::GetLeaderStatus() const {
+LeaderStatus Consensus::GetLeaderStatus() const {
   return GetLeaderState().status;
 }
 
@@ -121,7 +121,7 @@ Status Consensus::ExecuteHook(HookPoint point) {
   return Status::OK();
 }
 
-LeaderState& LeaderState::MakeNotReadyLeader(Consensus::LeaderStatus status_) {
+LeaderState& LeaderState::MakeNotReadyLeader(LeaderStatus status_) {
   status = status_;
   term = yb::OpId::kUnknownTerm;
   return *this;
@@ -129,26 +129,26 @@ LeaderState& LeaderState::MakeNotReadyLeader(Consensus::LeaderStatus status_) {
 
 Status LeaderState::CreateStatus() const {
   switch (status) {
-    case consensus::Consensus::LeaderStatus::NOT_LEADER:
+    case consensus::LeaderStatus::NOT_LEADER:
       return STATUS(IllegalState, "Not the leader");
 
-    case consensus::Consensus::LeaderStatus::LEADER_BUT_NO_OP_NOT_COMMITTED:
+    case consensus::LeaderStatus::LEADER_BUT_NO_OP_NOT_COMMITTED:
         return STATUS(LeaderNotReadyToServe,
                       "Leader not yet replicated NoOp to be ready to serve requests");
 
-    case consensus::Consensus::LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE:
+    case consensus::LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE:
         return STATUS_FORMAT(LeaderNotReadyToServe,
                              "Previous leader's lease might still be active ($0 remaining).",
                              remaining_old_leader_lease);
 
-    case consensus::Consensus::LeaderStatus::LEADER_BUT_NO_MAJORITY_REPLICATED_LEASE:
+    case consensus::LeaderStatus::LEADER_BUT_NO_MAJORITY_REPLICATED_LEASE:
         return STATUS(LeaderHasNoLease, "This leader has not yet acquired a lease.");
 
-    case consensus::Consensus::LeaderStatus::LEADER_AND_READY:
+    case consensus::LeaderStatus::LEADER_AND_READY:
       return Status::OK();
   }
 
-  FATAL_INVALID_ENUM_VALUE(consensus::Consensus::LeaderStatus, status);
+  FATAL_INVALID_ENUM_VALUE(consensus::LeaderStatus, status);
 }
 
 } // namespace consensus

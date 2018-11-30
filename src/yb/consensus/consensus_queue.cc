@@ -278,11 +278,13 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
 
 Status PeerMessageQueue::TEST_AppendOperation(const ReplicateMsgPtr& msg) {
   return AppendOperations(
-      { msg }, yb::OpId::FromPB(msg->committed_op_id()), Bind(DoNothingStatusCB));
+      { msg }, yb::OpId::FromPB(msg->committed_op_id()), RestartSafeCoarseTimePoint(),
+      Bind(DoNothingStatusCB));
 }
 
 Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
                                           const yb::OpId& committed_op_id,
+                                          RestartSafeCoarseTimePoint batch_mono_time,
                                           const StatusCallback& log_append_callback) {
   DFAKE_SCOPED_LOCK(append_fake_lock_);
   OpId last_id;
@@ -306,7 +308,7 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
   // Since we are doing AppendOperations only in one thread, no concurrent AppendOperations could
   // be executed and queue_state_.last_appended will be updated correctly.
   RETURN_NOT_OK(log_cache_.AppendOperations(
-      msgs, committed_op_id,
+      msgs, committed_op_id, batch_mono_time,
       Bind(&PeerMessageQueue::LocalPeerAppendFinished, Unretained(this), last_id,
            log_append_callback)));
 

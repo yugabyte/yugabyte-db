@@ -42,6 +42,7 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/metadata.pb.h"
@@ -164,7 +165,8 @@ class RemoteBootstrapTest : public YBTabletTest {
                                           log,
                                           metric_entity,
                                           raft_pool_.get(),
-                                          tablet_prepare_pool_.get()));
+                                          tablet_prepare_pool_.get(),
+                                          nullptr /* retryable_requests */));
     consensus::ConsensusBootstrapInfo boot_info;
     ASSERT_OK(tablet_peer_->Start(boot_info));
 

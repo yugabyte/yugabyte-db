@@ -35,6 +35,7 @@
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
@@ -80,6 +81,9 @@ void AlterSchemaOperationState::ReleaseSchemaLock() {
   TRACE("Released schema lock");
 }
 
+void AlterSchemaOperationState::UpdateRequestFromConsensusRound() {
+  request_ = consensus_round()->replicate_msg()->mutable_alter_schema_request();
+}
 
 AlterSchemaOperation::AlterSchemaOperation(std::unique_ptr<AlterSchemaOperationState> state)
     : Operation(std::move(state), OperationType::kAlterSchema) {}

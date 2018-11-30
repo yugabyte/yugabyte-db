@@ -38,6 +38,7 @@
 #include <boost/optional.hpp>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/walltime.h"
@@ -200,6 +201,10 @@ void WriteOperationState::Abort() {
   // After aborting, we may respond to the RPC and delete the
   // original request, so null them out here.
   ResetRpcFields();
+}
+
+void WriteOperationState::UpdateRequestFromConsensusRound() {
+  request_ = consensus_round()->replicate_msg()->mutable_write_request();
 }
 
 void WriteOperationState::Commit() {

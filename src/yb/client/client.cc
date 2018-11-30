@@ -425,7 +425,7 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   return Status::OK();
 }
 
-YBClient::YBClient() : data_(new YBClient::Data()), client_id_(ObjectIdGenerator().Next()) {
+YBClient::YBClient() : data_(new YBClient::Data()) {
   yb::InitCommonFlags();
 }
 
@@ -436,7 +436,6 @@ YBClient::~YBClient() {
   if (data_->cb_threadpool_) {
     data_->cb_threadpool_->Shutdown();
   }
-  delete data_;
 }
 
 YBTableCreator* YBClient::NewTableCreator() {
@@ -934,6 +933,31 @@ ThreadPool *YBClient::callback_threadpool() {
 
 const std::string& YBClient::proxy_uuid() const {
   return data_->uuid_;
+}
+
+const ClientId& YBClient::id() const {
+  return data_->id_;
+}
+
+std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinRunningRequestId(
+    const TabletId& tablet_id) {
+  std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
+  auto& tablet = data_->tablet_requests_[tablet_id];
+  auto id = tablet.request_id_seq++;
+  tablet.running_requests.insert(id);
+  return std::make_pair(id, *tablet.running_requests.begin());
+}
+
+void YBClient::RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id) {
+  std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
+  auto& tablet = data_->tablet_requests_[tablet_id];
+  auto it = tablet.running_requests.find(request_id);
+  if (it != tablet.running_requests.end()) {
+    tablet.running_requests.erase(it);
+  } else {
+    LOG(DFATAL) << "RequestFinished called for an unknown request: "
+                << tablet_id << ", " << request_id;
+  }
 }
 
 void YBClient::LookupTabletByKey(const YBTable* table,

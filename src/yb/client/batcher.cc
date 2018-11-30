@@ -515,6 +515,19 @@ const std::string& Batcher::proxy_uuid() const {
   return client_->proxy_uuid();
 }
 
+const ClientId& Batcher::client_id() const {
+  return client_->id();
+}
+
+std::pair<RetryableRequestId, RetryableRequestId> Batcher::NextRequestIdAndMinRunningRequestId(
+    const TabletId& tablet_id) {
+  return client_->NextRequestIdAndMinRunningRequestId(tablet_id);
+}
+
+void Batcher::RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id) {
+  client_->RequestFinished(tablet_id, request_id);
+}
+
 void Batcher::FlushBuffer(
     RemoteTablet* tablet, InFlightOps::const_iterator begin, InFlightOps::const_iterator end,
     const bool allow_local_calls_in_curr_thread) {

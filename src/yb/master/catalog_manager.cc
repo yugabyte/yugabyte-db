@@ -69,6 +69,7 @@
 #include "yb/common/partition.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/quorum_util.h"
@@ -5230,7 +5231,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   TOMBSTONE_NOT_OK(rb_client->Finish(),
                    meta,
                    master_->fs_manager()->uuid(),
-                   "Remote bootstrap: Failure calling Finish()",
+                   "Remote bootstrap: Failed calling Finish()",
                    nullptr);
 
   // Synchronous tablet open for "local bootstrap".
@@ -5238,7 +5239,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
                                             sys_catalog_->tablet_peer(),
                                             meta,
                                             master_->fs_manager()->uuid(),
-                                            "Remote bootstrap: Failure opening sys catalog",
+                                            "Remote bootstrap: Failed opening sys catalog",
                                             nullptr);
 
   // Set up the in-memory master list and also flush the cmeta.
@@ -5254,7 +5255,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
 
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Remote bootstrap finished. "
-                             << "Failure calling VerifyChangeRoleSucceeded: "
+                             << "Failed calling VerifyChangeRoleSucceeded: "
                              << status.ToString();
   } else {
     LOG_WITH_PREFIX(INFO) << "Remote bootstrap finished successfully";

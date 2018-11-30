@@ -13,6 +13,8 @@
 
 #include "yb/tserver/service_util.h"
 
+#include "yb/consensus/consensus.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"
 
@@ -53,7 +55,7 @@ Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {
       consensus->role(), to_underlying(leader_state.status));
 
   if (!leader_state.ok()) {
-    typedef consensus::Consensus::LeaderStatus LeaderStatus;
+    typedef consensus::LeaderStatus LeaderStatus;
     auto status = leader_state.CreateStatus();
     switch (leader_state.status) {
       case LeaderStatus::NOT_LEADER: FALLTHROUGH_INTENDED;

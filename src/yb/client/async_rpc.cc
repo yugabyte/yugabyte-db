@@ -53,6 +53,10 @@ DEFINE_bool(forward_redis_requests, true, "If false, the redis op will not be se
             "part of the reply and ignores the rest. For now, if this flag is true, we will only "
             "attempt to read from leaders, so redis_allow_reads_from_followers will be ignored.");
 
+DEFINE_bool(detect_duplicates_for_retryable_requests, true,
+            "Enable tracking of write requests that prevents the same write from being applied "
+                "twice.");
+
 using namespace std::placeholders;
 
 namespace yb {
@@ -370,9 +374,24 @@ WriteRpc::WriteRpc(
     VLOG(3) << "Created batch for " << tablet->tablet_id() << ":\n"
             << req_.ShortDebugString();
   }
+
+  const auto& client_id = batcher_->client_id();
+  if (!client_id.IsNil() && FLAGS_detect_duplicates_for_retryable_requests) {
+    auto temp = client_id.ToUInt64Pair();
+    req_.set_client_id1(temp.first);
+    req_.set_client_id2(temp.second);
+    auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId(tablet->tablet_id());
+    req_.set_request_id(request_pair.first);
+    req_.set_min_running_request_id(request_pair.second);
+  }
 }
 
 WriteRpc::~WriteRpc() {
+  // Check that we sent request id info, i.e. (client_id, request_id, min_running_request_id).
+  if (req_.has_client_id1()) {
+    batcher_->RequestFinished(tablet().tablet_id(), req_.request_id());
+  }
+
   MonoTime end_time = MonoTime::Now();
   if (async_rpc_metrics_) {
     scoped_refptr<Histogram> write_rpc_time = IsLocalCall() ?

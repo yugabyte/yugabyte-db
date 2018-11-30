@@ -41,9 +41,10 @@
 
 #include "yb/common/hybrid_time.h"
 
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/consensus/ref_counted_replicate.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -84,19 +85,11 @@ class TabletServerErrorPB;
 namespace consensus {
 
 class ConsensusCommitContinuation;
-class ConsensusRound;
 class ReplicaOperationFactory;
 
 typedef int64_t ConsensusTerm;
 
 typedef std::function<void(const Status& status, int64_t leader_term)> ConsensusReplicatedCallback;
-
-typedef scoped_refptr<ConsensusRound> ConsensusRoundPtr;
-typedef std::vector<ConsensusRoundPtr> ConsensusRounds;
-
-struct ConsensusOptions {
-  std::string tablet_id;
-};
 
 // After completing bootstrap, some of the results need to be plumbed through
 // into the consensus implementation.
@@ -119,18 +112,6 @@ struct ConsensusBootstrapInfo {
  private:
   DISALLOW_COPY_AND_ASSIGN(ConsensusBootstrapInfo);
 };
-
-// Used for a callback that sets a transaction's timestamp and starts the MVCC transaction for
-// YB tables. In YB tables, we assign timestamp at the time of appending an entry to the Raft
-// log, so that timestamps always keep increasing in the log, unless entries are being overwritten.
-class ConsensusAppendCallback {
- public:
-  virtual void HandleConsensusAppend() = 0;
-  virtual ~ConsensusAppendCallback() {}
- private:
-};
-
-YB_STRONGLY_TYPED_BOOL(TEST_SuppressVoteRequest);
 
 struct LeaderState;
 
@@ -173,17 +154,6 @@ class Consensus {
     // think a leader is alive. This can be used for a faster hand-off
     // between a leader and one of its replicas.
     ELECT_EVEN_IF_LEADER_IS_ALIVE
-  };
-
-  // The elected Leader (this peer) can be in not-ready state because it's not yet synced.
-  // The state reflects the real leader status: not-leader, leader-not-ready, leader-ready.
-  // Not-ready status means that the leader is not ready to serve up-to-date read requests.
-  enum class LeaderStatus {
-    NOT_LEADER,
-    LEADER_BUT_NO_OP_NOT_COMMITTED,
-    LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE,
-    LEADER_BUT_NO_MAJORITY_REPLICATED_LEASE,
-    LEADER_AND_READY
   };
 
   // pending_commit - we should start election only after we have specified entry committed.
@@ -260,7 +230,7 @@ class Consensus {
   virtual CHECKED_STATUS TEST_Replicate(const ConsensusRoundPtr& round) = 0;
 
   // A batch version of Replicate, which is what we try to use as much as possible for performance.
-  virtual CHECKED_STATUS ReplicateBatch(const ConsensusRounds& rounds) = 0;
+  virtual CHECKED_STATUS ReplicateBatch(ConsensusRounds* rounds) = 0;
 
   // Messages sent from LEADER to FOLLOWERS and LEARNERS to update their
   // state machines. This is equivalent to "AppendEntries()" in Raft
@@ -497,28 +467,6 @@ struct StateChangeContext {
   const bool is_config_locked_ = true;
 };
 
-// Factory for replica transactions.
-// An implementation of this factory must be registered prior to consensus
-// start, and is used to create transactions when the consensus implementation receives
-// messages from the leader.
-//
-// Replica transactions execute the following way:
-//
-// - When a ReplicateMsg is first received from the leader, the Consensus
-//   instance creates the ConsensusRound and calls StartReplicaOperation().
-//   This will trigger the Prepare(). At the same time replica consensus
-//   instance immediately stores the ReplicateMsg in the Log. Once the replicate
-//   message is stored in stable storage an ACK is sent to the leader (i.e. the
-//   replica Consensus instance does not wait for Prepare() to finish).
-class ReplicaOperationFactory {
- public:
-  virtual CHECKED_STATUS StartReplicaOperation(
-      const ConsensusRoundPtr& context, HybridTime propagated_safe_time) = 0;
-  virtual void SetPropagatedSafeTime(HybridTime ht) = 0;
-
-  virtual ~ReplicaOperationFactory() {}
-};
-
 // Context for a consensus round on the LEADER side, typically created as an
 // out-parameter of Consensus::Append.
 // This class is ref-counted because we want to ensure it stays alive for the
@@ -642,14 +590,14 @@ class SafeOpIdWaiter {
 };
 
 struct LeaderState {
-  Consensus::LeaderStatus status;
+  LeaderStatus status;
   int64_t term;
   MonoDelta remaining_old_leader_lease;
 
-  LeaderState& MakeNotReadyLeader(Consensus::LeaderStatus status);
+  LeaderState& MakeNotReadyLeader(LeaderStatus status);
 
   bool ok() const {
-    return status == Consensus::LeaderStatus::LEADER_AND_READY;
+    return status == LeaderStatus::LEADER_AND_READY;
   }
 
   CHECKED_STATUS CreateStatus() const;

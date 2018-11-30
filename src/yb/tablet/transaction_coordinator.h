@@ -24,7 +24,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/ref_counted.h"

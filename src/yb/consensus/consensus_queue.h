@@ -47,7 +47,6 @@
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/consensus/ref_counted_replicate.h"
 
 #include "yb/server/clock.h"
 
@@ -217,6 +216,7 @@ class PeerMessageQueue {
   // we update committed op id.
   virtual CHECKED_STATUS AppendOperations(
       const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
+      RestartSafeCoarseTimePoint batch_mono_time,
       const StatusCallback& log_append_callback);
 
   // Assembles a request for a peer, adding entries past 'op_id' up to

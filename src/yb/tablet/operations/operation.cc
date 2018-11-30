@@ -32,8 +32,12 @@
 
 #include "yb/tablet/operations/operation.h"
 
+#include "yb/consensus/consensus.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+
+#include "yb/util/size_literals.h"
 
 namespace yb {
 namespace tablet {
@@ -72,9 +76,16 @@ OperationState::OperationState(Tablet* tablet)
 
 Arena* OperationState::arena() {
   if (!arena_) {
-    arena_.emplace(32 * 1024, 4 * 1024 * 1024);
+    arena_.emplace(32_KB, 4_MB);
   }
   return arena_.get_ptr();
+}
+
+void OperationState::set_consensus_round(
+    const scoped_refptr<consensus::ConsensusRound>& consensus_round) {
+  consensus_round_ = consensus_round;
+  op_id_ = consensus_round_->id();
+  UpdateRequestFromConsensusRound();
 }
 
 OperationState::~OperationState() {

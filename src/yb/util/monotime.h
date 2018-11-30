@@ -266,6 +266,9 @@ class CoarseMonoClock {
   static TimePoint Now() { return now(); }
 };
 
+typedef CoarseMonoClock::TimePoint CoarseTimePoint;
+typedef CoarseMonoClock::Duration CoarseDuration;
+
 template <class Rep, class Period>
 int64_t ToMilliseconds(const std::chrono::duration<Rep, Period>& duration) {
   return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();

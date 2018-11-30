@@ -373,6 +373,10 @@ string MiniCluster::GetTabletServerFsRoot(int idx) {
   return JoinPathSegments(fs_root_, Substitute("ts-$0-root", idx));
 }
 
+std::vector<std::shared_ptr<tablet::TabletPeer>> MiniCluster::GetTabletPeers(int idx) {
+  return mini_tablet_server(idx)->server()->tablet_manager()->GetTabletPeers();
+}
+
 Status MiniCluster::WaitForReplicaCount(const string& tablet_id,
                                         int expected_count,
                                         TabletLocationsPB* locations) {

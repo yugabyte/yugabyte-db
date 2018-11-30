@@ -41,7 +41,6 @@
 #include <glog/logging.h>
 
 #include "yb/consensus/opid_util.h"
-#include "yb/consensus/ref_counted_replicate.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
@@ -231,14 +230,13 @@ Status ReadableLogSegment::RebuildFooterByScanning() {
                "path", path_);
 
   DCHECK(!footer_.IsInitialized());
-  std::vector<std::unique_ptr<LogEntryPB>> entries;
-  int64_t end_offset = 0;
-  RETURN_NOT_OK(ReadEntries(&entries, &end_offset));
+  auto read_entries = ReadEntries();
+  RETURN_NOT_OK(read_entries.status);
 
-  footer_.set_num_entries(entries.size());
+  footer_.set_num_entries(read_entries.entries.size());
 
   // Rebuild the min/max replicate index (by scanning)
-  for (const auto& entry : entries) {
+  for (const auto& entry : read_entries.entries) {
     if (entry->has_replicate()) {
       int64_t index = entry->replicate().id().index();
       // TODO: common code with Log::UpdateFooterForBatch
@@ -254,13 +252,13 @@ Status ReadableLogSegment::RebuildFooterByScanning() {
   }
 
   DCHECK(footer_.IsInitialized());
-  DCHECK_EQ(entries.size(), footer_.num_entries());
+  DCHECK_EQ(read_entries.entries.size(), footer_.num_entries());
   footer_was_rebuilt_ = true;
 
-  readable_to_offset_.Store(end_offset);
+  readable_to_offset_.Store(read_entries.end_offset);
 
   LOG(INFO) << "Successfully rebuilt footer for segment: " << path_
-            << " (valid entries through byte offset " << end_offset << ")";
+            << " (valid entries through byte offset " << read_entries.end_offset << ")";
   return Status::OK();
 }
 
@@ -449,10 +447,11 @@ Status ReadableLogSegment::ParseFooterMagicAndFooterLength(const Slice &data,
   return Status::OK();
 }
 
-Status ReadableLogSegment::ReadEntries(
-    LogEntries* entries, int64_t* end_offset, OpId* committed_op_id) {
+ReadEntriesResult ReadableLogSegment::ReadEntries() {
   TRACE_EVENT1("log", "ReadableLogSegment::ReadEntries",
                "path", path_);
+
+  ReadEntriesResult result;
 
   std::vector<int64_t> recent_offsets(4, -1);
   int batches_read = 0;
@@ -470,9 +469,7 @@ Status ReadableLogSegment::ReadEntries(
       file_size() - footer_.ByteSize() - kLogSegmentFooterMagicAndFooterLength :
       readable_to_offset;
 
-  if (end_offset != nullptr) {
-    *end_offset = offset;
-  }
+  result.end_offset = offset;
 
   int num_entries_read = 0;
   while (offset < read_up_to) {
@@ -492,20 +489,19 @@ Status ReadableLogSegment::ReadEntries(
     if (PREDICT_FALSE(!s.ok())) {
       if (!s.IsCorruption()) {
         // IO errors should always propagate back
-        return s.CloneAndPrepend(Substitute("Error reading from log $0", path_));
+        result.status = s.CloneAndPrepend(Substitute("Error reading from log $0", path_));
+        return result;
       }
 
-      Status corruption_status = MakeCorruptionStatus(
-          batches_read, this_batch_offset, &recent_offsets,
-          *entries, s);
+      result.status = MakeCorruptionStatus(
+          batches_read, this_batch_offset, &recent_offsets, result.entries, s);
 
       // If we have a valid footer in the segment, then the segment was correctly
       // closed, and we shouldn't see any corruption anywhere (including the last
       // batch).
       if (HasFooter() && !footer_was_rebuilt_) {
-        LOG(WARNING) << "Found a corruption in a closed log segment: "
-                     << corruption_status.ToString();
-        return corruption_status;
+        LOG(WARNING) << "Found a corruption in a closed log segment: " << result.status;
+        return result;
       }
 
       // If we read a corrupt entry, but we don't have a footer, then it's
@@ -515,46 +511,49 @@ Status ReadableLogSegment::ReadEntries(
       // if not, we just WARN it, since it's OK for the last entry to be partially
       // written.
       bool has_valid_entries;
-      RETURN_NOT_OK_PREPEND(ScanForValidEntryHeaders(offset, &has_valid_entries),
-                            "Scanning forward for valid entries");
+      auto status = ScanForValidEntryHeaders(offset, &has_valid_entries);
+      if (!status.ok()) {
+        result.status = s.CloneAndPrepend("Scanning forward for valid entries");
+      }
+
       if (has_valid_entries) {
-        return corruption_status;
+        return result;
       }
 
       LOG(INFO) << "Ignoring log segment corruption in " << path_ << " because "
                 << "there are no log entries following the corrupted one. "
                 << "The server probably crashed in the middle of writing an entry "
                 << "to the write-ahead log or downloaded an active log via remote bootstrap. "
-                << "Error detail: " << corruption_status.ToString();
+                << "Error detail: " << result.status.ToString();
       break;
     }
 
     if (VLOG_IS_ON(3)) {
       VLOG(3) << "Read Log entry batch: " << current_batch.DebugString();
     }
-    if (committed_op_id && current_batch.has_committed_op_id()) {
-      *committed_op_id = yb::OpId::FromPB(current_batch.committed_op_id());
+    if (current_batch.has_committed_op_id()) {
+        result.committed_op_id = yb::OpId::FromPB(current_batch.committed_op_id());
     }
 
     for (size_t i = 0; i < current_batch.entry_size(); ++i) {
-      entries->emplace_back(current_batch.mutable_entry(i));
+      result.entries.emplace_back(current_batch.mutable_entry(i));
+      result.entry_times.push_back(
+          RestartSafeCoarseTimePoint::FromUInt64(current_batch.mono_time()));
       num_entries_read++;
     }
-    current_batch.mutable_entry()->ExtractSubrange(0,
-                                                   current_batch.entry_size(),
-                                                   nullptr);
-    if (end_offset != nullptr) {
-      *end_offset = offset;
-    }
+    current_batch.mutable_entry()->ExtractSubrange(0, current_batch.entry_size(), nullptr);
+    result.end_offset = offset;
   }
 
   if (footer_.IsInitialized() && footer_.num_entries() != num_entries_read) {
-    return STATUS(Corruption,
-      Substitute("Read $0 log entries from $1, but expected $2 based on the footer",
-                 num_entries_read, path_, footer_.num_entries()));
+    result.status = STATUS_FORMAT(
+        Corruption,
+        "Read $0 log entries from $1, but expected $2 based on the footer",
+        num_entries_read, path_, footer_.num_entries());
   }
 
-  return Status::OK();
+  result.status = Status::OK();
+  return result;
 }
 
 Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_valid_entries) {

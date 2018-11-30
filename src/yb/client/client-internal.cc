@@ -281,7 +281,8 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteTableDone);
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
-      latest_observed_hybrid_time_(YBClient::kNoHybridTime) {}
+      latest_observed_hybrid_time_(YBClient::kNoHybridTime),
+      id_(ClientId::GenerateRandom()) {}
 
 YBClient::Data::~Data() {
   // Workaround for KUDU-956: the user may close a YBClient while a flush
