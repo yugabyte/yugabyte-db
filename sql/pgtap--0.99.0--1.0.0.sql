@@ -712,3 +712,22 @@ RETURNS TEXT AS $$
         'Table ' || quote_ident( $1 ) || ' should not be a descendent of ' || quote_ident( $2)
     );
 $$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _def_is( TEXT, TEXT, anyelement, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    thing text;
+BEGIN
+    -- Function or special SQL syntax.
+    IF $1 ~ '^[^'']+[(]' OR $1 = ANY('{CURRENT_CATALOG,CURRENT_ROLE,CURRENT_SCHEMA,CURRENT_USER,SESSION_USER,USER}') THEN
+        RETURN is( $1, $3, $4 );
+    END IF;
+
+    EXECUTE 'SELECT is('
+             || COALESCE($1, 'NULL' || '::' || $2) || '::' || $2 || ', '
+             || COALESCE(quote_literal($3), 'NULL') || '::' || $2 || ', '
+             || COALESCE(quote_literal($4), 'NULL')
+    || ')' INTO thing;
+    RETURN thing;
+END;
+$$ LANGUAGE plpgsql;

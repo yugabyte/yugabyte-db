@@ -1,5 +1,5 @@
 \unset ECHO
-1..204
+1..222
 ok 1 - col_not_null( sch, tab, col, desc ) should pass
 ok 2 - col_not_null( sch, tab, col, desc ) should have the proper description
 ok 3 - col_not_null( sch, tab, col, desc ) should have the proper diagnostics
@@ -204,3 +204,21 @@ ok 201 - col_default_is( tab, col, def, desc ) should have the proper diagnostic
 ok 202 - col_default_is( tab, col, def ) should fail
 ok 203 - col_default_is( tab, col, def ) should have the proper description
 ok 204 - col_default_is( tab, col, def ) should have the proper diagnostics
+ok 205 - col_default_is( tab, col, CURRENT_CATALOG ) should pass
+ok 206 - col_default_is( tab, col, CURRENT_CATALOG ) should have the proper description
+ok 207 - col_default_is( tab, col, CURRENT_CATALOG ) should have the proper diagnostics
+ok 208 - col_default_is( tab, col, CURRENT_ROLE ) should pass
+ok 209 - col_default_is( tab, col, CURRENT_ROLE ) should have the proper description
+ok 210 - col_default_is( tab, col, CURRENT_ROLE ) should have the proper diagnostics
+ok 211 - col_default_is( tab, col, CURRENT_SCHEMA ) should pass
+ok 212 - col_default_is( tab, col, CURRENT_SCHEMA ) should have the proper description
+ok 213 - col_default_is( tab, col, CURRENT_SCHEMA ) should have the proper diagnostics
+ok 214 - col_default_is( tab, col, CURRENT_USER ) should pass
+ok 215 - col_default_is( tab, col, CURRENT_USER ) should have the proper description
+ok 216 - col_default_is( tab, col, CURRENT_USER ) should have the proper diagnostics
+ok 217 - col_default_is( tab, col, SESSION_USER ) should pass
+ok 218 - col_default_is( tab, col, SESSION_USER ) should have the proper description
+ok 219 - col_default_is( tab, col, SESSION_USER ) should have the proper diagnostics
+ok 220 - col_default_is( tab, col, USER ) should pass
+ok 221 - col_default_is( tab, col, USER ) should have the proper description
+ok 222 - col_default_is( tab, col, USER ) should have the proper diagnostics

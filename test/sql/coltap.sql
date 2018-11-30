@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(204);
+SELECT plan(222);
 --SELECT * from no_plan();
 
 CREATE TYPE public."myType" AS (
@@ -17,6 +17,12 @@ CREATE TABLE public.sometab(
     numb    NUMERIC(10, 2) DEFAULT NULL,
     "myNum" NUMERIC(8) DEFAULT 24,
     myat    TIMESTAMP DEFAULT NOW(),
+    cuser   TEXT DEFAULT CURRENT_USER,
+    suser   TEXT DEFAULT SESSION_USER,
+    auser   TEXT DEFAULT USER,
+    crole   TEXT DEFAULT CURRENT_ROLE,
+    csch    TEXT DEFAULT CURRENT_SCHEMA,
+    ccat    TEXT DEFAULT CURRENT_CATALOG,
     plain   INTEGER,
     camel   "myType"
 );
@@ -668,6 +674,34 @@ SELECT * FROM check_test(
     'Column sometab.__asdfasdfs__ should default to NULL',
     '    Column sometab.__asdfasdfs__ does not exist'
 );
+
+-- Make sure that it works when the default is a reserved SQL expression.
+CREATE OR REPLACE FUNCTION ckreserve() RETURNS SETOF TEXT LANGUAGE PLPGSQL AS $$
+DECLARE
+    funcs text[] := '{CURRENT_CATALOG,CURRENT_ROLE,CURRENT_SCHEMA,CURRENT_USER,SESSION_USER,USER}';
+    cols  TEXT[] := '{ccat,crole,csch,cuser,suser,auser}';
+    exp   TEXT[] := funcs;
+    tap           record;
+    last_index    INTEGER;
+BEGIN
+    last_index := array_upper(funcs, 1);
+    IF pg_version_num() < 100000 THEN
+       -- Prior to PostgreSQL 10, these wer functions rendered with paretheses.
+       exp := ARRAY['current_database()','"current_user"()','"current_schema"()','"current_user"()','"session_user"()','"current_user"()'];
+    END IF;
+
+    FOR i IN 1..last_index LOOP
+        FOR tap IN SELECT * FROM check_test(
+            col_default_is( 'sometab', cols[i], exp[i], 'Test ' || funcs[i] ),
+            true,
+            'col_default_is( tab, col, ' || funcs[i] || ' )',
+            'Test ' || funcs[i],
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+    END LOOP;
+END;
+$$;
+SELECT * FROM ckreserve();
 
 /****************************************************************************/
 -- Finish the tests and clean up.

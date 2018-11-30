@@ -4419,6 +4419,29 @@ string:
 
     SELECT col_default_is( 'user', 'created_at', 'now()' );
 
+But beware that the representation of special SQL syntax functions changed
+in PostgreSQL 10. Where previously a default of `CURRENT_USER` and friends
+used to be represented as functions:
+
+    SELECT col_default_is( 'widgets', 'created_by', '"current_user"()' );
+
+As of PostgreSQL 10, they comply with the SQL spec to appear in uppercase
+and without trailining parentheses:
+
+    SELECT col_default_is( 'widgets', 'created_by', 'CURRENT_USER' );
+
+If you need to support both variants, use `pg_version_num()` to decide
+which to use:
+
+    SELECT col_default_is(
+        'widgets', 'created_by',
+        CASE WHEN pg_version_num() >= 100000 THEN 'CURRENT_USER ELSE '"current_user"()' END
+    );
+
+See the note in the
+[System Information Functions](https://www.postgresql.org/docs/current/functions-info.html)
+documentation for a complete list.
+
 If the test fails, it will output useful diagnostics. For example, this test:
 
     SELECT col_default_is(

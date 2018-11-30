@@ -1625,8 +1625,8 @@ RETURNS TEXT AS $$
 DECLARE
     thing text;
 BEGIN
-    IF $1 ~ '^[^'']+[(]' THEN
-        -- It's a functional default.
+    -- Function or special SQL syntax.
+    IF $1 ~ '^[^'']+[(]' OR $1 = ANY('{CURRENT_CATALOG,CURRENT_ROLE,CURRENT_SCHEMA,CURRENT_USER,SESSION_USER,USER}') THEN
         RETURN is( $1, $3, $4 );
     END IF;
 
