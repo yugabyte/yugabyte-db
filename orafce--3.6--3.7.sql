@@ -1,10 +1,4 @@
-CREATE OR REPLACE FUNCTION oracle.numtodsinterval(double precision, text)
-RETURNS interval AS $$
-  SELECT $1 * ('1' || $2)::interval
-$$ LANGUAGE sql IMMUTABLE STRICT;
-
 -- bugfixes
-
 GRANT USAGE ON SCHEMA oracle TO PUBLIC;
 GRANT USAGE ON SCHEMA plunit TO PUBLIC;
 
@@ -21,6 +15,22 @@ LANGUAGE sql IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.sessiontimezone() IS 'Ruturns session time zone';
 COMMENT ON FUNCTION oracle.dbtimezone() IS 'Ruturns server time zone (orafce.timezone)';
 
+CREATE OR REPLACE FUNCTION oracle.nvl(bigint, int)
+RETURNS bigint AS $$
+SELECT coalesce($1, $2)
+$$ LANGUAGE sql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.nvl(numeric, int)
+RETURNS numeric AS $$
+SELECT coalesce($1, $2)
+$$ LANGUAGE sql IMMUTABLE;
+
+CREATE FUNCTION oracle.add_months(TIMESTAMP WITH TIME ZONE,INTEGER)
+RETURNS TIMESTAMP
+AS $$ SELECT (pg_catalog.add_months($1::pg_catalog.date, $2) + $1::time)::oracle.date; $$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+-- new functionality
 CREATE FUNCTION oracle.orafce_concat2(varchar2, varchar2)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','orafce_concat2'
@@ -33,3 +43,8 @@ LANGUAGE C IMMUTABLE;
 
 CREATE OPERATOR || (function = oracle.orafce_concat2, leftarg = varchar2, rightarg = varchar2);
 CREATE OPERATOR || (function = oracle.orafce_concat2, leftarg = nvarchar2, rightarg = nvarchar2);
+
+CREATE OR REPLACE FUNCTION oracle.numtodsinterval(double precision, text)
+RETURNS interval AS $$
+  SELECT $1 * ('1' || $2)::interval
+$$ LANGUAGE sql IMMUTABLE STRICT;
