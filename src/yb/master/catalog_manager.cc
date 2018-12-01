@@ -3918,12 +3918,16 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
     metadata = &rp->mutable_metadata()->mutable_dirty()->pb;
 
     ResourcePermissionsPB* current_resource = nullptr;
-    for (int i = 0; i < metadata->resources_size(); i++) {
-      ResourcePermissionsPB* resource = metadata->mutable_resources(i);
-      if (resource->canonical_resource() == req->canonical_resource()) {
-        current_resource = resource;
+    auto current_resource_iter = metadata->mutable_resources()->end();
+    for (current_resource_iter = metadata->mutable_resources()->begin();
+         current_resource_iter != metadata->mutable_resources()->end(); current_resource_iter++) {
+      if (current_resource_iter->canonical_resource() == req->canonical_resource()) {
         break;
       }
+    }
+
+    if (current_resource_iter != metadata->mutable_resources()->end()) {
+      current_resource = &(*current_resource_iter);
     }
 
     if (current_resource == nullptr) {
@@ -3932,6 +3936,7 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
       }
 
       current_resource = metadata->add_resources();
+      current_resource_iter = std::prev(metadata->mutable_resources()->end());
 
       current_resource->set_canonical_resource(req->canonical_resource());
       current_resource->set_resource_type(req->resource_type());
@@ -3944,34 +3949,19 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
     }
 
     if (req->permission() != PermissionType::ALL_PERMISSION) {
-      bool permission_found = false;
-
-      // Used to store the permissions that we want to keep when the command is REVOKE.
-      vector<PermissionType> permissions;
-      for (int i = 0; i < current_resource->permissions_size(); i++) {
-        const PermissionType& permission = current_resource->permissions(i);
-        if (permission == req->permission()) {
-          permission_found = true;
-          if (!req->revoke()) break;
-        } else {
-          permissions.push_back(permission);
+      auto permission_iter = current_resource->permissions().end();
+      for (permission_iter = current_resource->permissions().begin();
+           permission_iter != current_resource->permissions().end(); permission_iter++) {
+        if (*permission_iter == req->permission()) {
+          break;
         }
       }
 
-      if (!permission_found) {
-        if (req->revoke()) {
-          return Status::OK();
-        }
+      if (permission_iter == current_resource->permissions().end() && !req->revoke()) {
+        // Resource doesn't have the permission, and we got a GRANT request.
         current_resource->add_permissions(req->permission());
-      }
-
-      // Remove the permission by clearing all the permissions and inserting those that didn't match
-      // the requested permission.
-      if (req->revoke()) {
-        current_resource->clear_permissions();
-        for (auto permission : permissions) {
-          current_resource->add_permissions(permission);
-        }
+      } else if (permission_iter != current_resource->permissions().end() && req->revoke()) {
+        current_resource->mutable_permissions()->erase(permission_iter);
       }
     } else {
       // ALL permissions.
@@ -3990,6 +3980,11 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
           current_resource->add_permissions(permission);
         }
       }
+    }
+
+    // If this resource doesn't have any more permissions, remove it.
+    if (current_resource->permissions().empty()) {
+      metadata->mutable_resources()->erase(current_resource_iter);
     }
 
     s = sys_catalog_->UpdateItem(rp.get(), leader_ready_term_);
