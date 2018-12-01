@@ -2158,4 +2158,24 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     assert(list.get(0).getBool("is_superuser"));
     checkConnectivity(true, anotherUsername, newPassword, false);
   }
+
+  @Test
+  public void testNotEmptyResourcesInSytemAuthRolePermissionsTable() throws Exception {
+    testCreateRoleHelperWithSession(anotherUsername, "", false, false, false, s);
+
+    String canonicalResource = String.format("roles/%s", anotherUsername);
+    List<String> expectedPermissions = Arrays.asList(ALTER, AUTHORIZE, DROP);
+    // Test that we can see the permissions when we query system_auth.role_permissions.
+    assertPermissionsGranted(s, "cassandra", canonicalResource, expectedPermissions);
+
+    for (String permission : expectedPermissions) {
+      revokePermissionNoSleep(permission, ROLE, anotherUsername, "cassandra");
+    }
+
+    // Verify the resource doesn't appear anymore.
+    String stmt = String.format("SELECT permissions FROM system_auth.role_permissions " +
+        "WHERE role = 'cassandra' and resource = '%s';", canonicalResource);
+    List<Row> rows = s.execute(stmt).all();
+    assert(rows.isEmpty());
+  }
 }

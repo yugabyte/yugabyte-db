@@ -271,6 +271,12 @@ class TestQLPermission : public QLTestAuthentication {
     auto s = processor->Run(select);
     CHECK(s.ok());
     auto row_block = processor->row_block();
+
+    if (permissions.empty()) {
+      EXPECT_EQ(0, row_block->row_count());
+      return;
+    }
+
     EXPECT_EQ(1, row_block->row_count());
 
     QLRow &row = row_block->row(0);

@@ -169,6 +169,12 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
     String stmt = String.format("SELECT permissions FROM system_auth.role_permissions " +
         "WHERE role = '%s' and resource = '%s';", role, resource);
     List<Row> rows = s.execute(stmt).all();
+
+    if (permissions.isEmpty()) {
+      assertEquals(0, rows.size());
+      return;
+    }
+
     assertEquals(1, rows.size());
 
     List list = rows.get(0).getList("permissions", String.class);
