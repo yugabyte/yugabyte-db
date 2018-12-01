@@ -70,7 +70,8 @@ import static org.mockito.Mockito.when;
     return regionUUIDs;
   }
 
-  private void setupUniverse() {
+  private void setupUniverse(Provider p) {
+    testProvider = p;
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.privateKey = pkPath;
     if (AccessKey.get(testProvider.uuid, keyCode) == null) {
@@ -151,17 +152,27 @@ import static org.mockito.Mockito.when;
     cmd.add(PY_WRAPPER);
     cmd.add(BACKUP.getScript());
     cmd.add("--masters");
-    cmd.add(testUniverse.getMasterAddresses());
+    // TODO(bogdan): we do not have nodes to test this?
+    if (testProvider.code.equals("kubernetes")) {
+      cmd.add(testUniverse.getKubernetesMasterAddresses());
+    } else {
+      cmd.add(testUniverse.getMasterAddresses());
+    }
     cmd.add("--table");
     cmd.add(backupTableParams.tableName);
     cmd.add("--keyspace");
     cmd.add(backupTableParams.keyspace);
-    if (accessKey.getKeyInfo().sshUser != null) {
-      cmd.add("--ssh_user");
-      cmd.add(accessKey.getKeyInfo().sshUser);
+    if (testProvider.code.equals("kubernetes")) {
+      cmd.add("--k8s_namespace");
+      cmd.add(testUniverse.getUniverseDetails().nodePrefix);
+    } else {
+      if (accessKey.getKeyInfo().sshUser != null) {
+        cmd.add("--ssh_user");
+        cmd.add(accessKey.getKeyInfo().sshUser);
+      }
+      cmd.add("--ssh_key_path");
+      cmd.add(pkPath);
     }
-    cmd.add("--ssh_key_path");
-    cmd.add(pkPath);
     cmd.add("--s3bucket");
     cmd.add(backupTableParams.storageLocation);
     cmd.add("--storage_type");
@@ -178,17 +189,16 @@ import static org.mockito.Mockito.when;
   @Before
   public void setUp() {
     testCustomer = ModelFactory.testCustomer();
-    testProvider = ModelFactory.awsProvider(testCustomer);
     testUniverse = createUniverse("Universe-1", testCustomer.getCustomerId());
     testCustomer.addUniverseUUID(testUniverse.universeUUID);
     testCustomer.save();
     when(mockAppConfig.getString("yb.devops.home")).thenReturn("/my/devops");
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn("/yb/release.tar.gz");
-    setupUniverse();
   }
 
   @Test
   public void testBulkImportWithDefaultInstanceCount() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
     BulkImportParams bulkImportParams = getBulkImportParams();
     UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
     List<String> expectedCommand = getExpectedBulkImportCommmand(bulkImportParams);
@@ -201,6 +211,7 @@ import static org.mockito.Mockito.when;
 
   @Test
   public void testBulkImportWithSpecificInstanceCount() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
     BulkImportParams bulkImportParams = getBulkImportParams();
     bulkImportParams.instanceCount = 5;
     UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
@@ -214,6 +225,7 @@ import static org.mockito.Mockito.when;
 
   @Test
   public void testCreateS3Backup() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
@@ -226,6 +238,7 @@ import static org.mockito.Mockito.when;
 
   @Test
   public void testCreateNfsBackup() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
@@ -238,6 +251,7 @@ import static org.mockito.Mockito.when;
 
   @Test
   public void testRestoreS3Backup() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.RESTORE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
@@ -250,6 +264,7 @@ import static org.mockito.Mockito.when;
 
   @Test
   public void testRestoreNfsBackup() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.RESTORE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
@@ -262,11 +277,27 @@ import static org.mockito.Mockito.when;
 
   @Test
   public void testCreateBackupWithSSHUser() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
     AccessKey accessKey = AccessKey.get(testProvider.uuid, keyCode);
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     keyInfo.sshUser = "foo";
     accessKey.setKeyInfo(keyInfo);
     accessKey.save();
+
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
+    BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
+    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+
+    Backup.create(testCustomer.uuid, backupTableParams);
+    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
+    Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
+    tableManager.createBackup(backupTableParams);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+  }
+
+  @Test
+  public void testCreateBackupKubernetes() {
+    setupUniverse(ModelFactory.kubernetesProvider(testCustomer));
 
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);

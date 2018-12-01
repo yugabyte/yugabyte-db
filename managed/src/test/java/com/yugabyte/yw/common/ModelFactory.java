@@ -44,6 +44,9 @@ public class ModelFactory {
   public static Provider onpremProvider(Customer customer) {
     return Provider.create(customer.uuid, Common.CloudType.onprem, "OnPrem");
   }
+  public static Provider kubernetesProvider(Customer customer) {
+    return Provider.create(customer.uuid, Common.CloudType.kubernetes, "Kubernetes");
+  }
   public static Provider newProvider(Customer customer, Common.CloudType cloud) {
     return Provider.create(customer.uuid, cloud, cloud.toString());
   }
