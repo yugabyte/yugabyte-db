@@ -674,8 +674,13 @@ orafce's VARCHAR2 implements parts of Oracle database specification about VARCHA
   white spaces over declared maximum length
 * For these types is possible to use null safe || operator, when you enable
   orafce.varchar2_null_safe_concat TO true . The behave is very similar to Oracle.
-  Attention - when result is empty string, then result is NULL. This behave is
+
+  Attention: - when result is empty string, then result is NULL. This behave is
   disabled by default.
+
+  Attention: - there is possible incompatibility between 3.7 and older Orafce
+  releases. A operator function is now marked as stable (was immutable before).
+  Is not possible to create functional indexes over stable or volatile expressions.
 
 ----
 -- null safe concat (disabled by default)
