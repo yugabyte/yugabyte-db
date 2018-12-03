@@ -96,7 +96,7 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
   }
 
   // Create a new snapshot UUID.
-  const SnapshotId snapshot_id = GenerateId();
+  const SnapshotId snapshot_id = GenerateId(SysRowEntry::SNAPSHOT);
   vector<scoped_refptr<TabletInfo>> all_tablets;
 
   scoped_refptr<SnapshotInfo> snapshot(new SnapshotInfo(snapshot_id));
