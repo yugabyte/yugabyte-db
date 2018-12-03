@@ -440,14 +440,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes : a collection of nodes that need to be pinged.
    * @param type  : Master or tserver type server running on these nodes.
+   * @param timeoutMillis : time to wait for each rpc call to the server, in millisec.
    */
   public SubTaskGroup createWaitForServersTasks(Collection<NodeDetails> nodes, ServerType type) {
+    return createWaitForServersTasks(nodes, type, -1 /* default timeout */);
+  }
+
+  public SubTaskGroup createWaitForServersTasks(Collection<NodeDetails> nodes,
+                                                ServerType type,
+                                                long timeoutMillis) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForServer", executor);
     for (NodeDetails node : nodes) {
       WaitForServer.Params params = new WaitForServer.Params();
       params.universeUUID = taskParams().universeUUID;
       params.nodeName = node.nodeName;
       params.serverType = type;
+      if (timeoutMillis > 0) {
+        params.serverWaitTimeoutMs = timeoutMillis;
+      }
       WaitForServer task = new WaitForServer();
       task.initialize(params);
       subTaskGroup.addTask(task);

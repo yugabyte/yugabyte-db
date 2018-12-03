@@ -20,6 +20,7 @@ import TableDetail from './pages/TableDetail';
 import Help from './pages/Help';
 import Profile from './pages/Profile';
 import YugawareLogs from './pages/YugawareLogs';
+import Importer from './pages/Importer';
 
 function validateSession(store, replacePath, callback) {
   const token = localStorage.getItem('customer_token');
@@ -85,6 +86,7 @@ export default (store) => {
         <Route path="/help" component={Help}/>
         <Route path="/profile" component={Profile}/>
         <Route path="/logs" component={YugawareLogs}/>
+        <Route path="/importer" component={Importer} />
       </Route>
     </Route>
   );
