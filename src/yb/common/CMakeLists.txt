@@ -94,6 +94,7 @@ ADD_YB_LIBRARY(pgsql_protocol_proto
 
 set(COMMON_SRCS
   id_mapping.cc
+  entity_ids.cc
   key_encoder.cc
   partial_row.cc
   partition.cc

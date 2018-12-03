@@ -108,9 +108,6 @@ class YBTabletServer;
 class YBValue;
 class YBOperation;
 
-// Postgres object identifier (OID).
-typedef uint32_t PgOid;
-
 namespace internal {
 class Batcher;
 class GetTableSchemaRpc;
@@ -316,7 +313,9 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   CHECKED_STATUS CreateNamespace(const std::string& namespace_name,
                                  YQLDatabase database_type = YQL_DATABASE_UNDEFINED,
                                  const std::string& creator_role_name = "",
-                                 boost::optional<PgOid> pg_database_oid = boost::none);
+                                 const std::string& namespace_id = "",
+                                 const std::string& source_namespace_id = "",
+                                 const boost::optional<uint32_t>& next_pg_oid = boost::none);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
@@ -328,6 +327,11 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Delete namespace with the given name.
   CHECKED_STATUS DeleteNamespace(const std::string& namespace_name,
                                  YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
+
+  // For Postgres: reserve oids for a Postgres database.
+  CHECKED_STATUS ReservePgsqlOids(const std::string& namespace_id,
+                                  uint32_t next_oid, uint32_t count,
+                                  uint32_t* begin_oid, uint32_t* end_oid);
 
   // Grant permission with given arguments.
   CHECKED_STATUS GrantRevokePermission(GrantRevokeStatementType statement_type,
@@ -671,10 +675,10 @@ class YBTableCreator {
   // Sets the name of the role creating this table.
   YBTableCreator& creator_role_name(const RoleName& creator_role_name);
 
-  // For Postgres: sets the OIDs of the table and the Postgres schema it belongs to.
-  YBTableCreator& pg_schema_oid(PgOid schema_oid);
-  YBTableCreator& pg_table_oid(PgOid table_oid);
+  // For Postgres: sets table id to assign, and whether the table is a sys catalog / shared table.
+  YBTableCreator& table_id(const std::string& table_id);
   YBTableCreator& is_pg_catalog_table();
+  YBTableCreator& is_pg_shared_table();
 
   // Sets the partition hash schema.
   YBTableCreator& hash_schema(YBHashSchema hash_schema);

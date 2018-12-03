@@ -575,12 +575,13 @@ void Tablet::Shutdown() {
 }
 
 Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
-    const Schema &projection, const boost::optional<TransactionId>& transaction_id) const {
+    const Schema &projection, const boost::optional<TransactionId>& transaction_id,
+    const TableId& table_id) const {
   if (state_ != kOpen) {
     return STATUS_FORMAT(IllegalState, "Tablet in wrong state: $0", state_);
   }
 
-  if (table_type_ != TableType::YQL_TABLE_TYPE) {
+  if (table_type_ != TableType::YQL_TABLE_TYPE && table_type_ != TableType::PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(NotSupported, "Invalid table type: $0", table_type_);
   }
 
@@ -589,17 +590,25 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 
   VLOG_WITH_PREFIX(2) << "Created new Iterator";
 
+  const tablet::TableInfo* table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
+  const Schema& schema = table_info->schema;
   auto mapped_projection = std::make_unique<Schema>();
-  RETURN_NOT_OK(schema()->GetMappedReadProjection(projection, mapped_projection.get()));
+  RETURN_NOT_OK(schema.GetMappedReadProjection(projection, mapped_projection.get()));
 
   auto txn_op_ctx = CreateTransactionOperationContext(transaction_id);
   auto read_time = ReadHybridTime::SingleTime(SafeTime(RequireLease::kFalse));
   auto result = std::make_unique<DocRowwiseIterator>(
-      std::move(mapped_projection), *schema(), txn_op_ctx,
+      std::move(mapped_projection), schema, txn_op_ctx,
       docdb::DocDB{regular_db_.get(), intents_db_.get()},
       MonoTime::Max() /* deadline */, read_time, &pending_op_counter_);
   RETURN_NOT_OK(result->Init());
   return std::move(result);
+}
+
+Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
+    const TableId& table_id) const {
+  const tablet::TableInfo* table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
+  return NewRowIterator(table_info->schema, boost::none, table_id);
 }
 
 void Tablet::StartOperation(WriteOperationState* operation_state) {

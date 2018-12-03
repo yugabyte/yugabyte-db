@@ -26,6 +26,10 @@
 namespace yb {
 namespace pggate {
 
+// Postgres object identifier (OID).
+typedef uint32_t PgOid;
+static constexpr PgOid kPgInvalidOid = 0;
+
 class PgEnv {
  public:
   //------------------------------------------------------------------------------------------------
