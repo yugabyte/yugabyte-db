@@ -34,9 +34,11 @@
 
 /*  Database Functions -------------------------------------------------------------------------- */
 
-extern void YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid);
+extern void YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid);
 
 extern void YBCDropDatabase(Oid dboid, const char *dbname);
+
+extern void YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_oid);
 
 /*  Table Functions ----------------------------------------------------------------------------- */
 

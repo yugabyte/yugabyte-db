@@ -18,6 +18,7 @@
 
 #include "yb/client/yb_op.h"
 #include "yb/client/transaction.h"
+#include "yb/common/entity_ids.h"
 
 namespace yb {
 namespace pggate {
@@ -27,7 +28,6 @@ using std::shared_ptr;
 using std::string;
 using namespace std::literals;  // NOLINT
 
-using client::PgOid;
 using client::YBClient;
 using client::YBSession;
 using client::YBMetaDataCache;
@@ -81,15 +81,30 @@ CHECKED_STATUS PgSession::ConnectDatabase(const string& database_name) {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PgSession::CreateDatabase(const string& database_name, const PgOid database_oid) {
+CHECKED_STATUS PgSession::CreateDatabase(const string& database_name,
+                                         const PgOid database_oid,
+                                         const PgOid source_database_oid,
+                                         const PgOid next_oid) {
   return client_->CreateNamespace(database_name,
                                   YQL_DATABASE_PGSQL,
                                   "" /* creator_role_name */,
-                                  database_oid);
+                                  GetPgsqlNamespaceId(database_oid),
+                                  source_database_oid != kPgInvalidOid
+                                  ? GetPgsqlNamespaceId(source_database_oid) : "",
+                                  next_oid);
 }
 
 CHECKED_STATUS PgSession::DropDatabase(const string& database_name, bool if_exist) {
   return client_->DeleteNamespace(database_name, YQL_DATABASE_PGSQL);
+}
+
+CHECKED_STATUS PgSession::ReserveOids(const PgOid database_oid,
+                                      const PgOid next_oid,
+                                      const uint32_t count,
+                                      PgOid *begin_oid,
+                                      PgOid *end_oid) {
+  return client_->ReservePgsqlOids(GetPgsqlNamespaceId(database_oid), next_oid, count,
+                                   begin_oid, end_oid);
 }
 
 //--------------------------------------------------------------------------------------------------

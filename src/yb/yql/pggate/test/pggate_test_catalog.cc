@@ -26,14 +26,16 @@ TEST_F(PggateTestCatalog, TestDml) {
   CHECK_OK(Init("TestDml"));
 
   const char *tabname = "basic_table";
-  const YBCPgOid schema_oid = YBCPgCatalogOid;
+  const YBCPgOid schema_oid = 11; // pg_catalog schema oid
   const YBCPgOid tab_oid = 2;
   YBCPgStatement pg_stmt;
 
   // Create table in the connected database.
   int col_count = 0;
   CHECK_YBC_STATUS(YBCPgNewCreateTable(pg_session_, kDefaultDatabase, "pg_catalog", tabname,
-                                       schema_oid, tab_oid, true /* if_not_exist */, &pg_stmt));
+                                       kDefaultDatabaseOid, schema_oid, tab_oid,
+                                       false /* is_shared_table */, true /* if_not_exist */,
+                                       &pg_stmt));
   CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "company_id", ++col_count,
                                              DataType::INT64, false, true));
   CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "empid", ++col_count,
@@ -347,6 +349,119 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
+}
+
+TEST_F(PggateTestCatalog, TestCopydb) {
+  CHECK_OK(Init("TestCopydb"));
+
+  const char *tabname = "basic_table";
+  const char *copy_db_name = "pggate_test_copy";
+  const YBCPgOid copy_db_oid = 101;
+  const YBCPgOid schema_oid = 11; // pg_catalog schema oid
+  const YBCPgOid tab_oid = 2;
+  YBCPgStatement pg_stmt;
+
+  // Create sys catalog table in default database.
+  LOG(INFO) << "Create database with source database";
+  CHECK_YBC_STATUS(YBCPgNewCreateTable(pg_session_, kDefaultDatabase, "pg_catalog", tabname,
+                                       kDefaultDatabaseOid, schema_oid, tab_oid,
+                                       false /* is_shared_table */, true /* if_not_exist */,
+                                       &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "key", 1, DataType::INT32, false, true));
+  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "value", 2, DataType::INT32, false, false));
+  CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
+  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
+  pg_stmt = nullptr;
+
+  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabase, nullptr, tabname, &pg_stmt));
+
+  YBCPgExpr expr_key;
+  YBCPgExpr expr_value;
+  CHECK_YBC_STATUS(YBCPgNewConstantInt4(pg_stmt, 0, false, &expr_key));
+  CHECK_YBC_STATUS(YBCPgNewConstantInt4(pg_stmt, 10, false, &expr_value));
+  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_key));
+  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 2, expr_value));
+
+  const int insert_row_count = 7;
+  for (int i = 0; i < insert_row_count; i++) {
+    // Insert the row with the original seed.
+    CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
+
+    YBCPgUpdateConstInt4(expr_key, i+1, false);
+    YBCPgUpdateConstInt4(expr_value, i+11, false);
+  }
+  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
+  pg_stmt = nullptr;
+
+  // COPYDB ----------------------------------------------------------------------------------------
+  LOG(INFO) << "Create another database from default database";
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(pg_session_, copy_db_name, copy_db_oid,
+                                          kDefaultDatabaseOid, kInvalidOid /* next_oid */,
+                                          &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
+  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
+  pg_stmt = nullptr;
+
+  // SELECT ----------------------------------------------------------------------------------------
+  LOG(INFO) << "Select from from test table in the new database";
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, copy_db_name, nullptr, tabname, &pg_stmt));
+
+  // Specify the selected expressions.
+  YBCPgExpr colref;
+  YBCPgNewColumnRef(pg_stmt, 1, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  YBCPgNewColumnRef(pg_stmt, 2, &colref);
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+
+  // Execute select statement.
+  CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt));
+
+  // Fetching rows and check their contents.
+  uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(2 * sizeof(uint64_t)));
+  bool *isnulls = static_cast<bool*>(YBCPAlloc(2 * sizeof(bool)));
+  for (int i = 0; i < insert_row_count; i++) {
+    bool has_data = false;
+    YBCPgDmlFetch(pg_stmt, values, isnulls, nullptr, &has_data);
+    CHECK(has_data) << "Not all inserted rows are fetch";
+
+    // Print result
+    LOG(INFO) << "ROW " << i << ": key = " << values[0] << ", value = " << values[1];
+
+    // Check result.
+    EXPECT_EQ(values[0], i);  // key : int32
+    EXPECT_EQ(values[1], i + 10);  // value : int32
+  }
+
+  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
+  pg_stmt = nullptr;
+}
+
+TEST_F(PggateTestCatalog, TestReserveOids) {
+  CHECK_OK(Init("TestReserveOids"));
+
+  // CREATE DATABASE ------------------------------------------------------------------------------
+  LOG(INFO) << "Create database";
+  const char *db_name = "pggate_reserve_oids";
+  const YBCPgOid db_oid = 101;
+  YBCPgStatement pg_stmt;
+
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(pg_session_, db_name, db_oid,
+                                          kInvalidOid /* source_database_oid */,
+                                          100 /* next_oid */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
+  CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
+  pg_stmt = nullptr;
+
+  // RESERVE OIDS ---------------------------------------------------------------------------------
+  // Request next oid below the initial next oid above. Verify the range returned starts with the
+  // initial range still.
+  LOG(INFO) << "Reserve oids";
+  YBCPgOid begin_oid = 0;
+  YBCPgOid end_oid = 0;
+  CHECK_YBC_STATUS(YBCPgReserveOids(pg_session_, db_oid, 50 /* next_oid */, 100 /* count */,
+                                    &begin_oid, &end_oid));
+  EXPECT_EQ(begin_oid, 100);
+  EXPECT_EQ(end_oid, 200);
 }
 
 } // namespace pggate

@@ -342,8 +342,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // state of this tablet.
   // The returned iterator is not initialized.
   Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
-      const Schema &projection,
-      const boost::optional<TransactionId>& transaction_id) const;
+      const Schema &projection, const boost::optional<TransactionId>& transaction_id,
+      const TableId& table_id = "") const;
+  Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
+      const TableId& table_id) const;
 
   //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
