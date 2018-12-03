@@ -108,16 +108,21 @@
     margin: 0 6px;
   }
 
-  pre {
-    margin: 15px 0 !important;
-    border: none !important;
-    padding: 0 !important;
+  .btn-orange {
+    padding: 6px 12px;
   }
+}
+
+
+pre {
+  margin: 15px 0 !important;
+  border: none !important;
+  padding: 0 !important;
 
   code {
-    height: auto;
-    font-size: 12px;
-    line-height: 1.5;
+    height: auto !important;
+    font-size: 12px !important;
+    line-height: 1.5 !important;
     border-radius: 7px;
     padding: 12px 20px;
     margin: 0;
@@ -126,10 +131,6 @@
     word-wrap: normal;
     word-break: keep-all;
     @include transition(0.3s);
-  }
-
-  .btn-orange {
-    padding: 6px 12px;
   }
 }
 

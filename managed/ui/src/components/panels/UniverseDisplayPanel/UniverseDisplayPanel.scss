@@ -93,21 +93,18 @@
 }
 
 
-a:hover > {
-  .create-universe-button:hover, .universe-display-item-container {
+a:hover >  .universe-display-item-container, .create-universe-button:hover {
+  &:before {
+    @include transition(0.3s);
+    transform: scale(1.03, 1.03);
+    background-color: #fff;
+    transform-origin: 50% 50%;
+    border: none;
+    box-shadow: 0 4px 9px rgba(35, 35, 41, 0.2);
+  }
 
-    &:before {
-      @include transition(0.3s);
-      transform: scale(1.03, 1.03);
-      background-color: #fff;
-      transform-origin: 50% 50%;
-      border: none;
-      box-shadow: 0 4px 9px rgba(35, 35, 41, 0.2);
-    }
-
-    .display-name {
-      color: $YB_ORANGE;
-    }
+  .display-name {
+    color: $YB_ORANGE;
   }
 }
 
@@ -117,26 +114,6 @@ a:hover > {
 }
 
 
-.create-universe-button {
-  height: 178px;
-  margin-bottom: 10px;
-  padding: 50px 0 4px 0;
-  text-align: center;
-  position: relative;
-
-  &:before {
-    position: absolute;
-    border-radius: 7px;
-    content: "";
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 0;
-    @include transition(0.125s);
-    border: 1px dotted desaturate(rgba($YB_VIOLET, 0.35), 20%);
-  }
-}
 
 .universe-display-panel-container {
   h3 {
@@ -153,7 +130,100 @@ a:hover > {
 }
 
 .create-universe-button {
+  height: 178px;
+  margin-bottom: 10px;
+  padding: 50px 0 4px 0;
+  text-align: center;
+  position: relative;
   cursor: pointer;
+
+  &:before {
+    position: absolute;
+    border-radius: 7px;
+    content: "";
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 0;
+    @include transition(0.125s);
+    border: 1px dotted desaturate(rgba($YB_VIOLET, 0.35), 20%);
+  }
+
+  & > .button-group {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 100%;
+    padding: 0;
+    transform: scale(1.03, 1.03);
+    overflow: hidden;
+    border-radius: 7px;
+    &:hover:before {
+      opacity: 1;
+      transform: scale(1.03, 1);
+      @include transition-property (0.25s, all, 0.2);
+    }
+
+    &:before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      width: 100%;
+      left: 0;
+      height: 1px;
+      background-color: $YB_GRAY_HOVER;
+      opacity: 0;
+    }
+
+    a.btn {
+
+      width: 100%;
+      height: 50%;
+      display: block;
+      color: $YB_DARK_GRAY_2;
+      line-height: 66px;
+      font-size: 15px;
+
+      border-radius: 0;
+      &, &:hover {
+        border: none;
+        background: none;
+      }
+
+      div {
+        opacity: 0;
+        margin-left: -25px;
+        visibility: hidden;
+        span {
+          display: inline-block;
+          color: $YB_ORANGE;
+          text-indent: -5px;
+          @include transition(0.325s);
+        }
+      }
+
+
+      &:hover {
+
+        background-color: $YB_GRAY_HOVER;
+        
+        span {
+          color: $YB_VIOLET_TEXT;   
+          transform: translateX(-5px);
+        }
+
+        span.fa-mail-forward {
+          transform: rotate(90deg) translateX(3px) translateY(5px);
+        }
+      }
+    }
+
+    .fa-mail-forward {
+      transform: rotate(90deg) translateX(3px);
+    }
+}
 
   .display-name {
     font-weight: 500;

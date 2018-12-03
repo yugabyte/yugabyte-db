@@ -11,6 +11,7 @@ public class Common {
     azu,
     docker,
     onprem,
-    kubernetes
+    kubernetes,
+    other
   }
 }

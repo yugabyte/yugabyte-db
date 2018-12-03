@@ -60,6 +60,7 @@ POST    /customers/:cUUID/universes                   com.yugabyte.yw.controller
 POST    /customers/:cUUID/universe_configure          com.yugabyte.yw.controllers.UniverseController.configure(cUUID: java.util.UUID)
 POST    /customers/:cUUID/universe_resources          com.yugabyte.yw.controllers.UniverseController.getUniverseResources(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/universes/:uniUUID          com.yugabyte.yw.controllers.UniverseController.update(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/import            com.yugabyte.yw.controllers.ImportController.importUniverse(cUUID: java.util.UUID)
 GET     /customers/:cUUID/universes                   com.yugabyte.yw.controllers.UniverseController.list(cUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID          com.yugabyte.yw.controllers.UniverseController.index(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 DELETE  /customers/:cUUID/universes/:uniUUID          com.yugabyte.yw.controllers.UniverseController.destroy(cUUID: java.util.UUID, uniUUID: java.util.UUID)

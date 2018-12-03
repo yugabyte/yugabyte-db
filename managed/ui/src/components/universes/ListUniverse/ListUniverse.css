@@ -10,3 +10,14 @@
     font-size: 14px;
     padding: 11px 12px;
 }
+
+.universe-button {
+    
+    &.btn-orange {
+        margin-left: 15px;
+    }
+
+    .fa-mail-forward {
+        transform: rotate(90deg) translateX(3px);
+    }
+}

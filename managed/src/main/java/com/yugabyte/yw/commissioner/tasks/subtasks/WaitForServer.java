@@ -32,6 +32,9 @@ public class WaitForServer extends AbstractTaskBase {
 
     // Server type running on the above node for which we will wait. 
     public ServerType serverType;
+
+    // Timeout for the RPC call.
+    public long serverWaitTimeoutMs = TIMEOUT_SERVER_WAIT_MS;
   }
 
   @Override
@@ -77,7 +80,7 @@ public class WaitForServer extends AbstractTaskBase {
           node.cloudInfo.private_ip,
           taskParams().serverType == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
       client = ybService.getClient(hostPorts);
-      ret = client.waitForServer(hp, TIMEOUT_SERVER_WAIT_MS);
+      ret = client.waitForServer(hp, taskParams().serverWaitTimeoutMs);
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);

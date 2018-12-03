@@ -15,7 +15,8 @@ export const PROVIDER_TYPES = [
   { code: "docker", name: "Docker Localhost", label: "Docker" },
   { code: "gcp", name: "Google", label: "Google Cloud" },
   { code: "onprem", name: "On Premises", label: "On-Premises Datacenter"},
-  { code: "kubernetes", name: "Kubernetes", label: "Kubernetes"}
+  { code: "kubernetes", name: "Kubernetes", label: "Kubernetes"},
+  { code: "other", name: "Other", label: "Custom Datacenter"}
 ];
 
 export const REGION_METADATA = [

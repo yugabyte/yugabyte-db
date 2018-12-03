@@ -95,10 +95,11 @@ public class SwamperHelper {
   }
 
   private String getSwamperFile(UUID universeUUID, String prefix) {
-    if (appConfig.getString("yb.swamper.targetPath").isEmpty()) {
+    String swamperFile = appConfig.getString("yb.swamper.targetPath");
+    if (swamperFile == null || swamperFile.isEmpty()) {
       return null;
     }
-    File swamperTargetFolder = new File(appConfig.getString("yb.swamper.targetPath"));
+    File swamperTargetFolder = new File(swamperFile);
 
     if (swamperTargetFolder.exists() && swamperTargetFolder.isDirectory()) {
       return String.format("%s/%s.%s.json",

@@ -49,7 +49,7 @@ public class SwamperTargetsFileUpdate extends AbstractTaskBase {
       }
     } catch (RuntimeException e) {
       String msg = getName() + " failed with exception "  + e.getMessage();
-      LOG.warn(msg);
+      LOG.error(msg, e);
       throw new RuntimeException(msg);
     }
   }
