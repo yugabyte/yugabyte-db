@@ -330,6 +330,12 @@ void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::ListNamespaces);
 }
 
+void MasterServiceImpl::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
+                                         ReservePgsqlOidsResponsePB* resp,
+                                         rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::ReservePgsqlOids);
+}
+
 void MasterServiceImpl::CreateRole(const CreateRoleRequestPB* req,
                                    CreateRoleResponsePB* resp,
                                    rpc::RpcContext rpc) {

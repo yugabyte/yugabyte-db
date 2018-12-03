@@ -82,8 +82,11 @@ YBCStatus YBCPgConnectDatabase(YBCPgSession pg_session, const char *database_nam
 YBCStatus YBCPgNewCreateDatabase(YBCPgSession pg_session,
                                  const char *database_name,
                                  const YBCPgOid database_oid,
+                                 const YBCPgOid source_database_oid,
+                                 const YBCPgOid next_oid,
                                  YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->NewCreateDatabase(pg_session, database_name, database_oid, handle));
+  return ToYBCStatus(pgapi->NewCreateDatabase(pg_session, database_name, database_oid,
+                                              source_database_oid, next_oid, handle));
 }
 
 YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle) {
@@ -99,6 +102,16 @@ YBCStatus YBCPgNewDropDatabase(YBCPgSession pg_session,
 
 YBCStatus YBCPgExecDropDatabase(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropDatabase(handle));
+}
+
+YBCStatus YBCPgReserveOids(YBCPgSession pg_session,
+                           const YBCPgOid database_oid,
+                           const YBCPgOid next_oid,
+                           const uint32_t count,
+                           YBCPgOid *begin_oid,
+                           YBCPgOid *end_oid) {
+  return ToYBCStatus(pgapi->ReserveOids(pg_session, database_oid, next_oid, count,
+                                        begin_oid, end_oid));
 }
 
 // Schema Operations -------------------------------------------------------------------------------
@@ -160,12 +173,15 @@ YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
                               const char *database_name,
                               const char *schema_name,
                               const char *table_name,
+                              const YBCPgOid database_oid,
                               const YBCPgOid schema_oid,
                               const YBCPgOid table_oid,
+                              bool is_shared_table,
                               bool if_not_exist,
                               YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateTable(pg_session, database_name, schema_name, table_name,
-                                           schema_oid, table_oid, if_not_exist, handle));
+                                           database_oid, schema_oid, table_oid, is_shared_table,
+                                           if_not_exist, handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,

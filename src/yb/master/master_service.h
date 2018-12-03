@@ -76,8 +76,8 @@ class MasterServiceImpl : public MasterServiceIf,
                                  IsDeleteTableDoneResponsePB* resp,
                                  rpc::RpcContext rpc) override;
   virtual void AlterTable(const AlterTableRequestPB* req,
-                           AlterTableResponsePB* resp,
-                           rpc::RpcContext rpc) override;
+                          AlterTableResponsePB* resp,
+                          rpc::RpcContext rpc) override;
   virtual void IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
                                 IsAlterTableDoneResponsePB* resp,
                                 rpc::RpcContext rpc) override;
@@ -103,6 +103,11 @@ class MasterServiceImpl : public MasterServiceIf,
   virtual void ListNamespaces(const ListNamespacesRequestPB* req,
                               ListNamespacesResponsePB* resp,
                               rpc::RpcContext rpc) override;
+
+  virtual void ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
+                                ReservePgsqlOidsResponsePB* resp,
+                                rpc::RpcContext rpc) override;
+
   virtual void CreateRole(const CreateRoleRequestPB* req,
                           CreateRoleResponsePB* resp,
                           rpc::RpcContext rpc) override;
@@ -146,63 +151,61 @@ class MasterServiceImpl : public MasterServiceIf,
                            ListMastersResponsePB* resp,
                            rpc::RpcContext rpc) override;
 
-  virtual void ListMasterRaftPeers(
-    const ListMasterRaftPeersRequestPB* req,
-    ListMasterRaftPeersResponsePB* resp,
-    rpc::RpcContext rpc) override;
+  virtual void ListMasterRaftPeers(const ListMasterRaftPeersRequestPB* req,
+                                   ListMasterRaftPeersResponsePB* resp,
+                                   rpc::RpcContext rpc) override;
 
   virtual void GetMasterRegistration(const GetMasterRegistrationRequestPB* req,
                                      GetMasterRegistrationResponsePB* resp,
                                      rpc::RpcContext rpc) override;
 
-  virtual void DumpState(
-    const DumpMasterStateRequestPB* req,
-    DumpMasterStateResponsePB* resp,
-    rpc::RpcContext rpc) override;
+  virtual void DumpState(const DumpMasterStateRequestPB* req,
+                         DumpMasterStateResponsePB* resp,
+                         rpc::RpcContext rpc) override;
 
-  virtual void ChangeLoadBalancerState(
-      const ChangeLoadBalancerStateRequestPB* req, ChangeLoadBalancerStateResponsePB* resp,
-      rpc::RpcContext rpc) override;
+  virtual void ChangeLoadBalancerState(const ChangeLoadBalancerStateRequestPB*
+                                       req, ChangeLoadBalancerStateResponsePB* resp,
+                                       rpc::RpcContext rpc) override;
 
   virtual void RemovedMasterUpdate(const RemovedMasterUpdateRequestPB* req,
                                    RemovedMasterUpdateResponsePB* resp,
                                    rpc::RpcContext rpc) override;
 
   virtual void SetPreferredZones(const SetPreferredZonesRequestPB* req,
-                                  SetPreferredZonesResponsePB* resp,
-                                  rpc::RpcContext rpc) override;
+                                 SetPreferredZonesResponsePB* resp,
+                                 rpc::RpcContext rpc) override;
 
-  virtual void GetMasterClusterConfig(
-      const GetMasterClusterConfigRequestPB* req, GetMasterClusterConfigResponsePB* resp,
-      rpc::RpcContext rpc) override;
+  virtual void GetMasterClusterConfig(const GetMasterClusterConfigRequestPB* req,
+                                      GetMasterClusterConfigResponsePB* resp,
+                                      rpc::RpcContext rpc) override;
 
-  virtual void ChangeMasterClusterConfig(
-      const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp,
-      rpc::RpcContext rpc) override;
+  virtual void ChangeMasterClusterConfig(const ChangeMasterClusterConfigRequestPB* req,
+                                         ChangeMasterClusterConfigResponsePB* resp,
+                                         rpc::RpcContext rpc) override;
 
-  virtual void GetLoadMoveCompletion(
-      const GetLoadMovePercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
-      rpc::RpcContext rpc) override;
+  virtual void GetLoadMoveCompletion(const GetLoadMovePercentRequestPB* req,
+                                     GetLoadMovePercentResponsePB* resp,
+                                     rpc::RpcContext rpc) override;
 
-  virtual void IsMasterLeaderServiceReady(
-      const IsMasterLeaderReadyRequestPB* req, IsMasterLeaderReadyResponsePB* resp,
-      rpc::RpcContext rpc) override;
+  virtual void IsMasterLeaderServiceReady(const IsMasterLeaderReadyRequestPB* req,
+                                          IsMasterLeaderReadyResponsePB* resp,
+                                          rpc::RpcContext rpc) override;
 
-  virtual void IsLoadBalanced(
-      const IsLoadBalancedRequestPB* req, IsLoadBalancedResponsePB* resp,
-      rpc::RpcContext rpc) override;
+  virtual void IsLoadBalanced(const IsLoadBalancedRequestPB* req,
+                              IsLoadBalancedResponsePB* resp,
+                              rpc::RpcContext rpc) override;
 
-  virtual void AreLeadersOnPreferredOnly(
-      const AreLeadersOnPreferredOnlyRequestPB* req, AreLeadersOnPreferredOnlyResponsePB* resp,
-      rpc::RpcContext rpc) override;
+  virtual void AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
+                                         AreLeadersOnPreferredOnlyResponsePB* resp,
+                                         rpc::RpcContext rpc) override;
 
-  virtual void FlushTables(
-      const FlushTablesRequestPB* req, FlushTablesResponsePB* resp,
-      rpc::RpcContext rpc) override;
+  virtual void FlushTables(const FlushTablesRequestPB* req,
+                           FlushTablesResponsePB* resp,
+                           rpc::RpcContext rpc) override;
 
-  virtual void IsFlushTablesDone(
-      const IsFlushTablesDoneRequestPB* req, IsFlushTablesDoneResponsePB* resp,
-      rpc::RpcContext rpc) override;
+  virtual void IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
+                                 IsFlushTablesDoneResponsePB* resp,
+                                 rpc::RpcContext rpc) override;
 
  private:
 };

@@ -96,7 +96,9 @@ class PgApiImpl {
   // Create database.
   CHECKED_STATUS NewCreateDatabase(PgSession *pg_session,
                                    const char *database_name,
-                                   client::PgOid database_oid,
+                                   PgOid database_oid,
+                                   PgOid source_database_oid,
+                                   PgOid next_oid,
                                    PgStatement **handle);
   CHECKED_STATUS ExecCreateDatabase(PgStatement *handle);
 
@@ -106,6 +108,14 @@ class PgApiImpl {
                                  bool if_exist,
                                  PgStatement **handle);
   CHECKED_STATUS ExecDropDatabase(PgStatement *handle);
+
+  // Reserve oids.
+  CHECKED_STATUS ReserveOids(PgSession *pg_session,
+                             PgOid database_oid,
+                             PgOid next_oid,
+                             uint32_t count,
+                             PgOid *begin_oid,
+                             PgOid *end_oid);
 
   //------------------------------------------------------------------------------------------------
   // Create and drop schema.
@@ -132,8 +142,10 @@ class PgApiImpl {
                                 const char *database_name,
                                 const char *schema_name,
                                 const char *table_name,
-                                client::PgOid schema_oid,
-                                client::PgOid table_oid,
+                                PgOid database_oid,
+                                PgOid schema_oid,
+                                PgOid table_oid,
+                                bool is_shared_table,
                                 bool if_not_exist,
                                 PgStatement **handle);
 

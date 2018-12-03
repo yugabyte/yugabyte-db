@@ -22,6 +22,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/callback.h"
 
+#include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 
@@ -54,8 +55,17 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   //------------------------------------------------------------------------------------------------
 
   // API for database operations.
-  CHECKED_STATUS CreateDatabase(const std::string& database_name, client::PgOid database_oid);
+  CHECKED_STATUS CreateDatabase(const std::string& database_name,
+                                PgOid database_oid,
+                                PgOid source_database_oid,
+                                PgOid nexte_oid);
   CHECKED_STATUS DropDatabase(const std::string& database_name, bool if_exist);
+
+  CHECKED_STATUS ReserveOids(PgOid database_oid,
+                             PgOid nexte_oid,
+                             uint32_t count,
+                             PgOid *begin_oid,
+                             PgOid *end_oid);
 
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.

@@ -18,6 +18,8 @@
 #include <set>
 #include <utility>
 
+#include "yb/util/result.h"
+
 namespace yb {
 
 // TODO: switch many of these to opaque types for additional type safety and efficiency.
@@ -40,6 +42,19 @@ using NamespaceIdTableNamePair = std::pair<NamespaceId, TableName>;
 using FlushRequestId = std::string;
 
 using RedisConfigKey = std::string;
+
+// Get YB namespace id for a Postgres database.
+NamespaceId GetPgsqlNamespaceId(uint32_t database_oid);
+
+// Get YB table id for a Postgres table.
+TableId GetPgsqlTableId(uint32_t database_oid, uint32_t table_oid);
+
+// Is the namespace/table id a Postgres database or table id?
+bool IsPgsqlId(const string& id);
+
+// Get Postgres database and table oids from a YB namespace/table id.
+Result<uint32_t> GetPgsqlDatabaseOid(const NamespaceId& namespace_id);
+Result<uint32_t> GetPgsqlTableOid(const TableId& table_id);
 
 }  // namespace yb
 

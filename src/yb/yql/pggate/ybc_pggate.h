@@ -61,6 +61,8 @@ YBCStatus YBCPgConnectDatabase(YBCPgSession pg_session, const char *database_nam
 YBCStatus YBCPgNewCreateDatabase(YBCPgSession pg_session,
                                  const char *database_name,
                                  YBCPgOid database_oid,
+                                 YBCPgOid source_database_oid,
+                                 YBCPgOid next_oid,
                                  YBCPgStatement *handle);
 YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle);
 
@@ -70,6 +72,14 @@ YBCStatus YBCPgNewDropDatabase(YBCPgSession pg_session,
                                bool if_exist,
                                YBCPgStatement *handle);
 YBCStatus YBCPgExecDropDatabase(YBCPgStatement handle);
+
+// Reserve oids.
+YBCStatus YBCPgReserveOids(YBCPgSession pg_session,
+                           YBCPgOid database_oid,
+                           YBCPgOid next_oid,
+                           uint32_t count,
+                           YBCPgOid *begin_oid,
+                           YBCPgOid *end_oid);
 
 // SCHENA ------------------------------------------------------------------------------------------
 // Create schema "database_name.schema_name".
@@ -97,8 +107,10 @@ YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
                               const char *database_name,
                               const char *schema_name,
                               const char *table_name,
+                              YBCPgOid database_oid,
                               YBCPgOid schema_oid,
                               YBCPgOid table_oid,
+                              bool is_shared_table,
                               bool if_not_exist,
                               YBCPgStatement *handle);
 

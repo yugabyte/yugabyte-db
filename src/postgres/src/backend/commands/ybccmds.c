@@ -37,7 +37,7 @@
 /*  Database Functions. */
 
 void
-YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid)
+YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid)
 {
 	YBCPgStatement handle;
 
@@ -47,7 +47,12 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid)
 		dbname);
 	PG_TRY();
 	{
-		HandleYBStatus(YBCPgNewCreateDatabase(ybc_pg_session, dbname, dboid, &handle));
+		HandleYBStatus(YBCPgNewCreateDatabase(ybc_pg_session,
+											  dbname,
+											  dboid,
+											  InvalidOid,
+											  next_oid,
+											  &handle));
 		HandleYBStatus(YBCPgExecCreateDatabase(handle));
 	}
 	PG_CATCH();
@@ -67,9 +72,9 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 	PG_TRY();
 	{
 		HandleYBStatus(YBCPgNewDropDatabase(ybc_pg_session,
-											  dbname,
-											  false,	/* if_exists */
-											  &handle));
+											dbname,
+											false,	/* if_exists */
+											&handle));
 		HandleYBStatus(YBCPgExecDropDatabase(handle));
 	}
 	PG_CATCH();
@@ -79,6 +84,17 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 	}
 	PG_END_TRY();
 	HandleYBStatus(YBCPgDeleteStatement(handle));
+}
+
+void
+YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_oid)
+{
+	HandleYBStatus(YBCPgReserveOids(ybc_pg_session,
+	                                dboid,
+	                                next_oid,
+	                                count,
+	                                begin_oid,
+	                                end_oid));
 }
 
 /* -------------------------------------------------------------------- */
@@ -118,10 +134,8 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 			}
 		}
 
-		/* TODO For now, assume the first primary key column is the hash, except for pg_catalog
-		 * tables which are not hash-partitioned.
-		 */
-		bool is_hash = is_primary && is_first && (namespaceId != PG_CATALOG_NAMESPACE);
+		/* TODO For now, assume the first primary key column is the hash. */
+		bool is_hash = is_primary && is_first;
 		if (include_hash == is_hash && include_primary == is_primary)
 		{
 			HandleYBStmtStatus(YBCPgCreateTableAddColumn(handle,
@@ -185,8 +199,10 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid namespaceId, Oid relationId)
 	                                   db_name,
 	                                   stmt->relation->schemaname,
 	                                   stmt->relation->relname,
+	                                   MyDatabaseId,
 	                                   namespaceId,
 	                                   relationId,
+	                                   false, /* is_shared_table */
 	                                   false, /* if_not_exists */
 	                                   &handle));
 

@@ -1742,20 +1742,26 @@ CHECKED_STATUS ValidateCreateTableSchema(const Schema& schema, CreateTableRespon
 
 } // namespace
 
-Status CatalogManager::CreateTablePgsqlSysTable(const CreateTableRequestPB* req,
-                                                CreateTableResponsePB* resp,
-                                                rpc::RpcContext* rpc) {
+Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
+                                           CreateTableResponsePB* resp,
+                                           rpc::RpcContext* rpc) {
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
   scoped_refptr<NamespaceInfo> ns;
   RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
   NamespaceId namespace_id = ns->id();
 
-  // Validate schema.
+  Schema schema;
   Schema client_schema;
   RETURN_NOT_OK(SchemaFromPB(req->schema(), &client_schema));
-  RETURN_NOT_OK(ValidateCreateTableSchema(client_schema, resp));
-  Schema schema = client_schema.CopyWithColumnIds();
+  // If the schema contains column ids, we are copying a Postgres table from one namespace to
+  // another. In that case, just use the schema as-is. Otherwise, validate the schema.
+  if (client_schema.has_column_ids()) {
+    schema = std::move(client_schema);
+  } else {
+    RETURN_NOT_OK(ValidateCreateTableSchema(client_schema, resp));
+    schema = client_schema.CopyWithColumnIds();
+  }
 
   // Verify no hash paritition schema is specified.
   if (req->partition_schema().has_hash_schema()) {
@@ -1828,6 +1834,98 @@ Status CatalogManager::CreateTablePgsqlSysTable(const CreateTableRequestPB* req,
   return Status::OK();
 }
 
+Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
+                                        ReservePgsqlOidsResponsePB* resp,
+                                        rpc::RpcContext* rpc) {
+  RETURN_NOT_OK(CheckOnline());
+
+  VLOG(1) << "ReservePgsqlOids request: " << req->ShortDebugString();
+
+  // Lookup namespace
+  scoped_refptr<NamespaceInfo> ns;
+  {
+    boost::shared_lock<LockType> l(lock_);
+    ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id());
+  }
+  if (!ns) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND,
+                      STATUS(NotFound, "Namespace not found", req->namespace_id()));
+  }
+
+  // Reserve oids.
+  auto l = ns->LockForWrite();
+
+  uint32_t begin_oid = l->data().pb.next_pg_oid();
+  if (begin_oid < req->next_oid()) {
+    begin_oid = req->next_oid();
+  }
+  if (begin_oid == std::numeric_limits<uint32_t>::max()) {
+    LOG(WARNING) << Format("No more object identifier is available for Postgres database $0 ($1)",
+                           l->data().pb.name(), req->namespace_id());
+    return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR,
+                      STATUS(InvalidArgument, "No more object identifier is available"));
+  }
+
+  uint32_t end_oid = begin_oid + req->count();
+  if (end_oid < begin_oid) {
+    end_oid = std::numeric_limits<uint32_t>::max(); // Handle wraparound.
+  }
+
+  resp->set_begin_oid(begin_oid);
+  resp->set_end_oid(end_oid);
+  l->mutable_data()->pb.set_next_pg_oid(end_oid);
+
+  // Update the on-disk state.
+  const Status s = sys_catalog_->UpdateItem(ns.get(), leader_ready_term_);
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+  }
+
+  // Commit the in-memory state.
+  l->Commit();
+
+  VLOG(1) << "ReservePgsqlOids response: " << resp->ShortDebugString();
+
+  return Status::OK();
+}
+
+Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
+                                          const std::vector<scoped_refptr<TableInfo>>& tables,
+                                          CreateNamespaceResponsePB* resp,
+                                          rpc::RpcContext* rpc) {
+  const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(namespace_id));
+  for (const auto& table : tables) {
+    CreateTableRequestPB table_req;
+    CreateTableResponsePB table_resp;
+
+    const uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
+    const TableId table_id = GetPgsqlTableId(database_oid, table_oid);
+
+    // Hold read lock until rows from the table are copied also.
+    auto l = table->LockForRead();
+
+    // Skip shared table.
+    if (l->data().pb.is_pg_shared_table()) {
+      continue;
+    }
+
+    table_req.set_name(l->data().pb.name());
+    table_req.mutable_namespace_()->set_id(namespace_id);
+    table_req.set_table_type(PGSQL_TABLE_TYPE);
+    table_req.mutable_schema()->CopyFrom(l->data().schema());
+    table_req.set_is_pg_catalog_table(true);
+    table_req.set_table_id(table_id);
+
+    const Status s = CreatePgsqlSysTable(&table_req, &table_resp, rpc);
+    if (!s.ok()) {
+      return SetupError(resp->mutable_error(), table_resp.error().code(), s);
+    }
+
+    RETURN_NOT_OK(sys_catalog_->CopyPgsqlTable(table->id(), table_id, leader_ready_term_));
+  }
+  return Status::OK();
+}
+
 // Create a new table.
 // See README file in this directory for a description of the design.
 Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
@@ -1836,7 +1934,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   RETURN_NOT_OK(CheckOnline());
 
   if (orig_req->table_type() == PGSQL_TABLE_TYPE && orig_req->is_pg_catalog_table()) {
-    return CreateTablePgsqlSysTable(orig_req, resp, rpc);
+    return CreatePgsqlSysTable(orig_req, resp, rpc);
   }
 
   Status s;
@@ -2287,13 +2385,47 @@ Status CatalogManager::IsTransactionStatusTableCreated(IsCreateTableDoneResponse
   return IsCreateTableDone(&req, resp);
 }
 
+std::string CatalogManager::GenerateId(boost::optional<const SysRowEntry::Type> entity_type) {
+  while (true) {
+    // Generate id and make sure it is unique within its category.
+    std::string id = oid_generator_.Next();
+    if (!entity_type) {
+      return id;
+    }
+    switch (*entity_type) {
+      case SysRowEntry::NAMESPACE:
+        if (FindPtrOrNull(namespace_ids_map_, id) == nullptr) return id;
+        break;
+      case SysRowEntry::TABLE:
+        if (FindPtrOrNull(table_ids_map_, id) == nullptr) return id;
+        break;
+      case SysRowEntry::TABLET:
+        if (FindPtrOrNull(tablet_map_, id) == nullptr) return id;
+        break;
+      case SysRowEntry::UDTYPE:
+        if (FindPtrOrNull(udtype_ids_map_, id) == nullptr) return id;
+        break;
+      case SysRowEntry::SNAPSHOT:
+        return id;
+      case SysRowEntry::UNKNOWN: FALLTHROUGH_INTENDED;
+      case SysRowEntry::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntry::ROLE: FALLTHROUGH_INTENDED;
+      case SysRowEntry::REDIS_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntry::SYS_CONFIG:
+        LOG(DFATAL) << "Invalid id type: " << *entity_type;
+        return id;
+    }
+  }
+}
+
 TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
                                            const Schema& schema,
                                            const PartitionSchema& partition_schema,
                                            const NamespaceId& namespace_id,
                                            IndexInfoPB* index_info) {
   DCHECK(schema.has_column_ids());
-  TableInfo* table = new TableInfo(GenerateId());
+  TableId table_id = !req.table_id().empty() ? req.table_id() : GenerateId(SysRowEntry::TABLE);
+  TableInfo* table = new TableInfo(table_id);
   table->mutable_metadata()->StartMutation();
   SysTablesEntryPB *metadata = &table->mutable_metadata()->mutable_dirty()->pb;
   metadata->set_state(SysTablesEntryPB::PREPARING);
@@ -2315,12 +2447,17 @@ TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
     index_info->set_table_id(table->id());
     metadata->mutable_index_info()->CopyFrom(*index_info);
   }
+
+  if (req.is_pg_shared_table()) {
+    metadata->set_is_pg_shared_table(true);
+  }
+
   return table;
 }
 
 TabletInfo* CatalogManager::CreateTabletInfo(TableInfo* table,
                                              const PartitionPB& partition) {
-  TabletInfo* tablet = new TabletInfo(table, GenerateId());
+  TabletInfo* tablet = new TabletInfo(table, GenerateId(SysRowEntry::TABLET));
   tablet->mutable_metadata()->StartMutation();
   SysTabletsEntryPB *metadata = &tablet->mutable_metadata()->mutable_dirty()->pb;
   metadata->set_state(SysTabletsEntryPB::PREPARING);
@@ -4069,6 +4206,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
             << ": " << req->DebugString();
 
   scoped_refptr<NamespaceInfo> ns;
+  std::vector<scoped_refptr<TableInfo>> pgsql_tables;
   {
     std::lock_guard<LockType> l(lock_);
     TRACE("Acquired catalog manager lock");
@@ -4086,17 +4224,42 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // Add the new namespace.
 
     // Create unique id for this new namespace.
-    NamespaceId new_id;
-    do {
-      new_id = GenerateId();
-    } while (nullptr != FindPtrOrNull(namespace_ids_map_, new_id));
-
+    NamespaceId new_id = !req->namespace_id().empty() ? req->namespace_id()
+                                                      : GenerateId(SysRowEntry::NAMESPACE);
     ns = new NamespaceInfo(new_id);
     ns->mutable_metadata()->StartMutation();
     SysNamespaceEntryPB *metadata = &ns->mutable_metadata()->mutable_dirty()->pb;
     metadata->set_name(req->name());
     if (req->has_database_type()) {
       metadata->set_database_type(req->database_type());
+    }
+
+    if (req->database_type() == YQL_DATABASE_PGSQL) {
+      if (req->source_namespace_id().empty()) {
+        metadata->set_next_pg_oid(req->next_pg_oid());
+      } else {
+        const auto source_oid = GetPgsqlDatabaseOid(req->source_namespace_id());
+        if (!source_oid.ok()) {
+          return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND,
+                            source_oid.status());
+        }
+        for (const auto& iter : table_ids_map_) {
+          if (IsPgsqlId(iter.first) &&
+              CHECK_RESULT(GetPgsqlDatabaseOid(iter.first)) == *source_oid) {
+            pgsql_tables.push_back(iter.second);
+          }
+        }
+
+        scoped_refptr<NamespaceInfo> source_ns = FindPtrOrNull(namespace_ids_map_,
+                                                               req->source_namespace_id());
+        if (!source_ns) {
+          return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND,
+                            STATUS(NotFound, "Source namespace not found",
+                                   req->source_namespace_id()));
+        }
+        auto source_ns_lock = source_ns->LockForRead();
+        metadata->set_next_pg_oid(source_ns_lock->data().pb.next_pg_oid());
+      }
     }
 
     // Add the namespace to the in-memory map for the assignment.
@@ -4130,6 +4293,13 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                    all_permissions_for_resource(ResourceType::KEYSPACE),
                                    ResourceType::KEYSPACE,
                                    resp));
+  }
+
+  if (req->database_type() == YQL_DATABASE_PGSQL && !pgsql_tables.empty()) {
+    s = CopyPgsqlSysTables(ns->id(), pgsql_tables, resp, rpc);
+    if (!s.ok()) {
+      return s;
+    }
   }
 
   return Status::OK();
@@ -4770,11 +4940,7 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
     }
 
     // Construct the new type (generate fresh name and set fields).
-    UDTypeId new_id;
-    do {
-      new_id = GenerateId();
-    } while (nullptr != FindPtrOrNull(udtype_ids_map_, new_id));
-
+    UDTypeId new_id = GenerateId(SysRowEntry::UDTYPE);
     tp = new UDTypeInfo(new_id);
     tp->mutable_metadata()->StartMutation();
     SysUDTypeEntryPB *metadata = &tp->mutable_metadata()->mutable_dirty()->pb;
