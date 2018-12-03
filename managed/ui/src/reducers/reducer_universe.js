@@ -12,7 +12,9 @@ import { FETCH_UNIVERSE_INFO, RESET_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_RESPONSE,
   GET_UNIVERSE_PER_NODE_STATUS_RESPONSE, GET_MASTER_LEADER, GET_MASTER_LEADER_RESPONSE, RESET_MASTER_LEADER,
   PERFORM_UNIVERSE_NODE_ACTION, PERFORM_UNIVERSE_NODE_ACTION_RESPONSE, FETCH_UNIVERSE_BACKUPS,
   FETCH_UNIVERSE_BACKUPS_RESPONSE, RESET_UNIVERSE_BACKUPS, GET_HEALTH_CHECK,
-  GET_HEALTH_CHECK_RESPONSE, ADD_READ_REPLICA, ADD_READ_REPLICA_RESPONSE, EDIT_READ_REPLICA, EDIT_READ_REPLICA_RESPONSE, DELETE_READ_REPLICA, DELETE_READ_REPLICA_RESPONSE
+  GET_HEALTH_CHECK_RESPONSE, ADD_READ_REPLICA, ADD_READ_REPLICA_RESPONSE, EDIT_READ_REPLICA,
+  EDIT_READ_REPLICA_RESPONSE, DELETE_READ_REPLICA, DELETE_READ_REPLICA_RESPONSE,
+  IMPORT_UNIVERSE, IMPORT_UNIVERSE_RESPONSE
 } from '../actions/universe';
 import _ from 'lodash';
 import { getInitialState, setInitialState, setLoadingState, setPromiseResponse, setSuccessState } from 'utils/PromiseUtils.js';
@@ -39,7 +41,8 @@ const INITIAL_STATE = {
   rollingUpgrade: getInitialState({}),
   universeNodeAction: getInitialState({}),
   universeBackupList: getInitialState({}),
-  healthCheck: getInitialState({})
+  healthCheck: getInitialState({}),
+  universeImport: getInitialState({})
 };
 
 export default function(state = INITIAL_STATE, action) {
@@ -173,6 +176,12 @@ export default function(state = INITIAL_STATE, action) {
       return setLoadingState(state, "healthCheck", []);
     case GET_HEALTH_CHECK_RESPONSE:
       return setPromiseResponse(state, "healthCheck", action);
+
+    // Universe import
+    case IMPORT_UNIVERSE:
+      return setLoadingState(state, "universeImport", []);
+    case IMPORT_UNIVERSE_RESPONSE:
+      return setPromiseResponse(state, "universeImport", action);
 
     default:
       return state;

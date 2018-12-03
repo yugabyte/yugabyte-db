@@ -317,6 +317,22 @@ public class Universe extends Model {
   }
 
   /**
+   * Returns details about a single node by ip address in the universe.
+   *
+   * @param nodeIP Private IP address of the node
+   * @return details about a node, null if it does not exist.
+   */
+  public NodeDetails getNodeByPrivateIP(String nodeIP) {
+    Collection<NodeDetails> nodes = getNodes();
+    for (NodeDetails node : nodes) {
+      if (node.cloudInfo.private_ip.equals(nodeIP)) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Returns the list of masters for this universe.
    *
    * @return a list of master nodes

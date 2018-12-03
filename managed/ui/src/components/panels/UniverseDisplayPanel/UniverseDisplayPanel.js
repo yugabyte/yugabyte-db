@@ -10,6 +10,8 @@ import { YBCost, DescriptionItem } from 'components/common/descriptors';
 import { UniverseStatusContainer } from 'components/universes';
 import './UniverseDisplayPanel.scss';
 import { isNonEmptyObject } from "../../../utils/ObjectUtils";
+import { YBModal } from '../../common/forms/fields';
+import { TimelineMax, Power1 } from "gsap/all";
 import { getPrimaryCluster, getReadOnlyCluster, getClusterProviderUUIDs, getProviderMetadata } from "../../../utils/UniverseUtils";
 const moment = require('moment');
 
@@ -28,6 +30,79 @@ class CTAButton extends Component {
           </div>
         </div>
       </Link>
+    );
+  }
+}
+
+class CTAButtonAnimated extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      hover: false
+    };
+
+    //animations
+    this.plusTween = new TimelineMax();
+    this.addUniverseElemsTween = new TimelineMax();
+    this.mainTween = new TimelineMax({ paused: true });
+
+    this.plusIcon = null;
+    this.mainLabel = null;
+    this.addUniverseElems = [];
+    this.feature = null;
+    this.description = null;
+    this.icons = [];
+  }
+
+
+
+  componentDidMount = () => {
+    this.plusTween
+      .add("preview")
+      .to(this.plusIcon, 0.1, {y: -15, opacity: 0, ease: Power1.easeOut})
+      .to(this.mainLabel, 0.1, {y: 15, opacity: 0, ease: Power1.easeOut},"preview");
+    this.addUniverseElemsTween
+      .staggerTo(this.addUniverseElems, 0.1, { x: 10, autoAlpha: 1}, 0.1);
+    this.mainTween
+      .add(this.plusTween)
+      .add(this.addUniverseElemsTween, 0.1 );
+  }
+
+  mouseEnter = () => {
+    this.setState({hover: true});
+    this.mainTween.play();
+  }
+
+  mouseLeave = () => {
+    this.setState({hover: false});
+    this.mainTween.reverse();
+  }
+  render() {
+    const { labelText, onClick, otherProps, className } = this.props;
+
+    return (
+      <div>
+        <div ref={ div => this.content = div } onMouseEnter={this.mouseEnter} onMouseLeave={this.mouseLeave} className={className ? "create-universe-button "+className : "create-universe-button"} {...otherProps}>
+          <div ref={ div => this.plusIcon = div } className="btn-icon">
+            <i className="fa fa-plus"/>
+          </div>
+          <div ref={ div => this.mainLabel = div } className="display-name text-center">
+            {labelText}
+          </div>
+          <div className="button-group">
+            <Link className="btn btn-default" to={"/universes/create"} onClick={onClick}>
+              <div ref={ block => this.addUniverseElems[0] = block }>
+                <span className="fa fa-plus"></span> Create Universe
+              </div>
+            </Link>
+            <Link to={"/importer"} className="btn btn-default">
+              <div ref={ block => this.addUniverseElems[1] = block }>
+                <span className="fa fa-mail-forward"></span> Import Universe
+              </div>
+            </Link>
+          </div>
+        </div>
+      </div>
     );
   }
 }
@@ -95,6 +170,21 @@ class UniverseDisplayItem extends Component {
 }
 
 export default class UniverseDisplayPanel extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      addUniverseModal: false
+    };
+  }
+
+
+
+  toggleUniverseModal = () => {
+    if (!this.state.addUniverseModal) {
+
+    }
+    this.setState({addUniverseModal: !this.state.addUniverseModal});
+  }
   render() {
     const self = this;
     const { universe: {universeList}, cloud: {providers}} = this.props;
@@ -111,10 +201,10 @@ export default class UniverseDisplayPanel extends Component {
         });
       }
       const createUniverseButton =
-        (<Col sm={4} md={3} lg={2}><CTAButton
-          linkTo={"/universes/create"}
-          labelText={"Create Universe"}
-          onClick={() => self.props.showUniverseModal()}
+        (<Col sm={4} md={3} lg={2}><CTAButtonAnimated
+          labelText={"Add Universe"}
+          className={self.state.addUniverseModal? "active" : ""} 
+          onClick={() => 0}
         /></Col>);
       return (
         <div className="universe-display-panel-container">
@@ -123,6 +213,11 @@ export default class UniverseDisplayPanel extends Component {
             {universeDisplayList}
             {createUniverseButton}
           </Row>
+          <YBModal
+            className="mymodal"
+            visible={self.state.addUniverseModal}
+            onHide={() => this.toggleUniverseModal()}
+            title={''}></YBModal>
         </div>
       );
     } else if (getPromiseState(providers).isEmpty()) {

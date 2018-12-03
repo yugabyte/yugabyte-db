@@ -11,6 +11,7 @@
   padding: 0;
   counter-reset: step;
   z-index: 300;
+  height: 120px;
 
   &:before {
     width: calc( 100% - 30px );
