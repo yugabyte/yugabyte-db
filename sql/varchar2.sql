@@ -94,5 +94,8 @@ SELECT lengthb('');
 -- returs 't'
 SELECT lengthb(NULL) IS NULL;
 
--- null safe concat
+-- null safe concat (disabled by default)
+SELECT NULL || 'hello'::varchar2 || NULL;
+
+SET orafce.varchar2_null_safe_concat TO true;
 SELECT NULL || 'hello'::varchar2 || NULL;

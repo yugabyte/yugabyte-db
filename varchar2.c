@@ -25,6 +25,9 @@ PG_FUNCTION_INFO_V1(varchar2);
 PG_FUNCTION_INFO_V1(varchar2recv);
 PG_FUNCTION_INFO_V1(orafce_concat2);
 
+bool orafce_varchar2_null_safe_concat = false;
+
+
 /*
  * varchar2_input -- common guts of varchar2in and varchar2recv
  *
@@ -209,8 +212,17 @@ orafce_concat2(PG_FUNCTION_ARGS)
 		len2 = VARSIZE_ANY_EXHDR(arg2);
 	}
 
-	if (len1 == 0 && len2 == 0)
-		PG_RETURN_NULL();
+	/* default behave should be compatible with Postgres */
+	if (!orafce_varchar2_null_safe_concat)
+	{
+		if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+			PG_RETURN_NULL();
+	}
+	else
+	{
+		if (len1 == 0 && len2 == 0)
+			PG_RETURN_NULL();
+	}
 
 	/* hard work, we should to concat strings */
 	len = len1 + len2 + VARHDRSZ;

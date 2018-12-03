@@ -36,6 +36,8 @@ extern char *orafce_timezone;
 extern char *nls_date_format;
 extern char *orafce_timezone;
 
+extern bool orafce_varchar2_null_safe_concat;
+
 /*
  * Version compatibility
  */

@@ -44,5 +44,14 @@ _PG_init(void)
 									0,
 									check_timezone, NULL, show_timezone);
 
+	DefineCustomBoolVariable("orafce.varchar2_null_safe_concat",
+									"Specify timezone used for sysdate function.",
+									NULL,
+									&orafce_varchar2_null_safe_concat,
+									false,
+									PGC_USERSET,
+									0,
+									NULL, NULL, NULL);
+
 	EmitWarningsOnPlaceholders("orafce");
 }
