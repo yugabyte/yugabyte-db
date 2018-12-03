@@ -39,7 +39,7 @@ LANGUAGE C IMMUTABLE;
 CREATE FUNCTION oracle.orafce_concat2(nvarchar2, nvarchar2)
 RETURNS nvarchar2
 AS 'MODULE_PATHNAME','orafce_concat2'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C STABLE;
 
 CREATE OPERATOR || (function = oracle.orafce_concat2, leftarg = varchar2, rightarg = varchar2);
 CREATE OPERATOR || (function = oracle.orafce_concat2, leftarg = nvarchar2, rightarg = nvarchar2);

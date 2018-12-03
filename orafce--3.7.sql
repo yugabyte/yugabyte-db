@@ -2178,7 +2178,7 @@ collatable = true
 CREATE FUNCTION oracle.orafce_concat2(varchar2, varchar2)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','orafce_concat2'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C STABLE;
 
 
 /* CREATE CAST */
