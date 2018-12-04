@@ -79,12 +79,12 @@ const std::map<std::string, PermissionType >  PTGrantRevokePermission::kPermissi
 //--------------------------------------------------------------------------------------------------
 
 PTGrantRevokePermission::PTGrantRevokePermission(MemoryContext* memctx,
-                                     YBLocation::SharedPtr loc,
-                                     GrantRevokeStatementType statement_type,
-                                     const MCSharedPtr<MCString>& permission_name,
-                                     const ResourceType& resource_type,
-                                     const PTQualifiedName::SharedPtr& resource_name,
-                                     const PTQualifiedName::SharedPtr& role_name)
+                                                 YBLocation::SharedPtr loc,
+                                                 GrantRevokeStatementType statement_type,
+                                                 const MCSharedPtr<MCString>& permission_name,
+                                                 const ResourceType& resource_type,
+                                                 const PTQualifiedName::SharedPtr& resource_name,
+                                                 const PTQualifiedName::SharedPtr& role_name)
   : TreeNode(memctx, loc),
   statement_type_(statement_type),
   permission_name_(permission_name),
@@ -113,25 +113,14 @@ Status PTGrantRevokePermission::Analyze(SemContext* sem_context) {
 
   permission_ = iterator->second;
 
-  // Check that the DESCRIBE permission is only granted on a role or on all roles.
+  // Check that the permission being granted is supported by the resource.
   // This check should be done before anything else.
-  switch (resource_type_) {
-    case ResourceType::ALL_KEYSPACES: FALLTHROUGH_INTENDED;
-    case ResourceType::KEYSPACE: FALLTHROUGH_INTENDED;
-    case ResourceType::TABLE:
-      if (permission_ == PermissionType::DESCRIBE_PERMISSION) {
-        // Match apache cassandra's error message.
-        return sem_context->Error(loc(),
-            "Resource type DataResource does not support any of the requested permissions",
-            ErrorCode::SYNTAX_ERROR);
-      }
-      break;
-
-      // Only ROLE and ALL_ROLES can be granted DESCRIBE permission.
-    case ResourceType::ROLE: FALLTHROUGH_INTENDED;
-    case ResourceType::ALL_ROLES:
-      break;
-
+  if (permission_ != PermissionType::ALL_PERMISSION &&
+      !valid_permission_for_resource(permission_, resource_type_)) {
+    // Match apache cassandra's error message.
+    return sem_context->Error(loc(),
+        "Resource type DataResource does not support any of the requested permissions",
+        ErrorCode::SYNTAX_ERROR);
   }
 
   // Processing the role name.

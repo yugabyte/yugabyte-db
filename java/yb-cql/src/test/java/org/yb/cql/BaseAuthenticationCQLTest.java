@@ -48,6 +48,21 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
   public static final List<String> ALL_PERMISSIONS =
       Arrays.asList(ALTER, AUTHORIZE, CREATE, DESCRIBE, DROP, MODIFY, SELECT);
 
+  public static final List<String> ALL_PERMISSIONS_FOR_KEYSPACE =
+      Arrays.asList(ALTER, AUTHORIZE, CREATE, DROP, MODIFY, SELECT);
+
+  public static final List<String> ALL_PERMISSIONS_FOR_TABLE =
+      Arrays.asList(ALTER, AUTHORIZE, DROP, MODIFY, SELECT);
+
+  public static final List<String> ALL_PERMISSIONS_FOR_ROLE =
+      Arrays.asList(ALTER, AUTHORIZE, DROP);
+
+  public static final List<String> ALL_PERMISSIONS_FOR_ALL_ROLES =
+      Arrays.asList(ALTER, AUTHORIZE, CREATE, DESCRIBE, DROP);
+
+  public static final List<String> ALL_PERMISSIONS_FOR_ALL_KEYSPACES =
+      Arrays.asList(ALTER, AUTHORIZE, CREATE, DROP, MODIFY, SELECT);
+
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
     // Setting verbose level for debugging.
