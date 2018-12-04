@@ -290,10 +290,10 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     assertPermissionsGranted(s, role[0], canonicalResource, allPermissions);
 
     // Revoke one of the permissions in the middle.
-    s.execute(revokeStmt.get("CREATE", resourceName, role[0]));
+    s.execute(revokeStmt.get("DROP", resourceName, role[0]));
     List<String> permissions = new ArrayList<>();
     permissions.addAll(allPermissions);
-    permissions.remove(permissions.indexOf("CREATE"));
+    permissions.remove(permissions.indexOf("DROP"));
     assertPermissionsGranted(s, role[0], canonicalResource, permissions);
 
     if (permissions.contains("DESCRIBE")) {
@@ -347,7 +347,7 @@ public class TestRoles extends BaseAuthenticationCQLTest {
             GrantPermissionTableStmt(permission, resource, role),
         (String permission, String resource, String role) ->
             RevokePermissionTableStmt(permission, resource, role),
-        ALL_PERMISSIONS_EXCEPT_DESCRIBE);
+        ALL_PERMISSIONS_FOR_TABLE);
   }
 
   @Test
@@ -359,7 +359,7 @@ public class TestRoles extends BaseAuthenticationCQLTest {
             GrantPermissionRoleStmt(permission, resource, role),
         (String permission, String resource, String role) ->
             RevokePermissionRoleStmt(permission, resource, role),
-        ALL_PERMISSIONS);
+        ALL_PERMISSIONS_FOR_ROLE);
   }
 
   @Test
@@ -373,7 +373,7 @@ public class TestRoles extends BaseAuthenticationCQLTest {
             GrantPermissionAllRolesStmt(permission, role),
         (String permission, String resource, String role) ->
             RevokePermissionAllRolesStmt(permission, role),
-        ALL_PERMISSIONS);
+        ALL_PERMISSIONS_FOR_ALL_ROLES);
   }
 
   @Test
@@ -392,7 +392,7 @@ public class TestRoles extends BaseAuthenticationCQLTest {
             GrantPermissionAllKeyspacesStmt(permission, role),
         (String permission, String resource, String role) ->
             RevokePermissionAllKeyspacesStmt(permission, role),
-        ALL_PERMISSIONS_EXCEPT_DESCRIBE);
+        ALL_PERMISSIONS_FOR_ALL_KEYSPACES);
   }
 
   // If the statement is "ON ALL KEYSPACES" or "ON ALL ROLES" resource name should be an empty
@@ -452,7 +452,7 @@ public class TestRoles extends BaseAuthenticationCQLTest {
             GrantPermissionTableStmt(permission, resource, role),
         (String permission, String resource, String role) ->
             RevokePermissionTableStmt(permission, resource, role),
-        ALL_PERMISSIONS_EXCEPT_DESCRIBE);
+        ALL_PERMISSIONS_FOR_TABLE);
   }
 
   @Test
@@ -464,7 +464,7 @@ public class TestRoles extends BaseAuthenticationCQLTest {
             GrantPermissionRoleStmt(permission, resource, role),
         (String permission, String resource, String role) ->
             RevokePermissionRoleStmt(permission, resource, role),
-        ALL_PERMISSIONS);
+        ALL_PERMISSIONS_FOR_ROLE);
   }
 
   @Test
@@ -478,7 +478,7 @@ public class TestRoles extends BaseAuthenticationCQLTest {
             GrantPermissionAllRolesStmt(permission, role),
         (String permission, String resource, String role) ->
             RevokePermissionAllRolesStmt(permission, role),
-        ALL_PERMISSIONS);
+        ALL_PERMISSIONS_FOR_ALL_ROLES);
   }
 
   @Test
@@ -497,13 +497,19 @@ public class TestRoles extends BaseAuthenticationCQLTest {
             GrantPermissionAllKeyspacesStmt(permission, role),
         (String permission, String resource, String role) ->
             RevokePermissionAllKeyspacesStmt(permission, role),
-        ALL_PERMISSIONS_EXCEPT_DESCRIBE);
+        ALL_PERMISSIONS_FOR_ALL_KEYSPACES);
   }
 
-  private void expectDescribeSyntaxError(String stmt) {
-    thrown.expect(SyntaxError.class);
-    thrown.expectMessage(DESCRIBE_SYNTAX_ERROR_MSG);
-    s.execute(stmt);
+  private void expectDescribeSyntaxError(String stmt) throws Exception {
+    try {
+      s.execute(stmt);
+    } catch (SyntaxError e) {
+      assert(e.toString().contains(DESCRIBE_SYNTAX_ERROR_MSG));
+      return;
+    } catch (Exception e) {
+      throw e;
+    }
+    fail("Expected syntax error but execution succeeded");
   }
 
   @Test
@@ -606,12 +612,10 @@ public class TestRoles extends BaseAuthenticationCQLTest {
 
     // Grant describe on a role.
     String canonicalResource = "roles/" + role[2];
-    s.execute(GrantPermissionRoleStmt(DESCRIBE, role[2], role[1]));
-    assertPermissionsGranted(s, role[1], canonicalResource, DESCRIBE_LIST);
+    expectDescribeSyntaxError(GrantPermissionRoleStmt(DESCRIBE, role[2], role[1]));
 
     // Revoke describe on a role.
-    s.execute(RevokePermissionRoleStmt(DESCRIBE, role[2], role[1]));
-    assertPermissionsGranted(s, role[1], canonicalResource, new ArrayList<>());
+    expectDescribeSyntaxError(RevokePermissionRoleStmt(DESCRIBE, role[2], role[1]));
 
     // Grant describe on all roles.
     canonicalResource = "roles";
@@ -627,7 +631,7 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     // Grant ALL on a role.
     canonicalResource = "roles/" + role[4];
     s.execute(GrantPermissionRoleStmt(ALL, role[4], role[5]));
-    assertPermissionsGranted(s, role[5], canonicalResource, ALL_PERMISSIONS);
+    assertPermissionsGranted(s, role[5], canonicalResource, ALL_PERMISSIONS_FOR_ROLE);
 
     // Revoke ALL on a role.
     s.execute(RevokePermissionRoleStmt(ALL, role[4], role[5]));
@@ -636,7 +640,7 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     // Grant ALL on all roles.
     canonicalResource = "roles";
     s.execute(GrantPermissionAllRolesStmt(ALL, role[6]));
-    assertPermissionsGranted(s, role[6], canonicalResource, ALL_PERMISSIONS);
+    assertPermissionsGranted(s, role[6], canonicalResource, ALL_PERMISSIONS_FOR_ALL_ROLES);
 
     // Revoke ALL on all roles.
     s.execute(RevokePermissionAllRolesStmt(ALL, role[6]));

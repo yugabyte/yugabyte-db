@@ -31,6 +31,9 @@ constexpr const char* const kRolesRoleResource = "roles";
 
 const std::vector<PermissionType>& all_permissions_for_resource(ResourceType resource_type);
 
+// Return false if the permission is not supported by the given resource type.
+bool valid_permission_for_resource(PermissionType permission, ResourceType resource_type);
+
 std::string PermissionName(PermissionType permission);
 
 std::string get_canonical_keyspace(const std::string &keyspace);

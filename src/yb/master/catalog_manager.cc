@@ -4031,8 +4031,7 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
     scoped_refptr<RoleInfo> role;
     role = FindPtrOrNull(roles_map_, req->resource_name());
     if (role == nullptr) {
-      s = STATUS(NotFound,
-                 Substitute("Resource <role $0> does not exist", req->role_name()));
+      s = STATUS_SUBSTITUTE(NotFound, "Resource <role $0> does not exist", req->role_name());
       return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
     }
   }
@@ -4040,9 +4039,7 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
   scoped_refptr<RoleInfo> rp;
   rp = FindPtrOrNull(roles_map_, req->role_name());
   if (rp == nullptr) {
-    s = STATUS(InvalidArgument,
-               Substitute("Role $0 doesn't exist",
-                          req->role_name()));
+    s = STATUS_SUBSTITUTE(InvalidArgument, "Role $0 doesn't exist", req->role_name());
     return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
   }
 
@@ -4094,8 +4091,17 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
         }
       }
 
+      // Resource doesn't have the permission, and we got a GRANT request.
       if (permission_iter == current_resource->permissions().end() && !req->revoke()) {
-        // Resource doesn't have the permission, and we got a GRANT request.
+        // Verify that the permission is supported by the resource.
+        if (!valid_permission_for_resource(req->permission(), req->resource_type())) {
+          s = STATUS_SUBSTITUTE(InvalidArgument, "Invalid permission $0 for resource type $1",
+              req->permission(), ResourceType_Name(req->resource_type()));
+          // This should never happen because invalid permissions get rejected in the analysis part.
+          // So crash the process if in debug mode.
+          DFATAL_OR_RETURN_NOT_OK(s);
+          return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+        }
         current_resource->add_permissions(req->permission());
       } else if (permission_iter != current_resource->permissions().end() && req->revoke()) {
         current_resource->mutable_permissions()->erase(permission_iter);
@@ -4107,13 +4113,7 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
       current_resource->clear_permissions();
 
       if (!req->revoke()) {
-        for (const auto& permission : all_permissions_) {
-          if (permission == PermissionType::DESCRIBE_PERMISSION &&
-              req->resource_type() != ResourceType::ROLE &&
-              req->resource_type() != ResourceType::ALL_ROLES) {
-            // Describe permission should only be granted to the role resource.
-            continue;
-          }
+        for (const auto& permission : all_permissions_for_resource(req->resource_type())) {
           current_resource->add_permissions(permission);
         }
       }
