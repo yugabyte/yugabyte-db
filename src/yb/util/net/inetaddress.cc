@@ -72,12 +72,18 @@ CHECKED_STATUS InetAddress::FromString(const std::string& strval) {
   // Try to see if we already have an IP address.
   boost::system::error_code ec;
   boost_addr_ = address::from_string(strval, ec);
-  if (ec.value()) {
-    tcp::resolver::iterator iter;
-    RETURN_NOT_OK(ResolveInternal(strval, &iter));
-    // Pick the first IP address in the list.
-    boost_addr_ = iter->endpoint().address();
+  if (!ec.value()) {
+    return Status::OK();
   }
+
+  tcp::resolver::iterator iter;
+  RETURN_NOT_OK(ResolveInternal(strval, &iter));
+  if (iter == tcp::resolver::iterator()) {
+    return STATUS_FORMAT(NotFound, "Unable to resolve address: $0", strval);
+  }
+  // Pick the first IP address in the list.
+  boost_addr_ = iter->endpoint().address();
+
   return Status::OK();
 }
 
