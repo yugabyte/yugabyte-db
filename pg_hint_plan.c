@@ -354,6 +354,7 @@ struct HintState
 	int				init_paratup_cost;	/* parallel_tuple_cost */
 	int				init_parasetup_cost;/* parallel_setup_cost */
 
+	PlannerInfo	   *current_root;		/* PlannerInfo for the followings */
 	Index			parent_relid;		/* inherit parent of table relid */
 	ScanMethodHint *parent_scan_hint;	/* scan hint for the parent */
 	ParallelHint   *parent_parallel_hint; /* parallel hint for the parent */
@@ -964,6 +965,7 @@ HintStateCreate(void)
 	hstate->init_min_para_indexscan_size = 0;
 	hstate->init_paratup_cost = 0;
 	hstate->init_parasetup_cost = 0;
+	hstate->current_root = NULL;
 	hstate->parent_relid = 0;
 	hstate->parent_scan_hint = NULL;
 	hstate->parent_parallel_hint = NULL;
@@ -3642,6 +3644,10 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 		return 0;
 	}
 
+	/* Forget about the parent of another subquery */
+	if (root != current_hint_state->current_root)
+		current_hint_state->parent_relid = 0;
+
 	/* Find the parent for this relation other than the registered parent */
 	foreach (l, root->append_rel_list)
 	{
@@ -3650,7 +3656,10 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 		if (appinfo->child_relid == rel->relid)
 		{
 			if (current_hint_state->parent_relid != appinfo->parent_relid)
+			{
 				new_parent_relid = appinfo->parent_relid;
+				current_hint_state->current_root = root;
+			}
 			break;
 		}
 	}
