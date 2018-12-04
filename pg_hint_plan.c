@@ -4730,7 +4730,7 @@ void plpgsql_query_erase_callback(ResourceReleasePhase phase,
 								  bool isTopLevel,
 								  void *arg)
 {
-	if (phase != RESOURCE_RELEASE_AFTER_LOCKS)
+	if (!isTopLevel || phase != RESOURCE_RELEASE_AFTER_LOCKS)
 		return;
 	/* Cancel plpgsql nest level*/
 	plpgsql_recurse_level = 0;

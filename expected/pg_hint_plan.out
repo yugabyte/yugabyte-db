@@ -8178,6 +8178,185 @@ error hint:
 
 DROP FUNCTION testfunc();
 DROP EXTENSION pg_hint_plan;
+CREATE FUNCTION reset_stats_and_wait() RETURNS void AS $$
+DECLARE
+  rows int;
+BEGIN
+  rows = 1;
+  while rows > 0 LOOP
+   PERFORM pg_stat_reset();
+   PERFORM pg_sleep(0.5);
+   SELECT sum(seq_scan + idx_scan) from pg_stat_user_tables into rows;
+  END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+-- Dynamic query in pl/pgsql
+CREATE OR REPLACE FUNCTION dynsql1(x int) RETURNS int AS $$
+DECLARE c int;
+BEGIN
+  EXECUTE '/*+ IndexScan(t1) */ SELECT count(*) FROM t1 WHERE id < $1'
+  	INTO c USING x;
+  RETURN c;
+END;
+$$ VOLATILE LANGUAGE plpgsql;
+vacuum analyze t1;
+SET pg_hint_plan.enable_hint = false;
+SELECT reset_stats_and_wait();
+ reset_stats_and_wait 
+----------------------
+ 
+(1 row)
+
+SELECT dynsql1(9000);
+ dynsql1 
+---------
+    8999
+(1 row)
+
+SELECT pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+SELECT relname, seq_scan > 0 as seq_scan, idx_scan > 0 as idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND relname = 't1';
+ relname | seq_scan | idx_scan 
+---------+----------+----------
+ t1      | t        | f
+(1 row)
+
+SET pg_hint_plan.enable_hint = true;
+SELECT reset_stats_and_wait();
+ reset_stats_and_wait 
+----------------------
+ 
+(1 row)
+
+SELECT dynsql1(9000);
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "/*+ IndexScan(t1) */ SELECT count(*) FROM t1 WHERE id < $1"
+PL/pgSQL function dynsql1(integer) line 4 at EXECUTE
+ dynsql1 
+---------
+    8999
+(1 row)
+
+SELECT pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+SELECT relname, seq_scan > 0 as seq_scan, idx_scan > 0 as idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND relname = 't1';
+ relname | seq_scan | idx_scan 
+---------+----------+----------
+ t1      | f        | t
+(1 row)
+
+-- Looped dynamic query in pl/pgsql
+CREATE OR REPLACE FUNCTION dynsql2(x int, OUT r int) AS $$
+DECLARE
+  c text;
+  s int;
+BEGIN
+  r := 0;
+  FOR c IN SELECT f.f FROM (VALUES ('p1_c1'), ('p1_c2')) f(f) LOOP
+    FOR s IN EXECUTE '/*+ IndexScan(' || c || ' ' || c || '_pkey) */ SELECT sum(val) FROM ' || c || ' WHERE id < ' || x LOOP
+      r := r + s;
+    END LOOP;
+  END LOOP;
+END;
+$$ VOLATILE LANGUAGE plpgsql;
+SET pg_hint_plan.enable_hint = false;
+SELECT reset_stats_and_wait();
+ reset_stats_and_wait 
+----------------------
+ 
+(1 row)
+
+SELECT dynsql2(9000);
+ dynsql2 
+---------
+    9900
+(1 row)
+
+SELECT pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+-- one of the index scans happened while planning.
+SELECT relname, seq_scan, idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND (relname = 'p1_c1' OR relname = 'p1_c2');
+ relname | seq_scan | idx_scan 
+---------+----------+----------
+ p1_c1   |        1 |        0
+ p1_c2   |        1 |        1
+(2 rows)
+
+SET pg_hint_plan.enable_hint = true;
+SELECT reset_stats_and_wait();
+ reset_stats_and_wait 
+----------------------
+ 
+(1 row)
+
+SELECT dynsql2(9000);
+LOG:  available indexes for IndexScan(p1_c1): p1_c1_pkey
+CONTEXT:  SQL statement "/*+ IndexScan(p1_c1 p1_c1_pkey) */ SELECT sum(val) FROM p1_c1 WHERE id < 9000"
+PL/pgSQL function dynsql2(integer) line 8 at FOR over EXECUTE statement
+LOG:  available indexes for IndexScan(p1_c1_c1): p1_c1_c1_pkey
+CONTEXT:  SQL statement "/*+ IndexScan(p1_c1 p1_c1_pkey) */ SELECT sum(val) FROM p1_c1 WHERE id < 9000"
+PL/pgSQL function dynsql2(integer) line 8 at FOR over EXECUTE statement
+LOG:  available indexes for IndexScan(p1_c1_c2): p1_c1_c2_pkey
+CONTEXT:  SQL statement "/*+ IndexScan(p1_c1 p1_c1_pkey) */ SELECT sum(val) FROM p1_c1 WHERE id < 9000"
+PL/pgSQL function dynsql2(integer) line 8 at FOR over EXECUTE statement
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1_c1 p1_c1_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "/*+ IndexScan(p1_c1 p1_c1_pkey) */ SELECT sum(val) FROM p1_c1 WHERE id < 9000"
+PL/pgSQL function dynsql2(integer) line 8 at FOR over EXECUTE statement
+LOG:  available indexes for IndexScan(p1_c2): p1_c2_pkey
+CONTEXT:  SQL statement "/*+ IndexScan(p1_c2 p1_c2_pkey) */ SELECT sum(val) FROM p1_c2 WHERE id < 9000"
+PL/pgSQL function dynsql2(integer) line 8 at FOR over EXECUTE statement
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1_c2 p1_c2_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "/*+ IndexScan(p1_c2 p1_c2_pkey) */ SELECT sum(val) FROM p1_c2 WHERE id < 9000"
+PL/pgSQL function dynsql2(integer) line 8 at FOR over EXECUTE statement
+ dynsql2 
+---------
+    9900
+(1 row)
+
+SELECT pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+-- the index scan happened while planning.
+SELECT relname, seq_scan, idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND (relname = 'p1_c1' OR relname = 'p1_c2');
+ relname | seq_scan | idx_scan 
+---------+----------+----------
+ p1_c1   |        0 |        1
+ p1_c2   |        0 |        2
+(2 rows)
+
 --
 -- Rows hint tests
 --

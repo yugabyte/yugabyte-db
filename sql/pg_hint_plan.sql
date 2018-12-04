@@ -947,6 +947,67 @@ SELECT * FROM testfunc() LIMIT 1;
 DROP FUNCTION testfunc();
 DROP EXTENSION pg_hint_plan;
 
+CREATE FUNCTION reset_stats_and_wait() RETURNS void AS $$
+DECLARE
+  rows int;
+BEGIN
+  rows = 1;
+  while rows > 0 LOOP
+   PERFORM pg_stat_reset();
+   PERFORM pg_sleep(0.5);
+   SELECT sum(seq_scan + idx_scan) from pg_stat_user_tables into rows;
+  END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Dynamic query in pl/pgsql
+CREATE OR REPLACE FUNCTION dynsql1(x int) RETURNS int AS $$
+DECLARE c int;
+BEGIN
+  EXECUTE '/*+ IndexScan(t1) */ SELECT count(*) FROM t1 WHERE id < $1'
+  	INTO c USING x;
+  RETURN c;
+END;
+$$ VOLATILE LANGUAGE plpgsql;
+vacuum analyze t1;
+SET pg_hint_plan.enable_hint = false;
+SELECT reset_stats_and_wait();
+SELECT dynsql1(9000);
+SELECT pg_sleep(1);
+SELECT relname, seq_scan > 0 as seq_scan, idx_scan > 0 as idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND relname = 't1';
+SET pg_hint_plan.enable_hint = true;
+SELECT reset_stats_and_wait();
+SELECT dynsql1(9000);
+SELECT pg_sleep(1);
+SELECT relname, seq_scan > 0 as seq_scan, idx_scan > 0 as idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND relname = 't1';
+
+-- Looped dynamic query in pl/pgsql
+CREATE OR REPLACE FUNCTION dynsql2(x int, OUT r int) AS $$
+DECLARE
+  c text;
+  s int;
+BEGIN
+  r := 0;
+  FOR c IN SELECT f.f FROM (VALUES ('p1_c1'), ('p1_c2')) f(f) LOOP
+    FOR s IN EXECUTE '/*+ IndexScan(' || c || ' ' || c || '_pkey) */ SELECT sum(val) FROM ' || c || ' WHERE id < ' || x LOOP
+      r := r + s;
+    END LOOP;
+  END LOOP;
+END;
+$$ VOLATILE LANGUAGE plpgsql;
+SET pg_hint_plan.enable_hint = false;
+SELECT reset_stats_and_wait();
+SELECT dynsql2(9000);
+SELECT pg_sleep(1);
+-- one of the index scans happened while planning.
+SELECT relname, seq_scan, idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND (relname = 'p1_c1' OR relname = 'p1_c2');
+SET pg_hint_plan.enable_hint = true;
+SELECT reset_stats_and_wait();
+SELECT dynsql2(9000);
+SELECT pg_sleep(1);
+-- the index scan happened while planning.
+SELECT relname, seq_scan, idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND (relname = 'p1_c1' OR relname = 'p1_c2');
+
 --
 -- Rows hint tests
 --
