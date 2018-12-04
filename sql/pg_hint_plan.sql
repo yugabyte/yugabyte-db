@@ -1008,6 +1008,36 @@ SELECT pg_sleep(1);
 -- the index scan happened while planning.
 SELECT relname, seq_scan, idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND (relname = 'p1_c1' OR relname = 'p1_c2');
 
+-- Subqueries on inheritance tables under UNION
+EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
+UNION ALL
+SELECT val::int FROM p2 WHERE id < 1000;
+
+/*+ IndexScan(p1 p1_val2) */
+EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
+UNION ALL
+SELECT val::int FROM p2 WHERE id < 1000;
+
+/*+ IndexScan(p1 p1_val2) IndexScan(p2 p2_id_val_idx) */
+EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
+UNION ALL
+SELECT val::int FROM p2 WHERE id < 1000;
+
+-- union all case
+EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
+UNION
+SELECT val::int FROM p2 WHERE id < 1000;
+
+/*+ IndexScan(p2 p2_id_val_idx) */
+EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
+UNION
+SELECT val::int FROM p2 WHERE id < 1000;
+
+/*+ IndexScan(p1 p1_val2) IndexScan(p2 p2_id_val_idx) */
+EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
+UNION
+SELECT val::int FROM p2 WHERE id < 1000;
+
 --
 -- Rows hint tests
 --
