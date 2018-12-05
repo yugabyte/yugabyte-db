@@ -193,6 +193,7 @@ target_link_libraries(yb-tserver
   tserver
   yb-cql
   yb-redis
+  yb_pgwrapper
   master
   ${YB_BASE_LIBS})
 

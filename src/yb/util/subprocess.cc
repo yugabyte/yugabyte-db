@@ -365,7 +365,22 @@ Status Subprocess::Start() {
   return Status::OK();
 }
 
+Status Subprocess::Wait(int* ret) {
+  return DoWait(ret, 0);
+}
+
+Result<int> Subprocess::Wait() {
+  int ret = 0;
+  RETURN_NOT_OK(Wait(&ret));
+  return ret;
+}
+
 Status Subprocess::DoWait(int* ret, int options) {
+  if (!ret) {
+    return STATUS(InvalidArgument, "ret is NULL");
+  }
+  *ret = 0;
+
   pid_t child_pid = 0;
   {
     unique_lock<mutex> l(state_lock_);
