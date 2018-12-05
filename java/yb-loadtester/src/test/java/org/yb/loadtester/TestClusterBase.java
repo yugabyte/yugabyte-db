@@ -45,7 +45,7 @@ public class TestClusterBase extends BaseCQLTest {
 
   protected YBClient client = null;
 
-  private static final String WORKLOAD = "CassandraStockTicker";
+  protected static final String WORKLOAD = "CassandraStockTicker";
 
   // Number of ops to wait for between significant events in the test.
   protected static final int NUM_OPS_INCREMENT = 1000;
@@ -101,7 +101,7 @@ public class TestClusterBase extends BaseCQLTest {
   public void startLoadTester() throws Exception {
     // Start the load tester.
     LOG.info("Using contact points for load tester: " + cqlContactPoints);
-    loadTesterRunnable = new LoadTester(WORKLOAD, cqlContactPoints);
+    loadTesterRunnable = new LoadTester(WORKLOAD, cqlContactPoints, 1, 1);
     loadTesterThread = new Thread(loadTesterRunnable);
     loadTesterThread.start();
     LOG.info("Loadtester start.");
@@ -136,11 +136,18 @@ public class TestClusterBase extends BaseCQLTest {
 
     private volatile boolean testRunnerFailed = false;
 
-    public LoadTester(String workload, String cqlContactPoints) throws Exception {
+    public LoadTester(String workload,
+                      String cqlContactPoints,
+                      int numThreadsRead,
+                      int numThreadsWrite) throws Exception {
       String args[] = {"--workload", workload, "--nodes", cqlContactPoints,
-        "--print_all_exceptions", "--num_threads_read", "1", "--num_threads_write", "1"};
+        "--print_all_exceptions", "--num_threads_read", Integer.toString(numThreadsRead),
+        "--num_threads_write", Integer.toString(numThreadsWrite)};
       CmdLineOpts configuration = CmdLineOpts.createFromArgs(args);
       testRunner = new Main(configuration);
+      LOG.info(String.format(
+          "Started a LoadTester instance with %d reader threads, and %d writer threads",
+          numThreadsRead, numThreadsWrite));
     }
 
     public void stopLoadTester() {
@@ -296,7 +303,7 @@ public class TestClusterBase extends BaseCQLTest {
 
       LOG.info("Added new master to config: " + masterRpcHostPort.toString());
 
-      // Wait for hearbeat interval to ensure tservers pick up the new masters.
+      // Wait for heartbeat interval to ensure tservers pick up the new masters.
       Thread.sleep(2 * MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS);
 
       // Remove old master.
