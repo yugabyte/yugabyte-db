@@ -2014,8 +2014,10 @@ SHOW pg_hint_plan.parse_messages;
 /*+Set*/SELECT 1;
 ERROR:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Opening parenthesis is necessary.
-SET client_min_messages TO fatal;
+SET client_min_messages TO error;
 /*+Set*/SELECT 1;
+ERROR:  pg_hint_plan: hint syntax error at or near ""
+DETAIL:  Opening parenthesis is necessary.
 -- No. A-8-4-11
 RESET client_min_messages;
 SET pg_hint_plan.parse_messages TO DEFAULT;
@@ -3226,6 +3228,7 @@ NestLoop(t1 t1)
 SELECT name, setting FROM settings;
               name              |  setting  
 --------------------------------+-----------
+ client_min_messages            | log
  geqo                           | on
  geqo_effort                    | 5
  geqo_generations               | 0
@@ -3238,8 +3241,9 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3270,8 +3274,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
- client_min_messages            | log
-(45 rows)
+(46 rows)
 
 SET pg_hint_plan.parse_messages TO error;
 /*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)NestLoop(t1 t1)*/
@@ -3281,6 +3284,7 @@ DETAIL:  Relation name "t1" is duplicated.
 SELECT name, setting FROM settings;
               name              |  setting  
 --------------------------------+-----------
+ client_min_messages            | log
  geqo                           | on
  geqo_effort                    | 5
  geqo_generations               | 0
@@ -3293,8 +3297,9 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3325,8 +3330,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
- client_min_messages            | log
-(45 rows)
+(46 rows)
 
 /*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
@@ -3355,6 +3359,7 @@ error hint:
 SELECT name, setting FROM settings;
               name              |  setting  
 --------------------------------+-----------
+ client_min_messages            | log
  geqo                           | on
  geqo_effort                    | 5
  geqo_generations               | 0
@@ -3367,8 +3372,9 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3399,8 +3405,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
- client_min_messages            | log
-(45 rows)
+(46 rows)
 
 SET pg_hint_plan.parse_messages TO error;
 /*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)NestLoop(t1 t1)*/
@@ -3410,6 +3415,7 @@ DETAIL:  Relation name "t1" is duplicated.
 SELECT name, setting FROM settings;
               name              |  setting  
 --------------------------------+-----------
+ client_min_messages            | log
  geqo                           | on
  geqo_effort                    | 5
  geqo_generations               | 0
@@ -3422,8 +3428,9 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3454,8 +3461,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
- client_min_messages            | log
-(45 rows)
+(46 rows)
 
 EXPLAIN (COSTS false) EXECUTE p1;
              QUERY PLAN             
@@ -3473,6 +3479,7 @@ EXPLAIN (COSTS false) EXECUTE p1;
 SELECT name, setting FROM settings;
               name              |  setting  
 --------------------------------+-----------
+ client_min_messages            | log
  geqo                           | on
  geqo_effort                    | 5
  geqo_generations               | 0
@@ -3485,8 +3492,9 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3517,8 +3525,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
- client_min_messages            | log
-(45 rows)
+(46 rows)
 
 SET pg_hint_plan.parse_messages TO error;
 EXPLAIN (COSTS false) EXECUTE p2;
@@ -3559,6 +3566,7 @@ EXPLAIN (COSTS false) EXECUTE p1;
 SELECT name, setting FROM settings;
               name              |  setting  
 --------------------------------+-----------
+ client_min_messages            | log
  geqo                           | on
  geqo_effort                    | 5
  geqo_generations               | 0
@@ -3571,8 +3579,9 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3603,14 +3612,14 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
- client_min_messages            | log
-(45 rows)
+(46 rows)
 
 -- No. A-12-1-4
 -- No. A-12-2-4
 SELECT name, setting FROM settings;
               name              |  setting  
 --------------------------------+-----------
+ client_min_messages            | log
  geqo                           | on
  geqo_effort                    | 5
  geqo_generations               | 0
@@ -3623,8 +3632,9 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3655,8 +3665,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
- client_min_messages            | log
-(45 rows)
+(46 rows)
 
 SET pg_hint_plan.parse_messages TO error;
 EXPLAIN (COSTS false) EXECUTE p2;
@@ -3675,6 +3684,7 @@ EXPLAIN (COSTS false) EXECUTE p1;
 SELECT name, setting FROM settings;
               name              |  setting  
 --------------------------------+-----------
+ client_min_messages            | log
  geqo                           | on
  geqo_effort                    | 5
  geqo_generations               | 0
@@ -3687,8 +3697,9 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3719,8 +3730,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
- client_min_messages            | log
-(45 rows)
+(46 rows)
 
 DEALLOCATE p1;
 SET pg_hint_plan.parse_messages TO LOG;
@@ -3754,6 +3764,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 SELECT name, setting FROM settings;
               name              |  setting  
 --------------------------------+-----------
+ client_min_messages            | log
  geqo                           | on
  geqo_effort                    | 5
  geqo_generations               | 0
@@ -3766,8 +3777,9 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3798,8 +3810,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
- client_min_messages            | log
-(45 rows)
+(46 rows)
 
 /*+Set(enable_indexscan on)Set(geqo_threshold 100)IndexScan(t2)MergeJoin(t1 t2)Leading(t2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
@@ -3825,6 +3836,7 @@ error hint:
 SELECT name, setting FROM settings;
               name              |  setting  
 --------------------------------+-----------
+ client_min_messages            | log
  geqo                           | on
  geqo_effort                    | 5
  geqo_generations               | 0
@@ -3837,8 +3849,9 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3869,8 +3882,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
- client_min_messages            | log
-(45 rows)
+(46 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
           QUERY PLAN          
@@ -3898,6 +3910,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 SELECT name, setting FROM settings;
               name              |  setting  
 --------------------------------+-----------
+ client_min_messages            | log
  geqo                           | on
  geqo_effort                    | 5
  geqo_generations               | 0
@@ -3910,8 +3923,9 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3942,8 +3956,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
- client_min_messages            | log
-(45 rows)
+(46 rows)
 
 BEGIN;
 /*+Set(enable_indexscan on)Set(geqo_threshold 100)IndexScan(t2)MergeJoin(t1 t2)Leading(t2 t1)*/
@@ -3972,6 +3985,7 @@ BEGIN;
 SELECT name, setting FROM settings;
               name              |  setting  
 --------------------------------+-----------
+ client_min_messages            | log
  geqo                           | on
  geqo_effort                    | 5
  geqo_generations               | 0
@@ -3984,8 +3998,9 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -4016,8 +4031,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
- client_min_messages            | log
-(45 rows)
+(46 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
           QUERY PLAN          
@@ -4046,6 +4060,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 SELECT name, setting FROM settings;
               name              |  setting  
 --------------------------------+-----------
+ client_min_messages            | log
  geqo                           | on
  geqo_effort                    | 5
  geqo_generations               | 0
@@ -4058,8 +4073,9 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -4090,8 +4106,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
- client_min_messages            | log
-(45 rows)
+(46 rows)
 
 /*+Set(enable_indexscan on)Set(geqo_threshold 100)IndexScan(t2)MergeJoin(t1 t2)Leading(t2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
@@ -4121,6 +4136,7 @@ LOAD 'pg_hint_plan';
 SELECT name, setting FROM settings;
               name              |  setting  
 --------------------------------+-----------
+ client_min_messages            | notice
  geqo                           | on
  geqo_effort                    | 5
  geqo_generations               | 0
@@ -4133,8 +4149,9 @@ SELECT name, setting FROM settings;
  default_statistics_target      | 100
  force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -4165,8 +4182,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
- client_min_messages            | notice
-(45 rows)
+(46 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
           QUERY PLAN          

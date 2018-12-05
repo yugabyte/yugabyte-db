@@ -214,7 +214,7 @@ EXPLAIN SELECT * FROM tm1 t1, tm1 t2 WHERE t1.c1 = t2.c1;
 \! sql/maskout.sh results/ut-R.tmpout
 
 -- No. R-1-6-5
-CREATE TEMP TABLE t_pg_class WITH OIDS AS SELECT * from pg_class LIMIT 100;
+CREATE TEMP TABLE t_pg_class AS SELECT * from pg_class LIMIT 100;
 \o results/ut-R.tmpout
 EXPLAIN SELECT * FROM t_pg_class t1, t_pg_class t2 WHERE t1.oid = t2.oid;
 \o

@@ -806,27 +806,41 @@ EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE c2 >= 1;
 ----
 
 -- No. S-3-5-1
-\! psql contrib_regression -c "/*+IndexScan(ti1 ti1_pred)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
-
+\o results/ut-S.tmpout
+/*+IndexScan(ti1 ti1_pred)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+\o
+\! sql/maskout.sh results/ut-S.tmpout
 -- No. S-3-5-2
-\! psql contrib_regression -c "/*+BitmapScan(ti1 ti1_pred)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
-
+\o results/ut-S.tmpout
+/*+BitmapScan(ti1 ti1_pred)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+\o
+\! sql/maskout.sh results/ut-S.tmpout
 -- No. S-3-5-3
-\! psql contrib_regression -c "/*+IndexOnlyScan(ti1 ti1_pred)*/ EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
-
+\o results/ut-S.tmpout
+/*+IndexOnlyScan(ti1 ti1_pred)*/ EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
+\o
+\! sql/maskout.sh results/ut-S.tmpout
 -- No. S-3-5-4
-\! psql contrib_regression -c "/*+IndexScan(ti1 not_exist)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
-
+\o results/ut-S.tmpout
+/*+IndexScan(ti1 not_exist)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+\o
+\! sql/maskout.sh results/ut-S.tmpout
 -- No. S-3-5-5
-\! psql contrib_regression -c "/*+BitmapScan(ti1 not_exist)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
-
+\o results/ut-S.tmpout
+/*+BitmapScan(ti1 not_exist)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+\o
+\! sql/maskout.sh results/ut-S.tmpout
 -- No. S-3-5-6
-\! psql contrib_regression -c "/*+IndexOnlyScan(ti1 not_exist)*/ EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
-
+\o results/ut-S.tmpout
+/*+IndexOnlyScan(ti1 not_exist)*/ EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
+\o
+\! sql/maskout.sh results/ut-S.tmpout
 -- No. S-3-5-7
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-\! psql contrib_regression -c "/*+TidScan(t1)*/ EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c1 = 1" | grep -v "Planning time:"
-
+\o results/ut-S.tmpout
+/*+TidScan(t1)*/ EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+\o
+\! sql/maskout.sh results/ut-S.tmpout
 ----
 ---- No. S-3-6 query structure
 ----

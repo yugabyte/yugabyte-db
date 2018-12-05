@@ -683,7 +683,7 @@ SET client_min_messages TO error;
 SET pg_hint_plan.parse_messages TO error;
 SHOW pg_hint_plan.parse_messages;
 /*+Set*/SELECT 1;
-SET client_min_messages TO fatal;
+SET client_min_messages TO error;
 /*+Set*/SELECT 1;
 
 -- No. A-8-4-11
