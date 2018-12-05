@@ -115,6 +115,9 @@ DEFINE_int32(pgsql_proxy_webserver_port, 0, "Webserver port for PostgreSQL proxy
 DEFINE_int64(inbound_rpc_block_size, 1_MB, "Inbound RPC block size");
 DEFINE_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
+DEFINE_bool(start_pgsql_proxy, false,
+            "Whether to run a PostgreSQL server as a child process of the tablet server");
+
 namespace yb {
 namespace tserver {
 

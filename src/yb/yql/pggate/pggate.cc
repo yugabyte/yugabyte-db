@@ -65,7 +65,7 @@ PggateOptions::PggateOptions() {
   // TODO: we might have to allow setting master_replication_factor similarly to how it is done
   // in tserver to support master auto-discovery on Kubernetes.
   CHECK_OK(server::DetermineMasterAddresses(
-      "YB_MASTER_ADDRESSES_FOR_PG", master_addresses_flag, /* master_replication_factor */ 0,
+      "pggate_master_addresses", master_addresses_flag, /* master_replication_factor */ 0,
       &master_addresses, &master_addresses_flag));
   SetMasterAddresses(make_shared<server::MasterAddresses>(std::move(master_addresses)));
 }

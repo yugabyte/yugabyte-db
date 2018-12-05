@@ -216,8 +216,6 @@ class MiniCluster : public MiniClusterBase {
   // mean we pick the maximum number of masters/tservers that we already know we'll need.
   void EnsurePortsAllocated(int new_num_masters = 0, int num_tservers = 0);
 
-  std::atomic<bool> running_ { false };
-
   Env* const env_ = nullptr;
   const std::string fs_root_;
   const int num_masters_initial_;

@@ -19,6 +19,13 @@ script_name=${script_name%.*}
 
 . "${BASH_SOURCE%/*}"/build-support/common-test-env.sh
 
+ensure_option_has_arg() {
+  if [[ $# -lt 2 ]]; then
+    echo "Command line option $1 expects an argument" >&2
+    exit 1
+  fi
+}
+
 show_help() {
   cat >&2 <<-EOT
 yb_build.sh (or "ybd") is the main build tool for YugaByte Database.
@@ -170,9 +177,8 @@ Options:
   --sanitizers-enable-coredump
     When running tests with LLVM sanitizers (ASAN/TSAN/etc.), enable core dump.
   --extra-daemon-flags <extra_daemon_flags>
-    Extra flags to pass to mini-cluster daemons (master/tserver). Currently only used in Java
-    tests. Note that bash-style quoting won't work here right now -- they are naively split on
-    spaces.
+    Extra flags to pass to mini-cluster daemons (master/tserver). Note that bash-style quoting won't
+    work here -- they are naively split on spaces.
   --no-latest-symlink
     Disable the creation/overwriting of the "latest" symlink in the build directory.
   --
@@ -681,18 +687,22 @@ while [[ $# -gt 0 ]]; do
     --skip-test-existence-check|--no-test-existence-check|--ntec) test_existence_check=false ;;
     --skip-check-test-existence|--no-check-test-existence|--ncte) test_existence_check=false ;;
     --gtest-filter)
+      ensure_option_has_arg "$@"
       export YB_GTEST_FILTER=$2
       shift
     ;;
     --rebuild-file)
+      ensure_option_has_arg "$@"
       object_files_to_delete+=( "$2.o" "$2.cc.o" )
       shift
     ;;
     --test-args)
+      ensure_option_has_arg "$@"
       export YB_EXTRA_GTEST_FLAGS+=" $2"
       shift
     ;;
     --rebuild-target)
+      ensure_option_has_arg "$@"
       object_files_to_delete+=( "$2.o" "$2.cc.o" )
       make_targets=( "$2" )
       shift
@@ -708,6 +718,7 @@ while [[ $# -gt 0 ]]; do
       java_only=true
     ;;
     --num-repetitions|--num-reps|-n)
+      ensure_option_has_arg "$@"
       num_test_repetitions=$2
       shift
       if [[ ! $num_test_repetitions =~ ^[0-9]+$ ]]; then
@@ -715,15 +726,18 @@ while [[ $# -gt 0 ]]; do
       fi
     ;;
     --write-build-descriptor)
+      ensure_option_has_arg "$@"
       build_descriptor_path=$2
       shift
     ;;
     --thirdparty-dir)
+      ensure_option_has_arg "$@"
       export YB_THIRDPARTY_DIR=$2
       shift
       validate_thirdparty_dir
     ;;
     -j)
+      ensure_option_has_arg "$@"
       export YB_MAKE_PARALLELISM=$2
       shift
     ;;
@@ -779,11 +793,13 @@ while [[ $# -gt 0 ]]; do
       export YB_EDITION=enterprise
     ;;
     --edition)
+      ensure_option_has_arg "$@"
       export YB_EDITION=$2
       validate_edition
       shift
     ;;
     --mvn-opts)
+      ensure_option_has_arg "$@"
       user_mvn_opts+=" $2"
       shift
     ;;
@@ -794,6 +810,7 @@ while [[ $# -gt 0 ]]; do
       export YB_USE_NINJA=0
     ;;
     --build-root)
+      ensure_option_has_arg "$@"
       predefined_build_root=$2
       shift
     ;;
@@ -805,6 +822,7 @@ while [[ $# -gt 0 ]]; do
       force_run_cmake=true
     ;;
     --cmake-args)
+      ensure_option_has_arg "$@"
       if [[ -n $cmake_extra_args ]]; then
         cmake_extra_args+=" "
       fi
@@ -812,6 +830,7 @@ while [[ $# -gt 0 ]]; do
       shift
     ;;
     --make-ninja-extra-args)
+      ensure_option_has_arg "$@"
       if [[ -n $make_ninja_extra_args ]]; then
         make_ninja_extra_args+=" "
       fi
@@ -819,10 +838,12 @@ while [[ $# -gt 0 ]]; do
       shift
     ;;
     --host-for-tests)
+      ensure_option_has_arg "$@"
       export YB_HOST_FOR_RUNNING_TESTS=$2
       shift
     ;;
     --test-timeout-sec)
+      ensure_option_has_arg "$@"
       export YB_TEST_TIMEOUT=$2
       if [[ ! $YB_TEST_TIMEOUT =~ ^[0-9]+$ ]]; then
         fatal "Invalid value for test timeout: '$YB_TEST_TIMEOUT'"
@@ -830,10 +851,12 @@ while [[ $# -gt 0 ]]; do
       shift
     ;;
     --sanitizer-extra-options|--extra-sanitizer-options)
+      ensure_option_has_arg "$@"
       export YB_SANITIZER_EXTRA_OPTIONS=$2
       shift
     ;;
     --sanitizer-verbosity)
+      ensure_option_has_arg "$@"
       YB_SANITIZER_EXTRA_OPTIONS=${YB_SANITIZER_EXTRA_OPTIONS:-}
       export YB_SANITIZER_EXTRA_OPTIONS+=" verbosity=$2"
       shift
@@ -842,6 +865,7 @@ while [[ $# -gt 0 ]]; do
       show_report=false
     ;;
     --tp|--test-parallelism)
+      ensure_option_has_arg "$@"
       test_parallelism=$2
       validate_numeric_arg_range "test-parallelism" "$test_parallelism" \
         "$MIN_REPEATED_TEST_PARALLELISM" "$MAX_REPEATED_TEST_PARALLELISM"
@@ -857,6 +881,7 @@ while [[ $# -gt 0 ]]; do
       export YB_STACK_TRACE_ON_ERROR_STATUS=1
     ;;
     --stack-trace-error-status-re|--stesr)
+      ensure_option_has_arg "$@"
       export YB_STACK_TRACE_ON_ERROR_STATUS_RE=$2
       shift
     ;;
@@ -880,6 +905,7 @@ while [[ $# -gt 0 ]]; do
       export YB_SANITIZERS_ENABLE_COREDUMP=1
     ;;
     --extra-daemon-flags)
+      ensure_option_has_arg "$@"
       export YB_EXTRA_DAEMON_FLAGS=$2
       shift
     ;;

@@ -14,43 +14,105 @@
 #define YB_YQL_PGWRAPPER_PG_WRAPPER_H
 
 #include <string>
+#include <atomic>
 
 #include <boost/optional.hpp>
 
 #include "yb/util/subprocess.h"
 #include "yb/util/status.h"
+#include "yb/util/enums.h"
+#include "yb/util/result.h"
+#include "yb/util/thread.h"
 
 namespace yb {
 namespace pgwrapper {
 
-// Returns the root directory of the PostgreSQL part of the current YugaByte installation.
+// Returns the root directory of our PostgreSQL installation.
 std::string GetPostgresInstallRoot();
 
 // Configuration for an external PostgreSQL server.
-struct PgWrapperConf {
+struct PgProcessConf {
+  static constexpr uint16_t kDefaultPort = 5433;
+
+  static Result<PgProcessConf> CreateValidateAndRunInitDb(
+      const std::string& bind_addresses,
+      const std::string& data_dir);
+
+  std::string ToString();
+
   std::string data_dir;
-  uint16_t pg_port;
+  uint16_t pg_port = kDefaultPort;
+  std::string listen_addresses = "0.0.0.0";
+  std::string master_addresses;
 };
 
+// Invokes a PostgreSQL child process once. Also allows invoking initdb. Not thread-safe.
 class PgWrapper {
  public:
-  explicit PgWrapper(PgWrapperConf conf)
-      : conf_(conf) {
-  }
+  explicit PgWrapper(PgProcessConf conf);
 
-  void EnsureDbDirExists();
+  // Checks if we have a valid configuration in order to be able to run PostgreSQL.
+  CHECKED_STATUS PreflightCheck();
 
   CHECKED_STATUS Start();
 
+  // Calls initdb if the data directory does not exist. This is intended to use during tablet server
+  // initialization.
+  CHECKED_STATUS InitDbLocalOnlyIfNeeded();
+
   // Calls PostgreSQL's initdb program for initial database initialization.
-  CHECKED_STATUS InitDB();
+  // yb_enabled - whether initdb should be talking to YugaByte cluster, or just initialize a
+  //              PostgreSQL data directory. The former is only done once from outside of the YB
+  //              cluster, and the latter is done on every tablet server startup.
+  CHECKED_STATUS InitDb(bool yb_enabled);
+
+  // Waits for the running PostgreSQL process to complete. Returns the exit code or an error.
+  // Non-zero exit codes are considered non-error cases for the purpose of this function.
+  Result<int> Wait();
+
+  // Run initdb in a mode that sets up the required metadata in the YB cluster. This is done
+  // only once after the cluster has started up. tmp_dir_base is used as a base directory to
+  // create a temporary PostgreSQL directory that is later deleted.
+  static Status InitDbForYSQL(const string& master_addresses, const string& tmp_dir_base);
 
  private:
-  // Set common environment for a child process (initdb or postgres itself).
-  void SetCommonEnv(Subprocess* proc);
+  static std::string GetPostgresExecutablePath();
+  static std::string GetInitDbExecutablePath();
+  static CHECKED_STATUS CheckExecutableValid(const std::string& executable_path);
 
-  PgWrapperConf conf_;
+  // Set common environment for a child process (initdb or postgres itself).
+  void SetCommonEnv(Subprocess* proc, bool yb_enabled);
+
+  PgProcessConf conf_;
   boost::optional<Subprocess> pg_proc_;
+};
+
+YB_DEFINE_ENUM(PgProcessState,
+    (kNotStarted)
+    (kRunning)
+    (kStopping)
+    (kStopped));
+
+// Keeps a PostgreSQL process running in the background, and restarts in case it crashes.
+// Starts a separate thread to monitor the child process.
+class PgSupervisor {
+ public:
+  explicit PgSupervisor(PgProcessConf conf);
+
+  CHECKED_STATUS Start();
+  void Stop();
+  PgProcessState GetState();
+
+ private:
+  CHECKED_STATUS ExpectStateUnlocked(PgProcessState state);
+  CHECKED_STATUS StartServerUnlocked();
+  void RunThread();
+
+  PgProcessConf conf_;
+  boost::optional<PgWrapper> pg_wrapper_;
+  PgProcessState state_ = PgProcessState::kNotStarted;
+  scoped_refptr<Thread> supervisor_thread_;
+  std::mutex mtx_;
 };
 
 }  // namespace pgwrapper

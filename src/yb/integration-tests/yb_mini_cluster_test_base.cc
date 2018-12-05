@@ -38,13 +38,22 @@ void YBMiniClusterTestBase<T>::TearDown() {
 template <class T>
 void YBMiniClusterTestBase<T>::DoBeforeTearDown() {
   if (cluster_ && verify_cluster_before_next_tear_down_) {
-    LOG(INFO) << "Checking cluster consistency...";
-    ASSERT_NO_FATALS(ClusterVerifier(cluster_.get()).CheckCluster());
+    if (cluster_->running()) {
+      LOG(INFO) << "Checking cluster consistency...";
+      ASSERT_NO_FATALS(ClusterVerifier(cluster_.get()).CheckCluster());
+    } else {
+      LOG(INFO) << "Not checking cluster consistency: cluster has been shut down or failed to "
+                << "start properly";
+    }
   }
 }
 
 template <class T>
 void YBMiniClusterTestBase<T>::DoTearDown() {
+  if (cluster_) {
+    cluster_->Shutdown();
+    cluster_.reset();
+  }
   YBTest::TearDown();
 }
 
@@ -53,7 +62,7 @@ void YBMiniClusterTestBase<T>::DontVerifyClusterBeforeNextTearDown() {
   verify_cluster_before_next_tear_down_ = false;
 }
 
-// Instantiate explicitly to avoid recompilation a lot of dependent test class due to template
+// Instantiate explicitly to avoid recompilation of a lot of dependent test classes due to template
 // implementation changes.
 template class YBMiniClusterTestBase<MiniCluster>;
 template class YBMiniClusterTestBase<ExternalMiniCluster>;
