@@ -41,8 +41,8 @@ RETURNS nvarchar2
 AS 'MODULE_PATHNAME','orafce_concat2'
 LANGUAGE C STABLE;
 
-CREATE OPERATOR || (function = oracle.orafce_concat2, leftarg = varchar2, rightarg = varchar2);
-CREATE OPERATOR || (function = oracle.orafce_concat2, leftarg = nvarchar2, rightarg = nvarchar2);
+CREATE OPERATOR || (procedure = oracle.orafce_concat2, leftarg = varchar2, rightarg = varchar2);
+CREATE OPERATOR || (procedure = oracle.orafce_concat2, leftarg = nvarchar2, rightarg = nvarchar2);
 
 CREATE OR REPLACE FUNCTION oracle.numtodsinterval(double precision, text)
 RETURNS interval AS $$

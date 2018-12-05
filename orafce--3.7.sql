@@ -2180,7 +2180,6 @@ RETURNS varchar2
 AS 'MODULE_PATHNAME','orafce_concat2'
 LANGUAGE C STABLE;
 
-
 /* CREATE CAST */
 CREATE CAST (varchar2 AS text)
 WITHOUT FUNCTION
@@ -2494,8 +2493,13 @@ UPDATE pg_proc
 SET protransform=(SELECT oid FROM pg_proc WHERE proname='varchar2_transform')
 WHERE proname='nvarchar2';
 
-CREATE OPERATOR || (function = oracle.orafce_concat2, leftarg = varchar2, rightarg = varchar2);
-CREATE OPERATOR || (function = oracle.orafce_concat2, leftarg = nvarchar2, rightarg = nvarchar2);
+/*
+ * Note - a procedure keyword is depraceted from PostgreSQL 11, but it used
+ * because older release doesn't know function.
+ *
+ */
+CREATE OPERATOR || (procedure = oracle.orafce_concat2, leftarg = varchar2, rightarg = varchar2);
+CREATE OPERATOR || (procedure = oracle.orafce_concat2, leftarg = nvarchar2, rightarg = nvarchar2);
 
 /* PAD */
 
