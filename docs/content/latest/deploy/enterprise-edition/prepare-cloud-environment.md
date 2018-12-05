@@ -11,7 +11,7 @@ menu:
     weight: 669
 ---
 
-A dedicated host or VM is needed to run YugaWare. See [this faq](../../../../../1.0/faq/enterprise-edition/#what-are-the-os-requirements-and-permissions-to-run-yugaware-the-yugabyte-admin-console) for more details. This page highlights the basic setup needed in order to install YugaWare.
+A dedicated host or VM is needed to run YugaWare. See [this faq](../../../../../latest/faq/enterprise-edition/#what-are-the-os-requirements-and-permissions-to-run-yugaware-the-yugabyte-admin-console) for more details. This page highlights the basic setup needed in order to install YugaWare.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>

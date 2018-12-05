@@ -60,6 +60,17 @@ menu:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="pivotal-cloud-foundry/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/pivotal-cloud-foundry.png" aria-hidden="true" />
+        <div class="title">Pivotal Cloud Foundry</div>
+      </div>
+      <div class="body">
+        Deploying and Managing YugaByte DB from Pivotal Cloud Foundry (PCF).
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="public-clouds/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
