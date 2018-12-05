@@ -329,6 +329,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     tserverResource.put("cpu", instanceType.numCores);
     tserverResource.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
     tserverLimit.put("cpu", instanceType.numCores * burstVal);
+    tserverLimit.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
     Map<String, Object> resourceOverrides = new HashMap();
     resourceOverrides.put("tserver", ImmutableMap.of("requests", tserverResource, "limits", tserverLimit));
 
@@ -340,6 +341,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       masterResource.put("cpu", 2);
       masterResource.put("memory", "4Gi");
       masterLimit.put("cpu", 2 * burstVal);
+      masterLimit.put("memory", "4Gi");
       resourceOverrides.put("master", ImmutableMap.of("requests", masterResource, "limits", masterLimit));
     }
 
