@@ -497,10 +497,10 @@ Status WaitUntilCommittedConfigMemberTypeIs(int config_size,
     SleepFor(MonoDelta::FromMilliseconds(1 << backoff_exp));
     backoff_exp = min(backoff_exp + 1, kMaxBackoffExp);
   }
-  return STATUS(TimedOut, Substitute("Number of voters does not equal $0 after waiting for $1."
-                                     "Last consensus state: $2. Last status: $3",
-                                     config_size, timeout.ToString(),
-                                     cstate.ShortDebugString(), s.ToString()));
+  return STATUS(TimedOut, Substitute("Number of replicas of type $0 does not equal $1 after "
+                                     "waiting for $2. Last consensus state: $3. Last status: $4",
+                                     RaftPeerPB::MemberType_Name(member_type), config_size,
+                                     timeout.ToString(), cstate.ShortDebugString(), s.ToString()));
 }
 
 template<class Context>
@@ -606,9 +606,9 @@ Status WaitUntilCommittedOpIdIndexIs(int64_t opid_index,
       WaitUntilCommittedOpIdIndexIsContext(opid_index));
 }
 
-class WaitUntilCommittedOpIdIndexGrowContext : public WaitUntilCommittedOpIdIndexContext {
+class WaitUntilCommittedOpIdIndexIsGreaterThanContext : public WaitUntilCommittedOpIdIndexContext {
  public:
-  explicit WaitUntilCommittedOpIdIndexGrowContext(int64_t* value)
+  explicit WaitUntilCommittedOpIdIndexIsGreaterThanContext(int64_t* value)
       : WaitUntilCommittedOpIdIndexContext(Substitute("greater than $0", *value)),
         original_value_(*value), value_(value) {
 
@@ -627,17 +627,33 @@ class WaitUntilCommittedOpIdIndexGrowContext : public WaitUntilCommittedOpIdInde
   int64_t* const value_;
 };
 
-Status WaitUntilCommittedOpIdIndexGrow(int64_t* index,
-                                       TServerDetails* replica,
-                                       const string& tablet_id,
-                                       const MonoDelta& timeout,
-                                       CommittedEntryType type) {
+Status WaitUntilCommittedOpIdIndexIsGreaterThan(int64_t* index,
+                                                TServerDetails* replica,
+                                                const TabletId& tablet_id,
+                                                const MonoDelta& timeout,
+                                                CommittedEntryType type) {
   return WaitUntilCommittedOpIdIndex(
       replica,
       tablet_id,
       timeout,
       type,
-      WaitUntilCommittedOpIdIndexGrowContext(index));
+      WaitUntilCommittedOpIdIndexIsGreaterThanContext(index));
+}
+
+Status WaitUntilCommittedOpIdIndexIsAtLeast(int64_t* index,
+                                            TServerDetails* replica,
+                                            const TabletId& tablet_id,
+                                            const MonoDelta& timeout,
+                                            CommittedEntryType type) {
+  int64_t tmp_index = *index - 1;
+  Status s = WaitUntilCommittedOpIdIndexIsGreaterThan(
+      &tmp_index,
+      replica,
+      tablet_id,
+      timeout,
+      type);
+  *index = tmp_index;
+  return s;
 }
 
 Status GetReplicaStatusAndCheckIfLeader(const TServerDetails* replica,
