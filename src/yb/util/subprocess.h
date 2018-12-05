@@ -41,6 +41,7 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
@@ -90,7 +91,9 @@ class Subprocess {
   // NOTE: unlike the standard wait(2) call, this may be called multiple
   // times. If the process has exited, it will repeatedly return the same
   // exit code.
-  CHECKED_STATUS Wait(int* ret) { return DoWait(ret, 0); }
+  CHECKED_STATUS Wait(int* ret);
+
+  Result<int> Wait();
 
   // Like the above, but does not block. This returns Status::TimedOut
   // immediately if the child has not exited. Otherwise returns Status::OK

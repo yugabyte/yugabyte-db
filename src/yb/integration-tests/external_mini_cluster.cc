@@ -75,6 +75,7 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using namespace std::literals;  // NOLINT
 using namespace yb::size_literals;  // NOLINT
@@ -116,6 +117,7 @@ using yb::master::ListMasterRaftPeersRequestPB;
 using yb::master::ListMasterRaftPeersResponsePB;
 using yb::tserver::TabletServerErrorPB;
 using yb::rpc::RpcController;
+using yb::pgwrapper::PgWrapper;
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
 
@@ -155,7 +157,7 @@ constexpr size_t kDefaultMemoryLimitHardBytes = NonTsanVsTsan(1_GB, 512_MB);
 
 ExternalMiniClusterOptions::ExternalMiniClusterOptions()
     : bind_to_unique_loopback_addresses(kBindToUniqueLoopbackAddress),
-      timeout_(MonoDelta::FromMilliseconds(1000 * 10)) {
+      timeout(MonoDelta::FromMilliseconds(1000 * 10)) {
   if (bind_to_unique_loopback_addresses && sizeof(pid_t) > 2) {
     LOG(WARNING) << "pid size is " << sizeof(pid_t)
                  << ", setting bind_to_unique_loopback_addresses=false";
@@ -245,17 +247,27 @@ Status ExternalMiniCluster::Start() {
   LOG(INFO) << "Starting " << opts_.num_tablet_servers << " tablet servers";
 
   for (int i = 1; i <= opts_.num_tablet_servers; i++) {
-    RETURN_NOT_OK_PREPEND(AddTabletServer(),
-                          Substitute("Failed starting tablet server $0", i));
+    RETURN_NOT_OK_PREPEND(
+        AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+                        opts_.start_pgsql_proxy),
+        Substitute("Failed starting tablet server $0", i));
   }
   RETURN_NOT_OK(WaitForTabletServerCount(
                   opts_.num_tablet_servers,
                   MonoDelta::FromSeconds(kTabletServerRegistrationTimeoutSeconds)));
 
+  running_ = true;
+  if (opts_.start_pgsql_proxy) {
+    string tmp_dir_base;
+    RETURN_NOT_OK(Env::Default()->GetTestDirectory(&tmp_dir_base));
+    RETURN_NOT_OK(PgWrapper::InitDbForYSQL(GetMasterAddresses(), tmp_dir_base));
+  }
   return Status::OK();
 }
 
 void ExternalMiniCluster::Shutdown(NodeSelectionMode mode) {
+  // TODO: in the regular MiniCluster Shutdown is a no-op if running_ is false.
+  // Therefore, in case of an error during cluster startup behavior might be different.
   if (mode == ALL) {
     for (const scoped_refptr<ExternalMaster>& master : masters_) {
       if (master) {
@@ -267,6 +279,7 @@ void ExternalMiniCluster::Shutdown(NodeSelectionMode mode) {
   for (const scoped_refptr<ExternalTabletServer>& ts : tablet_servers_) {
     ts->Shutdown();
   }
+  running_ = false;
 }
 
 Status ExternalMiniCluster::Restart() {
@@ -289,6 +302,7 @@ Status ExternalMiniCluster::Restart() {
       tablet_servers_.size(),
       MonoDelta::FromSeconds(kTabletServerRegistrationTimeoutSeconds)));
 
+  running_ = true;
   return Status::OK();
 }
 
@@ -490,7 +504,7 @@ Status ExternalMiniCluster::StepDownMasterLeader(TabletServerErrorPB::Code* erro
   lsd_req.set_dest_uuid(leader_uuid);
   LeaderStepDownResponsePB lsd_resp;
   RpcController lsd_rpc;
-  lsd_rpc.set_timeout(opts_.timeout_);
+  lsd_rpc.set_timeout(opts_.timeout);
   ConsensusServiceProxy proxy(proxy_cache_.get(), host_port);
   RETURN_NOT_OK(proxy.LeaderStepDown(lsd_req, &lsd_resp, &lsd_rpc));
   if (lsd_resp.has_error()) {
@@ -541,7 +555,7 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
   ChangeConfigRequestPB req;
   ChangeConfigResponsePB resp;
   rpc::RpcController rpc;
-  rpc.set_timeout(opts_.timeout_);
+  rpc.set_timeout(opts_.timeout);
 
   RaftPeerPB peer_pb;
   peer_pb.set_permanent_uuid(use_hostport ? "" : master->uuid());
@@ -634,7 +648,7 @@ Status ExternalMiniCluster::PingMaster(ExternalMaster* master) const {
   std::shared_ptr<server::GenericServiceProxy> proxy =
       index == -1 ? master_generic_proxy(master->bound_rpc_addr()) : master_generic_proxy(index);
   rpc::RpcController rpc;
-  rpc.set_timeout(opts_.timeout_);
+  rpc.set_timeout(opts_.timeout);
   return proxy->Ping(req, &resp, &rpc);
 }
 
@@ -651,7 +665,7 @@ Status ExternalMiniCluster::GetNumMastersAsSeenBy(ExternalMaster* master, int* n
 
   std::shared_ptr<MasterServiceProxy> proxy = master_proxy(index);
   rpc::RpcController rpc;
-  rpc.set_timeout(opts_.timeout_);
+  rpc.set_timeout(opts_.timeout);
   RETURN_NOT_OK(proxy->ListMasters(list_req, &list_resp, &rpc));
   if (list_resp.has_error()) {
     return STATUS(RuntimeError, Substitute(
@@ -677,7 +691,7 @@ Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
 
   MonoTime now = MonoTime::Now();
   MonoTime deadline = now;
-  deadline.AddDelta(opts_.timeout_);
+  deadline.AddDelta(opts_.timeout);
   auto opid = start_opid;
 
   for (int i = 1; now.ComesBefore(deadline); ++i) {
@@ -720,11 +734,11 @@ Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
 }
 
 Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int target_index) {
-  auto deadline = CoarseMonoClock::Now() + opts_.timeout_.ToSteadyDuration();
+  auto deadline = CoarseMonoClock::Now() + opts_.timeout.ToSteadyDuration();
 
   for (int i = 1; CoarseMonoClock::Now() < deadline; i++) {
     vector<consensus::OpId> ids;
-    Status s = GetLastOpIdForEachMasterPeer(opts_.timeout_, consensus::COMMITTED_OPID, &ids);
+    Status s = GetLastOpIdForEachMasterPeer(opts_.timeout, consensus::COMMITTED_OPID, &ids);
 
     if (s.ok()) {
       bool any_behind = false;
@@ -748,7 +762,7 @@ Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int target_index) {
   return STATUS_FORMAT(TimedOut,
                        "Index $0 not available on all replicas after $1. ",
                        target_index,
-                       opts_.timeout_);
+                       opts_.timeout);
 }
 
 Status ExternalMiniCluster::GetIsMasterLeaderServiceReady(ExternalMaster* master) {
@@ -764,7 +778,7 @@ Status ExternalMiniCluster::GetIsMasterLeaderServiceReady(ExternalMaster* master
 
   std::shared_ptr<MasterServiceProxy> proxy = master_proxy(index);
   rpc::RpcController rpc;
-  rpc.set_timeout(opts_.timeout_);
+  rpc.set_timeout(opts_.timeout);
   RETURN_NOT_OK(proxy->IsMasterLeaderServiceReady(req, &resp, &rpc));
   if (resp.has_error()) {
     return STATUS(RuntimeError, Substitute(
@@ -785,7 +799,7 @@ Status ExternalMiniCluster::GetLastOpIdForLeader(consensus::OpId* opid) {
       yb::master::kSysCatalogTabletId,
       leader->uuid(),
       consensus::COMMITTED_OPID,
-      opts_.timeout_,
+      opts_.timeout,
       opid));
 
   return Status::OK();
@@ -860,7 +874,7 @@ string ExternalMiniCluster::GetBindIpForTabletServer(int index) const {
   }
 }
 
-Status ExternalMiniCluster::AddTabletServer() {
+Status ExternalMiniCluster::AddTabletServer(bool start_cql_proxy, bool start_pgsql_proxy) {
   CHECK(GetLeaderMaster() != nullptr)
       << "Must have started at least 1 master before adding tablet servers";
 
@@ -886,7 +900,7 @@ Status ExternalMiniCluster::AddTabletServer() {
       cql_rpc_port, cql_http_port,
       pgsql_rpc_port, pgsql_http_port,
       master_hostports, SubstituteInFlags(opts_.extra_tserver_flags, idx));
-  RETURN_NOT_OK(ts->Start());
+  RETURN_NOT_OK(ts->Start(start_cql_proxy, start_pgsql_proxy));
   tablet_servers_.push_back(ts);
   return Status::OK();
 }
@@ -1206,7 +1220,7 @@ Status ExternalMiniCluster::StartElection(ExternalMaster* master) {
   req.set_tablet_id(yb::master::kSysCatalogTabletId);
   RunLeaderElectionResponsePB resp;
   RpcController rpc;
-  rpc.set_timeout(opts_.timeout_);
+  rpc.set_timeout(opts_.timeout);
   RETURN_NOT_OK(master_proxy->RunLeaderElection(req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status())
@@ -1452,6 +1466,17 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
 
   argv.push_back(Format("--minicluster_daemon_id=$0", daemon_id_));
 
+  const char* extra_daemon_flags_env_var_value = getenv("YB_EXTRA_DAEMON_FLAGS");
+  if (extra_daemon_flags_env_var_value) {
+    LOG(INFO) << "Setting extra daemon flags as specified by YB_EXTRA_DAEMON_FLAGS: "
+              << extra_daemon_flags_env_var_value;
+    // TODO: this has an issue with handling quoted arguments with embedded spaces.
+    std::istringstream iss(extra_daemon_flags_env_var_value);
+    copy(std::istream_iterator<string>(iss),
+         std::istream_iterator<string>(),
+         std::back_inserter(argv));
+  }
+
   gscoped_ptr<Subprocess> p(new Subprocess(exe_, argv));
   p->ShareParentStdout(false);
   p->ShareParentStderr(false);
@@ -1594,7 +1619,7 @@ void ExternalDaemon::Shutdown() {
       ignore_result(process_->Kill(SIGKILL));
     }
   }
-  int ret;
+  int ret = 0;
   WARN_NOT_OK(process_->Wait(&ret), "Waiting on " + exe_);
   process_.reset();
 }
@@ -1837,9 +1862,10 @@ ExternalTabletServer::ExternalTabletServer(
 ExternalTabletServer::~ExternalTabletServer() {
 }
 
-Status ExternalTabletServer::Start(bool start_cql_proxy) {
+Status ExternalTabletServer::Start(bool start_cql_proxy, bool start_pgsql_proxy) {
   vector<string> flags;
   start_cql_proxy_ = start_cql_proxy;
+  start_pgsql_proxy_ = start_pgsql_proxy;
   flags.push_back("--fs_data_dirs=" + data_dir_);
   flags.push_back(Substitute("--rpc_bind_addresses=$0:$1",
                              bind_host_, rpc_port_));
@@ -1853,6 +1879,7 @@ Status ExternalTabletServer::Start(bool start_cql_proxy) {
   flags.push_back(Substitute("--cql_proxy_bind_address=$0:$1", bind_host_, cql_rpc_port_));
   flags.push_back(Substitute("--cql_proxy_webserver_port=$0", cql_http_port_));
   flags.push_back(Substitute("--start_cql_proxy=$0", start_cql_proxy_));
+  flags.push_back(Substitute("--start_pgsql_proxy=$0", start_pgsql_proxy_));
   flags.push_back("--tserver_master_addrs=" + master_addrs_);
 
   // Use conservative number of threads for the mini cluster for unit test env
@@ -1895,7 +1922,7 @@ Status ExternalTabletServer::DeleteServerInfoPaths() {
   return Status::OK();
 }
 
-Status ExternalTabletServer::Restart(bool start_cql_proxy) {
+Status ExternalTabletServer::Restart(bool start_cql_proxy, bool start_pgsql_proxy) {
   LOG_WITH_PREFIX(INFO) << "Restart: start_cql_proxy=" << start_cql_proxy;
   if (!IsProcessAlive()) {
     // Make sure this function could be safely called if the process has already crashed.
@@ -1905,7 +1932,7 @@ Status ExternalTabletServer::Restart(bool start_cql_proxy) {
   if (bound_rpc_.port() == 0) {
     return STATUS(IllegalState, "Tablet server cannot be restarted. Must call Shutdown() first.");
   }
-  return Start(start_cql_proxy);
+  return Start(start_cql_proxy, start_pgsql_proxy);
 }
 
 }  // namespace yb

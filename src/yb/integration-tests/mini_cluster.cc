@@ -107,8 +107,7 @@ MiniClusterOptions::MiniClusterOptions()
 }
 
 MiniCluster::MiniCluster(Env* env, const MiniClusterOptions& options)
-    : running_(false),
-      env_(env),
+    : env_(env),
       fs_root_(GetFsRoot(options)),
       num_masters_initial_(options.num_masters),
       num_ts_initial_(options.num_tablet_servers),
@@ -239,7 +238,7 @@ Status MiniCluster::RestartSync() {
 
   RETURN_NOT_OK_PREPEND(WaitForTabletServerCount(num_tablet_servers()),
                         "Waiting for tablet servers to start");
-
+  running_ = true;
   return Status::OK();
 }
 

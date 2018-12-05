@@ -30,6 +30,7 @@ class YBMiniClusterTestBase: public YBTest {
   // override DoTearDown if they need to customize tear down behaviour.
   // Subclasses should never call TearDown of YBMiniClusterTestBase, they should call DoTearDown
   // instead.
+  //
   // Actually, subclasses should never know if TearDown method even exists, they should use/override
   // DoTearDown instead. For YBMiniClusterTestBase and its subclasses TearDown method is only
   // intended for calling from test framework and is a part of exclusively external interface.

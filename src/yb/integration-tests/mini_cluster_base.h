@@ -43,8 +43,12 @@ class MiniClusterBase {
     return DoGetLeaderMasterBoundRpcAddr();
   }
 
+  bool running() const { return running_.load(std::memory_order_acquire); }
+
  protected:
   virtual ~MiniClusterBase() = default;
+
+  std::atomic<bool> running_ { false };
 
  private:
   virtual CHECKED_STATUS DoCreateClient(client::YBClientBuilder* builder,

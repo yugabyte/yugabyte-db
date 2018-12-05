@@ -262,6 +262,10 @@ class Env {
     return result;
   }
 
+  // Checks if the given path is an executable file. If the file does not exist
+  // we simply return false rather than consider that an error.
+  virtual Result<bool> IsExecutableFile(const std::string& path) = 0;
+
   // The kind of file found during a walk. Note that symbolic links are
   // reported as FILE_TYPE.
   enum FileType {
@@ -644,6 +648,9 @@ class EnvWrapper : public Env {
   }
   CHECKED_STATUS IsDirectory(const std::string& path, bool* is_dir) override {
     return target_->IsDirectory(path, is_dir);
+  }
+  Result<bool> IsExecutableFile(const std::string& path) override {
+    return target_->IsExecutableFile(path);
   }
   CHECKED_STATUS Walk(const std::string& root,
               DirectoryOrder order,

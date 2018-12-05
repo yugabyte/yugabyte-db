@@ -57,7 +57,7 @@ class MasterChangeConfigTest : public YBTest {
     opts.master_rpc_ports = { 0, 0, 0 }; // external mini-cluster Start() gets the free ports.
     opts.num_masters = num_masters_ = static_cast<int>(opts.master_rpc_ports.size());
     opts.num_tablet_servers = 0;
-    opts.timeout_ = MonoDelta::FromSeconds(30);
+    opts.timeout = MonoDelta::FromSeconds(30);
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
