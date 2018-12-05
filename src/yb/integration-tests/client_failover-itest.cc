@@ -190,18 +190,18 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
     }
     ASSERT_NE(desired_leader, nullptr);
     ASSERT_OK(itest::StartElection(desired_leader, tablet_id, kTimeout));
-    ASSERT_OK(WaitUntilCommittedOpIdIndexGrow(&expected_index,
-                                              desired_leader,
-                                              tablet_id,
-                                              kTimeout));
+    ASSERT_OK(WaitUntilCommittedOpIdIndexIsGreaterThan(&expected_index,
+                                                       desired_leader,
+                                                       tablet_id,
+                                                       kTimeout));
   }
 
   // Wait until the config is committed, otherwise AddServer() will fail.
-  ASSERT_OK(WaitUntilCommittedOpIdIndexGrow(&expected_index,
-                                            leader,
-                                            tablet_id,
-                                            kTimeout,
-                                            itest::CommittedEntryType::CONFIG));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIsGreaterThan(&expected_index,
+                                                     leader,
+                                                     tablet_id,
+                                                     kTimeout,
+                                                     itest::CommittedEntryType::CONFIG));
 
   TServerDetails* to_add = ts_map_[cluster_->tablet_server(missing_replica_index)->uuid()].get();
   ASSERT_OK(AddServer(leader, tablet_id, to_add, consensus::RaftPeerPB::PRE_VOTER,
