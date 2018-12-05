@@ -372,13 +372,17 @@ class Log : public RefCountedThreadSafe<Log> {
   // Index which translates between operation indexes and the position of the operation in the log.
   scoped_refptr<LogIndex> log_index_;
 
-  // Lock for notification of last_entry_op_id_ changes.
-  mutable std::mutex last_entry_op_id_mutex_;
-  mutable std::condition_variable last_entry_op_id_cond_;
+  // Lock for notification of last_synced_entry_op_id_ changes.
+  mutable std::mutex last_synced_entry_op_id_mutex_;
+  mutable std::condition_variable last_synced_entry_op_id_cond_;
 
-  // The last known OpId for a REPLICATE message appended to this log (any segment).
-  // NOTE: this op is not necessarily durable.
-  std::atomic<yb::OpId> last_entry_op_id_{yb::OpId()};
+  // The last known OpId for a REPLICATE message appended and synced to this log (any segment).
+  // NOTE: this op is not necessarily durable unless gflag durable_wal_write is true.
+  std::atomic<yb::OpId> last_synced_entry_op_id_{yb::OpId()};
+
+  // The last know OpId for a REPLICATE message appended to this log (any segment).
+  // This variable is not accessed concurrently.
+  yb::OpId last_appended_entry_op_id_;
 
   // A footer being prepared for the current segment.  When the segment is closed, it will be
   // written.

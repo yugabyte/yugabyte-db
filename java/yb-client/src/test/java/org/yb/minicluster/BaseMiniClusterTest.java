@@ -21,6 +21,8 @@ import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
 import org.yb.client.TestUtils;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -80,6 +82,9 @@ public class BaseMiniClusterTest extends BaseYBTest {
     return true;
   }
 
+  protected void customizeMiniClusterOptions() {
+  }
+
   /**
    * This makes sure that the mini cluster is up and running before each test. A test might opt to
    * leave the mini cluster running, and it will be reused by next tests, or it might shut down the
@@ -97,6 +102,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
       return;
     }
     TestUtils.clearReservedPorts();
+    customizeMiniClusterOptions();
     if (miniCluster == null) {
       createMiniCluster();
     }
@@ -218,4 +224,21 @@ public class BaseMiniClusterTest extends BaseYBTest {
     LOG.info("BaseMiniClusterTest.tearDownAfterClass is running");
     destroyMiniCluster();
   }
+
+  public void addMasterArgs(String... args) {
+    addMasterArgs(Arrays.asList(args));
+  }
+
+  public void addMasterArgs(List<String> newArgs) {
+    masterArgs = TestUtils.joinLists(masterArgs, newArgs);
+  }
+
+  public void addTServerArgs(String... args) {
+    addTServerArgs(Arrays.asList(args));
+  }
+
+  public void addTServerArgs(List<String> newArgs) {
+    tserverArgs = TestUtils.joinLists(tserverArgs, newArgs);
+  }
+
 }
