@@ -329,6 +329,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                         bool* last_exchange_successful) {
   OpId preceding_id;
   MonoDelta unreachable_time = MonoDelta::kMin;
+  bool is_voter = false;
   bool is_new;
   int64_t next_index;
   HybridTime propagated_safe_time;
@@ -373,12 +374,16 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     *needs_remote_bootstrap = peer->needs_remote_bootstrap;
     is_new = peer->is_new;
     next_index = peer->next_index;
+    if (peer->member_type == RaftPeerPB::MemberType::RaftPeerPB_MemberType_VOTER) {
+      is_voter = true;
+    }
   }
 
   if (unreachable_time.ToSeconds() > FLAGS_follower_unavailable_considered_failed_sec) {
-    if (CountVoters(*queue_state_.active_config) > 2) {
-      // We never drop from 2 to 1 automatically, at least for now. We may want to revisit this
-      // later, we're just being cautious with this.
+    if (!is_voter || CountVoters(*queue_state_.active_config) > 2) {
+      // We never drop from 2 voters to 1 voter automatically, at least for now (12/4/18). We may
+      // want to revisit this later, we're just being cautious with this.
+      // We remove unconditionally any failed non-voter replica (PRE_VOTER, PRE_OBSERVER, OBSERVER).
       string msg = Substitute("Leader has been unable to successfully communicate "
                               "with Peer $0 for more than $1 seconds ($2)",
                               uuid,
