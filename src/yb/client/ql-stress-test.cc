@@ -23,6 +23,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/util/bfql/gen_opcodes.h"
 
 DECLARE_double(respond_write_failed_probability);
 DECLARE_bool(detect_duplicates_for_retryable_requests);
@@ -45,10 +46,14 @@ class QLStressTest : public QLDmlTestBase {
     QLDmlTestBase::SetUp();
 
     YBSchemaBuilder b;
-    b.AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
-    b.AddColumn(kValueColumn)->Type(STRING);
+    InitSchemaBuilder(&b);
 
     ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &b));
+  }
+
+  virtual void InitSchemaBuilder(YBSchemaBuilder* builder) {
+    builder->AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
+    builder->AddColumn(kValueColumn)->Type(STRING);
   }
 
   YBqlWriteOpPtr InsertRow(const YBSessionPtr& session, int32_t key, const std::string& value) {
@@ -80,7 +85,7 @@ class QLStressTest : public QLDmlTestBase {
     return op;
   }
 
-  Result<std::string> ReadRow(const YBSessionPtr& session, int32_t key) {
+  Result<QLValue> ReadRow(const YBSessionPtr& session, int32_t key) {
     auto op = SelectRow(session, key);
     RETURN_NOT_OK(session->Flush());
     if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
@@ -92,7 +97,7 @@ class QLStressTest : public QLDmlTestBase {
       return STATUS_FORMAT(NotFound, "Bad count for $0, count: $1", key, rowblock->row_count());
     }
     const auto& row = rowblock->row(0);
-    return row.column(0).string_value();
+    return row.column(0);
   }
 
   void TestRetryWrites(bool restarts);
@@ -183,7 +188,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   auto session = NewSession();
   for (int key = 0; key != written_keys; ++key) {
     auto value = ASSERT_RESULT(ReadRow(session, key));
-    ASSERT_EQ(value, Format("value_$0", key));
+    ASSERT_EQ(value.string_value(), Format("value_$0", key));
   }
 
   size_t total_entries = 0;
@@ -215,6 +220,62 @@ TEST_F(QLStressTest, RetryWritesWithRestarts) {
 TEST_F(QLStressTest, RetryWritesDisabled) {
   FLAGS_detect_duplicates_for_retryable_requests = false;
   TestRetryWrites(false /* restarts */);
+}
+
+class QLStressTestIntValue : public QLStressTest {
+ private:
+  void InitSchemaBuilder(YBSchemaBuilder* builder) {
+    builder->AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
+    builder->AddColumn(kValueColumn)->Type(INT64);
+  }
+};
+
+// This test does 100 concurrent increments of the same row.
+// It is expected that resulting value will be equal to 100.
+TEST_F_EX(QLStressTest, Increment, QLStressTestIntValue) {
+  const auto kIncrements = 100;
+  const auto kKey = 1;
+
+  auto session = NewSession();
+  {
+    auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    auto* const req = op->mutable_request();
+    QLAddInt32HashValue(req, kKey);
+    table_.AddInt64ColumnValue(req, kValueColumn, 0);
+    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
+  }
+
+  std::vector<YBqlWriteOpPtr> write_ops;
+  std::vector<std::shared_future<Status>> futures;
+
+  auto value_column_id = table_.ColumnId(kValueColumn);
+  for (int i = 0; i != kIncrements; ++i) {
+    auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+    auto* const req = op->mutable_request();
+    QLAddInt32HashValue(req, kKey);
+    req->mutable_column_refs()->add_ids(value_column_id);
+    auto* column_value = req->add_column_values();
+    column_value->set_column_id(value_column_id);
+    auto* bfcall = column_value->mutable_expr()->mutable_bfcall();
+    bfcall->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
+    bfcall->add_operands()->set_column_id(value_column_id);
+    bfcall->add_operands()->mutable_value()->set_int64_value(1);
+    write_ops.push_back(op);
+  }
+
+  for (const auto& op : write_ops) {
+    ASSERT_OK(session->Apply(op));
+    futures.push_back(session->FlushFuture());
+  }
+
+  for (size_t i = 0; i != write_ops.size(); ++i) {
+    ASSERT_OK(futures[i].get());
+    ASSERT_EQ(write_ops[i]->response().status(), QLResponsePB::YQL_STATUS_OK);
+  }
+
+  auto value = ASSERT_RESULT(ReadRow(session, kKey));
+  ASSERT_EQ(value.int64_value(), kIncrements) << value.ToString();
 }
 
 } // namespace client

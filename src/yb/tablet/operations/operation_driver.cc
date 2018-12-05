@@ -448,18 +448,13 @@ void OperationDriver::ApplyTask(int64_t leader_term) {
   {
     CHECK_OK(operation_->Apply(leader_term));
 
-    operation_->PreCommit();
-
     Finalize();
   }
 }
 
 void OperationDriver::Finalize() {
   ADOPT_TRACE(trace());
-  // TODO: this is an ugly hack so that the Release() call doesn't delete the
-  // object while we still hold the lock.
-  scoped_refptr<OperationDriver> ref(this);
-  std::lock_guard<simple_spinlock> lock(lock_);
+
   operation_->Finish(Operation::COMMITTED);
   mutable_state()->CompleteWithStatus(Status::OK());
   operation_tracker_->Release(this);
