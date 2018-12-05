@@ -22,6 +22,8 @@ from ybops.common.exceptions import YBOpsRuntimeError
 parser = argparse.ArgumentParser()
 parser.add_argument('--destination', help='Copy release to Destination folder.')
 parser.add_argument('--tag', help='Release tag name')
+# IMPORTANT: DO NOT REMOVE THIS FLAG. REQUIRED BY INTERNAL INFRA.
+parser.add_argument('--force', help='Force no user input', action="store_true")
 args = parser.parse_args()
 
 output = None

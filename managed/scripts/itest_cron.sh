@@ -53,7 +53,16 @@ cd $itest_yw_repo
 . "$HOME/.yugabyte/ansible.env"
 
 # DEFAULT SETTING
-USE_MAVEN_LOCAL="true" "$itest_yw_repo"/run_itest --perform_edits --notify
+# NEW WAY: Target a remote k8s cluster.
+USE_MAVEN_LOCAL="true" "$itest_yw_repo"/run_itest --notify --is_k8s --k8s_cluster_name yb-gke-portal
+
+# Using latest builds in k8s.
+# USE_MAVEN_LOCAL="true" "$itest_yw_repo"/run_itest --notify \
+#     --is_k8s --k8s_cluster_name yb-gke-portal \
+#     --local_path $HOME/code --use_latest_deploy --build_destination /opt/builds/
+
+# OLD WAY: Target a locally running YW.
+# USE_MAVEN_LOCAL="true" "$itest_yw_repo"/run_itest --perform_edits --notify
 
 # OLD DEFAULT SETTING
 # USE_MAVEN_LOCAL="true" "$itest_yw_repo"/run_itest --perform_edits --perform_upgrade --perform_backup --notify
