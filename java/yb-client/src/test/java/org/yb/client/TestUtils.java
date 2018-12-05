@@ -481,4 +481,15 @@ public class TestUtils {
     throw new IllegalArgumentException("No numbers given to firstPositiveNumber");
   }
 
+  public static <T> List<T> joinLists(List<T> a, List<T> b) {
+    List<T> joinedList = new ArrayList();
+    if (a != null) {
+      joinedList.addAll(a);
+    }
+    if (b != null) {
+      joinedList.addAll(b);
+    }
+    return joinedList;
+  }
+
 }
