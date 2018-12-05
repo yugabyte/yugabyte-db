@@ -70,7 +70,7 @@ void LocalTabletWriter::Submit(std::unique_ptr<Operation> operation, int64_t ter
   tablet_->ApplyRowOperations(state);
 
   state->Commit();
-  state->ReleaseDocDbLocks(tablet_);
+  state->ReleaseDocDbLocks();
 
   // Return the status of first failed op.
   int op_idx = 0;

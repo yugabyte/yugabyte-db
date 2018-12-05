@@ -105,11 +105,6 @@ class Operation {
   // transaction type, but usually this is the method where data-structures are changed.
   virtual CHECKED_STATUS Apply(int64_t leader_term) = 0;
 
-  // Executed after Apply() but before the commit is submitted to consensus.  Some transactions use
-  // this to perform pre-commit actions (e.g. write transactions perform early lock release on this
-  // hook).  Default implementation does nothing.
-  virtual void PreCommit() {}
-
   // Executed after the transaction has been applied and the commit message has been appended to the
   // log (though it might not be durable yet), or if the transaction was aborted.  Implementations
   // are expected to perform cleanup on this method, the driver will reply to the client after this
