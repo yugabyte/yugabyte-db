@@ -647,6 +647,7 @@ class TabletOperations {
             read_data_.block->SetNext(block);
           }
         } else if (write_data_.block) {
+          flush_head_ = write_data_.block;
           write_data_.block->SetNext(block);
         } else {
           flush_head_ = block;
