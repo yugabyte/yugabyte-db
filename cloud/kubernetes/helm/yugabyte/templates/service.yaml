@@ -185,7 +185,7 @@ spec:
           - "--master_replication_factor={{ $root.Values.replicas.master }}"
           - "--metric_node_name=$(HOSTNAME)"
           # Assume memory is always mentioned in GBs. Also multiplied by 870 since 0.85 * 1024 ~ 870 (floating calculations not supported)
-          - "--memory_limit_hard_bytes={{ $root.Values.resource.master.limits.memory | regexFind "\\d+" | mul 1024 | mul 1024 | mul 870 }}"
+          - "--memory_limit_hard_bytes={{ template "yugabyte.memory_hard_limit" $root.Values.resource.master }}"
           - "--logtostderr"
           {{- range $flag, $override := $root.Values.gflags.master }}
           - "--{{ $flag }}={{ $override }}"
@@ -197,7 +197,8 @@ spec:
           - "--tserver_master_addrs={{range $index := until (int ($root.Values.replicas.master))}}{{if ne $index 0}},{{end}}yb-master-{{ $index }}.yb-masters.$(NAMESPACE):7100{{end}}"
           - "--metric_node_name=$(HOSTNAME)"
           # Assume memory is always mentioned in GBs. Also multiplied by 870 since 0.85 * 1024 ~ 870 (floating calculations not supported)
-          - "--memory_limit_hard_bytes={{ $root.Values.resource.tserver.limits.memory | regexFind "\\d+" | mul 1024 | mul 1024 | mul 870 }}"
+          - "--memory_limit_hard_bytes={{ template "yugabyte.memory_hard_limit" $root.Values.resource.tserver }}"
+          - "--tserver_master_replication_factor=0"
           - "--logtostderr"
           {{- range $flag, $override := $root.Values.gflags.tserver }}
           - "--{{ $flag }}={{ $override }}"
