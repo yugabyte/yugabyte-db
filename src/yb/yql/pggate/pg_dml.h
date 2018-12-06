@@ -98,6 +98,7 @@ class PgDml : public PgStatement {
   // - During execution, the place_holder values are updated, and the statement protobuf need to
   //   be updated accordingly.
   std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
+  string ybctid_bind_;
 
   // DML Operator.
   PgDocOp::SharedPtr doc_op_;

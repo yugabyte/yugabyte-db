@@ -190,6 +190,7 @@ PgDocWriteOp::~PgDocWriteOp() {
 
 Status PgDocWriteOp::SendRequestUnlocked() {
   CHECK(!waiting_for_response_);
+
   RETURN_NOT_OK(pg_session_->ApplyAsync(write_op_));
   waiting_for_response_ = true;
   pg_session_->FlushAsync([this](const Status& s) { PgDocWriteOp::ReceiveResponse(s); });

@@ -30,6 +30,7 @@
 #include "common/pg_yb_common.h"
 #include "yb/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "access/reloptions.h"
 
 extern YBCPgSession ybc_pg_session;
 
@@ -49,6 +50,12 @@ extern bool IsYugaByteEnabled();
 extern bool IsYBSupportedTable(Oid relid);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
+
+extern bool IsYBRelation(Relation relation);
+
+extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
+
+extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
 
 /**
  * Whether to route BEGIN / COMMIT / ROLLBACK to YugaByte's distributed

@@ -90,7 +90,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   std::vector<PgColumn> columns_;
 
   // Hidden columns.
-  PgColumn column_yb_ctid_;
+  PgColumn column_ybctid_;
 };
 
 }  // namespace pggate

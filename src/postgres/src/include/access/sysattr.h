@@ -27,4 +27,7 @@
 #define TableOidAttributeNumber					(-7)
 #define FirstLowInvalidHeapAttributeNumber		(-8)
 
+#define YBTupleIdAttributeNumber (-8)
+#define YBFirstLowInvalidAttributeNumber (-9)
+
 #endif							/* SYSATTR_H */

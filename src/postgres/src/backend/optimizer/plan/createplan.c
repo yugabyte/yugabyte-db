@@ -856,7 +856,7 @@ use_physical_tlist(PlannerInfo *root, Path *path, int flags)
 				{
 					int			attno = ((Var *) expr)->varattno;
 
-					attno -= FirstLowInvalidHeapAttributeNumber;
+					attno -= (rel->min_attr - 1);
 					if (bms_is_member(attno, sortgroupatts))
 						return false;
 					sortgroupatts = bms_add_member(sortgroupatts, attno);
@@ -3543,20 +3543,20 @@ create_foreignscan_plan(PlannerInfo *root, ForeignPath *best_path,
 		 * Note: we must look at rel's targetlist, not the attr_needed data,
 		 * because attr_needed isn't computed for inheritance child rels.
 		 */
-		pull_varattnos((Node *) rel->reltarget->exprs, scan_relid, &attrs_used);
+		pull_varattnos_min_attr((Node *) rel->reltarget->exprs, scan_relid, &attrs_used, rel->min_attr);
 
 		/* Add all the attributes used by restriction clauses. */
 		foreach(lc, rel->baserestrictinfo)
 		{
 			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
 
-			pull_varattnos((Node *) rinfo->clause, scan_relid, &attrs_used);
+			pull_varattnos_min_attr((Node *) rinfo->clause, scan_relid, &attrs_used, rel->min_attr);
 		}
 
 		/* Now, are any system columns requested from rel? */
-		for (i = FirstLowInvalidHeapAttributeNumber + 1; i < 0; i++)
+		for (i = rel->min_attr; i < 0; i++)
 		{
-			if (bms_is_member(i - FirstLowInvalidHeapAttributeNumber, attrs_used))
+			if (bms_is_member(i - rel->min_attr + 1, attrs_used))
 			{
 				scan_plan->fsSystemCol = true;
 				break;

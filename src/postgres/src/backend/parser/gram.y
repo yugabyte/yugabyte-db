@@ -826,6 +826,7 @@ stmt :
 			| CreateStmt
 			| CreateUserStmt
 			| CreatedbStmt
+			| DeleteStmt
 			| DropStmt
 			| DropdbStmt
 			| ExecuteStmt
@@ -841,6 +842,7 @@ stmt :
 			| VariableShowStmt
 			| AlterDatabaseStmt
 			| AlterDatabaseSetStmt
+			| UpdateStmt
 			| VariableResetStmt
 
 			/* Not supported statements */
@@ -911,7 +913,6 @@ stmt :
 			| DeallocateStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DeclareCursorStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DefineStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DeleteStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DiscardStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DoStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -945,7 +946,6 @@ stmt :
 			| SecLabelStmt { parser_ybc_not_support(@1, "This statement"); }
 			| TruncateStmt { parser_ybc_not_support(@1, "This statement"); }
 			| UnlistenStmt { parser_ybc_not_support(@1, "This statement"); }
-			| UpdateStmt { parser_ybc_not_support(@1, "This statement"); }
 			| VacuumStmt { parser_ybc_not_support(@1, "This statement"); }
 		;
 
@@ -11244,20 +11244,26 @@ returning_clause:
 DeleteStmt: opt_with_clause DELETE_P FROM relation_expr_opt_alias
 			using_clause where_or_current_clause returning_clause
 				{
-					parser_ybc_not_support(@1, "DELETE");
 					DeleteStmt *n = makeNode(DeleteStmt);
 					n->relation = $4;
 					n->usingClause = $5;
 					n->whereClause = $6;
 					n->returningList = $7;
 					n->withClause = $1;
+					if (n->withClause != NULL) {
+						parser_ybc_not_support(@1, "WITH clause");
+					}
 					$$ = (Node *)n;
 				}
 		;
 
 using_clause:
-				USING from_list						{ $$ = $2; }
-			| /*EMPTY*/								{ $$ = NIL; }
+			/*EMPTY*/								{ $$ = NIL; }
+			| USING from_list
+				{
+					parser_ybc_not_support(@1, "USING clause");
+					$$ = $2;
+				}
 		;
 
 
@@ -11318,7 +11324,6 @@ UpdateStmt: opt_with_clause UPDATE relation_expr_opt_alias
 			where_or_current_clause
 			returning_clause
 				{
-					parser_ybc_not_support(@1, "UPDATE");
 					UpdateStmt *n = makeNode(UpdateStmt);
 					n->relation = $3;
 					n->targetList = $5;
