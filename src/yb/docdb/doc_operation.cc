@@ -3091,33 +3091,49 @@ CHECKED_STATUS PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResp
   // Init DocDB keys using partition and range values.
   // - Collect partition and range values into hashed_components and range_components.
   // - Setup the keys.
-  vector<PrimitiveValue> hashed_components;
-  RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.partition_column_values(),
-                                             schema_,
-                                             0,
-                                             &hashed_components));
+  if (request_.has_ybctid_column_value()) {
+    CHECK(request_.ybctid_column_value().has_value() &&
+          request_.ybctid_column_value().value().has_binary_value())
+      << "ERROR: Unexpected value for ybctid column";
+    string ybctid_value = request_.ybctid_column_value().value().binary_value();
+    Slice key_value(ybctid_value.data(), ybctid_value.size());
 
-  // We only need the hash key if the range key is not specified.
-  if (request_.range_column_values().size() == 0) {
-    hashed_doc_key_ = make_unique<DocKey>(schema_,
-                                          request_.hash_code(),
-                                          hashed_components);
-    hashed_doc_path_ = make_unique<DocPath>(hashed_doc_key_->Encode());
+    hashed_doc_key_ = make_unique<DocKey>(schema_, request_.hash_code());
+    RETURN_NOT_OK(hashed_doc_key_->DecodeFrom(key_value));
+    if (hashed_doc_key_->range_group().empty()) {
+      hashed_doc_path_ = make_unique<DocPath>(hashed_doc_key_->Encode());
+    } else {
+      range_doc_key_ = std::move(hashed_doc_key_);
+      range_doc_path_ = make_unique<DocPath>(range_doc_key_->Encode());
+    }
+
+  } else {
+    vector<PrimitiveValue> hashed_components;
+    RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.partition_column_values(),
+                                               schema_,
+                                               0,
+                                               &hashed_components));
+
+    // We only need the hash key if the range key is not specified.
+    if (request_.range_column_values().size() == 0) {
+      hashed_doc_key_ = make_unique<DocKey>(schema_,
+                                            request_.hash_code(),
+                                            hashed_components);
+      hashed_doc_path_ = make_unique<DocPath>(hashed_doc_key_->Encode());
+    }
+
+    vector<PrimitiveValue> range_components;
+    RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.range_column_values(),
+                                               schema_,
+                                               schema_.num_hash_key_columns(),
+                                               &range_components));
+    range_doc_key_ = hashed_components.empty() ? make_unique<DocKey>(schema_, range_components)
+                                               : make_unique<DocKey>(schema_,
+                                                                     request_.hash_code(),
+                                                                     hashed_components,
+                                                                     range_components);
+    range_doc_path_ = make_unique<DocPath>(range_doc_key_->Encode());
   }
-
-  vector<PrimitiveValue> range_components;
-  RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.range_column_values(),
-                                             schema_,
-                                             schema_.num_hash_key_columns(),
-                                             &range_components));
-  range_doc_key_ = hashed_components.empty()
-                   ? make_unique<DocKey>(schema_, range_components)
-                   : make_unique<DocKey>(schema_,
-                                         request_.hash_code(),
-                                         hashed_components,
-                                         range_components);
-
-  range_doc_path_ = make_unique<DocPath>(range_doc_key_->Encode());
 
   return Status::OK();
 }

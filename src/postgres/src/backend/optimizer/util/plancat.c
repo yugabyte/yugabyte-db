@@ -49,6 +49,7 @@
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 
+#include "pg_yb_utils.h"
 
 /* GUC parameter */
 int			constraint_exclusion = CONSTRAINT_EXCLUSION_PARTITION;
@@ -119,7 +120,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot access temporary or unlogged relations during recovery")));
 
-	rel->min_attr = FirstLowInvalidHeapAttributeNumber + 1;
+	rel->min_attr = YBGetFirstLowInvalidAttributeNumber(relation) + 1;
 	rel->max_attr = RelationGetNumberOfAttributes(relation);
 	rel->reltablespace = RelationGetForm(relation)->reltablespace;
 

@@ -25,4 +25,6 @@
 
 extern Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple);
 
+void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot *slot);
+
 #endif							/* YBCMODIFYTABLE_H */

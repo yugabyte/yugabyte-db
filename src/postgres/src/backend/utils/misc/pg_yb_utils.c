@@ -29,6 +29,7 @@
 
 #include "postgres.h"
 #include "miscadmin.h"
+#include "access/sysattr.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "catalog/pg_database.h"
@@ -68,6 +69,27 @@ IsYBSupportedTable(Oid relid)
 						strncmp(schema, "pg_toast", 8) != 0;
 	RelationClose(relation);
 	return is_supported;
+}
+
+bool IsYBRelation(Relation relation) {
+	char *schema = get_namespace_name(relation->rd_rel->relnamespace);
+	return (MyDatabaseId != TemplateDbOid &&
+					relation->rd_rel->relkind == RELKIND_RELATION &&
+					strcmp(schema, "pg_catalog") != 0 &&
+					strcmp(schema, "information_schema") != 0 &&
+					strncmp(schema, "pg_toast", 8) != 0);
+}
+
+AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation) {
+	return IsYugaByteEnabled() && IsYBRelation(relation) ? YBFirstLowInvalidAttributeNumber
+		                                                   : FirstLowInvalidHeapAttributeNumber;
+}
+
+AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid) {
+	Relation relation = RelationIdGetRelation(relid);
+	AttrNumber attr_num = YBGetFirstLowInvalidAttributeNumber(relation);
+	RelationClose(relation);
+	return attr_num;
 }
 
 bool

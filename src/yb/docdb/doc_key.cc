@@ -119,6 +119,12 @@ DocKey::DocKey(const Schema& schema)
       hash_present_(false) {
 }
 
+DocKey::DocKey(const Schema& schema, DocKeyHash hash)
+    : cotable_id_(schema.cotable_id()),
+      hash_present_(true),
+      hash_(hash) {
+}
+
 DocKey::DocKey(const Schema& schema, const vector<PrimitiveValue>& range_components)
     : cotable_id_(schema.cotable_id()),
       hash_present_(false),

@@ -680,6 +680,10 @@ ExecDelete(ModifyTableState *mtstate,
 		tuple = ExecMaterializeSlot(slot);
 		tuple->t_tableOid = RelationGetRelid(resultRelationDesc);
 	}
+	else if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
+	{
+		YBCExecuteDelete(resultRelationDesc, resultRelInfo, planSlot);
+	}
 	else
 	{
 		/*
@@ -945,6 +949,12 @@ ExecUpdate(ModifyTableState *mtstate,
 		 * tableoid column, so initialize t_tableOid before evaluating them.
 		 */
 		tuple->t_tableOid = RelationGetRelid(resultRelationDesc);
+	}
+	else if (IsYugaByteEnabled() && IsYBSupportedTable(RelationGetRelid(resultRelationDesc)))
+	{
+		ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("UPDATE YugaByte table is not yet supported")));
 	}
 	else
 	{
@@ -2317,7 +2327,14 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 					char		relkind;
 
 					relkind = resultRelInfo->ri_RelationDesc->rd_rel->relkind;
-					if (relkind == RELKIND_RELATION ||
+					if (IsYugaByteEnabled() && IsYBRelation(rel))
+					{
+						j->jf_junkAttNo = ExecFindJunkAttribute(j, "ybctid");
+						if (!AttributeNumberIsValid(j->jf_junkAttNo)) {
+							elog(ERROR, "could not find junk ybctid column");
+						}
+					}
+					else if (relkind == RELKIND_RELATION ||
 						relkind == RELKIND_MATVIEW ||
 						relkind == RELKIND_PARTITIONED_TABLE)
 					{

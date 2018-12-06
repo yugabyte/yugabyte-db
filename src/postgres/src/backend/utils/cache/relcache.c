@@ -86,6 +86,7 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
 
 /*
  *		name of relcache init file(s), used to speed up backend startup
@@ -4816,6 +4817,7 @@ RelationGetIndexAttrBitmap(Relation relation, IndexAttrBitmapKind attrKind)
 	Oid			relreplindex;
 	ListCell   *l;
 	MemoryContext oldcxt;
+	AttrNumber attr_offset;
 
 	/* Quick exit if we already computed the result. */
 	if (relation->rd_indexattr != NULL)
@@ -4873,6 +4875,7 @@ restart:
 	uindexattrs = NULL;
 	pkindexattrs = NULL;
 	idindexattrs = NULL;
+	attr_offset = YBGetFirstLowInvalidAttributeNumber(relation);
 	foreach(l, indexoidlist)
 	{
 		Oid			indexOid = lfirst_oid(l);
@@ -4906,20 +4909,16 @@ restart:
 
 			if (attrnum != 0)
 			{
-				indexattrs = bms_add_member(indexattrs,
-											attrnum - FirstLowInvalidHeapAttributeNumber);
+				indexattrs = bms_add_member(indexattrs, attrnum - attr_offset);
 
 				if (isKey)
-					uindexattrs = bms_add_member(uindexattrs,
-												 attrnum - FirstLowInvalidHeapAttributeNumber);
+					uindexattrs = bms_add_member(uindexattrs, attrnum - attr_offset);
 
 				if (isPK)
-					pkindexattrs = bms_add_member(pkindexattrs,
-												  attrnum - FirstLowInvalidHeapAttributeNumber);
+					pkindexattrs = bms_add_member(pkindexattrs, attrnum - attr_offset);
 
 				if (isIDKey)
-					idindexattrs = bms_add_member(idindexattrs,
-												  attrnum - FirstLowInvalidHeapAttributeNumber);
+					idindexattrs = bms_add_member(idindexattrs, attrnum - attr_offset);
 			}
 		}
 

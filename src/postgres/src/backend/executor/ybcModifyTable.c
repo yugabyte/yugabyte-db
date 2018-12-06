@@ -24,10 +24,12 @@
 #include "postgres.h"
 
 #include "access/htup_details.h"
+#include "access/sysattr.h"
 #include "catalog/pg_type.h"
 #include "utils/relcache.h"
 #include "utils/rel.h"
 #include "utils/lsyscache.h"
+#include "nodes/execnodes.h"
 #include "commands/dbcommands.h"
 #include "executor/tuptable.h"
 #include "executor/ybcExpr.h"
@@ -105,4 +107,49 @@ Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 
 	/* YugaByte tables do not currently support Oids. */
 	return InvalidOid;
+}
+
+void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot *slot) {
+	char *dbname = get_database_name(MyDatabaseId);
+	char *schemaname = get_namespace_name(rel->rd_rel->relnamespace);
+	char *tablename = NameStr(rel->rd_rel->relname);
+	YBCPgStatement delete_stmt = NULL;
+
+	// Find ybctid value.
+	int idx;
+	Datum ybctid = 0;
+	Form_pg_attribute *attrs = slot->tts_tupleDescriptor->attrs;
+	for (idx = 0; idx < slot->tts_nvalid; idx++) {
+		if (strcmp(NameStr(attrs[idx]->attname), "ybctid") == 0 && !slot->tts_isnull[idx])	{
+			Assert(attrs[idx]->atttypid == BYTEAOID);
+			ybctid = slot->tts_values[idx];
+		}
+	}
+
+	// Raise error if ybctid is not found.
+	if (ybctid == 0) {
+		ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+						 errmsg("Missing column ybctid in DELETE request to YugaByte database")));
+	}
+
+	// Execute DELETE.
+	HandleYBStatus(YBCPgNewDelete(ybc_pg_session,
+																dbname,
+																schemaname,
+																tablename,
+																&delete_stmt));
+	YBCPgExpr ybctid_expr = YBCNewConstant(delete_stmt,
+																				 BYTEAOID,
+																				 ybctid,
+																				 false);
+	HandleYBStmtStatus(YBCPgDmlBindColumn(delete_stmt,
+																				YBTupleIdAttributeNumber,
+																				ybctid_expr),
+										 delete_stmt);
+	HandleYBStmtStatus(YBCPgExecDelete(delete_stmt), delete_stmt);
+
+	/* Complete execution */
+	HandleYBStatus(YBCPgDeleteStatement(delete_stmt));
+	delete_stmt = NULL;
 }

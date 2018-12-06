@@ -480,6 +480,12 @@ std::string YBPgsqlWriteOp::ToString() const {
 }
 
 Status YBPgsqlWriteOp::GetPartitionKey(string* partition_key) const {
+  if (write_request_->has_hash_code() && write_request_->partition_column_values_size() == 0) {
+    *partition_key = PartitionSchema::EncodeMultiColumnHashValue(write_request_->hash_code());
+    return Status::OK();
+  }
+
+  // Computing the partition_key.
   return table_->partition_schema().EncodeKey(write_request_->partition_column_values(),
                                               partition_key);
 }

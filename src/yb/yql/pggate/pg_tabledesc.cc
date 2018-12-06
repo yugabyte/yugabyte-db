@@ -39,13 +39,13 @@ PgTableDesc::PgTableDesc(std::shared_ptr<client::YBTable> pg_table) : table_(pg_
   }
 
   // Create virtual columns.
-  column_yb_ctid_.Init(PgSystemAttrNum::kYBTupleId);
+  column_ybctid_.Init(PgSystemAttrNum::kYBTupleId);
 }
 
 Result<PgColumn *> PgTableDesc::FindColumn(int attr_num) {
   // Find virtual columns.
   if (attr_num == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-    return &column_yb_ctid_;
+    return &column_ybctid_;
   }
 
   // Find physical column.

@@ -86,6 +86,7 @@ class DocKey {
 
   // Constructors to create a DocKey for the given schema to support co-located tables.
   explicit DocKey(const Schema& schema);
+  DocKey(const Schema& schema, DocKeyHash hash);
   DocKey(const Schema& schema, const std::vector<PrimitiveValue>& range_components);
   DocKey(const Schema& schema, DocKeyHash hash,
          const std::vector<PrimitiveValue>& hashed_components,

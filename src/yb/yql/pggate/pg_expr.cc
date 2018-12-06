@@ -165,7 +165,7 @@ void PgExpr::TranslateCmax(Slice *yb_cursor, const PgWireDataHeader& header,
 
 void PgExpr::TranslateYBCtid(Slice *yb_cursor, const PgWireDataHeader& header,
                              PgTuple *pg_tuple, int index) {
-  TranslateSysCol(yb_cursor, header, pg_tuple, &pg_tuple->syscols()->yb_ctid);
+  TranslateSysCol(yb_cursor, header, pg_tuple, &pg_tuple->syscols()->ybctid);
 }
 
 Status PgExpr::ReadHashValue(const char *doc_key, int key_size, uint16_t *hash_value) {

@@ -36,7 +36,7 @@ void PgColumn::Init(PgSystemAttrNum attr_num) {
       int idx = static_cast<int>(PgSystemAttrNum::kYBTupleId);
       desc_.Init(idx,
                  idx,
-                 "yb_ctid",
+                 "ybctid",
                  false,
                  false,
                  idx,
@@ -50,7 +50,7 @@ void PgColumn::Init(PgSystemAttrNum attr_num) {
 }
 
 bool PgColumn::is_virtual_column() {
-  // Currently only yb_ctid is a virtual column.
+  // Currently only ybctid is a virtual column.
   return attr_num() == static_cast<int>(PgSystemAttrNum::kYBTupleId);
 }
 
@@ -70,9 +70,13 @@ PgsqlExpressionPB *PgColumn::AllocBindPB(PgsqlWriteRequestPB *write_req) {
     DCHECK(!desc_.is_partition() && !desc_.is_primary())
       << "Binds for primary columns should have already been allocated by AllocPrimaryBindPB()";
 
-    PgsqlColumnValuePB* col_pb = write_req->add_column_values();
-    col_pb->set_column_id(id());
-    bind_pb_ = col_pb->mutable_expr();
+    if (id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
+      bind_pb_ = write_req->mutable_ybctid_column_value();
+    } else {
+      PgsqlColumnValuePB* col_pb = write_req->add_column_values();
+      col_pb->set_column_id(id());
+      bind_pb_ = col_pb->mutable_expr();
+    }
   }
   return bind_pb_;
 }
