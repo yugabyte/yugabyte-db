@@ -2722,6 +2722,15 @@ TEST_F(TestRedisService, TestIncr) {
   VerifyCallbacks();
 }
 
+TEST_F(TestRedisService, TestKeysPipeline) {
+  DoRedisTestOk(__LINE__, {"SET", "xa", "5"});
+  DoRedisTestArray(__LINE__, {"KEYS", "*"}, {"xa"});
+  DoRedisTestNull(__LINE__, {"GET", "xb"});
+  DoRedisTestBulkString(__LINE__, {"GET", "xa"}, "5");
+  SyncClient();
+  VerifyCallbacks();
+}
+
 TEST_F(TestRedisService, TestIncrCorner) {
   DoRedisTestOk(__LINE__, {"SET", "kstr", "str"});
   SyncClient();
