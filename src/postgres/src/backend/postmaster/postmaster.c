@@ -131,6 +131,7 @@
 #include "utils/timeout.h"
 #include "utils/varlena.h"
 
+#include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
 
 #ifdef EXEC_BACKEND

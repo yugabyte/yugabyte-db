@@ -64,7 +64,7 @@
 #include <glog/logging.h>
 #include <boost/optional.hpp>
 #include <boost/thread/shared_mutex.hpp>
-#include "yb/common/flags.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
 #include "yb/common/roles_permissions.h"

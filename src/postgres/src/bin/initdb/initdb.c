@@ -66,12 +66,12 @@
 #include "common/file_utils.h"
 #include "common/restricted_token.h"
 #include "common/username.h"
+#include "common/pg_yb_common.h"
 #include "fe_utils/string_utils.h"
 #include "getaddrinfo.h"
 #include "getopt_long.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
-
 
 /* Ideally this would be in a .h file, but it hardly seems worth the trouble */
 extern const char *select_default_timezone(const char *share_path);
@@ -607,7 +607,8 @@ get_id(void)
 	const char *username;
 
 #ifndef WIN32
-	if (geteuid() == 0)			/* 0 is root's uid */
+	if (!YBShouldAllowRunningAsAnyUser() &&
+		geteuid() == 0)			/* 0 is root's uid */
 	{
 		fprintf(stderr,
 				_("%s: cannot be run as root\n"

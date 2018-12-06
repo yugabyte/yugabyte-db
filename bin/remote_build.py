@@ -163,7 +163,7 @@ def main():
     remote_commit = fetch_remote_commit(args)
     if remote_commit != commit:
         print("Remote commit mismatch, syncing")
-        remote_command = 'cd {0} && '.format(args.remote_path)
+        remote_command = 'cd {0} && '.format(shlex.quote(args.remote_path))
         remote_command += 'git checkout -- . && '
         remote_command += 'git clean -f . && '
         remote_command += 'git checkout master && '
@@ -172,7 +172,7 @@ def main():
         remote_communicate(args, remote_command)
         remote_commit = fetch_remote_commit(args)
         if remote_commit != commit:
-            sys.stderr.write("Failed to sync remote commit to: {0}, it still: {1}".format(
+            sys.stderr.write("Failed to sync remote commit to: {0}, it is still: {1}".format(
                 commit, remote_commit))
             sys.exit(1)
 
