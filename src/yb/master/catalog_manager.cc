@@ -853,12 +853,15 @@ void CatalogManager::LoadSysCatalogDataTask() {
   LOG(INFO) << "Loading table and tablet metadata into memory for term " << term;
   LOG_SLOW_EXECUTION(WARNING, 1000, LogPrefix() + "Loading metadata into memory") {
     Status status = VisitSysCatalog(term);
-    if (!status.ok() && (consensus->role() != RaftPeerPB::LEADER)) {
-      LOG(INFO) << "Error loading sys catalog; but that's OK as we are not the leader anymore: "
-                << status.ToString();
-      return;
+    if (!status.ok()) {
+      auto new_term = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE).current_term();
+      if (new_term != term) {
+        LOG(INFO) << "Error loading sys catalog; but that's OK as term was changed from " << term
+                  << " to " << new_term << ": " << status;
+        return;
+      }
+      LOG(FATAL) << "Failed to load sys catalog: " << status;
     }
-    CHECK_OK(status);
   }
 
   std::lock_guard<simple_spinlock> l(state_lock_);
