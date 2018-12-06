@@ -24,6 +24,8 @@
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/transaction_manager.h"
 
+#include "yb/consensus/consensus.h"
+
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -41,7 +43,7 @@
 
 #include "yb/util/random_util.h"
 
-using namespace std::literals; // NOLINT
+using namespace std::literals;
 
 using yb::tablet::GetTransactionTimeout;
 using yb::tablet::TabletPeer;
@@ -255,7 +257,7 @@ class QLTransactionTest : public KeyValueTableTest {
       auto peers = tablet_manager->GetTabletPeers();
       for (const auto& peer : peers) {
         if (peer->consensus()->GetLeaderStatus() !=
-                consensus::Consensus::LeaderStatus::NOT_LEADER &&
+                consensus::LeaderStatus::NOT_LEADER &&
             peer->tablet()->transaction_coordinator()) {
           result += peer->tablet()->transaction_coordinator()->test_count_transactions();
         }
@@ -1130,10 +1132,12 @@ TEST_F(QLTransactionTest, CorrectStatusRequestBatching) {
       while (!stop) {
         auto txn = CreateTransaction();
         session->SetTransaction(txn);
-        WriteRow(session, key, value + 1);
-        auto status = txn->CommitFuture().get();
-        if (status.ok()) {
-          ++value;
+        auto write_result = WriteRow(session, key, value + 1);
+        if (write_result.ok()) {
+          auto status = txn->CommitFuture().get();
+          if (status.ok()) {
+            ++value;
+          }
         }
       }
     });
@@ -1362,7 +1366,7 @@ TEST_F(QLTransactionTest, WaitRead) {
       auto session = CreateSession();
       int32_t value = 0;
       while (!stop) {
-        WriteRow(session, i, ++value);
+        ASSERT_OK(WriteRow(session, i, ++value));
       }
     });
   }
@@ -1435,7 +1439,7 @@ TEST_F(QLTransactionTest, InsertDeleteWithClusterRestart) {
   constexpr int kKeys = 100;
 
   for (int i = 0; i != kKeys; ++i) {
-    WriteRow(CreateSession(), i /* key */, i * 2 /* value */, WriteOpType::INSERT);
+    ASSERT_OK(WriteRow(CreateSession(), i /* key */, i * 2 /* value */, WriteOpType::INSERT));
   }
 
   auto txn = CreateTransaction();
@@ -1488,7 +1492,7 @@ TEST_F(QLTransactionTest, ChangeLeader) {
       for (const auto& peer : peers) {
         if (peer->consensus() &&
             peer->consensus()->GetLeaderStatus() !=
-                consensus::Consensus::LeaderStatus::NOT_LEADER &&
+                consensus::LeaderStatus::NOT_LEADER &&
             peer->tablet()->transaction_coordinator() &&
             peer->tablet()->transaction_coordinator()->test_count_transactions()) {
           consensus::LeaderStepDownRequestPB req;
@@ -1600,17 +1604,17 @@ TEST_F(QLTransactionTest, DelayedInit) {
   auto txn2 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr());
 
   auto write_session = CreateSession();
-  WriteRow(write_session, 0, 0);
+  ASSERT_OK(WriteRow(write_session, 0, 0));
 
   ConsistentReadPoint read_point(transaction_manager_->clock());
   read_point.SetCurrentReadTime();
 
-  WriteRow(write_session, 1, 1);
+  ASSERT_OK(WriteRow(write_session, 1, 1));
 
   ASSERT_OK(txn1->Init(IsolationLevel::SNAPSHOT_ISOLATION, read_point.GetReadTime()));
   ASSERT_OK(txn2->Init(IsolationLevel::SNAPSHOT_ISOLATION));
 
-  WriteRow(write_session, 2, 2);
+  ASSERT_OK(WriteRow(write_session, 2, 2));
 
   {
     auto read_session = CreateSession(txn1);

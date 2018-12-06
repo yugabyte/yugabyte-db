@@ -39,10 +39,8 @@
 #include <atomic>
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/metadata.pb.h"
-#include "yb/consensus/ref_counted_replicate.h"
 #include "yb/consensus/consensus_util.h"
 
 #include "yb/rpc/response_callback.h"

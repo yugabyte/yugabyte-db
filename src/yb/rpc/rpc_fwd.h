@@ -94,6 +94,8 @@ class ErrorStatusPB;
 
 typedef boost::asio::io_service IoService;
 
+typedef std::function<int(const std::string&, const std::string&)> Publisher;
+
 // SteadyTimePoint is something like MonoTime, but 3rd party libraries know it and don't know about
 // our private MonoTime.
 typedef std::chrono::steady_clock::time_point SteadyTimePoint;

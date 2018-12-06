@@ -76,7 +76,15 @@ struct RowKey {
 struct RowValue {
   int32_t c1;
   std::string c2;
+
+  std::string ToString() const {
+    return Format("{ c1: $0 c2: $1 }", c1, c2);
+  }
 };
+
+std::ostream& operator<<(std::ostream& out, const RowValue& value) {
+  return out << value.ToString();
+}
 
 bool operator==(const RowValue& lhs, const RowValue& rhs) {
   return lhs.c1 == rhs.c1 && lhs.c2 == rhs.c2;
@@ -1248,6 +1256,30 @@ TEST_F(QLDmlTest, ReadFollower) {
   }
 
   ASSERT_TRUE(missing_rows.empty()) << "Missing rows: " << yb::ToString(missing_rows);
+}
+
+TEST_F(QLDmlTest, DeletePartialRangeKey) {
+  auto session = NewSession();
+  RowKey row_key{1, "a", 2, "b"};
+
+  {
+    auto op = InsertRow(session, row_key, {3, "c"});
+    ASSERT_OK(session->Flush());
+    ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
+  }
+
+  {
+    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    auto* const req = op->mutable_request();
+    QLAddInt32HashValue(req, row_key.h1);
+    QLAddStringHashValue(req, row_key.h2);
+    QLAddInt32RangeValue(req, row_key.r1);
+    CHECK_OK(session->ApplyAndFlush(op));
+    EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
+  }
+
+  auto row = ReadRow(session, row_key);
+  ASSERT_TRUE(!row.ok() && row.status().IsNotFound()) << "Unexpected result: " << row;
 }
 
 }  // namespace client

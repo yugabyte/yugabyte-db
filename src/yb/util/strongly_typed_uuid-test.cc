@@ -11,9 +11,10 @@
 // under the License.
 //
 
-#include "yb/util/strongly_typed_uuid.h"
-
 #include <gtest/gtest.h>
+
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace util {
@@ -22,13 +23,13 @@ YB_STRONGLY_TYPED_UUID(TestUuid);
 
 TEST(TestStronglyTypedUuid, TestBasic) {
   // Assert that constant kUndefined.IsValid() is false and that undefined == undefined.
-  ASSERT_FALSE(TestUuid::kUndefined.IsValid());
-  ASSERT_TRUE(TestUuid::kUndefined == TestUuid::kUndefined);
-  ASSERT_EQ(TestUuid::kUndefined, TestUuid::kUndefined);
+  ASSERT_TRUE(TestUuid::Nil().IsNil());
+  ASSERT_TRUE(TestUuid::Nil() == TestUuid::Nil());
+  ASSERT_EQ(TestUuid::Nil(), TestUuid::Nil());
 
-  TestUuid strongly_typed_uuid_0 = TestUuid::GenerateRandomUuid();
+  TestUuid strongly_typed_uuid_0 = TestUuid::GenerateRandom();
   TestUuid strongly_typed_uuid_0_copy = strongly_typed_uuid_0;
-  TestUuid strongly_typed_uuid_1 = TestUuid::GenerateRandomUuid();
+  TestUuid strongly_typed_uuid_1 = TestUuid::GenerateRandom();
 
   // Assert two strongly typed uuids created from the same uuid are equal.
   ASSERT_TRUE(strongly_typed_uuid_0 == strongly_typed_uuid_0_copy);
@@ -40,27 +41,27 @@ TEST(TestStronglyTypedUuid, TestBasic) {
 
   // Assert that GenerateUuidFromString and ToString are inverses.
   auto strong_typed_uuid_0_from_string =
-      TestUuid::GenerateUuidFromString(strongly_typed_uuid_0.ToString());
+      TestUuid::FromString(strongly_typed_uuid_0.ToString());
   ASSERT_TRUE(strong_typed_uuid_0_from_string.ok());
   ASSERT_EQ(strongly_typed_uuid_0, *strong_typed_uuid_0_from_string);
 
   // Assert that generating a uuid from "" is undefined.
-  auto uuid_from_string_empty = TestUuid::GenerateUuidFromString("");
-  ASSERT_TRUE(uuid_from_string_empty.ok());
-  ASSERT_FALSE((*uuid_from_string_empty).IsValid());
+  auto uuid_from_string_empty = ASSERT_RESULT(TestUuid::FromString(""));
+  ASSERT_TRUE(uuid_from_string_empty.IsNil());
 
   // Assert that uuid from invalid string returns result not okay.
-  auto uuid_from_string_invalid = TestUuid::GenerateUuidFromString("invalid_string");
+  auto uuid_from_string_invalid = TestUuid::FromString("invalid_string");
+  LOG(INFO) << "uuid_from_string_invalid: " << uuid_from_string_invalid;
   ASSERT_FALSE(uuid_from_string_invalid.ok());
 
   // Assert that ToString of undefined uuid returns "<Uuid undefined>".
-  ASSERT_EQ(TestUuid::kUndefined.ToString(), "<UndefinedTestUuid>");
+  ASSERT_EQ(TestUuid::Nil().ToString(), "00000000-0000-0000-0000-000000000000");
 
   // Assert that * operator and constructor are inverses.
   ASSERT_EQ(strongly_typed_uuid_0, TestUuid(*strongly_typed_uuid_0));
 
   // Assert that a defined uuid is valid.
-  ASSERT_TRUE(strongly_typed_uuid_0.IsValid());
+  ASSERT_FALSE(strongly_typed_uuid_0.IsNil());
 }
 
 } // namespace util

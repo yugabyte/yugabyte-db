@@ -175,11 +175,16 @@ TEST_F(MultiThreadedLogTest, TestAppends) {
   SegmentSequence segments;
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
+  std::vector<int64_t> ids;
   for (const SegmentSequence::value_type& entry : segments) {
-    ASSERT_OK(entry->ReadEntries(&entries_));
+    auto read_entries = entry->ReadEntries();
+    ASSERT_OK(read_entries.status);
+    for (const auto& entry : read_entries.entries) {
+      if (entry->type() == REPLICATE) {
+        ids.push_back(entry->replicate().id().index());
+      }
+    }
   }
-  vector<uint32_t> ids;
-  EntriesToIdList(&ids);
   DVLOG(1) << "Wrote total of " << current_index_ - start_current_id << " ops";
   ASSERT_EQ(current_index_ - start_current_id, ids.size());
   ASSERT_TRUE(std::is_sorted(ids.begin(), ids.end()));

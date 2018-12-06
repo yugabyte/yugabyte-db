@@ -63,6 +63,10 @@ message LogEntryPB {
 message LogEntryBatchPB {
   repeated LogEntryPB entry = 1;
   optional OpIdPB committed_op_id = 2;
+  // Time when this batch was appended, this time is monotonically increase,
+  // and restart safe. I.e. first batch after restart will have time greater than or equal to
+  // time of last batch added before restart.
+  optional uint64 mono_time = 3;
 }
 
 // A header for a log segment.

@@ -138,7 +138,12 @@ struct ExternalMiniClusterOptions {
 
   // Default timeout for operations involving RPC's, when none provided in the API.
   // Default : 10sec
-  MonoDelta timeout_ = MonoDelta::FromSeconds(10);
+  MonoDelta timeout = MonoDelta::FromSeconds(10);
+
+  static constexpr bool kDefaultStartPgsqlProxy = false;
+  static constexpr bool kDefaultStartCqlProxy = true;
+
+  bool start_pgsql_proxy = kDefaultStartPgsqlProxy;
 
   CHECKED_STATUS RemovePort(const uint16_t port);
   CHECKED_STATUS AddPort(const uint16_t port);
@@ -175,7 +180,9 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Add a new TS to the cluster. The new TS is started.  Requires that the master is already
   // running.
-  CHECKED_STATUS AddTabletServer();
+  CHECKED_STATUS AddTabletServer(
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      bool start_pgsql_proxy = ExternalMiniClusterOptions::kDefaultStartPgsqlProxy);
 
   // Shuts down the whole cluster or part of it, depending on the selected 'mode'.  Currently, this
   // uses SIGKILL on each daemon for a non-graceful shutdown.
@@ -209,7 +216,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Send a ping request to the rpc port of the master. Return OK() only if it is reachable.
   CHECKED_STATUS PingMaster(ExternalMaster* master) const;
 
-    // Starts a new master and returns the handle of the new master object on success.  Not thread
+  // Starts a new master and returns the handle of the new master object on success.  Not thread
   // safe for now. We could move this to a static function outside External Mini Cluster, but
   // keeping it here for now as it is currently used only in conjunction with EMC.  If there are any
   // errors and if a new master could not be spawned, it will crash internally.
@@ -349,11 +356,13 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Timeout to be used for rpc operations.
   MonoDelta timeout() {
-    return opts_.timeout_;
+    return opts_.timeout;
   }
 
   // Start a leader election on this master.
   CHECKED_STATUS StartElection(ExternalMaster* master);
+
+  bool running() const { return running_; }
 
  protected:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
@@ -422,6 +431,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
   std::vector<std::unique_ptr<FileLock>> free_port_file_locks_;
+  std::atomic<bool> running_{false};
 
  private:
   DISALLOW_COPY_AND_ASSIGN(ExternalMiniCluster);
@@ -616,17 +626,25 @@ class ExternalTabletServer : public ExternalDaemon {
       const std::vector<HostPort>& master_addrs,
       const std::vector<std::string>& extra_flags);
 
-  CHECKED_STATUS Start(bool start_cql_proxy = true);
+  CHECKED_STATUS Start(
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      bool start_pgsql_proxy = ExternalMiniClusterOptions::kDefaultStartPgsqlProxy);
 
   // Restarts the daemon. Requires that it has previously been shutdown.
-  CHECKED_STATUS Restart(bool start_cql_proxy = true);
+  CHECKED_STATUS Restart(
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      bool start_pgsql_proxy = ExternalMiniClusterOptions::kDefaultStartPgsqlProxy);
 
-  // Postgres addresses.
+  // IP addresses to bind to.
   const std::string& bind_host() const {
     return bind_host_;
   }
+
   uint16_t pgsql_rpc_port() const {
     return pgsql_rpc_port_;
+  }
+  uint16_t redis_rpc_port() const {
+    return redis_rpc_port_;
   }
 
   // CQL addresses.
@@ -654,6 +672,7 @@ class ExternalTabletServer : public ExternalDaemon {
   const uint16_t cql_rpc_port_;
   const uint16_t cql_http_port_;
   bool start_cql_proxy_ = true;
+  bool start_pgsql_proxy_ = false;
   std::unique_ptr<server::ServerStatusPB> cqlserver_status_;
 
   friend class RefCountedThreadSafe<ExternalTabletServer>;

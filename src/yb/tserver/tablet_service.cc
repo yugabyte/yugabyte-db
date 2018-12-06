@@ -140,6 +140,9 @@ DEFINE_test_flag(bool, simulate_time_out_failures, false, "If true, we will rand
                  "as failed to simulate time out failures. The periodic refresh of the lookup "
                  "cache will eventually mark them as available");
 
+DEFINE_test_flag(double, respond_write_failed_probability, 0.0,
+                 "Probability to respond that write request is failed");
+
 DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
@@ -410,6 +413,13 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
       std::move(operation_state)), tablet.leader_term);
 }
 
+#define VERIFY_RESULT_OR_RETURN(expr) \
+  __extension__ ({ \
+    auto&& __result = (expr); \
+    if (!__result.ok()) { return; } \
+    std::move(*__result); \
+  })
+
 void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
                                           UpdateTransactionResponsePB* resp,
                                           rpc::RpcContext context) {
@@ -424,8 +434,8 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
     tablet = LookupLeaderTabletOrRespond(
         server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
   } else {
-    LookupTabletPeerOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context,
-        &tablet.peer);
+    tablet.peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+        server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
     tablet.leader_term = OpId::kUnknownTerm;
   }
   if (!tablet || !CheckMemoryPressure(tablet.peer->tablet(), resp, &context)) {
@@ -452,14 +462,8 @@ void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB
 
   UpdateClock(*req, server_->Clock());
 
-  tablet::TabletPeerPtr tablet_peer;
-  if (!LookupTabletPeerOrRespond(server_->tablet_peer_lookup(),
-                                 req->tablet_id(),
-                                 resp,
-                                 &context,
-                                 &tablet_peer)) {
-    return;
-  }
+  auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
 
   auto status = CheckPeerIsLeaderAndReady(*tablet_peer);
   if (!status.ok()) {
@@ -660,11 +664,8 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   for (const TabletId& id : req->tablet_ids()) {
     resp->set_failed_tablet_id(id);
 
-    TabletPeerPtr tablet_peer;
-    if (!LookupTabletPeerOrRespond(server_->tablet_peer_lookup(), id, resp, &context,
-                                   &tablet_peer)) {
-      return;
-    }
+    auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+        server_->tablet_peer_lookup(), id, resp, &context));
 
     RETURN_UNKNOWN_ERROR_IF_NOT_OK(
         tablet_peer->tablet()->Flush(tablet::FlushMode::kAsync), resp, &context);
@@ -734,9 +735,15 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   auto operation_state = std::make_unique<WriteOperationState>(tablet.peer->tablet(), req, resp);
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(context));
-  operation_state->set_completion_callback(
-      std::make_unique<WriteOperationCompletionCallback>(
-          context_ptr, resp, operation_state.get(), server_->Clock(), req->include_trace()));
+  if (RandomActWithProbability(GetAtomicFlag(&FLAGS_respond_write_failed_probability))) {
+    operation_state->set_completion_callback(nullptr);
+    SetupErrorAndRespond(resp->mutable_error(), STATUS(LeaderHasNoLease, "TEST: Random failure"),
+                         TabletServerErrorPB::UNKNOWN_ERROR, context_ptr.get());
+  } else {
+    operation_state->set_completion_callback(
+        std::make_unique<WriteOperationCompletionCallback>(
+            context_ptr, resp, operation_state.get(), server_->Clock(), req->include_trace()));
+  }
   tablet.peer->WriteAsync(
       std::move(operation_state), tablet.leader_term, context_ptr->GetClientDeadline());
 }
@@ -777,13 +784,16 @@ bool TabletServiceImpl::GetTabletOrRespond(const ReadRequestPB* req,
 template <class Req, class Resp>
 bool TabletServiceImpl::DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::RpcContext* context,
                                              std::shared_ptr<tablet::AbstractTablet>* tablet) {
-  TabletPeerPtr tablet_peer;
-  if (!LookupTabletPeerOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, context,
-                                 &tablet_peer)) {
+  auto tablet_peer_result = LookupTabletPeerOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, context);
+
+  if (!tablet_peer_result.ok()) {
     return false;
   }
 
-  Status s = CheckPeerIsReady(*tablet_peer.get());
+  auto tablet_peer = std::move(*tablet_peer_result);
+
+  Status s = CheckPeerIsReady(*tablet_peer);
   if (PREDICT_FALSE(!s.ok())) {
     SetupErrorAndRespond(resp->mutable_error(), s, context);
     return false;
@@ -801,7 +811,7 @@ bool TabletServiceImpl::DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::Rp
                     "consistency level is invalid: YBConsistencyLevel::STRONG";
     }
 
-    s = CheckPeerIsLeader(*tablet_peer.get());
+    s = CheckPeerIsLeader(*tablet_peer);
     if (PREDICT_FALSE(!s.ok())) {
       SetupErrorAndRespond(resp->mutable_error(), s, context);
       return false;
@@ -1136,10 +1146,8 @@ void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
   if (!CheckUuidMatchOrRespond(tablet_manager_, "UpdateConsensus", req, resp, &context)) {
     return;
   }
-  TabletPeerPtr tablet_peer;
-  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, &context, &tablet_peer)) {
-    return;
-  }
+  auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+      tablet_manager_, req->tablet_id(), resp, &context));
 
   // Submit the update directly to the TabletPeer's Consensus instance.
   shared_ptr<Consensus> consensus;
@@ -1170,10 +1178,8 @@ void ConsensusServiceImpl::RequestConsensusVote(const VoteRequestPB* req,
   if (!CheckUuidMatchOrRespond(tablet_manager_, "RequestConsensusVote", req, resp, &context)) {
     return;
   }
-  TabletPeerPtr tablet_peer;
-  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, &context, &tablet_peer)) {
-    return;
-  }
+  auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+      tablet_manager_, req->tablet_id(), resp, &context));
 
   // Submit the vote request directly to the consensus instance.
   shared_ptr<Consensus> consensus;
@@ -1195,11 +1201,8 @@ void ConsensusServiceImpl::ChangeConfig(const ChangeConfigRequestPB* req,
       !CheckUuidMatchOrRespond(tablet_manager_, "ChangeConfig", req, resp, &context)) {
     return;
   }
-  TabletPeerPtr tablet_peer;
-  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, &context,
-                                 &tablet_peer)) {
-    return;
-  }
+  auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+      tablet_manager_, req->tablet_id(), resp, &context));
 
   shared_ptr<Consensus> consensus;
   if (!GetConsensusOrRespond(tablet_peer, resp, &context, &consensus)) return;
@@ -1241,10 +1244,8 @@ class RpcScope {
     if (!CheckUuidMatchOrRespond(tablet_manager, method_name, req, resp, context)) {
       return;
     }
-    TabletPeerPtr tablet_peer;
-    if (!LookupTabletPeerOrRespond(tablet_manager, req->tablet_id(), resp, context, &tablet_peer)) {
-      return;
-    }
+    auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+        tablet_manager, req->tablet_id(), resp, context));
 
     if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus_)) {
       return;
@@ -1339,10 +1340,8 @@ void ConsensusServiceImpl::GetLastOpId(const consensus::GetLastOpIdRequestPB *re
   if (!CheckUuidMatchOrRespond(tablet_manager_, "GetLastOpId", req, resp, &context)) {
     return;
   }
-  TabletPeerPtr tablet_peer;
-  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, &context, &tablet_peer)) {
-    return;
-  }
+  auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+      tablet_manager_, req->tablet_id(), resp, &context));
 
   if (tablet_peer->state() != tablet::RUNNING) {
     SetupErrorAndRespond(resp->mutable_error(),
@@ -1409,6 +1408,13 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
 void TabletServiceImpl::NoOp(const NoOpRequestPB *req,
                              NoOpResponsePB *resp,
                              rpc::RpcContext context) {
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::Publish(
+    const PublishRequestPB* req, PublishResponsePB* resp, rpc::RpcContext context) {
+  rpc::Publisher* publisher = server_->GetPublisher();
+  resp->set_num_clients_forwarded_to(publisher ? (*publisher)(req->channel(), req->message()) : 0);
   context.RespondSuccess();
 }
 
@@ -1511,11 +1517,9 @@ void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
 void TabletServiceImpl::ImportData(const ImportDataRequestPB* req,
                                    ImportDataResponsePB* resp,
                                    rpc::RpcContext context) {
-  tablet::TabletPeerPtr peer;
-  if (!LookupTabletPeerOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context,
-                                 &peer)) {
-    return;
-  }
+  auto peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
+
   auto status = peer->tablet()->ImportData(req->source_dir());
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(),

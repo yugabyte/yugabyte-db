@@ -40,7 +40,9 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/util/auto_release_pool.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
@@ -103,11 +105,6 @@ class Operation {
   // transaction type, but usually this is the method where data-structures are changed.
   virtual CHECKED_STATUS Apply(int64_t leader_term) = 0;
 
-  // Executed after Apply() but before the commit is submitted to consensus.  Some transactions use
-  // this to perform pre-commit actions (e.g. write transactions perform early lock release on this
-  // hook).  Default implementation does nothing.
-  virtual void PreCommit() {}
-
   // Executed after the transaction has been applied and the commit message has been appended to the
   // log (though it might not be durable yet), or if the transaction was aborted.  Implementations
   // are expected to perform cleanup on this method, the driver will reply to the client after this
@@ -142,11 +139,7 @@ class OperationState {
 
   // Sets the ConsensusRound for this transaction, if this transaction is being executed through the
   // consensus system.
-  void set_consensus_round(const scoped_refptr<consensus::ConsensusRound>& consensus_round) {
-    consensus_round_ = consensus_round;
-    op_id_ = consensus_round_->id();
-    UpdateRequestFromConsensusRound();
-  }
+  void set_consensus_round(const scoped_refptr<consensus::ConsensusRound>& consensus_round);
 
   // Each subclass should provide a way to update the internal reference to the Message* request, so
   // we can avoid copying the request object all the time.

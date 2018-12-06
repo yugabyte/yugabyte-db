@@ -685,7 +685,7 @@ class YBTransaction::Impl final {
   }
 
   void SetError(const Status& status, std::lock_guard<std::mutex>* lock = nullptr) {
-    LOG_WITH_PREFIX(INFO) << "Failure: " << status;
+    VLOG_WITH_PREFIX(1) << "Failed: " << status;
     if (!lock) {
       std::lock_guard<std::mutex> new_lock(mutex_);
       SetError(status, &new_lock);

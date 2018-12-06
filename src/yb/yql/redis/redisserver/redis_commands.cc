@@ -31,6 +31,7 @@
 
 #include "yb/util/crypt.h"
 #include "yb/util/metrics.h"
+#include "yb/util/redis_util.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
 
@@ -122,8 +123,12 @@ namespace redisserver {
     ((ping, Ping, -1, LOCAL)) \
     ((command, Command, -1, LOCAL)) \
     ((monitor, Monitor, 1, LOCAL)) \
+    ((pubsub, PubSub, -2, LOCAL)) \
     ((publish, Publish, 3, LOCAL)) \
     ((subscribe, Subscribe, -2, LOCAL)) \
+    ((unsubscribe, Unsubscribe, -1, LOCAL)) \
+    ((psubscribe, PSubscribe, -2, LOCAL)) \
+    ((punsubscribe, PUnsubscribe, -1, LOCAL)) \
     ((quit, Quit, 1, LOCAL)) \
     ((flushdb, FlushDB, 1, LOCAL)) \
     ((flushall, FlushAll, 1, LOCAL)) \
@@ -389,56 +394,138 @@ void HandleMonitor(LocalCommandData data) {
   data.Respond();
 
   // Add to the appenders after the call has been handled (i.e. reponded with "OK").
-  auto conn = data.call()->connection();
+  auto conn = data.call()->connection().get();
   data.context()->service_data()->AppendToMonitors(conn);
+}
+
+void HandlePubSub(LocalCommandData data) {
+  RedisResponsePB response;
+  if (boost::iequals(data.arg(1).ToBuffer(), "CHANNELS") && data.arg_size() <= 3) {
+    auto all = data.context()->service_data()->GetAllSubscriptions(AsPattern::kFalse);
+    unordered_set<string> matched;
+    if (data.arg_size() > 2) {
+      const string& pattern = data.arg(2).ToBuffer();
+      for (auto& channel : all) {
+        if (RedisUtil::RedisPatternMatch(pattern, channel, /* ignore case */ false)) {
+          matched.insert(channel);
+        }
+      }
+    } else {
+      matched = std::move(all);
+    }
+
+    // Build and send out an array response of all the matching channels.
+    auto array_response = response.mutable_array_response();
+    for (auto& channel : matched) {
+      AddElements(redisserver::EncodeAsBulkString(channel), array_response);
+    }
+    array_response->set_encoded(true);
+  } else if (boost::iequals(data.arg(1).ToBuffer(), "NUMPAT") && data.arg_size() == 2) {
+    auto names = data.context()->service_data()->GetAllSubscriptions(AsPattern::kTrue);
+    response.set_code(RedisResponsePB::OK);
+    response.set_int_response(names.size());
+  } else if (boost::iequals(data.arg(1).ToBuffer(), "NUMSUB")) {
+    auto array_response = response.mutable_array_response();
+    for (int idx = 2; idx < data.arg_size(); idx++) {
+      const string& channel = data.arg(idx).ToBuffer();
+      int subs = data.context()->service_data()->NumSubscribers(AsPattern::kFalse, channel);
+      AddElements(redisserver::EncodeAsBulkString(channel), array_response);
+      AddElements(redisserver::EncodeAsInteger(subs), array_response);
+    }
+    array_response->set_encoded(true);
+  } else {
+    response.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+    response.set_error_message("ERR: Wrong number of arguments.");
+  }
+  data.Respond(&response);
 }
 
 void HandlePublish(LocalCommandData data) {
   const string& channel = data.arg(1).ToBuffer();
   const string& published_message = data.arg(2).ToBuffer();
 
-  RedisResponsePB response;
-  response.set_code(RedisResponsePB::OK);
-
-  vector<string> parts;
-  parts.push_back(redisserver::EncodeAsBulkString("message").ToBuffer());
-  parts.push_back(redisserver::EncodeAsBulkString(channel).ToBuffer());
-  parts.push_back(redisserver::EncodeAsBulkString(published_message).ToBuffer());
-  string encoded_msg = redisserver::EncodeAsArrayOfEncodedElements(parts);
-  response.set_int_response(data.context()->service_data()->PublishToChannel(channel, encoded_msg));
-  data.Respond(&response);
+  data.context()->service_data()->ForwardToInterestedProxies(
+      channel, published_message, [data = std::move(data)](int val) {
+        RedisResponsePB response;
+        response.set_code(RedisResponsePB::OK);
+        response.set_int_response(val);
+        data.Respond(&response);
+      });
 }
 
-void HandleSubscribe(LocalCommandData data) {
+void HandleSubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
   RedisResponsePB response;
   response.set_code(RedisResponsePB::OK);
 
   // Add to the appenders after the call has been handled (i.e. reponded with "OK").
-  auto conn = data.call()->connection();
+  vector<string> channels;
+  vector<int> subs;
   for (int idx = 1; idx < data.arg_size(); idx++) {
-    string channel = data.arg(idx).ToBuffer();
+    channels.emplace_back(data.arg(idx).ToBuffer());
+  }
+  auto conn = data.call()->connection().get();
+  data.context()->service_data()->AppendToSubscribers(as_pattern, channels, conn, &subs);
+  string encoded_response;
+  for (int idx = 0; idx < channels.size(); idx++) {
+    encoded_response += redisserver::EncodeAsArrayOfEncodedElements(vector<string>{
+        redisserver::EncodeAsBulkString(as_pattern ? "psubscribe" : "subscribe").ToBuffer(),
+        redisserver::EncodeAsBulkString(channels[idx]).ToBuffer(),
+        redisserver::EncodeAsInteger(subs[idx]).ToBuffer()});
+  }
 
-    data.context()->service_data()->AppendToChannelSubscribers(channel, conn);
+  VLOG(3) << "In response to [p]Subscribe queueing " << data.arg_size() - 1
+          << " messages : " << encoded_response;
+  response.set_encoded_response(encoded_response);
+  data.Respond(&response);
+}
 
-    vector<string> parts;
-    parts.push_back(redisserver::EncodeAsBulkString("subscribe").ToBuffer());
-    parts.push_back(redisserver::EncodeAsBulkString(channel).ToBuffer());
-    // TODO: Should be returning the number of channels that the client is subscribed to.
-    parts.push_back(redisserver::EncodeAsInteger(0).ToBuffer());
-    if (idx < data.arg_size() - 1) {
-      string encoded_msg = redisserver::EncodeAsArrayOfEncodedElements(parts);
-      conn->QueueOutboundData(
-          std::make_shared<yb::rpc::StringOutboundData>(encoded_msg, "Subscribe Response"));
-    } else {
-      auto array_response = response.mutable_array_response();
-      array_response->set_encoded(true);
-      for (auto& part : parts) {
-        array_response->add_elements(part);
-      }
+void HandleSubscribe(LocalCommandData data) {
+  HandleSubscribeLikeCommand(data, AsPattern::kFalse);
+}
+
+void HandlePSubscribe(LocalCommandData data) {
+  HandleSubscribeLikeCommand(data, AsPattern::kTrue);
+}
+
+void HandleUnsubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
+  RedisResponsePB response;
+  response.set_code(RedisResponsePB::OK);
+
+  // Add to the appenders after the call has been handled (i.e. reponded with "OK").
+  auto conn = data.call()->connection().get();
+  vector<string> channels;
+  if (data.arg_size() > 1) {
+    for (int idx = 1; idx < data.arg_size(); idx++) {
+      channels.push_back(data.arg(idx).ToBuffer());
+    }
+  } else {
+    for (auto name : data.context()->service_data()->GetSubscriptions(as_pattern, conn)) {
+      channels.push_back(name);
     }
   }
 
+  vector<int> subs;
+  data.context()->service_data()->RemoveFromSubscribers(as_pattern, channels, conn, &subs);
+  string encoded_response;
+  for (int idx = 0; idx < channels.size(); idx++) {
+    encoded_response += redisserver::EncodeAsArrayOfEncodedElements(vector<string>{
+        redisserver::EncodeAsBulkString(as_pattern ? "punsubscribe" : "unsubscribe").ToBuffer(),
+        redisserver::EncodeAsBulkString(channels[idx]).ToBuffer(),
+        redisserver::EncodeAsInteger(subs[idx]).ToBuffer()});
+  }
+
+  VLOG(3) << "In response to [p]Unsubscribe queueing " << channels.size()
+          << " messages : " << encoded_response;
+  response.set_encoded_response(encoded_response);
   data.Respond(&response);
+}
+
+void HandleUnsubscribe(LocalCommandData data) {
+  HandleUnsubscribeLikeCommand(data, AsPattern::kFalse);
+}
+
+void HandlePUnsubscribe(LocalCommandData data) {
+  HandleUnsubscribeLikeCommand(data, AsPattern::kTrue);
 }
 
 void HandleRole(LocalCommandData data) {

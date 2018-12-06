@@ -494,10 +494,15 @@ Status Log::AsyncAppend(LogEntryBatch* entry_batch, const StatusCallback& callba
 }
 
 Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
+                                  RestartSafeCoarseTimePoint batch_mono_time,
                                   const StatusCallback& callback) {
   auto batch = CreateBatchFromAllocatedOperations(msgs);
   if (committed_op_id) {
     committed_op_id.ToPB(batch.mutable_committed_op_id());
+  }
+  // Set batch mono time if it was specified.
+  if (batch_mono_time != RestartSafeCoarseTimePoint()) {
+    batch.set_mono_time(batch_mono_time.ToUInt64());
   }
 
   LogEntryBatch* reserved_entry_batch;
@@ -557,10 +562,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
     // updates committed op id. So entry_batch_bytes will be non zero, but entry_batch->count()
     // will be zero.
     if (entry_batch->count()) {
-      auto new_op_id = yb::OpId::FromPB(entry_batch->MaxReplicateOpId());
-      std::lock_guard<std::mutex> write_lock(last_entry_op_id_mutex_);
-      last_entry_op_id_.store(new_op_id, std::memory_order_release);
-      last_entry_op_id_cond_.notify_all();
+      last_appended_entry_op_id_ = yb::OpId::FromPB(entry_batch->MaxReplicateOpId());
 
       // We don't update the last segment offset here anymore. This is done on the Sync() method to
       // guarantee that we only try to read what we have persisted in disk.
@@ -678,6 +680,12 @@ Status Log::Sync() {
   // Update the reader on how far it can read the active segment.
   reader_->UpdateLastSegmentOffset(active_segment_->written_offset());
 
+  {
+    std::lock_guard<std::mutex> write_lock(last_synced_entry_op_id_mutex_);
+    last_synced_entry_op_id_.store(last_appended_entry_op_id_, std::memory_order_release);
+    last_synced_entry_op_id_cond_.notify_all();
+  }
+
   return Status::OK();
 }
 
@@ -751,7 +759,7 @@ Status Log::WaitUntilAllFlushed() {
 }
 
 yb::OpId Log::GetLatestEntryOpId() const {
-  return last_entry_op_id_.load(std::memory_order_acquire);
+  return last_synced_entry_op_id_.load(std::memory_order_acquire);
 }
 
 yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed) {
@@ -759,14 +767,14 @@ yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed) {
     return min_allowed;
   }
 
-  auto result = last_entry_op_id_.load(std::memory_order_acquire);
+  auto result = last_synced_entry_op_id_.load(std::memory_order_acquire);
 
   if (result.index < min_allowed.index || result.term < min_allowed.term) {
     auto start = CoarseMonoClock::Now();
-    std::unique_lock<std::mutex> lock(last_entry_op_id_mutex_);
+    std::unique_lock<std::mutex> lock(last_synced_entry_op_id_mutex_);
     for (;;) {
-      if (last_entry_op_id_cond_.wait_for(lock, 15s, [this, min_allowed, &result] {
-        result = last_entry_op_id_.load(std::memory_order_acquire);
+      if (last_synced_entry_op_id_cond_.wait_for(lock, 15s, [this, min_allowed, &result] {
+        result = last_synced_entry_op_id_.load(std::memory_order_acquire);
         return result.index >= min_allowed.index && result.term >= min_allowed.term;
       })) {
         break;

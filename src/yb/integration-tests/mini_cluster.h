@@ -62,6 +62,10 @@ namespace server {
 class SkewedClockDeltaChanger;
 }
 
+namespace tablet {
+class TabletPeer;
+}
+
 namespace tserver {
 class MiniTabletServer;
 }
@@ -164,6 +168,8 @@ class MiniCluster : public MiniClusterBase {
 
   std::string GetTabletServerFsRoot(int idx);
 
+  std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(int idx);
+
   // Wait for the given tablet to have 'expected_count' replicas
   // reported on the master. Returns the locations in '*locations'.
   // Requires that the master has started;
@@ -209,8 +215,6 @@ class MiniCluster : public MiniClusterBase {
   // {master,tserver}_{rpc,web}_ports_ vectors. Values of 0 for the number of masters / tservers
   // mean we pick the maximum number of masters/tservers that we already know we'll need.
   void EnsurePortsAllocated(int new_num_masters = 0, int num_tservers = 0);
-
-  std::atomic<bool> running_ { false };
 
   Env* const env_ = nullptr;
   const std::string fs_root_;

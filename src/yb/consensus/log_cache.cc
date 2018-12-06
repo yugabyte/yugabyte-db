@@ -43,7 +43,6 @@
 
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
-#include "yb/consensus/ref_counted_replicate.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
@@ -202,6 +201,7 @@ Result<LogCache::PrepareAppendResult> LogCache::PrepareAppendOperations(const Re
 }
 
 Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
+                                  RestartSafeCoarseTimePoint batch_mono_time,
                                   const StatusCallback& callback) {
   PrepareAppendResult prepare_result;
   if (!msgs.empty()) {
@@ -211,7 +211,7 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& com
   }
 
   Status log_status = log_->AsyncAppendReplicates(
-    msgs, committed_op_id,
+    msgs, committed_op_id, batch_mono_time,
     Bind(&LogCache::LogCallback, Unretained(this), prepare_result.last_idx_in_batch,
          prepare_result.borrowed_memory, callback));
 

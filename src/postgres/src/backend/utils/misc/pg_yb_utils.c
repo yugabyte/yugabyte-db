@@ -358,7 +358,7 @@ void
 YBReportIfYugaByteEnabled()
 {
 	if (YBIsEnabledInPostgresEnvVar()) {
-		ereport(LOG, (errmsg("YugaByte is ENABLED")));
+		ereport(LOG, (errmsg("YugaByte is ENABLED in PostgreSQL")));
 	} else {
 		ereport(LOG, (errmsg("YugaByte is NOT ENABLED -- "
 							"this is a vanilla PostgreSQL server!")));

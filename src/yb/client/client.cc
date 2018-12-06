@@ -104,6 +104,8 @@ using yb::master::DeleteNamespaceRequestPB;
 using yb::master::DeleteNamespaceResponsePB;
 using yb::master::ListNamespacesRequestPB;
 using yb::master::ListNamespacesResponsePB;
+using yb::master::ReservePgsqlOidsRequestPB;
+using yb::master::ReservePgsqlOidsResponsePB;
 using yb::master::CreateUDTypeRequestPB;
 using yb::master::CreateUDTypeResponsePB;
 using yb::master::AlterRoleRequestPB;
@@ -425,7 +427,7 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   return Status::OK();
 }
 
-YBClient::YBClient() : data_(new YBClient::Data()), client_id_(ObjectIdGenerator().Next()) {
+YBClient::YBClient() : data_(new YBClient::Data()) {
   yb::InitCommonFlags();
 }
 
@@ -436,7 +438,6 @@ YBClient::~YBClient() {
   if (data_->cb_threadpool_) {
     data_->cb_threadpool_->Shutdown();
   }
-  delete data_;
 }
 
 YBTableCreator* YBClient::NewTableCreator() {
@@ -515,7 +516,9 @@ Status YBClient::GetTableSchema(const YBTableName& table_name,
 Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const YQLDatabase database_type,
                                  const std::string& creator_role_name,
-                                 const boost::optional<PgOid> pg_database_oid) {
+                                 const std::string& namespace_id,
+                                 const std::string& source_namespace_id,
+                                 const boost::optional<uint32_t>& next_pg_oid) {
   CreateNamespaceRequestPB req;
   CreateNamespaceResponsePB resp;
   req.set_name(namespace_name);
@@ -525,8 +528,14 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
   if (database_type != YQL_DATABASE_UNDEFINED) {
     req.set_database_type(database_type);
   }
-  if (pg_database_oid) {
-    req.set_pg_database_oid(*pg_database_oid);
+  if (!namespace_id.empty()) {
+    req.set_namespace_id(namespace_id);
+  }
+  if (!source_namespace_id.empty()) {
+    req.set_source_namespace_id(source_namespace_id);
+  }
+  if (next_pg_oid) {
+    req.set_next_pg_oid(*next_pg_oid);
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateNamespace);
   return Status::OK();
@@ -564,6 +573,20 @@ Status YBClient::ListNamespaces(YQLDatabase database_type, std::vector<std::stri
   for (auto ns : resp.namespaces()) {
     namespaces->push_back(ns.name());
   }
+  return Status::OK();
+}
+
+Status YBClient::ReservePgsqlOids(const std::string& namespace_id,
+                                  const uint32_t next_oid, const uint32_t count,
+                                  uint32_t* begin_oid, uint32_t* end_oid) {
+  ReservePgsqlOidsRequestPB req;
+  ReservePgsqlOidsResponsePB resp;
+  req.set_namespace_id(namespace_id);
+  req.set_next_oid(next_oid);
+  req.set_count(count);
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ReservePgsqlOids);
+  *begin_oid = resp.begin_oid();
+  *end_oid = resp.end_oid();
   return Status::OK();
 }
 
@@ -936,6 +959,31 @@ const std::string& YBClient::proxy_uuid() const {
   return data_->uuid_;
 }
 
+const ClientId& YBClient::id() const {
+  return data_->id_;
+}
+
+std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinRunningRequestId(
+    const TabletId& tablet_id) {
+  std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
+  auto& tablet = data_->tablet_requests_[tablet_id];
+  auto id = tablet.request_id_seq++;
+  tablet.running_requests.insert(id);
+  return std::make_pair(id, *tablet.running_requests.begin());
+}
+
+void YBClient::RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id) {
+  std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
+  auto& tablet = data_->tablet_requests_[tablet_id];
+  auto it = tablet.running_requests.find(request_id);
+  if (it != tablet.running_requests.end()) {
+    tablet.running_requests.erase(it);
+  } else {
+    LOG(DFATAL) << "RequestFinished called for an unknown request: "
+                << tablet_id << ", " << request_id;
+  }
+}
+
 void YBClient::LookupTabletByKey(const YBTable* table,
                                  const std::string& partition_key,
                                  const MonoTime& deadline,
@@ -1306,18 +1354,18 @@ YBTableCreator& YBTableCreator::creator_role_name(const RoleName& creator_role_n
   return *this;
 }
 
-YBTableCreator& YBTableCreator::pg_schema_oid(const PgOid schema_oid) {
-  data_->pg_schema_oid_ = schema_oid;
-  return *this;
-}
-
-YBTableCreator& YBTableCreator::pg_table_oid(const PgOid table_oid) {
-  data_->pg_table_oid_ = table_oid;
+YBTableCreator& YBTableCreator::table_id(const std::string& table_id) {
+  data_->table_id_ = table_id;
   return *this;
 }
 
 YBTableCreator& YBTableCreator::is_pg_catalog_table() {
   data_->is_pg_catalog_table_ = true;
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::is_pg_shared_table() {
+  data_->is_pg_shared_table_ = true;
   return *this;
 }
 
@@ -1444,14 +1492,14 @@ Status YBTableCreator::Create() {
     req.set_creator_role_name(data_->creator_role_name_);
   }
 
-  if (data_->pg_schema_oid_) {
-    req.set_pg_schema_oid(*data_->pg_schema_oid_);
-  }
-  if (data_->pg_table_oid_) {
-    req.set_pg_table_oid(*data_->pg_table_oid_);
+  if (!data_->table_id_.empty()) {
+    req.set_table_id(data_->table_id_);
   }
   if (data_->is_pg_catalog_table_) {
     req.set_is_pg_catalog_table(*data_->is_pg_catalog_table_);
+  }
+  if (data_->is_pg_shared_table_) {
+    req.set_is_pg_shared_table(*data_->is_pg_shared_table_);
   }
 
   // Note that the check that the sum of min_num_replicas for each placement block being less or

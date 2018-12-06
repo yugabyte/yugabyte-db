@@ -94,7 +94,7 @@ namespace rpc {
 namespace {
 
 static constexpr CoarseMonoClock::Duration kNone{
-    CoarseMonoClock::TimePoint::min().time_since_epoch()};
+    CoarseTimePoint::min().time_since_epoch()};
 
 class InboundCallTask final {
  public:

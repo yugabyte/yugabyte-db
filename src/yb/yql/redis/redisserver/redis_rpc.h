@@ -32,6 +32,8 @@ namespace redisserver {
 
 class RedisParser;
 
+YB_DEFINE_ENUM(RedisClientMode, (kNormal)(kSubscribed)(kMonitoring));
+
 class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
  public:
   RedisConnectionContext(
@@ -55,6 +57,15 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
 
   static std::string Name() { return "Redis"; }
 
+  RedisClientMode ClientMode() { return mode_; }
+
+  void SetClientMode(RedisClientMode mode) { mode_ = mode; }
+
+  void SetCleanupHook(std::function<void()> hook) { cleanup_hook_ = std::move(hook); }
+
+  // Shutdown this context. Clean up the subscriptions if any.
+  void Shutdown(const Status& status) override;
+
  private:
   void Connected(const rpc::ConnectionPtr& connection) override {}
 
@@ -77,6 +88,8 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
   size_t end_of_batch_ = 0;
   std::atomic<bool> authenticated_{false};
   std::string redis_db_name_ = "0";
+  RedisClientMode mode_ = RedisClientMode::kNormal;
+  std::function<void()> cleanup_hook_;
 
   MemTrackerPtr call_mem_tracker_;
 };

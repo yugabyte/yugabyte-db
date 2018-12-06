@@ -69,9 +69,7 @@ class AlterSchemaOperationState : public OperationState {
 
   const tserver::AlterSchemaRequestPB* request() const override { return request_; }
 
-  void UpdateRequestFromConsensusRound() override {
-    request_ = consensus_round()->replicate_msg()->mutable_alter_schema_request();
-  }
+  void UpdateRequestFromConsensusRound() override;
 
   void set_schema(const Schema* schema) { schema_ = schema; }
   const Schema* schema() const { return schema_; }

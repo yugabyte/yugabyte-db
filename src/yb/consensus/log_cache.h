@@ -37,15 +37,17 @@
 #include <string>
 #include <vector>
 
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/consensus/ref_counted_replicate.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
+#include "yb/util/restart_safe_clock.h"
 #include "yb/util/result.h"
 
 namespace yb {
@@ -110,6 +112,7 @@ class LogCache {
   //
   // Returns non-OK if the Log append itself fails.
   CHECKED_STATUS AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
+                                  RestartSafeCoarseTimePoint batch_mono_time,
                                   const StatusCallback& callback);
 
   // Return true if an operation with the given index has been written through the cache. The

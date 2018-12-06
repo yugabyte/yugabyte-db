@@ -14,7 +14,9 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_ddl.h"
+
 #include "yb/client/yb_op.h"
+#include "yb/common/entity_ids.h"
 
 namespace yb {
 namespace pggate {
@@ -24,7 +26,6 @@ using std::shared_ptr;
 using std::string;
 using namespace std::literals;  // NOLINT
 
-using client::PgOid;
 using client::YBClient;
 using client::YBSession;
 using client::YBMetaDataCache;
@@ -38,17 +39,22 @@ static MonoDelta kSessionTimeout = 60s;
 
 PgCreateDatabase::PgCreateDatabase(PgSession::ScopedRefPtr pg_session,
                                    const char *database_name,
-                                   const PgOid database_oid)
+                                   const PgOid database_oid,
+                                   const PgOid source_database_oid,
+                                   const PgOid next_oid)
     : PgDdl(std::move(pg_session), StmtOp::STMT_CREATE_DATABASE),
       database_name_(database_name),
-      database_oid_(database_oid) {
+      database_oid_(database_oid),
+      source_database_oid_(source_database_oid),
+      next_oid_(next_oid) {
 }
 
 PgCreateDatabase::~PgCreateDatabase() {
 }
 
 CHECKED_STATUS PgCreateDatabase::Exec() {
-  return pg_session_->CreateDatabase(database_name_, database_oid_);
+  return pg_session_->CreateDatabase(database_name_, database_oid_, source_database_oid_,
+                                     next_oid_);
 }
 
 PgDropDatabase::PgDropDatabase(PgSession::ScopedRefPtr pg_session,
@@ -85,7 +91,7 @@ PgCreateSchema::~PgCreateSchema() {
 
 CHECKED_STATUS PgCreateSchema::Exec() {
   LOG(FATAL) << "Create schema (" << database_name_ << "," << schema_name_ << "," << if_not_exist_
-             << ") is underdevelopment";
+             << ") is under development";
   return STATUS(NotSupported, "SCHEMA is not yet implemented");
 }
 
@@ -116,15 +122,17 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              const char *database_name,
                              const char *schema_name,
                              const char *table_name,
-                             const client::PgOid schema_oid,
-                             const client::PgOid table_oid,
+                             const PgOid database_oid,
+                             const PgOid schema_oid,
+                             const PgOid table_oid,
+                             bool is_shared_table,
                              bool if_not_exist)
     : PgDdl(pg_session, StmtOp::STMT_CREATE_TABLE),
       table_name_(database_name, table_name),
-      schema_oid_(schema_oid),
-      table_oid_(table_oid),
+      table_id_(GetPgsqlTableId(database_oid, table_oid)),
       is_pg_catalog_table_(strcmp(schema_name, "pg_catalog") == 0 ||
                            strcmp(schema_name, "information_schema") == 0),
+      is_shared_table_(is_shared_table),
       if_not_exist_(if_not_exist) {
 }
 
@@ -135,10 +143,15 @@ CHECKED_STATUS PgCreateTable::AddColumn(const char *attr_name, int attr_num, int
                                         bool is_hash, bool is_range) {
   shared_ptr<QLType> yb_type = QLType::Create(static_cast<DataType>(attr_ybtype));
   client::YBColumnSpec* col = schema_builder_.AddColumn(attr_name)->Type(yb_type)->Order(attr_num);
-  if (is_hash) {
-    col->HashPrimaryKey();
-  } else if (is_range) {
-    col->PrimaryKey();
+
+  if (is_hash || is_range) {
+    // If this is a catalog table, coerce hash column to range column since the table is
+    // non-partitioned.
+    if (is_hash && !is_pg_catalog_table_) {
+      col->HashPrimaryKey();
+    } else {
+      col->PrimaryKey();
+    }
   }
   return Status::OK();
 }
@@ -156,14 +169,15 @@ CHECKED_STATUS PgCreateTable::Exec() {
   // Create table.
   shared_ptr<client::YBTableCreator> table_creator(pg_session_->NewTableCreator());
   table_creator->table_name(table_name_).table_type(client::YBTableType::PGSQL_TABLE_TYPE)
-                                        .schema(&schema)
-                                        .pg_schema_oid(schema_oid_)
-                                        .pg_table_oid(table_oid_)
+                                        .table_id(table_id_)
                                         .schema(&schema);
   if (is_pg_catalog_table_) {
     table_creator->is_pg_catalog_table();
   } else {
     table_creator->hash_schema(YBHashSchema::kPgsqlHash);
+  }
+  if (is_shared_table_) {
+    table_creator->is_pg_shared_table();
   }
 
   const Status s = table_creator->Create();

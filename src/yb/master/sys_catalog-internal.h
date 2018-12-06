@@ -62,8 +62,7 @@ class Visitor : public VisitorBase {
 
 class SysCatalogWriter {
  public:
-  SysCatalogWriter(
-      const std::string& tablet_id, const Schema& schema_with_ids, int64_t leader_term)
+  SysCatalogWriter(const std::string& tablet_id, const Schema& schema_with_ids, int64_t leader_term)
       : schema_with_ids_(schema_with_ids), leader_term_(leader_term) {
     req_.set_tablet_id(tablet_id);
   }
@@ -71,11 +70,10 @@ class SysCatalogWriter {
   ~SysCatalogWriter() = default;
 
   template <class PersistentDataEntryClass>
-  Status MutateItem(
-      const MetadataCowWrapper<PersistentDataEntryClass>* item,
-      const QLWriteRequestPB::QLStmtType& op_type) {
-    bool is_write = op_type == QLWriteRequestPB::QL_STMT_INSERT ||
-        op_type == QLWriteRequestPB::QL_STMT_UPDATE;
+  CHECKED_STATUS MutateItem(const MetadataCowWrapper<PersistentDataEntryClass>* item,
+                            const QLWriteRequestPB::QLStmtType& op_type) {
+    const bool is_write = (op_type == QLWriteRequestPB::QL_STMT_INSERT ||
+                           op_type == QLWriteRequestPB::QL_STMT_UPDATE);
 
     QLWriteRequestPB* ql_write = req_.add_ql_write_batch();
     ql_write->set_type(op_type);
@@ -104,6 +102,51 @@ class SysCatalogWriter {
     return Status::OK();
   }
 
+  // Insert a row into a Postgres sys catalog table.
+  CHECKED_STATUS InsertPgsqlTableRow(const Schema& source_schema,
+                                     const QLTableRow& source_row,
+                                     const TableId& target_table_id,
+                                     const Schema& target_schema,
+                                     const uint32_t target_schema_version) {
+    PgsqlWriteRequestPB* pgsql_write = req_.add_pgsql_write_batch();
+
+    pgsql_write->set_client(YQL_CLIENT_PGSQL);
+    pgsql_write->set_stmt_type(PgsqlWriteRequestPB::PGSQL_INSERT);
+    pgsql_write->set_table_id(target_table_id);
+    pgsql_write->set_schema_version(target_schema_version);
+
+    // Postgres sys catalog table is non-partitioned. So there should be no hash column.
+    DCHECK_EQ(source_schema.num_hash_key_columns(), 0);
+    for (size_t i = 0; i < source_schema.num_range_key_columns(); i++) {
+      const auto& value = source_row.GetValue(source_schema.column_id(i));
+      if (value) {
+        pgsql_write->add_range_column_values()->mutable_value()->CopyFrom(*value);
+      } else {
+        return STATUS_FORMAT(Corruption, "Range value of column id $0 missing for table $1",
+                             source_schema.column_id(i), target_table_id);
+      }
+    }
+    for (size_t i = source_schema.num_range_key_columns(); i < source_schema.num_columns(); i++) {
+      const auto& value = source_row.GetValue(source_schema.column_id(i));
+      if (value) {
+        PgsqlColumnValuePB* column_value = pgsql_write->add_column_values();
+        column_value->set_column_id(target_schema.column_id(i));
+        column_value->mutable_expr()->mutable_value()->CopyFrom(*value);
+      }
+    }
+
+    return Status::OK();
+  }
+
+  const tserver::WriteRequestPB& req() const {
+    return req_;
+  }
+
+  int64_t leader_term() const {
+    return leader_term_;
+  }
+
+ private:
   CHECKED_STATUS SetColumnId(const std::string& column_name, QLColumnValuePB* col_pb) {
     size_t column_index = schema_with_ids_.find_column(column_name);
     if (column_index == Schema::kColumnNotFound) {
@@ -121,15 +164,6 @@ class SysCatalogWriter {
     expr_pb->mutable_value()->set_int8_value(int8_value);
   }
 
-  const tserver::WriteRequestPB& req() const {
-    return req_;
-  }
-
-  int64_t leader_term() const {
-    return leader_term_;
-  }
-
- private:
   const Schema& schema_with_ids_;
   tserver::WriteRequestPB req_;
   const int64_t leader_term_;

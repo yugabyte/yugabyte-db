@@ -191,7 +191,8 @@ class RaftConsensusQuorumTest : public YBTest {
                             logs_[i],
                             parent_mem_trackers_[i],
                             Bind(&DoNothing),
-                            DEFAULT_TABLE_TYPE));
+                            DEFAULT_TABLE_TYPE,
+                            nullptr /* retryable_requests */));
 
       operation_factory->SetConsensus(peer.get());
       operation_factories_.emplace_back(operation_factory);
@@ -403,7 +404,11 @@ class RaftConsensusQuorumTest : public YBTest {
     EXPECT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
     for (const log::SegmentSequence::value_type& entry : segments) {
-      EXPECT_OK(entry->ReadEntries(&ret));
+      auto result = entry->ReadEntries();
+      EXPECT_OK(result.status);
+      for (auto& e : result.entries) {
+        ret.push_back(std::move(e));
+      }
     }
 
     return ret;

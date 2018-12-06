@@ -43,7 +43,6 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"

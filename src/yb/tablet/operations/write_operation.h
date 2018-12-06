@@ -104,9 +104,7 @@ class WriteOperationState : public OperationState {
     return request_;
   }
 
-  void UpdateRequestFromConsensusRound() override {
-    request_ = consensus_round()->replicate_msg()->mutable_write_request();
-  }
+  void UpdateRequestFromConsensusRound() override;
 
   // Returns the prepared response to the client that will be sent when this
   // transaction is completed, if this transaction was started by a client.
@@ -145,7 +143,7 @@ class WriteOperationState : public OperationState {
   }
 
   // Releases all the DocDB locks acquired by this transaction.
-  void ReleaseDocDbLocks(Tablet* tablet);
+  void ReleaseDocDbLocks();
 
   // Resets this OperationState, releasing all locks, destroying all prepared
   // writes, clearing the transaction result _and_ committing the current Mvcc
@@ -232,9 +230,6 @@ class WriteOperation : public Operation {
   // original requests) which is already a requirement of the consensus
   // algorithm.
   CHECKED_STATUS Apply(int64_t leader_term) override;
-
-  // Releases the row locks (Early Lock Release).
-  void PreCommit() override;
 
   // If result == COMMITTED, commits the mvcc transaction and updates
   // the metrics, if result == ABORTED aborts the mvcc transaction.

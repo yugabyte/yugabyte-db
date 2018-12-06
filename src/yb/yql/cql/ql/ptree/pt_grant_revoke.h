@@ -101,11 +101,11 @@ class PTGrantRevokePermission : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTGrantRevokePermission(MemoryContext* memctx, YBLocation::SharedPtr loc,
-                    GrantRevokeStatementType statement_type,
-                    const MCSharedPtr<MCString>& permission_name,
-                    const ResourceType& resource_type,
-                    const PTQualifiedName::SharedPtr& resource_name,
-                    const PTQualifiedName::SharedPtr& role_name);
+                          GrantRevokeStatementType statement_type,
+                          const MCSharedPtr<MCString>& permission_name,
+                          const ResourceType& resource_type,
+                          const PTQualifiedName::SharedPtr& resource_name,
+                          const PTQualifiedName::SharedPtr& role_name);
   virtual ~PTGrantRevokePermission();
 
   static const std::map<std::string, PermissionType> kPermissionMap;
@@ -184,6 +184,7 @@ class PTGrantRevokePermission : public TreeNode {
   const GrantRevokeStatementType statement_type_;
   PermissionType permission_;
   const MCSharedPtr<MCString> permission_name_;
+  // complete_resource_name_ is nullptr for ALL KEYSPACES and ALL ROLES.
   const PTQualifiedName::SharedPtr complete_resource_name_;
   const PTQualifiedName::SharedPtr role_name_;
   const ResourceType resource_type_;

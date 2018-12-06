@@ -21,7 +21,7 @@ using std::string;
 
 // Returns whether a given string matches a redis pattern. Ported from Redis.
 bool RedisUtil::RedisPatternMatchWithLen(
-    const char* pattern, int pattern_len, const char* string, int str_len, bool no_case) {
+    const char* pattern, int pattern_len, const char* string, int str_len, bool ignore_case) {
   while (pattern_len > 0) {
     switch (pattern[0]) {
       case '*':
@@ -33,7 +33,8 @@ bool RedisUtil::RedisPatternMatchWithLen(
           return true; /* match */
         }
         while (str_len > 0) {
-          if (RedisPatternMatchWithLen(pattern + 1, pattern_len - 1, string, str_len, no_case)) {
+          if (RedisPatternMatchWithLen(
+                  pattern + 1, pattern_len - 1, string, str_len, ignore_case)) {
             return true; /* match */
           }
           string++;
@@ -81,7 +82,7 @@ bool RedisUtil::RedisPatternMatchWithLen(
               start = end;
               end = t;
             }
-            if (no_case) {
+            if (ignore_case) {
               start = tolower(start);
               end = tolower(end);
               c = tolower(c);
@@ -92,7 +93,7 @@ bool RedisUtil::RedisPatternMatchWithLen(
               match = true;
             }
           } else {
-            if (!no_case) {
+            if (!ignore_case) {
               if (pattern[0] == string[0]) {
                 match = true;
               }
@@ -122,12 +123,12 @@ bool RedisUtil::RedisPatternMatchWithLen(
         }
         FALLTHROUGH_INTENDED;
       default:
-        if (!no_case) {
+        if (!ignore_case) {
           if (pattern[0] != string[0]) {
             return false; /* no match */
           }
         } else {
-          if (tolower(static_cast<int>(pattern[0])) == tolower(static_cast<int>(string[0]))) {
+          if (tolower(static_cast<int>(pattern[0])) != tolower(static_cast<int>(string[0]))) {
             return false; /* no match */
           }
         }
@@ -148,9 +149,9 @@ bool RedisUtil::RedisPatternMatchWithLen(
   return pattern_len == 0 && str_len == 0;
 }
 
-bool RedisUtil::RedisPatternMatch(const string& pattern, const string& string, bool no_case) {
+bool RedisUtil::RedisPatternMatch(const string& pattern, const string& string, bool ignore_case) {
   return RedisPatternMatchWithLen(
-      pattern.c_str(), pattern.length(), string.c_str(), string.length(), no_case);
+      pattern.c_str(), pattern.length(), string.c_str(), string.length(), ignore_case);
 }
 
 } // namespace yb

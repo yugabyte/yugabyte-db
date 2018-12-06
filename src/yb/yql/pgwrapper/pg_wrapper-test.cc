@@ -17,62 +17,82 @@
 #include "yb/util/result.h"
 #include "yb/util/path_util.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/string_trim.h"
 
-#include "yb/client/ql-dml-test-base.h"
 #include "yb/client/table_handle.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 using std::string;
+using std::vector;
 using std::unique_ptr;
 
-using yb::client::QLDmlTestBase;
-using yb::client::YBSchemaBuilder;
-using yb::client::TableHandle;
-using yb::client::kTableName;
+using yb::util::TrimStr;
+using yb::util::TrimTrailingWhitespaceFromEveryLine;
+
+using namespace std::literals;
 
 namespace yb {
 namespace pgwrapper {
 
-class PgWrapperTest : public QLDmlTestBase {
+class PgWrapperTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
  protected:
   virtual void SetUp() override {
-    QLDmlTestBase::SetUp();
-    CreateSchema();
+    YBMiniClusterTestBase::SetUp();
 
-    pg_port_ = GetFreePort(&pg_port_file_lock_);
-    string test_dir;
-    CHECK_OK(Env::Default()->GetTestDirectory(&test_dir));
-    pg_data_dir_ = JoinPathSegments(test_dir, "pg_data");
+    ExternalMiniClusterOptions opts;
+    opts.start_pgsql_proxy = true;
+
+    // Test that we can start PostgreSQL servers on non-colliding ports within each tablet server.
+    opts.num_tablet_servers = 3;
+
+    cluster_.reset(new ExternalMiniCluster(opts));
+    ASSERT_OK(cluster_->Start());
   }
-
-  void CreateSchema() {
-    YBSchemaBuilder b;
-    b.AddColumn("h1")->Type(INT32)->HashPrimaryKey()->NotNull();
-    b.AddColumn("h2")->Type(STRING)->HashPrimaryKey()->NotNull();
-    b.AddColumn("r1")->Type(INT32)->PrimaryKey()->NotNull();
-    b.AddColumn("r2")->Type(STRING)->PrimaryKey()->NotNull();
-    b.AddColumn("c1")->Type(INT32);
-    b.AddColumn("c2")->Type(STRING);
-
-    ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &b));
-  }
-
-  string pg_data_dir_;
-  uint16_t pg_port_ = 0;
-  TableHandle table_;
-
- private:
-  unique_ptr<FileLock> pg_port_file_lock_;
 };
 
 TEST_F(PgWrapperTest, TestStartStop) {
-  PgWrapperConf conf {
-    pg_data_dir_,
-    pg_port_
-  };
-  PgWrapper postgres(conf);
+  ExternalTabletServer* ts0 = cluster_->tablet_server(0);
 
-  ASSERT_OK(postgres.InitDB());
-  ASSERT_OK(postgres.Start());
+  const vector<std::pair<string, string>> kStatements {
+    {"CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)",
+     "CREATE TABLE"},
+    {"INSERT INTO mytbl (k, v) VALUES (100, 'foo')",
+     "INSERT 0 1"},
+    {"INSERT INTO mytbl (k, v) VALUES (200, 'bar')",
+     "INSERT 0 1"},
+    {
+      "SELECT k, v FROM mytbl ORDER BY k",
+      R"#(
+  k  |  v
+-----+-----
+ 100 | foo
+ 200 | bar
+(2 rows)
+)#"
+    }
+  };
+
+  for (const auto& statement_and_expected : kStatements) {
+    const auto& statement = statement_and_expected.first;
+    const auto& expected = statement_and_expected.second;
+    vector<string> argv {
+      GetPostgresInstallRoot() + "/bin/psql",
+      "-h", ts0->bind_host(),
+      "-p", std::to_string(ts0->pgsql_rpc_port()),
+      "-U", "postgres",
+      "-c", statement
+    };
+    string psql_stdout;
+    LOG(INFO) << "Executing statement: " << statement;
+    ASSERT_OK(Subprocess::Call(argv, &psql_stdout));
+    LOG(INFO) << "Output from statement {{ " << statement << " }}:\n"
+              << psql_stdout;
+    ASSERT_EQ(
+        TrimStr(TrimTrailingWhitespaceFromEveryLine(expected)),
+        TrimStr(TrimTrailingWhitespaceFromEveryLine(psql_stdout)));
+  }
 }
 
 }  // namespace pgwrapper

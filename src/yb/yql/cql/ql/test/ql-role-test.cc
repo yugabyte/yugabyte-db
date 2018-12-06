@@ -67,6 +67,14 @@ static const std::vector<string> all_permissions =
     {"ALTER", "AUTHORIZE", "CREATE", "DESCRIBE", "DROP", "MODIFY", "SELECT"};
 static const std::vector<string> all_permissions_minus_describe =
     {"ALTER", "AUTHORIZE", "CREATE", "DROP", "MODIFY", "SELECT"};
+static const std::vector<string> all_permissions_for_all_roles =
+    {"ALTER", "AUTHORIZE", "CREATE", "DESCRIBE", "DROP"};
+static const std::vector<string> all_permissions_for_keyspace =
+    {"ALTER", "AUTHORIZE", "CREATE", "DROP", "MODIFY", "SELECT"};
+static const std::vector<string> all_permissions_for_table =
+    {"ALTER", "AUTHORIZE", "DROP", "MODIFY", "SELECT"};
+static const std::vector<string> all_permissions_for_role =
+    {"ALTER", "AUTHORIZE", "DROP"};
 
 class QLTestAuthentication : public QLTestBase {
  public:
@@ -271,6 +279,12 @@ class TestQLPermission : public QLTestAuthentication {
     auto s = processor->Run(select);
     CHECK(s.ok());
     auto row_block = processor->row_block();
+
+    if (permissions.empty()) {
+      EXPECT_EQ(0, row_block->row_count());
+      return;
+    }
+
     EXPECT_EQ(1, row_block->row_count());
 
     QLRow &row = row_block->row(0);
@@ -465,7 +479,7 @@ TEST_F(TestQLPermission, TestGrantRevokeKeyspace) {
   CreateRole(processor, role_name_2);
   const string grant_stmt5 = GrantKeyspace("ALL",  keyspace1, role_name_2);
   GrantRevokePermissionAndVerify(processor, grant_stmt5, canonical_resource,
-                                 all_permissions_minus_describe, role_name_2);
+                                 all_permissions_for_keyspace, role_name_2);
 
   // Revoke all the permissions.
   const auto revoke_all_stmt = RevokeKeyspace("ALL", keyspace1, role_name_2);
@@ -496,8 +510,8 @@ TEST_F(TestQLPermission, TestGrantToRole) {
 
   // Grant ALL permissions.
   const string grant_stmt2 = GrantRole("ALL", role_name_2, role_name);
-  GrantRevokePermissionAndVerify(processor, grant_stmt2, canonical_resource, all_permissions,
-                                 role_name);
+  GrantRevokePermissionAndVerify(processor, grant_stmt2, canonical_resource,
+                                 all_permissions_for_role, role_name);
 
   // Resource (role) not present.
   const string role_name_3 = "test_role_3";
@@ -568,7 +582,7 @@ TEST_F(TestQLPermission, TestGrantRevokeTable) {
   // Grant ALL permissions and verify that DESCRIBE is not granted.
   const string grant_stmt5 = GrantTable("ALL", table_name, role_name);
   GrantRevokePermissionAndVerify(processor, grant_stmt5, canonical_resource,
-                                 all_permissions_minus_describe, role_name);
+                                 all_permissions_for_table, role_name);
 
   // Lastly, create another role to verify that the roles version didn't change after all the
   // statements that didn't modify anything in the master.
@@ -632,28 +646,27 @@ TEST_F(TestQLPermission, TestGrantDescribe) {
   const string grant_on_all_keyspaces = GrantAllKeyspaces("DESCRIBE", role1);
   EXEC_INVALID_STMT_MSG(grant_on_all_keyspaces, invalid_grant_describe_error_msg);
 
-  // Grant DESCRIBE on a role. It should succeed.
-  const string grant_stmt3 = GrantRole("DESCRIBE", role2, role1);
-  std::vector<string> permissions = {"DESCRIBE"};
-  auto canonical_resource2 = "roles/" + role2;
-  GrantRevokePermissionAndVerify(processor, grant_stmt3, canonical_resource2, permissions,
-                                 role1);
+  // Grant DESCRIBE on a role. It should fail.
+  const string grant_on_role = GrantRole("DESCRIBE", role2, role1);
+  EXEC_INVALID_STMT_MSG(grant_on_role, invalid_grant_describe_error_msg);
 
   // Grant DESCRIBE on all roles. It should succeed.
   const string grant_on_all_roles = GrantAllRoles("DESCRIBE", role3);
+  std::vector<string> permissions = {"DESCRIBE"};
   GrantRevokePermissionAndVerify(processor, grant_on_all_roles, kRolesRoleResource, permissions,
                                  role3);
 
-  // Grant ALL on a role. It should succeed and all the roles should be granted.
+  // Grant ALL on a role. It should succeed and all the appropriate permissions should be granted.
   const string grant_all_on_a_role = GrantRole("ALL", role4, role1);
   GrantRevokePermissionAndVerify(processor, grant_all_on_a_role,
                                  strings::Substitute("$0/$1", kRolesRoleResource, role4),
-                                 all_permissions, role1);
+                                 all_permissions_for_role, role1);
 
-  // Grant ALL on all roles. It should succeed and all the roles should be granted.
+  // Grant ALL on all roles. It should succeed and all the appropriate permissions should be
+  // granted.
   const string grant_all_on_all_roles = GrantAllRoles("ALL", role5);
   GrantRevokePermissionAndVerify(processor, grant_all_on_all_roles, kRolesRoleResource,
-                                 all_permissions, role5);
+                                 all_permissions_for_all_roles, role5);
 }
 
 class TestQLRole : public QLTestAuthentication {

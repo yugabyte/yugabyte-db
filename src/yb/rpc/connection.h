@@ -58,6 +58,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/object_pool.h"
@@ -107,7 +108,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
   ~Connection();
 
-  CoarseMonoClock::TimePoint last_activity_time() const {
+  CoarseTimePoint last_activity_time() const {
     return last_activity_time_;
   }
 
@@ -203,7 +204,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   Direction direction_;
 
   // The last time we read or wrote from the socket.
-  CoarseMonoClock::TimePoint last_activity_time_;
+  CoarseTimePoint last_activity_time_;
 
   // Calls which have been sent and are now waiting for a response.
   std::unordered_map<int32_t, OutboundCallPtr> awaiting_response_;
@@ -227,7 +228,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
     }
   };
 
-  typedef std::pair<CoarseMonoClock::TimePoint, std::weak_ptr<OutboundCall>> ExpirationPair;
+  typedef std::pair<CoarseTimePoint, std::weak_ptr<OutboundCall>> ExpirationPair;
 
   std::priority_queue<ExpirationPair,
                       std::vector<ExpirationPair>,

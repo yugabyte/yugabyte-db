@@ -59,7 +59,9 @@ target_link_libraries(integration-tests
   yb_client_test_util
   yb_fs
   yb_test_util
-  yb-redis)
+  yb-redis
+  yb_pgwrapper)
+
 add_dependencies(integration-tests
   yb-tserver
   yb-master)

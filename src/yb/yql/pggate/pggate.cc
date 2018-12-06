@@ -45,7 +45,6 @@ namespace yb {
 namespace pggate {
 
 using std::make_shared;
-using client::PgOid;
 using client::YBSession;
 
 //--------------------------------------------------------------------------------------------------
@@ -66,7 +65,7 @@ PggateOptions::PggateOptions() {
   // TODO: we might have to allow setting master_replication_factor similarly to how it is done
   // in tserver to support master auto-discovery on Kubernetes.
   CHECK_OK(server::DetermineMasterAddresses(
-      "YB_MASTER_ADDRESSES_FOR_PG", master_addresses_flag, /* master_replication_factor */ 0,
+      "pggate_master_addresses", master_addresses_flag, /* master_replication_factor */ 0,
       &master_addresses, &master_addresses_flag));
   SetMasterAddresses(make_shared<server::MasterAddresses>(std::move(master_addresses)));
 }
@@ -149,8 +148,11 @@ CHECKED_STATUS PgApiImpl::ConnectDatabase(PgSession *pg_session, const char *dat
 CHECKED_STATUS PgApiImpl::NewCreateDatabase(PgSession *pg_session,
                                             const char *database_name,
                                             const PgOid database_oid,
+                                            const PgOid source_database_oid,
+                                            const PgOid next_oid,
                                             PgStatement **handle) {
-  auto stmt = make_scoped_refptr<PgCreateDatabase>(pg_session, database_name, database_oid);
+  auto stmt = make_scoped_refptr<PgCreateDatabase>(pg_session, database_name, database_oid,
+                                                   source_database_oid, next_oid);
   *handle = stmt.detach();
   return Status::OK();
 }
@@ -179,6 +181,15 @@ CHECKED_STATUS PgApiImpl::ExecDropDatabase(PgStatement *handle) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   return down_cast<PgDropDatabase*>(handle)->Exec();
+}
+
+CHECKED_STATUS PgApiImpl::ReserveOids(PgSession *pg_session,
+                                      const PgOid database_oid,
+                                      const PgOid next_oid,
+                                      const uint32_t count,
+                                      PgOid *begin_oid,
+                                      PgOid *end_oid) {
+  return pg_session->ReserveOids(database_oid, next_oid, count, begin_oid, end_oid);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -231,16 +242,20 @@ CHECKED_STATUS PgApiImpl::NewCreateTable(PgSession *pg_session,
                                          const char *database_name,
                                          const char *schema_name,
                                          const char *table_name,
+                                         const PgOid database_oid,
                                          const PgOid schema_oid,
                                          const PgOid table_oid,
+                                         bool is_shared_table,
                                          bool if_not_exist,
                                          PgStatement **handle) {
   if (database_name == nullptr) {
     database_name = pg_session->connected_dbname();
   }
 
-  auto stmt = make_scoped_refptr<PgCreateTable>(
-      pg_session, database_name, schema_name, table_name, schema_oid, table_oid, if_not_exist);
+  auto stmt = make_scoped_refptr<PgCreateTable>(pg_session,
+                                                database_name, schema_name, table_name,
+                                                database_oid, schema_oid, table_oid,
+                                                is_shared_table, if_not_exist);
   *handle = stmt.detach();
   return Status::OK();
 }

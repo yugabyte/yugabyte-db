@@ -167,7 +167,7 @@ ostream& operator <<(ostream& out, const KeyIndexSet &key_index_set) {
 YBSessionFactory::YBSessionFactory(client::YBClient* client, client::TableHandle* table)
     : client_(client), table_(table) {}
 
-string YBSessionFactory::ClientId() { return client_->client_id(); }
+string YBSessionFactory::ClientId() { return client_->id().ToString(); }
 
 SingleThreadedWriter* YBSessionFactory::GetWriter(MultiThreadedWriter* writer, int idx) {
   return new YBSingleThreadedWriter(writer, client_, table_, idx);
@@ -414,9 +414,17 @@ bool YBSingleThreadedWriter::Write(
   }
   Status flush_status = session_->Flush();
   if (!flush_status.ok()) {
+    for (const auto& error : session_->GetPendingErrors()) {
+      // It means that key was actually written successfully, but our retry failed because
+      // it was detected as duplicate request.
+      if (error->status().IsAlreadyPresent()) {
+        return true;
+      }
+      LOG(WARNING) << "Error inserting key '" << key_str << "': " << error->status();
+    }
+
     LOG(WARNING) << "Error inserting key '" << key_str << "': "
-                 << "Flush() failed"
-                 << " (" << flush_status.ToString() << ")";
+                 << "Flush() failed (" << flush_status << ")";
     return false;
   }
   if (insert->response().status() != QLResponsePB::YQL_STATUS_OK) {

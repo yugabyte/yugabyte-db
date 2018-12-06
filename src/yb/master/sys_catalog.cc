@@ -45,6 +45,7 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/consensus/log_anchor_registry.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/opid_util.h"
@@ -509,7 +510,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
                                                      log,
                                                      tablet->GetMetricEntity(),
                                                      raft_pool(),
-                                                     tablet_prepare_pool()),
+                                                     tablet_prepare_pool(),
+                                                     nullptr /* retryable_requests */),
                         "Failed to Init() TabletPeer");
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info),
@@ -637,7 +639,6 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   auto iter = tablet_peer()->tablet()->NewRowIterator(schema_, boost::none);
   RETURN_NOT_OK(iter);
 
-  Arena arena(32_KB, 256_KB);
   QLTableRow value_map;
   QLValue entry_type, entry_id, metadata;
   while ((**iter).HasNext()) {
@@ -651,6 +652,34 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
     RETURN_NOT_OK(visitor->Visit(entry_id.binary_value(), metadata.binary_value()));
   }
   return Status::OK();
+}
+
+Status SysCatalogTable::CopyPgsqlTable(const TableId& source_table_id,
+                                       const TableId& target_table_id,
+                                       const int64_t leader_term) {
+  TRACE_EVENT0("master", "CopyPgsqlTable");
+
+  const auto* tablet = tablet_peer()->tablet();
+  const tablet::TableInfo* source_table_info =
+      VERIFY_RESULT(tablet->metadata()->GetTableInfo(source_table_id));
+  const tablet::TableInfo* target_table_info =
+      VERIFY_RESULT(tablet->metadata()->GetTableInfo(target_table_id));
+  const Schema source_projection = source_table_info->schema.CopyWithoutColumnIds();
+  std::unique_ptr<common::YQLRowwiseIteratorIf> iter =
+      VERIFY_RESULT(tablet->NewRowIterator(source_projection, boost::none, source_table_id));
+  QLTableRow source_row;
+  std::unique_ptr<SysCatalogWriter> writer = NewWriter(leader_term);
+  while (iter->HasNext()) {
+    RETURN_NOT_OK(iter->NextRow(&source_row));
+    RETURN_NOT_OK(writer->InsertPgsqlTableRow(source_table_info->schema, source_row,
+                                              target_table_id, target_table_info->schema,
+                                              target_table_info->schema_version));
+  }
+
+  VLOG(1) << Format("Copied $0 rows from $1 to $2", writer->req().pgsql_write_batch_size(),
+                    source_table_id, target_table_id);
+
+  return !writer->req().pgsql_write_batch().empty() ? SyncWrite(writer.get()) : Status::OK();
 }
 
 } // namespace master

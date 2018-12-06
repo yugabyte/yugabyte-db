@@ -254,6 +254,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListMasters);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListNamespaces);
+YB_CLIENT_SPECIALIZE_SIMPLE(ReservePgsqlOids);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateUDType);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteUDType);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
@@ -281,7 +282,8 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteTableDone);
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
-      latest_observed_hybrid_time_(YBClient::kNoHybridTime) {}
+      latest_observed_hybrid_time_(YBClient::kNoHybridTime),
+      id_(ClientId::GenerateRandom()) {}
 
 YBClient::Data::~Data() {
   // Workaround for KUDU-956: the user may close a YBClient while a flush

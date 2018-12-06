@@ -38,6 +38,7 @@
 #include <boost/optional.hpp>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/walltime.h"
@@ -120,13 +121,6 @@ Status WriteOperation::Apply(int64_t leader_term) {
   return Status::OK();
 }
 
-void WriteOperation::PreCommit() {
-  TRACE_EVENT0("txn", "WriteOperation::PreCommit");
-  TRACE("PRECOMMIT: Releasing row and schema locks");
-  // Perform early lock release after we've applied all changes
-  state()->ReleaseDocDbLocks(tablet());
-}
-
 void WriteOperation::Finish(OperationResult result) {
   TRACE_EVENT0("txn", "WriteOperation::Finish");
   if (PREDICT_FALSE(result == Operation::ABORTED)) {
@@ -195,22 +189,27 @@ void WriteOperationState::Abort() {
     tablet()->mvcc_manager()->Aborted(hybrid_time_);
   }
 
-  ReleaseDocDbLocks(tablet());
+  ReleaseDocDbLocks();
 
   // After aborting, we may respond to the RPC and delete the
   // original request, so null them out here.
   ResetRpcFields();
 }
 
+void WriteOperationState::UpdateRequestFromConsensusRound() {
+  request_ = consensus_round()->replicate_msg()->mutable_write_request();
+}
+
 void WriteOperationState::Commit() {
   tablet()->mvcc_manager()->Replicated(hybrid_time_);
+  ReleaseDocDbLocks();
 
   // After committing, we may respond to the RPC and delete the
   // original request, so null them out here.
   ResetRpcFields();
 }
 
-void WriteOperationState::ReleaseDocDbLocks(Tablet* tablet) {
+void WriteOperationState::ReleaseDocDbLocks() {
   // Free DocDB multi-level locks.
   docdb_locks_.Reset();
 }

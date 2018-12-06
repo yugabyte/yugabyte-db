@@ -190,8 +190,8 @@ public class MiniYBCluster implements AutoCloseable {
         "--webserver_doc_root=" + TestUtils.getWebserverDocRoot());
     final String extraFlagsFromEnv = System.getenv("YB_EXTRA_DAEMON_FLAGS");
     if (extraFlagsFromEnv != null) {
-      // This has an issue with handling quoted arguments with embedded spaces.
-      for (String flag : extraFlagsFromEnv.split(" ")) {
+      // TODO: this has an issue with handling quoted arguments with embedded spaces.
+      for (String flag : extraFlagsFromEnv.split("\\s+")) {
         commonFlags.add(flag);
       }
     }

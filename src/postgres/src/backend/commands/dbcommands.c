@@ -716,7 +716,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 
 	if (IsYugaByteEnabled())
 	{
-		YBCCreateDatabase(dboid, dbname, src_dboid);
+		YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid);
 	}
 
 	PG_END_ENSURE_ERROR_CLEANUP(createdb_failure_callback,

@@ -82,7 +82,6 @@ class ClientStressTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
 
   void DoTearDown() override {
     alarm(0);
-    cluster_->Shutdown();
     YBMiniClusterTestBase::DoTearDown();
   }
 

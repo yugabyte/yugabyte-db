@@ -69,6 +69,7 @@
 #include "yb/common/partition.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/quorum_util.h"
@@ -1741,20 +1742,26 @@ CHECKED_STATUS ValidateCreateTableSchema(const Schema& schema, CreateTableRespon
 
 } // namespace
 
-Status CatalogManager::CreateTablePgsqlSysTable(const CreateTableRequestPB* req,
-                                                CreateTableResponsePB* resp,
-                                                rpc::RpcContext* rpc) {
+Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
+                                           CreateTableResponsePB* resp,
+                                           rpc::RpcContext* rpc) {
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
   scoped_refptr<NamespaceInfo> ns;
   RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
   NamespaceId namespace_id = ns->id();
 
-  // Validate schema.
+  Schema schema;
   Schema client_schema;
   RETURN_NOT_OK(SchemaFromPB(req->schema(), &client_schema));
-  RETURN_NOT_OK(ValidateCreateTableSchema(client_schema, resp));
-  Schema schema = client_schema.CopyWithColumnIds();
+  // If the schema contains column ids, we are copying a Postgres table from one namespace to
+  // another. In that case, just use the schema as-is. Otherwise, validate the schema.
+  if (client_schema.has_column_ids()) {
+    schema = std::move(client_schema);
+  } else {
+    RETURN_NOT_OK(ValidateCreateTableSchema(client_schema, resp));
+    schema = client_schema.CopyWithColumnIds();
+  }
 
   // Verify no hash paritition schema is specified.
   if (req->partition_schema().has_hash_schema()) {
@@ -1827,6 +1834,98 @@ Status CatalogManager::CreateTablePgsqlSysTable(const CreateTableRequestPB* req,
   return Status::OK();
 }
 
+Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
+                                        ReservePgsqlOidsResponsePB* resp,
+                                        rpc::RpcContext* rpc) {
+  RETURN_NOT_OK(CheckOnline());
+
+  VLOG(1) << "ReservePgsqlOids request: " << req->ShortDebugString();
+
+  // Lookup namespace
+  scoped_refptr<NamespaceInfo> ns;
+  {
+    boost::shared_lock<LockType> l(lock_);
+    ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id());
+  }
+  if (!ns) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND,
+                      STATUS(NotFound, "Namespace not found", req->namespace_id()));
+  }
+
+  // Reserve oids.
+  auto l = ns->LockForWrite();
+
+  uint32_t begin_oid = l->data().pb.next_pg_oid();
+  if (begin_oid < req->next_oid()) {
+    begin_oid = req->next_oid();
+  }
+  if (begin_oid == std::numeric_limits<uint32_t>::max()) {
+    LOG(WARNING) << Format("No more object identifier is available for Postgres database $0 ($1)",
+                           l->data().pb.name(), req->namespace_id());
+    return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR,
+                      STATUS(InvalidArgument, "No more object identifier is available"));
+  }
+
+  uint32_t end_oid = begin_oid + req->count();
+  if (end_oid < begin_oid) {
+    end_oid = std::numeric_limits<uint32_t>::max(); // Handle wraparound.
+  }
+
+  resp->set_begin_oid(begin_oid);
+  resp->set_end_oid(end_oid);
+  l->mutable_data()->pb.set_next_pg_oid(end_oid);
+
+  // Update the on-disk state.
+  const Status s = sys_catalog_->UpdateItem(ns.get(), leader_ready_term_);
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+  }
+
+  // Commit the in-memory state.
+  l->Commit();
+
+  VLOG(1) << "ReservePgsqlOids response: " << resp->ShortDebugString();
+
+  return Status::OK();
+}
+
+Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
+                                          const std::vector<scoped_refptr<TableInfo>>& tables,
+                                          CreateNamespaceResponsePB* resp,
+                                          rpc::RpcContext* rpc) {
+  const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(namespace_id));
+  for (const auto& table : tables) {
+    CreateTableRequestPB table_req;
+    CreateTableResponsePB table_resp;
+
+    const uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
+    const TableId table_id = GetPgsqlTableId(database_oid, table_oid);
+
+    // Hold read lock until rows from the table are copied also.
+    auto l = table->LockForRead();
+
+    // Skip shared table.
+    if (l->data().pb.is_pg_shared_table()) {
+      continue;
+    }
+
+    table_req.set_name(l->data().pb.name());
+    table_req.mutable_namespace_()->set_id(namespace_id);
+    table_req.set_table_type(PGSQL_TABLE_TYPE);
+    table_req.mutable_schema()->CopyFrom(l->data().schema());
+    table_req.set_is_pg_catalog_table(true);
+    table_req.set_table_id(table_id);
+
+    const Status s = CreatePgsqlSysTable(&table_req, &table_resp, rpc);
+    if (!s.ok()) {
+      return SetupError(resp->mutable_error(), table_resp.error().code(), s);
+    }
+
+    RETURN_NOT_OK(sys_catalog_->CopyPgsqlTable(table->id(), table_id, leader_ready_term_));
+  }
+  return Status::OK();
+}
+
 // Create a new table.
 // See README file in this directory for a description of the design.
 Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
@@ -1835,7 +1934,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   RETURN_NOT_OK(CheckOnline());
 
   if (orig_req->table_type() == PGSQL_TABLE_TYPE && orig_req->is_pg_catalog_table()) {
-    return CreateTablePgsqlSysTable(orig_req, resp, rpc);
+    return CreatePgsqlSysTable(orig_req, resp, rpc);
   }
 
   Status s;
@@ -2286,13 +2385,47 @@ Status CatalogManager::IsTransactionStatusTableCreated(IsCreateTableDoneResponse
   return IsCreateTableDone(&req, resp);
 }
 
+std::string CatalogManager::GenerateId(boost::optional<const SysRowEntry::Type> entity_type) {
+  while (true) {
+    // Generate id and make sure it is unique within its category.
+    std::string id = oid_generator_.Next();
+    if (!entity_type) {
+      return id;
+    }
+    switch (*entity_type) {
+      case SysRowEntry::NAMESPACE:
+        if (FindPtrOrNull(namespace_ids_map_, id) == nullptr) return id;
+        break;
+      case SysRowEntry::TABLE:
+        if (FindPtrOrNull(table_ids_map_, id) == nullptr) return id;
+        break;
+      case SysRowEntry::TABLET:
+        if (FindPtrOrNull(tablet_map_, id) == nullptr) return id;
+        break;
+      case SysRowEntry::UDTYPE:
+        if (FindPtrOrNull(udtype_ids_map_, id) == nullptr) return id;
+        break;
+      case SysRowEntry::SNAPSHOT:
+        return id;
+      case SysRowEntry::UNKNOWN: FALLTHROUGH_INTENDED;
+      case SysRowEntry::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntry::ROLE: FALLTHROUGH_INTENDED;
+      case SysRowEntry::REDIS_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntry::SYS_CONFIG:
+        LOG(DFATAL) << "Invalid id type: " << *entity_type;
+        return id;
+    }
+  }
+}
+
 TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
                                            const Schema& schema,
                                            const PartitionSchema& partition_schema,
                                            const NamespaceId& namespace_id,
                                            IndexInfoPB* index_info) {
   DCHECK(schema.has_column_ids());
-  TableInfo* table = new TableInfo(GenerateId());
+  TableId table_id = !req.table_id().empty() ? req.table_id() : GenerateId(SysRowEntry::TABLE);
+  TableInfo* table = new TableInfo(table_id);
   table->mutable_metadata()->StartMutation();
   SysTablesEntryPB *metadata = &table->mutable_metadata()->mutable_dirty()->pb;
   metadata->set_state(SysTablesEntryPB::PREPARING);
@@ -2314,12 +2447,17 @@ TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
     index_info->set_table_id(table->id());
     metadata->mutable_index_info()->CopyFrom(*index_info);
   }
+
+  if (req.is_pg_shared_table()) {
+    metadata->set_is_pg_shared_table(true);
+  }
+
   return table;
 }
 
 TabletInfo* CatalogManager::CreateTabletInfo(TableInfo* table,
                                              const PartitionPB& partition) {
-  TabletInfo* tablet = new TabletInfo(table, GenerateId());
+  TabletInfo* tablet = new TabletInfo(table, GenerateId(SysRowEntry::TABLET));
   tablet->mutable_metadata()->StartMutation();
   SysTabletsEntryPB *metadata = &tablet->mutable_metadata()->mutable_dirty()->pb;
   metadata->set_state(SysTabletsEntryPB::PREPARING);
@@ -3893,8 +4031,7 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
     scoped_refptr<RoleInfo> role;
     role = FindPtrOrNull(roles_map_, req->resource_name());
     if (role == nullptr) {
-      s = STATUS(NotFound,
-                 Substitute("Resource <role $0> does not exist", req->role_name()));
+      s = STATUS_SUBSTITUTE(NotFound, "Resource <role $0> does not exist", req->role_name());
       return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
     }
   }
@@ -3902,9 +4039,7 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
   scoped_refptr<RoleInfo> rp;
   rp = FindPtrOrNull(roles_map_, req->role_name());
   if (rp == nullptr) {
-    s = STATUS(InvalidArgument,
-               Substitute("Role $0 doesn't exist",
-                          req->role_name()));
+    s = STATUS_SUBSTITUTE(InvalidArgument, "Role $0 doesn't exist", req->role_name());
     return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
   }
 
@@ -3917,12 +4052,16 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
     metadata = &rp->mutable_metadata()->mutable_dirty()->pb;
 
     ResourcePermissionsPB* current_resource = nullptr;
-    for (int i = 0; i < metadata->resources_size(); i++) {
-      ResourcePermissionsPB* resource = metadata->mutable_resources(i);
-      if (resource->canonical_resource() == req->canonical_resource()) {
-        current_resource = resource;
+    auto current_resource_iter = metadata->mutable_resources()->end();
+    for (current_resource_iter = metadata->mutable_resources()->begin();
+         current_resource_iter != metadata->mutable_resources()->end(); current_resource_iter++) {
+      if (current_resource_iter->canonical_resource() == req->canonical_resource()) {
         break;
       }
+    }
+
+    if (current_resource_iter != metadata->mutable_resources()->end()) {
+      current_resource = &(*current_resource_iter);
     }
 
     if (current_resource == nullptr) {
@@ -3931,6 +4070,7 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
       }
 
       current_resource = metadata->add_resources();
+      current_resource_iter = std::prev(metadata->mutable_resources()->end());
 
       current_resource->set_canonical_resource(req->canonical_resource());
       current_resource->set_resource_type(req->resource_type());
@@ -3943,34 +4083,28 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
     }
 
     if (req->permission() != PermissionType::ALL_PERMISSION) {
-      bool permission_found = false;
-
-      // Used to store the permissions that we want to keep when the command is REVOKE.
-      vector<PermissionType> permissions;
-      for (int i = 0; i < current_resource->permissions_size(); i++) {
-        const PermissionType& permission = current_resource->permissions(i);
-        if (permission == req->permission()) {
-          permission_found = true;
-          if (!req->revoke()) break;
-        } else {
-          permissions.push_back(permission);
+      auto permission_iter = current_resource->permissions().end();
+      for (permission_iter = current_resource->permissions().begin();
+           permission_iter != current_resource->permissions().end(); permission_iter++) {
+        if (*permission_iter == req->permission()) {
+          break;
         }
       }
 
-      if (!permission_found) {
-        if (req->revoke()) {
-          return Status::OK();
+      // Resource doesn't have the permission, and we got a GRANT request.
+      if (permission_iter == current_resource->permissions().end() && !req->revoke()) {
+        // Verify that the permission is supported by the resource.
+        if (!valid_permission_for_resource(req->permission(), req->resource_type())) {
+          s = STATUS_SUBSTITUTE(InvalidArgument, "Invalid permission $0 for resource type $1",
+              req->permission(), ResourceType_Name(req->resource_type()));
+          // This should never happen because invalid permissions get rejected in the analysis part.
+          // So crash the process if in debug mode.
+          DFATAL_OR_RETURN_NOT_OK(s);
+          return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
         }
         current_resource->add_permissions(req->permission());
-      }
-
-      // Remove the permission by clearing all the permissions and inserting those that didn't match
-      // the requested permission.
-      if (req->revoke()) {
-        current_resource->clear_permissions();
-        for (auto permission : permissions) {
-          current_resource->add_permissions(permission);
-        }
+      } else if (permission_iter != current_resource->permissions().end() && req->revoke()) {
+        current_resource->mutable_permissions()->erase(permission_iter);
       }
     } else {
       // ALL permissions.
@@ -3979,16 +4113,15 @@ Status CatalogManager::GrantRevokePermission(const GrantRevokePermissionRequestP
       current_resource->clear_permissions();
 
       if (!req->revoke()) {
-        for (const auto& permission : all_permissions_) {
-          if (permission == PermissionType::DESCRIBE_PERMISSION &&
-              req->resource_type() != ResourceType::ROLE &&
-              req->resource_type() != ResourceType::ALL_ROLES) {
-            // Describe permission should only be granted to the role resource.
-            continue;
-          }
+        for (const auto& permission : all_permissions_for_resource(req->resource_type())) {
           current_resource->add_permissions(permission);
         }
       }
+    }
+
+    // If this resource doesn't have any more permissions, remove it.
+    if (current_resource->permissions().empty()) {
+      metadata->mutable_resources()->erase(current_resource_iter);
     }
 
     s = sys_catalog_->UpdateItem(rp.get(), leader_ready_term_);
@@ -4073,6 +4206,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
             << ": " << req->DebugString();
 
   scoped_refptr<NamespaceInfo> ns;
+  std::vector<scoped_refptr<TableInfo>> pgsql_tables;
   {
     std::lock_guard<LockType> l(lock_);
     TRACE("Acquired catalog manager lock");
@@ -4090,17 +4224,42 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // Add the new namespace.
 
     // Create unique id for this new namespace.
-    NamespaceId new_id;
-    do {
-      new_id = GenerateId();
-    } while (nullptr != FindPtrOrNull(namespace_ids_map_, new_id));
-
+    NamespaceId new_id = !req->namespace_id().empty() ? req->namespace_id()
+                                                      : GenerateId(SysRowEntry::NAMESPACE);
     ns = new NamespaceInfo(new_id);
     ns->mutable_metadata()->StartMutation();
     SysNamespaceEntryPB *metadata = &ns->mutable_metadata()->mutable_dirty()->pb;
     metadata->set_name(req->name());
     if (req->has_database_type()) {
       metadata->set_database_type(req->database_type());
+    }
+
+    if (req->database_type() == YQL_DATABASE_PGSQL) {
+      if (req->source_namespace_id().empty()) {
+        metadata->set_next_pg_oid(req->next_pg_oid());
+      } else {
+        const auto source_oid = GetPgsqlDatabaseOid(req->source_namespace_id());
+        if (!source_oid.ok()) {
+          return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND,
+                            source_oid.status());
+        }
+        for (const auto& iter : table_ids_map_) {
+          if (IsPgsqlId(iter.first) &&
+              CHECK_RESULT(GetPgsqlDatabaseOid(iter.first)) == *source_oid) {
+            pgsql_tables.push_back(iter.second);
+          }
+        }
+
+        scoped_refptr<NamespaceInfo> source_ns = FindPtrOrNull(namespace_ids_map_,
+                                                               req->source_namespace_id());
+        if (!source_ns) {
+          return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND,
+                            STATUS(NotFound, "Source namespace not found",
+                                   req->source_namespace_id()));
+        }
+        auto source_ns_lock = source_ns->LockForRead();
+        metadata->set_next_pg_oid(source_ns_lock->data().pb.next_pg_oid());
+      }
     }
 
     // Add the namespace to the in-memory map for the assignment.
@@ -4134,6 +4293,13 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                    all_permissions_for_resource(ResourceType::KEYSPACE),
                                    ResourceType::KEYSPACE,
                                    resp));
+  }
+
+  if (req->database_type() == YQL_DATABASE_PGSQL && !pgsql_tables.empty()) {
+    s = CopyPgsqlSysTables(ns->id(), pgsql_tables, resp, rpc);
+    if (!s.ok()) {
+      return s;
+    }
   }
 
   return Status::OK();
@@ -4774,11 +4940,7 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
     }
 
     // Construct the new type (generate fresh name and set fields).
-    UDTypeId new_id;
-    do {
-      new_id = GenerateId();
-    } while (nullptr != FindPtrOrNull(udtype_ids_map_, new_id));
-
+    UDTypeId new_id = GenerateId(SysRowEntry::UDTYPE);
     tp = new UDTypeInfo(new_id);
     tp->mutable_metadata()->StartMutation();
     SysUDTypeEntryPB *metadata = &tp->mutable_metadata()->mutable_dirty()->pb;
@@ -5230,7 +5392,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   TOMBSTONE_NOT_OK(rb_client->Finish(),
                    meta,
                    master_->fs_manager()->uuid(),
-                   "Remote bootstrap: Failure calling Finish()",
+                   "Remote bootstrap: Failed calling Finish()",
                    nullptr);
 
   // Synchronous tablet open for "local bootstrap".
@@ -5238,7 +5400,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
                                             sys_catalog_->tablet_peer(),
                                             meta,
                                             master_->fs_manager()->uuid(),
-                                            "Remote bootstrap: Failure opening sys catalog",
+                                            "Remote bootstrap: Failed opening sys catalog",
                                             nullptr);
 
   // Set up the in-memory master list and also flush the cmeta.
@@ -5254,7 +5416,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
 
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Remote bootstrap finished. "
-                             << "Failure calling VerifyChangeRoleSucceeded: "
+                             << "Failed calling VerifyChangeRoleSucceeded: "
                              << status.ToString();
   } else {
     LOG_WITH_PREFIX(INFO) << "Remote bootstrap finished successfully";

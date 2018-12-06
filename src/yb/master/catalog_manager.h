@@ -775,9 +775,20 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS CheckOnline() const;
 
   // Create Postgres sys catalog table.
-  CHECKED_STATUS CreateTablePgsqlSysTable(const CreateTableRequestPB* req,
-                                          CreateTableResponsePB* resp,
-                                          rpc::RpcContext* rpc);
+  CHECKED_STATUS CreatePgsqlSysTable(const CreateTableRequestPB* req,
+                                     CreateTableResponsePB* resp,
+                                     rpc::RpcContext* rpc);
+
+  // Reserve Postgres oids for a Postgres database.
+  CHECKED_STATUS ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
+                                  ReservePgsqlOidsResponsePB* resp,
+                                  rpc::RpcContext* rpc);
+
+  // Copy Postgres sys catalog tables into a new namespace.
+  CHECKED_STATUS CopyPgsqlSysTables(const NamespaceId& namespace_id,
+                                    const std::vector<scoped_refptr<TableInfo>>& tables,
+                                    CreateNamespaceResponsePB* resp,
+                                    rpc::RpcContext* rpc);
 
   // Create a new Table with the specified attributes.
   //
@@ -1155,7 +1166,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     leader_lock_.AssertAcquiredForReading();
   }
 
-  std::string GenerateId() { return oid_generator_.Next(); }
+  std::string GenerateId(boost::optional<const SysRowEntry::Type> entity_type = boost::none);
 
   ThreadPool* WorkerPool() { return worker_pool_.get(); }
 

@@ -34,6 +34,7 @@
 #include <algorithm>
 #include <boost/optional.hpp>
 
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/fs/block_manager.h"
@@ -249,7 +250,7 @@ Status RemoteBootstrapSession::Init() {
   auto session_checkpoint_dir = std::to_string(last_logged_opid.index) + "_" + now.ToString();
   checkpoint_dir_ = JoinPathSegments(checkpoints_dir, session_checkpoint_dir);
 
-  // Clear any previous rocksdb files in the superblock. Each session should create a new list
+  // Clear any previous RocksDB files in the superblock. Each session should create a new list
   // based the checkpoint directory files.
   tablet_superblock_.clear_rocksdb_files();
   auto status = tablet->CreateCheckpoint(checkpoint_dir_);

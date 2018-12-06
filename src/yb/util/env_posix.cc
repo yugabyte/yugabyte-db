@@ -1330,6 +1330,22 @@ class PosixEnv : public Env {
     return s;
   }
 
+  Result<bool> IsExecutableFile(const std::string& path) override {
+    TRACE_EVENT1("io", "PosixEnv::IsExecutableFile", "path", path);
+    ThreadRestrictions::AssertIOAllowed();
+    Status s;
+    struct stat sbuf;
+    if (stat(path.c_str(), &sbuf) != 0) {
+      if (errno == ENOENT) {
+        // If the file does not exist, we just return false.
+        return false;
+      }
+      return STATUS_IO_ERROR(path, errno);
+    }
+
+    return !S_ISDIR(sbuf.st_mode) && (sbuf.st_mode & S_IXUSR);
+  }
+
   Status Walk(const string& root, DirectoryOrder order, const WalkCallback& cb) override {
     TRACE_EVENT1("io", "PosixEnv::Walk", "path", root);
     ThreadRestrictions::AssertIOAllowed();

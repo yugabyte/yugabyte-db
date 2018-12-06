@@ -278,7 +278,8 @@ readonly BUILD_ROOT_BASENAME_RE=\
 ($VALID_COMPILER_TYPES_RAW_RE)-\
 ($VALID_LINKING_TYPES_RAW_RE)-\
 ($VALID_EDITIONS_RAW_RE)\
-(-ninja)?$"
+(-ninja)?\
+(-clion)?$"
 
 readonly YELLOW_COLOR="\033[0;33m"
 readonly RED_COLOR="\033[0;31m"
