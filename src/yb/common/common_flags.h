@@ -11,10 +11,12 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_FLAGS_H
-#define YB_COMMON_FLAGS_H
+#ifndef YB_COMMON_COMMON_FLAGS_H
+#define YB_COMMON_COMMON_FLAGS_H
 
 #include <gflags/gflags.h>
+
+static constexpr int kAutoDetectNumShardsPerTServer = -1;
 
 DECLARE_int32(yb_num_shards_per_tserver);
 
@@ -25,4 +27,4 @@ void InitCommonFlags();
 
 } // namespace yb
 
-#endif  // YB_COMMON_FLAGS_H
+#endif  // YB_COMMON_COMMON_FLAGS_H
