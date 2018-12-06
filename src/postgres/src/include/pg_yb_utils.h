@@ -27,6 +27,7 @@
 
 #include "postgres.h"
 
+#include "common/pg_yb_common.h"
 #include "yb/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -103,11 +104,6 @@ extern bool YBCCommitTransaction();
 extern void YBCHandleCommitError();
 
 /**
- * Checks if the given environment variable is set to "1".
- */
-extern bool YBCIsEnvVarTrue(const char* env_var_name);
-
-/**
  * Return true if we want to allow PostgreSQL's own locking. This is needed
  * while system tables are still managed by PostgreSQL.
  */
@@ -128,11 +124,6 @@ extern void YBReportTypeNotSupported(Oid type_id);
  * Log whether or not YugaByte is enabled.
  */
 extern void YBReportIfYugaByteEnabled();
-
-/**
- * Checks if the YB_ENABLED_IN_POSTGRES is set.
- */
-bool YBIsEnabledInPostgresEnvVar();
 
 #define YB_REPORT_TYPE_NOT_SUPPORTED(type_id) do { \
 		Oid computed_type_id = type_id; \

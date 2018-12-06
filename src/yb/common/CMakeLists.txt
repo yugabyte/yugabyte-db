@@ -116,7 +116,7 @@ set(COMMON_SRCS
   ql_rowblock.cc
   ql_resultset.cc
   ql_expr.cc
-  flags.cc
+  common_flags.cc
   pgsql_resultset.cc
   roles_permissions.cc)
 

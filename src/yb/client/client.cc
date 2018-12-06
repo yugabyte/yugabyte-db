@@ -55,7 +55,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/flags.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/partition.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/wire_protocol.h"

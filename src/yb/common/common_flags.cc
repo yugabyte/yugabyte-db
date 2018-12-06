@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/common/flags.h"
+#include "yb/common/common_flags.h"
 
 #include <thread>
 
@@ -20,7 +20,7 @@
 #include "yb/util/tsan_util.h"
 
 // Note that this is used by the client or master only, not by tserver.
-DEFINE_int32(yb_num_shards_per_tserver, -1,
+DEFINE_int32(yb_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of shards per table per tablet server when a table is created. If the "
     "value is -1, the system automatically determines the number of tablets.");
 

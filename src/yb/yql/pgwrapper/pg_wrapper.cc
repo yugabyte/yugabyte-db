@@ -17,6 +17,7 @@
 #include <random>
 
 #include <boost/scope_exit.hpp>
+#include <gflags/gflags.h>
 
 #include "yb/util/logging.h"
 #include "yb/util/subprocess.h"
@@ -167,9 +168,22 @@ Status PgWrapper::CheckExecutableValid(const std::string& executable_path) {
 void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
   proc->SetEnv("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
+  proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
   if (yb_enabled) {
     proc->SetEnv("YB_ENABLED_IN_POSTGRES", "1");
     proc->SetEnv("FLAGS_pggate_master_addresses", conf_.master_addresses);
+
+    // Pass non-default flags to the child process using FLAGS_... environment variables.
+    std::vector<google::CommandLineFlagInfo> flag_infos;
+    google::GetAllFlags(&flag_infos);
+    for (const auto& flag_info : flag_infos) {
+      string env_var_name = "FLAGS_" + flag_info.name;
+      // We already set FLAGS_pggate_master_addresses explicitly above, based on
+      // conf_.master_addresses and not based on FLAGS_pggate_masster_addresses, so skip it here.
+      if (env_var_name != "FLAGS_pggate_master_addresses" && !flag_info.is_default) {
+        proc->SetEnv(env_var_name, flag_info.current_value);
+      }
+    }
   }
 }
 

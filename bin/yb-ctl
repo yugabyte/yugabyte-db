@@ -71,19 +71,16 @@ import sys
 import time
 import os
 import shutil
+import random
+import json
 
 
 DAEMON_TYPE_MASTER = 'master'
 DAEMON_TYPE_TSERVER = 'tserver'
 
-# PostgreSQL server runs as a separate daemon as of 10/09/2018, but will be integrated into the
-# tserver process in a future release.
-DAEMON_TYPE_POSTGRES = 'postgres'
-
 DAEMON_TYPES = [
     DAEMON_TYPE_MASTER,
-    DAEMON_TYPE_TSERVER,
-    DAEMON_TYPE_POSTGRES
+    DAEMON_TYPE_TSERVER
 ]
 
 MAX_WAIT_ITERS = 20
@@ -91,6 +88,14 @@ SLEEP_TIME_IN_SEC = 1
 MAX_WAIT_SECONDS = 45
 
 YB_POSTGRES_PORT = 5433
+
+
+def is_env_var_true(env_var_name):
+    env_var_value = os.getenv(env_var_name)
+    return env_var_value and env_var_value.strip().lower() not in ['n', 'no', '0', 'f', 'false']
+
+
+DISABLE_CALLHOME_ENV_VAR_SET = is_env_var_true('YB_DISABLE_CALLHOME')
 
 
 class ExitWithError(Exception):
@@ -107,9 +112,15 @@ def validate_daemon_type(daemon_type):
 
 
 def get_binary_name_for_daemon_type(daemon_type):
-    if daemon_type == DAEMON_TYPE_POSTGRES:
-        return "postgres"
     return "yb-{}".format(daemon_type)
+
+
+def adjust_env_for_postgres():
+    # TODO: we should not need to do this if Linuxbrew's glibc bundled with the YB package has
+    # proper access to locale data.
+    for k in os.environ.keys():
+        if k == 'LANG' or k.startswith('LC_'):
+            del os.environ[k]
 
 
 class SetAndRestoreEnv:
@@ -137,46 +148,6 @@ class SetAndRestoreEnv:
             os.environ[k] = self.old_env[k]
 
 
-class PostgresControl:
-    def __init__(self, bin_dir, data_dir, port, master_addresses, num_shards_per_tserver):
-        self.data_dir = data_dir
-        self.port = port
-        self.bin_dir = bin_dir
-        self.master_addresses = master_addresses
-        self.num_shards_per_tserver = num_shards_per_tserver
-        self.pg_env = {
-            'PGDATA': self.data_dir,
-            'YB_ENABLED_IN_POSTGRES': '1',
-            'FLAGS_pggate_master_addresses': self.master_addresses,
-            'FLAGS_yb_num_shards_per_tserver': str(self.num_shards_per_tserver)
-        }
-
-    def init_if_necessary(self):
-        with SetAndRestoreEnv(self.pg_env):
-            if not os.path.isdir(self.data_dir):
-                os.makedirs(self.data_dir)
-            if not os.listdir(self.data_dir):
-                initdb_cmd_line = [
-                    os.path.join(self.bin_dir, 'initdb'),
-                    '-U',
-                    'postgres'
-                ]
-                subprocess.check_call(initdb_cmd_line)
-
-    def get_flags(self):
-        return ['-p', str(self.port), '-D', self.data_dir]
-
-    def get_pgrep_regex(self):
-        return "/postgres -p %d -D %s" % (self.port, self.data_dir)
-
-    def adjust_env(self):
-        # TODO: we should not need to do this if Linuxbrew's glibc bundled with the YB package has
-        # proper access to locale data.
-        for k in os.environ.keys():
-            if k == 'LANG' or k.startswith('LC_'):
-                del os.environ[k]
-
-
 class DaemonId:
     def __init__(self, daemon_type, index):
         validate_daemon_type(daemon_type)
@@ -185,8 +156,6 @@ class DaemonId:
         self.index = index
 
     def __str__(self):
-        if self.daemon_type == DAEMON_TYPE_POSTGRES:
-            return "postgres"
         return "{}-{}".format(self.daemon_type, self.index)
 
     def is_master(self):
@@ -194,9 +163,6 @@ class DaemonId:
 
     def is_tserver(self):
         return self.daemon_type == DAEMON_TYPE_TSERVER
-
-    def is_postgres(self):
-        return self.daemon_type == DAEMON_TYPE_POSTGRES
 
     def get_ip_address(self):
         return get_local_ip(self.index)
@@ -244,10 +210,8 @@ class ClusterOptions:
                     "redis_http": 11000,
                     "redis_rpc": 6379,
                     "cql_http": 12000,
-                    "cql_rpc": 9042
-                },
-                DAEMON_TYPE_POSTGRES: {
-                    "postgres": YB_POSTGRES_PORT
+                    "cql_rpc": 9042,
+                    "pgsql_rpc": 5433
                 }
         }
 
@@ -358,9 +322,15 @@ class ClusterControl:
 
         self.parser = argparse.ArgumentParser()
         self.subparsers = self.parser.add_subparsers()
-        self.setup_parsing()
 
-        self.pg_control = None
+        # This is a dictionary serialized into JSON and written to a configuration file in the data
+        # directory.
+        self.cluster_config = None
+
+        # This is true only for the "create" command.
+        self.creating_cluster = False
+
+        self._setup_parsing()
 
     def setup_base_parser(self, command, help=None):
         subparser = self.subparsers.add_parser(command, help=help)
@@ -369,6 +339,30 @@ class ClusterControl:
             raise RuntimeError("Invalid command: {}".format(command))
         subparser.set_defaults(func=func)
         return subparser
+
+    def get_cluster_config_file_path(self):
+        """
+        :return: the path to a "cluster configuration file" that holds various options specified
+                 at cluster creation time, e.g. whether PostgreSQL is enabled.
+        """
+        return os.path.join(self.options.cluster_base_dir, 'cluster_config.json')
+
+    def load_cluster_config(self):
+        config_file_path = self.get_cluster_config_file_path()
+        if os.path.exists(config_file_path):
+            with open(config_file_path) as config_file:
+                self.cluster_config = json.load(config_file)
+        else:
+            # No configuration file -- let's create an empty one.
+            self.cluster_config = {}
+
+    def save_cluster_config(self):
+        cluster_config_path = self.get_cluster_config_file_path()
+        with open(cluster_config_path, 'w') as config_file:
+            json.dump(self.cluster_config, config_file)
+
+    def is_postgres_enabled(self):
+        return self.cluster_config.get("enable_postgres") or self.options.enable_postgres
 
     @staticmethod
     def add_extra_flags_arguments(subparser):
@@ -382,7 +376,10 @@ class ClusterControl:
             help="Specify extra tserver flags as a set of key value pairs. "
                  "Format (key=value,key=value)")
 
-    def setup_parsing(self):
+    def _setup_parsing(self):
+        """
+        Sets up the command-line parser. Called from the constructor.
+        """
         self.parser.add_argument(
             "--binary_dir", default=None,
             help="Specify a custom directory in which to find the yugabyte binaries.")
@@ -394,7 +391,7 @@ class ClusterControl:
             help="Replication factor for the cluster as well as default number of masters. ")
         self.parser.add_argument(
             "--require_clock_sync", default=False, type=bool,
-            help="Use ntpd for clock syncronization. Needed for real time dependent use-cases.")
+            help="Use ntpd for clock synchronization. Needed for real time dependent use-cases.")
         self.parser.add_argument(
             "--num_shards_per_tserver", default=2, type=int,
             help="Number of shards (tablets) to start per tablet server for each table.")
@@ -415,7 +412,7 @@ class ClusterControl:
                 ("stop_node", "Stop a particular node in the cluster"),
                 ("restart_node", "Restart the node specified."),
                 ("status", "Get info on the current cluster processes"),
-                ("setup_redis", "Setup YugaByte to support Redis queries")):
+                ("setup_redis", "Setup YugaByte to support Redis API")):
 
             subparsers[cmd_name] = self.setup_base_parser(cmd_name, help=help)
 
@@ -439,7 +436,7 @@ class ClusterControl:
         for cmd in startup_commands:
             subparsers[cmd].add_argument("--placement_info",
                                          help="Specify the placement info in the following format:"
-                                         "cloud.region.zone. Can be comma seperated "
+                                         "cloud.region.zone. Can be comma separated "
                                          "in case you would want to pass more than one value.")
 
             subparsers[cmd].add_argument("--v", default=0, choices=[str(i) for i in range(5)],
@@ -480,22 +477,11 @@ class ClusterControl:
                     time.sleep(SLEEP_TIME_IN_SEC)
             raise RuntimeError("Could not modify placement info for the cluster.")
 
-    def run(self):
-        self.args = self.parser.parse_args()
-        self.options.update_options_from_args(self.args)
-        self.args.func()
-
     def get_number_of_servers(self, daemon_type):
-        if daemon_type == DAEMON_TYPE_POSTGRES and self.options.enable_postgres:
-            return 1
-
         return len(glob.glob("{}/*/{}/yb-data/{}".format(
             self.options.cluster_base_dir, self.options.drives[0], daemon_type)))
 
     def get_pgrep_regex(self, daemon_id):
-        if daemon_id.is_postgres():
-            return self.get_pg_control().get_pgrep_regex()
-
         return "yb-{} .* --rpc_bind_addresses {}".format(
             daemon_id.daemon_type,
             daemon_id.get_ip_address())
@@ -526,23 +512,22 @@ class ClusterControl:
             binary_path
         ]
 
-        if not daemon_id.is_postgres():
-            command_list += [
-                # Add in all the shared flags
-                "--fs_data_dirs \"{}\"".format(",".join(node_base_dirs)),
-                "--webserver_interface {}".format(daemon_id.get_ip_address()),
-                "--rpc_bind_addresses {}".format(daemon_id.get_ip_address()),
-                "--v {}".format(self.options.verbose_level)
-            ]
+        command_list += [
+            # Add in all the shared flags
+            "--fs_data_dirs \"{}\"".format(",".join(node_base_dirs)),
+            "--webserver_interface {}".format(daemon_id.get_ip_address()),
+            "--rpc_bind_addresses {}".format(daemon_id.get_ip_address()),
+            "--v {}".format(self.options.verbose_level)
+        ]
 
-            www_path = os.path.realpath(os.path.join(os.path.dirname(binary_path), "..", "www"))
-            version_metadata_path = os.path.realpath(
-                os.path.join(os.path.dirname(binary_path), ".."))
-            command_list.append("--version_file_json_path={}".format(version_metadata_path))
-            if os.path.isdir(www_path):
-                command_list.append("--webserver_doc_root \"{}\"".format(www_path))
-            if bool(os.getenv("YB_DISABLE_CALLHOME")):
-                command_list.append("--callhome_enabled=false")
+        www_path = os.path.realpath(os.path.join(os.path.dirname(binary_path), "..", "www"))
+        version_metadata_path = os.path.realpath(
+            os.path.join(os.path.dirname(binary_path), ".."))
+        command_list.append("--version_file_json_path={}".format(version_metadata_path))
+        if os.path.isdir(www_path):
+            command_list.append("--webserver_doc_root \"{}\"".format(www_path))
+        if DISABLE_CALLHOME_ENV_VAR_SET:
+            command_list.append("--callhome_enabled=false")
 
         # Add custom args per type of server
         command_list.extend(specific_arg_list)
@@ -568,17 +553,23 @@ class ClusterControl:
         return self.customize_flags(command_list, self.options.master_flags)
 
     def get_tserver_only_flags(self, daemon_id):
+        daemon_ip_address_str = str(daemon_id.get_ip_address())
         command_list = [
-            "--tserver_master_addrs {}".format(self.options.master_addresses),
-            "--memory_limit_hard_bytes {}".format(1024 * 1024 * 1024),
-            "--yb_num_shards_per_tserver {}".format(self.options.num_shards_per_tserver),
-            "--redis_proxy_bind_address {}".format(daemon_id.get_ip_address()),
-            "--cql_proxy_bind_address {}".format(daemon_id.get_ip_address()),
-            "--local_ip_for_outbound_sockets {}".format(daemon_id.get_ip_address()),
+            "--tserver_master_addrs={}".format(self.options.master_addresses),
+            "--memory_limit_hard_bytes={}".format(1024 * 1024 * 1024),
+            "--yb_num_shards_per_tserver={}".format(self.options.num_shards_per_tserver),
+            "--redis_proxy_bind_address=" + daemon_ip_address_str,
+            "--cql_proxy_bind_address=" + daemon_ip_address_str,
+            "--local_ip_for_outbound_sockets=" + daemon_ip_address_str,
             # TODO ENG-2876: Enable this in master as well.
             "--use_cassandra_authentication={}".format(
                 str(self.options.use_cassandra_authentication).lower())
         ]
+        if self.is_postgres_enabled():
+            command_list += [
+                "--start_pgsql_proxy",
+                "--pgsql_proxy_bind_address=" + daemon_ip_address_str
+            ]
         return self.customize_flags(command_list, self.options.tserver_flags)
 
     def get_placement_info_flags(self, placement_flags):
@@ -588,36 +579,22 @@ class ClusterControl:
             "--placement_zone {}".format(placement_flags[2])
         ]
 
-    # Expects two arguments
-    # 1. on_create which if true means that we are starting the cluster.
-    # 2. running_only which if true means that we only set running master addresses.
-    def set_master_addresses(self, on_create=False, running_only=False):
-        num_servers = self.options.replication_factor if on_create \
+    def set_master_addresses(self, running_only=False):
+        """
+        :param running_only: if we're only interested in running masters and not in stopped ones
+        """
+        num_servers = (
+            self.options.replication_factor if self.creating_cluster
             else self.get_number_of_servers(DAEMON_TYPE_MASTER)
+        )
         self.options.master_addresses = ",".join(
             [self.options.get_address(DaemonId(DAEMON_TYPE_MASTER, i), "rpc", True)
              for i in range(1, num_servers + 1)
              if not running_only or self.get_pid(DaemonId(DAEMON_TYPE_MASTER, i)) > 0])
 
-    def get_pg_control(self):
-        if not self.pg_control:
-            self.pg_control = PostgresControl(
-                bin_dir=os.path.dirname(self.options.get_binary_path("postgres")),
-                data_dir=os.path.join(self.options.get_base_node_dirs(daemon_index=1)[0],
-                                      'yb-data', 'postgres'),
-                port=YB_POSTGRES_PORT,
-                master_addresses=self.options.master_addresses,
-                num_shards_per_tserver=self.options.num_shards_per_tserver
-            )
-        return self.pg_control
-
     def start_daemon(self, daemon_id):
         self.options.validate_daemon_type(daemon_id.daemon_type)
         self.options.validate_daemon_index(daemon_id.index)
-
-        pg_control = None
-        if daemon_id.is_postgres():
-            pg_control = self.get_pg_control()
 
         if self.get_pid(daemon_id) > 0:
             logging.info("Server {} already running".format(daemon_id))
@@ -631,28 +608,20 @@ class ClusterControl:
             if not os.path.exists(path):
                 os.makedirs(path)
 
-        custom_flags = []
-        env_vars = None
         if daemon_id.is_master():
             custom_flags = self.get_master_only_flags(daemon_id)
         elif daemon_id.is_tserver():
             custom_flags = self.get_tserver_only_flags(daemon_id)
-        elif daemon_id.is_postgres():
-            custom_flags = pg_control.get_flags()
-            env_vars = pg_control.pg_env
-            pg_control.init_if_necessary()
         else:
             raise ValueError("Invalid daemon id: %s" % daemon_id)
-
         if len(self.options.placement_info) > 0 and daemon_id.supports_placement():
             mod_val = (daemon_id.index - 1) % len(self.options.placement_info)
             custom_flags.extend(self.get_placement_info_flags(self.options.placement_info[mod_val]))
         command = self.build_command(daemon_id, custom_flags)
         logging.info("Starting {} with:\n{}".format(daemon_id, command))
 
-        with SetAndRestoreEnv(env_vars):
-            if daemon_id.is_postgres():
-                pg_control.adjust_env()
+        with SetAndRestoreEnv():
+            adjust_env_for_postgres()
             os.system(command)
 
     def stop_daemon(self, daemon_id):
@@ -664,15 +633,29 @@ class ClusterControl:
         logging.info("Stopping server {} PID={}".format(daemon_id, pid))
         # Kill the process.
         os.kill(pid, signal.SIGTERM)
+
         # Wait for process to stop.
+        last_msg_time = time.time()
+
+        def print_wait_msg():
+            logging.info("Waiting for server {} PID={} to stop...".format(daemon_id, pid))
+            sys.stdout.flush()
+            sys.stderr.flush()
+        print_wait_msg()
+
         while True:
             try:
-                logging.info("Waiting for server {} PID={} to stop...".format(daemon_id, pid))
-                time.sleep(0.5)
                 os.kill(pid, 0)
             except OSError as err:
                 if err.errno == errno.ESRCH:
                     return
+
+            time.sleep(0.5)
+
+            current_time = time.time()
+            if current_time - last_msg_time >= 1:
+                print_wait_msg()
+                last_msg_time = current_time
 
     def restart_daemon(self, daemon_id):
         self.stop_daemon(daemon_id)
@@ -757,6 +740,10 @@ class ClusterControl:
             num_alive_ts, num_yb_admin_ts))
         return False
 
+    def wait_for_cluster_or_raise(self):
+        if not self.wait_for_cluster():
+            raise RuntimeError("Timed out waiting for Yugabyte cluster!")
+
     def show_node_status(self, daemon_id):
         pid = self.get_pid(daemon_id)
 
@@ -769,23 +756,17 @@ class ClusterControl:
             info_list = [
                 ("type", daemon_id.daemon_type),
                 ("node_id", daemon_id.index),
-                ("PID", pid)
+                ("PID", pid),
+                ("admin service", "http://" + get_address("http"))
             ]
-
-            if daemon_id.is_postgres():
-                info_list += [
-                    ('pgsql service', '%s:%d' % (daemon_id.get_ip_address(), YB_POSTGRES_PORT))
-                ]
-            else:
-                info_list += [
-                    ("admin service", "http://" + get_address("http"))
-                ]
 
             if daemon_id.is_tserver():
                 info_list.extend([
                     ("cql service", get_address("cql_rpc")),
                     ("redis service", get_address("redis_rpc")),
                 ])
+                if self.is_postgres_enabled():
+                    info_list.append(("pgsql service", get_address("pgsql_rpc")))
             logging.info("Server is running: {}".format(
                 ", ".join(["{}={}".format(k, v) for k, v in info_list])))
 
@@ -803,19 +784,25 @@ class ClusterControl:
                 fn(DaemonId(daemon_type, daemon_index))
 
     def create(self):
+        self.creating_cluster = True
         server_counts = self.options.replication_factor
-        self.set_master_addresses(on_create=True)
+        self.set_master_addresses()
+        self.cluster_config = {
+            "enable_postgres": self.options.enable_postgres
+        }
 
         server_counts_map = {
             DAEMON_TYPE_MASTER: server_counts,
             DAEMON_TYPE_TSERVER: server_counts
         }
-        server_counts_map[DAEMON_TYPE_POSTGRES] = 1 if self.options.enable_postgres else 0
 
         self.start_helper(server_counts_map)
         self.modify_placement_info()
+        if self.is_postgres_enabled():
+            self.run_cluster_wide_postgres_initdb()
+        self.save_cluster_config()
         print ("Successfully created a new cluster.")
-        if not bool(os.getenv("YB_DISABLE_CALLHOME")):
+        if not DISABLE_CALLHOME_ENV_VAR_SET:
             print ("Congratulations on installing YugaByte DB Community Edition. " +
                    "We'd like to welcome you to the community with a free t-shirt " +
                    "and pack of stickers! " +
@@ -896,26 +883,63 @@ class ClusterControl:
     def status(self):
         self.for_all_daemons(self.show_node_status)
 
-    def setup_redis(self, on_create=False):
+    def setup_redis(self):
         yb_admin_binary_path = self.options.get_binary_path("yb-admin")
-        if not on_create:
+        if self.creating_cluster:
             self.set_master_addresses()
-        if self.wait_for_cluster():
-            cmd_setup_redis_table = [yb_admin_binary_path,
-                                     "--master_addresses",
-                                     self.options.master_addresses,
-                                     "--yb_num_shards_per_tserver",
-                                     str(self.options.num_shards_per_tserver),
-                                     "setup_redis_table"]
-            proc = subprocess.Popen(
-                cmd_setup_redis_table, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            result, _ = proc.communicate()
-            if proc.returncode:
-                print (result)
-                raise RuntimeError("Failed to Setup Redis.")
-            print ("Setup Redis successful.")
-        else:
-            raise RuntimeError("Timed out waiting for Yugabyte cluster!")
+        self.wait_for_cluster_or_raise()
+        cmd_setup_redis_table = [yb_admin_binary_path,
+                                 "--master_addresses",
+                                 self.options.master_addresses,
+                                 "--yb_num_shards_per_tserver",
+                                 str(self.options.num_shards_per_tserver),
+                                 "setup_redis_table"]
+        proc = subprocess.Popen(
+            cmd_setup_redis_table, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result, _ = proc.communicate()
+        if proc.returncode:
+            print (result)
+            raise RuntimeError("Failed to Setup Redis.")
+        print ("Setup Redis successful.")
+
+    def run_cluster_wide_postgres_initdb(self):
+        initdb_binary_path = self.options.get_binary_path("initdb")
+
+        logging.info("Running initdb to initialize PostgreSQL metadata in the YugaByte cluster")
+        with SetAndRestoreEnv(
+            {'FLAGS_pggate_master_addresses': self.options.master_addresses,
+             'YB_ENABLED_IN_POSTGRES': '1'}):
+            adjust_env_for_postgres()
+
+            tmp_pg_data_dir = '/tmp/yb-ctl_tmp_pg_data_{}'.format(''.join(
+                [random.choice('0123456789abcdef') for _ in range(32)]))
+
+            try:
+                subprocess.check_call([
+                    initdb_binary_path,
+                    '-D', tmp_pg_data_dir
+                    ])
+            finally:
+                if os.path.exists(tmp_pg_data_dir):
+                    logging.info("Deleting temporary PostgreSQL data directory: %s",
+                                 tmp_pg_data_dir)
+                    shutil.rmtree(tmp_pg_data_dir, ignore_errors=True)
+
+        logging.info(
+            "Successfully ran initdb to initialize PostgreSQL data in the YugaByte cluster")
+
+    # ---------------------------------------------------------------------------------------------
+    # The "main" function of the ClusterControl class
+    # ---------------------------------------------------------------------------------------------
+
+    def run(self):
+        self.args = self.parser.parse_args()
+        self.options.update_options_from_args(self.args)
+
+        # Load cluster configuration for the non-creation case -- however, we will override
+        # this configuration if the command is "create".
+        self.load_cluster_config()
+        self.args.func()
 
 
 if __name__ == "__main__":

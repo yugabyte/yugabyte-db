@@ -38,13 +38,13 @@
 #include "pg_yb_utils.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "common/pg_yb_common.h"
 
 YBCPgSession ybc_pg_session = NULL;
 
 /** These values are lazily initialized based on corresponding environment variables. */
 int ybc_pg_double_write = -1;
 int ybc_disable_pg_locking = -1;
-int ybc_transactions_enabled = -1;
 
 YBCStatus ybc_commit_status = NULL;
 
@@ -73,11 +73,12 @@ IsYBSupportedTable(Oid relid)
 bool
 YBTransactionsEnabled()
 {
-	if (ybc_transactions_enabled == -1)
+	static int cached_value = -1;
+	if (cached_value == -1)
 	{
-		ybc_transactions_enabled = YBCIsEnvVarTrue("YB_PG_TRANSACTIONS_ENABLED");
+		cached_value = YBCIsEnvVarTrue("YB_PG_TRANSACTIONS_ENABLED");
 	}
-	return IsYugaByteEnabled() && ybc_transactions_enabled;
+	return IsYugaByteEnabled() && cached_value;
 }
 
 void
@@ -132,9 +133,9 @@ HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table)
 
 void
 YBInitPostgresBackend(
-					  const char *program_name,
-					  const char *db_name,
-					  const char *user_name)
+	const char *program_name,
+	const char *db_name,
+	const char *user_name)
 {
 	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len));
 
@@ -214,13 +215,6 @@ YBCCommitTransaction()
 	}
 
 	return true;
-}
-
-bool
-YBCIsEnvVarTrue(const char* env_var_name)
-{
-	const char* env_var_value = getenv(env_var_name);
-	return env_var_value != NULL && strcmp(env_var_value, "1") == 0;
 }
 
 void
@@ -363,15 +357,6 @@ YBReportIfYugaByteEnabled()
 		ereport(LOG, (errmsg("YugaByte is NOT ENABLED -- "
 							"this is a vanilla PostgreSQL server!")));
 	}
-}
-
-bool
-YBIsEnabledInPostgresEnvVar() {
-	static int cached_value = -1;
-	if (cached_value == -1) {
-		cached_value = YBCIsEnvVarTrue("YB_ENABLED_IN_POSTGRES");
-	}
-	return cached_value;
 }
 
 bool
