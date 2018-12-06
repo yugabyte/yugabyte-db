@@ -23,6 +23,12 @@ OBJS=	pg_backup_archiver.o pg_backup_db.o pg_backup_custom.o \
 	pg_backup_null.o pg_backup_tar.o pg_backup_directory.o \
 	pg_backup_utils.o parallel.o compress_io.o dumputils.o $(WIN32RES)
 
+ifndef YB_BUILD_ROOT
+$(error YB_BUILD_ROOT is not set)
+endif
+
+LIBS += -L$(YB_BUILD_ROOT)/lib -lyb_util
+
 all: pg_dump pg_restore pg_dumpall
 
 pg_dump: pg_dump.o common.o pg_dump_sort.o $(OBJS) | submake-libpq submake-libpgport submake-libpgfeutils

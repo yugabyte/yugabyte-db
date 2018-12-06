@@ -26,7 +26,7 @@ enum class PgSystemAttrNum : int {
   kTableOidAttributeNumber = -7, // tableoid
 
   // YugaByte system columns.
-  kYBTupleId = -8, // yb_ctid.
+  kYBTupleId = -8, // ybctid.
 };
 
 // TODO(neil)

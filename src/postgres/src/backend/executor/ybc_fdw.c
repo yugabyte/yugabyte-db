@@ -390,24 +390,26 @@ ybcGetForeignPlan(PlannerInfo *root,
 	foreach(lc, baserel->reltarget->exprs)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
-		pull_varattnos((Node *) expr,
-		               baserel->relid,
-		               &yb_plan_state->target_attrs);
+		pull_varattnos_min_attr((Node *) expr,
+														baserel->relid,
+														&yb_plan_state->target_attrs,
+														baserel->min_attr);
 	}
 
 	foreach(lc, yb_plan_state->pg_conds)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
-		pull_varattnos((Node *) expr,
-		               baserel->relid,
-		               &yb_plan_state->target_attrs);
+		pull_varattnos_min_attr((Node *) expr,
+														baserel->relid,
+														&yb_plan_state->target_attrs,
+														baserel->min_attr);
 	}
 
-	/* Check there are no unsupported scan targets */
 	for (AttrNumber i = baserel->min_attr; i <= 0; i++)
 	{
-		int col = i - FirstLowInvalidHeapAttributeNumber;
-		if (bms_is_member(col, yb_plan_state->target_attrs))
+		int col = i - baserel->min_attr + 1;
+		if (i != YBTupleIdAttributeNumber &&
+				bms_is_member(col, yb_plan_state->target_attrs))
 		{
 			/* We do not yet support system-defined columns in YugaByte */
 			ereport(ERROR,
@@ -430,11 +432,11 @@ ybcGetForeignPlan(PlannerInfo *root,
 	{
 		no_targets = true;
 	}
-	for (AttrNumber i = 1; i <= baserel->max_attr; i++)
+	for (AttrNumber i = baserel->min_attr; i <= baserel->max_attr; i++)
 	{
-		int col = i - FirstLowInvalidHeapAttributeNumber;
+		int col = i - baserel->min_attr + 1;
 		if (bms_is_member(col, yb_plan_state->target_attrs) ||
-		    (no_targets && bms_is_member(i, yb_plan_state->hash_key)))
+		    (no_targets && i > 0 && bms_is_member(i, yb_plan_state->hash_key)))
 		{
 			TargetEntry *target = makeNode(TargetEntry);
 			target->resno = i;
@@ -520,12 +522,14 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	foreach(lc, target_attrs)
 	{
 		TargetEntry       *target = (TargetEntry *) lfirst(lc);
-		Form_pg_attribute attr;
-		attr = relation->rd_att->attrs[target->resno - 1];
-		/* Ignore dropped attributes */
-		if (attr->attisdropped)
-		{
-			continue;
+		if (target->resno > 0) {
+			Form_pg_attribute attr;
+			attr = relation->rd_att->attrs[target->resno - 1];
+			/* Ignore dropped attributes */
+			if (attr->attisdropped)
+			{
+				continue;
+			}
 		}
 		YBCPgExpr expr = YBCNewColumnRef(ybc_state->handle, target->resno);
 		HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_state->handle, expr),
@@ -552,18 +556,21 @@ ybcIterateForeignScan(ForeignScanState *node)
 	ExecClearTuple(slot);
 
 	/* Fetch one row. */
+	YBCPgSysColumns syscols;
 	HandleYBStmtStatus(YBCPgDmlFetch(ybc_state->handle,
 	                                 (uint64_t *) slot->tts_values,
 	                                 slot->tts_isnull,
-																	 NULL,
+																	 &syscols,
 	                                 &has_data), ybc_state->handle);
 
-	/* If we have result(s) update the tuple slot. */
 	if (has_data)
 	{
+		/* Setup special columns in the slot */
+		slot->tts_ybctid = PointerGetDatum(syscols.ybctid);
+
+		/* If we have result(s) update the tuple slot. */
 		ExecStoreVirtualTuple(slot);
 	}
-
 	return slot;
 }
 

@@ -42,7 +42,6 @@ public class TestPgSelect extends BasePgSQLTest {
   public void testWhereClause() throws Exception {
     Set<Row> allRows = setupSimpleTable("test");
     try (Statement statement = connection.createStatement()) {
-
       // Test no where clause -- select all rows.
       String query = "SELECT * FROM test";
       try (ResultSet rs = statement.executeQuery(query)) {
@@ -255,24 +254,5 @@ public class TestPgSelect extends BasePgSQLTest {
       assertOneRow("SELECT * FROM test WHERE h + r <= 10 AND substring(vs from 2) = 'bc'",
                    2L, 3.0D, 4, "abc");
     }
-  }
-
-  private Set<Row> setupSimpleTable(String tableName) throws SQLException {
-    Set<Row> allRows = new HashSet<>();
-    try (Statement statement = connection.createStatement()) {
-      createSimpleTable(tableName);
-      String insertTemplate = "INSERT INTO test(h, r, vi, vs) VALUES (%d, %f, %d, '%s')";
-
-      for (int h = 0; h < 10; h++) {
-        for (int r = 0; r < 10; r++) {
-          statement.execute(String.format(insertTemplate, h, r + 0.5, h * 10 + r, "v" + h + r));
-          allRows.add(new Row((long) h,
-                              r + 0.5,
-                              h * 10 + r,
-                              "v" + h + r));
-        }
-      }
-    }
-    return allRows;
   }
 }

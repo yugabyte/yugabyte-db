@@ -166,9 +166,9 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid namespaceId, Oid relationId)
 	 */
 	char *db_name = get_database_name(MyDatabaseId);
 	YBC_LOG_INFO("Creating Table %s, %s, %s",
-				 db_name,
-				 stmt->relation->schemaname,
-				 stmt->relation->relname);
+							 db_name,
+							 stmt->relation->schemaname,
+							 stmt->relation->relname);
 
 	Constraint *primary_key = NULL;
 

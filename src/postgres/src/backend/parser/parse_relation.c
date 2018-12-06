@@ -34,6 +34,7 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
+#include "pg_yb_utils.h"
 
 #define MAX_FUZZY_DISTANCE				3
 
@@ -918,7 +919,7 @@ markRTEForSelectPriv(ParseState *pstate, RangeTblEntry *rte,
 		rte->requiredPerms |= ACL_SELECT;
 		/* Must offset the attnum to fit in a bitmapset */
 		rte->selectedCols = bms_add_member(rte->selectedCols,
-										   col - FirstLowInvalidHeapAttributeNumber);
+												col - YBGetFirstLowInvalidAttributeNumberFromOid(rte->relid));
 	}
 	else if (rte->rtekind == RTE_JOIN)
 	{

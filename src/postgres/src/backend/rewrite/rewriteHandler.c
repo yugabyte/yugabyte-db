@@ -38,6 +38,7 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 
+#include "pg_yb_utils.h"
 
 /* We use a list of these to detect recursion in RewriteQuery */
 typedef struct rewrite_event
@@ -1314,7 +1315,20 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 	const char *attrname;
 	TargetEntry *tle;
 
-	if (target_relation->rd_rel->relkind == RELKIND_RELATION ||
+	if (IsYugaByteEnabled() && IsYBRelation(target_relation))
+	{
+		/*
+		 * Emit YB_CTID so that executor can find the row to update or delete from YugaByte tables.
+		 */
+		var = makeVar(parsetree->resultRelation,
+									YBTupleIdAttributeNumber,
+									BYTEAOID,
+									-1,
+									InvalidOid,
+									0);
+		attrname = "ybctid";
+	}
+	else if (target_relation->rd_rel->relkind == RELKIND_RELATION ||
 		target_relation->rd_rel->relkind == RELKIND_MATVIEW ||
 		target_relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 	{
@@ -1327,7 +1341,6 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 					  -1,
 					  InvalidOid,
 					  0);
-
 		attrname = "ctid";
 	}
 	else if (target_relation->rd_rel->relkind == RELKIND_FOREIGN_TABLE)

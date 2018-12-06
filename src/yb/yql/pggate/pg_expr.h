@@ -69,6 +69,9 @@ class PgExpr {
   Opcode opcode() const {
     return opcode_;
   }
+  bool is_constant() {
+    return opcode_ == Opcode::PG_EXPR_CONSTANT;
+  }
 
   // Read the result from input buffer (yb_cursor) that was computed by and sent from DocDB.
   // Write the result to output buffer (pg_cursor) in Postgres format.
@@ -180,6 +183,11 @@ class PgConstant : public PgExpr {
 
   // Expression to PB.
   virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
+
+  // Read binary value.
+  const string &binary_value() {
+    return ql_value_.binary_value();
+  }
 
  private:
   QLValuePB ql_value_;

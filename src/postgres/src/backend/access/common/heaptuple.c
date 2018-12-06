@@ -318,6 +318,10 @@ heap_attisnull(HeapTuple tup, int attnum)
 			/* these are never null */
 			break;
 
+		case YBTupleIdAttributeNumber:
+			/* If selected, virtual YB columns are never null */
+			break;
+
 		default:
 			elog(ERROR, "invalid attnum: %d", attnum);
 	}
@@ -575,7 +579,6 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 			break;
 		case MinCommandIdAttributeNumber:
 		case MaxCommandIdAttributeNumber:
-
 			/*
 			 * cmin and cmax are now both aliases for the same field, which
 			 * can in fact also be a combo command id.  XXX perhaps we should
@@ -587,6 +590,11 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 		case TableOidAttributeNumber:
 			result = ObjectIdGetDatum(tup->t_tableOid);
 			break;
+
+		case YBTupleIdAttributeNumber:
+			result = tup->t_ybctid;
+			break;
+
 		default:
 			elog(ERROR, "invalid attnum: %d", attnum);
 			result = 0;			/* keep compiler quiet */
@@ -752,6 +760,7 @@ heap_form_tuple(TupleDesc tupleDescriptor,
 	tuple->t_len = len;
 	ItemPointerSetInvalid(&(tuple->t_self));
 	tuple->t_tableOid = InvalidOid;
+	tuple->t_ybctid = 0;
 
 	HeapTupleHeaderSetDatumLength(td, len);
 	HeapTupleHeaderSetTypeId(td, tupleDescriptor->tdtypeid);

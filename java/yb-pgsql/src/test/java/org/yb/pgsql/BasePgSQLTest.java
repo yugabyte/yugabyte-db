@@ -707,4 +707,24 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected int getPgPort() {
     return pgPort;
   }
+
+  protected Set<Row> setupSimpleTable(String tableName) throws SQLException {
+    Set<Row> allRows = new HashSet<>();
+    try (Statement statement = connection.createStatement()) {
+      createSimpleTable(tableName);
+      String insertTemplate = "INSERT INTO %s(h, r, vi, vs) VALUES (%d, %f, %d, '%s')";
+
+      for (int h = 0; h < 10; h++) {
+        for (int r = 0; r < 10; r++) {
+          statement.execute(String.format(insertTemplate, tableName,
+                                          h, r + 0.5, h * 10 + r, "v" + h + r));
+          allRows.add(new Row((long) h,
+                              r + 0.5,
+                              h * 10 + r,
+                              "v" + h + r));
+        }
+      }
+    }
+    return allRows;
+  }
 }

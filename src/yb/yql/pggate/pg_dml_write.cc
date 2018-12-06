@@ -74,26 +74,35 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
   // Iterate primary-key columns and remove the binds without values.
   bool missing_primary_key = false;
 
-  // Remove empty binds from partition list.
-  auto partition_iter = write_req_->mutable_partition_column_values()->begin();
-  while (partition_iter != write_req_->mutable_partition_column_values()->end()) {
-    if (expr_binds_.find(&*partition_iter) == expr_binds_.end()) {
-      missing_primary_key = true;
-      partition_iter = write_req_->mutable_partition_column_values()->erase(partition_iter);
-    } else {
-      partition_iter++;
+  // Either ybctid or primary key must be present.
+  if (ybctid_bind_.empty()) {
+    // Remove empty binds from partition list.
+    auto partition_iter = write_req_->mutable_partition_column_values()->begin();
+    while (partition_iter != write_req_->mutable_partition_column_values()->end()) {
+      if (expr_binds_.find(&*partition_iter) == expr_binds_.end()) {
+        missing_primary_key = true;
+        partition_iter = write_req_->mutable_partition_column_values()->erase(partition_iter);
+      } else {
+        partition_iter++;
+      }
     }
-  }
 
-  // Remove empty binds from range list.
-  auto range_iter = write_req_->mutable_range_column_values()->begin();
-  while (range_iter != write_req_->mutable_range_column_values()->end()) {
-    if (expr_binds_.find(&*range_iter) == expr_binds_.end()) {
-      missing_primary_key = true;
-      range_iter = write_req_->mutable_range_column_values()->erase(range_iter);
-    } else {
-      range_iter++;
+    // Remove empty binds from range list.
+    auto range_iter = write_req_->mutable_range_column_values()->begin();
+    while (range_iter != write_req_->mutable_range_column_values()->end()) {
+      if (expr_binds_.find(&*range_iter) == expr_binds_.end()) {
+        missing_primary_key = true;
+        range_iter = write_req_->mutable_range_column_values()->erase(range_iter);
+      } else {
+        range_iter++;
+      }
     }
+  } else {
+    uint16_t hash_value;
+    RETURN_NOT_OK(PgExpr::ReadHashValue(ybctid_bind_.data(), ybctid_bind_.size(), &hash_value));
+    write_req_->set_hash_code(hash_value);
+    write_req_->clear_partition_column_values();
+    write_req_->clear_range_column_values();
   }
 
   // Set the primary key indicator in protobuf.
@@ -113,6 +122,12 @@ Status PgDmlWrite::Exec() {
 
   // First update protobuf with new bind values.
   RETURN_NOT_OK(UpdateBindPBs());
+
+  if (write_req_->has_ybctid_column_value()) {
+    PgsqlExpressionPB *exprpb = write_req_->mutable_ybctid_column_value();
+    CHECK(exprpb->has_value() && exprpb->value().has_binary_value())
+      << "YBCTID must be of BINARY datatype";
+  }
 
   // Execute the statement.
   RETURN_NOT_OK(doc_op_->Execute());

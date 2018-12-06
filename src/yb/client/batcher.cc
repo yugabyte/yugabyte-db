@@ -274,12 +274,12 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
         break;
       case YBOperation::Type::PGSQL_READ:
         if (!in_flight_op->partition_key.empty()) {
-          down_cast<YBPgsqlOp *>(yb_op.get())->SetHashCode(
+          down_cast<YBPgsqlReadOp *>(yb_op.get())->SetHashCode(
               PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
         }
         break;
       case YBOperation::Type::PGSQL_WRITE:
-        down_cast<YBPgsqlOp*>(yb_op.get())->SetHashCode(
+        down_cast<YBPgsqlWriteOp*>(yb_op.get())->SetHashCode(
             PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
         break;
     }
