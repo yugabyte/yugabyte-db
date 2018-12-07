@@ -40,7 +40,7 @@ create view oracle.user_tab_columns as
 create view oracle.user_tables as
     select table_name
       from information_schema.tables
-     where table_type = 'BASE_TABLE';
+     where table_type = 'BASE TABLE';
 
 create view oracle.user_cons_columns as
    select constraint_name, column_name, table_name
