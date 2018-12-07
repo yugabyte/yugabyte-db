@@ -885,8 +885,7 @@ class ClusterControl:
 
     def setup_redis(self):
         yb_admin_binary_path = self.options.get_binary_path("yb-admin")
-        if self.creating_cluster:
-            self.set_master_addresses()
+        self.set_master_addresses()
         self.wait_for_cluster_or_raise()
         cmd_setup_redis_table = [yb_admin_binary_path,
                                  "--master_addresses",
