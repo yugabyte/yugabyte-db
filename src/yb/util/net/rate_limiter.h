@@ -21,8 +21,8 @@ namespace yb {
 
 class RateLimiter {
  public:
-  // Inactive rate limiter. It will update rate statistics and call send_recv_func_, but it will not
-  // try to control the rate.
+  // Inactive rate limiter. When calling SendOrReceiveData, the rate limiter will update its
+  // statistics and call the passed send_rcv_func, but it will not try to control the rate.
   RateLimiter();
 
   // Active rate limiter. target_rate_updater_ will be set to max_transmission_rate_updater.
@@ -60,10 +60,24 @@ class RateLimiter {
 
   void Init();
 
-  // We can only have an active rate limiter if the user has provided a function ot update the rate.
+  // We can only have an active rate limiter if the user has provided a function to update the rate.
   bool active() { return target_rate_updater_ != nullptr; }
 
   void SetTargetRate(uint64_t target_rate);
+
+#if defined(OS_MACOSX)
+  MonoDelta total_time_slept() { return total_time_slept_; }
+
+  // Only used in MacOS. Instead of using the elapsed time for the calculation, we use the time
+  // we spent sleeping. Used only for testing.
+  // additional_time is passed by the test to include this time in the rate calculation.
+  uint64_t MacOSRate(MonoDelta additional_time = MonoDelta::FromMilliseconds(0)) {
+    return total_time_slept_.ToMilliseconds() || additional_time.ToMilliseconds()  > 0 ?
+        MonoTime::kMillisecondsPerSecond * total_bytes_ /
+            (total_time_slept_ + additional_time).ToMilliseconds() :
+        0;
+  }
+#endif
 
  private:
   void UpdateRate();
@@ -80,6 +94,11 @@ class RateLimiter {
 
   // Reset every time the rate changes
   MonoTime rate_start_time_;
+
+#if defined(OS_MACOSX)
+  // Total amount of time this object has spent sleeping.
+  MonoDelta total_time_slept_ = MonoDelta::FromMicroseconds(0);
+#endif
 
   // Total number of bytes sent or received by the user of this RateLimiter object.
   uint64_t total_bytes_ = 0;
