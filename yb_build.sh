@@ -523,7 +523,7 @@ run_cxx_test() {
 cleanup() {
   local YB_BUILD_EXIT_CODE=$?
   print_report
-  return "$YB_BUILD_EXIT_CODE"
+  exit "$YB_BUILD_EXIT_CODE"
 }
 
 # -------------------------------------------------------------------------------------------------
