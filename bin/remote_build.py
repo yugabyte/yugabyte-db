@@ -227,11 +227,11 @@ def main():
     for arg in ybd_args:
         remote_command += " {0}".format(shlex.quote(arg))
     print("Remote command: {0}".format(remote_command))
-    ssh_args = ['ssh', args.host, '-o', 'ControlMaster=no', remote_command]
-    proc = subprocess.Popen(ssh_args, shell=False)
-    proc.communicate()
-    if proc.returncode != 0:
-        sys.exit(proc.returncode)
+    # Let's not use subprocess if the output is potentially large:
+    # https://thraxil.org/users/anders/posts/2008/03/13/Subprocess-Hanging-PIPE-is-your-enemy/
+    ssh_path = subprocess.check_output(['which', 'ssh']).strip()
+    ssh_args = [ssh_path, args.host, remote_command]
+    os.execv(ssh_path, ssh_args)
 
 
 if __name__ == '__main__':

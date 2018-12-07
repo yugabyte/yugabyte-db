@@ -466,6 +466,9 @@ fi
 log "Disk usage after C++ build:"
 show_disk_usage
 
+# We can grep for this line in the log to determine the stage of the build job.
+log "ALL OF YUGABYTE C++ BUILD FINISHED"
+
 # End of the C++ code build.
 # -------------------------------------------------------------------------------------------------
 

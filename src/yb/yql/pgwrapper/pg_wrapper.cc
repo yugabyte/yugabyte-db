@@ -15,6 +15,7 @@
 #include <vector>
 #include <string>
 #include <random>
+#include <fstream>
 
 #include <boost/scope_exit.hpp>
 #include <gflags/gflags.h>
@@ -24,6 +25,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/errno.h"
 
 DEFINE_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
 
@@ -110,6 +112,22 @@ Status PgWrapper::InitDb(bool yb_enabled) {
                          initdb_program_path,
                          exit_code);
   }
+
+  {
+    string hba_conf_path = JoinPathSegments(conf_.data_dir, "pg_hba.conf");
+    std::ofstream hba_conf_file;
+
+    hba_conf_file.open(hba_conf_path, std::ios_base::app);
+    hba_conf_file << std::endl;
+    hba_conf_file << "host all all 0.0.0.0/0 trust" << std::endl;
+    hba_conf_file << "host all all ::0/0 trust" << std::endl;
+
+    if (!hba_conf_file) {
+      return STATUS(IOError, "Could not append additional lines to file " + hba_conf_path,
+                    ErrnoToString(errno), errno);
+    }
+  }
+
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;
   return Status::OK();
 }
