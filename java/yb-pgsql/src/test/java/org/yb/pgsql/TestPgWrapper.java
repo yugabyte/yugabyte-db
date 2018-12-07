@@ -167,4 +167,24 @@ public class TestPgWrapper extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testDefaultValues() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE testdefaultvaluetable " +
+          "(k serial primary key, v1 text default 'abc', v2 int default 1, v3 int)");
+      for (int i = 0; i < 100; i++) {
+        statement.execute(String.format("INSERT INTO testdefaultvaluetable(v3) VALUES(%d)", i));
+      }
+      ResultSet rs = statement.executeQuery(
+          String.format("SELECT * FROM testdefaultvaluetable ORDER BY k ASC"));
+      for (int i = 0; i < 100; i++) {
+        assertTrue(rs.next());
+        assertEquals(i + 1, rs.getInt("k"));
+        assertEquals("abc", rs.getString("v1"));
+        assertEquals(1, rs.getInt("v2"));
+        assertEquals(i, rs.getInt("v3"));
+      }
+    }
+  }
+
 }
