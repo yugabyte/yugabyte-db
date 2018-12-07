@@ -1,6 +1,16 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2016  Orafce Global Development Group
 
+Version 3.7.0 - 7. Dec 2018
+* possibility to better emulate || operator for varchar2 and nvarchar2 types
+* few bugfixes
+* only PostgreSQL 9.4 and newer are supported
+* support for PostgreSQL 11, current master branch (future PostgreSQL 12) is supported too
+
+Version 3.6.0
+* some Oracle views - user_tab_columns, user_tables, user_objects, ...
+* support Oracle bad used lpad and nvl functions
+
 Version 3.5.0
 * fix of important issue - missing IMMUTABLE flag for functions ltrim, btrim, rtrim, lpad, rpad
 
