@@ -57,5 +57,6 @@
 
   <modules>
     <module>yb-cqlent</module>
+    <module>yb-clientent</module>
   </modules>
 </project>
