@@ -50,6 +50,11 @@ static char *pg_partman_bgw_analyze = "on";
 static char *pg_partman_bgw_jobmon = "on";
 static char *pg_partman_bgw_dbname = NULL;
 
+#if (PG_VERSION_NUM < 100500)
+static bool (*split_function_ptr)(char *, char, List **) = &SplitIdentifierString;
+#else
+static bool (*split_function_ptr)(char *, char, List **) = &SplitGUCList;
+#endif
 
 /*
  * Signal handler for SIGTERM
@@ -246,7 +251,7 @@ void pg_partman_bgw_main(Datum main_arg) {
         if (pg_partman_bgw_dbname != NULL) {
             rawstring = pstrdup(pg_partman_bgw_dbname);
             // Parse string into list of identifiers 
-            if (!SplitIdentifierString(rawstring, ',', &elemlist)) {
+            if (!(*split_function_ptr)(rawstring, ',', &elemlist)) {
                 // syntax error in list 
                 pfree(rawstring);
                 list_free(elemlist);
@@ -377,7 +382,7 @@ void pg_partman_bgw_run_maint(Datum arg) {
     rawstring = pstrdup(pg_partman_bgw_dbname);
     elog(DEBUG1, "GUC rawstring copy: %s", rawstring);
     // Parse string into list of identifiers 
-    if (!SplitIdentifierString(rawstring, ',', &elemlist)) {
+    if (!(*split_function_ptr)(rawstring, ',', &elemlist)) {
         // syntax error in list 
         pfree(rawstring);
         list_free(elemlist);
