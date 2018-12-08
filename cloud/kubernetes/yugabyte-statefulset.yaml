@@ -217,6 +217,9 @@ spec:
           - "--fs_data_dirs=/mnt/data0"
           - "--rpc_bind_addresses=$(POD_IP):9100"
           - "--server_broadcast_addresses=$(POD_NAME).yb-tservers:9100"
+          # To support postgres functionality, uncomment the following flags.
+          # - "--start_pgsql_proxy"
+          # - "--pgsql_proxy_bind_address=$(POD_IP):5433"
           - "--use_private_ip=never"
           - "--tserver_master_addrs=yb-masters.default.svc.cluster.local:7100"
           - "--tserver_master_replication_factor=3"
