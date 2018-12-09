@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.UUID;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
@@ -14,6 +15,7 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -112,6 +114,18 @@ public class ApiUtils {
 
   public static Universe.UniverseUpdater mockUniverseUpdaterWithInactiveNodes() {
     return mockUniverseUpdaterWithInactiveNodes(false);
+  }
+
+  public static Universe insertInstanceTags(UUID univUUID) {
+    UniverseUpdater updater = new UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+        userIntent.instanceTags.put("Cust", "Test");
+        userIntent.instanceTags.put("Dept", "HR");
+      }
+    };
+    return Universe.saveDetails(univUUID, updater);
   }
 
   public static Universe.UniverseUpdater mockUniverseUpdaterWithInactiveNodes(

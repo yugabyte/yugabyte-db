@@ -206,6 +206,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public Map<String, String> masterGFlags = new HashMap<String, String>();
     public Map<String, String> tserverGFlags = new HashMap<String, String>();
 
+    // Instance tags (used for AWS only).
+    public Map<String, String> instanceTags = new HashMap<String, String>();
+
     @Override
     public String toString() {
       return "UserIntent " + "for universe=" + universeName + " type=" +
@@ -233,6 +236,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.tserverGFlags = new HashMap<>(tserverGFlags);
       newUserIntent.assignPublicIP = assignPublicIP;
       newUserIntent.useTimeSync = useTimeSync;
+      newUserIntent.instanceTags = instanceTags;
       return newUserIntent;
     }
 

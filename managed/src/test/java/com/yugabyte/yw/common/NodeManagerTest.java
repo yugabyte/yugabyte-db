@@ -14,6 +14,10 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import org.junit.Before;
@@ -216,7 +220,7 @@ public class NodeManagerTest extends FakeDBApplication {
             if (cloud.equals(Common.CloudType.aws)) {
               expectedCommand.add("--spot_price");
               expectedCommand.add(Double.toString(setupParams.spotPrice));
-            } else if (cloud.equals(Common.CloudType.aws)) {
+            } else if (cloud.equals(Common.CloudType.gcp)) {
               expectedCommand.add("--use_preemptible");
             }
           }
@@ -229,8 +233,16 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add("--assign_public_ip");
           }
         }
-        if (cloud.equals(Common.CloudType.aws) && setupParams.useTimeSync) {
-          expectedCommand.add("--use_chrony");
+        if (cloud.equals(Common.CloudType.aws)) {
+          if (setupParams.useTimeSync) {
+            expectedCommand.add("--use_chrony");
+	      }
+	      if (!setupParams.clusters.isEmpty() && setupParams.clusters.get(0) != null &&
+              !setupParams.clusters.get(0).userIntent.instanceTags.isEmpty()) {
+            expectedCommand.add("--instance_tags");
+            expectedCommand.add(Json.stringify(
+                Json.toJson(setupParams.clusters.get(0).userIntent.instanceTags)));
+          }
         }
         break;
       case Configure:
@@ -437,6 +449,33 @@ public class NodeManagerTest extends FakeDBApplication {
             (t.cloudType.equals(Common.CloudType.aws) && useTimeSync));
       }
     }
+  }
+
+  @Test
+  public void testProvisionWithAWSTags() {
+    for (TestData t : testData) {
+      AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
+      UUID univUUID = createUniverse().universeUUID;
+      Universe universe = Universe.saveDetails(univUUID,ApiUtils.mockUniverseUpdater(t.cloudType));
+      buildValidParams(t, params, universe);
+      addValidDeviceInfo(t, params);
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        ApiUtils.insertInstanceTags(univUUID);
+        setInstanceTags(params);
+      }
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+    }
+  }
+
+  private void setInstanceTags(AnsibleSetupServer.Params params) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.instanceTags.put("Cust", "Test");
+    userIntent.instanceTags.put("Dept", "HR");
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+    params.clusters.add(cluster);
   }
 
   private void runAndTestProvisionWithAccessKeyAndSG(String sgId) {
