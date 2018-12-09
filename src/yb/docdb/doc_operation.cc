@@ -3098,14 +3098,12 @@ CHECKED_STATUS PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResp
     string ybctid_value = request_.ybctid_column_value().value().binary_value();
     Slice key_value(ybctid_value.data(), ybctid_value.size());
 
-    hashed_doc_key_ = make_unique<DocKey>(schema_, request_.hash_code());
-    RETURN_NOT_OK(hashed_doc_key_->DecodeFrom(key_value));
-    if (hashed_doc_key_->range_group().empty()) {
-      hashed_doc_path_ = make_unique<DocPath>(hashed_doc_key_->Encode());
-    } else {
-      range_doc_key_ = std::move(hashed_doc_key_);
-      range_doc_path_ = make_unique<DocPath>(range_doc_key_->Encode());
-    }
+    // The following code assumes that ybctid is the key of exactly one row, so the hash_doc_key_
+    // is set to NULL. If this assumption is no longer true, hash_doc_key_ should be assigned with
+    // appropriate values.
+    range_doc_key_ = make_unique<DocKey>(schema_, request_.hash_code());
+    RETURN_NOT_OK(range_doc_key_->DecodeFrom(key_value));
+    range_doc_path_ = make_unique<DocPath>(range_doc_key_->Encode());
 
   } else {
     vector<PrimitiveValue> hashed_components;
