@@ -62,4 +62,115 @@ public class TestPgDelete extends BasePgSQLTest {
       }
     }
   }
+
+  @Test
+  public void testBasicDelete2() throws SQLException {
+    Set<Row> allRows = setupSimpleTable("test_delete");
+
+    try (Statement statement = connection.createStatement()) {
+      String query = "SELECT h FROM test_delete WHERE h > 8";
+      try (ResultSet rs = statement.executeQuery(query)) {
+        int rcount = 0;
+        while (rs.next()) rcount++;
+        assertEquals(10, rcount);
+      }
+    }
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("DELETE FROM test_delete WHERE h > 8");
+    }
+
+    try (Statement statement = connection.createStatement()) {
+      String query = "SELECT h FROM test_delete WHERE h > 8";
+      try (ResultSet rs = statement.executeQuery(query)) {
+        int rcount = 0;
+        while (rs.next()) rcount++;
+        assertEquals(0, rcount);
+      }
+    }
+  }
+
+  @Test
+  public void testDeleteWithSingleColumnKey() throws SQLException {
+    Set<Row> allRows = new HashSet<>();
+    String tableName = "test_delete_single_column_key";
+    try (Statement statement = connection.createStatement()) {
+      createSimpleTableWithSingleColumnKey(tableName);
+      String insertTemplate = "INSERT INTO %s(h, r, vi, vs) VALUES (%d, %f, %d, '%s')";
+
+      for (int h = 0; h < 10; h++) {
+        int r = h + 100;
+        statement.execute(String.format(insertTemplate, tableName,
+                                        h, r + 0.5, h * 10 + r, "v" + h + r));
+        allRows.add(new Row((long) h,
+                            r + 0.5,
+                            h * 10 + r,
+                            "v" + h + r));
+      }
+    }
+
+    try (Statement statement = connection.createStatement()) {
+      String query = "SELECT h FROM test_delete_single_column_key WHERE h = 2";
+      try (ResultSet rs = statement.executeQuery(query)) {
+        int rcount = 0;
+        while (rs.next()) rcount++;
+        assertEquals(1, rcount);
+      }
+    }
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("DELETE FROM test_delete_single_column_key WHERE h = 2");
+    }
+
+    try (Statement statement = connection.createStatement()) {
+      String query = "SELECT h FROM test_delete_single_column_key WHERE h = 2";
+      try (ResultSet rs = statement.executeQuery(query)) {
+        int rcount = 0;
+        while (rs.next()) rcount++;
+        assertEquals(0, rcount);
+      }
+    }
+  }
+
+  @Test
+  public void testDeleteWithSingleColumnKey2() throws SQLException {
+    Set<Row> allRows = new HashSet<>();
+    String tableName = "test_delete_single_column_key";
+    try (Statement statement = connection.createStatement()) {
+      createSimpleTableWithSingleColumnKey(tableName);
+      String insertTemplate = "INSERT INTO %s(h, r, vi, vs) VALUES (%d, %f, %d, '%s')";
+
+      for (int h = 0; h < 10; h++) {
+        int r = h + 100;
+        statement.execute(String.format(insertTemplate, tableName,
+                                        h, r + 0.5, h * 10 + r, "v" + h + r));
+        allRows.add(new Row((long) h,
+                            r + 0.5,
+                            h * 10 + r,
+                            "v" + h + r));
+      }
+    }
+
+    try (Statement statement = connection.createStatement()) {
+      String query = "SELECT h FROM test_delete_single_column_key WHERE h > 2";
+      try (ResultSet rs = statement.executeQuery(query)) {
+        int rcount = 0;
+        while (rs.next()) rcount++;
+        assertEquals(7, rcount);
+      }
+    }
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("DELETE FROM test_delete_single_column_key WHERE h > 2");
+    }
+
+    try (Statement statement = connection.createStatement()) {
+      String query = "SELECT h FROM test_delete_single_column_key WHERE h > 2";
+      try (ResultSet rs = statement.executeQuery(query)) {
+        int rcount = 0;
+        while (rs.next()) rcount++;
+        assertEquals(0, rcount);
+      }
+    }
+  }
 }

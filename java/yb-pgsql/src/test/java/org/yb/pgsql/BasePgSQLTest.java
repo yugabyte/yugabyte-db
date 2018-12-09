@@ -668,6 +668,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
+  protected void createSimpleTableWithSingleColumnKey(String tableName) throws SQLException {
+    try (Statement statement = connection.createStatement()) {
+      String sql =
+          "CREATE TABLE " + tableName + "(h bigint PRIMARY KEY, r float, vi int, vs text)";
+      LOG.info("Creating table " + tableName + ", SQL statement: " + sql);
+      statement.execute(sql);
+      LOG.info("Table creation finished: " + tableName);
+    }
+  }
+
   protected void createSimpleTable(String tableName) throws SQLException {
     try (Statement statement = connection.createStatement()) {
       String sql =
