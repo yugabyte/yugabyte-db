@@ -322,8 +322,14 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--assign_public_ip");
           }
         }
-        if (cloudType.equals(Common.CloudType.aws) && taskParam.useTimeSync) {
-          commandArgs.add("--use_chrony");
+        if (cloudType.equals(Common.CloudType.aws)) {
+          if (taskParam.useTimeSync) {
+            commandArgs.add("--use_chrony");
+          }
+          if (userIntent.instanceTags != null && !userIntent.instanceTags.isEmpty()) {
+            commandArgs.add("--instance_tags");
+            commandArgs.add(Json.stringify(Json.toJson(userIntent.instanceTags)));
+          }
         }
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
         if (nodeTaskParam.deviceInfo != null) {
