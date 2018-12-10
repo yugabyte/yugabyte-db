@@ -22,14 +22,16 @@ export default class HighlightedStatsPanel extends Component {
       return <span/>;
     }
 
-    universeList.data.forEach(function (universeItem) {
-      if (isNonEmptyObject(universeItem.universeDetails)) {
-        numNodes += getUniverseNodes(universeItem.universeDetails.clusters);
-      }
-      if (isDefinedNotNull(universeItem.pricePerHour)) {
-        totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();
-      }
-    });
+    if(universeList.data) {
+      universeList.data.forEach(function (universeItem) {
+        if (isNonEmptyObject(universeItem.universeDetails)) {
+          numNodes += getUniverseNodes(universeItem.universeDetails.clusters);
+        }
+        if (isDefinedNotNull(universeItem.pricePerHour)) {
+          totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();
+        }
+      });
+    }
     const formattedCost = (
       <YBFormattedNumber value={totalCost} maximumFractionDigits={2}
         formattedNumberStyle="currency" currency="USD"/>
