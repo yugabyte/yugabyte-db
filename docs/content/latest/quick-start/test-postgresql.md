@@ -37,14 +37,12 @@ Follow the instructions below to test YugaByte DB's PostgreSQL-compatible YSQL A
       Docker
     </a>
   </li>
-  <!--
   <li >
     <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
       <i class="fa fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
-  -->
 </ul>
 
 <div class="tab-content">
@@ -57,11 +55,9 @@ Follow the instructions below to test YugaByte DB's PostgreSQL-compatible YSQL A
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
     {{% includeMarkdown "docker/test-postgresql.md" /%}}
   </div>
-  <!--
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
     {{% includeMarkdown "kubernetes/test-postgresql.md" /%}}
   </div>
-  -->
 </div>
 
 

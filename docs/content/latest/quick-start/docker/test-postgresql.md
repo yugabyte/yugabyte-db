@@ -10,14 +10,13 @@ $ ./yb-docker-ctl destroy
 $ ./yb-docker-ctl create --enable_postgres
 ```
 
-- Check status of the cluster and confirm that the special `postgres` pod is now running. This is the pod we will connect postgres clients to. Internally, this node will use the various tserver nodes to distribute the data across the entire cluster.
+- Check status of the cluster
 
 ```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl status
 ```
 ```sh
 ID             PID        Type       Node                 URL                       Status          Started At
-90116e4d86d6   6056       postgres   yb-postgres-n1       http://192.168.64.8:9000  Running         2018-10-18T22:02:53.127652078Z
 ca16705b20bd   5861       tserver    yb-tserver-n3        http://192.168.64.7:9000  Running         2018-10-18T22:02:52.12697026Z
 0a7deab4e4db   5681       tserver    yb-tserver-n2        http://192.168.64.6:9000  Running         2018-10-18T22:02:51.181289786Z
 921494a8058d   5547       tserver    yb-tserver-n1        http://192.168.64.5:9000  Running         2018-10-18T22:02:50.187976253Z
@@ -29,7 +28,7 @@ feea0823209a   5039       master     yb-master-n1         http://192.168.64.2:70
 - Run psql to connect to the service.
 
 ```{.sh .copy .separator-dollar}
-$ docker exec -it yb-postgres-n1 /home/yugabyte/postgres/bin/psql -p 5433 -U postgres
+$ docker exec -it yb-tserver-n1 /home/yugabyte/postgres/bin/psql -h yb-tserver-n1 -p 5433 -U postgres
 ```
 
 ```sh

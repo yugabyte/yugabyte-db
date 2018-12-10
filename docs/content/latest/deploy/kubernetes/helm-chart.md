@@ -87,6 +87,32 @@ If you are running in a resource-constrained environment or a local environment 
 $ helm install yugabyte --set resource.master.requests.cpu=0.1,resource.master.requests.memory=0.2Gi,resource.tserver.requests.cpu=0.1,resource.tserver.requests.memory=0.2Gi --namespace yb-demo --name yb-demo
 ```
 
+### Installing YugaByte DB with PostgreSQL (beta)
+If you wish to enable PostgreSQL (beta) support, install YugaByte DB with additional parameter as shown below.
+
+```{.sh .copy .separator-dollar}
+$ helm install yugabyte --wait --namespace yb-demo --name yb-demo --set "enablePostgres=true"
+```
+
+If you are running in a resource-constrained environment or a local environment such as minikube, you will have to change the default resource requirements by using the command below. See next section for a detailed description of these resource requirements.
+
+```{.sh .copy .separator-dollar}
+$ helm install yugabyte --set resource.master.requests.cpu=0.1,resource.master.requests.memory=0.2Gi,resource.tserver.requests.cpu=0.1,resource.tserver.requests.memory=0.2Gi --namespace yb-demo --name yb-demo --set "enablePostgres=true"
+```
+
+Initialize the PostgreSQL API (after ensuring that cluster is running - see "Check Cluster Status" below)
+
+```{.sh .copy .separator-dollar}
+$ kubectl exec -it -n yb-demo yb-tserver-0 bash -- -c "YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=yb-master-0.yb-masters.yb-demo.svc.cluster.local:7100,yb-master-1.yb-masters.yb-demo.svc.cluster.local:7100,yb-master-2.yb-masters.yb-demo.svc.cluster.local:7100 /home/yugabyte/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres"
+```
+
+Connect using psql client as shown below.
+
+```{.sh .copy .separator-dollar}
+$ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/postgres/bin/psql -- -U postgres -d postgres -h yb-tserver-0.yb-tservers.yb-demo -p 5433
+```
+
+
 ## Check Cluster Status
 
 You can check the status of the cluster using various commands noted below.
