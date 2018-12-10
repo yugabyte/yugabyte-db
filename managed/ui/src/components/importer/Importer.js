@@ -7,6 +7,7 @@ import { Field } from 'redux-form';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { isNonEmptyObject } from "../../utils/ObjectUtils";
 import Highlight from 'react-highlight';
+import { Link } from 'react-router';
 import './Importer.scss';
 
 const stepsEnum = [
@@ -127,17 +128,18 @@ export default class Importer extends Component {
         submitButtonTxt = "Finish Import";
       } else if (this.state.currentState === "FINISHED") {
         status = <span className="yb-success-color">Successfully imported universe</span>;
+        submitButtonTxt = "Universes list";
       }
     } else if (universeImport.error) {
       status = <span className="yb-fail-color">Universe import failed</span>;
       errorString = universeImport.error.error;
-      if (this.state.currentState === "IMPORTED_MASTERS") {
+      if (this.state.currentState === "BEGIN") {
         status = <span className="yb-fail-color">Import YB-Masters failed</span>;
         submitButtonTxt = "Import TServers";
-      } else if (this.state.currentState === "IMPORTED_TSERVERS") {
+      } else if (this.state.currentState === "IMPORTED_MASTERS") {
         status = <span className="yb-fail-color">Import YB-TServers failed</span>;
         submitButtonTxt = "Finish Import";
-      } else if (this.state.currentState === "FINISHED") {
+      } else if (this.state.currentState === "IMPORTED_TSERVERS") {
         status = <span className="yb-fail-color">Failed to finalize universe</span>;
       }
     }
@@ -157,7 +159,13 @@ export default class Importer extends Component {
                 <Field name="cloudProviderType" type="select" readOnlySelect={currentStep > 0} component={YBSelectWithLabel} label="Cloud Type" options={universeProviderList}/>
                 <Field name="masterAddresses" isReadOnly={currentStep > 0}type="text" component={YBInputField} label="Master Addresses" placeHolder="Master Addresses"/>
               </div>
-              <YBButton btnText={"Step "+(currentStep+1)+": "+submitButtonTxt} btnType="submit" disabled={submitting || getPromiseState(universeImport).isLoading() } btnClass="btn btn-orange pull-right"/>
+              { this.state.currentState === "FINISHED" ? 
+                
+                <Link to="/universes">
+                  <YBButton btnText={"Step "+(currentStep+1)+": "+submitButtonTxt} disabled={submitting || getPromiseState(universeImport).isLoading() } btnClass="btn btn-orange pull-right"/>
+                </Link> :
+                
+                <YBButton btnText={"Step "+(currentStep+1)+": "+submitButtonTxt} btnType="submit" disabled={submitting || getPromiseState(universeImport).isLoading() } btnClass="btn btn-orange pull-right"/> }
 
               <b className="status">
                 {status}
