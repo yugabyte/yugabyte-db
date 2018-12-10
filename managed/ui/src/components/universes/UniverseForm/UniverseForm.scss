@@ -87,11 +87,6 @@
         margin-left: 0;
       }
 
-      &.volume-info-iops {
-        width: 80px;
-        margin-right: 20px;
-        padding-bottom: 6px;
-      }
 
       &.volume-info-count {
         width: 60px;
@@ -109,6 +104,15 @@
       display: inline-block;
       margin: 0 5px 0 10px;
       padding: 0;
+    }
+  }
+  
+  .volume-info-iops {
+    margin-left: 20px;
+    
+    .volume-info-field {
+      width: 80px;
+      padding-bottom: 6px;
     }
   }
 }

@@ -7,7 +7,7 @@ import {browserHistory} from 'react-router';
 import _ from 'lodash';
 import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, isEmptyObject,
          isNonEmptyArray, normalizeToPositiveFloat, trimSpecialChars } from 'utils/ObjectUtils';
-import { YBTextInput, YBTextInputWithLabel, YBSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
+import { YBTextInput, YBTextInputWithLabel, YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
          YBToggle, YBUnControlledNumericInput, YBControlledNumericInputWithLabel } from 'components/common/forms/fields';
 import {getPromiseState} from 'utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
@@ -829,16 +829,16 @@ export default class ClusterFields extends Component {
           });
 
           storageClassField = (<Field name={`${clusterType}.storageClass`} type="select"
-            component={YBSelectWithLabel} label="Storage Class" readOnly={isFieldReadOnly}
+            component={YBControlledSelectWithLabel} defaultValue="GP2" label="Storage Class" readOnly={isFieldReadOnly}
             options={storageClassOptions} onInputChanged={self.storageClassChanged} />);
         }
 
         const isIoType = deviceInfo.ebsType === 'IO1';
         if (isIoType) {
           iopsField = (
-            <span className="volume-info form-group-shrinked">
+            <span className="volume-info form-group-shrinked  volume-info-iops">
               <label className="form-item-label">Provisioned IOPS</label>
-              <span className="volume-info-field volume-info-iops">
+              <span className="volume-info-field">
                 <Field name={`${clusterType}.diskIops`} component={YBUnControlledNumericInput}
                        label="Provisioned IOPS" onInputChanged={self.diskIopsChanged}
                        readOnly={isFieldReadOnly} />
@@ -1122,12 +1122,12 @@ export default class ClusterFields extends Component {
                   </div>
                   <div className="form-inline-controls">
                     <div className="form-group universe-form-instance-info">
-                      {iopsField}
+                      {ebsTypeSelector}
                     </div>
                   </div>
                   <div className="form-inline-controls">
                     <div className="form-group universe-form-instance-info">
-                      {ebsTypeSelector}
+                      {iopsField}
                     </div>
                   </div>
                 </div>
