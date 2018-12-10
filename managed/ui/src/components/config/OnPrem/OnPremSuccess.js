@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { Link, withRouter } from 'react-router';
-import { cloneDeep, pluck, sortBy } from 'lodash';
+import { cloneDeep, map, sortBy } from 'lodash';
 
 import { YBButton } from '../../common/forms/fields';
 import { Row, Col } from 'react-bootstrap';
@@ -184,7 +184,7 @@ class OnPremSuccess extends Component {
     if (isNonEmptyArray(onPremRegions)) {
       regionLabels = sortBy(onPremRegions, 'longitude').map(region => {
         const zoneList = sortBy(region.zones, 'name').map(zone => {
-          const nodeIps = pluck(pluck(zone.nodes, 'details'), 'ip');
+          const nodeIps = map(map(zone.nodes, 'details'), 'ip');
           return (
             <div key={`zone-${zone.uuid}`} className="zone">
               <div className="zone-name">{zone.name}:</div>
