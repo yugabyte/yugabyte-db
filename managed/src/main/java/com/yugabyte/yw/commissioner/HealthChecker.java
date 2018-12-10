@@ -141,6 +141,7 @@ public class HealthChecker extends Thread {
       LOG.info("Doing health check for universe: " + u.name);
       Map<UUID, HealthManager.ClusterInfo> clusterMetadata = new HashMap<>();
       boolean invalidUniverseData = false;
+      String providerCode = "";
       for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
         HealthManager.ClusterInfo info = new HealthManager.ClusterInfo();
         clusterMetadata.put(cluster.uuid, info);
@@ -154,7 +155,7 @@ public class HealthChecker extends Thread {
           invalidUniverseData = true;
           break;
         }
-        String providerCode = provider.code;
+        providerCode = provider.code;
         // TODO(bogdan): We do not have access to the default port constant at this level, as it is
         // baked in devops...hardcode it for now.
         // Default to 54422.
@@ -198,11 +199,21 @@ public class HealthChecker extends Thread {
                 nd.placementUuid));
           break;
         }
+        // TODO: we do not have a good way of marking the whole universe as k8s only.
+        boolean isK8s = providerCode.equals(Common.CloudType.kubernetes.toString());
         if (nd.isMaster) {
-          info.masterNodes.add(nd.cloudInfo.private_ip);
+          if (isK8s) {
+            info.masterNodes.add(nd.nodeName);
+          } else {
+            info.masterNodes.add(nd.cloudInfo.private_ip);
+          }
         }
         if (nd.isTserver) {
-          info.tserverNodes.add(nd.cloudInfo.private_ip);
+          if (isK8s) {
+            info.tserverNodes.add(nd.nodeName);
+          } else {
+            info.tserverNodes.add(nd.cloudInfo.private_ip);
+          }
         }
       }
       // If any nodes were invalid, abort for this universe.
