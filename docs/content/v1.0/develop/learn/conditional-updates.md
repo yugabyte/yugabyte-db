@@ -1,8 +1,6 @@
 ---
 title: Conditional Updates
 linkTitle: Conditional Updates
-aliases:
-  - /develop/learn/conditional-updates/
 ---
 
 

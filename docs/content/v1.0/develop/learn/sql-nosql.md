@@ -2,8 +2,6 @@
 title: 1. SQL vs NoSQL
 linkTitle: 1. SQL vs NoSQL
 description: SQL vs NoSQL
-aliases:
-  - /develop/learn/sql-nosql/
 menu:
   v1.0:
     identifier: sql-nosql

@@ -19,7 +19,7 @@ Following blogs highlight how YugaByte DB works as a Spanner derivative.
 - [Google Spanner vs. Calvin: Is There a Clear Winner in the Battle for Global Consistency at Scale?](https://blog.yugabyte.com/google-spanner-vs-calvin-global-consistency-at-scale/)
 
 
-Following blog highlight how YugaByte DB differs from Google Cloud Spanner are below.
+Following blogs highlight how YugaByte DB differs from Google Cloud Spanner.
 
 - [Practical Tradeoffs in Google Cloud Spanner, Azure Cosmos DB and YugaByte DB](https://blog.yugabyte.com/practical-tradeoffs-in-google-cloud-spanner-azure-cosmos-db-and-yugabyte-db) 
 

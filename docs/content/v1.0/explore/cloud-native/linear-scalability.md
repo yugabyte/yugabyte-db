@@ -2,9 +2,6 @@
 title: Linear Scalability
 linkTitle: 1. Linear Scalability
 description: Linear Scalability
-aliases:
-  - /explore/linear-scalability/
-  - /latest/explore/linear-scalability/
 menu:
   v1.0:
     identifier: linear-scalability

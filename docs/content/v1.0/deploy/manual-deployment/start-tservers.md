@@ -2,8 +2,6 @@
 title: Start YB-TServers
 linkTitle: 4. Start YB-TServers
 description: Start YB-TServers
-aliases:
-  - /deploy/manual-deployment/start-tservers
 menu:
   v1.0:
     identifier: deploy-manual-deployment-start-tservers

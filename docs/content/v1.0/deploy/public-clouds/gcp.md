@@ -2,8 +2,6 @@
 title: Google Cloud Platform
 linkTitle: Google Cloud Platform
 description: Google Cloud Platform
-aliases:
-  - /deploy/public-clouds/gcp/
 menu:
   v1.0:
     identifier: deploy-in-gcp

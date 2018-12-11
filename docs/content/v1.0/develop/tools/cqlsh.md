@@ -2,8 +2,6 @@
 title: cqlsh
 linkTitle: cqlsh
 description: cqlsh
-aliases:
-  - /develop/tools/cqlsh/
 menu:
   v1.0:
     identifier: cqlsh

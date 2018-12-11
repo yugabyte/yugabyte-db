@@ -1,8 +1,7 @@
 ---
 title: Reads and Writes
 linkTitle: Reads and Writes
-aliases:
-  - /develop/learn/reads-writes/
+
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">

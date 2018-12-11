@@ -44,7 +44,7 @@ menu:
         <div class="title">Kubernetes</div>
       </div>
       <div class="body">
-        Orchestrated deployment of YugaByte DB using open-source as well as managed Kubernetes services.
+        Orchestrated deployment of YugaByte DB using open source as well as managed Kubernetes services.
       </div>
     </a>
   </div>
@@ -66,7 +66,7 @@ menu:
         <div class="title">Pivotal Cloud Foundry</div>
       </div>
       <div class="body">
-        Deploying and Managing YugaByte DB from Pivotal Cloud Foundry (PCF).
+        Deploying and managing YugaByte DB through Pivotal Cloud Foundry (PCF).
       </div>
     </a>
   </div>
@@ -90,7 +90,7 @@ menu:
         <div class="title">Enterprise Edition</div>
       </div>
       <div class="body">
-        The smartest way to run YugaByte DB on any public cloud or private datacenter.
+        The simplest way to run YugaByte DB on any public cloud or private datacenter.
       </div>
     </a>
   </div>

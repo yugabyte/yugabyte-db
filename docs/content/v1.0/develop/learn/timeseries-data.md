@@ -2,8 +2,6 @@
 title: Timeseries
 linkTitle: Timeseries
 description: Timeseries
-aliases:
-  - /develop/learn/timeseries-data/
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">

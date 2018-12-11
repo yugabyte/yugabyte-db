@@ -2,8 +2,6 @@
 title: Cassandra Compatibility
 linkTitle: Cassandra Compatibility
 description: Apache Cassandra Compatibility in YCQL
-aliases:
-  - /faq/cassandra/
 menu:
   v1.0:
     identifier: cassandra-api

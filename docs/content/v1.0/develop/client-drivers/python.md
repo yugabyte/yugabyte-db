@@ -2,8 +2,6 @@
 title: Python
 linkTitle: Python
 description: Develop Python Apps
-aliases:
-  - /develop/client-drivers/python/
 menu:
   v1.0:
     identifier: client-drivers-python

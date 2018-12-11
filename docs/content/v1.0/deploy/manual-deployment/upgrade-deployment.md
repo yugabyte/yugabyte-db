@@ -2,8 +2,6 @@
 title: Upgrade Deployment
 linkTitle: 6. Upgrade Deployment
 description: Upgrade Deployment
-aliases:
-  - /deploy/manual-deployment/upgrade-deployment
 menu:
   v1.0:
     identifier: deploy-manual-deployment-upgrade-deployment

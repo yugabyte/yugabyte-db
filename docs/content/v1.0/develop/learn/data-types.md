@@ -1,8 +1,6 @@
 ---
 title: Data Types
 linkTitle: Data Types
-aliases:
-  - /develop/learn/data-types/
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">

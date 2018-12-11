@@ -2,8 +2,6 @@
 title: KairosDB
 linkTitle: KairosDB
 description: KairosDB
-aliases:
-  - /develop/ecosystem-integrations/kairosdb/
 menu:
   v1.0:
     identifier: kairosdb

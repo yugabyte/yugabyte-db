@@ -2,8 +2,6 @@
 title: Go
 linkTitle: Go
 description: Develop Go Apps
-aliases:
-  - /develop/client-drivers/go/
 menu:
   v1.0:
     identifier: client-drivers-go

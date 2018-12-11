@@ -2,9 +2,6 @@
 title: Fault Tolerance
 linkTitle: 2. Fault Tolerance
 description: Fault Tolerance
-aliases:
-  - /explore/fault-tolerance/
-  - /latest/explore/fault-tolerance/
 menu:
   v1.0:
     identifier: fault-tolerance

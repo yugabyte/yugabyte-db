@@ -2,8 +2,6 @@
 title: 4. Aggregations
 linkTitle: 4. Aggregations
 description: Aggregations
-aliases:
-  - /develop/learn/aggregations/
 menu:
   v1.0:
     identifier: aggregations

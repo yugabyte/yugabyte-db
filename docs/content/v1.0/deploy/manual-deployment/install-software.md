@@ -2,8 +2,6 @@
 title: Install Software
 linkTitle: 2. Install Software
 description: Install Software
-aliases:
-  - /deploy/manual-deployment/install-software
 menu:
   v1.0:
     identifier: deploy-manual-deployment-install-software

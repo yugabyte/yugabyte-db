@@ -2,9 +2,6 @@
 title: Auto Sharding
 linkTitle: 2. Auto Sharding
 description: Auto Sharding
-aliases:
-  - /explore/auto-sharding/
-  - /latest/explore/auto-sharding/
 menu:
   v1.0:
     identifier: auto-sharding

@@ -2,8 +2,6 @@
 title: NodeJS
 linkTitle: NodeJS
 description: Develop NodeJS Apps
-aliases:
-  - /develop/client-drivers/nodejs/
 menu:
   v1.0:
     identifier: client-drivers-nodejs

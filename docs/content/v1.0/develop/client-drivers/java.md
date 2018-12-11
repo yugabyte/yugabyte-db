@@ -2,8 +2,6 @@
 title: Java
 linkTitle: Java
 description: Develop Java Apps
-aliases:
-  - /develop/client-drivers/java/
 menu:
   v1.0:
     identifier: client-drivers-java
