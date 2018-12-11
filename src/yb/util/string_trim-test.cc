@@ -81,6 +81,9 @@ TEST(StringTrimTest, TrimTrailingWhitespaceFromEveryLine) {
   ASSERT_EQ(
       "Line1  // Some C++ comment\nLine2",
       TrimTrailingWhitespaceFromEveryLine("Line1  // Some C++ comment   \nLine2   "));
+  ASSERT_EQ(
+      "\n  Line2\nLine3\n",
+      TrimTrailingWhitespaceFromEveryLine("\n  Line2\nLine3   \n"));
 }
 
 }  // namespace util
