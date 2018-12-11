@@ -107,11 +107,24 @@ std::string TrimCppComments(const std::string& s) {
   return std::regex_replace(s, kCppCommentRE, "");
 }
 
-std::string TrimTrailingWhitespaceFromEveryLine(const std::string& s) {
-  // For the explanation of [^\S\x0a\x0d], see:
-  // https://stackoverflow.com/questions/3469080/match-whitespace-but-not-newlines
-  static const std::regex kTrailingWhitespaceRE = std::regex(R"#([^\S\x0a\x0d]+(?=\n|$))#");
-  return std::regex_replace(s, kTrailingWhitespaceRE, "");
+std::string TrimTrailingWhitespaceFromEveryLine(std::string s) {
+  auto write_it = s.begin();
+  auto first_it_to_delete = s.begin();
+  for (auto i = s.begin(); i != s.end();) {
+    auto ch = *i;
+    ++i;
+    if (ch == '\r' || ch == '\n') {
+      *write_it++ = ch;
+      first_it_to_delete = i;
+    } else if (!std::isspace(ch)) {
+      while (first_it_to_delete != i) {
+        *write_it++ = *first_it_to_delete++;
+      }
+      first_it_to_delete = i;
+    }
+  }
+  s.erase(write_it, s.end());
+  return s;
 }
 
 }  // namespace util
