@@ -41,6 +41,7 @@ import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.exceptions.NoHostAvailableException;
 import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
 import com.datastax.driver.core.policies.DefaultRetryPolicy;
+import com.datastax.driver.core.policies.LoadBalancingPolicy;
 import com.datastax.driver.core.policies.LoggingRetryPolicy;
 import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
 import com.yugabyte.sample.common.CmdLineOpts;
@@ -182,9 +183,9 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
       }
       LOG.info("Connecting to nodes: " + builder.getContactPoints().stream()
               .map(it -> it.toString()).collect(Collectors.joining(",")));
-      setupLoadBalancingPolicy(builder);
       cassandra_cluster =
-          builder.withQueryOptions(new QueryOptions().setDefaultIdempotence(true))
+          builder.withLoadBalancingPolicy(getLoadBalancingPolicy())
+                 .withQueryOptions(new QueryOptions().setDefaultIdempotence(true))
                  .withRetryPolicy(new LoggingRetryPolicy(DefaultRetryPolicy.INSTANCE))
                  .build();
       LOG.debug("Connected to cluster: " + cassandra_cluster.getClusterName());
@@ -196,18 +197,18 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     }
   }
 
-  protected void setupLoadBalancingPolicy(Cluster.Builder builder) {
+  protected LoadBalancingPolicy getLoadBalancingPolicy() {
+    DCAwareRoundRobinPolicy.Builder builder = DCAwareRoundRobinPolicy.builder();
     if (appConfig.localDc != null && !appConfig.localDc.isEmpty()) {
-      builder.withLoadBalancingPolicy(new PartitionAwarePolicy(
-              DCAwareRoundRobinPolicy.builder()
-                      .withLocalDc(appConfig.localDc)
-                      .withUsedHostsPerRemoteDc(Integer.MAX_VALUE)
-                      .allowRemoteDCsForLocalConsistencyLevel()
-                      .build()));
-    } else if (!appConfig.disableYBLoadBalancingPolicy) {
-      builder.withLoadBalancingPolicy(
-              new PartitionAwarePolicy());
+      builder.withLocalDc(appConfig.localDc)
+             .withUsedHostsPerRemoteDc(Integer.MAX_VALUE)
+             .allowRemoteDCsForLocalConsistencyLevel();
     }
+    LoadBalancingPolicy policy = builder.build();
+    if (!appConfig.disableYBLoadBalancingPolicy) {
+      policy = new PartitionAwarePolicy(policy);
+    }
+    return policy;
   }
 
   /**
