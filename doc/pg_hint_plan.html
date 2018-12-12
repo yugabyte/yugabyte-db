@@ -229,7 +229,7 @@ postgres-# SELECT * FROM table1 t1 WHERE key = 'value';
 <h2 id="install">Installation</h2>
 This section describes the installation steps.
 <h3 id="build">building binary module</h3>
-<p>Simplly run "make" in the top of the source tree, then "make install" as appropriate user. The PATH environment variable should be set properly for the target PostgreSQL for this process. </p>
+<p>Simply run "make" in the top of the source tree, then "make install" as appropriate user. The PATH environment variable should be set properly for the target PostgreSQL for this process. </p>
 <pre>
 $ tar xzvf pg_hint_plan-1.x.x.tar.gz
 $ cd pg_hint_plan-1.x.x
@@ -239,7 +239,7 @@ $ su
 </pre>
 
 <h3 id="hint-load">Loding pg_hint_plan</h3>
-<p>Basically pg_hint_plan does not requires CREATE EXTENSION. Simplly loading it by LOAD command will activate it and of course you can load it globally by setting shared_preload_libraries in postgresql.conf. Or you might be interested in ALTER USER SET/ALTER DATABASE SET for automatic loading for specific sessions. 
+<p>Basically pg_hint_plan does not requires CREATE EXTENSION. Simply loading it by LOAD command will activate it and of course you can load it globally by setting shared_preload_libraries in postgresql.conf. Or you might be interested in ALTER USER SET/ALTER DATABASE SET for automatic loading for specific sessions. 
 <pre>
 postgres=# LOAD 'pg_hint_plan';
 LOAD
