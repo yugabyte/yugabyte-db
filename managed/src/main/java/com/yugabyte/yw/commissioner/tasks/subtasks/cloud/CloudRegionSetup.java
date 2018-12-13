@@ -37,6 +37,7 @@ public class CloudRegionSetup extends CloudTaskBase {
 
   @Override
   public void run() {
+    CloudQueryHelper queryHelper = Play.current().injector().instanceOf(CloudQueryHelper.class);
     String regionCode = taskParams().regionCode;
     if (Region.getByCode(getProvider(), regionCode) != null) {
       throw new RuntimeException("Region " +  regionCode + " already setup");
@@ -51,19 +52,30 @@ public class CloudRegionSetup extends CloudTaskBase {
     if (customImageId != null && !customImageId.isEmpty()) {
       region.ybImage = customImageId;
       region.save();
+    } else {
+      switch (Common.CloudType.valueOf(provider.code)) {
+        // Intentional fallthrough as both AWS and GCP should be covered the same way.
+        case aws:
+        case gcp:
+          // Setup default image, if no custom one was specified.
+          String defaultImage = queryHelper.getDefaultImage(region);
+          if (defaultImage == null || defaultImage.isEmpty()) {
+            throw new RuntimeException("Could not get default image for region: " + regionCode);
+          }
+          region.ybImage = defaultImage;
+          region.save();
+          break;
+      }
     }
     String customSecurityGroupId = taskParams().metadata.customSecurityGroupId;
     if (customSecurityGroupId != null && !customSecurityGroupId.isEmpty()) {
       region.setSecurityGroupId(customSecurityGroupId);
     }
 
-
-
-    CloudQueryHelper queryHelper = Play.current().injector().instanceOf(CloudQueryHelper.class);
     JsonNode zoneInfo = null;
-
     switch (Common.CloudType.valueOf(provider.code)) {
       case aws:
+        // Setup subnets.
         Map<String, String> zoneSubnets = taskParams().metadata.azToSubnetIds;
         // If no custom mapping, then query from devops.
         if (zoneSubnets == null || zoneSubnets.size() == 0) {
