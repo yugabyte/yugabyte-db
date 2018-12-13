@@ -398,9 +398,6 @@ class ReplicaState {
   // The on-disk size of the consensus metadata.
   uint64_t OnDiskSize() const;
 
-  // See RetryableRequests::ShouldReplicateRound
-  bool ShouldReplicateRoundUnlocked(const ConsensusRoundPtr& round);
-
   yb::OpId MinRetryableRequestOpId();
 
   RestartSafeCoarseMonoClock& Clock();

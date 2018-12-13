@@ -33,20 +33,15 @@ struct RetryableRequestsCounts {
 // Holds information about retryable requests.
 class RetryableRequests {
  public:
-  RetryableRequests();
+  explicit RetryableRequests(std::string log_prefix = std::string());
   ~RetryableRequests();
 
   RetryableRequests(RetryableRequests&& rhs);
   void operator=(RetryableRequests&& rhs);
 
-  // Returns true if the given consensus round could be applied to Raft log.
-  // I.e. it is not a duplicate of an already running or replicated request.
-  //
-  // Also updates internal state in accordance to min_running_request_id specified in this round.
-  bool ShouldReplicateRound(const ConsensusRoundPtr& round);
-
-  // Registers a new running request.
-  void Register(const ReplicateMsg& replicate_msg,
+  // Tries to registers a new running request.
+  // Returns false if request with such id already present.
+  bool Register(const ConsensusRoundPtr& round,
                 RestartSafeCoarseTimePoint entry_time = RestartSafeCoarseTimePoint());
 
   // Cleans expires replicated requests and returns min op id of running request.
@@ -57,8 +52,8 @@ class RetryableRequests {
   void ReplicationFinished(
       const ReplicateMsg& replicate_msg, const Status& status, int64_t leader_term);
 
-  // Mark all running requests with op id less or equal to op_id as replicated.
-  void MarkReplicatedUpTo(const yb::OpId& op_id);
+  // Adds new replicated request that was loaded during tablet bootstrap.
+  void Bootstrap(const ReplicateMsg& replicate_msg, RestartSafeCoarseTimePoint entry_time);
 
   RestartSafeCoarseMonoClock& Clock();
 

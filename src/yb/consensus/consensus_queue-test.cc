@@ -669,6 +669,7 @@ TEST_F(ConsensusQueueTest, TestQueueHandlesOperationOverwriting) {
 // operations, which would cause a check failure on the write immediately
 // following the overwriting write.
 TEST_F(ConsensusQueueTest, TestQueueMovesWatermarksBackward) {
+  RestartSafeCoarseMonoClock restart_safe_coarse_mono_clock;
   queue_->Init(MinimumOpId());
   queue_->SetNonLeaderMode();
   // Append a bunch of messages.
@@ -679,7 +680,7 @@ TEST_F(ConsensusQueueTest, TestQueueMovesWatermarksBackward) {
   Synchronizer synch;
   ASSERT_OK(queue_->AppendOperations(
       { CreateDummyReplicate(2, 5, clock_->Now(), 0) }, yb::OpId() /* committed_op_id */,
-      RestartSafeCoarseTimePoint(), synch.AsStatusCallback()));
+        restart_safe_coarse_mono_clock.Now(), synch.AsStatusCallback()));
 
   // Wait for the operation to be in the log.
   ASSERT_OK(synch.Wait());
@@ -689,7 +690,7 @@ TEST_F(ConsensusQueueTest, TestQueueMovesWatermarksBackward) {
   synch.Reset();
   ASSERT_OK(queue_->AppendOperations(
       { CreateDummyReplicate(2, 6, clock_->Now(), 0) }, yb::OpId() /* committed_op_id */,
-      RestartSafeCoarseTimePoint(), synch.AsStatusCallback()));
+      restart_safe_coarse_mono_clock.Now(), synch.AsStatusCallback()));
 
   // Wait for the operation to be in the log.
   ASSERT_OK(synch.Wait());

@@ -129,7 +129,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // Synchronously append a new entry to the log.  Log does not take ownership of the passed
   // 'entry'.
   // TODO get rid of this method, transition to the asynchronous API.
-  CHECKED_STATUS Append(LogEntryPB* entry);
+  CHECKED_STATUS Append(LogEntryPB* entry, RestartSafeCoarseTimePoint batch_mono_time);
 
   // Append the given set of replicate messages, asynchronously.  This requires that the replicates
   // have already been assigned OpIds.

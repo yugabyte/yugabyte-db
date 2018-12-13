@@ -933,7 +933,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
 
   consensus::ConsensusBootstrapInfo bootstrap_info;
   Status s;
-  consensus::RetryableRequests retryable_requests;
+  consensus::RetryableRequests retryable_requests(kLogPrefix);
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
     // TODO: handle crash mid-creation of tablet? do we ever end up with a
     // partially created tablet here?

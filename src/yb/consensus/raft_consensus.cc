@@ -869,20 +869,6 @@ Status RaftConsensus::ReplicateBatch(ConsensusRounds* rounds) {
     for (const auto& round : *rounds) {
       RETURN_NOT_OK(round->CheckBoundTerm(current_term));
     }
-    auto write_iterator = rounds->begin();
-    for (auto i = rounds->begin(); i != rounds->end(); ++i) {
-      if (state_->ShouldReplicateRoundUnlocked((*i).get())) {
-        if (write_iterator != i) {
-          *write_iterator = std::move(*i);
-        }
-        ++write_iterator;
-      }
-    }
-    if (write_iterator == rounds->begin()) {
-      rounds->clear();
-      return Status::OK(); // all operations were filtered
-    }
-    rounds->erase(write_iterator, rounds->end());
     RETURN_NOT_OK(AppendNewRoundsToQueueUnlocked(*rounds));
   }
 
@@ -897,6 +883,10 @@ Status RaftConsensus::AppendNewRoundToQueueUnlocked(const scoped_refptr<Consensu
 
 Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
     const std::vector<scoped_refptr<ConsensusRound>>& rounds) {
+
+  std::vector<ReplicateMsgPtr> replicate_msgs;
+  replicate_msgs.reserve(rounds.size());
+
   for (auto iter = rounds.begin(); iter != rounds.end(); ++iter) {
     const ConsensusRoundPtr& round = *iter;
 
@@ -919,25 +909,27 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
 
     Status s = state_->AddPendingOperation(round);
     if (!s.ok()) {
-      // Iterate rounds in the reverse order and release ids. We add one to the iterator before
-      // converting to a reverse iterator to get a reverse iterator staring with the current
-      // element.
-      for (;;) {
-        RollbackIdAndDeleteOpId((**iter).replicate_msg(), false /* should_exists */);
-        if (iter == rounds.begin()) {
-          break;
-        }
-        --iter;
+      RollbackIdAndDeleteOpId(round->replicate_msg(), false /* should_exists */);
+      // If it was duplicate request, cancel only it.
+      if (s.IsAlreadyPresent()) {
+        continue;
+      }
+
+      // Iterate rounds in the reverse order and release ids.
+      while (!replicate_msgs.empty()) {
+        RollbackIdAndDeleteOpId(replicate_msgs.back(), true /* should_exists */);
+        replicate_msgs.pop_back();
       }
       return s;
     }
-  }
 
-  std::vector<ReplicateMsgPtr> replicate_msgs;
-  replicate_msgs.reserve(rounds.size());
-  for (const auto& round : rounds) {
     replicate_msgs.push_back(round->replicate_msg());
   }
+
+  if (replicate_msgs.empty()) {
+    return Status::OK();
+  }
+
   Status s = queue_->AppendOperations(
       replicate_msgs, yb::OpId::FromPB(state_->GetCommittedOpIdUnlocked()),
       state_->Clock().Now(), Bind(DoNothingStatusCB));
@@ -957,7 +949,7 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   }
 
   RETURN_NOT_OK_PREPEND(s, "Unable to append operations to consensus queue");
-  state_->UpdateLastReceivedOpIdUnlocked(rounds.back()->id());
+  state_->UpdateLastReceivedOpIdUnlocked(replicate_msgs.back()->id());
   return Status::OK();
 }
 

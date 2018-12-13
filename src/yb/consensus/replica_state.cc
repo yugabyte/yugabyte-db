@@ -630,7 +630,9 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
       }
     }
   } else if (op_type == WRITE_OP) {
-    retryable_requests_.Register(*round->replicate_msg());
+    if (!retryable_requests_.Register(round)) {
+      return STATUS(AlreadyPresent, "Duplicate request");
+    }
   }
 
   InsertOrDie(&pending_operations_, round->replicate_msg()->id().index(), round);
@@ -1204,10 +1206,6 @@ void ReplicaState::SetMajorityReplicatedLeaseExpirationUnlocked(
 
 uint64_t ReplicaState::OnDiskSize() const {
   return cmeta_->on_disk_size();
-}
-
-bool ReplicaState::ShouldReplicateRoundUnlocked(const ConsensusRoundPtr& round) {
-  return retryable_requests_.ShouldReplicateRound(round);
 }
 
 yb::OpId ReplicaState::MinRetryableRequestOpId() {
