@@ -124,12 +124,12 @@ static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
 
   // Account for the entry batch header and wrapper PB.
   if (size) {
-    *size += log::kEntryHeaderSize + 5;
+    *size += log::kEntryHeaderSize + 7;
   }
 
   Synchronizer s;
   RETURN_NOT_OK(log->AsyncAppendReplicates(
-      replicates, yb::OpId() /* committed_op_id */, RestartSafeCoarseTimePoint(),
+      replicates, yb::OpId() /* committed_op_id */, RestartSafeCoarseTimePoint::FromUInt64(1),
       s.AsStatusCallback()));
   RETURN_NOT_OK(s.Wait());
   return Status::OK();
@@ -237,14 +237,14 @@ class LogTestBase : public YBTest {
     if (sync) {
       Synchronizer s;
       ASSERT_OK(log_->AsyncAppendReplicates(
-          { replicate }, yb::OpId() /* committed_op_id */, RestartSafeCoarseTimePoint(),
+          { replicate }, yb::OpId() /* committed_op_id */, restart_safe_coarse_mono_clock_.Now(),
           s.AsStatusCallback()));
       ASSERT_OK(s.Wait());
     } else {
       // AsyncAppendReplicates does not free the ReplicateMsg on completion, so we
       // need to pass it through to our callback.
       ASSERT_OK(log_->AsyncAppendReplicates(
-          { replicate }, yb::OpId() /* committed_op_id */, RestartSafeCoarseTimePoint(),
+          { replicate }, yb::OpId() /* committed_op_id */, restart_safe_coarse_mono_clock_.Now(),
           Bind(&LogTestBase::CheckReplicateResult, replicate)));
     }
   }
@@ -308,6 +308,7 @@ class LogTestBase : public YBTest {
   scoped_refptr<LogAnchorRegistry> log_anchor_registry_;
   scoped_refptr<Clock> clock_;
   string tablet_wal_path_;
+  RestartSafeCoarseMonoClock restart_safe_coarse_mono_clock_;
 };
 
 // Corrupts the last segment of the provided log by either truncating it

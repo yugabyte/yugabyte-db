@@ -278,7 +278,7 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
 
 Status PeerMessageQueue::TEST_AppendOperation(const ReplicateMsgPtr& msg) {
   return AppendOperations(
-      { msg }, yb::OpId::FromPB(msg->committed_op_id()), RestartSafeCoarseTimePoint(),
+      { msg }, yb::OpId::FromPB(msg->committed_op_id()), RestartSafeCoarseMonoClock().Now(),
       Bind(DoNothingStatusCB));
 }
 
