@@ -105,3 +105,25 @@ other parameters for the cloud provider. Make sure the replication factor is one
  "num_nodes": 5 # since you change the replication factor to 5, you need to override the num_nodes to be 5 minimum.
 }
 ```
+
+### Overriding Volume specifications
+To override the volume specs, just include `num_volumes` with the desired value, and also the `volume_size` with the volume size
+in GB for each of those volumes, lets say if you want to have 2 volumes with 100GB each, you would specify the overrides as below.
+
+```{.sh .copy}
+{
+ "universe_name": "cloud-override-demo",
+ "num_volumes": 2,
+ "volume_size": 100
+}
+```
+
+### Overriding the YugaByte Software Version to use
+To override the YugaByte Software version to use, just include `yb_version` with the desired value. Just make sure that particular
+version exists in YugaWare.
+```{.sh .copy}
+{
+ "universe_name": "cloud-override-demo",
+ "yb_version": "1.1.6.0-b4"
+}
+```
