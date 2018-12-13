@@ -78,6 +78,7 @@ class ColumnFamilyData;
 class ColumnFamilySet;
 class TableCache;
 class MergeIteratorBuilder;
+class FileNumbersProvider;
 
 // Return the smallest index i such that file_level.files[i]->largest >= key.
 // Return file_level.num_files if there is no such file.
@@ -739,14 +740,16 @@ class VersionSet {
   // This function doesn't support leveldb SST filenames
   void GetLiveFilesMetaData(std::vector<LiveFileMetaData> *metadata);
 
-  void GetObsoleteFiles(std::vector<FileMetaData*>* files,
-                        std::vector<std::string>* manifest_filenames,
-                        uint64_t min_pending_output);
+  void GetObsoleteFiles(const FileNumbersProvider& pending_outputs,
+                        std::vector<FileMetaData*>* files,
+                        std::vector<std::string>* manifest_filenames);
 
   ColumnFamilySet* GetColumnFamilySet() { return column_family_set_.get(); }
   const EnvOptions& env_options() { return env_options_; }
 
   CHECKED_STATUS Import(const std::string& source_dir, SequenceNumber seqno, VersionEdit* edit);
+
+  void UnrefFile(ColumnFamilyData* cfd, FileMetaData* f);
 
   static uint64_t GetNumLiveVersions(Version* dummy_versions);
 

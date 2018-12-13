@@ -23,8 +23,8 @@
 //
 // Must not be included from any .h files to avoid polluting the namespace
 // with macros.
-#ifndef ROCKSDB_UTIL_LOGGING_H
-#define ROCKSDB_UTIL_LOGGING_H
+#ifndef YB_ROCKSDB_UTIL_LOGGING_H
+#define YB_ROCKSDB_UTIL_LOGGING_H
 
 #pragma once
 
@@ -47,6 +47,9 @@ int AppendHumanBytes(uint64_t bytes, char* output, int len);
 
 // Append a human-readable printout of "num" to *str
 extern void AppendNumberTo(std::string* str, uint64_t num);
+
+// Append a human-readable printout of "b" to *str
+extern void AppendBoolTo(std::string* str, bool b);
 
 // Append a human-readable printout of "value" to *str.
 // Escapes any non-printable characters found in "value".
@@ -73,4 +76,4 @@ extern bool ConsumeDecimalNumber(Slice* in, uint64_t* val);
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_UTIL_LOGGING_H
+#endif // YB_ROCKSDB_UTIL_LOGGING_H

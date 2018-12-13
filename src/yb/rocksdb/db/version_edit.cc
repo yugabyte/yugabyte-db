@@ -23,14 +23,14 @@
 
 #include "yb/rocksdb/db/version_edit.h"
 
+#include "yb/rocksdb/db/version_edit.pb.h"
 #include "yb/rocksdb/db/version_set.h"
+#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/event_logger.h"
 #include "yb/rocksdb/util/sync_point.h"
+#include "yb/util/logging.h"
 #include "yb/util/slice.h"
-
-#include "yb/rocksdb/db/version_edit.pb.h"
-#include "yb/rocksdb/metadata.h"
 
 namespace rocksdb {
 
@@ -62,6 +62,20 @@ void FileMetaData::UpdateBoundaries(InternalKey key, const FileBoundaryValuesBas
   UpdateBoundariesExceptKey(source, UpdateBoundariesType::kAll);
 }
 
+bool FileMetaData::Unref(TableCache* table_cache) {
+  refs--;
+  if (refs <= 0) {
+    if (table_reader_handle) {
+      DCHECK_ONLY_NOTNULL(table_cache);
+      table_cache->ReleaseHandle(table_reader_handle);
+      table_reader_handle = nullptr;
+    }
+    return true;
+  } else {
+    return false;
+  }
+}
+
 void FileMetaData::UpdateBoundariesExceptKey(const FileBoundaryValuesBase& source,
                                              UpdateBoundariesType type) {
   if (type != UpdateBoundariesType::kLargest) {
@@ -84,6 +98,13 @@ void FileMetaData::UpdateBoundariesExceptKey(const FileBoundaryValuesBase& sourc
   }
 }
 
+
+std::string FileMetaData::ToString() const {
+  return yb::Format("{ number: $0 total_size: $1 base_size: $2 refs: $3 "
+                    "being_compacted: $4 smallest: $5 largest: $6 }",
+                    fd.GetNumber(), fd.GetTotalFileSize(), fd.GetBaseFileSize(), refs,
+                    being_compacted, smallest, largest);
+}
 
 void VersionEdit::Clear() {
   comparator_.reset();

@@ -155,7 +155,7 @@ void LogVectorDiff(const std::vector<T>& expected, const std::vector<T>& actual)
   int num_differences_logged = 0;
   size_t num_differences_left = 0;
   size_t min_size = min(expected.size(), actual.size());
-  for (int i = 0; i < min_size; ++i) {
+  for (size_t i = 0; i < min_size; ++i) {
     if (expected[i] != actual[i]) {
       if (num_differences_logged < 16) {
         LOG(WARNING) << "expected[" << i << "]: " << expected[i];
@@ -198,6 +198,14 @@ CHECKED_STATUS WaitFor(
     std::function<Result<bool>()> condition,
     MonoDelta timeout,
     const std::string& description,
+    MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
+    double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
+    MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
+
+void AssertLoggedWaitFor(
+    std::function<Result<bool>()> condition,
+    MonoDelta timeout,
+    const string& description,
     MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));

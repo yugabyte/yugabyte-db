@@ -21,8 +21,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_DB_COMPACTION_H
-#define ROCKSDB_DB_COMPACTION_H
+#ifndef YB_ROCKSDB_DB_COMPACTION_H
+#define YB_ROCKSDB_DB_COMPACTION_H
 
 #pragma once
 
@@ -32,8 +32,11 @@
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/mutable_cf_options.h"
 #include "yb/rocksdb/db/version_edit.h"
+#include "yb/util/result.h"
 
 namespace rocksdb {
+
+using yb::Result;
 
 // The structure that manages compaction input files associated
 // with the same physical level.
@@ -143,8 +146,7 @@ class Compaction {
     return 0;
   }
 
-  // Returns input version of the compaction
-  Version* input_version() const { return input_version_; }
+  uint64_t input_version_number() const { return input_version_number_; }
 
   // Returns the ColumnFamilyData associated with the compaction.
   ColumnFamilyData* column_family_data() const { return cfd_; }
@@ -258,8 +260,9 @@ class Compaction {
 
   uint64_t CalculateTotalInputSize() const;
 
-  // In case of compaction error, reset the nextIndex that is used
-  // to pick up the next file to be compacted from files_by_size_
+  // In case of compaction error, reset the nextIndex that is used to pick up the next file to be
+  // compacted from files_by_size_. Does nothing for universal compaction, since nextIndex is not
+  // used in this case.
   void ResetNextCompactionIndex();
 
   // Create a CompactionFilter from compaction_filter_factory
@@ -313,6 +316,9 @@ class Compaction {
   uint64_t max_grandparent_overlap_bytes_;
   MutableCFOptions mutable_cf_options_;
   Version* input_version_;
+  uint64_t input_version_number_ = 0;
+  bool input_version_level0_non_overlapping_ = false;
+  VersionSet* vset_ = nullptr;
   VersionEdit edit_;
   const int number_levels_;
   ColumnFamilyData* cfd_;
@@ -350,6 +356,8 @@ class Compaction {
   // compaction
   bool is_trivial_move_;
 
+  bool IsCompactionStyleUniversal() const;
+
   // Does input compression match the output compression?
   bool InputCompressionMatchesOutput() const;
 
@@ -368,4 +376,4 @@ extern uint64_t TotalFileSize(const std::vector<FileMetaData*>& files);
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_DB_COMPACTION_H
+#endif // YB_ROCKSDB_DB_COMPACTION_H

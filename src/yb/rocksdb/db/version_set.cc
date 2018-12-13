@@ -42,6 +42,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/rocksdb/db/filename.h"
+#include "yb/rocksdb/db/file_numbers.h"
 #include "yb/rocksdb/db/internal_stats.h"
 #include "yb/rocksdb/db/log_reader.h"
 #include "yb/rocksdb/db/log_writer.h"
@@ -345,14 +346,7 @@ Version::~Version() {
     for (size_t i = 0; i < storage_info_.files_[level].size(); i++) {
       FileMetaData* f = storage_info_.files_[level][i];
       assert(f->refs > 0);
-      f->refs--;
-      if (f->refs <= 0) {
-        if (f->table_reader_handle) {
-          cfd_->table_cache()->ReleaseHandle(f->table_reader_handle);
-          f->table_reader_handle = nullptr;
-        }
-        vset_->obsolete_files_.push_back(f);
-      }
+      vset_->UnrefFile(cfd_, f);
     }
   }
 }
@@ -2052,15 +2046,7 @@ std::string Version::DebugString(bool hex) const {
     r.append(" ---\n");
     const std::vector<FileMetaData*>& files = storage_info_.files_[level];
     for (size_t i = 0; i < files.size(); i++) {
-      r.push_back(' ');
-      AppendNumberTo(&r, files[i]->fd.GetNumber());
-      r.push_back(':');
-      AppendNumberTo(&r, files[i]->fd.GetTotalFileSize());
-      r.append("[");
-      r.append(files[i]->smallest.key.DebugString(hex));
-      r.append(" .. ");
-      r.append(files[i]->largest.key.DebugString(hex));
-      r.append("]\n");
+      r.append(files[i]->ToString());
     }
   }
   return r;
@@ -3508,7 +3494,7 @@ bool VersionSet::VerifyCompactionFileConsistency(Compaction* c) {
 #ifndef NDEBUG
   Version* version = c->column_family_data()->current();
   const VersionStorageInfo* vstorage = version->storage_info();
-  if (c->input_version() != version) {
+  if (c->input_version_number() != version->GetVersionNumber()) {
     RLOG(InfoLogLevel::INFO_LEVEL, db_options_->info_log,
         "[%s] compaction output being applied to a different base version from"
         " input version",
@@ -3604,14 +3590,14 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
   }
 }
 
-void VersionSet::GetObsoleteFiles(std::vector<FileMetaData*>* files,
-                                  std::vector<std::string>* manifest_filenames,
-                                  uint64_t min_pending_output) {
+void VersionSet::GetObsoleteFiles(const FileNumbersProvider& pending_outputs,
+                                  std::vector<FileMetaData*>* files,
+                                  std::vector<std::string>* manifest_filenames) {
   assert(manifest_filenames->empty());
   obsolete_manifests_.swap(*manifest_filenames);
   std::vector<FileMetaData*> pending_files;
   for (auto f : obsolete_files_) {
-    if (f->fd.GetNumber() < min_pending_output) {
+    if (!pending_outputs.HasFileNumber(f->fd.GetNumber())) {
       files->push_back(f);
     } else {
       pending_files.push_back(f);
@@ -3646,6 +3632,12 @@ ColumnFamilyData* VersionSet::CreateColumnFamily(
                              LastSequence());
   new_cfd->SetLogNumber(edit->log_number_.get_value_or(0));
   return new_cfd;
+}
+
+void VersionSet::UnrefFile(ColumnFamilyData* cfd, FileMetaData* f) {
+  if (f->Unref(cfd->table_cache())) {
+    obsolete_files_.push_back(f);
+  }
 }
 
 uint64_t VersionSet::GetNumLiveVersions(Version* dummy_versions) {
