@@ -44,7 +44,6 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     regionMetadata.put("name", "Mock Region");
     regionMetadata.put("latitude", 36.778261);
     regionMetadata.put("longitude", -119.417932);
-    regionMetadata.put("ybImage", "yb-image-id");
 
     when(mockConfigHelper.getRegionMetadata(cloudType))
         .thenReturn(ImmutableMap.of(
@@ -88,6 +87,9 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         .thenReturn(Json.parse("{}"));
     when(mockCloudQueryHelper.getZones(any(UUID.class), anyString()))
         .thenReturn(zoneInfo);
+    String defaultImage = "test_image_id";
+    when(mockCloudQueryHelper.getDefaultImage(any(Region.class)))
+        .thenReturn(defaultImage);
     taskParams.providerUUID = provider.uuid;
 
     UUID taskUUID = submitTask(taskParams);
@@ -143,6 +145,8 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       // Check AMI info.
       if (customImageId) {
         assertEquals(r.ybImage, metadata.customImageId);
+      } else {
+        assertEquals(r.ybImage, defaultImage);
       }
     }
   }
