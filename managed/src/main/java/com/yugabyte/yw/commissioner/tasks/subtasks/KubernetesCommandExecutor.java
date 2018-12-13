@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import play.Application;
+import play.Environment;
 import play.api.Play;
 import play.libs.Json;
 import org.yaml.snakeyaml.Yaml;
@@ -87,6 +88,9 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
   @Inject
   Application application;
 
+  @Inject
+  private play.Environment environment;
+
   static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
 
   // Added constant to compute CPU burst limit
@@ -96,6 +100,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
   public void initialize(ITaskParams params) {
     this.kubernetesManager = Play.current().injector().instanceOf(KubernetesManager.class);
     this.application = Play.current().injector().instanceOf(Application.class);
+    this.environment = Play.current().injector().instanceOf(Environment.class);
     super.initialize(params);
   }
 
@@ -200,6 +205,9 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       response.message = "No pods even scheduled. Previous step(s) incomplete";
     }
     else {
+      if (environment.isDev()) {
+        response.code = 0;
+      }
       response.message = "Pods are ready. Services still not running";
     }
     return response;
