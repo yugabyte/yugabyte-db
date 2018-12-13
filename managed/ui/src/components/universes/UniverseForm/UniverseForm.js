@@ -184,6 +184,7 @@ class UniverseForm extends Component {
         },
         spotPrice: normalizeToPositiveFloat(formValues[clusterType].spotPrice)
       };
+      const currentProvider = self.getCurrentProvider(formValues[clusterType].provider).code;
       if (clusterType === "primary") {
         clusterIntent.masterGFlags = formValues.primary.masterGFlags.filter((masterFlag) => {
           return isNonEmptyString(masterFlag.name) && isNonEmptyString(masterFlag.value);
@@ -195,6 +196,14 @@ class UniverseForm extends Component {
         }).map((tserverFlag) => {
           return {name: tserverFlag.name, value: tserverFlag.value.trim()};
         });
+
+        if (currentProvider==='aws') {
+          clusterIntent.instanceTags = formValues.primary.instanceTags.filter((userTag) => {
+            return isNonEmptyString(userTag.name) && isNonEmptyString(userTag.value);
+          }).map((userTag) => {
+            return {name: userTag.name, value: userTag.value};
+          });
+        }
       } else {
         if (isDefinedNotNull(formValues.primary)) {
           clusterIntent.tserverGFlags = formValues.primary.tserverGFlags.filter((tserverFlag) => {
@@ -377,7 +386,7 @@ class PrimaryClusterFields extends Component {
   render() {
     return (
       <Fields names={['primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList', 'primary.replicationFactor',
-        'primary.numNodes', 'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags', 'primary.ybSoftwareVersion',
+        'primary.numNodes', 'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.ybSoftwareVersion',
         'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType', 'primary.spotPrice', 'primary.useSpotPrice',
         'primary.assignPublicIP', 'primary.useTimeSync', 'primary.storageClass']} component={ClusterFields} {...this.props} clusterType={"primary"} />
     );

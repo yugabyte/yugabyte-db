@@ -881,13 +881,16 @@ public class UniverseController extends AuthenticatedController {
       if (userIntent == null ) {
         throw new Exception("userIntent: This field is required");
       }
+      // TODO: (ram) add tests for all these.
       Map<String, String> masterGFlagsMap = serializeGFlagListToMap(userIntent, "masterGFlags");
       Map<String, String> tserverGFlagsMap = serializeGFlagListToMap(userIntent, "tserverGFlags");
+      Map<String, String> instanceTags = serializeGFlagListToMap(userIntent, "instanceTags");
       clusterJson.set("userIntent", userIntent);
       newClustersJsonArray.add(clusterJson);
       Cluster cluster = (new ObjectMapper()).treeToValue(clusterJson, Cluster.class);
       cluster.userIntent.masterGFlags = masterGFlagsMap;
       cluster.userIntent.tserverGFlags = tserverGFlagsMap;
+      cluster.userIntent.instanceTags = instanceTags;
       clusters.add(cluster);
     }
     formData.set("clusters", newClustersJsonArray);
