@@ -12,13 +12,9 @@ export const FETCH_TABLE_DETAIL = 'FETCH_TABLE_DETAIL';
 export const FETCH_TABLE_DETAIL_SUCCESS = 'FETCH_TABLE_DETAIL_SUCCESS';
 export const FETCH_TABLE_DETAIL_FAILURE = 'FETCH_TABLE_DETAIL_FAILURE';
 export const RESET_TABLE_DETAIL = 'RESET_TABLE_DETAIL';
-export const CREATE_UNIVERSE_TABLE = 'CREATE_UNIVERSE_TABLE';
-export const CREATE_UNIVERSE_TABLE_SUCCESS = 'CREATE_UNIVERSE_TABLE_SUCCESS';
-export const CREATE_UNIVERSE_TABLE_FAILURE = 'CREATE_UNIVERSE_TABLE_FAILURE';
 export const FETCH_COLUMN_TYPES = 'FETCH_COLUMN_TYPES';
 export const FETCH_COLUMN_TYPES_SUCCESS = 'FETCH_COLUMN_TYPES_SUCCESS';
 export const FETCH_COLUMN_TYPES_FAILURE = 'FETCH_COLUMN_TYPES_FAILURE';
-export const TOGGLE_TABLE_VIEW = 'TOGGLE_TABLE_VIEW';
 export const BULK_IMPORT = 'BULK_IMPORT';
 export const BULK_IMPORT_RESPONSE = 'BULK_IMPORT_RESPONSE';
 export const DROP_TABLE = 'DROP_TABLE';
@@ -70,16 +66,6 @@ export function resetTableDetail() {
   };
 }
 
-export function createUniverseTable(universeUUID, formValues) {
-  const customerId = localStorage.getItem("customer_id");
-  const request =
-    axios.post(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`, formValues);
-  return {
-    type: CREATE_UNIVERSE_TABLE,
-    payload: request
-  };
-}
-
 
 export function fetchTableDetailSuccess(result) {
   return {
@@ -95,20 +81,6 @@ export function fetchTableDetailFailure(error) {
   };
 }
 
-
-export function createUniverseTableSuccess(result) {
-  return {
-    type: CREATE_UNIVERSE_TABLE_SUCCESS,
-    payload: result
-  };
-}
-
-export function createUniverseTableFailure(error) {
-  return {
-    type: CREATE_UNIVERSE_TABLE_FAILURE,
-    payload: error
-  };
-}
 
 export function fetchColumnTypes() {
   const request = axios.get(`${ROOT_URL}/metadata/column_types`);
@@ -129,13 +101,6 @@ export function fetchColumnTypesFailure(error) {
   return {
     type: FETCH_COLUMN_TYPES_FAILURE,
     payload: error
-  };
-}
-
-export function toggleTableView(currentView) {
-  return {
-    type: TOGGLE_TABLE_VIEW,
-    payload: currentView
   };
 }
 
