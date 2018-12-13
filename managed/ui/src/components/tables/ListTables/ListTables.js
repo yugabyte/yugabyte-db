@@ -2,11 +2,11 @@
 
 import React, { Component, Fragment } from 'react';
 import { Link } from 'react-router';
-import { Button, Image, ProgressBar, ButtonGroup, DropdownButton } from 'react-bootstrap';
+import { Image, ProgressBar, ButtonGroup, DropdownButton } from 'react-bootstrap';
 import tableIcon from '../images/table.png';
 import './ListTables.scss';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
-import { CreateTableContainer, TableAction } from '../../tables';
+import { TableAction } from '../../tables';
 import { YBPanelItem } from '../../panels';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
@@ -14,11 +14,9 @@ import _ from 'lodash';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBResourceCount } from '../../common/descriptors';
 
-import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
-
 class TableTitle extends Component {
   render() {
-    const {onCreateButtonClick, numCassandraTables, numRedisTables, numPostgresTables} = this.props;
+    const {numCassandraTables, numRedisTables, numPostgresTables} = this.props;
     return (
       <div className="table-container-title clearfix">
         <div className="pull-left">
@@ -36,13 +34,6 @@ class TableTitle extends Component {
             <YBResourceCount kind="PostgreSQL" size={numPostgresTables}/>
           </div>
         </div>
-        <FlexContainer className="pull-right">
-          <FlexShrink>
-            <Button bsClass="btn btn-orange" onClick={onCreateButtonClick}>
-              Create Table
-            </Button>
-          </FlexShrink>
-        </FlexContainer>
       </div>
     );
   }
@@ -53,10 +44,6 @@ export default class ListTables extends Component {
     super(props);
     this.state = {'currentView': 'listTables'};
   }
-
-  showCreateTable = () => {
-    this.props.showCreateTable();
-  };
 
   showListTables = () => {
     this.setState({'currentView': 'listTables'});
@@ -83,19 +70,12 @@ export default class ListTables extends Component {
           header={
             <TableTitle numRedisTables={numRedisTables}
                         numCassandraTables={numCassandraTables}
-                        numPostgresTables={0}
-            onCreateButtonClick={this.showCreateTable}/>
+                        numPostgresTables={0}/>
           }
           body={
             <ListTableGrid {...this.props}/>
           }
         />
-      );
-    } else if (tables.currentTableView === "create") {
-      return (
-        <div>
-          <CreateTableContainer showListTables={this.showListTables}/>
-        </div>
       );
     } else {
       return <span/>;
