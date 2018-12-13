@@ -147,11 +147,11 @@ const mapDispatchToProps = (dispatch) => {
 const formFieldNames =
   ['formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
     'primary.numNodes', 'primary.instanceType', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
-    'primary.masterGFlags', 'primary.tserverGFlags', 'primary.spotPrice', 'primary.diskIops', 'primary.numVolumes',
+    'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.spotPrice', 'primary.diskIops', 'primary.numVolumes',
     'primary.volumeSize', 'primary.ebsType', 'primary.assignPublicIP', 'primary.useTimeSync', 'primary.mountPoints',
     'async.universeName', 'async.provider', 'async.providerType', 'async.spotPrice', 'async.regionList', 'async.numNodes',
     'async.instanceType', 'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP', 'async.useTimeSync', 'async.mountPoints',
-    'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags', 'asyncClusters'];
+    'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags', 'instanceTags', 'asyncClusters'];
 
 
 function getFormData(currentUniverse, formType, clusterType) {
@@ -186,6 +186,9 @@ function getFormData(currentUniverse, formType, clusterType) {
     });
     data[clusterType].tserverGFlags = Object.keys(userIntent.tserverGFlags).map((key) => {
       return {name: key, value: userIntent.tserverGFlags[key]};
+    });
+    data[clusterType].instanceTags = Object.keys(userIntent.instanceTags).map((key) => {
+      return {name: key, value: userIntent.instanceTags[key]};
     });
   }
   return data;
@@ -238,12 +241,12 @@ function mapStateToProps(state, ownProps) {
     formValues: selector(state,
       'formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
       'primary.numNodes', 'primary.instanceType', 'primary.replicationFactor', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
-      'primary.masterGFlags', 'primary.tserverGFlags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType',
+      'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType',
       'primary.diskIops', 'primary.spotPrice', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync', 'primary.storageClass',
       'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
       'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.spotPrice', 'async.ybSoftwareVersion', 'async.accessKeyCode',
       'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.ebsType', 'async.assignPublicIP', 'async.mountPoints',
-      'async.useTimeSync', 'async.storageClass', 'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags')
+      'async.useTimeSync', 'async.storageClass', 'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags', 'instanceTags' )
   };
 }
 

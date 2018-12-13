@@ -10,7 +10,7 @@ import { FlexContainer, FlexShrink, FlexGrow } from '../../common/flexbox/YBFlex
 
 export default class GFlagArrayComponent extends Component {
   static propTypes = {
-    flagType: PropTypes.oneOf(['master', 'tserver']).isRequired,
+    flagType: PropTypes.oneOf(['master', 'tserver', 'tag']).isRequired,
     operationType: PropTypes.oneOf(['Create', 'Edit']).isRequired
   };
 
@@ -38,15 +38,15 @@ export default class GFlagArrayComponent extends Component {
     const {fields, flagType, isReadOnly} = this.props;
 
     const self = this;
-    let currentLabel = <span/>;
+    let currentLabel = false;
     if (flagType === "tserver") {
       currentLabel = "T-Server";
-    } else {
+    } else if (flagType === "master") {
       currentLabel = "Master";
     }
     return (
       <div className="form-field-grid">
-        <label>{currentLabel}</label>
+        {currentLabel && <label>{currentLabel}</label>}
         {
           fields.map(function(field, idx){
             return (
