@@ -105,11 +105,20 @@ static string DebugInfo(const string& tablet_id,
 // ============================================================================
 //  Class ReplayState.
 // ============================================================================
-typedef std::map<int64_t, std::unique_ptr<log::LogEntryPB>> OpIndexToEntryMap;
+struct Entry {
+  std::unique_ptr<log::LogEntryPB> entry;
+  RestartSafeCoarseTimePoint entry_time;
+
+  std::string ToString() const {
+    return Format("{ entry: $0 entry_time: $1 }", entry, entry_time);
+  }
+};
+
+typedef std::map<int64_t, Entry> OpIndexToEntryMap;
 
 // State kept during replay.
 struct ReplayState {
-  explicit ReplayState(const consensus::OpId& regular_op_id, const consensus::OpId& intents_op_id);
+  ReplayState(const consensus::OpId& regular_op_id, const consensus::OpId& intents_op_id);
 
   // Return true if 'b' is allowed to immediately follow 'a' in the log.
   static bool IsValidSequence(const consensus::OpId& a, const consensus::OpId& b);
@@ -129,13 +138,15 @@ struct ReplayState {
   template<class Handler>
   void ApplyCommittedPendingReplicates(const Handler& handler) {
     auto iter = pending_replicates.begin();
-    while (iter != pending_replicates.end() && CanApply(iter->second.get())) {
-      std::unique_ptr<log::LogEntryPB> entry = std::move(iter->second);
-      handler(entry.get());
+    while (iter != pending_replicates.end() && CanApply(iter->second.entry.get())) {
+      std::unique_ptr<log::LogEntryPB> entry = std::move(iter->second.entry);
+      handler(entry.get(), iter->second.entry_time);
       iter = pending_replicates.erase(iter);  // erase and advance the iterator (C++11)
       ++num_entries_applied_to_rocksdb;
     }
   }
+
+  bool UpdateCommittedFromStored();
 
   // The last replicate message's ID.
   consensus::OpId prev_op_id = consensus::MinimumOpId();
@@ -169,14 +180,22 @@ struct ReplayState {
 
 ReplayState::ReplayState(const consensus::OpId& regular_op_id, const consensus::OpId& intents_op_id)
     : regular_stored_op_id(regular_op_id), intents_stored_op_id(intents_op_id) {
-  // If we know last flushed op id, then initialize committed_op_id with it.
-  if (regular_op_id.term() > yb::OpId::kUnknownTerm) {
-    committed_op_id = regular_op_id;
+}
+
+bool ReplayState::UpdateCommittedFromStored() {
+  bool result = false;
+
+  if (consensus::OpIdBiggerThan(regular_stored_op_id, committed_op_id)) {
+    committed_op_id = regular_stored_op_id;
+    result = true;
   }
 
-  if (consensus::OpIdBiggerThan(intents_op_id, committed_op_id)) {
-    committed_op_id = intents_op_id;
+  if (consensus::OpIdBiggerThan(intents_stored_op_id, committed_op_id)) {
+    committed_op_id = intents_stored_op_id;
+    result = true;
   }
+
+  return result;
 }
 
 // Return true if 'b' is allowed to immediately follow 'a' in the log.
@@ -222,7 +241,7 @@ void ReplayState::UpdateCommittedOpId(const OpId& id) {
 void ReplayState::AddEntriesToStrings(const OpIndexToEntryMap& entries,
                                       std::vector<std::string>* strings) const {
   for (const OpIndexToEntryMap::value_type& map_entry : entries) {
-    LogEntryPB* entry = DCHECK_NOTNULL(map_entry.second.get());
+    LogEntryPB* entry = DCHECK_NOTNULL(map_entry.second.entry.get());
     strings->push_back(Substitute("   [$0] $1", map_entry.first, entry->ShortDebugString()));
   }
 }
@@ -559,13 +578,10 @@ Status TabletBootstrap::HandleReplicateMessage(
   }
 
   // Append the replicate message to the log as is
-  RETURN_NOT_OK(log_->Append(replicate_entry_ptr->get()));
+  RETURN_NOT_OK(log_->Append(replicate_entry_ptr->get(), entry_time));
 
   auto min_index = std::min(
       state->regular_stored_op_id.index(), state->intents_stored_op_id.index());
-  if (data_.retryable_requests && replicate_entry.replicate().has_write_request()) {
-    data_.retryable_requests->Register(replicate, entry_time);
-  }
   if (op_id.index() <= min_index) {
     // Do not update the bootstrap in-memory state for log records that have already been applied to
     // RocksDB, or were overwritten by a later entry with a higher term that has already been
@@ -583,14 +599,16 @@ Status TabletBootstrap::HandleReplicateMessage(
     auto& last_entry = state->pending_replicates.rbegin()->second;
 
     LOG_WITH_PREFIX(INFO) << "Overwriting operations starting at: "
-                          << existing_entry->replicate().id()
-                          << " up to: " << last_entry->replicate().id()
+                          << existing_entry.entry->replicate().id()
+                          << " up to: " << last_entry.entry->replicate().id()
                           << " with operation: " << replicate.id();
     stats_.ops_overwritten += std::distance(iter, state->pending_replicates.end());
     state->pending_replicates.erase(iter, state->pending_replicates.end());
   }
 
-  CHECK(state->pending_replicates.emplace(op_id.index(), std::move(*replicate_entry_ptr)).second);
+  DCHECK(entry_time != RestartSafeCoarseTimePoint());
+  CHECK(state->pending_replicates.emplace(
+      op_id.index(), Entry{std::move(*replicate_entry_ptr), entry_time}).second);
 
   CHECK(replicate.has_committed_op_id())
       << "Replicate message has no committed_op_id for table type "
@@ -602,16 +620,7 @@ Status TabletBootstrap::HandleReplicateMessage(
   state->UpdateCommittedOpId(replicate.committed_op_id());
 
   state->ApplyCommittedPendingReplicates(
-      std::bind(&TabletBootstrap::HandleEntryPair, this, state, _1));
-
-  const auto kBlockSizeForRetryableRequests = 100;
-  if (data_.retryable_requests &&
-      state->committed_op_id.index() >=
-          last_committed_op_id_known_by_retryable_requests_.index +
-              kBlockSizeForRetryableRequests) {
-    last_committed_op_id_known_by_retryable_requests_ = yb::OpId::FromPB(state->committed_op_id);
-    data_.retryable_requests->MarkReplicatedUpTo(last_committed_op_id_known_by_retryable_requests_);
-  }
+      std::bind(&TabletBootstrap::HandleEntryPair, this, state, _1, _2));
 
   return Status::OK();
 }
@@ -651,7 +660,8 @@ Status TabletBootstrap::HandleOperation(consensus::OperationType op_type,
 }
 
 // Never deletes 'replicate_entry' or 'commit_entry'.
-Status TabletBootstrap::HandleEntryPair(ReplayState* state, LogEntryPB* replicate_entry) {
+Status TabletBootstrap::HandleEntryPair(
+    ReplayState* state, LogEntryPB* replicate_entry, RestartSafeCoarseTimePoint entry_time) {
   ReplicateMsg* replicate = replicate_entry->mutable_replicate();
   const auto op_type = replicate_entry->replicate().op_type();
 
@@ -672,6 +682,10 @@ Status TabletBootstrap::HandleEntryPair(ReplayState* state, LogEntryPB* replicat
     flushed_index = state->intents_stored_op_id.index();
   } else {
     flushed_index = state->regular_stored_op_id.index();
+  }
+
+  if (data_.retryable_requests && replicate->has_write_request()) {
+    data_.retryable_requests->Bootstrap(*replicate, entry_time);
   }
 
   if (replicate->id().index() > flushed_index) {
@@ -781,19 +795,24 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
     segment_count++;
   }
 
+  if (state.UpdateCommittedFromStored()) {
+    state.ApplyCommittedPendingReplicates(
+        std::bind(&TabletBootstrap::HandleEntryPair, this, &state, _1, _2));
+  }
+
   if (last_committed_op_id.index > state.committed_op_id.index()) {
     auto it = state.pending_replicates.find(last_committed_op_id.index);
     if (it != state.pending_replicates.end()) {
       // That should be guaranteed by RAFT protocol. If record is committed, it cannot
       // be overriden by a new leader.
-      if (last_committed_op_id.term == it->second->replicate().id().term()) {
+      if (last_committed_op_id.term == it->second.entry->replicate().id().term()) {
         state.UpdateCommittedOpId(last_committed_op_id.ToPB<consensus::OpId>());
         state.ApplyCommittedPendingReplicates(
-            std::bind(&TabletBootstrap::HandleEntryPair, this, &state, _1));
+            std::bind(&TabletBootstrap::HandleEntryPair, this, &state, _1, _2));
       } else {
         LOG_WITH_PREFIX(DFATAL)
             << "Invalid last committed op id: " << last_committed_op_id
-            << ", record with this index has another term: " << it->second->replicate().id();
+            << ", record with this index has another term: " << it->second.entry->replicate().id();
       }
     } else {
       LOG_WITH_PREFIX(DFATAL)
@@ -811,7 +830,7 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
     // applied to RocksDB to be passed to the tablet as "orphaned replicates". This will make sure
     // we don't try to write to RocksDB with non-monotonic sequence ids, but still create
     // ConsensusRound instances for writes that have not been persisted into RocksDB.
-    consensus_info->orphaned_replicates.emplace_back(e.second->release_replicate());
+    consensus_info->orphaned_replicates.emplace_back(e.second.entry->release_replicate());
   }
   LOG_WITH_PREFIX(INFO)
       << "Number of orphaned replicates: " << consensus_info->orphaned_replicates.size()
@@ -826,7 +845,6 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   consensus_info->last_committed_id = state.committed_op_id;
 
   if (data_.retryable_requests) {
-    data_.retryable_requests->MarkReplicatedUpTo(yb::OpId::FromPB(state.committed_op_id));
     data_.retryable_requests->Clock().Adjust(last_entry_time);
   }
 

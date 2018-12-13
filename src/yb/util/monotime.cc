@@ -338,4 +338,8 @@ CoarseMonoClock::time_point CoarseMonoClock::now() {
   return time_point(duration(nanos));
 }
 
+std::string ToString(CoarseMonoClock::TimePoint time_point) {
+  return MonoDelta(time_point.time_since_epoch()).ToString();
+}
+
 } // namespace yb

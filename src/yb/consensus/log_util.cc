@@ -537,6 +537,7 @@ ReadEntriesResult ReadableLogSegment::ReadEntries() {
 
     for (size_t i = 0; i < current_batch.entry_size(); ++i) {
       result.entries.emplace_back(current_batch.mutable_entry(i));
+      DCHECK_NE(current_batch.mono_time(), 0);
       result.entry_times.push_back(
           RestartSafeCoarseTimePoint::FromUInt64(current_batch.mono_time()));
       num_entries_read++;
@@ -824,6 +825,7 @@ Status WritableLogSegment::WriteEntryBatch(const Slice& data) {
 // the shared pointers.
 LogEntryBatchPB CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs) {
   LogEntryBatchPB result;
+  result.set_mono_time(RestartSafeCoarseMonoClock().Now().ToUInt64());
   result.mutable_entry()->Reserve(msgs.size());
   for (const auto& msg_ptr : msgs) {
     LogEntryPB* entry_pb = result.add_entry();

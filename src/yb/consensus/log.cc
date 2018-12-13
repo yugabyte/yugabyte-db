@@ -731,8 +731,12 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   return Status::OK();
 }
 
-Status Log::Append(LogEntryPB* phys_entry) {
+Status Log::Append(LogEntryPB* phys_entry, RestartSafeCoarseTimePoint batch_mono_time) {
   LogEntryBatchPB entry_batch_pb;
+  if (batch_mono_time != RestartSafeCoarseTimePoint()) {
+    entry_batch_pb.set_mono_time(batch_mono_time.ToUInt64());
+  }
+
   entry_batch_pb.mutable_entry()->AddAllocated(phys_entry);
   LogEntryBatch entry_batch(phys_entry->type(), std::move(entry_batch_pb));
   // Mark this as reserved, as we're building it from preallocated data.
@@ -1089,6 +1093,9 @@ LogEntryBatch::LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB&& entry_batch_
     : type_(type),
       entry_batch_pb_(std::move(entry_batch_pb)),
       count_(entry_batch_pb_.entry().size()) {
+  if (type_ != LogEntryTypePB::FLUSH_MARKER) {
+    DCHECK_NE(entry_batch_pb_.mono_time(), 0);
+  }
 }
 
 LogEntryBatch::~LogEntryBatch() {
@@ -1119,6 +1126,7 @@ Status LogEntryBatch::Serialize() {
     state_ = kEntrySerialized;
     return Status::OK();
   }
+  DCHECK_NE(entry_batch_pb_.mono_time(), 0);
   total_size_bytes_ = entry_batch_pb_.ByteSize();
   buffer_.reserve(total_size_bytes_);
 

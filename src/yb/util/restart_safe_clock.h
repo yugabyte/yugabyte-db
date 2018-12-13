@@ -38,6 +38,10 @@ class RestartSafeCoarseTimePoint {
     return (value_ - CoarseTimePoint()).count();
   }
 
+  std::string ToString() const {
+    return yb::ToString(value_);
+  }
+
  private:
   friend class RestartSafeCoarseMonoClock;
 

@@ -133,7 +133,8 @@ class TabletBootstrap {
   CHECKED_STATUS HandleReplicateMessage(
       RestartSafeCoarseTimePoint entry_time, ReplayState* state,
       std::unique_ptr<log::LogEntryPB>* replicate_entry);
-  CHECKED_STATUS HandleEntryPair(ReplayState* state, log::LogEntryPB* replicate_entry);
+  CHECKED_STATUS HandleEntryPair(
+      ReplayState* state, log::LogEntryPB* replicate_entry, RestartSafeCoarseTimePoint entry_time);
   virtual CHECKED_STATUS HandleOperation(consensus::OperationType op_type,
                                          consensus::ReplicateMsg* replicate);
 
@@ -162,7 +163,6 @@ class TabletBootstrap {
 
   // Thread pool for append task for bootstrap.
   ThreadPool* append_pool_;
-  yb::OpId last_committed_op_id_known_by_retryable_requests_;
 
   // Statistics on the replay of entries in the log.
   struct Stats {

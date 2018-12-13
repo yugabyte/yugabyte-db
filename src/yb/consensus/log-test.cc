@@ -498,6 +498,7 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   // gets written to disk.
   LogEntryBatchPB batch;
   OpId op_id = MakeOpId(1, 1);
+  batch.set_mono_time(1);
   LogEntryPB* log_entry = batch.add_entry();
   log_entry->set_type(REPLICATE);
   ReplicateMsg* repl = log_entry->mutable_replicate();
@@ -510,8 +511,8 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
 
   int written_entries_size = header_size;
   ASSERT_OK(AppendNoOps(&op_id, kNumEntries, &written_entries_size));
-  ASSERT_EQ(single_entry_size * kNumEntries + header_size, written_entries_size);
   ASSERT_EQ(written_entries_size, log_->active_segment_->written_offset());
+  ASSERT_EQ(single_entry_size * kNumEntries, written_entries_size - header_size);
 
   // Updating the readable segment with the offset of the first entry should
   // make it read a single entry even though there are several in the log.
