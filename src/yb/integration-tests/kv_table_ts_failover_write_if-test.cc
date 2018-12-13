@@ -49,12 +49,6 @@ std::string TsNameForIndex(int idx) {
   return Format("ts-$0", idx + 1);
 }
 
-void AssertLoggedWaitFor(std::function<Result<bool>()> condition, MonoDelta timeout,
-    const string& description, MonoDelta initial_delay) {
-  LOG(INFO) << description;
-  ASSERT_OK(WaitFor(condition, timeout, description, initial_delay));
-}
-
 } // namespace
 
 class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {

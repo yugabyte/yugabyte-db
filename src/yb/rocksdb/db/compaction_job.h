@@ -20,6 +20,10 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+
+#ifndef YB_ROCKSDB_DB_COMPACTION_JOB_H
+#define YB_ROCKSDB_DB_COMPACTION_JOB_H
+
 #pragma once
 
 #include <atomic>
@@ -57,12 +61,16 @@
 
 namespace rocksdb {
 
+using yb::Result;
+
 class MemTable;
 class TableCache;
 class Version;
 class VersionEdit;
 class VersionSet;
 class Arena;
+class FileNumbersProvider;
+class FileNumbersHolder;
 
 class CompactionJob {
  public:
@@ -74,6 +82,7 @@ class CompactionJob {
                 Status* db_bg_error,
                 std::vector<SequenceNumber> existing_snapshots,
                 SequenceNumber earliest_write_conflict_snapshot,
+                FileNumbersProvider* file_numbers_provider,
                 std::shared_ptr<Cache> table_cache, EventLogger* event_logger,
                 bool paranoid_file_checks, bool measure_io_stats,
                 const std::string& dbname,
@@ -89,7 +98,7 @@ class CompactionJob {
   // REQUIRED: mutex held
   void Prepare();
   // REQUIRED mutex not held
-  Status Run();
+  Result<FileNumbersHolder> Run();
 
   // REQUIRED: mutex held
   Status Install(const MutableCFOptions& mutable_cf_options);
@@ -105,7 +114,7 @@ class CompactionJob {
   void AllocateCompactionOutputFileNumbers();
   // Call compaction filter. Then iterate through input and compact the
   // kv-pairs
-  void ProcessKeyValueCompaction(SubcompactionState* sub_compact);
+  void ProcessKeyValueCompaction(FileNumbersHolder* holder, SubcompactionState* sub_compact);
 
   Status FinishCompactionOutputFile(const Status& input_status,
                                     SubcompactionState* sub_compact);
@@ -114,7 +123,7 @@ class CompactionJob {
   Status OpenFile(const std::string table_name, uint64_t file_number,
       const std::string file_type_label, const std::string fname,
       std::unique_ptr<WritableFile>* writable_file);
-  Status OpenCompactionOutputFile(SubcompactionState* sub_compact);
+  Status OpenCompactionOutputFile(FileNumbersHolder* holder, SubcompactionState* sub_compact);
   void CleanupCompaction();
   void UpdateCompactionJobStats(
     const InternalStats::CompactionStats& stats) const;
@@ -161,6 +170,8 @@ class CompactionJob {
   // should make sure not to remove evidence that a write occurred.
   SequenceNumber earliest_write_conflict_snapshot_;
 
+  FileNumbersProvider* file_numbers_provider_;
+
   std::shared_ptr<Cache> table_cache_;
 
   EventLogger* event_logger_;
@@ -175,3 +186,5 @@ class CompactionJob {
 };
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_DB_COMPACTION_JOB_H

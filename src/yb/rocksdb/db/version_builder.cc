@@ -129,13 +129,7 @@ class VersionBuilder::Rep {
   }
 
   void UnrefFile(FileMetaData* f) {
-    f->refs--;
-    if (f->refs <= 0) {
-      if (f->table_reader_handle) {
-        assert(table_cache_ != nullptr);
-        table_cache_->ReleaseHandle(f->table_reader_handle);
-        f->table_reader_handle = nullptr;
-      }
+    if (f->Unref(table_cache_)) {
       delete f;
     }
   }

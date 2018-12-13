@@ -24,6 +24,7 @@
 
 #include <boost/functional/hash.hpp>
 
+#include "yb/rocksdb/db/file_numbers.h"
 #include "yb/rocksdb/db/flush_job.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/version_set.h"
@@ -105,13 +106,14 @@ TEST_F(FlushJobTest, Empty) {
   JobContext job_context(0);
   auto cfd = versions_->GetColumnFamilySet()->GetDefault();
   EventLogger event_logger(db_options_.info_log.get());
+  FileNumbersProvider file_numbers_provider(versions_.get());
   FlushJob flush_job(dbname_, versions_->GetColumnFamilySet()->GetDefault(),
                      db_options_, *cfd->GetLatestMutableCFOptions(),
                      env_options_, versions_.get(), &mutex_, &shutting_down_,
-                     {}, kMaxSequenceNumber, MemTableFilter(),
+                     {}, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
                      &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr,
                      &event_logger);
-  ASSERT_OK(flush_job.Run());
+  ASSERT_OK(yb::ResultToStatus(flush_job.Run()));
   job_context.Clean();
 }
 
@@ -151,15 +153,16 @@ TEST_F(FlushJobTest, NonEmpty) {
   }
 
   EventLogger event_logger(db_options_.info_log.get());
+  FileNumbersProvider file_numbers_provider(versions_.get());
   FlushJob flush_job(dbname_, versions_->GetColumnFamilySet()->GetDefault(),
                      db_options_, *cfd->GetLatestMutableCFOptions(),
                      env_options_, versions_.get(), &mutex_, &shutting_down_,
-                     {}, kMaxSequenceNumber, MemTableFilter(),
+                     {}, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
                      &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr,
                      &event_logger);
   FileMetaData fd;
   mutex_.Lock();
-  ASSERT_OK(flush_job.Run(&fd));
+  ASSERT_OK(yb::ResultToStatus(flush_job.Run(&fd)));
   mutex_.Unlock();
   ASSERT_EQ(ToString(0), fd.smallest.key.user_key().ToString());
   ASSERT_EQ(ToString(9999), fd.largest.key.user_key().ToString());
@@ -219,14 +222,15 @@ TEST_F(FlushJobTest, Snapshots) {
   }
 
   EventLogger event_logger(db_options_.info_log.get());
+  FileNumbersProvider file_numbers_provider(versions_.get());
   FlushJob flush_job(dbname_, versions_->GetColumnFamilySet()->GetDefault(),
                      db_options_, *cfd->GetLatestMutableCFOptions(),
                      env_options_, versions_.get(), &mutex_, &shutting_down_,
-                     snapshots, kMaxSequenceNumber, MemTableFilter(),
+                     snapshots, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
                      &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr,
                      &event_logger);
   mutex_.Lock();
-  ASSERT_OK(flush_job.Run());
+  ASSERT_OK(ResultToStatus(flush_job.Run()));
   mutex_.Unlock();
   mock_table_factory_->AssertSingleFile(inserted_keys);
   job_context.Clean();
