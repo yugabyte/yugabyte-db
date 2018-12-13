@@ -21,6 +21,7 @@ public class CloudQueryHelper extends DevopsBase {
   public static final Logger LOG = LoggerFactory.getLogger(CloudQueryHelper.class);
 
   private static final String YB_CLOUD_COMMAND_TYPE = "query";
+  private static final String DEFAULT_IMAGE_KEY = "default_image";
 
   @Override
   protected String getCommandType() { return YB_CLOUD_COMMAND_TYPE; }
@@ -130,5 +131,23 @@ public class CloudQueryHelper extends DevopsBase {
     } else {
       return maxPriceFound;
     }
+  }
+
+  public JsonNode queryVpcs(UUID regionUUID) {
+    List<String> commandArgs = new ArrayList<String>();
+    return execAndParseCommandRegion(regionUUID, "vpc", commandArgs);
+  }
+
+  public String getDefaultImage(Region region) {
+    String defaultImage = null;
+    JsonNode result = queryVpcs(region.uuid);
+    JsonNode regionInfo = result.get(region.code);
+    if (regionInfo != null) {
+      JsonNode defaultImageJson = regionInfo.get(DEFAULT_IMAGE_KEY);
+      if (defaultImageJson != null) {
+        defaultImage = defaultImageJson.asText();
+      }
+    }
+    return defaultImage;
   }
 }

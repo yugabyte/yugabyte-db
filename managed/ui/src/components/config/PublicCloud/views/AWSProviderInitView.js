@@ -12,15 +12,18 @@ import AddRegionPopupForm from './AddRegionPopupForm';
 import _ from 'lodash';
 
 
+// These should match the metadata in devops under opscli/ybops/data/aws-metadata.yml
 const regionsData =
   [{
     destVpcRegion: 'ap-northeast-1',
     zones: ['ap-northeast-1a', 'ap-northeast-1c', 'ap-northeast-1d']
   },
-  {
-    destVpcRegion: 'ap-northeast-2',
-    zones: ['ap-northeast-2a', 'ap-northeast-2c']
-  },
+  // This is disabled in devops, so keep it disabled here as well. Pending on fetching data from a
+  // YW API: ENG-4225
+  // {
+  //   destVpcRegion: 'ap-northeast-2',
+  //   zones: ['ap-northeast-2a', 'ap-northeast-2c']
+  // },
   {
     destVpcRegion: 'ap-south-1',
     zones: ['ap-south-1a', 'ap-south-1b']
