@@ -39,6 +39,7 @@
 
 namespace rocksdb {
 
+class TableCache;
 class VersionSet;
 class VersionEditPB;
 
@@ -132,6 +133,10 @@ struct FileMetaData {
 
   // Update all boundaries except key.
   void UpdateBoundariesExceptKey(const FileBoundaryValuesBase& source, UpdateBoundariesType type);
+
+  bool Unref(TableCache* table_cache);
+
+  std::string ToString() const;
 };
 
 class VersionEdit {

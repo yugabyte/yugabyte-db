@@ -37,6 +37,21 @@ int DBImpl::TEST_NumRunningLargeCompactions() {
   return num_running_large_compactions_;
 }
 
+int DBImpl::TEST_NumTotalRunningCompactions() {
+  InstrumentedMutexLock l(&mutex_);
+  return num_total_running_compactions_;
+}
+
+int DBImpl::TEST_NumRunningFlushes() {
+  InstrumentedMutexLock l(&mutex_);
+  return num_running_flushes_;
+}
+
+int DBImpl::TEST_NumBackgroundCompactionsScheduled() {
+  InstrumentedMutexLock l(&mutex_);
+  return bg_compaction_scheduled_;
+}
+
 int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes(
     ColumnFamilyHandle* column_family) {
   ColumnFamilyData* cfd;

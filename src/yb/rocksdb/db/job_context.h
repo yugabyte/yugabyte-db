@@ -21,6 +21,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#ifndef YB_ROCKSDB_DB_JOB_CONTEXT_H
+#define YB_ROCKSDB_DB_JOB_CONTEXT_H
+
 #pragma once
 
 #include <string>
@@ -89,8 +92,6 @@ struct JobContext {
   uint64_t log_number;
   uint64_t prev_log_number;
 
-  uint64_t min_pending_output = 0;
-
   explicit JobContext(int _job_id, bool create_superversion = false) {
     job_id = _job_id;
     manifest_file_number = 0;
@@ -135,3 +136,5 @@ struct JobContext {
 };
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_DB_JOB_CONTEXT_H

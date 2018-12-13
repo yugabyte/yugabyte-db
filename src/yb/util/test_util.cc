@@ -298,6 +298,18 @@ Status WaitFor(std::function<Result<bool>()> condition,
               max_delay);
 }
 
+void AssertLoggedWaitFor(
+    std::function<Result<bool>()> condition,
+    MonoDelta timeout,
+    const string& description,
+    MonoDelta initial_delay,
+    double delay_multiplier,
+    MonoDelta max_delay) {
+  LOG(INFO) << description;
+  ASSERT_OK(WaitFor(condition, timeout, description, initial_delay));
+  LOG(INFO) << description << " - DONE";
+}
+
 string GetToolPath(const string& tool_name) {
   string exe;
   CHECK_OK(Env::Default()->GetExecutablePath(&exe));

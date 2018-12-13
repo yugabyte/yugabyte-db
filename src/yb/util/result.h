@@ -351,6 +351,11 @@ ResultToStatusAdaptor<Functor> ResultToStatus(const Functor& functor) {
   return ResultToStatusAdaptor<Functor>(functor);
 }
 
+template<class TValue>
+CHECKED_STATUS ResultToStatus(const Result<TValue>& result) {
+  return result.ok() ? Status::OK() : result.status();
+}
+
 // Checks that result is ok, extracts result value is case of success.
 #define CHECK_RESULT(expr) \
   __extension__ ({ auto&& __result = (expr); CHECK_OK(__result); std::move(*__result); })

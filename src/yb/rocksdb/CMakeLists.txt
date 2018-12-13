@@ -44,6 +44,7 @@ set(ROCKSDB_SRCS
     db/experimental.cc
     db/event_helpers.cc
     db/file_indexer.cc
+    db/file_numbers.cc
     db/filename.cc
     db/flush_job.cc
     db/flush_scheduler.cc
@@ -347,6 +348,7 @@ ADD_YB_TEST(db/db_tailing_iter_test)
 ADD_YB_TEST(db/db_test)
 ADD_YB_TEST(db/db_test2)
 ADD_YB_TEST(db/db_universal_compaction_test)
+ADD_YB_TEST(db/db_universal_compaction_deletion_test)
 ADD_YB_TEST(db/db_wal_test)
 ADD_YB_TEST(db/deletefile_test)
 ADD_YB_TEST(db/fault_injection_test)
