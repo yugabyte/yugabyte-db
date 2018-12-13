@@ -422,6 +422,7 @@ export default class ClusterFields extends Component {
         },
         accessKeyCode: formValues[clusterType].accessKeyCode,
         gflags: formValues[clusterType].gflags,
+        instanceTags: formValues[clusterType].instanceTags,
         spotPrice: formValues[clusterType].spotPrice,
         useTimeSync: formValues[clusterType].useTimeSync,
         storageClass: formValues[clusterType].storageClass
@@ -602,6 +603,7 @@ export default class ClusterFields extends Component {
 
   configureUniverseNodeList() {
     const {universe: {universeConfigTemplate, currentUniverse}, formValues, clusterType} = this.props;
+    const currentProviderUUID = this.state.providerSelected;
 
     let universeTaskParams = {};
     if (isNonEmptyObject(universeConfigTemplate.data)) {
@@ -644,6 +646,9 @@ export default class ClusterFields extends Component {
     }
     if (isNonEmptyObject(formValues[clusterType].tserverGFlags)) {
       userIntent["tserverGFlags"] = formValues[clusterType].tserverGFlags;
+    }
+    if (isNonEmptyObject(formValues[clusterType].instanceTags) && currentProviderUUID && this.getCurrentProvider(currentProviderUUID).code === "aws") {
+      userIntent["instanceTags"] = formValues[clusterType].instanceTags;
     }
 
     this.props.cloud.providers.data.forEach(function (providerItem) {
@@ -759,6 +764,7 @@ export default class ClusterFields extends Component {
     const {clusterType, cloud, softwareVersions, accessKeys, universe, cloud: {suggestedSpotPrice}, formValues} = this.props;
     const self = this;
     let gflagArray = <span/>;
+    let tagsArray = <span/>;
     let universeProviderList = [];
     let currentProviderCode = "";
 
@@ -1033,6 +1039,18 @@ export default class ClusterFields extends Component {
         </Row>);
     }
 
+    if (clusterType === "primary" ) {
+      tagsArray =
+        (<Row>
+          <Col md={12}>
+            <h4>User Tags</h4>
+          </Col>
+          <Col md={6}>
+            <FieldArray component={GFlagArrayComponent} name={`${clusterType}.instanceTags`} flagType="tag" operationType="Create" isReadOnly={isFieldReadOnly}/>
+          </Col>
+        </Row>);
+    }
+
     const softwareVersionOptions = softwareVersions.map((item, idx) => (
       <option key={idx} value={item}>{item}</option>
     ));
@@ -1164,9 +1182,12 @@ export default class ClusterFields extends Component {
             </Col>
           </Row>
         </div>
-        <div className="form-section no-border">
+        <div className="form-section">
           {gflagArray}
         </div>
+        {currentProviderCode === "aws" && clusterType === "primary" && <div className="form-section no-border">
+          {tagsArray}
+        </div>}
       </div>
     );
   }
