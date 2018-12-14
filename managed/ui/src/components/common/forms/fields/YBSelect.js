@@ -41,9 +41,9 @@ export class YBUnControlledSelect extends Component {
 
 export class YBControlledSelectWithLabel extends Component {
   render() {
-    const { label, meta, ...otherProps} = this.props;
+    const { label, meta, infoContent, infoTitle, ...otherProps} = this.props;
     return (
-      <YBLabel label={label} meta={meta}>
+      <YBLabel label={label} meta={meta} infoContent={infoContent} infoTitle={infoTitle} >
         <YBControlledSelect {...otherProps}/>
       </YBLabel>
     );
@@ -52,9 +52,9 @@ export class YBControlledSelectWithLabel extends Component {
 
 export default class YBSelectWithLabel extends Component {
   render() {
-    const { label, meta, ...otherProps} = this.props;
+    const { label, meta, infoContent, infoTitle, ...otherProps} = this.props;
     return (
-      <YBLabel label={label} meta={meta}>
+      <YBLabel label={label} meta={meta} infoContent={infoContent} infoTitle={infoTitle} >
         <YBUnControlledSelect {...otherProps} />
       </YBLabel>
     );
