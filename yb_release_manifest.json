@@ -22,7 +22,6 @@
           "thirdparty/installed/common/cqlsh/bin/cqlsh",
           "thirdparty/installed/common/cqlsh/bin/cqlsh.py",
           "thirdparty/installed/common/bin/redis-cli",
-          "thirdparty/installed/common/bin/psql",
           "thirdparty/installed/uninstrumented/bin/pprof"],
   "lib"      : ["thirdparty/installed/common/cqlsh/lib/*"],
   "pylib"    : ["thirdparty/installed/common/cqlsh/pylib/*"],

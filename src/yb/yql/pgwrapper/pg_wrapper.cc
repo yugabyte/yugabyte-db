@@ -77,12 +77,11 @@ Status PgWrapper::Start() {
   RETURN_NOT_OK(CheckExecutableValid(postgres_executable));
   vector<string> argv {
     postgres_executable,
-    "-D",
-    conf_.data_dir,
-    "-p",
-    std::to_string(conf_.pg_port),
-    "-h",
-    conf_.listen_addresses
+    "-D", conf_.data_dir,
+    "-p", std::to_string(conf_.pg_port),
+    "-h", conf_.listen_addresses,
+    // Disable listening on a UNIX domain socket
+    "-k", ""
   };
 
   pg_proc_.emplace(postgres_executable, argv);

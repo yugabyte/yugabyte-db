@@ -78,7 +78,6 @@ class Builder:
         self.dependencies += [
             build_definitions.cqlsh.CQLShDependency(),
             build_definitions.redis_cli.RedisCliDependency(),
-            build_definitions.psql.PSQLDependency()
         ]
 
         if is_linux():
