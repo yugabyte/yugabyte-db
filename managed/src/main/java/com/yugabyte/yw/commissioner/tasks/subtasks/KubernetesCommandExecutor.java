@@ -243,12 +243,15 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         if (hostname.contains("master")) {
           nodeDetail.isTserver = false;
           nodeDetail.isMaster = true;
+          nodeDetail.cloudInfo.private_ip = String.format("%s.%s.%s.%s", hostname,
+              "yb-masters", taskParams().nodePrefix, "svc.cluster.local");
         }
         else {
           nodeDetail.isMaster = false;
           nodeDetail.isTserver = true;
+          nodeDetail.cloudInfo.private_ip = String.format("%s.%s.%s.%s", hostname,
+              "yb-tservers", taskParams().nodePrefix, "svc.cluster.local");
         }
-        nodeDetail.cloudInfo.private_ip = podVals.get("privateIP").asText();
         nodeDetail.state = NodeDetails.NodeState.Live;
         nodeDetail.nodeName = hostname;
         nodeDetailsSet.add(nodeDetail);
