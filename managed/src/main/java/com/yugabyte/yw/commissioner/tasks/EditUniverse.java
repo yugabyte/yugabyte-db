@@ -64,6 +64,12 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         editCluster(universe, cluster);
       }
 
+      // Update the DNS entry for this universe, based in primary provider info.
+      UserIntent primaryIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, primaryIntent.providerType,
+                                primaryIntent.provider, primaryIntent.universeName)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -242,11 +248,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createDestroyServerTasks(nodesToBeRemoved, false /* isForceDelete */, true /* deleteNode */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
     }
-
-    // Update the DNS entry for this universe.
-    createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent.providerType,
-                              userIntent.provider, userIntent.universeName)
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   /**
