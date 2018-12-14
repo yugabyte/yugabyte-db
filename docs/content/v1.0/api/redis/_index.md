@@ -60,8 +60,6 @@ Command | Description |
 [`HVALS`](hvals/) | Read all values in a hash |
 [`INCR`](incr/) | Increment the value by one |
 [`MONITOR`](monitor/) | Debugging tool to see all requests that are processed by a Yugabyte YEDIS API server |
-[`MGET`](mget/) | Read multiple keys |
-[`MSET`](mset/) | Write multiple key values |
 [`ROLE`](role/) | Read role of a node |
 [`SADD`](sadd/) | Add entries to a set |
 [`SCARD`](scard/) | Read the number of entries in a set |

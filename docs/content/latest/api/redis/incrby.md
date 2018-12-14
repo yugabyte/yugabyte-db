@@ -35,4 +35,4 @@ $ INCRBY yugakey 3
 ```
 
 ## See Also
-[`append`](../append/), [`get`](../get/), [`getrange`](../getrange/), [`getset`](../getset/), [`mget`](../mget/), [`mset`](../mset/), [`set`](../set/), [`setrange`](../setrange/), [`strlen`](../strlen/)
+[`append`](../append/), [`get`](../get/), [`getrange`](../getrange/), [`getset`](../getset/), [`set`](../set/), [`setrange`](../setrange/), [`strlen`](../strlen/)

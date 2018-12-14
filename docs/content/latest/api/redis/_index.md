@@ -66,8 +66,6 @@ Command | Description |
 [`INCR`](incr/) | Increment the value by one |
 [`KEYS`](keys/) | Retrieve all keys matching a pattern
 [`MONITOR`](monitor/) | Debugging tool to see all requests that are processed by a YEDIS API server |
-[`MGET`](mget/) | Read multiple keys |
-[`MSET`](mset/) | Write multiple key values |
 [`PEXPIRE`](expire/) | Set key timeout in milliseconds |
 [`PEXPIREAT`](expireat/) | Set key timeout as timestamp in milliseconds |
 [`PTTL`](pttl/) | Get time to live for key in milliseconds |
