@@ -16,6 +16,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -37,6 +38,7 @@ import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
@@ -406,6 +408,26 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     verify(kubernetesManager, times(1))
         .getPodInfos(defaultProvider.uuid, defaultUniverse.getUniverseDetails().nodePrefix);
     defaultUniverse = Universe.get(defaultUniverse.universeUUID);
-    assertEquals(6, defaultUniverse.getNodes().size());
+    ImmutableList<String> pods = ImmutableList.of(
+        "yb-master-0",
+        "yb-master-1",
+        "yb-master-2",
+        "yb-tserver-0",
+        "yb-tserver-1",
+        "yb-tserver-2"
+    );
+    for (String podName : pods) {
+      NodeDetails node = defaultUniverse.getNode(podName);
+      assertNotNull(node);
+      String serviceName = podName.contains("master") ? "yb-masters" : "yb-tservers";
+      if (serviceName.equals("yb-masters")) {
+        assertTrue(node.isMaster);
+      }
+      else {
+        assertTrue(node.isTserver);
+      }
+      assertEquals(node.cloudInfo.private_ip, String.format("%s.%s.%s.%s", podName,
+          serviceName, defaultUniverse.getUniverseDetails().nodePrefix, "svc.cluster.local"));
+    }
   }
 }
