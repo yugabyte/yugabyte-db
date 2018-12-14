@@ -12,7 +12,7 @@ import AddRegionPopupForm from './AddRegionPopupForm';
 import _ from 'lodash';
 
 
-const regionsData = 
+const regionsData =
   [{
     destVpcRegion: 'ap-northeast-1',
     zones: ['ap-northeast-1a', 'ap-northeast-1c', 'ap-northeast-1d']
@@ -107,7 +107,7 @@ class AZInput extends Component {
 }
 
 class renderAZMappingForm extends Component {
-  
+
   componentWillMount() {
     if (this.props.fields.length === 0) {
       this.props.fields.push({});
@@ -141,8 +141,8 @@ class renderAZMappingForm extends Component {
           {
             fields.length < zones.length &&
 
-            <YBAddRowButton 
-            btnText="Add zone" 
+            <YBAddRowButton
+            btnText="Add zone"
             onClick={addFlagItem} />
           }
         </div>
@@ -179,9 +179,9 @@ class renderRegions extends Component {
     const { fields, networkSetupType, modal, showModal, updateFormField, formRegions } = this.props;
     const self = this;
 
-    const optionsRegion = [<option key={0} value="">Select region</option>, 
-      ...( this.state.editRegionIndex === undefined 
-        //if add new flow - remove already added regions from region select picker 
+    const optionsRegion = [<option key={0} value="">Select region</option>,
+      ...( this.state.editRegionIndex === undefined
+        //if add new flow - remove already added regions from region select picker
         ? _.differenceBy(regionsData, formRegions, 'destVpcRegion')
           .map((region, index) => <option key={index+1} value={region.destVpcRegion}>{region.destVpcRegion}</option>)
 
@@ -189,10 +189,10 @@ class renderRegions extends Component {
         : _.differenceBy(regionsData, _.filter(formRegions, (o) => o.destVpcRegion !== formRegions[self.state.editRegionIndex].destVpcRegion), 'destVpcRegion')
           .map((region, index) => <option key={index+1} value={region.destVpcRegion}>{region.destVpcRegion}</option>)
       )];
-    
-    //depending on selected region fetch zones matching this region 
+
+    //depending on selected region fetch zones matching this region
     const optionsZones = (self.state.regionName && _.find(regionsData, function(o) { return o.destVpcRegion === self.state.regionName; }).zones) || [];
-    
+
     return (
       <Row>
         <Col lg={10}>
@@ -201,35 +201,35 @@ class renderRegions extends Component {
           {/* Add/Edit region modal logic */}
 
           {modal.showModal && modal.visibleModal === "addRegionConfig" &&
-            <AddRegionPopupForm visible={true} submitLabel={'Add region'} 
+            <AddRegionPopupForm visible={true} submitLabel={'Add region'}
               //pass region object to edit flow or undefined
               editRegion = {
                 this.state.editRegionIndex !== undefined
                 ? formRegions[this.state.editRegionIndex]
-                : undefined} 
-              
+                : undefined}
+
               showCancelButton={true}
 
               title = { networkSetupType==="new_vpc"
                 ? "Add new region"
-                : "Specify region info" } 
+                : "Specify region info" }
 
               onFormSubmit={(values) => {
                 if (values.azToSubnetIds) values.azToSubnetIds.sort((a, b) => a.zone > b.zone ? 1 : -1);
                 if (this.state.editRegionIndex !== undefined) {
-                  // update region if edit flow 
+                  // update region if edit flow
                   updateFormField(`regionList[${this.state.editRegionIndex}]`, values);
                 } else {
-                  // push new region object if add flow 
+                  // push new region object if add flow
                   fields.push(values);
                 }
                 // close modal
                 this.closeModal();
-              }} 
+              }}
 
               onHide={this.closeModal}>
 
-              <Field 
+              <Field
                 name={`destVpcRegion`}
                 label="Region"
                 validate={validationIsRequired}
@@ -238,7 +238,7 @@ class renderRegions extends Component {
                   this.state.editRegionIndex !== undefined &&
                   formRegions.length &&
                   formRegions[this.state.editRegionIndex].destVpcRegion
-                } 
+                }
                 options={optionsRegion}
                 onInputChanged={
                   (event)=>{
@@ -246,17 +246,27 @@ class renderRegions extends Component {
                   }
                 }
               />
-              
-              {networkSetupType === "new_vpc" ? 
 
+              {networkSetupType === "new_vpc" ?
                 // New region fields
                 <Fragment>
-                  <Field name={`vpcCidr`} type="text" component={YBTextInputWithLabel} label={'VPC CIDR (optional)'}
-                        normalize={trimString} />
-                  <Field name={`customImageId`} type="text" label={'Custom AMI ID (optional)'} component={YBTextInputWithLabel}
-                        normalize={trimString} />
+                  <Field
+                    name={`vpcCidr`}
+                    type="text"
+                    component={YBTextInputWithLabel}
+                    label={'VPC CIDR (optional)'}
+                    normalize={trimString}
+                    infoTitle=""
+                  />
+                  <Field
+                    name={`customImageId`}
+                    type="text"
+                    label={'Custom AMI ID (optional)'}
+                    component={YBTextInputWithLabel}
+                    normalize={trimString}
+                  />
                 </Fragment>
-              : 
+              :
 
                 // Specify existing region fields
                 <Fragment>
@@ -276,7 +286,7 @@ class renderRegions extends Component {
           <ul className="config-region-list">
 
             {/* If there're any render regions table header */}
-            {fields.length > 0 && 
+            {fields.length > 0 &&
             <li className="header-row">
               {networkSetupType==="new_vpc" ?
                 <Fragment>
@@ -300,7 +310,7 @@ class renderRegions extends Component {
             {fields.map((region, index) => {
               return (
                 <li key={index} onClick={() => {
-                  // Regions edit popup handler 
+                  // Regions edit popup handler
                   showModal("addRegionConfig");
                   this.setState({
                     regionName: formRegions[index].destVpcRegion,
@@ -309,7 +319,7 @@ class renderRegions extends Component {
                 }}>
                   {networkSetupType==="new_vpc" ?
 
-                    // New region fields 
+                    // New region fields
                     <Fragment>
                       <div>
                         <Field name={`${region}.destVpcRegion`}  type="text" component={YBTextInputWithLabel} isReadOnly={true}
@@ -412,7 +422,7 @@ class AWSProviderInitView extends Component {
       regionFormVals["hostVpcRegion"] = awsHostInfo["region"];
       regionFormVals["hostVpcId"] = awsHostInfo["vpc-id"];
     }
-    
+
     const perRegionMetadata = {};
     if (this.state.networkSetupType !== "new_vpc") {
       formValues.regionList && formValues.regionList.forEach((item) => perRegionMetadata[item.destVpcRegion] = {
@@ -464,7 +474,9 @@ class AWSProviderInitView extends Component {
           </div>
         </Col>
         <Col lg={7}>
-          {field}
+          <div className="form-right-aligned-labels">
+            {field}
+          </div>
         </Col>
       </Row>
     );
@@ -473,119 +485,255 @@ class AWSProviderInitView extends Component {
   regionsSection = (formRegions) => {
     return (
       <Fragment>
-        <FieldArray name="regionList" dispatch={this.props.dispatch} formRegions={formRegions} component={renderRegions} updateFormField={this.updateFormField} networkSetupType={this.state.networkSetupType} modal={this.props.modal} showModal={this.props.showModal} closeModal={this.props.closeModal} />
+        <FieldArray
+          name="regionList"
+          dispatch={this.props.dispatch}
+          formRegions={formRegions}
+          component={renderRegions}
+          updateFormField={this.updateFormField}
+          networkSetupType={this.state.networkSetupType}
+          modal={this.props.modal}
+          showModal={this.props.showModal}
+          closeModal={this.props.closeModal} />
       </Fragment>
     );
   };
 
+  rowHostedZone() {
+    const label = "Route 53 Zone ID";
+    const content = "The Hosted Zone ID from AWS Route53 to use for managing per-universe DNS entries.";
+    return this.generateRow(
+      label,
+      <Field
+        name="hostedZoneId"
+        type="text"
+        component={YBTextInputWithLabel}
+        normalize={trimString}
+        infoTitle={label}
+        infoContent={content}
+      />
+    );
+  }
+
+  rowProviderName() {
+    const label = "Provider Name";
+    const content = "A user friendly name for the provider.";
+    return this.generateRow(
+      label,
+      <Field
+        name="accountName"
+        type="text"
+        component={YBTextInputWithLabel}
+        infoTitle={label}
+        infoContent={content}
+      />
+    );
+  }
+
+  rowCredentialInput(credential_input_options) {
+    const label = "Credential Type";
+    const content = "How should YugaWare obtain AWS credentials for performing cloud operations?";
+    return this.generateRow(
+      label,
+      <Field
+        name="credential_input"
+        component={YBSelectWithLabel}
+        options={credential_input_options}
+        onInputChanged={this.credentialInputChanged}
+        infoTitle={label}
+        infoContent={content}
+      />
+    );
+  }
+
+  rowCredentialInfo() {
+    const accessLabel = "Access Key ID";
+    const accessTooltipContent = "Your AWS Access Key ID.";
+    const accessRow = this.generateRow(
+      accessLabel,
+      <Field
+        name="accessKey"
+        type="text"
+        component={YBTextInputWithLabel}
+        normalize={trimString}
+        infoTitle={accessLabel}
+        infoContent={accessTooltipContent}
+      />
+    );
+    const secretLabel = "Secret Access Key";
+    const secretTooltipContent = "Your AWS Secret Access Key";
+    const secretRow = this.generateRow(
+      secretLabel,
+      <Field
+        name="secretKey"
+        type="text"
+        component={YBTextInputWithLabel}
+        normalize={trimString}
+        infoTitle={secretLabel}
+        infoContent={secretTooltipContent}
+      />
+    );
+    return (
+      <Fragment>
+        {accessRow}
+        {secretRow}
+      </Fragment>
+    );
+  }
+
+  rowKeypairInput(keypair_input_options) {
+    const label = "Keypairs Management";
+    const content = "How should YugaWare manage access?";
+    return this.generateRow(
+      label,
+      <Field
+        name="keypairs_input"
+        component={YBSelectWithLabel}
+        options={keypair_input_options}
+        onInputChanged={this.keypairsInputChanged}
+        infoTitle={label}
+        infoContent={content}
+      />
+    );
+  }
+
+  rowCustomKeypair() {
+    const nameLabel = "Keypair Name";
+    const nameTooltipContent = "Name of the custom keypair to use.\n" +
+      "Note: This must exist and be the same across all regions!";
+    const nameRow = this.generateRow(
+      nameLabel,
+      <Field
+        name="keyPairName"
+        type="text"
+        component={YBTextInputWithLabel}
+        normalize={trimString}
+        infoTitle={nameLabel}
+        infoContent={nameTooltipContent}
+      />
+    );
+    const pemLabel = "PEM File content";
+    const pemTooltipContent = "Content of the custom private SSH key file you wish to use.";
+    const pemContentRow = this.generateRow(
+      pemLabel,
+      <Field
+        name="sshPrivateKeyContent"
+        type="text"
+        component={YBTextInputWithLabel}
+        normalize={trimString}
+        infoTitle={pemLabel}
+        infoContent={pemTooltipContent}
+      />
+    );
+    const userLabel = "SSH User";
+    const userTooltipContent = "Custom SSH user associated with this key.";
+    const sshUserRow = this.generateRow(
+      userLabel,
+      <Field
+        name="sshUser"
+        type="text"
+        component={YBTextInputWithLabel}
+        normalize={trimString}
+        infoTitle={userLabel}
+        infoContent={userTooltipContent}
+      />
+    );
+    return (
+      <Fragment>
+        {nameRow}
+        {pemContentRow}
+        {sshUserRow}
+      </Fragment>
+    );
+  }
+
+  rowVpcSetup(options) {
+    const label = "VPC Setup";
+    const tooltipContent = "Would you like YugaWare to create and manage VPCs for you or use your own custom ones?";
+    return this.generateRow(
+      label,
+      <Field
+        name="network_setup"
+        component={YBSelectWithLabel}
+        options={options}
+        onInputChanged={this.networkSetupChanged}
+        infoTitle={label}
+        infoContent={tooltipContent}
+      />
+    );
+  }
+
+  rowHostedZoneToggle() {
+    const label = "Enable Hosted Zone";
+    const tooltipContent = "Would you like YugaWare to manage Route53 DNS entries for your universes?";
+    return this.generateRow(
+      label,
+      <Field
+        name="setupHostedZone"
+        component={YBToggle}
+        defaultChecked={this.state.setupHostedZone}
+        onToggle={this.hostedZoneToggled}
+        infoTitle={label}
+        infoContent={tooltipContent}
+      />
+    );
+  }
+
   render() {
     const { handleSubmit, submitting, error, formRegions } = this.props;
+    // VPC and region setup.
     const network_setup_options = [
       <option key={1} value={"new_vpc"}>{"Create a new VPC"}</option>,
       <option key={2} value={"existing_vpc"}>{"Specify an existing VPC"}</option>
     ];
-    if (this.isHostInAWS()) {
-      network_setup_options.push(
-        <option key={3} value={"host_vpc"}>{"Use VPC of the Admin Console instance"}</option>
-      );
-    }
-
-    const divider = <Row><Col lg={10}><div className="divider"></div></Col></Row>;
-
     const regionsSection = this.regionsSection(formRegions);
 
-    let hostedZoneField = <span />;
+    // Hosted Zone setup.
+    let hostedZoneRow = <span />;
     if (this.state.setupHostedZone) {
-      hostedZoneField = this.generateRow("Route 53 Zone ID",
-        <Field name="hostedZoneId" type="text" component={YBTextInputWithLabel}
-          normalize={trimString} />
-      );
+      hostedZoneRow = this.rowHostedZone();
     }
+
+    // Credential setup.
     const credential_input_options = [
       <option key={1} value={"custom_keys"}>{"Input Access and Secret keys"}</option>,
       <option key={2} value={"local_iam_role"}>{"Use IAM Role on instance"}</option>
     ];
+    let customCredentialRows = <span />;
+    if (this.state.credentialInputType === "custom_keys") {
+      customCredentialRows = this.rowCredentialInfo();
+    }
+
+    // Keypair setup.
     const keypair_input_options = [
       <option key={1} value={"yw_keypairs"}>{"Allow YW to manage keypairs"}</option>,
       <option key={2} value={"custom_keypairs"}>{"Provide custom KeyPair information"}</option>
     ];
-    let customKeyFields = <span />;
-    if (this.state.credentialInputType === "custom_keys") {
-      const accessKeyField = (
-        <Field name="accessKey" type="text" component={YBTextInputWithLabel}
-          normalize={trimString} />);
-      const secretKeyField = (
-        <Field name="secretKey" type="text" component={YBTextInputWithLabel}
-          normalize={trimString} />);
-      customKeyFields = (
-        <Fragment>
-          {this.generateRow("Access Key ID", accessKeyField)}
-          {this.generateRow("Secret Access Key", secretKeyField)}
-        </Fragment>
-      );
-    }
-
-    let customKeypairsFields = <span />;
+    let customKeypairRows = <span />;
     if (this.state.keypairsInputType === "custom_keypairs") {
-      const keypairsNameField = (
-        <Field name="keyPairName" type="text" component={YBTextInputWithLabel}
-          normalize={trimString} />);
-      const keypairsPemFileField = (
-        <Field name="sshPrivateKeyContent" type="text" component={YBTextInputWithLabel}
-          normalize={trimString} />);
-      const keypairsSshField = (
-        <Field name="sshUser" type="text" component={YBTextInputWithLabel}
-          normalize={trimString} />);
-      customKeypairsFields = (
-        <Fragment>
-          {this.generateRow("Keypair Name", keypairsNameField)}
-          {this.generateRow("PEM File Content", keypairsPemFileField)}
-          {this.generateRow("SSH User", keypairsSshField)}
-        </Fragment>
-      );
+      customKeypairRows = this.rowCustomKeypair();
     }
 
-    const nameField = this.generateRow(
-      "Name",
-      <Field name="accountName" type="text" component={YBTextInputWithLabel} />);
-    const credentialInputField = this.generateRow(
-      "Credential Type",
-      <Field name="credential_input" component={YBSelectWithLabel}
-        options={credential_input_options} onInputChanged={this.credentialInputChanged} />
-    );
-
-    const keypairsInputField = this.generateRow(
-      "Keypairs Management",
-      <Field name="keypairs_input" component={YBSelectWithLabel}
-        options={keypair_input_options} onInputChanged={this.keypairsInputChanged} />
-    );
-    const networkInputField = this.generateRow(
-      "VPC Setup",
-      <Field name="network_setup" component={YBSelectWithLabel} options={network_setup_options}
-        onInputChanged={this.networkSetupChanged} />);
-    const hostedZoneToggleField = this.generateRow(
-      "Enable Hosted Zone",
-      <Field name="setupHostedZone" component={YBToggle}
-        defaultChecked={this.state.setupHostedZone} onToggle={this.hostedZoneToggled} />);
+    const divider = <Row><Col lg={10}><div className="divider"></div></Col></Row>;
     return (
       <div className="provider-config-container">
         <form name="awsProviderConfigForm" onSubmit={handleSubmit(this.createProviderConfig)}>
           <div className="editor-container">
             <Row className="config-section-header">
-              <Col lg={8}>
+              <Col lg={10}>
                 {error && <Alert bsStyle="danger">{error}</Alert>}
-                {nameField}
+                {this.rowProviderName()}
                 {divider}
-                {credentialInputField}
-                {customKeyFields}
+                {this.rowCredentialInput(credential_input_options)}
+                {customCredentialRows}
                 {divider}
-                {keypairsInputField}
-                {customKeypairsFields}
+                {this.rowKeypairInput(keypair_input_options)}
+                {customKeypairRows}
                 {divider}
-                {hostedZoneToggleField}
-                {hostedZoneField}
+                {this.rowHostedZoneToggle()}
+                {hostedZoneRow}
                 {divider}
-                {networkInputField}
+                {this.rowVpcSetup(network_setup_options)}
                 {regionsSection}
               </Col>
             </Row>
