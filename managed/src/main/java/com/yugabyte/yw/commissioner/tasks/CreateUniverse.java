@@ -110,13 +110,12 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Update the DNS entry for all the clusters in this universe.
-      for (Cluster cluster : taskParams().clusters) {
-        createDnsManipulationTask(DnsManager.DnsCommandType.Create, false,
-                                  cluster.userIntent.providerType,
-                                  cluster.userIntent.provider, cluster.userIntent.universeName)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
+      // Update the DNS entry for all the nodes once, using the primary cluster type.
+      createDnsManipulationTask(DnsManager.DnsCommandType.Create, false,
+                                primaryCluster.userIntent.providerType,
+                                primaryCluster.userIntent.provider,
+                                primaryCluster.userIntent.universeName)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
