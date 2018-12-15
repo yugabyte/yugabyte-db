@@ -3,12 +3,13 @@ title: Health Checking and Alerts
 linkTitle: Health Checking and Alerts
 description: Health Checking and Alerts
 aliases:
+  - /manage/enterprise-edition/cluster-health/
   - /manage/cluster-health/
 menu:
   latest:
     identifier: cluster-health
-    parent: manage
-    weight: 770
+    parent: manage-enterprise-edition
+    weight: 740
 ---
 
 For staying aware of potential issues with your deployment, YugaWare has the capability to check on each individual universe for several types of issues and proactively send out email alerts when problems arise.

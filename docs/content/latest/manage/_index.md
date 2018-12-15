@@ -38,26 +38,25 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="enterprise-edition/">
+    <a class="section-link icon-offset" href="./upgrade-deployment/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
-        <div class="articles">9 articles</div>
-        <div class="title">Enterprise Edition</div>
+        <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
+        <div class="title">Upgrade Deployment</div>
       </div>
       <div class="body">
-        Manage YugaByte DB without any downtime using the Enterprise Edition's built-in orchestration and monitoring.
+          Upgrade the YB software deployment.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cluster-health/">
+    <a class="section-link icon-offset" href="./full-move/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
-        <div class="title">Health Checks and Alerts</div>
+        <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
+        <div class="title">Full Move</div>
       </div>
       <div class="body">
-        Setup automatic cluster health checking and error reporting.
+          Move universe data to a new set of machines.
       </div>
     </a>
   </div>
@@ -73,4 +72,18 @@ menu:
       </div>
     </a>
   </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="enterprise-edition/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <div class="articles">10 articles</div>
+        <div class="title">Enterprise Edition</div>
+      </div>
+      <div class="body">
+        Manage YugaByte DB without any downtime using the Enterprise Edition's built-in orchestration and monitoring.
+      </div>
+    </a>
+  </div>
+
 </div>

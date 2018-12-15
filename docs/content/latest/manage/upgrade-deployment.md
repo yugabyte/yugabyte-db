@@ -1,14 +1,15 @@
 ---
 title: Upgrade Deployment
-linkTitle: 6. Upgrade Deployment
+linkTitle: Upgrade Deployment
 description: Upgrade Deployment
 aliases:
   - /deploy/manual-deployment/upgrade-deployment
+  - /manage/upgrade-deployment
 menu:
   latest:
-    identifier: deploy-manual-deployment-upgrade-deployment
-    parent: deploy-manual-deployment
-    weight: 616
+    identifier: manage-upgrade-deployment
+    parent: manage
+    weight: 705
 ---
 
 The basic flow is to upgrade each yb-master and yb-tserver one at a time, verifying after each step from the yb-master Admin UI that the cluster is healthy and the upgraded process is back online.

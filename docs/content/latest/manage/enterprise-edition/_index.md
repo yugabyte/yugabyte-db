@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: manage-enterprise-edition
     parent: manage
-    weight: 710
+    weight: 707
 ---
 
 YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines etc provided by IaaS) logically grouped together to form one logical distributed database. Each such universe can be made up of one or more clusters. These are comprised of one `Primary` cluster and zero or more `Read Replica` clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
@@ -60,6 +60,18 @@ YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
       </div>
       <div class="body">
         Change the config flags for universes in a rolling manner without any application impact.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="cluster-health/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
+        <div class="title">Health Checks and Alerts</div>
+      </div>
+      <div class="body">
+        Setup automatic cluster health checking and error reporting.
       </div>
     </a>
   </div>
