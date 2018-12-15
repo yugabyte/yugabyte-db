@@ -1171,6 +1171,10 @@ detect_linuxbrew() {
       break
     fi
   done
+
+  if [[ -z ${YB_LINUXBREW_DIR:-} ]]; then
+    log "Could not find Linuxbrew in any of these directories:" "${candidates[@]}"
+  fi
 }
 
 # -------------------------------------------------------------------------------------------------
@@ -1852,9 +1856,9 @@ activate_virtualenv() {
       remove_path_entry "$old_virtual_env/bin"
     fi
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
-    pip2 install virtualenv --user
     (
       set -x
+      pip2 install virtualenv --user
       mkdir -p "$virtualenv_parent_dir"
       cd "$virtualenv_parent_dir"
       python2 -m virtualenv "$YB_VIRTUALENV_BASENAME"
@@ -1868,7 +1872,8 @@ activate_virtualenv() {
     pip_no_cache="--no-cache-dir"
   fi
 
-  pip2 install -r "$YB_SRC_ROOT/requirements.txt" $pip_no_cache
+  run_with_retries 10 0.5 pip2 install -r "$YB_SRC_ROOT/python_requirements_frozen.txt" \
+    $pip_no_cache
 }
 
 check_python_interpreter_version() {
@@ -1999,6 +2004,33 @@ lint_java_code() {
     return 1
   fi
 }
+
+run_with_retries() {
+  if [[ $# -lt 2 ]]; then
+    fatal "run_with_retries requires at least three arguments: max_attempts, delay_sec, and " \
+          "the command to run (at least one additional argument)."
+  fi
+  declare -i -r max_attempts=$1
+  declare -r delay_sec=$2
+  shift 2
+
+  declare -i attempt_index=1
+  while [[ $attempt_index -le $max_attempts ]]; do
+    set +e
+    "$@"
+    declare exit_code=$?
+    set -e
+    if [[ $exit_code -eq 0 ]]; then
+      return
+    fi
+    log "Warning: command failed with exit code $exit_code at attempt $attempt_index: $*." \
+        "Waiting for $delay_sec sec, will then re-try for up to $max_attempts attempts."
+    let attempt_index+=1
+    sleep "$delay_sec"
+  done
+  fatal "Failed to execute command after $max_attempts attempts: $*"
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------
