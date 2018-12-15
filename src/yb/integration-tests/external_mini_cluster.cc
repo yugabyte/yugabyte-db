@@ -138,6 +138,10 @@ DEFINE_bool(external_daemon_safe_shutdown, false,
 DECLARE_int64(outbound_rpc_block_size);
 DECLARE_int64(outbound_rpc_memory_limit);
 
+DEFINE_int64(external_mini_cluster_max_log_bytes, 50_MB,
+             "Max total size of log bytes produced by all external mini-cluster daemons. "
+             "The test is shut down if this limit is exceeded.");
+
 namespace yb {
 
 static const char* const kMasterBinaryName = "yb-master";
@@ -1240,16 +1244,16 @@ namespace {
 // and is never deallocated.
 struct GlobalLogTailerState {
   mutex logging_mutex;
-  atomic<int> next_log_tailer_id;
+  atomic<int> next_log_tailer_id{0};
 
   // We need some references to these heap-allocated atomic booleans so that ASAN would not consider
   // them memory leaks.
   mutex id_to_stopped_flag_mutex;
   map<int, atomic<bool>*> id_to_stopped_flag;
 
-  GlobalLogTailerState() {
-    next_log_tailer_id.store(0);
-  }
+  // This is used to limit the total amount of logs produced by external daemons over the lifetime
+  // of a test program. Guarded by logging_mutex.
+  size_t total_bytes_logged = 0;
 };
 
 }  // anonymous namespace
@@ -1282,13 +1286,15 @@ class ExternalDaemon::LogTailerThread {
           // The "stopped" flag itself is never deallocated.
           bool is_eof = false;
           bool is_fgets_null = false;
+          auto& logging_mutex = global_state()->logging_mutex;
+          auto& total_bytes_logged = global_state()->total_bytes_logged;
           while (!(is_eof = feof(fp)) &&
                  !(is_fgets_null = (fgets(buf, sizeof(buf), fp) == nullptr)) &&
                  !stopped->load()) {
             size_t l = strlen(buf);
             const char* maybe_end_of_line = l > 0 && buf[l - 1] == '\n' ? "" : "\n";
             // Synchronize tailing output from all external daemons for simplicity.
-            lock_guard<mutex> lock(global_state()->logging_mutex);
+            lock_guard<mutex> lock(logging_mutex);
             if (stopped->load()) break;
             // Make sure we always output an end-of-line character.
             *out << line_prefix << " " << buf << maybe_end_of_line;
@@ -1296,6 +1302,9 @@ class ExternalDaemon::LogTailerThread {
             if (listener) {
               listener->Handle(GStringPiece(buf, maybe_end_of_line ? l : l - 1));
             }
+            total_bytes_logged += strlen(buf) + strlen(maybe_end_of_line);
+            // Abort the test if it produces too much log spew.
+            CHECK_LE(total_bytes_logged, FLAGS_external_mini_cluster_max_log_bytes);
           }
           fclose(fp);
           if (!stopped->load()) {

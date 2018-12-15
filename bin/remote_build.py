@@ -65,8 +65,8 @@ def remote_communicate(args, remote_command, error_ok=False):
     return True
 
 
-def check_remote_files(args, files):
-    remote_command = "cd {0} && git diff --name-status".format(args.remote_path)
+def check_remote_files(escaped_remote_path, args, files):
+    remote_command = "cd {0} && git diff --name-status".format(escaped_remote_path)
     remote_changed, remote_deleted = \
         parse_name_status(check_output_lines(['ssh', args.host, remote_command]))
     unexpected = []
@@ -76,9 +76,9 @@ def check_remote_files(args, files):
     if unexpected:
         command = 'cd {0}'.format(args.remote_path)
         message = 'Reverting:\n'
-        for file in unexpected:
+        for file_path in unexpected:
             message += '  {0}\n'.format(file)
-            command += ' && git checkout -- {0}'.format(shlex.quote(file))
+            command += ' && git checkout -- {0}'.format(shlex.quote(file_path))
         print(message)
         remote_communicate(args, command)
 
@@ -161,9 +161,15 @@ def main():
             time.sleep(1)
 
     remote_commit = fetch_remote_commit(args)
+
+    if args.remote_path.startswith('~/'):
+        escaped_remote_path = '$HOME/' + shlex.quote(args.remote_path[2:])
+    else:
+        escaped_remote_path = shlex.quote(args.remote_path)
+
     if remote_commit != commit:
         print("Remote commit mismatch, syncing")
-        remote_command = 'cd {0} && '.format(shlex.quote(args.remote_path))
+        remote_command = 'cd {0} && '.format(escaped_remote_path)
         remote_command += 'git checkout -- . && '
         remote_command += 'git clean -f . && '
         remote_command += 'git checkout master && '
@@ -199,13 +205,13 @@ def main():
             sys.exit(proc.returncode)
 
     if del_files:
-        remote_command = 'cd {0} && rm -f '.format(args.remote_path)
+        remote_command = 'cd {0} && rm -f '.format(escaped_remote_path)
         for file in del_files:
             remote_command += shlex.quote(file)
             remote_command += ' '
         remote_communicate(args, remote_command)
 
-    check_remote_files(args, files)
+    check_remote_files(escaped_remote_path, args, files)
 
     if args.skip_build:
         sys.exit(0)
@@ -223,7 +229,7 @@ def main():
         ybd_args = add_extra_ybd_args(ybd_args,
                                       ['--host-for-tests', os.environ['YB_HOST_FOR_RUNNING_TESTS']])
 
-    remote_command = "cd {0} && ./yb_build.sh".format(args.remote_path)
+    remote_command = "cd {0} && ./yb_build.sh".format(escaped_remote_path)
     for arg in ybd_args:
         remote_command += " {0}".format(shlex.quote(arg))
     print("Remote command: {0}".format(remote_command))

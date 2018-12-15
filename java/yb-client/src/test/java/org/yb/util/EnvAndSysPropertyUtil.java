@@ -73,4 +73,12 @@ public final class EnvAndSysPropertyUtil {
     return getEnvVarOrSystemProperty(envVarName, null);
   }
 
+  public static long getLongEnvVarOrSystemProperty(String envVarName, long defaultValue) {
+    String strValue = getEnvVarOrSystemProperty(envVarName);
+    if (strValue != null) {
+      return Long.valueOf(strValue);
+    }
+    return defaultValue;
+  }
+
 }
