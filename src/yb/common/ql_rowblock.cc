@@ -156,4 +156,9 @@ Status QLRowBlock::AppendRowsData(const QLClient client, const string& src, stri
   return Status::OK();
 }
 
+string QLRowBlock::ZeroRowsData(const QLClient client) {
+  CHECK_EQ(client, YQL_CLIENT_CQL);
+  return string(sizeof(int32_t), 0); // Encode 32-bit 0 length.
+}
+
 } // namespace yb
