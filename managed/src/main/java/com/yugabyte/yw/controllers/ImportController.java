@@ -14,10 +14,13 @@ import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ImportUniverseFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Capability;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -252,11 +255,24 @@ public class ImportController extends Controller {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, results);
     }
 
+    setImportedState(universe, ImportedState.MASTERS_ADDED);
+
     LOG.info("Done importing masters " + masterAddresses);
     // Update the state to IMPORTED_MASTERS.
     results.put("state", ImportUniverseFormData.State.IMPORTED_MASTERS.toString());
 
     return ApiResponse.success(results);
+  }
+
+  private void setImportedState(Universe universe, ImportedState newState) {
+    UniverseUpdater updater = new UniverseUpdater() {
+      public void run(Universe universe) {
+         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+         universeDetails.importedState = newState;
+         universe.setUniverseDetails(universeDetails);
+      }
+    };
+    Universe.saveDetails(universe.universeUUID, updater);
   }
 
   /**
@@ -266,7 +282,6 @@ public class ImportController extends Controller {
                                         Customer customer,
                                         ObjectNode results) {
     String masterAddresses = importForm.masterAddresses;
-
     if (importForm.universeUUID == null || importForm.universeUUID.toString().isEmpty()) {
       results.put("error", "Valid universe uuid needs to be set instead of " +
                            importForm.universeUUID);
@@ -274,9 +289,15 @@ public class ImportController extends Controller {
     }
 
     Universe universe = Universe.get(importForm.universeUUID);
-
     if (universe == null) {
       results.put("error", "Invalid universe uuid " + importForm.universeUUID + ", universe not found.");
+      return ApiResponse.error(BAD_REQUEST, results);
+    }
+
+    ImportedState curState = universe.getUniverseDetails().importedState;
+    if (curState != ImportedState.MASTERS_ADDED) {
+      results.put("error", "Unexpected universe state " + curState.name() + " expecteed " +
+                           ImportedState.MASTERS_ADDED.name());
       return ApiResponse.error(BAD_REQUEST, results);
     }
 
@@ -368,6 +389,8 @@ public class ImportController extends Controller {
 
     LOG.info("Verified " + tservers_list.size() + " tservers present and imported them.");
 
+    setImportedState(universe, ImportedState.TSERVERS_ADDED);
+
     // Update the state to IMPORTED_TSERVERS.
     results.put("state", ImportUniverseFormData.State.IMPORTED_TSERVERS.toString());
 
@@ -391,6 +414,13 @@ public class ImportController extends Controller {
     Universe universe = Universe.get(importForm.universeUUID);
     if (universe == null) {
       results.put("error", "Universe uuid was not created.");
+      return ApiResponse.error(BAD_REQUEST, results);
+    }
+
+    ImportedState curState = universe.getUniverseDetails().importedState;
+    if (curState != ImportedState.TSERVERS_ADDED) {
+      results.put("error", "Unexpected universe state " + curState.name() + " expecteed " +
+                           ImportedState.TSERVERS_ADDED.name());
       return ApiResponse.error(BAD_REQUEST, results);
     }
 
@@ -581,10 +611,11 @@ public class ImportController extends Controller {
 
     // Create the universe definition task params.
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    // We will assign this universe a random UUID. This will get fixed later on once we find the
-    // universe uuid.
+    // We will assign this universe a random UUID.
     taskParams.universeUUID = UUID.randomUUID();
     taskParams.nodePrefix = nodePrefix;
+    taskParams.importedState = ImportedState.STARTED;
+    taskParams.capability = Capability.READ_ONLY;
 
     // Set the various details in the user intent.
     UniverseDefinitionTaskParams.UserIntent userIntent =
@@ -615,11 +646,8 @@ public class ImportController extends Controller {
     }
     cluster.index = index;
 
-    // Create the universe object in the database.
-    Universe universe = Universe.create(taskParams, customer.getCustomerId());
-
     // Return the universe we just created.
-    return universe;
+    return Universe.create(taskParams, customer.getCustomerId());
   }
 
   // Create a new node with the given placement information.
@@ -646,7 +674,6 @@ public class ImportController extends Controller {
     nodeDetails.cloudInfo.az = zone.code;
     nodeDetails.cloudInfo.instance_type = instanceType;
 
-    // Add the node and increment the next node index.
     taskParams.nodeDetailsSet.add(nodeDetails);
 
     return nodeDetails;
@@ -666,6 +693,6 @@ public class ImportController extends Controller {
         new ThreadPoolExecutor(TASK_THREADS, TASK_THREADS, THREAD_ALIVE_TIME,
                                TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(),
                                namedThreadFactory);
-    LOG.info("Started Import Thread Pool.");
+    LOG.debug("Started Import Thread Pool.");
   }
 }
