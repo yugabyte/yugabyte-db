@@ -17,6 +17,7 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 
+import com.yugabyte.sample.common.SimpleLoadGenerator;
 import org.apache.log4j.Logger;
 
 import com.datastax.driver.core.BoundStatement;
@@ -30,14 +31,15 @@ import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
  * This workload writes and reads some random string keys from a CQL server. By default, this app
  * inserts a million keys, and reads/updates them indefinitely.
  */
-public class CassandraKeyValue extends CassandraKeyValueBase {
+public class CassandraRangeKeyValue extends CassandraKeyValueBase {
   // The default table name to create and use for CRUD ops.
-  private static final String DEFAULT_TABLE_NAME = CassandraKeyValue.class.getSimpleName();
+  private static final String DEFAULT_TABLE_NAME = CassandraRangeKeyValue.class.getSimpleName();
 
   @Override
   public List<String> getCreateTableStatements() {
     String create_stmt = String.format(
-      "CREATE TABLE IF NOT EXISTS %s (k varchar, v blob, primary key (k))", getTableName());
+        "CREATE TABLE IF NOT EXISTS %s (k varchar, r1 varchar, r2 varchar, r3 varchar, v blob, " +
+            "primary key ((k), r1, r2, r3))", getTableName());
 
     if (appConfig.tableTTLSeconds > 0) {
       create_stmt += " WITH default_time_to_live = " + appConfig.tableTTLSeconds;
@@ -51,28 +53,29 @@ public class CassandraKeyValue extends CassandraKeyValueBase {
     return DEFAULT_TABLE_NAME;
   }
 
-  protected PreparedStatement getPreparedInsert() {
-    return getPreparedInsert(String.format("INSERT INTO %s (k, v) VALUES (?, ?);", getTableName()));
-  }
-
   @Override
-  protected BoundStatement bindSelect(String key)  {
-    PreparedStatement prepared_stmt = getPreparedSelect(
-        String.format("SELECT k, v FROM %s WHERE k = ?;", getTableName()), appConfig.localReads);
-    return prepared_stmt.bind(key);
+  protected BoundStatement bindSelect(String key) {
+    PreparedStatement prepared_stmt = getPreparedSelect(String.format(
+        "SELECT k, r1, r2, r3, v FROM %s WHERE k = ? AND r1 = ? AND r2 = ? AND r3 = ?;",
+        getTableName()), appConfig.localReads);
+    return prepared_stmt.bind(key, key, key, key);
   }
 
   @Override
   protected BoundStatement bindInsert(String key, ByteBuffer value)  {
-    return getPreparedInsert().bind(key, value);
+    PreparedStatement prepared_stmt = getPreparedInsert(String.format(
+        "INSERT INTO %s (k, r1, r2, r3, v) VALUES (?, ?, ?, ?, ?);",
+        getTableName()));
+    return prepared_stmt.bind(key, key, key, key, value);
   }
 
   @Override
   public List<String> getWorkloadDescription() {
     return Arrays.asList(
-      "Sample key-value app built on Cassandra. The app writes out 1M unique string keys",
-      "each with a string value. There are multiple readers and writers that update these",
-      "keys and read them indefinitely. Note that the number of reads and writes to",
-      "perform can be specified as a parameter.");
+        "Sample key-value app built on Cassandra. The app writes out unique keys",
+        "each has one hash and three range string parts.",
+        "There are multiple readers and writers that update these",
+        "keys and read them indefinitely. Note that the number of reads and writes to",
+        "perform can be specified as a parameter.");
   }
 }

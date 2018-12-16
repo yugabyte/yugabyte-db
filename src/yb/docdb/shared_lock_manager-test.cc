@@ -19,8 +19,11 @@
 
 #include "yb/docdb/shared_lock_manager.h"
 
+#include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+
+using namespace std::literals;
 
 using std::string;
 using std::vector;
@@ -32,8 +35,6 @@ namespace docdb {
 
 class SharedLockManagerTest : public YBTest {
  protected:
-  static constexpr bool kLogOps = false;
-
   SharedLockManagerTest();
 
   void RandomLockOps(int thread_id, size_t num_keys);
@@ -43,7 +44,6 @@ class SharedLockManagerTest : public YBTest {
  protected:
   SharedLockManager lm_;
 
- private:
   static constexpr size_t kMaxNumKeys = 10;
 
   // Total duration for the test run
@@ -52,23 +52,17 @@ class SharedLockManagerTest : public YBTest {
   // Maximum amount of random delay when the delay function(s) are called.
   static constexpr double kMaxDelayInMs = 10.0;
 
-  // Used for vals_
+  // Used for vals_ and locks_
   std::mutex mutex_;
 
-  // vals_[k][t] stores the number of locks of type t on the key k.
-  int vals_[kMaxNumKeys][kIntentTypeMapSize];
+  // lock_batches_[k][t] stores the lock batches of locks of type t on the key k.
+  std::vector<LockBatch> lock_batches_[kMaxNumKeys][kIntentTypeMapSize];
 
   // Attempt to take the lock, log the attempt and result
   void Lock(int thread_id, int op_id, int key, IntentType lt);
 
   // Release the lock and print to log associated info.
-  IntentType Unlock(int thread_id, int op_id, int key, IntentType lt);
-
-  // Increments atomic ints for correctness verification
-  void Increment(size_t key, IntentType lt);
-
-  // Decrements atomic ints for correctness verification
-  void Decrement(size_t key, IntentType lt);
+  void Unlock(int thread_id, int op_id, int key, IntentType lt);
 
   // This function verifies that the vals_[] array has permissible numbers, e.g.
   // there's no key with 2 exclusive locks, etc.
@@ -83,29 +77,46 @@ class SharedLockManagerTest : public YBTest {
   // rand is a double between 0 and 1. Based on the input, picks a duration and a delay type
   // between SleepDelay or SpinDelay.
   void RandomDelay(double rand);
+
+  LockBatch TestLockBatch() {
+    return LockBatch(&lm_, {
+        {RefCntPrefix("foo"), IntentType::kStrongSnapshotWrite},
+        {RefCntPrefix("bar"), IntentType::kStrongSnapshotWrite}});
+  }
 };
 
 SharedLockManagerTest::SharedLockManagerTest() {
-  memset(vals_, 0, sizeof(vals_));
 }
 
 void SharedLockManagerTest::Lock(int thread_id, int op_id, int key, IntentType lt) {
   string type(ToString(lt));
-  type.resize(16, ' ');
-  if (kLogOps)
-    LOG(INFO) << "\t" << thread_id << "\t" << op_id << "\t" << type << "\t" << key << "\tattempt";
-  lm_.LockInTest("key" + std::to_string(key), lt);
-  if (kLogOps)
-    LOG(INFO) << "\t" << thread_id << "\t" << op_id << "\t" << type << "\t" << key << "\ttaken";
+  type.resize(24, ' ');
+  VLOG(1) << "\t" << thread_id << "\t" << op_id << "\t" << type << "\t" << key << "\tattempt";
+  LockBatch lock_batch(&lm_, {{RefCntPrefix("key" + std::to_string(key)), lt}});
+  VLOG(1) << "\t" << thread_id << "\t" << op_id << "\t" << type << "\t" << key << "\ttaken";
+
+  std::lock_guard<std::mutex> lock(mutex_);
+  lock_batches_[key][static_cast<int>(lt)].push_back(std::move(lock_batch));
 }
 
-IntentType SharedLockManagerTest::Unlock(int thread_id, int op_id, int key, IntentType lt) {
-  lm_.UnlockInTest("key" + std::to_string(key), lt);
+void SharedLockManagerTest::Unlock(int thread_id, int op_id, int key, IntentType lt) {
+  {
+    LockBatch lock_batch;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto& batches = lock_batches_[key][static_cast<int>(lt)];
+      size_t size = batches.size();
+      ASSERT_GT(size, 0);
+      size_t idx = RandomUniformInt<size_t>(0, size - 1);
+      std::swap(batches[idx], batches.back());
+      lock_batch = std::move(batches.back());
+      batches.pop_back();
+    }
+  }
+
   string type(ToString(lt));
   type.resize(16, ' ');
-  if (kLogOps)
-    LOG(INFO) << "\t" << thread_id << "\t" << op_id << "\t" << type << "\t" << key << "\treleased";
-  return lt;
+  VLOG(1) << "\t" << thread_id << "\t" << op_id << "\t" << type << "\t" << key << "\treleased";
 }
 
 void SharedLockManagerTest::SleepDelay(int duration_ms) {
@@ -131,28 +142,17 @@ void SharedLockManagerTest::RandomDelay(double rand) {
   }
 }
 
-void SharedLockManagerTest::Increment(size_t key, IntentType lt) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  vals_[key][static_cast<int>(lt)]++;
-}
-
-void SharedLockManagerTest::Decrement(size_t key, IntentType lt) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  vals_[key][static_cast<int>(lt)]--;
-}
-
 void SharedLockManagerTest::Verify() {
   std::lock_guard<std::mutex> lock(mutex_);
   for (int i = 0; i < kMaxNumKeys; i++) {
-    LockState state;
+    LockState state = 0;
     for (auto intent_type : kIntentTypeList) {
       size_t j = static_cast<size_t>(intent_type);
-      ASSERT_GE(vals_[i][j], 0) << "KEY " << i << " INVALID STATE";
-      if (vals_[i][j] > 0) {
-        state.set(j);
+      if (lock_batches_[i][j].size() > 0) {
+        state |= kIntentMask[j];
       }
     }
-    ASSERT_TRUE(SharedLockManager::VerifyState(state))
+    ASSERT_TRUE(SharedLockManager::IsStatePossible(state))
         << "KEY " << i << " INVALID STATE: " << SharedLockManager::ToString(state);
   }
 }
@@ -161,7 +161,8 @@ void SharedLockManagerTest::RandomLockOps(int thread_id, size_t num_keys) {
   std::mt19937 gen;
   gen.seed(thread_id + 863540); // Some arbitrary random seed.
   std::uniform_real_distribution<double> dis(0.0, 1.0);
-  std::uniform_int_distribution<> int_dis(0, 5);
+  std::vector<IntentType> intents = kIntentTypeList;
+  std::uniform_int_distribution<> int_dis(0, intents.size() - 1);
 
   // Keep a stack of locks currently taken.
   // These two stacks are always pushed to and popped from in sync.
@@ -175,9 +176,9 @@ void SharedLockManagerTest::RandomLockOps(int thread_id, size_t num_keys) {
 
   while(std::chrono::duration_cast<std::chrono::seconds>(
       std::chrono::steady_clock::now() - begin).count() < kTestDurationInSeconds) {
-    Verify();
+    ASSERT_NO_FATALS(Verify());
     RandomDelay(dis(gen));
-    Verify();
+    ASSERT_NO_FATALS(Verify());
     // Randomly try to take a new lock or unlock an existing lock.
     if (!locked_keys.empty() && locked_keys.top() == num_keys - 1) {
       // If the last key is taken, there's no choice but to release it.
@@ -187,7 +188,6 @@ void SharedLockManagerTest::RandomLockOps(int thread_id, size_t num_keys) {
       locked_keys.pop();
       lock_types.pop();
 
-      Decrement(last_key, lock_type);
       Unlock(thread_id, op_id, last_key, lock_type);
     } else if (locked_keys.empty() || dis(gen) < 0.5) {
       // If no lock is taken, no choice but to take a lock.
@@ -198,13 +198,12 @@ void SharedLockManagerTest::RandomLockOps(int thread_id, size_t num_keys) {
       while (new_key < num_keys - 1 && dis(gen) < 0.5) new_key++;
 
       // Randomly pick if shared or exclusive lock is to be taken.
-      const IntentType lock_type = static_cast<IntentType>(int_dis(gen));
+      const IntentType lock_type = intents[int_dis(gen)];
 
       locked_keys.push(new_key);
       lock_types.push(lock_type);
 
       Lock(thread_id, op_id, new_key, lock_type);
-      Increment(new_key, lock_type);
     } else {
       // We get here only if the lock stack is non-empty.
       // Release the last lock taken with remaining 50% probability.
@@ -214,31 +213,28 @@ void SharedLockManagerTest::RandomLockOps(int thread_id, size_t num_keys) {
       locked_keys.pop();
       lock_types.pop();
 
-      Decrement(last_key, lock_type);
       Unlock(thread_id, op_id, last_key, lock_type);
     }
     op_id++;
   }
   // Release all the locks at the end.
   while (!locked_keys.empty()) {
-    Verify();
+    ASSERT_NO_FATALS(Verify());
     RandomDelay(dis(gen));
-    Verify();
+    ASSERT_NO_FATALS(Verify());
     const int key = locked_keys.top();
     const IntentType lock_type = lock_types.top();
 
     locked_keys.pop();
     lock_types.pop();
 
-    Decrement(key, lock_type);
     Unlock(thread_id, op_id, key, lock_type);
     op_id++;
   }
 }
 
 void SharedLockManagerTest::Run(size_t num_keys, int num_threads) {
-  if (kLogOps)
-    LOG(INFO) << "\tthread\top\ttype\tkey";
+  VLOG(1) << "\tthread\top\ttype\tkey";
   vector<thread> t;
   for (int i = 0; i < num_threads; i++) {
     t.emplace_back([this, i, num_keys](){
@@ -324,7 +320,8 @@ TEST_F(SharedLockManagerTest, CombineIntentsTest) {
       for (const auto i : kIntentTypeList) {
         const LockState c = kIntentConflicts[static_cast<size_t>(i)];
         if (Covers(c, c1) && Covers(c, c2)) {
-          ASSERT_LE(combined_conflicts.count(), kIntentConflicts[static_cast<size_t>(i)].count())
+          ASSERT_EQ(combined_conflicts & kIntentConflicts[static_cast<size_t>(i)],
+                    combined_conflicts)
               << i1 << ", " << i2 << ", " << combined;
         }
       }
@@ -334,9 +331,7 @@ TEST_F(SharedLockManagerTest, CombineIntentsTest) {
 
 TEST_F(SharedLockManagerTest, LockBatchAutoUnlockTest) {
   for (int i = 0; i < 2; ++i) {
-    LockBatch lb(&lm_, {
-        {"foo", IntentType::kStrongSnapshotWrite},
-        {"bar", IntentType::kStrongSnapshotWrite}});
+    auto lb = TestLockBatch();
     EXPECT_EQ(2, lb.size());
     EXPECT_FALSE(lb.empty());
     // The locks get unlocked on scope exit.
@@ -344,9 +339,7 @@ TEST_F(SharedLockManagerTest, LockBatchAutoUnlockTest) {
 }
 
 TEST_F(SharedLockManagerTest, LockBatchMoveConstructor) {
-  LockBatch lb(&lm_, {
-      {"foo", IntentType::kStrongSnapshotWrite},
-      {"bar", IntentType::kStrongSnapshotWrite}});
+  LockBatch lb = TestLockBatch();
   EXPECT_EQ(2, lb.size());
   EXPECT_FALSE(lb.empty());
 
@@ -360,9 +353,7 @@ TEST_F(SharedLockManagerTest, LockBatchMoveConstructor) {
 }
 
 TEST_F(SharedLockManagerTest, LockBatchMoveAssignment) {
-  LockBatch lb(&lm_, {
-      {"foo", IntentType::kStrongSnapshotWrite},
-      {"bar", IntentType::kStrongSnapshotWrite}});
+  LockBatch lb = TestLockBatch();
 
   LockBatch lb2 = std::move(lb);
   EXPECT_EQ(2, lb2.size());
@@ -374,13 +365,48 @@ TEST_F(SharedLockManagerTest, LockBatchMoveAssignment) {
 }
 
 TEST_F(SharedLockManagerTest, LockBatchReset) {
-  LockBatch lb(&lm_, {
-      {"foo", IntentType::kStrongSnapshotWrite},
-      {"bar", IntentType::kStrongSnapshotWrite}});
+  LockBatch lb = TestLockBatch();
   lb.Reset();
 
   EXPECT_EQ(0, lb.size());
   EXPECT_TRUE(lb.empty());
+}
+
+// Launch pairs of threads. Each pair tries to lock/unlock on the same key sequence.
+// This catches bug in SharedLockManager when condition is waited incorrectly.
+TEST_F(SharedLockManagerTest, QuickLockUnlock) {
+  const auto kThreads = 2 * 32; // Should be even
+
+  std::atomic<bool> stop_requested{false};
+  std::vector<std::thread> threads;
+  std::atomic<size_t> finished_threads{0};
+  while (threads.size() != kThreads) {
+    size_t pair_idx = threads.size() / 2;
+    threads.emplace_back([this, &stop_requested, &finished_threads, pair_idx] {
+      int i = 0;
+      while (!stop_requested.load(std::memory_order_acquire)) {
+        RefCntPrefix key(Format("key_$0_$1", pair_idx, i));
+        LockBatch lb(&lm_, {{key, IntentType::kStrongSnapshotWrite}});
+        ++i;
+      }
+      finished_threads.fetch_add(1, std::memory_order_acq_rel);
+    });
+  }
+
+  std::this_thread::sleep_for(30s);
+  LOG(INFO) << "Requesting stop";
+  stop_requested.store(true, std::memory_order_release);
+
+  ASSERT_OK(WaitFor(
+      [&finished_threads] {
+        return finished_threads.load(std::memory_order_acquire) == kThreads;
+      },
+      3s,
+      "All threads finished"));
+
+  for (auto& thread : threads) {
+    thread.join();
+  }
 }
 
 } // namespace docdb

@@ -90,9 +90,9 @@ ValueType ValueTypeFromRedisType(RedisDataType dt) {
   }
 }
 
-void RedisWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *level) const {
-  paths->push_back(DocPath::DocPathFromRedisKey(request_.key_value().hash_code(),
-                                                request_.key_value().key()));
+void RedisWriteOperation::GetDocPathsToLock(DocPathsToLock* paths, IsolationLevel *level) const {
+  paths->push_back(DocKey::FromRedisKey(
+      request_.key_value().hash_code(), request_.key_value().key()).EncodeAsRefCntPrefix());
   *level = IsolationLevel::SNAPSHOT_ISOLATION;
 }
 
@@ -2153,8 +2153,8 @@ Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primar
   // Populate the hashed and range components in the same order as they are in the table schema.
   const auto& hashed_column_values = request_.hashed_column_values();
   const auto& range_column_values = request_.range_column_values();
-  vector<PrimitiveValue> hashed_components;
-  vector<PrimitiveValue> range_components;
+  std::vector<PrimitiveValue> hashed_components;
+  std::vector<PrimitiveValue> range_components;
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
       hashed_column_values, schema_, 0,
       schema_.num_hash_key_columns(), &hashed_components));
@@ -2162,31 +2162,42 @@ Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primar
       range_column_values, schema_, schema_.num_hash_key_columns(),
       schema_.num_range_key_columns(), &range_components));
 
+  // need_pk - true is we should construct pk_key_key_
+  const bool need_pk = primary_key && !pk_doc_key_;
+
   // We need the hash key if writing to the static columns.
-  if (hashed_key && hashed_doc_key_ == nullptr) {
-    hashed_doc_key_.reset(new DocKey(request_.hash_code(), hashed_components));
-    hashed_doc_path_.reset(new DocPath(hashed_doc_key_->Encode()));
+  if (hashed_key && !hashed_doc_key_) {
+    if (need_pk) {
+      hashed_doc_key_.emplace(request_.hash_code(), hashed_components);
+    } else {
+      hashed_doc_key_.emplace(request_.hash_code(), std::move(hashed_components));
+    }
+    encoded_hashed_doc_key_ = hashed_doc_key_->EncodeAsRefCntPrefix();
   }
+
   // We need the primary key if writing to non-static columns or writing the full primary key
   // (i.e. range columns are present).
-  if (primary_key && pk_doc_key_ == nullptr) {
+  if (need_pk) {
     if (request_.has_hash_code() && !hashed_column_values.empty()) {
-      pk_doc_key_.reset(new DocKey(request_.hash_code(), hashed_components, range_components));
+      pk_doc_key_.emplace(
+         request_.hash_code(), std::move(hashed_components), std::move(range_components));
     } else {
       // In case of syscatalog tables, we don't have any hash components.
-      pk_doc_key_.reset(new DocKey(range_components));
+      pk_doc_key_.emplace(std::move(range_components));
     }
-    pk_doc_path_.reset(new DocPath(pk_doc_key_->Encode()));
+    encoded_pk_doc_key_ =  pk_doc_key_->EncodeAsRefCntPrefix();
   }
 
   return Status::OK();
 }
 
-void QLWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *level) const {
-  if (hashed_doc_path_ != nullptr)
-    paths->push_back(*hashed_doc_path_);
-  if (pk_doc_path_ != nullptr)
-    paths->push_back(*pk_doc_path_);
+void QLWriteOperation::GetDocPathsToLock(DocPathsToLock *paths, IsolationLevel *level) const {
+  if (encoded_hashed_doc_key_) {
+    paths->push_back(encoded_hashed_doc_key_);
+  }
+  if (encoded_pk_doc_key_) {
+    paths->push_back(encoded_pk_doc_key_);
+  }
   // When this write operation requires a read, it requires a read snapshot so paths will be locked
   // in snapshot isolation for consistency. Otherwise, pure writes will happen in serializable
   // isolation so that they will serialize but do not conflict with one another.
@@ -2223,7 +2234,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
       !static_projection->columns().empty(), !non_static_projection->columns().empty()));
 
   // Scan docdb for the static and non-static columns of the row using the hashed / primary key.
-  if (hashed_doc_key_ != nullptr) {
+  if (hashed_doc_key_) {
     DocQLScanSpec spec(*static_projection, *hashed_doc_key_, request_.query_id());
     DocRowwiseIterator iterator(*static_projection, schema_, txn_op_context_,
                                 data.doc_write_batch->doc_db(),
@@ -2234,7 +2245,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
     }
     data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
   }
-  if (pk_doc_key_ != nullptr) {
+  if (pk_doc_key_) {
     DocQLScanSpec spec(*non_static_projection, *pk_doc_key_, request_.query_id());
     DocRowwiseIterator iterator(*non_static_projection, schema_, txn_op_context_,
                                 data.doc_write_batch->doc_db(),
@@ -2594,8 +2605,8 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
       // Add the appropriate liveness column only for inserts.
       // We never use init markers for QL to ensure we perform writes without any reads to
       // ensure our write path is fast while complicating the read path a bit.
-      if (request_.type() == QLWriteRequestPB::QL_STMT_INSERT && pk_doc_path_ != nullptr) {
-        const DocPath sub_path(pk_doc_path_->encoded_doc_key(),
+      if (request_.type() == QLWriteRequestPB::QL_STMT_INSERT && encoded_pk_doc_key_) {
+        const DocPath sub_path(encoded_pk_doc_key_.as_slice(),
                                PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
         const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
         RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
@@ -2612,9 +2623,10 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
         RETURN_NOT_OK(maybe_column);
         const ColumnSchema& column = *maybe_column;
 
-        DocPath sub_path(column.is_static() ? hashed_doc_path_->encoded_doc_key()
-                                            : pk_doc_path_->encoded_doc_key(),
-                         PrimitiveValue(column_id));
+        DocPath sub_path(
+            column.is_static() ?
+                encoded_hashed_doc_key_.as_slice() : encoded_pk_doc_key_.as_slice(),
+            PrimitiveValue(column_id));
 
         QLValue expr_result;
         if (!column_value.json_args().empty()) {
@@ -2647,11 +2659,10 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
           CHECK(column_value.has_column_id())
               << "column id missing: " << column_value.DebugString();
           const ColumnId column_id(column_value.column_id());
-          const auto column = schema_.column_by_id(column_id);
-          RETURN_NOT_OK(column);
+          const auto column = VERIFY_RESULT(schema_.column_by_id(column_id));
           const DocPath sub_path(
-              column->is_static() ? hashed_doc_path_->encoded_doc_key()
-                                  : pk_doc_path_->encoded_doc_key(),
+              column.is_static() ?
+                encoded_hashed_doc_key_.as_slice() : encoded_pk_doc_key_.as_slice(),
               PrimitiveValue(column_id));
           RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path,
               data.read_time, data.deadline, request_.query_id(), user_timestamp));
@@ -2719,7 +2730,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
         data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
       } else {
         // Otherwise, delete the referenced row (all columns).
-        RETURN_NOT_OK(DeleteRow(*pk_doc_path_, data.doc_write_batch,
+        RETURN_NOT_OK(DeleteRow(DocPath(encoded_pk_doc_key_.as_slice()), data.doc_write_batch,
                                 data.read_time, data.deadline));
         if (update_indexes_) {
           RETURN_NOT_OK(UpdateIndexes(existing_row, new_row));
@@ -3166,10 +3177,9 @@ CHECKED_STATUS PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResp
     // The following code assumes that ybctid is the key of exactly one row, so the hash_doc_key_
     // is set to NULL. If this assumption is no longer true, hash_doc_key_ should be assigned with
     // appropriate values.
-    range_doc_key_ = make_unique<DocKey>(schema_, request_.hash_code());
+    range_doc_key_.emplace(schema_, request_.hash_code());
     RETURN_NOT_OK(range_doc_key_->DecodeFrom(key_value));
-    range_doc_path_ = make_unique<DocPath>(range_doc_key_->Encode());
-
+    encoded_range_doc_key_ = range_doc_key_->EncodeAsRefCntPrefix();
   } else {
     vector<PrimitiveValue> hashed_components;
     RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.partition_column_values(),
@@ -3179,10 +3189,8 @@ CHECKED_STATUS PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResp
 
     // We only need the hash key if the range key is not specified.
     if (request_.range_column_values().size() == 0) {
-      hashed_doc_key_ = make_unique<DocKey>(schema_,
-                                            request_.hash_code(),
-                                            hashed_components);
-      hashed_doc_path_ = make_unique<DocPath>(hashed_doc_key_->Encode());
+      hashed_doc_key_.emplace(schema_, request_.hash_code(), hashed_components);
+      encoded_hashed_doc_key_ = hashed_doc_key_->EncodeAsRefCntPrefix();
     }
 
     vector<PrimitiveValue> range_components;
@@ -3190,12 +3198,12 @@ CHECKED_STATUS PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResp
                                                schema_,
                                                schema_.num_hash_key_columns(),
                                                &range_components));
-    range_doc_key_ = hashed_components.empty() ? make_unique<DocKey>(schema_, range_components)
-                                               : make_unique<DocKey>(schema_,
-                                                                     request_.hash_code(),
-                                                                     hashed_components,
-                                                                     range_components);
-    range_doc_path_ = make_unique<DocPath>(range_doc_key_->Encode());
+    if (hashed_components.empty()) {
+      range_doc_key_.emplace(schema_, range_components);
+    } else {
+      range_doc_key_.emplace(schema_, request_.hash_code(), hashed_components, range_components);
+    }
+    encoded_range_doc_key_ = range_doc_key_->EncodeAsRefCntPrefix();
   }
 
   return Status::OK();
@@ -3226,8 +3234,8 @@ CHECKED_STATUS PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& dat
   const UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp;
 
   // Add the appropriate liveness column.
-  if (range_doc_path_ != nullptr) {
-    const DocPath sub_path(range_doc_path_->encoded_doc_key(),
+  if (encoded_range_doc_key_) {
+    const DocPath sub_path(encoded_range_doc_key_.as_slice(),
                            PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
     const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
     RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
@@ -3255,7 +3263,7 @@ CHECKED_STATUS PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& dat
         SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
 
     // Inserting into specified column.
-    DocPath sub_path(range_doc_path_->encoded_doc_key(), PrimitiveValue(column_id));
+    DocPath sub_path(encoded_range_doc_key_.as_slice(), PrimitiveValue(column_id));
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
         sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id(), ttl, user_timestamp));
   }
@@ -3289,7 +3297,7 @@ CHECKED_STATUS PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& dat
         SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
 
     // Inserting into specified column.
-    DocPath sub_path(range_doc_path_->encoded_doc_key(), PrimitiveValue(column_id));
+    DocPath sub_path(encoded_range_doc_key_.as_slice(), PrimitiveValue(column_id));
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
         sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
   }
@@ -3307,8 +3315,8 @@ CHECKED_STATUS PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& dat
   CHECK(!request_.missing_primary_key()) << "WHERE clause condition is not yet fully supported";
 
   // Otherwise, delete the referenced row (all columns).
-  RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(*range_doc_path_, data.read_time,
-                                                   data.deadline));
+  RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(DocPath(
+      encoded_range_doc_key_.as_slice()), data.read_time, data.deadline));
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }
@@ -3320,7 +3328,7 @@ CHECKED_STATUS PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& dat
   RETURN_NOT_OK(CreateProjections(schema_, request_.column_refs(), &column_projection));
 
   // Filter the columns using primary key.
-  if (range_doc_key_ != nullptr) {
+  if (range_doc_key_) {
     DocPgsqlScanSpec spec(column_projection, request_.stmt_id(), *range_doc_key_);
     DocRowwiseIterator iterator(column_projection,
                                 schema_,
@@ -3340,12 +3348,12 @@ CHECKED_STATUS PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& dat
   return Status::OK();
 }
 
-void PgsqlWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *level) const {
-  if (hashed_doc_path_ != nullptr) {
-    paths->push_back(*hashed_doc_path_);
+void PgsqlWriteOperation::GetDocPathsToLock(DocPathsToLock *paths, IsolationLevel *level) const {
+  if (encoded_hashed_doc_key_) {
+    paths->push_back(encoded_hashed_doc_key_);
   }
-  if (range_doc_path_ != nullptr) {
-    paths->push_back(*range_doc_path_);
+  if (encoded_range_doc_key_) {
+    paths->push_back(encoded_range_doc_key_);
   }
   // When this write operation requires a read, it requires a read snapshot so paths will be locked
   // in snapshot isolation for consistency. Otherwise, pure writes will happen in serializable

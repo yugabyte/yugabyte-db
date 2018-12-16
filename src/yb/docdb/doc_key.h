@@ -21,11 +21,13 @@
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/filter_policy.h"
-#include "yb/util/slice.h"
-#include "yb/util/strongly_typed_bool.h"
 
 #include "yb/common/schema.h"
 #include "yb/docdb/primitive_value.h"
+
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace docdb {
@@ -63,15 +65,13 @@ enum class DocKeyPart {
 
 YB_STRONGLY_TYPED_BOOL(HybridTimeRequired)
 
-
-
 class DocKey {
  public:
   // Constructs an empty document key with no hash component.
   DocKey();
 
   // Construct a document key with only a range component, but no hashed component.
-  explicit DocKey(const std::vector<PrimitiveValue>& range_components);
+  explicit DocKey(std::vector<PrimitiveValue> range_components);
 
   // Construct a document key including a hashed component and a range component. The hash value has
   // to be calculated outside of the constructor, and we're not assuming any specific hash function
@@ -81,19 +81,22 @@ class DocKey {
   // @param hashed_components Components of the key that go into computing the hash prefix.
   // @param range_components Components of the key that we want to be able to do range scans on.
   DocKey(DocKeyHash hash,
-         const std::vector<PrimitiveValue>& hashed_components,
-         const std::vector<PrimitiveValue>& range_components = std::vector<PrimitiveValue>());
+         std::vector<PrimitiveValue> hashed_components,
+         std::vector<PrimitiveValue> range_components = std::vector<PrimitiveValue>());
 
   // Constructors to create a DocKey for the given schema to support co-located tables.
   explicit DocKey(const Schema& schema);
   DocKey(const Schema& schema, DocKeyHash hash);
-  DocKey(const Schema& schema, const std::vector<PrimitiveValue>& range_components);
+  DocKey(const Schema& schema, std::vector<PrimitiveValue> range_components);
   DocKey(const Schema& schema, DocKeyHash hash,
-         const std::vector<PrimitiveValue>& hashed_components,
-         const std::vector<PrimitiveValue>& range_components = std::vector<PrimitiveValue>());
+         std::vector<PrimitiveValue> hashed_components,
+         std::vector<PrimitiveValue> range_components = std::vector<PrimitiveValue>());
 
   KeyBytes Encode() const;
   void AppendTo(KeyBytes* out) const;
+
+  // Encodes DocKey to binary representation returning result as RefCntPrefix.
+  RefCntPrefix EncodeAsRefCntPrefix() const;
 
   // Resets the state to an empty document key.
   void Clear();
@@ -130,7 +133,7 @@ class DocKey {
       DocKeyPart part_to_decode = DocKeyPart::WHOLE_DOC_KEY);
 
   // Splits given RocksDB key into vector of slices that forms range_group of document key.
-  static CHECKED_STATUS PartiallyDecode(rocksdb::Slice* slice,
+  static CHECKED_STATUS PartiallyDecode(Slice* slice,
                                         boost::container::small_vector_base<Slice>* out);
 
   static Result<size_t> EncodedSize(Slice slice, DocKeyPart part);
@@ -343,8 +346,6 @@ class SubDocKey {
   CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice,
                             HybridTimeRequired require_hybrid_time = HybridTimeRequired::kTrue);
 
-  static Result<bool> DecodeSubkey(Slice* slice, PrimitiveValue* out);
-
   // Similar to DecodeFrom, but requires that the entire slice is decoded, and thus takes a const
   // reference to a slice. This still respects the require_hybrid_time parameter, but in case a
   // hybrid_time is omitted, we don't allow any extra bytes to be present in the slice.
@@ -356,6 +357,20 @@ class SubDocKey {
   // hybrid_time.
   static CHECKED_STATUS PartiallyDecode(Slice* slice,
                                         boost::container::small_vector_base<Slice>* out);
+
+  // Splits the given RocksDB sub key into a vector of slices that forms the range group of document
+  // key and sub keys.
+  //
+  // We don't use Result<...> to be able to reuse memory allocated by out.
+  //
+  // When key does not have hash component first returned prefix would contain first range
+  // component.
+  //
+  // For instance for (h, r1, r2, s1) doc key the following values will be returned:
+  // encoded_length(h), encoded_length(h, r1), encoded_length(h, r1, r2),
+  // encoded_length(h, r1, r2, s1).
+  static CHECKED_STATUS DecodePrefixLengths(
+      Slice slice, boost::container::small_vector_base<size_t>* out);
 
   static Result<bool> DecodeSubkey(Slice* slice);
 
