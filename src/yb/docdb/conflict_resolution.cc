@@ -142,7 +142,8 @@ class ConflictResolver {
       auto existing_intent = docdb::ParseIntentKey(intent_iter_->key(), existing_value);
       RETURN_NOT_OK(existing_intent);
 
-      if (conflicting_intent_types.test(static_cast<size_t>(existing_intent->type))) {
+      const auto& intent_mask = kIntentMask[static_cast<size_t>(existing_intent->type)];
+      if ((conflicting_intent_types & intent_mask) != 0) {
         auto transaction_id = VERIFY_RESULT(FullyDecodeTransactionId(
             Slice(existing_value.data(), TransactionId::static_size())));
 
@@ -452,9 +453,10 @@ class OperationConflictResolverContext : public ConflictResolverContext {
 
   virtual ~OperationConflictResolverContext() {}
 
-  // Reads stored intents, that could conflict with our operations.
+  // Reads stored intents that could conflict with our operations.
   CHECKED_STATUS ReadConflicts(ConflictResolver* resolver) override {
-    std::list<DocPath> doc_paths;
+    boost::container::small_vector<RefCntPrefix, 8> doc_paths;
+    boost::container::small_vector<size_t, 32> key_prefix_lengths;
     KeyBytes current_intent_prefix;
 
     for (const auto& doc_op : doc_ops_) {
@@ -465,13 +467,17 @@ class OperationConflictResolverContext : public ConflictResolverContext {
       const IntentTypePair intent_types = GetWriteIntentsForIsolationLevel(isolation);
 
       for (const auto& doc_path : doc_paths) {
+        key_prefix_lengths.clear();
+        RETURN_NOT_OK(SubDocKey::DecodePrefixLengths(doc_path.as_slice(), &key_prefix_lengths));
         current_intent_prefix.Clear();
-        current_intent_prefix.AppendRawBytes(doc_path.encoded_doc_key().data());
-        for (int i = 0; i < doc_path.num_subkeys(); i++) {
-          RETURN_NOT_OK(resolver->ReadIntentConflicts(intent_types.weak, &current_intent_prefix));
-          doc_path.subkey(i).AppendToKey(&current_intent_prefix);
+        for (auto it = key_prefix_lengths.begin(), end = key_prefix_lengths.end(); it != end;) {
+          current_intent_prefix.AppendRawBytes(
+              doc_path.data() + current_intent_prefix.size(),
+              *it - current_intent_prefix.size());
+          ++it;
+          RETURN_NOT_OK(resolver->ReadIntentConflicts(
+              it == end ? intent_types.strong : intent_types.weak, &current_intent_prefix));
         }
-        RETURN_NOT_OK(resolver->ReadIntentConflicts(intent_types.strong, &current_intent_prefix));
       }
     }
 

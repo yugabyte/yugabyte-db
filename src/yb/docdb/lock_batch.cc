@@ -20,11 +20,11 @@
 namespace yb {
 namespace docdb {
 
-LockBatch::LockBatch(SharedLockManager* lock_manager, KeyToIntentTypeMap&& key_to_intent_type)
+LockBatch::LockBatch(SharedLockManager* lock_manager, LockBatchEntries&& key_to_intent_type)
     : key_to_type_(std::move(key_to_intent_type)),
       shared_lock_manager_(lock_manager) {
   if (!empty()) {
-    lock_manager->Lock(key_to_type_);
+    lock_manager->Lock(&key_to_type_);
   }
 }
 

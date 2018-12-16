@@ -70,10 +70,10 @@ IntentTypePair GetWriteIntentsForIsolationLevel(IsolationLevel level) {
   switch(level) {
     case IsolationLevel::SNAPSHOT_ISOLATION:
       return { docdb::IntentType::kStrongSnapshotWrite,
-          docdb::IntentType::kWeakSnapshotWrite };
+               docdb::IntentType::kWeakSnapshotWrite };
     case IsolationLevel::SERIALIZABLE_ISOLATION:
-      return { docdb::IntentType::kStrongSerializableRead,
-          docdb::IntentType::kWeakSerializableWrite };
+      return { docdb::IntentType::kStrongSerializableWrite,
+               docdb::IntentType::kWeakSerializableWrite };
     case IsolationLevel::NON_TRANSACTIONAL:
       FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
   }
