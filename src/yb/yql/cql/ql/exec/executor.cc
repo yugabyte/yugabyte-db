@@ -1608,14 +1608,14 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
     DCHECK_EQ(child_tnode->opcode(), TreeNodeOpcode::kPTSelectStmt);
     DCHECK(!static_cast<const PTSelectStmt *>(child_tnode)->index_id().empty());
     const bool covers_fully = static_cast<const PTSelectStmt *>(child_tnode)->covers_fully();
+    DCHECK_EQ(tnode->opcode(), TreeNodeOpcode::kPTSelectStmt);
+    const auto* select_stmt = static_cast<const PTSelectStmt *>(tnode);
     string& rows_data = child_context->rows_result()->rows_data();
     if (!covers_fully && !rows_data.empty()) {
       QLRowBlock* keys = tnode_context->keys();
       keys->rows().clear();
       Slice data(rows_data);
       RETURN_NOT_OK(keys->Deserialize(YQL_CLIENT_CQL,  &data));
-      DCHECK_EQ(tnode->opcode(), TreeNodeOpcode::kPTSelectStmt);
-      const auto* select_stmt = static_cast<const PTSelectStmt *>(tnode);
       const YBqlReadOpPtr& select_op = tnode_context->uncovered_select_op();
       if (VERIFY_RESULT(FetchRowsByKeys(select_stmt, select_op, *keys, tnode_context))) {
         has_buffered_ops = true;
@@ -1629,6 +1629,9 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
       if (covers_fully) {
         RETURN_NOT_OK(tnode_context->AppendRowsResult(std::move(child_context->rows_result())));
       } else {
+        if (!tnode_context->rows_result()) {
+          RETURN_NOT_OK(tnode_context->AppendRowsResult(std::make_shared<RowsResult>(select_stmt)));
+        }
         tnode_context->rows_result()->SetPagingState(std::move(*child_context->rows_result()));
       }
     }

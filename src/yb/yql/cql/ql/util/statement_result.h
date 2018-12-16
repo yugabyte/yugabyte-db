@@ -121,6 +121,7 @@ class RowsResult : public ExecutedResult {
   typedef std::shared_ptr<const RowsResult> SharedPtrConst;
 
   // Constructors.
+  explicit RowsResult(const PTDmlStmt *tnode); // construct empty rows result for the statement.
   explicit RowsResult(client::YBqlOp *op, const PTDmlStmt *tnode = nullptr);
   RowsResult(const client::YBTableName& table_name,
              const std::shared_ptr<std::vector<ColumnSchema>>& column_schemas,

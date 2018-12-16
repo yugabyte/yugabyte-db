@@ -151,6 +151,16 @@ PreparedResult::~PreparedResult() {
 }
 
 //------------------------------------------------------------------------------------------------
+RowsResult::RowsResult(const PTDmlStmt *tnode)
+    : table_name_(tnode->table()->name()),
+      column_schemas_(tnode->selected_schemas()),
+      client_(YQL_CLIENT_CQL),
+      rows_data_(QLRowBlock::ZeroRowsData(YQL_CLIENT_CQL)) {
+  if (column_schemas_ == nullptr) {
+    column_schemas_ = make_shared<vector<ColumnSchema>>();
+  }
+}
+
 RowsResult::RowsResult(YBqlOp *op, const PTDmlStmt *tnode)
     : table_name_(op->table()->name()),
       column_schemas_(GetColumnSchemasFromOp(*op, tnode)),

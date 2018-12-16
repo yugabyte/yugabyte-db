@@ -873,6 +873,9 @@ public class TestIndex extends BaseCQLTest {
     // Verify that both the index and the primary table are read.
     assertTrue(indexMetrics.nextCount > 0);
     assertTrue(tableMetrics.nextCount > 0);
+
+    // Verify uncovered index query of non-existent indexed value.
+    assertQuery("select * from test_uncovered where v1 = 'nothing';", "");
   }
 
   @Test
