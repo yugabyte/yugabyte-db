@@ -28,7 +28,10 @@ import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ImportUniverseFormData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Capability;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 
 import org.junit.Before;
 import org.junit.Ignore;
@@ -45,7 +48,6 @@ import play.test.Helpers;
 import play.test.WithApplication;
 
 public class ImportControllerTest extends CommissionerBaseTest {
-  private static Commissioner mockCommissioner;
   private static String MASTER_ADDRS = "127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100";
   private Customer customer;
   private String authToken;
@@ -87,7 +89,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    assertNotNull(json.get("universeUUID"));
+    String univUUID = json.get("universeUUID").asText();
+    assertNotNull(univUUID);
     assertNotNull(json.get("checks").get("create_db_entry"));
     assertEquals(json.get("checks").get("create_db_entry").asText(), "OK");
     assertNotNull(json.get("checks").get("check_masters_are_running"));
@@ -96,8 +99,12 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertEquals(json.get("checks").get("check_master_leader_election").asText(), "OK");
     assertNotNull(json.get("state").asText());
     assertEquals(json.get("state").asText(), "IMPORTED_MASTERS");
+    Universe universe = Universe.get(UUID.fromString(univUUID));
+    assertEquals(universe.getUniverseDetails().importedState, ImportedState.MASTERS_ADDED);
+    assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
 
-    String univUUID = json.get("universeUUID").asText();
+    String tUnivUUID = json.get("universeUUID").asText();
+    assertEquals(univUUID, tUnivUUID);
     // Tserver phase
     bodyJson.put("currentState", json.get("state").asText())
             .put("universeUUID", univUUID);
@@ -114,6 +121,9 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertEquals(json.get("checks").get("check_tserver_heartbeats").asText(), "OK");
     assertNotNull(json.get("tservers_list").asText());
     assertValue(json, "tservers_count", "3");
+    universe = Universe.get(UUID.fromString(univUUID));
+    assertEquals(universe.getUniverseDetails().importedState, ImportedState.TSERVERS_ADDED);
+    assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
 
     // Finish
     bodyJson.put("currentState", json.get("state").asText());
@@ -124,6 +134,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertNotNull(json.get("checks").get("create_prometheus_config"));
     assertEquals(json.get("checks").get("create_prometheus_config").asText(), "OK");
     assertEquals(json.get("universeUUID").asText(), univUUID);
+    assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
 
     // Confirm customer knows about this universe and has correct node names/ips.
     url = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
@@ -166,5 +177,28 @@ public class ImportControllerTest extends CommissionerBaseTest {
                                    ImportUniverseFormData.State.IMPORTED_TSERVERS.name());
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertBadRequest(result, "Valid universe uuid needs to be set.");
+  }
+
+  @Test
+  public void testFailedMasterImport() {
+    when(mockClient.waitForServer(any(), anyLong())).thenThrow(IllegalStateException.class);
+    String url = "/api/customers/" + customer.uuid + "/universes/import";
+    ObjectNode bodyJson = Json.newObject()
+                              .put("universeName", "importUniv")
+                              .put("masterAddresses", MASTER_ADDRS);
+    // Master phase
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertInternalServerError(result, "java.lang.RuntimeException: WaitForServer");
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    String univUUID = resultJson.get("error").get("universeUUID").asText();
+    assertNotNull(univUUID);
+    assertNotNull(resultJson.get("error").get("checks").get("create_db_entry"));
+    assertEquals(resultJson.get("error").get("checks").get("create_db_entry").asText(), "OK");
+    assertNotNull(resultJson.get("error").get("checks").get("check_masters_are_running"));
+    assertEquals(resultJson.get("error").get("checks").get("check_masters_are_running").asText(),
+                 "FAILURE");
+    Universe universe = Universe.get(UUID.fromString(univUUID));
+    assertEquals(universe.getUniverseDetails().importedState, ImportedState.STARTED);
+    assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
   }
 }

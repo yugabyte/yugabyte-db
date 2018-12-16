@@ -87,6 +87,31 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public int nextClusterIndex = 1;
 
   /**
+   * Allowed states for an imported universe.
+   */
+  public enum ImportedState {
+    NONE, // Default, and for non-imported universes.
+    STARTED,
+    MASTERS_ADDED,
+    TSERVERS_ADDED,
+    IMPORTED
+  }
+
+  // State of the imported universe.
+  public ImportedState importedState = ImportedState.NONE;
+
+  /**
+   * Type of operations that can be performed on the universe.
+   */
+  public enum Capability {
+    READ_ONLY,
+    EDITS_ALLOWED // Default, and for non-imported universes.
+  }
+
+  // Capability of the universe.
+  public Capability capability = Capability.EDITS_ALLOWED;
+
+  /**
    * Types of Clusters that can make up a universe.
    */
   public enum ClusterType {
@@ -270,6 +295,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     private static boolean compareRegionLists(List<UUID> left, List<UUID> right) {
       return (new HashSet<>(left)).equals(new HashSet<>(right));
     }
+  }
+
+  @JsonIgnore
+  // Returns true if universe object is in any known import related state.
+  public boolean isImportedUniverse() {
+    return importedState != ImportedState.NONE;
   }
 
   /**
