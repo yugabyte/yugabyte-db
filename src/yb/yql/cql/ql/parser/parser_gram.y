@@ -42,7 +42,8 @@
 // Debugging options. These should be deleted after coding is completed.
 %debug
 %define parse.error verbose
-%define parse.assert
+// Because of a bug in BISON 3.2, we have to turn off assertion for now.
+// %define parse.assert
 
 // BISON options.
 %defines                                                                  // Generate header files.
