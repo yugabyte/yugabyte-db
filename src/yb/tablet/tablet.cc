@@ -170,7 +170,7 @@ using yb::docdb::PgsqlWriteOperation;
 using yb::docdb::DocDBCompactionFilterFactory;
 using yb::docdb::IntentKind;
 using yb::docdb::IntentTypePair;
-using yb::docdb::KeyToIntentTypeMap;
+using yb::docdb::LockBatchEntries;
 using yb::docdb::InitMarkerBehavior;
 
 namespace yb {
@@ -1581,25 +1581,23 @@ Status Tablet::TEST_SwitchMemtable() {
 
 Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
   auto write_batch = operation->request()->mutable_write_batch();
-  auto isolation_level = GetIsolationLevel(*write_batch, transaction_participant_.get());
-  RETURN_NOT_OK(isolation_level);
-  LockBatch keys_locked;
-  bool need_read_snapshot = false;
-  docdb::PrepareDocWriteOperation(
-      operation->doc_ops(), metrics_->write_lock_latency, *isolation_level, &shared_lock_manager_,
-      &keys_locked, &need_read_snapshot);
+  auto isolation_level = VERIFY_RESULT(GetIsolationLevel(
+      *write_batch, transaction_participant_.get()));
+  auto prepare_result = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
+      operation->doc_ops(), metrics_->write_lock_latency, isolation_level, &shared_lock_manager_));
 
   RequestScope request_scope;
   if (transaction_participant_) {
     request_scope = RequestScope(transaction_participant_.get());
   }
-  auto read_op = need_read_snapshot
+  auto read_op = prepare_result.need_read_snapshot
       ? ScopedReadOperation(this, RequireLease::kTrue, operation->read_time())
       : ScopedReadOperation();
-  auto real_read_time = need_read_snapshot ? read_op.read_time()
-                                           : ReadHybridTime::SingleTime(clock_->Now());
+  auto real_read_time = prepare_result.need_read_snapshot
+      ? read_op.read_time()
+      : ReadHybridTime::SingleTime(clock_->Now());
 
-  if (*isolation_level == IsolationLevel::NON_TRANSACTIONAL &&
+  if (isolation_level == IsolationLevel::NON_TRANSACTIONAL &&
       metadata_->schema().table_properties().is_transactional()) {
     auto now = clock_->Now();
     auto result = docdb::ResolveOperationConflicts(
@@ -1628,12 +1626,12 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
     return Status::OK();
   }
 
-  if (*isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
+  if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
     RETURN_NOT_OK(docdb::ResolveTransactionConflicts(
         *write_batch, clock_->Now(), {regular_db_.get(), intents_db_.get()},
         transaction_participant_.get(), metrics_->transaction_conflicts.get()));
   }
-  operation->state()->ReplaceDocDBLocks(std::move(keys_locked));
+  operation->state()->ReplaceDocDBLocks(std::move(prepare_result.lock_batch));
 
   return Status::OK();
 }

@@ -44,6 +44,8 @@ QLWriteRequestPB::QLStmtType GetQlStatementType(const WriteOpType op_type) {
 } // namespace
 
 void QLDmlTestBase::SetUp() {
+  HybridTime::TEST_SetPrettyToString(true);
+
   YBMiniClusterTestBase::SetUp();
 
   // Start minicluster and wait for tablet servers to connect to master.
@@ -56,8 +58,6 @@ void QLDmlTestBase::SetUp() {
 
   // Create test table
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
-
-  HybridTime::TEST_SetPrettyToString(true);
 }
 
 Status QLDmlTestBase::CreateClient() {

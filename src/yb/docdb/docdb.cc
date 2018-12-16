@@ -100,15 +100,98 @@ void AddIntent(
   rocksdb_write_batch->Put(reverse_key, key);
 }
 
-void ApplyIntent(const string& lock_string,
-                 const IntentType intent,
-                 KeyToIntentTypeMap *keys_locked) {
-  auto itr = keys_locked->find(lock_string);
-  if (itr == keys_locked->end()) {
-    keys_locked->emplace(lock_string, intent);
-  } else {
-    itr->second = SharedLockManager::CombineIntents(itr->second, intent);
+// key should be valid prefix of doc key, ending with some complete pritimive value or group end.
+CHECKED_STATUS ApplyIntent(RefCntPrefix key,
+                           const IntentType intent,
+                           LockBatchEntries *keys_locked) {
+  // Have to strip kGroupEnd from end of key, because when only hash key is specified, we will
+  // get two kGroupEnd at end of strong intent.
+  size_t size = key.size();
+  if (size <= 0) {
+    return STATUS(Corruption, "Empty key is not allowed");
   }
+  if (key.data()[0] == ValueTypeAsChar::kGroupEnd) {
+    return STATUS_FORMAT(Corruption, "Key starting with group end: $0",
+                         key.as_slice().ToDebugHexString());
+  }
+  while (key.data()[size - 1] == ValueTypeAsChar::kGroupEnd) {
+    --size;
+  }
+  key.Resize(size);
+  keys_locked->push_back({key, intent});
+  return Status::OK();
+}
+
+struct DetermineKeysToLockResult {
+  LockBatchEntries lock_batch;
+  bool need_read_snapshot;
+};
+
+Result<DetermineKeysToLockResult> DetermineKeysToLock(
+    const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
+    IsolationLevel isolation_level) {
+  DetermineKeysToLockResult result;
+  boost::container::small_vector<RefCntPrefix, 8> doc_paths;
+  boost::container::small_vector<size_t, 32> key_prefix_lengths;
+  result.need_read_snapshot = false;
+  for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
+    doc_paths.clear();
+    IsolationLevel level;
+    doc_op->GetDocPathsToLock(&doc_paths, &level);
+    if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
+      level = isolation_level;
+    }
+    const IntentTypePair intent_types = GetWriteIntentsForIsolationLevel(level);
+
+    for (const auto& doc_path : doc_paths) {
+      key_prefix_lengths.clear();
+      RETURN_NOT_OK(SubDocKey::DecodePrefixLengths(doc_path.as_slice(), &key_prefix_lengths));
+      // At least entire doc_path should be returned, so empty key_prefix_lengths is an error.
+      if (key_prefix_lengths.empty()) {
+        return STATUS_FORMAT(Corruption, "Unable to decode key prefixes from: $0",
+                             doc_path.as_slice().ToDebugHexString());
+      }
+      // We will acquire strong lock on entire doc_path, so remove it from list of weak locks.
+      key_prefix_lengths.pop_back();
+      auto partial_key = doc_path;
+      for (size_t prefix_length : key_prefix_lengths) {
+        partial_key.Resize(prefix_length);
+        RETURN_NOT_OK(ApplyIntent(partial_key, intent_types.weak, &result.lock_batch));
+      }
+
+      RETURN_NOT_OK(ApplyIntent(doc_path, intent_types.strong, &result.lock_batch));
+    }
+
+    if (doc_op->RequireReadSnapshot()) {
+      result.need_read_snapshot = true;
+    }
+  }
+
+  return result;
+}
+
+void FilterKeysToLock(LockBatchEntries *keys_locked) {
+  if (keys_locked->empty()) {
+    return;
+  }
+
+  std::sort(keys_locked->begin(), keys_locked->end(),
+            [](const auto& lhs, const auto& rhs) {
+              return lhs.key < rhs.key;
+            });
+
+  auto w = keys_locked->begin();
+  for (auto it = keys_locked->begin(); ++it != keys_locked->end();) {
+    if (it->key == w->key) {
+      w->intent = SharedLockManager::CombineIntents(w->intent, it->intent);
+    } else {
+      ++w;
+      *w = *it;
+    }
+  }
+
+  ++w;
+  keys_locked->erase(w, keys_locked->end());
 }
 
 }  // namespace
@@ -123,41 +206,27 @@ const IndexBound& IndexBound::Empty() {
   return result;
 }
 
-void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
-                              const scoped_refptr<Histogram>& write_lock_latency,
-                              IsolationLevel isolation_level,
-                              SharedLockManager *lock_manager,
-                              LockBatch *keys_locked,
-                              bool *need_read_snapshot) {
-  KeyToIntentTypeMap key_to_lock_type;
-  *need_read_snapshot = false;
-  for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
-    list<DocPath> doc_paths;
-    IsolationLevel level;
-    doc_op->GetDocPathsToLock(&doc_paths, &level);
-    if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
-      level = isolation_level;
-    }
-    const IntentTypePair intent_types = GetWriteIntentsForIsolationLevel(level);
+Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
+    const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
+    const scoped_refptr<Histogram>& write_lock_latency,
+    IsolationLevel isolation_level,
+    SharedLockManager *lock_manager) {
+  PrepareDocWriteOperationResult result;
 
-    for (const auto& doc_path : doc_paths) {
-      KeyBytes current_prefix = doc_path.encoded_doc_key();
-      for (int i = 0; i < doc_path.num_subkeys(); i++) {
-        ApplyIntent(current_prefix.AsStringRef(), intent_types.weak, &key_to_lock_type);
-        doc_path.subkey(i).AppendToKey(&current_prefix);
-      }
-      ApplyIntent(current_prefix.AsStringRef(), intent_types.strong, &key_to_lock_type);
-    }
-    if (doc_op->RequireReadSnapshot()) {
-      *need_read_snapshot = true;
-    }
-  }
+  auto determine_keys_to_lock_result = VERIFY_RESULT(DetermineKeysToLock(
+      doc_write_ops, isolation_level));
+  result.need_read_snapshot = determine_keys_to_lock_result.need_read_snapshot;
+
+  FilterKeysToLock(&determine_keys_to_lock_result.lock_batch);
+
   const MonoTime start_time = (write_lock_latency != nullptr) ? MonoTime::Now() : MonoTime();
-  *keys_locked = LockBatch(lock_manager, std::move(key_to_lock_type));
+  result.lock_batch = LockBatch(lock_manager, std::move(determine_keys_to_lock_result.lock_batch));
   if (write_lock_latency != nullptr) {
     const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
     write_lock_latency->Increment(elapsed_time.ToMicroseconds());
   }
+
+  return result;
 }
 
 Status SetDocOpQLErrorResponse(DocOperation* doc_op, std::string err_msg) {

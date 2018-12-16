@@ -18,14 +18,30 @@
 
 #include <glog/logging.h>
 
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/value_type.h"
 
 namespace yb {
+
+class RefCntPrefix;
+
 namespace docdb {
 
 class SharedLockManager;
 
-typedef std::map<std::string, IntentType> KeyToIntentTypeMap;
+// We don't care about actual content of this struct here, since it is an implementation detail
+// of SharedLockManager.
+struct LockedBatchEntry;
+
+struct LockBatchEntry {
+  RefCntPrefix key;
+  IntentType intent;
+
+  // Memory is owned by SharedLockManager.
+  LockedBatchEntry* locked = nullptr;
+};
+
+typedef std::vector<LockBatchEntry> LockBatchEntries;
 
 // A LockBatch encapsulates a mapping from lock keys to lock types (intent types) to be acquired
 // for each key. It also keeps track of a lock manager when locked, and auto-releases the locks
@@ -33,7 +49,7 @@ typedef std::map<std::string, IntentType> KeyToIntentTypeMap;
 class LockBatch {
  public:
   LockBatch() {}
-  LockBatch(SharedLockManager* lock_manager, KeyToIntentTypeMap&& key_to_intent_type);
+  LockBatch(SharedLockManager* lock_manager, LockBatchEntries&& key_to_intent_type);
   LockBatch(LockBatch&& other) { MoveFrom(&other); }
   LockBatch& operator=(LockBatch&& other) { MoveFrom(&other); return *this; }
   ~LockBatch();
@@ -54,7 +70,7 @@ class LockBatch {
  private:
   void MoveFrom(LockBatch* other);
 
-  KeyToIntentTypeMap key_to_type_;
+  LockBatchEntries key_to_type_;
 
   // A LockBatch is associated with a SharedLockManager instance the moment it is locked, and this
   // field is set back to nullptr when the batch is unlocked.

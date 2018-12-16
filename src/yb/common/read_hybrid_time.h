@@ -103,7 +103,7 @@ struct ReadHybridTime {
   }
 
   std::string ToString() const {
-    return Format("{ read: $0 local_limit: $1 global_limit: $2 serial_no: $3}",
+    return Format("{ read: $0 local_limit: $1 global_limit: $2 serial_no: $3 }",
                   read, local_limit, global_limit, serial_no);
   }
 };

@@ -40,6 +40,12 @@ class DocPath {
     AppendPrimitiveValues(&subkeys_, subkeys...);
   }
 
+  template<class... T>
+  DocPath(const Slice& encoded_doc_key, T... subkeys)
+      : encoded_doc_key_(encoded_doc_key) {
+    AppendPrimitiveValues(&subkeys_, subkeys...);
+  }
+
   DocPath(const KeyBytes& encoded_doc_key, const vector<PrimitiveValue>& subkeys)
       : encoded_doc_key_(encoded_doc_key),
         subkeys_(subkeys) {

@@ -38,6 +38,11 @@ class KeyBytes {
   explicit KeyBytes(const std::string& data) : data_(data) {}
   explicit KeyBytes(const rocksdb::Slice& slice) : data_(slice.ToBuffer()) {}
 
+  KeyBytes(const KeyBytes& rhs) = default;
+  KeyBytes& operator=(const KeyBytes& rhs) = default;
+  KeyBytes(KeyBytes&& rhs) = default;
+  KeyBytes& operator=(KeyBytes&& rhs) = default;
+
   KeyBytes(const Slice& slice, char suffix) {
     data_.reserve(slice.size() + 1);
     data_.append(slice.cdata(), slice.size());

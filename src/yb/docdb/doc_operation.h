@@ -40,6 +40,8 @@
 
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/util/ref_cnt_buffer.h"
+
 namespace yb {
 namespace docdb {
 
@@ -93,6 +95,8 @@ struct DocOperationApplyData {
 // When specifiying the parent key, the constant -1 is used for the subkey index.
 const int kNilSubkeyIndex = -1;
 
+typedef boost::container::small_vector_base<RefCntPrefix> DocPathsToLock;
+
 class DocOperation {
  public:
   enum Type {
@@ -108,7 +112,12 @@ class DocOperation {
   // QLWriteOperation for a DML with a "... IF <condition> ..." clause needs to read the row to
   // evaluate the condition before the write and needs a read snapshot for a consistent read.
   virtual bool RequireReadSnapshot() const = 0;
-  virtual void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const = 0;
+
+  // Returns doc paths that should be locked for this operation and isolation level of this
+  // operation.
+  // Doc paths are added to the end of paths, i.e. paths content is not cleared before it.
+  virtual void GetDocPathsToLock(DocPathsToLock *paths, IsolationLevel *level) const = 0;
+
   virtual CHECKED_STATUS Apply(const DocOperationApplyData& data) = 0;
   virtual Type OpType() = 0;
 };
@@ -138,7 +147,7 @@ class RedisWriteOperation : public DocOperation {
 
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
 
-  void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const override;
+  void GetDocPathsToLock(DocPathsToLock *paths, IsolationLevel *level) const override;
 
   RedisResponsePB &response() { return response_; }
 
@@ -253,7 +262,7 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
 
   bool RequireReadSnapshot() const override { return require_read_; }
 
-  void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const override;
+  void GetDocPathsToLock(DocPathsToLock *paths, IsolationLevel *level) const override;
 
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
 
@@ -331,16 +340,16 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
   const IndexMap& index_map_;
   const Schema* unique_index_key_schema_ = nullptr;
 
-  // Doc key and doc path for hashed key (i.e. without range columns). Present when there is a
-  // static column being written.
-  std::unique_ptr<DocKey> hashed_doc_key_;
-  std::unique_ptr<DocPath> hashed_doc_path_;
+  // Doc key and encoded Doc key for hashed key (i.e. without range columns). Present when there is
+  // a static column being written.
+  boost::optional<DocKey> hashed_doc_key_;
+  RefCntPrefix encoded_hashed_doc_key_;
 
-  // Doc key and doc path for primary key (i.e. with range columns). Present when there is a
+  // Doc key and encoded Doc key for primary key (i.e. with range columns). Present when there is a
   // non-static column being written or when writing the primary key alone (i.e. range columns are
   // present or table does not have range columns).
-  std::unique_ptr<DocKey> pk_doc_key_;
-  std::unique_ptr<DocPath> pk_doc_path_;
+  boost::optional<DocKey> pk_doc_key_;
+  RefCntPrefix encoded_pk_doc_key_;
 
   QLWriteRequestPB request_;
   QLResponsePB* response_ = nullptr;
@@ -440,7 +449,7 @@ class PgsqlWriteOperation : public DocOperation, public DocExprExecutor {
                              const QLTableRow::SharedPtr& table_row);
 
   // Reading path to operate on.
-  void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const override;
+  void GetDocPathsToLock(DocPathsToLock *paths, IsolationLevel *level) const override;
 
   //------------------------------------------------------------------------------------------------
   // Context.
@@ -455,16 +464,16 @@ class PgsqlWriteOperation : public DocOperation, public DocExprExecutor {
   // UPDATE, DELETE, INSERT operations should return total number of new or changed rows.
 
   // State variables.
-  // Doc key and doc path for hashed key (i.e. without range columns). Present when there is a
-  // static column being written.
-  std::shared_ptr<DocKey> hashed_doc_key_;
-  std::shared_ptr<DocPath> hashed_doc_path_;
+  // Doc key and encoded doc key for hashed key (i.e. without range columns). Present when there is
+  // a static column being written.
+  boost::optional<DocKey> hashed_doc_key_;
+  RefCntPrefix encoded_hashed_doc_key_;
 
-  // Doc key and doc path for primary key (i.e. with range columns). Present when there is a
+  // Doc key and encoded doc key for primary key (i.e. with range columns). Present when there is a
   // non-static column being written or when writing the primary key alone (i.e. range columns are
   // present or table does not have range columns).
-  std::shared_ptr<DocKey> range_doc_key_;
-  std::shared_ptr<DocPath> range_doc_path_;
+  boost::optional<DocKey> range_doc_key_;
+  RefCntPrefix encoded_range_doc_key_;
 };
 
 class PgsqlReadOperation : public DocOperation, public DocExprExecutor {
@@ -485,7 +494,7 @@ class PgsqlReadOperation : public DocOperation, public DocExprExecutor {
     return Status::OK();
   }
 
-  void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const override {
+  void GetDocPathsToLock(DocPathsToLock *paths, IsolationLevel *level) const override {
     LOG(FATAL) << "This lock should not be applied as writing while reading is not yet allowed";
   }
 

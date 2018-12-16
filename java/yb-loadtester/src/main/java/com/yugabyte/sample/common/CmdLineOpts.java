@@ -46,6 +46,7 @@ public class CmdLineOpts {
   public static enum AppName {
     CassandraHelloWorld,
     CassandraKeyValue,
+    CassandraRangeKeyValue,
     CassandraBatchKeyValue,
     CassandraBatchTimeseries,
     CassandraTransactionalKeyValue,

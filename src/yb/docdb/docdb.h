@@ -34,6 +34,7 @@
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/lock_batch.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/value.h"
@@ -99,13 +100,17 @@ namespace docdb {
 //
 // Input: doc_write_ops
 // Context: lock_manager
-// Outputs: write_batch, need_read_snapshot
-void PrepareDocWriteOperation(const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-                              const scoped_refptr<Histogram>& write_lock_latency,
-                              IsolationLevel isolation_level,
-                              SharedLockManager *lock_manager,
-                              LockBatch *keys_locked,
-                              bool *need_read_snapshot);
+
+struct PrepareDocWriteOperationResult {
+  LockBatch lock_batch;
+  bool need_read_snapshot = false;
+};
+
+Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
+    const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
+    const scoped_refptr<Histogram>& write_lock_latency,
+    IsolationLevel isolation_level,
+    SharedLockManager *lock_manager);
 
 // This constructs a DocWriteBatch using the given list of DocOperations, reading the previous
 // state of data from RocksDB when necessary.

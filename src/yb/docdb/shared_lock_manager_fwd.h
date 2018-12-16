@@ -22,7 +22,7 @@ namespace yb {
 namespace docdb {
 
 class LockBatch;
-typedef std::bitset<kIntentTypeMapSize> LockState;
+typedef unsigned __int128 LockState;
 
 class SharedLockManager;
 
