@@ -92,8 +92,6 @@ class Builder:
         self.dependencies += [
             build_definitions.protobuf.ProtobufDependency(),
             build_definitions.crypt_blowfish.CryptBlowfishDependency(),
-            build_definitions.tacopie.TacopieDependency(),
-            build_definitions.cpp_redis.CppRedisDependency(),
             build_definitions.boost.BoostDependency(),
 
             build_definitions.gflags.GFlagsDependency(),

@@ -1516,16 +1516,6 @@ if (NOT APPLE)
     SHARED_LIB "${VMEM_SHARED_LIB}")
 endif()
 
-## tacopie
-find_package(Tacopie REQUIRED)
-include_directories(SYSTEM ${TACOPIE_INCLUDE_DIRS})
-ADD_THIRDPARTY_LIB(tacopie STATIC_LIB "${TACOPIE_STATIC_LIB}")
-
-## cpp_redis
-find_package(CppRedis REQUIRED)
-include_directories(SYSTEM ${CPP_REDIS_INCLUDE_DIRS})
-ADD_THIRDPARTY_LIB(cpp_redis STATIC_LIB "${CPP_REDIS_STATIC_LIB}")
-
 ## curl
 find_package(CURL REQUIRED)
 include_directories(SYSTEM ${CURL_INCLUDE_DIRS})
