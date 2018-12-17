@@ -22,21 +22,21 @@
 #include <set>
 #include <string>
 
-#include <cpp_redis/cpp_redis>
-
 #include "yb/client/client_fwd.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/test_util.h"
 
-using std::shared_ptr;
-
 namespace yb {
+
+namespace redisserver {
+class RedisClient;
+}
+
 namespace load_generator {
 
-typedef cpp_redis::client RedisClient;
-typedef cpp_redis::reply RedisReply;
+using redisserver::RedisClient;
 
 class SingleThreadedReader;
 class SingleThreadedWriter;
@@ -234,7 +234,7 @@ class YBSingleThreadedWriter : public SingleThreadedWriter {
  protected:
   client::YBClient* client_;
   client::TableHandle* table_;
-  shared_ptr<client::YBSession> session_;
+  std::shared_ptr<client::YBSession> session_;
 
  private:
   virtual bool Write(int64_t key_index, const string& key_str, const string& value_str) override;
@@ -265,7 +265,7 @@ class RedisSingleThreadedWriter : public SingleThreadedWriter {
   virtual void CloseSession() override;
   virtual void HandleInsertionFailure(int64_t key_index, const string& key_str) override;
 
-  vector<shared_ptr<RedisClient>> clients_;
+  std::vector<std::shared_ptr<RedisClient>> clients_;
   const string redis_server_addresses_;
 };
 
@@ -365,7 +365,7 @@ class YBSingleThreadedReader : public SingleThreadedReader {
  protected:
   client::YBClient* client_;
   client::TableHandle* table_;
-  shared_ptr<client::YBSession> session_;
+  std::shared_ptr<client::YBSession> session_;
 
  private:
   virtual ReadStatus PerformRead(
@@ -386,8 +386,8 @@ class RedisSingleThreadedReader : public SingleThreadedReader {
   virtual void ConfigureSession() override;
   virtual void CloseSession() override;
 
-  vector<shared_ptr<RedisClient>> clients_;
-  const string redis_server_addresses_;
+  std::vector<std::shared_ptr<RedisClient>> clients_;
+  const std::string redis_server_addresses_;
 };
 
 }  // namespace load_generator
