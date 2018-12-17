@@ -430,7 +430,7 @@ class TestRedisService : public RedisTableTestBase {
     return *test_client_;
   }
 
-  void UseClient(shared_ptr<RedisClient> client) {
+  void UseClient(std::shared_ptr<RedisClient> client) {
     VLOG(1) << "Using " << client.get() << " replacing " << test_client_.get();
     test_client_ = client;
   }
@@ -1518,7 +1518,7 @@ TEST_F(TestRedisService, TestEmptyValue) {
 void ConnectWithPassword(
     TestRedisService* test, const char* password, bool auth_should_succeed,
     bool get_should_succeed) {
-  shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", test->server_port());
+  auto rc1 = std::make_shared<RedisClient>("127.0.0.1", test->server_port());
   test->UseClient(rc1);
 
   if (auth_should_succeed) {
@@ -1540,9 +1540,9 @@ void ConnectWithPassword(
 }
 
 TEST_F(TestRedisService, TestSelect) {
-  shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> rc3 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc3 = std::make_shared<RedisClient>("127.0.0.1", server_port());
 
   const string default_db("0");
   const string second_db("2");
@@ -1765,10 +1765,10 @@ TEST_F(TestRedisService, TestDeleteDB) {
 TEST_F(TestRedisService, TestMonitor) {
   constexpr uint32 kDelayMs = NonTsanVsTsan(100, 1000);
   expected_no_sessions_ = true;
-  shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> mc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> mc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto mc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto mc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
 
   UseClient(rc1);
   DoRedisTestBulkString(__LINE__, {"PING", "cmd1"}, "cmd1");  // Excluded from both mc1 and mc2.
@@ -1857,11 +1857,12 @@ TEST_F(TestRedisService, TestMonitor) {
 
 void TestSubscribe(
     TestRedisService* tester,
-    shared_ptr<RedisClient> ps0,  // Used for PubSub command
-    shared_ptr<RedisClient> sc1,  // Used for Subscribe
-    shared_ptr<RedisClient> sc2, shared_ptr<RedisClient> sc3,
-    shared_ptr<RedisClient> pc1,  // Used for Publish
-    shared_ptr<RedisClient> pc2) {
+    std::shared_ptr<RedisClient> ps0,  // Used for PubSub command
+    std::shared_ptr<RedisClient> sc1,  // Used for Subscribe
+    std::shared_ptr<RedisClient> sc2,
+    std::shared_ptr<RedisClient> sc3,
+    std::shared_ptr<RedisClient> pc1,  // Used for Publish
+    std::shared_ptr<RedisClient> pc2) {
   const string topic1 = "topic1", topic2 = "topic2";
   const string msg1 = "msg1", msg2 = "msg2";
 
@@ -1968,11 +1969,12 @@ void TestSubscribe(
 
 void TestUnsubscribe(
     TestRedisService* tester,
-    shared_ptr<RedisClient> ps0,  // Used for PubSub command
-    shared_ptr<RedisClient> sc1,  // Used for Subscribe
-    shared_ptr<RedisClient> sc2, shared_ptr<RedisClient> sc3,
-    shared_ptr<RedisClient> pc1,  // Used for Publish
-    shared_ptr<RedisClient> pc2) {
+    std::shared_ptr<RedisClient> ps0,  // Used for PubSub command
+    std::shared_ptr<RedisClient> sc1,  // Used for Subscribe
+    std::shared_ptr<RedisClient> sc2,
+    std::shared_ptr<RedisClient> sc3,
+    std::shared_ptr<RedisClient> pc1,  // Used for Publish
+    std::shared_ptr<RedisClient> pc2) {
   const string topic1 = "topic1", topic2 = "topic2";
   const string msg1 = "msg1", msg2 = "msg2", msg3 = "msg3", msg4 = "msg4";
 
@@ -2154,11 +2156,12 @@ void TestUnsubscribe(
 
 void TestPSubscribe(
     TestRedisService* tester,
-    shared_ptr<RedisClient> ps0,  // Used for PubSub command
-    shared_ptr<RedisClient> sc1,  // Used for Subscribe
-    shared_ptr<RedisClient> sc2, shared_ptr<RedisClient> sc3,
-    shared_ptr<RedisClient> pc1,  // Used for Publish
-    shared_ptr<RedisClient> pc2) {
+    std::shared_ptr<RedisClient> ps0,  // Used for PubSub command
+    std::shared_ptr<RedisClient> sc1,  // Used for Subscribe
+    std::shared_ptr<RedisClient> sc2,
+    std::shared_ptr<RedisClient> sc3,
+    std::shared_ptr<RedisClient> pc1,  // Used for Publish
+    std::shared_ptr<RedisClient> pc2) {
   const string pattern1 = "t*1", pattern2 = "t*2", common_pattern = "t*";
   const string topic1 = "topic1", topic2 = "topic2";
   const string msg1 = "msg1", msg2 = "msg2";
@@ -2251,11 +2254,12 @@ void TestPSubscribe(
 
 void TestPUnsubscribe(
     TestRedisService* tester,
-    shared_ptr<RedisClient> ps0,  // Used for PubSub command
-    shared_ptr<RedisClient> sc1,  // Used for Subscribe
-    shared_ptr<RedisClient> sc2, shared_ptr<RedisClient> sc3,
-    shared_ptr<RedisClient> pc1,  // Used for Publish
-    shared_ptr<RedisClient> pc2) {
+    std::shared_ptr<RedisClient> ps0,  // Used for PubSub command
+    std::shared_ptr<RedisClient> sc1,  // Used for Subscribe
+    std::shared_ptr<RedisClient> sc2,
+    std::shared_ptr<RedisClient> sc3,
+    std::shared_ptr<RedisClient> pc1,  // Used for Publish
+    std::shared_ptr<RedisClient> pc2) {
   const string pattern1 = "to*1", pattern2 = "to*2";
   const string topic1 = "topic1", topic2 = "topic2";
   const string msg1 = "msg1", msg2 = "msg2", msg3 = "msg3";
@@ -2468,7 +2472,7 @@ class TestRedisServiceExternal : public TestRedisService {
 
 void TestRedisServiceExternal::TestPubSub(
     LocalOrCluster ltype, SubOrUnsub stype, PatternOrChannel ptype) {
-  shared_ptr<RedisClient> ps0, sc1, sc2, sc3, pc1, pc2;
+  std::shared_ptr<RedisClient> ps0, sc1, sc2, sc3, pc1, pc2;
 
   if (ltype == LocalOrCluster::kLocal) {
     auto ts0 = external_mini_cluster()->tablet_server(0);
@@ -2576,8 +2580,8 @@ TEST_F(TestRedisService, TestAuth) {
   FLAGS_redis_password_caching_duration_ms = 0;
   const char* kRedisAuthPassword = "redis-password";
   // Expect new connections to require authentication
-  shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
   UseClient(rc1);
   DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
   SyncClient();
@@ -2645,7 +2649,7 @@ TEST_F(TestRedisService, TestPasswordChangeWithDelay) {
   FLAGS_redis_password_caching_duration_ms = kCachingDurationMs;
   const char* kRedisAuthPassword = "redis-password";
   auto start = std::chrono::steady_clock::now();
-  shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
 
   UseClient(rc1);
   DoRedisTestOk(__LINE__, {"CONFIG", "SET", "REQUIREPASS", kRedisAuthPassword});

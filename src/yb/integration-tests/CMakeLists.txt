@@ -48,8 +48,6 @@ set(INTEGRATION_TESTS_SRCS
 
 add_library(integration-tests ${INTEGRATION_TESTS_SRCS})
 target_link_libraries(integration-tests
-  cpp_redis
-  tacopie
   tserver
   tserver_test_util
   master
@@ -58,6 +56,7 @@ target_link_libraries(integration-tests
   yb_client
   yb_client_test_util
   yb_fs
+  yb-redisserver-test
   yb_test_util
   yb-redis
   yb_pgwrapper)

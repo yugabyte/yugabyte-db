@@ -29,6 +29,9 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/yql/redis/redisserver/redis_client.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
@@ -66,6 +69,7 @@ using yb::client::YBNoOp;
 using yb::client::YBSession;
 using yb::client::YBTable;
 using yb::client::YBValue;
+using yb::redisserver::RedisReply;
 
 DEFINE_bool(load_gen_verbose,
             false,
@@ -329,11 +333,9 @@ void ConfigureRedisSessions(
   std::vector<string> addresses;
   SplitStringUsing(redis_server_addresses, ",", &addresses);
   for (auto& addr : addresses) {
-    shared_ptr<RedisClient> client(new RedisClient());
-    auto remote = ParseEndpoint(addr, 6379);
-    CHECK_OK(remote);
-    client->connect(remote->address().to_string(), remote->port());
-    clients->push_back(client);
+    auto remote = CHECK_RESULT(ParseEndpoint(addr, 6379));
+    clients->push_back(std::make_shared<RedisClient>(
+        remote.address().to_string(), remote.port()));
   }
 }
 
@@ -346,8 +348,8 @@ bool RedisSingleThreadedWriter::Write(
   bool success = false;
   auto writer_index = writer_index_;
   int64_t idx = key_index % clients_.size();
-  clients_[idx]->set(
-      key_str, value_str, [&success, key_index, writer_index](RedisReply& reply) {
+  clients_[idx]->Send(
+      {"SET", key_str, value_str}, [&success, key_index, writer_index](const RedisReply& reply) {
         if ("OK" == reply.as_string()) {
           VLOG(2) << "Writer " << writer_index << " Successfully inserted key #" << key_index
                   << " into redis ";
@@ -357,7 +359,7 @@ bool RedisSingleThreadedWriter::Write(
           success = false;
         }
       });
-  clients_[idx]->sync_commit();
+  clients_[idx]->Commit();
 
   return success;
 }
@@ -368,7 +370,7 @@ void RedisSingleThreadedWriter::HandleInsertionFailure(int64_t key_index, const 
 
 void RedisSingleThreadedWriter::CloseSession() {
   for (auto client : clients_) {
-    client->disconnect();
+    client->Disconnect();
   }
 }
 
@@ -377,7 +379,7 @@ bool RedisNoopSingleThreadedWriter::Write(
   bool success = false;
   auto writer_index = writer_index_;
   int64_t idx = key_index % clients_.size();
-  clients_[idx]->echo("OK", [&success, key_index, writer_index](RedisReply& reply) {
+  clients_[idx]->Send({"ECHO", "OK"}, [&success, key_index, writer_index](const RedisReply& reply) {
     if ("OK" == reply.as_string()) {
       VLOG(2) << "Writer " << writer_index << " Successfully inserted key #" << key_index
               << " into redis ";
@@ -387,7 +389,7 @@ bool RedisNoopSingleThreadedWriter::Write(
       success = false;
     }
   });
-  clients_[idx]->sync_commit();
+  clients_[idx]->Commit();
 
   return success;
 }
@@ -559,7 +561,7 @@ void RedisSingleThreadedReader::ConfigureSession() {
 
 void RedisSingleThreadedReader::CloseSession() {
   for (auto client : clients_) {
-    client->disconnect();
+    client->Disconnect();
   }
 }
 
@@ -647,10 +649,12 @@ ReadStatus RedisSingleThreadedReader::PerformRead(
     int64_t key_index, const string& key_str, const string& expected_value_str) {
   string value_str;
   int64_t idx = key_index % clients_.size();
-  clients_[idx]->get(key_str, [&value_str](RedisReply& reply) { value_str = reply.as_string(); });
+  clients_[idx]->Send({"GET", key_str}, [&value_str](const RedisReply& reply) {
+    value_str = reply.as_string();
+  });
   VLOG(3) << "Trying to read key #" << key_index << " from redis "
           << " key : " << key_str;
-  clients_[idx]->sync_commit();
+  clients_[idx]->Commit();
 
   if (expected_value_str != value_str) {
     LOG(INFO) << "Read the wrong value for #" << key_index << " from redis "
