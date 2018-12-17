@@ -99,7 +99,7 @@ target_link_libraries(yb_client_test_util
                       gmock
                       yb_client)
 
-add_library(ql-dml-test-base ql-dml-test-base.cc)
+add_library(ql-dml-test-base ql-dml-test-base.cc txn-test-base.cc)
 target_link_libraries(ql-dml-test-base integration-tests)
 
 # Tests

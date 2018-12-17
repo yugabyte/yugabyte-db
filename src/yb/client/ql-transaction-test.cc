@@ -13,35 +13,29 @@
 //
 //
 
-#include <thread>
+#include "yb/client/txn-test-base.h"
 
-#include <boost/optional/optional.hpp>
 #include <boost/scope_exit.hpp>
 
-#include "yb/client/ql-dml-test-base.h"
-#include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_rpc.h"
-#include "yb/client/transaction_manager.h"
 
 #include "yb/consensus/consensus.h"
 
-#include "yb/yql/cql/ql/util/errcodes.h"
-#include "yb/yql/cql/ql/util/statement_result.h"
-
 #include "yb/rpc/rpc.h"
 
-#include "yb/server/hybrid_clock.h"
-#include "yb/server/skewed_clock.h"
-
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_coordinator.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/random_util.h"
+
+#include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;
 
@@ -49,290 +43,22 @@ using yb::tablet::GetTransactionTimeout;
 using yb::tablet::TabletPeer;
 
 DECLARE_uint64(transaction_heartbeat_usec);
-DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
-DECLARE_bool(transaction_disable_heartbeat_in_tests);
-DECLARE_double(transaction_ignore_applying_probability_in_tests);
-DECLARE_uint64(transaction_check_interval_usec);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(transaction_allow_rerequest_status_in_tests);
 DECLARE_uint64(transaction_delay_status_reply_usec_in_tests);
-DECLARE_string(time_source);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(transaction_disable_proactive_cleanup_in_tests);
 DECLARE_uint64(aborted_intent_cleanup_ms);
-DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
-DECLARE_int32(load_balancer_max_concurrent_adds);
 DECLARE_int32(master_inject_latency_on_transactional_tablet_lookups_ms);
 
 namespace yb {
 namespace client {
 
-namespace {
-
-constexpr size_t kNumRows = 5;
-const auto kTransactionApplyTime = NonTsanVsTsan(3s, 15s);
-
-// We use different sign to distinguish inserted and updated values for testing.
-int32_t GetMultiplier(const WriteOpType op_type) {
-  switch (op_type) {
-    case WriteOpType::INSERT:
-      return 1;
-    case WriteOpType::UPDATE:
-      return -1;
-    case WriteOpType::DELETE:
-      return 0; // Value is not used in delete path.
-  }
-  FATAL_INVALID_ENUM_VALUE(WriteOpType, op_type);
-}
-
-int32_t KeyForTransactionAndIndex(size_t transaction, size_t index) {
-  return static_cast<int32_t>(transaction * 10 + index);
-}
-
-int32_t ValueForTransactionAndIndex(size_t transaction, size_t index, const WriteOpType op_type) {
-  return static_cast<int32_t>(transaction * 10 + index + 2) * GetMultiplier(op_type);
-}
-
-void SetIgnoreApplyingProbability(double value) {
-  SetAtomicFlag(value, &FLAGS_transaction_ignore_applying_probability_in_tests);
-}
-
-void SetDisableHeartbeatInTests(bool value) {
-  SetAtomicFlag(value, &FLAGS_transaction_disable_heartbeat_in_tests);
-}
-
-void DisableApplyingIntents() {
-  SetIgnoreApplyingProbability(1.0);
-}
-
-void CommitAndResetSync(YBTransactionPtr *txn) {
-  CountDownLatch latch(1);
-  (*txn)->Commit([&latch](const Status& status) {
-    ASSERT_OK(status);
-    latch.CountDown(1);
-  });
-  txn->reset();
-  latch.Wait();
-}
-
-void DisableTransactionTimeout() {
-  SetAtomicFlag(std::numeric_limits<double>::max(),
-                &FLAGS_transaction_max_missed_heartbeat_periods);
-}
-
-} // namespace
-
-#define VERIFY_ROW(...) VerifyRow(__LINE__, __VA_ARGS__)
-
-class QLTransactionTest : public KeyValueTableTest {
+class QLTransactionTest : public TransactionTestBase {
  protected:
-  void SetUp() override {
-    server::SkewedClock::Register();
-    FLAGS_time_source = server::SkewedClock::kName;
-    FLAGS_load_balancer_max_concurrent_adds = 100;
-    KeyValueTableTest::SetUp();
-
-    CreateTable(Transactional::kTrue);
-
-    FLAGS_log_segment_size_bytes = log_segment_size_bytes();
-    FLAGS_log_min_seconds_to_retain = 5;
-    FLAGS_intents_flush_max_delay_ms = 250;
-
-    HybridTime::TEST_SetPrettyToString(true);
-
-    ASSERT_OK(clock_->Init());
-    transaction_manager_.emplace(client_, clock_, client::LocalTabletFilter());
-
-    server::ClockPtr clock2(new server::HybridClock(skewed_clock_));
-    ASSERT_OK(clock2->Init());
-    transaction_manager2_.emplace(client_, clock2, client::LocalTabletFilter());
-  }
-
-  virtual uint64_t log_segment_size_bytes() const {
-    return 128;
-  }
-
-  void WriteRows(
-      const YBSessionPtr& session, size_t transaction = 0,
-      const WriteOpType op_type = WriteOpType::INSERT) {
-    for (size_t r = 0; r != kNumRows; ++r) {
-      ASSERT_OK(WriteRow(
-          session,
-          KeyForTransactionAndIndex(transaction, r),
-          ValueForTransactionAndIndex(transaction, r, op_type),
-          op_type));
-    }
-  }
-
-  void VerifyRow(int line, const YBSessionPtr& session, int32_t key, int32_t value,
-                 const std::string& column = kValueColumn) {
-    VLOG(4) << "Calling SelectRow";
-    auto row = SelectRow(session, key, column);
-    ASSERT_TRUE(row.ok()) << "Bad status: " << row << ", originator: " << __FILE__ << ":" << line;
-    VLOG(4) << "SelectRow returned: " << *row;
-    ASSERT_EQ(value, *row) << "Originator: " << __FILE__ << ":" << line;
-  }
-
-  void WriteData(const WriteOpType op_type = WriteOpType::INSERT, size_t transaction = 0) {
-    auto txn = CreateTransaction();
-    WriteRows(CreateSession(txn), transaction, op_type);
-    ASSERT_OK(txn->CommitFuture().get());
-    LOG(INFO) << "Committed";
-  }
-
-  void WriteDataWithRepetition() {
-    auto txn = CreateTransaction();
-    auto session = CreateSession(txn);
-    for (size_t r = 0; r != kNumRows; ++r) {
-      for (int j = 10; j--;) {
-        ASSERT_OK(WriteRow(
-            session,
-            KeyForTransactionAndIndex(0, r),
-            ValueForTransactionAndIndex(0, r, WriteOpType::INSERT) + j));
-      }
-    }
-    ASSERT_OK(txn->CommitFuture().get());
-  }
-
-  YBTransactionPtr CreateTransaction() {
-    auto result = std::make_shared<YBTransaction>(transaction_manager_.get_ptr());
-    EXPECT_OK(result->Init(IsolationLevel::SNAPSHOT_ISOLATION));
-    return result;
-  }
-
-  YBTransactionPtr CreateTransaction2() {
-    auto result = std::make_shared<YBTransaction>(transaction_manager2_.get_ptr());
-    EXPECT_OK(result->Init(IsolationLevel::SNAPSHOT_ISOLATION));
-    return result;
-  }
-
-  void VerifyRows(const YBSessionPtr& session,
-                  size_t transaction = 0,
-                  const WriteOpType op_type = WriteOpType::INSERT,
-                  const std::string& column = kValueColumn) {
-    std::vector<client::YBqlReadOpPtr> ops;
-    for (size_t r = 0; r != kNumRows; ++r) {
-      ops.push_back(ReadRow(session, KeyForTransactionAndIndex(transaction, r), column));
-    }
-    ASSERT_OK(session->Flush());
-    for (size_t r = 0; r != kNumRows; ++r) {
-      SCOPED_TRACE(Format("Row: $0, key: $1", r, KeyForTransactionAndIndex(transaction, r)));
-      auto& op = ops[r];
-      ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-      auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
-      ASSERT_EQ(rowblock->row_count(), 1);
-      const auto& first_column = rowblock->row(0).column(0);
-      ASSERT_EQ(QLValue::InternalType::kInt32Value, first_column.type());
-      ASSERT_EQ(first_column.int32_value(), ValueForTransactionAndIndex(transaction, r, op_type));
-    }
-  }
-
-  YBqlReadOpPtr ReadRow(const YBSessionPtr& session,
-                        int32_t key,
-                        const std::string& column = kValueColumn) {
-    auto op = table_.NewReadOp();
-    auto* const req = op->mutable_request();
-    QLAddInt32HashValue(req, key);
-    table_.AddColumns({column}, req);
-    EXPECT_OK(session->Apply(op));
-    return op;
-  }
-
-  void VerifyData(size_t num_transactions = 1, const WriteOpType op_type = WriteOpType::INSERT,
-                  const std::string& column = kValueColumn) {
-    VLOG(4) << "Verifying data..." << std::endl;
-    auto session = CreateSession();
-    for (size_t i = 0; i != num_transactions; ++i) {
-      VerifyRows(session, i, op_type, column);
-    }
-  }
-
-  size_t CountTransactions() {
-    size_t result = 0;
-    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-      auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
-      auto peers = tablet_manager->GetTabletPeers();
-      for (const auto& peer : peers) {
-        if (peer->consensus()->GetLeaderStatus() !=
-                consensus::LeaderStatus::NOT_LEADER &&
-            peer->tablet()->transaction_coordinator()) {
-          result += peer->tablet()->transaction_coordinator()->test_count_transactions();
-        }
-      }
-    }
-    return result;
-  }
-
-  size_t CountIntents() {
-    size_t result = 0;
-    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-      auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
-      auto peers = tablet_manager->GetTabletPeers();
-      for (const auto &peer : peers) {
-        auto participant = peer->tablet()->transaction_participant();
-        if (participant) {
-          result += participant->TEST_CountIntents();
-        }
-      }
-    }
-    return result;
-  }
-
-  void CheckNoRunningTransactions() {
-    MonoTime deadline = MonoTime::Now() + 5s;
-    bool has_bad = false;
-    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-      auto server = cluster_->mini_tablet_server(i)->server();
-      auto tablets = server->tablet_manager()->GetTabletPeers();
-      for (const auto& peer : tablets) {
-        auto tablet_title = Format("Tablet: $0", peer->tablet()->tablet_id());
-        auto participant = peer->tablet()->transaction_participant();
-        if (participant) {
-          auto status = Wait([participant] {
-                return participant->TEST_GetNumRunningTransactions() == 0;
-              },
-              deadline,
-              "Wait until no transactions are running");
-          if (!status.ok()) {
-            LOG(ERROR) << Format(
-                "Server: $0, tablet: $1, transactions: $2",
-                server->permanent_uuid(), peer->tablet()->tablet_id(),
-                participant->TEST_GetNumRunningTransactions());
-            has_bad = true;
-          }
-        }
-      }
-    }
-    ASSERT_EQ(false, has_bad);
-  }
-
-  bool CheckAllTabletsRunning() {
-    bool result = true;
-    size_t count = 0;
-    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-      auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
-      if (i == 0) {
-        count = peers.size();
-      } else if (count != peers.size()) {
-        LOG(WARNING) << "Different number of tablets in tservers: "
-                     << count << " vs " << peers.size() << " at " << i;
-        result = false;
-      }
-      for (const auto& peer : peers) {
-        auto status = peer->CheckRunning();
-        if (!status.ok()) {
-          LOG(WARNING) << Format("T $0 P $1 is not running: $2", peer->tablet_id(),
-                                 peer->permanent_uuid(), status);
-          result = false;
-        }
-      }
-    }
-    return result;
-  }
-
   // We write data with first transaction then try to read it another one.
   // If commit is true, then first transaction is committed and second should be restarted.
   // Otherwise second transaction would see pending intents from first one and should not restart.
@@ -340,11 +66,9 @@ class QLTransactionTest : public KeyValueTableTest {
 
   void TestWriteConflicts(bool do_restarts);
 
-  std::shared_ptr<server::SkewedClock> skewed_clock_{
-      std::make_shared<server::SkewedClock>(WallClock())};
-  server::ClockPtr clock_{new server::HybridClock(skewed_clock_)};
-  boost::optional<TransactionManager> transaction_manager_;
-  boost::optional<TransactionManager> transaction_manager2_;
+  IsolationLevel GetIsolationLevel() override {
+    return IsolationLevel::SNAPSHOT_ISOLATION;
+  }
 };
 
 TEST_F(QLTransactionTest, Simple) {
@@ -355,7 +79,6 @@ TEST_F(QLTransactionTest, Simple) {
 }
 
 TEST_F(QLTransactionTest, LookupTabletFailure) {
-  google::FlagSaver saver;
   FLAGS_master_inject_latency_on_transactional_tablet_lookups_ms =
       TransactionRpcTimeout().ToMilliseconds() + 500;
 
