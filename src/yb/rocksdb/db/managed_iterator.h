@@ -17,6 +17,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
+#ifndef YB_ROCKSDB_DB_MANAGED_ITERATOR_H
+#define YB_ROCKSDB_DB_MANAGED_ITERATOR_H
+
 #pragma once
 
 #ifndef ROCKSDB_LITE
@@ -25,6 +29,8 @@
 #include <queue>
 #include <string>
 #include <vector>
+
+#include "yb/gutil/thread_annotations.h"
 
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db.h"
@@ -72,9 +78,9 @@ class ManagedIterator : public Iterator {
   void UpdateCurrent();
   void SeekInternal(const Slice& user_key, bool seek_to_first);
   bool NeedToRebuild();
-  void Lock();
-  bool TryLock();
-  void UnLock();
+  void Lock() EXCLUSIVE_LOCK_FUNCTION();
+  bool TryLock() EXCLUSIVE_TRYLOCK_FUNCTION(true);
+  void UnLock() UNLOCK_FUNCTION();
   DBImpl* const db_;
   ReadOptions read_options_;
   ColumnFamilyData* const cfd_;
@@ -97,3 +103,5 @@ class ManagedIterator : public Iterator {
 
 }  // namespace rocksdb
 #endif  // !ROCKSDB_LITE
+
+#endif // YB_ROCKSDB_DB_MANAGED_ITERATOR_H

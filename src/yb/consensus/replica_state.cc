@@ -140,11 +140,8 @@ Status ReplicaState::LockForStart(UniqueLock* lock) const {
 }
 
 bool ReplicaState::IsLocked() const {
-  if (update_lock_.try_lock()) {
-    update_lock_.unlock();
-    return false;
-  }
-  return true;
+  std::unique_lock<std::mutex> lock(update_lock_, std::try_to_lock);
+  return !lock.owns_lock();
 }
 
 ReplicaState::UniqueLock ReplicaState::LockForRead() const {
