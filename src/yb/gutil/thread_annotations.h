@@ -55,11 +55,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef BASE_THREAD_ANNOTATIONS_H_
-#define BASE_THREAD_ANNOTATIONS_H_
+#ifndef YB_GUTIL_THREAD_ANNOTATIONS_H
+#define YB_GUTIL_THREAD_ANNOTATIONS_H
 
 
-#if defined(__GNUC__) && defined(__SUPPORT_TS_ANNOTATION__) && !defined(SWIG)
+#if (defined(__GNUC__) && defined(__SUPPORT_TS_ANNOTATION__) && !defined(SWIG)) || \
+    defined(__clang__)
 #define THREAD_ANNOTATION_ATTRIBUTE__(x)   __attribute__((x))
 #else
 #define THREAD_ANNOTATION_ATTRIBUTE__(x)   // no-op
@@ -137,6 +138,8 @@
 
 #define UNLOCK_FUNCTION(...) \
   THREAD_ANNOTATION_ATTRIBUTE__(unlock(__VA_ARGS__))
+
+#define CAPABILITY(...)
 
 // An escape hatch for thread safety analysis to ignore the annotated function.
 #define NO_THREAD_SAFETY_ANALYSIS \
@@ -235,6 +238,9 @@
 #define NO_THREAD_SAFETY_ANALYSIS \
   THREAD_ANNOTATION_ATTRIBUTE__(no_thread_safety_analysis)
 
+#define CAPABILITY(...) \
+  THREAD_ANNOTATION_ATTRIBUTE__(capability(__VA_ARGS__))
+
 #define NO_THREAD_SAFETY_ANALYSIS_OPT
 
 #define NO_THREAD_SAFETY_ANALYSIS_FIXME \
@@ -248,4 +254,4 @@
 
 #endif  // defined(__clang__)
 
-#endif  // BASE_THREAD_ANNOTATIONS_H_
+#endif  // YB_GUTIL_THREAD_ANNOTATIONS_H

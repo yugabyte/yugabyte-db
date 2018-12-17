@@ -51,8 +51,8 @@
 // If used within a signal handler, all lock holders
 // should block the signal even outside the signal handler.
 
-#ifndef BASE_SPINLOCK_H_
-#define BASE_SPINLOCK_H_
+#ifndef YB_GUTIL_SPINLOCK_H
+#define YB_GUTIL_SPINLOCK_H
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/basictypes.h"
@@ -84,7 +84,7 @@ class LOCKABLE SpinLock {
   // Acquire this SpinLock.
   // TODO(csilvers): uncomment the annotation when we figure out how to
   //                 support this macro with 0 args (see thread_annotations.h)
-  inline void Lock() /*EXCLUSIVE_LOCK_FUNCTION()*/ {
+  inline void Lock() EXCLUSIVE_LOCK_FUNCTION() {
     if (base::subtle::Acquire_CompareAndSwap(&lockword_, kSpinLockFree,
                                              kSpinLockHeld) != kSpinLockFree) {
       SlowLock();
@@ -109,7 +109,7 @@ class LOCKABLE SpinLock {
   // Release this SpinLock, which must be held by the calling thread.
   // TODO(csilvers): uncomment the annotation when we figure out how to
   //                 support this macro with 0 args (see thread_annotations.h)
-  inline void Unlock() /*UNLOCK_FUNCTION()*/ {
+  inline void Unlock() UNLOCK_FUNCTION() {
     ANNOTATE_RWLOCK_RELEASED(this, 1);
     uint64 wait_cycles = static_cast<uint64>(
         base::subtle::Release_AtomicExchange(&lockword_, kSpinLockFree));
@@ -154,13 +154,12 @@ class SCOPED_LOCKABLE SpinLockHolder {
       : lock_(l) {
     l->Lock();
   }
-  // TODO(csilvers): uncomment the annotation when we figure out how to
-  //                 support this macro with 0 args (see thread_annotations.h)
-  inline ~SpinLockHolder() /*UNLOCK_FUNCTION()*/ { lock_->Unlock(); }
+
+  inline ~SpinLockHolder() UNLOCK_FUNCTION() { lock_->Unlock(); }
 };
 // Catch bug where variable name is omitted, e.g. SpinLockHolder (&lock);
 #define SpinLockHolder(x) COMPILE_ASSERT(0, spin_lock_decl_missing_var_name)
 
 } // namespace base
 
-#endif  // BASE_SPINLOCK_H_
+#endif  // YB_GUTIL_SPINLOCK_H

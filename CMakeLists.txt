@@ -630,6 +630,11 @@ if(IS_CLANG)
   ADD_CXX_FLAGS("-Werror=string-plus-int")
   ADD_CXX_FLAGS("-Werror=return-stack-address")
   ADD_CXX_FLAGS("-Werror=implicit-fallthrough")
+  # Remove this check when all Clang builds will use libc++.
+  if("${USING_SANITIZERS}" OR APPLE)
+    ADD_CXX_FLAGS("-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS")
+    ADD_CXX_FLAGS("-Wthread-safety-analysis")
+  endif()
 endif()
 
 DETECT_BREW()

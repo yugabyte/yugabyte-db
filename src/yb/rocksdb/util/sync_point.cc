@@ -112,9 +112,9 @@ void SyncPoint::Process(const std::string& point, void* cb_arg) {
   auto callback_pair = callbacks_.find(point);
   if (callback_pair != callbacks_.end()) {
     num_callbacks_running_++;
-    mutex_.unlock();
+    lock.unlock();
     callback_pair->second(cb_arg);
-    mutex_.lock();
+    lock.lock();
     num_callbacks_running_--;
     cv_.notify_all();
   }

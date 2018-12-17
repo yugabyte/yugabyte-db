@@ -77,7 +77,7 @@ def check_remote_files(escaped_remote_path, args, files):
         command = 'cd {0}'.format(args.remote_path)
         message = 'Reverting:\n'
         for file_path in unexpected:
-            message += '  {0}\n'.format(file)
+            message += '  {0}\n'.format(file_path)
             command += ' && git checkout -- {0}'.format(shlex.quote(file_path))
         print(message)
         remote_communicate(args, command)
