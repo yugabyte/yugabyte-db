@@ -39,7 +39,8 @@ const unsigned char kContextId[] = { 'Y', 'u', 'g', 'a', 'B', 'y', 't', 'e' };
 
 std::vector<std::unique_ptr<std::mutex>> crypto_mutexes;
 
-__attribute__((unused)) void LockingCallback(int mode, int n, const char* /*file*/, int /*line*/) {
+__attribute__((unused)) void NO_THREAD_SAFETY_ANALYSIS LockingCallback(
+    int mode, int n, const char* /*file*/, int /*line*/) {
   CHECK_LT(static_cast<size_t>(n), crypto_mutexes.size());
   if (mode & CRYPTO_LOCK) {
     crypto_mutexes[n]->lock();
