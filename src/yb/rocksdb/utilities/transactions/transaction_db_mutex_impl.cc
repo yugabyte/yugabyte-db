@@ -27,20 +27,22 @@
 #include <functional>
 #include <mutex>
 
+#include "yb/gutil/thread_annotations.h"
+
 #include "yb/rocksdb/utilities/transaction_db_mutex.h"
 
 namespace rocksdb {
 
-class TransactionDBMutexImpl : public TransactionDBMutex {
+class CAPABILITY("mutex") TransactionDBMutexImpl : public TransactionDBMutex {
  public:
   TransactionDBMutexImpl() {}
   ~TransactionDBMutexImpl() {}
 
-  Status Lock() override;
+  Status Lock() EXCLUSIVE_LOCK_FUNCTION() override;
 
   Status TryLockFor(int64_t timeout_time) override;
 
-  void UnLock() override { mutex_.unlock(); }
+  void UnLock() UNLOCK_FUNCTION() override { mutex_.unlock(); }
 
   friend class TransactionDBCondVarImpl;
 
@@ -81,7 +83,7 @@ Status TransactionDBMutexImpl::Lock() {
   return Status::OK();
 }
 
-Status TransactionDBMutexImpl::TryLockFor(int64_t timeout_time) {
+Status NO_THREAD_SAFETY_ANALYSIS TransactionDBMutexImpl::TryLockFor(int64_t timeout_time) {
   bool locked = true;
 
   if (timeout_time == 0) {

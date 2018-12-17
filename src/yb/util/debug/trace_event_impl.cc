@@ -460,7 +460,7 @@ class TraceLog::OptionalAutoLock {
       lock_->Unlock();
   }
 
-  void EnsureAcquired() {
+  void EnsureAcquired() EXCLUSIVE_LOCK_FUNCTION() {
     if (!locked_) {
       lock_->Lock();
       locked_ = true;
@@ -1389,7 +1389,7 @@ void TraceLog::SetDisabled() {
   SetDisabledWhileLocked();
 }
 
-void TraceLog::SetDisabledWhileLocked() {
+void NO_THREAD_SAFETY_ANALYSIS TraceLog::SetDisabledWhileLocked() {
   DCHECK(lock_.IsHeld());
 
   if (!IsEnabled())
@@ -2125,8 +2125,8 @@ TraceEvent* TraceLog::GetEventByHandle(TraceEventHandle handle) {
   return GetEventByHandleInternal(handle, nullptr);
 }
 
-TraceEvent* TraceLog::GetEventByHandleInternal(TraceEventHandle handle,
-                                               OptionalAutoLock* lock) {
+TraceEvent* NO_THREAD_SAFETY_ANALYSIS TraceLog::GetEventByHandleInternal(
+    TraceEventHandle handle, OptionalAutoLock* lock) {
   TraceLog::PerThreadInfo* thr_info = TraceLog::thread_local_info_;
 
   if (!handle.chunk_seq)
