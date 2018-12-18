@@ -105,11 +105,10 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
     write_req_->clear_range_column_values();
   }
 
-  // Set the primary key indicator in protobuf.
   if (missing_primary_key) {
     return STATUS(InvalidArgument, "Primary key must be fully specified for modifying table");
   }
-  write_req_->set_missing_primary_key(missing_primary_key);
+
   return Status::OK();
 }
 

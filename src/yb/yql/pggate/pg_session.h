@@ -21,6 +21,7 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/callback.h"
+#include "yb/util/oid_generator.h"
 
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_column.h"
@@ -120,6 +121,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     connected_database_ = "";
   }
 
+  // Generate a new random and unique rowid. It is a v4 UUID.
+  string GenerateNewRowid() {
+    return rowid_generator_.Next(true /* binary_id */);
+  }
+
  private:
   // Returns the appopriate session to use, in most cases the one used by the current transaction.
   // read_only_op - whether this is being done in the context of a read-only operation. For
@@ -143,6 +149,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Execution status.
   Status status_;
   string errmsg_;
+
+  // Rowid generator.
+  ObjectIdGenerator rowid_generator_;
 };
 
 }  // namespace pggate

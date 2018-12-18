@@ -45,6 +45,8 @@ class PgExpr {
     PG_EXPR_COUNT,
     PG_EXPR_MAX,
     PG_EXPR_MIN,
+
+    PG_EXPR_GENERATE_ROWID,
   };
 
   // Public types.
@@ -237,6 +239,25 @@ class PgOperator : public PgExpr {
  private:
   const string opname_;
   std::vector<PgExpr*> args_;
+};
+
+class PgGenerateRowId : public PgExpr {
+ public:
+  // Public types.
+  typedef std::shared_ptr<PgGenerateRowId> SharedPtr;
+  typedef std::shared_ptr<const PgGenerateRowId> SharedPtrConst;
+
+  typedef std::unique_ptr<PgGenerateRowId> UniPtr;
+  typedef std::unique_ptr<const PgGenerateRowId> UniPtrConst;
+
+  // Constructor.
+  PgGenerateRowId();
+  virtual ~PgGenerateRowId();
+
+  // Convert this expression structure to PB format.
+  virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) override;
+
+ private:
 };
 
 }  // namespace pggate

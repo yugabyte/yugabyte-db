@@ -178,10 +178,12 @@ YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
                               const YBCPgOid table_oid,
                               bool is_shared_table,
                               bool if_not_exist,
+                              bool add_primary_key,
                               YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateTable(pg_session, database_name, schema_name, table_name,
-                                           database_oid, schema_oid, table_oid, is_shared_table,
-                                           if_not_exist, handle));
+                                           database_oid, schema_oid, table_oid,
+                                           is_shared_table, if_not_exist, add_primary_key,
+                                           handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -224,10 +226,7 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              int16_t attr_number,
                              bool *is_primary,
                              bool *is_hash) {
-  return ToYBCStatus(pgapi->GetColumnInfo(table_desc,
-      attr_number,
-      is_primary,
-      is_hash));
+  return ToYBCStatus(pgapi->GetColumnInfo(table_desc, attr_number, is_primary, is_hash));
 }
 
 //--------------------------------------------------------------------------------------------------

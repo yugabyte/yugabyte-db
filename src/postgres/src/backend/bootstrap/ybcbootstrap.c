@@ -56,7 +56,7 @@ void YBCAddSysCatalogColumn(YBCPgStatement yb_stmt,
 
 	ListCell      *lc;
 	bool          is_key    = false;
-	YBCPgDataType col_type   = YBCDataTypeFromOidMod(type_id, typmod);
+	YBCPgDataType col_type  = YBCDataTypeFromOidMod(type_id, typmod);
 
 	if (pkey_idx)
 	{
@@ -69,23 +69,19 @@ void YBCAddSysCatalogColumn(YBCPgStatement yb_stmt,
 			}
 		}
 	}
-	else
-	{
-		is_key = true;
-	}
 
 	/* We will call this twice, first for key columns, then for regular
 	 * columns to handle any re-ordering.
-	 * So only adding the if matching the is_key property. */
+	 * So only adding the if matching the is_key property.
+	 */
 	if (key == is_key)
 	{
 		HandleYBStmtStatus(YBCPgCreateTableAddColumn(yb_stmt,
 		                                             attname,
 		                                             attnum,
 		                                             col_type,
-		                                             is_key,
+		                                             false /* is_hash */,
 		                                             is_key), yb_stmt);
-
 	}
 }
 
@@ -94,32 +90,30 @@ void YBCAddSysCatalogColumns(YBCPgStatement yb_stmt,
                              IndexStmt *pkey_idx,
                              const bool key)
 {
-  if (tupdesc->tdhasoid)
-  {
+	if (tupdesc->tdhasoid)
+	{
+		/* Add the OID column if the table was declared with OIDs. */
+		YBCAddSysCatalogColumn(yb_stmt,
+							   pkey_idx,
+							   "oid",
+							   ObjectIdAttributeNumber,
+							   OIDOID,
+							   0,
+							   key);
+	}
 
-    /* Add the OID column if the table was declared with OIDs. */
-    YBCAddSysCatalogColumn(yb_stmt,
-                           pkey_idx,
-                           "oid",
-                           ObjectIdAttributeNumber,
-                           OIDOID,
-                           0,
-                           key);
-  }
-
-  /* Add the rest of the columns. */
-  for (int attno = 0; attno < tupdesc->natts; attno++)
-  {
-    Form_pg_attribute attr = tupdesc->attrs[attno];
-    YBCAddSysCatalogColumn(yb_stmt,
-                           pkey_idx,
-                           attr->attname.data,
-                           attr->attnum,
-                           attr->atttypid,
-                           attr->atttypmod,
-                           key);
-
-  }
+	/* Add the rest of the columns. */
+	for (int attno = 0; attno < tupdesc->natts; attno++)
+	{
+		Form_pg_attribute attr = tupdesc->attrs[attno];
+		YBCAddSysCatalogColumn(yb_stmt,
+							   pkey_idx,
+							   attr->attname.data,
+							   attr->attnum,
+							   attr->atttypid,
+							   attr->atttypmod,
+							   key);
+	}
 }
 
 void YBCCreateSysCatalogTable(const char *table_name,
@@ -137,11 +131,30 @@ void YBCCreateSysCatalogTable(const char *table_name,
 	IndexStmt      *pkey_idx    = NULL;
 	ListCell       *lc          = NULL;
 
-	if (pkey_idxs == NULL || pkey_idxs->length == 0)
+	/*
+	 * If there are indexes, pick one as primary key:
+	 *  - prefer the oid one if available
+	 *  - otherwise default to first index.
+	 */
+	if (pkey_idxs != NULL && pkey_idxs->length > 0)
 	{
-		YBC_LOG_WARNING("Found system catalog table '%s' with no primary key. "
-		                "Will consider all columns as key columns.",
-		                table_name);
+		foreach (lc, pkey_idxs)
+		{
+			IndexStmt *idx = lfirst(lc);
+			if (idx->indexParams->length == 1)
+			{
+				IndexElem *elem = linitial(idx->indexParams);
+				if (strcmp(elem->name, "oid") == 0)
+				{
+					pkey_idx = idx;
+					break;
+				}
+			}
+		}
+		if (pkey_idx == NULL)
+		{
+			pkey_idx = (IndexStmt *) linitial(pkey_idxs);
+		}
 	}
 
 	HandleYBStatus(YBCPgNewCreateTable(ybc_pg_session,
@@ -153,29 +166,8 @@ void YBCCreateSysCatalogTable(const char *table_name,
 	                                   table_oid,
 	                                   is_shared_relation,
 	                                   false, /* if_not_exists */
+									   pkey_idx == NULL, /* add_primary_key */
 	                                   &yb_stmt));
-
-	/*
-	   * Find which index to use as primary key:
-	   *  - prefer the oid one if available
-	   *  - otherwise default to first index.
-	   */
-	foreach (lc, pkey_idxs)
-	{
-		IndexStmt *idx = lfirst(lc);
-		if (idx->indexParams->length == 1)
-		{
-			IndexElem *elem = linitial(idx->indexParams);
-			if (strcmp(elem->name, "oid") == 0)
-			{
-				pkey_idx = idx;
-			}
-		}
-	}
-	if (pkey_idx == NULL && pkey_idxs != NULL && pkey_idxs->length > 0)
-	{
-		pkey_idx = (IndexStmt *) linitial(pkey_idxs);
-	}
 
 	foreach (lc, pkey_idxs)
 	{
@@ -187,7 +179,10 @@ void YBCCreateSysCatalogTable(const char *table_name,
 	}
 
 	/* Add all key columns first, then the regular columns */
-	YBCAddSysCatalogColumns(yb_stmt, tupdesc, pkey_idx, /* key */ true);
+	if (pkey_idx != NULL)
+	{
+		YBCAddSysCatalogColumns(yb_stmt, tupdesc, pkey_idx, /* key */ true);
+	}
 	YBCAddSysCatalogColumns(yb_stmt, tupdesc, pkey_idx, /* key */ false);
 
 	HandleYBStmtStatus(YBCPgExecCreateTable(yb_stmt), yb_stmt);

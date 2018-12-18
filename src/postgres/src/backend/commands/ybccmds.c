@@ -93,35 +93,38 @@ YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_o
 
 /* Utility function to add columns to the YB create statement */
 static void CreateTableAddColumns(YBCPgStatement handle,
-								  CreateStmt *stmt,
-								  Oid namespaceId,
+								  TupleDesc desc,
 								  Constraint *primary_key,
 								  bool include_hash,
 								  bool include_primary)
 {
-	ListCell *lc;
-	int      attnum = 1;
-	foreach(lc, stmt->tableElts)
+	int      i;
+
+	for (i = 0; i < desc->natts; i++)
 	{
-		bool          is_primary = false;
-		bool          is_first   = true;
-		ColumnDef     *colDef    = lfirst(lc);
-		YBCPgDataType col_type   = YBCDataTypeFromName(colDef->typeName);
+		Form_pg_attribute att = desc->attrs[i];
+		char              *attname = NameStr(att->attname);
+		AttrNumber        attnum = att->attnum;			
+		bool              is_primary = false;
+		bool              is_first   = true;
 
-		ListCell *cell;
-
-		foreach(cell, primary_key->keys)
+		if (primary_key != NULL)
 		{
-			char *attname = strVal(lfirst(cell));
+			ListCell *cell;
 
-			if (strcmp(colDef->colname, attname) == 0)
+			foreach(cell, primary_key->keys)
 			{
-				is_primary = true;
-				break;
-			}
-			if (is_first)
-			{
-				is_first = false;
+				char *kattname = strVal(lfirst(cell));
+
+				if (strcmp(attname, kattname) == 0)
+				{
+					is_primary = true;
+					break;
+				}
+				if (is_first)
+				{
+					is_first = false;
+				}
 			}
 		}
 
@@ -129,19 +132,25 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 		bool is_hash = is_primary && is_first;
 		if (include_hash == is_hash && include_primary == is_primary)
 		{
+			YBCPgDataType col_type = YBCDataTypeFromOidMod(att->atttypid,
+														   att->atttypmod);
+
 			HandleYBStmtStatus(YBCPgCreateTableAddColumn(handle,
-			                                             colDef->colname,
+			                                             attname,
 			                                             attnum,
 			                                             col_type,
 			                                             is_hash,
 			                                             is_primary), handle);
 		}
-		attnum++;
 	}
 }
 
 void
-YBCCreateTable(CreateStmt *stmt, char relkind, Oid namespaceId, Oid relationId)
+YBCCreateTable(CreateStmt *stmt,
+			   char relkind,
+			   TupleDesc desc,
+			   Oid namespaceId,
+			   Oid relationId)
 {
 	if (relkind != RELKIND_RELATION)
 	{
@@ -162,9 +171,9 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid namespaceId, Oid relationId)
 	 */
 	char *db_name = get_database_name(MyDatabaseId);
 	YBC_LOG_INFO("Creating Table %s, %s, %s",
-							 db_name,
-							 stmt->relation->schemaname,
-							 stmt->relation->relname);
+				 db_name,
+				 stmt->relation->schemaname,
+				 stmt->relation->relname);
 
 	Constraint *primary_key = NULL;
 
@@ -184,13 +193,6 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid namespaceId, Oid relationId)
 		}
 	}
 
-	if (primary_key == NULL)
-	{
-		ereport(ERROR,
-		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
-				        "Tables without a PRIMARY KEY are not yet supported.")));
-	}
-
 	HandleYBStatus(YBCPgNewCreateTable(ybc_pg_session,
 	                                   db_name,
 	                                   stmt->relation->schemaname,
@@ -200,29 +202,31 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid namespaceId, Oid relationId)
 	                                   relationId,
 	                                   false, /* is_shared_table */
 	                                   false, /* if_not_exists */
+									   primary_key == NULL /* add_primary_key */,
 	                                   &handle));
 
 	/*
 	 * Process the table columns. They need to be sent in order, first hash
-	 * columns, then rest of primary key columns, then regular columns
+	 * columns, then rest of primary key columns, then regular columns. If
+	 * no primary key is specified, an internal primary key is added above.
 	 */
-    CreateTableAddColumns(handle,
-                          stmt,
-                          namespaceId,
-                          primary_key,
-                          true /* is_hash */,
-                          true /* is_primary */);
+
+	if (primary_key != NULL) {
+		CreateTableAddColumns(handle,
+							  desc,
+							  primary_key,
+							  true /* is_hash */,
+							  true /* is_primary */);
+
+		CreateTableAddColumns(handle,
+							  desc,
+							  primary_key,
+							  false /* is_hash */,
+							  true /* is_primary */);
+	}
 
     CreateTableAddColumns(handle,
-                          stmt,
-                          namespaceId,
-                          primary_key,
-                          false /* is_hash */,
-                          true /* is_primary */);
-
-    CreateTableAddColumns(handle,
-                          stmt,
-                          namespaceId,
+                          desc,
                           primary_key,
                           false /* is_hash */,
                           false /* is_primary */);

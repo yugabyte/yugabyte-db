@@ -33,8 +33,9 @@
 #ifndef YB_UTIL_OID_GENERATOR_H
 #define YB_UTIL_OID_GENERATOR_H
 
-#include <boost/uuid/uuid_generators.hpp>
 #include <string>
+
+#include <boost/uuid/uuid_generators.hpp>
 
 #include "yb/gutil/macros.h"
 #include "yb/util/locks.h"
@@ -48,7 +49,7 @@ class ObjectIdGenerator {
   ObjectIdGenerator() {}
   ~ObjectIdGenerator() {}
 
-  std::string Next();
+  std::string Next(bool binary_id = false);
 
  private:
   typedef simple_spinlock LockType;
@@ -64,4 +65,4 @@ class ObjectIdGenerator {
 
 } // namespace yb
 
-#endif
+#endif // YB_UTIL_OID_GENERATOR_H

@@ -126,7 +126,8 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              const PgOid schema_oid,
                              const PgOid table_oid,
                              bool is_shared_table,
-                             bool if_not_exist)
+                             bool if_not_exist,
+                             bool add_primary_key)
     : PgDdl(pg_session, StmtOp::STMT_CREATE_TABLE),
       table_name_(database_name, table_name),
       table_id_(GetPgsqlTableId(database_oid, table_oid)),
@@ -134,6 +135,11 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                            strcmp(schema_name, "information_schema") == 0),
       is_shared_table_(is_shared_table),
       if_not_exist_(if_not_exist) {
+  // Add internal primary key column to a Postgres table without a user-specified primary key.
+  if (add_primary_key) {
+    CHECK_OK(AddColumn("ybrowid", static_cast<int32_t>(PgSystemAttrNum::kYBRowIdAttributeNumber),
+                       YB_YQL_DATA_TYPE_BINARY, true /* is_hash */, true /* is_range */));
+  }
 }
 
 PgCreateTable::~PgCreateTable() {

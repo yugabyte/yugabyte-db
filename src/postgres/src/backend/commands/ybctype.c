@@ -76,11 +76,6 @@
  * anyarray (list of 32-bit integers - signed or unsigned)
  */
 
-/*
- * TODO For now we use the CQL/YQL types here (listed in common.proto).
- * Eventually we should use the internal (protobuf) types listed in
- * yb/client/schema.h.
- */
 YBCPgDataType
 YBCDataTypeFromName(TypeName *typeName)
 {

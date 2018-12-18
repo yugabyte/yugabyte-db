@@ -33,13 +33,14 @@
 #include <mutex>
 #include <string>
 
-#include "yb/gutil/stringprintf.h"
+#include "yb/gutil/strings/escaping.h"
+#include "yb/util/cast.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/thread.h"
 
 namespace yb {
 
-string ObjectIdGenerator::Next() {
+string ObjectIdGenerator::Next(const bool binary_id) {
 
   // Use the thread id to select a random oid generator.
   const int idx = yb::Thread::UniqueThreadId() % kNumOidGenerators;
@@ -47,10 +48,8 @@ string ObjectIdGenerator::Next() {
   boost::uuids::uuid oid = oid_generator_[idx]();
   lck.unlock();
 
-  const uint8_t *uuid = oid.data;
-  return StringPrintf("%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
-               uuid[0], uuid[1], uuid[2], uuid[3], uuid[4], uuid[5], uuid[6], uuid[7],
-               uuid[8], uuid[9], uuid[10], uuid[11], uuid[12], uuid[13], uuid[14], uuid[15]);
+  return binary_id ? string(util::to_char_ptr(oid.data), sizeof(oid.data))
+                   : b2a_hex(util::to_char_ptr(oid.data), sizeof(oid.data));
 }
 
 } // namespace yb

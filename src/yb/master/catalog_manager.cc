@@ -1936,6 +1936,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                                    rpc::RpcContext* rpc) {
   RETURN_NOT_OK(CheckOnline());
 
+  LOG(INFO) << "CreateTable from " << RequestorString(rpc)
+            << ":\n" << orig_req->DebugString();
+
   if (orig_req->table_type() == PGSQL_TABLE_TYPE && orig_req->is_pg_catalog_table()) {
     return CreatePgsqlSysTable(orig_req, resp, rpc);
   }
@@ -1946,8 +1949,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // Copy the request, so we can fill in some defaults.
   CreateTableRequestPB req = *orig_req;
-  LOG(INFO) << "CreateTable from " << RequestorString(rpc)
-            << ":\n" << req.DebugString();
 
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
