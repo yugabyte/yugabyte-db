@@ -93,6 +93,7 @@ class TabletLocationsPB;
 }
 
 namespace tserver {
+class LocalTabletServer;
 class TabletServerServiceProxy;
 }
 
@@ -410,8 +411,10 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
 
   CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
 
-  void AddTabletServerProxy(const std::string& ts_uuid,
-                            const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy);
+  // Add a tserver's proxy, and optionally the tserver itself if it is local.
+  void AddTabletServer(const std::string& ts_uuid,
+                       const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
+                       const tserver::LocalTabletServer* local_tserver = nullptr);
 
   // List only those tables whose names pass a substring match on 'filter'.
   //

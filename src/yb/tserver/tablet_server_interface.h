@@ -14,6 +14,7 @@
 #ifndef YB_TSERVER_TABLET_SERVER_INTERFACE_H
 #define YB_TSERVER_TABLET_SERVER_INTERFACE_H
 
+#include "yb/client/meta_cache.h"
 #include "yb/server/clock.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/metrics.h"
@@ -21,7 +22,7 @@
 namespace yb {
 namespace tserver {
 
-class TabletServerIf {
+class TabletServerIf : public LocalTabletServer {
  public:
 
   virtual ~TabletServerIf() {}
