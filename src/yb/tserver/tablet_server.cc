@@ -297,7 +297,7 @@ Status TabletServer::Start() {
 
   // If enabled, creates a proxy to call this tablet server locally.
   if (FLAGS_enable_direct_local_tablet_server_call) {
-    proxy_.reset(new TabletServerServiceProxy(proxy_cache_.get(), HostPort()));
+    proxy_ = std::make_shared<TabletServerServiceProxy>(proxy_cache_.get(), HostPort());
   }
 
   RETURN_NOT_OK(heartbeater_->Start());
@@ -335,6 +335,17 @@ Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& h
   // from the master and compare it with information stored here. Based on this information, we
   // can only send diff updates CQL clients about whether a node came up or went down.
   live_tservers_.assign(heartbeat_resp.tservers().begin(), heartbeat_resp.tservers().end());
+  return Status::OK();
+}
+
+Status TabletServer::GetTabletStatus(const GetTabletStatusRequestPB* req,
+                                     GetTabletStatusResponsePB* resp) const {
+  VLOG(3) << "GetTabletStatus called for tablet " << req->tablet_id();
+  tablet::TabletPeerPtr peer;
+  if (!tablet_manager_->LookupTablet(req->tablet_id(), &peer)) {
+    return STATUS(NotFound, "Tablet not found", req->tablet_id());
+  }
+  peer->GetTabletStatusPB(resp->mutable_tablet_status());
   return Status::OK();
 }
 

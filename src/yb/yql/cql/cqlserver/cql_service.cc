@@ -89,10 +89,11 @@ const std::shared_ptr<client::YBClient>& CQLServiceImpl::client() const {
   if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
     std::lock_guard<std::mutex> l(metadata_init_mutex_);
     if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
-      // Add proxy to call local tserver if available.
+      // Add local tserver if available.
       if (server_->tserver() != nullptr && server_->tserver()->proxy() != nullptr) {
-        client->AddTabletServerProxy(
-            server_->tserver()->permanent_uuid(), server_->tserver()->proxy());
+        client->AddTabletServer(server_->tserver()->permanent_uuid(),
+                                server_->tserver()->proxy(),
+                                server_->tserver());
       }
       // Create and save the metadata cache object.
       metadata_cache_ = std::make_shared<YBMetaDataCache>(client,
