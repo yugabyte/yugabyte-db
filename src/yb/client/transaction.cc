@@ -495,8 +495,7 @@ class YBTransaction::Impl final {
       return;
     }
     std::vector<internal::RemoteTabletServer*> remote_tablet_servers;
-    (**remote_tablet).GetRemoteTabletServers(
-        &remote_tablet_servers, internal::UpdateLocalTsState::kTrue);
+    (**remote_tablet).GetRemoteTabletServers(&remote_tablet_servers);
 
     constexpr auto kCallTimeout = 15s;
     auto now = manager_->Now().ToUint64();

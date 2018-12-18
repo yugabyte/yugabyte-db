@@ -39,6 +39,9 @@ class MasterTabletServer : public tserver::TabletServerIf,
   CHECKED_STATUS GetTabletPeer(const std::string& tablet_id,
                                std::shared_ptr<tablet::TabletPeer>* tablet_peer) const override;
 
+  CHECKED_STATUS GetTabletStatus(const tserver::GetTabletStatusRequestPB* req,
+                                 tserver::GetTabletStatusResponsePB* resp) const override;
+
   const NodeInstancePB& NodeInstance() const override;
 
   CHECKED_STATUS GetRegistration(ServerRegistrationPB* reg) const override;

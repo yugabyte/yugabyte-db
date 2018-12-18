@@ -322,7 +322,7 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
     }
     case CLOSEST_REPLICA:
     case FIRST_REPLICA: {
-      rt->GetRemoteTabletServers(candidates, UpdateLocalTsState::kTrue);
+      rt->GetRemoteTabletServers(candidates);
       // Filter out all the blacklisted candidates.
       vector<RemoteTabletServer*> filtered;
       for (RemoteTabletServer* rts : *candidates) {

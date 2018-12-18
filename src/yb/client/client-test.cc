@@ -676,7 +676,7 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
         table.get(), "" /* partition_key */, MonoTime::Max()).get());
     ASSERT_TRUE(rt.get() != nullptr);
     vector<internal::RemoteTabletServer*> tservers;
-    rt->GetRemoteTabletServers(&tservers, internal::UpdateLocalTsState::kFalse);
+    rt->GetRemoteTabletServers(&tservers);
     if (tservers.size() == 3) {
       break;
     }

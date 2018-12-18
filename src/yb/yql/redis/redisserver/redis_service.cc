@@ -1373,8 +1373,9 @@ Status RedisServiceImplData::Initialize() {
     // Add proxy to call local tserver if available.
     if (server_->tserver() != nullptr) {
       if (server_->tserver()->proxy() != nullptr) {
-        client_->AddTabletServerProxy(
-            server_->tserver()->permanent_uuid(), server_->tserver()->proxy());
+        client_->AddTabletServer(server_->tserver()->permanent_uuid(),
+                                 server_->tserver()->proxy(),
+                                 server_->tserver());
       }
       // Set up the pub sub plumbing
       server_->tserver()->SetPublisher(std::bind(&RedisServiceImplData::Publish, this, _1, _2));
