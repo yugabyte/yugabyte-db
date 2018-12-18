@@ -29,18 +29,6 @@ class MasterTabletServiceImpl : public yb::tserver::TabletServiceImpl {
  public:
   MasterTabletServiceImpl(MasterTabletServer* server, Master* master);
 
-  void Read(const tserver::ReadRequestPB* req,
-            tserver::ReadResponsePB* resp,
-            rpc::RpcContext context) override;
-
-  void Write(const tserver::WriteRequestPB* req,
-             tserver::WriteResponsePB* resp,
-             rpc::RpcContext context) override;
-
-  void NoOp(const tserver::NoOpRequestPB* req,
-            tserver::NoOpResponsePB* resp,
-            rpc::RpcContext context) override;
-
   void ListTablets(const tserver::ListTabletsRequestPB* req,
                    tserver::ListTabletsResponsePB* resp,
                    rpc::RpcContext context) override;

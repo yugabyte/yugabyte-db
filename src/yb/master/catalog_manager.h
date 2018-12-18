@@ -741,7 +741,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     // If not initialized, writes the corresponding error to 'resp',
     // responds to 'rpc', and returns false.
     template<typename RespClass>
-      bool CheckIsInitializedOrRespond(RespClass* resp, rpc::RpcContext* rpc);
+    bool CheckIsInitializedOrRespond(RespClass* resp, rpc::RpcContext* rpc);
 
     // Check that the catalog manager is initialized and that it is the leader
     // of its Raft configuration. Initialization status takes precedence over
@@ -750,7 +750,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     // If not initialized or if not the leader, writes the corresponding error
     // to 'resp', responds to 'rpc', and returns false.
     template<typename RespClass>
-      bool CheckIsInitializedAndIsLeaderOrRespond(RespClass* resp, rpc::RpcContext* rpc);
+    bool CheckIsInitializedAndIsLeaderOrRespond(RespClass* resp, rpc::RpcContext* rpc);
 
     // TServer API variant of above class to set appropriate error codes.
     template<typename RespClass>
