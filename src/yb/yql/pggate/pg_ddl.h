@@ -162,7 +162,8 @@ class PgCreateTable : public PgDdl {
                 PgOid schema_oid,
                 PgOid table_oid,
                 bool is_shared_table,
-                bool if_not_exist);
+                bool if_not_exist,
+                bool add_primary_key);
   virtual ~PgCreateTable();
 
   CHECKED_STATUS AddColumn(const char *attr_name, int attr_num, int attr_ybtype,

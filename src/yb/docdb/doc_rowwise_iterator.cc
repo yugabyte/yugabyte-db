@@ -592,11 +592,8 @@ void DocRowwiseIterator::GoToScanTarget(const DocKey &new_target) const {
   }
 }
 
-CHECKED_STATUS DocRowwiseIterator::GetKeyContent(faststring *key_content) const {
-  KeyBytes key_bytes;
-  row_key_.AppendTo(&key_bytes);
-  key_content->append(key_bytes.data());
-  return Status::OK();
+Result<string> DocRowwiseIterator::GetRowKey() const {
+  return std::move(*row_key_.Encode().mutable_data());
 }
 
 }  // namespace docdb

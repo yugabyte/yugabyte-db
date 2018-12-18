@@ -86,8 +86,8 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
  private:
   std::shared_ptr<client::YBTable> table_;
 
-  // TODO(neil) Considering the posibility of indexing columns_ by attr_num instead of ID.
   std::vector<PgColumn> columns_;
+  std::unordered_map<int, size_t> attr_num_map_; // Attr number to column index map.
 
   // Hidden columns.
   PgColumn column_ybctid_;

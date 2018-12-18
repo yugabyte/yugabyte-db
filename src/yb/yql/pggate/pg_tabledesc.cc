@@ -22,7 +22,7 @@ PgTableDesc::PgTableDesc(std::shared_ptr<client::YBTable> pg_table) : table_(pg_
   const auto& schema = pg_table->schema();
   const int num_columns = schema.num_columns();
   columns_.resize(num_columns);
-  for (int idx = 0; idx < num_columns; idx++) {
+  for (size_t idx = 0; idx < num_columns; idx++) {
     // Find the column descriptor.
     const auto& col = schema.Column(idx);
 
@@ -36,6 +36,7 @@ PgTableDesc::PgTableDesc(std::shared_ptr<client::YBTable> pg_table) : table_(pg_
                col.order() /* attr_num */,
                col.type(),
                client::YBColumnSchema::ToInternalDataType(col.type()));
+    attr_num_map_[col.order()] = idx;
   }
 
   // Create virtual columns.
@@ -49,27 +50,26 @@ Result<PgColumn *> PgTableDesc::FindColumn(int attr_num) {
   }
 
   // Find physical column.
-  for (auto& col : columns_) {
-    if (col.attr_num() == attr_num) {
-      return &col;
-    }
+  const auto itr = attr_num_map_.find(attr_num);
+  if (itr != attr_num_map_.end()) {
+    return &columns_[itr->second];
   }
 
-  return STATUS_SUBSTITUTE(InvalidArgument, "Invalid column number $0", attr_num);
+  return STATUS_FORMAT(InvalidArgument, "Invalid column number $0", attr_num);
 }
 
 CHECKED_STATUS PgTableDesc::GetColumnInfo(int16_t attr_number,
                                           bool *is_primary,
                                           bool *is_hash) const {
-  for (int i = 0; i < num_key_columns(); i++) {
-    if (columns_[i].attr_num() == attr_number) {
-      *is_primary = true;
-      *is_hash = i < num_hash_key_columns();
-      return Status::OK();
-    }
+  const auto itr = attr_num_map_.find(attr_number);
+  if (itr != attr_num_map_.end()) {
+    const ColumnDesc* desc = columns_[itr->second].desc();
+    *is_primary = desc->is_primary();
+    *is_hash = desc->is_partition();
+  } else {
+    *is_primary = false;
+    *is_hash = false;
   }
-  *is_primary = false;
-  *is_hash = false;
   return Status::OK();
 }
 

@@ -30,7 +30,7 @@ class PgDmlWrite : public PgDml {
   virtual ~PgDmlWrite();
 
   // Prepare write operations.
-  CHECKED_STATUS Prepare();
+  virtual CHECKED_STATUS Prepare();
 
   // Setup internal structures for binding values during prepare.
   void PrepareColumns();

@@ -247,6 +247,7 @@ CHECKED_STATUS PgApiImpl::NewCreateTable(PgSession *pg_session,
                                          const PgOid table_oid,
                                          bool is_shared_table,
                                          bool if_not_exist,
+                                         bool add_primary_key,
                                          PgStatement **handle) {
   if (database_name == nullptr) {
     database_name = pg_session->connected_dbname();
@@ -255,7 +256,7 @@ CHECKED_STATUS PgApiImpl::NewCreateTable(PgSession *pg_session,
   auto stmt = make_scoped_refptr<PgCreateTable>(pg_session,
                                                 database_name, schema_name, table_name,
                                                 database_oid, schema_oid, table_oid,
-                                                is_shared_table, if_not_exist);
+                                                is_shared_table, if_not_exist, add_primary_key);
   *handle = stmt.detach();
   return Status::OK();
 }

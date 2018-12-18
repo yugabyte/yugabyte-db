@@ -49,6 +49,19 @@ PgInsert::PgInsert(PgSession::ScopedRefPtr pg_session,
 PgInsert::~PgInsert() {
 }
 
+Status PgInsert::Prepare() {
+  RETURN_NOT_OK(PgDmlWrite::Prepare());
+
+  // If the table contains ybrowid, bind generate_rowid() to auto-fill the rowid.
+  const auto rowid_attr_num = static_cast<int>(PgSystemAttrNum::kYBRowIdAttributeNumber);
+  if (table_desc_->FindColumn(rowid_attr_num)) {
+    generate_rowid_ = std::make_unique<PgGenerateRowId>();
+    RETURN_NOT_OK(BindColumn(rowid_attr_num, generate_rowid_.get()));
+  }
+
+  return Status::OK();
+}
+
 void PgInsert::AllocWriteRequest() {
   // Allocate WRITE operation.
   auto doc_op = make_shared<PgDocWriteOp>(pg_session_, table_desc_->NewPgsqlInsert());

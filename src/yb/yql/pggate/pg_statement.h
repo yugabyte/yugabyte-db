@@ -57,6 +57,10 @@ class PgStatement : public RefCountedThreadSafe<PgStatement> {
   PgStatement(PgSession::ScopedRefPtr pg_session, StmtOp stmt_op);
   virtual ~PgStatement();
 
+  const PgSession::ScopedRefPtr& pg_session() {
+    return pg_session_;
+  }
+
   //------------------------------------------------------------------------------------------------
   static bool IsValidStmt(PgStatement* stmt, StmtOp op) {
     return (stmt != nullptr && stmt->stmt_op_ == op);

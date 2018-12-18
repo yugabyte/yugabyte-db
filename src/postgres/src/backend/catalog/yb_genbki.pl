@@ -106,10 +106,6 @@ our @types;
 
 # YB-specific pre-processing of the catalogs.
 
-# Use an oid column for pg_depend and pg_shdepend (to use as YB primary key).
-$catalogs->{pg_shdepend}->{without_oids} = '';
-$catalogs->{pg_depend}->{without_oids} = '';
-
 # produce output, one catalog at a time
 foreach my $catname (@{ $catalogs->{names} })
 {
