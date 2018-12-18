@@ -237,9 +237,7 @@ CQLResponse* CQLProcessor::ProcessRequest(const StartupRequest& req) {
     const auto it = kSupportedOptions.find(name);
     if (it == kSupportedOptions.end() ||
         std::find(it->second.begin(), it->second.end(), value) == it->second.end()) {
-      return new ErrorResponse(
-          req, ErrorResponse::Code::PROTOCOL_ERROR,
-          Substitute("Unsupported option $0 = $1", name, value));
+      YB_LOG_EVERY_N_SECS(WARNING, 60) << Format("Unsupported driver option $0 = $1", name, value);
     }
     if (name == CQLMessage::kCompressionOption) {
       auto& context = static_cast<CQLConnectionContext&>(call_->connection()->context());
