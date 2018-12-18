@@ -3063,8 +3063,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   return Status::OK();
 }
 
-CHECKED_STATUS QLReadOperation::PopulateResultSet(const QLTableRow& table_row,
-                                                  QLResultSet *resultset) {
+Status QLReadOperation::PopulateResultSet(const QLTableRow& table_row, QLResultSet *resultset) {
   resultset->AllocateRow();
   int rscol_index = 0;
   for (const QLExpressionPB& expr : request_.selected_exprs()) {
@@ -3077,7 +3076,7 @@ CHECKED_STATUS QLReadOperation::PopulateResultSet(const QLTableRow& table_row,
   return Status::OK();
 }
 
-CHECKED_STATUS QLReadOperation::EvalAggregate(const QLTableRow& table_row) {
+Status QLReadOperation::EvalAggregate(const QLTableRow& table_row) {
   if (aggr_result_.empty()) {
     int column_count = request_.selected_exprs().size();
     aggr_result_.resize(column_count);
@@ -3091,8 +3090,7 @@ CHECKED_STATUS QLReadOperation::EvalAggregate(const QLTableRow& table_row) {
   return Status::OK();
 }
 
-CHECKED_STATUS QLReadOperation::PopulateAggregate(const QLTableRow& table_row,
-                                                  QLResultSet *resultset) {
+Status QLReadOperation::PopulateAggregate(const QLTableRow& table_row, QLResultSet *resultset) {
   resultset->AllocateRow();
   int column_count = request_.selected_exprs().size();
   for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
@@ -3101,13 +3099,13 @@ CHECKED_STATUS QLReadOperation::PopulateAggregate(const QLTableRow& table_row,
   return Status::OK();
 }
 
-CHECKED_STATUS QLReadOperation::AddRowToResult(const std::unique_ptr<common::QLScanSpec>& spec,
-                                               const QLTableRow& row,
-                                               const size_t row_count_limit,
-                                               const size_t offset,
-                                               QLResultSet* resultset,
-                                               int* match_count,
-                                               size_t *num_rows_skipped) {
+Status QLReadOperation::AddRowToResult(const std::unique_ptr<common::QLScanSpec>& spec,
+                                       const QLTableRow& row,
+                                       const size_t row_count_limit,
+                                       const size_t offset,
+                                       QLResultSet* resultset,
+                                       int* match_count,
+                                       size_t *num_rows_skipped) {
   if (resultset->rsrow_count() < row_count_limit) {
     bool match = false;
     RETURN_NOT_OK(spec->Match(row, &match));
@@ -3159,7 +3157,7 @@ CHECKED_STATUS CreateProjections(const Schema& schema,
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* response) {
+Status PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* response) {
   // Initialize operation inputs.
   request_.Swap(request);
   response_ = response;
@@ -3177,7 +3175,7 @@ CHECKED_STATUS PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResp
     // The following code assumes that ybctid is the key of exactly one row, so the hash_doc_key_
     // is set to NULL. If this assumption is no longer true, hash_doc_key_ should be assigned with
     // appropriate values.
-    range_doc_key_.emplace(schema_, request_.hash_code());
+    range_doc_key_.emplace();
     RETURN_NOT_OK(range_doc_key_->DecodeFrom(key_value));
     encoded_range_doc_key_ = range_doc_key_->EncodeAsRefCntPrefix();
   } else {
@@ -3209,7 +3207,7 @@ CHECKED_STATUS PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResp
   return Status::OK();
 }
 
-CHECKED_STATUS PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
+Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
   switch (request_.stmt_type()) {
     case PgsqlWriteRequestPB::PGSQL_INSERT:
       return ApplyInsert(data);
@@ -3223,7 +3221,7 @@ CHECKED_STATUS PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
   return Status::OK();
 }
 
-CHECKED_STATUS PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
+Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
   QLTableRow::SharedPtr table_row = make_shared<QLTableRow>();
   RETURN_NOT_OK(ReadColumns(data, table_row));
   if (!table_row->IsEmpty()) {
@@ -3272,7 +3270,7 @@ CHECKED_STATUS PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& dat
   return Status::OK();
 }
 
-CHECKED_STATUS PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
+Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   QLTableRow::SharedPtr table_row = make_shared<QLTableRow>();
   RETURN_NOT_OK(ReadColumns(data, table_row));
 
@@ -3306,13 +3304,12 @@ CHECKED_STATUS PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& dat
   return Status::OK();
 }
 
-CHECKED_STATUS PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
+Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
   QLTableRow::SharedPtr table_row = make_shared<QLTableRow>();
   RETURN_NOT_OK(ReadColumns(data, table_row));
 
   // TODO(neil) Add support for WHERE clause.
   CHECK(request_.column_values_size() == 0) << "WHERE clause condition is not yet fully supported";
-  CHECK(!request_.missing_primary_key()) << "WHERE clause condition is not yet fully supported";
 
   // Otherwise, delete the referenced row (all columns).
   RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(DocPath(
@@ -3321,8 +3318,8 @@ CHECKED_STATUS PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& dat
   return Status::OK();
 }
 
-CHECKED_STATUS PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
-                                                const QLTableRow::SharedPtr& table_row) {
+Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
+                                        const QLTableRow::SharedPtr& table_row) {
   // Create projections to scan docdb.
   Schema column_projection;
   RETURN_NOT_OK(CreateProjections(schema_, request_.column_refs(), &column_projection));
@@ -3442,8 +3439,8 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   return Status::OK();
 }
 
-CHECKED_STATUS PgsqlReadOperation::PopulateResultSet(const QLTableRow::SharedPtr& table_row,
-                                                     PgsqlResultSet *resultset) {
+Status PgsqlReadOperation::PopulateResultSet(const QLTableRow::SharedPtr& table_row,
+                                             PgsqlResultSet *resultset) {
   int column_count = request_.targets().size();
   PgsqlRSRow *rsrow = resultset->AllocateRSRow(column_count);
 
@@ -3456,21 +3453,16 @@ CHECKED_STATUS PgsqlReadOperation::PopulateResultSet(const QLTableRow::SharedPtr
   return Status::OK();
 }
 
-CHECKED_STATUS PgsqlReadOperation::GetTupleId(QLValue *result) const {
+Status PgsqlReadOperation::GetTupleId(QLValue *result) const {
+  // Get row key and save to QLValue.
   // TODO(neil) Check if we need to append a table_id and other info to TupleID. For example, we
   // might need info to make sure the TupleId by itself is a valid reference to a specific row of
   // a valid table.
-  faststring tuple_id;
-
-  // Get DocKey content.
-  RETURN_NOT_OK(current_tuple_->GetKeyContent(&tuple_id));
-
-  // Save to QLValue.
-  result->set_binary_value(tuple_id.data(), tuple_id.size());
+  result->set_binary_value(VERIFY_RESULT(current_tuple_->GetRowKey()));
   return Status::OK();
 }
 
-CHECKED_STATUS PgsqlReadOperation::EvalAggregate(const QLTableRow::SharedPtr& table_row) {
+Status PgsqlReadOperation::EvalAggregate(const QLTableRow::SharedPtr& table_row) {
   if (aggr_result_.empty()) {
     int column_count = request_.targets().size();
     aggr_result_.resize(column_count);
@@ -3484,8 +3476,8 @@ CHECKED_STATUS PgsqlReadOperation::EvalAggregate(const QLTableRow::SharedPtr& ta
   return Status::OK();
 }
 
-CHECKED_STATUS PgsqlReadOperation::PopulateAggregate(const QLTableRow::SharedPtr& table_row,
-                                                     PgsqlResultSet *resultset) {
+Status PgsqlReadOperation::PopulateAggregate(const QLTableRow::SharedPtr& table_row,
+                                             PgsqlResultSet *resultset) {
   int column_count = request_.targets().size();
   PgsqlRSRow *rsrow = resultset->AllocateRSRow(column_count);
   for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {

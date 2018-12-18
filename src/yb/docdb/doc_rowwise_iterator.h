@@ -104,7 +104,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   HybridTime RestartReadHt() override;
 
-  virtual CHECKED_STATUS GetKeyContent(faststring *key_content) const override;
+  virtual Result<std::string> GetRowKey() const override;
 
  private:
 

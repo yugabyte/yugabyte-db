@@ -40,8 +40,13 @@ class PgInsert : public PgDmlWrite {
            const char *table_name);
   virtual ~PgInsert();
 
+  // Prepare write operations.
+  virtual CHECKED_STATUS Prepare() override;
+
  private:
   virtual void AllocWriteRequest() override;
+
+  std::unique_ptr<PgGenerateRowId> generate_rowid_;
 };
 
 }  // namespace pggate

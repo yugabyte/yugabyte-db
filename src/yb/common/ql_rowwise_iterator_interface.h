@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -75,8 +76,8 @@ class YQLRowwiseIteratorIf {
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS GetKeyContent(faststring *key_content) const {
-    return STATUS(NotSupported, "This iterator does not provide row-key");
+  virtual Result<std::string> GetRowKey() const {
+    return STATUS(NotSupported, "This iterator does not provide row key");
   }
 
   //------------------------------------------------------------------------------------------------

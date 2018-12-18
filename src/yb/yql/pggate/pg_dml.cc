@@ -60,9 +60,7 @@ Status PgDml::ClearBinds() {
 }
 
 Status PgDml::FindColumn(int attr_num, PgColumn **col) {
-  auto result = table_desc_->FindColumn(attr_num);
-  RETURN_NOT_OK(result);
-  *col = *result;
+  *col = VERIFY_RESULT(table_desc_->FindColumn(attr_num));
   return Status::OK();
 }
 

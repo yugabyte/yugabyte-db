@@ -147,6 +147,7 @@ class PgApiImpl {
                                 PgOid table_oid,
                                 bool is_shared_table,
                                 bool if_not_exist,
+                                bool add_primary_key,
                                 PgStatement **handle);
 
   CHECKED_STATUS CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,

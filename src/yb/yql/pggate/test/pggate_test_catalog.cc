@@ -35,7 +35,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   CHECK_YBC_STATUS(YBCPgNewCreateTable(pg_session_, kDefaultDatabase, "pg_catalog", tabname,
                                        kDefaultDatabaseOid, schema_oid, tab_oid,
                                        false /* is_shared_table */, true /* if_not_exist */,
-                                       &pg_stmt));
+                                       false /* add_primary_key */, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "company_id", ++col_count,
                                              DataType::INT64, false, true));
   CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "empid", ++col_count,
@@ -366,7 +366,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   CHECK_YBC_STATUS(YBCPgNewCreateTable(pg_session_, kDefaultDatabase, "pg_catalog", tabname,
                                        kDefaultDatabaseOid, schema_oid, tab_oid,
                                        false /* is_shared_table */, true /* if_not_exist */,
-                                       &pg_stmt));
+                                       false /* add_primary_key */, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "key", 1, DataType::INT32, false, true));
   CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "value", 2, DataType::INT32, false, false));
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));

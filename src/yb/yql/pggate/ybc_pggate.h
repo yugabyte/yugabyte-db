@@ -112,6 +112,7 @@ YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
                               YBCPgOid table_oid,
                               bool is_shared_table,
                               bool if_not_exist,
+                              bool add_primary_key,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
