@@ -34,10 +34,7 @@ class PgSelect : public PgDml {
   typedef scoped_refptr<PgSelect> ScopedRefPtr;
 
   // Constructors.
-  PgSelect(PgSession::ScopedRefPtr pg_session,
-           const char *database_name,
-           const char *schema_name,
-           const char *table_name);
+  PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
   virtual ~PgSelect();
 
   // Prepare SELECT before execution.

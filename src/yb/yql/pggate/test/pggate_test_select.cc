@@ -56,7 +56,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
-  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabaseOid, kDefaultSchemaOid, tab_oid,
+                                  &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -111,7 +112,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, kDefaultSchemaOid, tab_oid,
+                                  &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -191,7 +193,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, kDefaultSchemaOid, tab_oid,
+                                  &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgNewColumnRef(pg_stmt, 1, &colref);

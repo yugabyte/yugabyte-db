@@ -158,9 +158,7 @@ class PgCreateTable : public PgDdl {
                 const char *database_name,
                 const char *schema_name,
                 const char *table_name,
-                PgOid database_oid,
-                PgOid schema_oid,
-                PgOid table_oid,
+                const PgObjectId& table_id,
                 bool is_shared_table,
                 bool if_not_exist,
                 bool add_primary_key);
@@ -174,7 +172,7 @@ class PgCreateTable : public PgDdl {
 
  private:
   client::YBTableName table_name_;
-  const std::string table_id_;
+  const PgObjectId table_id_;
   bool is_pg_catalog_table_;
   bool is_shared_table_;
   bool if_not_exist_;
@@ -191,18 +189,14 @@ class PgDropTable : public PgDdl {
   typedef std::unique_ptr<const PgDropTable> UniPtrConst;
 
   // Constructors.
-  PgDropTable(PgSession::ScopedRefPtr pg_session,
-              const char *database_name,
-              const char *schema_name,
-              const char *table_name,
-              bool if_exist);
+  PgDropTable(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool if_exist);
   virtual ~PgDropTable();
 
   // Execute.
   CHECKED_STATUS Exec();
 
  private:
-  client::YBTableName table_name_;
+  const PgObjectId table_id_;
   bool if_exist_;
 };
 

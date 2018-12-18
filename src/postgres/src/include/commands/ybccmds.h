@@ -48,6 +48,6 @@ extern void YBCCreateTable(CreateStmt *stmt,
 						   Oid namespaceId,
 						   Oid relationId);
 
-extern void YBCDropTable(Oid relationId, const char *relname, const char *schemaname);
+extern void YBCDropTable(Oid namespaceId, Oid relationId);
 
 #endif

@@ -289,9 +289,10 @@ class TableLoader : public Visitor<PersistentTableInfo> {
       pb.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
     }
 
-    // Add the table to the IDs map and to the name map (if the table is not deleted).
+    // Add the table to the IDs map and to the name map (if the table is not deleted). Do not
+    // add Postgres tables to the name map as the table name is not unique in a namespace.
     catalog_manager_->table_ids_map_[table->id()] = table;
-    if (!l->data().started_deleting()) {
+    if (l->data().table_type() != PGSQL_TABLE_TYPE && !l->data().started_deleting()) {
       catalog_manager_->table_names_map_[{l->data().namespace_id(), l->data().name()}] = table;
     }
 
@@ -2273,7 +2274,10 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
   // Add the new table in "preparing" state.
   table->reset(CreateTableInfo(req, schema, partition_schema, namespace_id, index_info));
   table_ids_map_[(*table)->id()] = *table;
-  table_names_map_[{namespace_id, req.name()}] = *table;
+  // Do not add Postgres tables to the name map as the table name is not unique in a namespace.
+  if (req.table_type() != PGSQL_TABLE_TYPE) {
+    table_names_map_[{namespace_id, req.name()}] = *table;
+  }
 
   if (create_tablets) {
     RETURN_NOT_OK(CreateTabletsFromTable(partitions, *table, tablets));
@@ -2885,10 +2889,13 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
 
   // Update the internal table maps.
   {
-    TRACE("Removing from by-name map");
-    std::lock_guard<LockType> l_map(lock_);
-    if (table_names_map_.erase({l->data().namespace_id(), l->data().name()}) != 1) {
-      PANIC_RPC(rpc, "Could not remove table from map, name=" + table->ToString());
+    // Exclude Postgres tables which are not in the name map.
+    if (l->data().table_type() != PGSQL_TABLE_TYPE) {
+      TRACE("Removing from by-name map");
+      std::lock_guard<LockType> l_map(lock_);
+      if (table_names_map_.erase({l->data().namespace_id(), l->data().name()}) != 1) {
+        PANIC_RPC(rpc, "Could not remove table from map, name=" + table->ToString());
+      }
     }
 
     TRACE("Add deleted table tablets into tablet wait list");

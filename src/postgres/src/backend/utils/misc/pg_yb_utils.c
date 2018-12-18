@@ -481,3 +481,9 @@ YBCGetSchemaName(Oid schemaoid)
 	else
 		return get_namespace_name(schemaoid);
 }
+
+Oid
+YBCGetDatabaseOid(Relation rel)
+{
+	return rel->rd_rel->relisshared ? TemplateDbOid : MyDatabaseId;
+}

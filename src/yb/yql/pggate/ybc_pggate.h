@@ -121,17 +121,18 @@ YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
 YBCStatus YBCPgNewDropTable(YBCPgSession pg_session,
-                            const char *database_name,
-                            const char *schema_name,
-                            const char *table_name,
+                            YBCPgOid database_oid,
+                            YBCPgOid schema_oid,
+                            YBCPgOid table_oid,
                             bool if_exist,
                             YBCPgStatement *handle);
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
 
 YBCStatus YBCPgGetTableDesc(YBCPgSession pg_session,
-                            const char *database_name,
-                            const char *table_name,
+                            YBCPgOid database_oid,
+                            YBCPgOid schema_oid,
+                            YBCPgOid table_oid,
                             YBCPgTableDesc *handle);
 
 YBCStatus YBCPgDeleteTableDesc(YBCPgTableDesc handle);
@@ -167,9 +168,7 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 //   - This bind-column function is used to bind the primary column "key" with "key_expr" that can
 //     contain bind-variables (placeholders) and contants whose values can be updated for each
 //     execution of the same allocated statement.
-YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle,
-                             int attr_num,
-                             YBCPgExpr attr_value);
+YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 
 // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
 // by YBCPgDmlBindColumn().
@@ -188,36 +187,36 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
 
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgSession pg_session,
-                         const char *database_name,
-                         const char *schema_name,
-                         const char *table_name,
+                         YBCPgOid database_oid,
+                         YBCPgOid schema_oid,
+                         YBCPgOid table_oid,
                          YBCPgStatement *handle);
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle);
 
 // UPDATE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(YBCPgSession pg_session,
-                         const char *database_name,
-                         const char *schema_name,
-                         const char *table_name,
+                         YBCPgOid database_oid,
+                         YBCPgOid schema_oid,
+                         YBCPgOid table_oid,
                          YBCPgStatement *handle);
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle);
 
 // DELETE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(YBCPgSession pg_session,
-                         const char *database_name,
-                         const char *schema_name,
-                         const char *table_name,
+                         YBCPgOid database_oid,
+                         YBCPgOid schema_oid,
+                         YBCPgOid table_oid,
                          YBCPgStatement *handle);
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle);
 
 // SELECT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
-                         const char *database_name,
-                         const char *schema_name,
-                         const char *table_name,
+                         YBCPgOid database_oid,
+                         YBCPgOid schema_oid,
+                         YBCPgOid table_oid,
                          YBCPgStatement *handle);
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle);

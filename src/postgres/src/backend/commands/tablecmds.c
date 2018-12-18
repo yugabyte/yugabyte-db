@@ -1091,7 +1091,7 @@ RemoveRelations(DropStmt *drop)
 			Relation full_rel = relation_openrv(rel, NoLock);
 			if (full_rel->rd_rel->relpersistence != RELPERSISTENCE_TEMP)
 			{
-				YBCDropTable(relOid, rel->relname, rel->schemaname);
+				YBCDropTable(InvalidOid /* namespaceId */, relOid);
 				/*
 				 * Remove the associated type.
 				 * TODO: When we fully support dependencies this should be

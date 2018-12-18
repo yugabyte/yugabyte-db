@@ -103,7 +103,7 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   return Status::OK();
 }
 
-CHECKED_STATUS PggateTest::CreateCluster(int num_tablet_servers) {
+Status PggateTest::CreateCluster(int num_tablet_servers) {
   // Start mini-cluster with given number of tservers (default: 3).
   ExternalMiniClusterOptions opts;
   opts.num_tablet_servers = num_tablet_servers;

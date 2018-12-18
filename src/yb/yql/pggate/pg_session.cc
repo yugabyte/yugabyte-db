@@ -18,7 +18,6 @@
 
 #include "yb/client/yb_op.h"
 #include "yb/client/transaction.h"
-#include "yb/common/entity_ids.h"
 
 namespace yb {
 namespace pggate {
@@ -64,7 +63,7 @@ void PgSession::Reset() {
   status_ = Status::OK();
 }
 
-CHECKED_STATUS PgSession::ConnectDatabase(const string& database_name) {
+Status PgSession::ConnectDatabase(const string& database_name) {
   Result<bool> namespace_exists = client_->NamespaceExists(database_name, YQL_DATABASE_PGSQL);
   if (namespace_exists.ok() && namespace_exists.get()) {
     connected_database_ = database_name;
@@ -76,10 +75,10 @@ CHECKED_STATUS PgSession::ConnectDatabase(const string& database_name) {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PgSession::CreateDatabase(const string& database_name,
-                                         const PgOid database_oid,
-                                         const PgOid source_database_oid,
-                                         const PgOid next_oid) {
+Status PgSession::CreateDatabase(const string& database_name,
+                                 const PgOid database_oid,
+                                 const PgOid source_database_oid,
+                                 const PgOid next_oid) {
   return client_->CreateNamespace(database_name,
                                   YQL_DATABASE_PGSQL,
                                   "" /* creator_role_name */,
@@ -89,15 +88,15 @@ CHECKED_STATUS PgSession::CreateDatabase(const string& database_name,
                                   next_oid);
 }
 
-CHECKED_STATUS PgSession::DropDatabase(const string& database_name, bool if_exist) {
+Status PgSession::DropDatabase(const string& database_name, bool if_exist) {
   return client_->DeleteNamespace(database_name, YQL_DATABASE_PGSQL);
 }
 
-CHECKED_STATUS PgSession::ReserveOids(const PgOid database_oid,
-                                      const PgOid next_oid,
-                                      const uint32_t count,
-                                      PgOid *begin_oid,
-                                      PgOid *end_oid) {
+Status PgSession::ReserveOids(const PgOid database_oid,
+                              const PgOid next_oid,
+                              const uint32_t count,
+                              PgOid *begin_oid,
+                              PgOid *end_oid) {
   return client_->ReservePgsqlOids(GetPgsqlNamespaceId(database_oid), next_oid, count,
                                    begin_oid, end_oid);
 }
@@ -108,46 +107,31 @@ client::YBTableCreator *PgSession::NewTableCreator() {
   return client_->NewTableCreator();
 }
 
-CHECKED_STATUS PgSession::DropTable(const client::YBTableName& name) {
-  return client_->DeleteTable(name);
-}
-
-shared_ptr<client::YBTable> PgSession::GetTableDesc(const client::YBTableName& table_name) {
-  // Hide tables in system_redis schema.
-  if (table_name.is_redis_namespace()) {
-    return nullptr;
-  }
-
-  shared_ptr<client::YBTable> yb_table;
-  Status s = client_->OpenTable(table_name, &yb_table);
-  if (!s.ok()) {
-    VLOG(3) << "GetTableDesc: Server returns an error: " << s.ToString();
-    return nullptr;
-  }
-  return yb_table;
+Status PgSession::DropTable(const PgObjectId& table_id) {
+  return client_->DeleteTable(table_id.GetYBTableId());
 }
 
 //--------------------------------------------------------------------------------------------------
 
-Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const YBTableName& name,
-                                                       const bool write_table) {
-  VLOG(3) << "Loading table descriptor for " << name.ToString();
-  shared_ptr<YBTable> table = GetTableDesc(name);
-  if (table == nullptr) {
-    return STATUS_FORMAT(NotFound, "Table $0 does not exist", name.ToString());
+Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_id) {
+  VLOG(3) << "Loading table descriptor for " << table_id;
+  const TableId yb_table_id = table_id.GetYBTableId();
+  shared_ptr<YBTable> table;
+  Status s = client_->OpenTable(yb_table_id, &table);
+  if (!s.ok()) {
+    VLOG(3) << "GetTableDesc: Server returns an error: " << s;
+    return STATUS_FORMAT(NotFound, "Table $0 does not exist", yb_table_id);
   }
-  if (table->table_type() != YBTableType::PGSQL_TABLE_TYPE) {
-    return STATUS(InvalidArgument, "Cannot access non-postgres table through the PostgreSQL API");
-  }
+  DCHECK_EQ(table->table_type(), YBTableType::PGSQL_TABLE_TYPE);
   return make_scoped_refptr<PgTableDesc>(table);
 }
 
-CHECKED_STATUS PgSession::Apply(const std::shared_ptr<client::YBPgsqlOp>& op) {
+Status PgSession::Apply(const std::shared_ptr<client::YBPgsqlOp>& op) {
   YBSession* session = GetSession(op->read_only());
   return session->ApplyAndFlush(op);
 }
 
-CHECKED_STATUS PgSession::ApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op) {
+Status PgSession::ApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op) {
   return GetSession(op->read_only())->Apply(op);
 }
 

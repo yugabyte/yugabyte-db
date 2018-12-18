@@ -57,6 +57,7 @@ class YBTableCreator::Data {
   RoleName creator_role_name_;
 
   // For Postgres: table id to assign, and whether the table is a sys catalog / shared table.
+  // For all tables, table_id_ will contain the table id assigned after creation.
   std::string table_id_;
   boost::optional<bool> is_pg_catalog_table_;
   boost::optional<bool> is_pg_shared_table_;

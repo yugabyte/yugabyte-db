@@ -63,14 +63,17 @@ void ybcFreeScanState(YbScanState ybc_state)
  * Get YugaByte-specific table metadata and load it into the scan_plan.
  * Currently only the hash and primary key info.
  */
-void ybcLoadTableInfo(const char *db_name, Oid relid, YbScanPlan scan_plan)
+static void ybcLoadTableInfo(Relation rel, YbScanPlan scan_plan)
 {
-	Relation rel = RelationIdGetRelation(relid);
-	char *table_name = RelationGetRelationName(rel);
+	Oid            dboid          = YBCGetDatabaseOid(rel);
+	Oid            schemaoid      = RelationGetNamespace(rel);
+	Oid            relid          = RelationGetRelid(rel);
 	YBCPgTableDesc ybc_table_desc = NULL;
+
 	HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session,
-	                                 db_name,
-	                                 table_name,
+									 dboid,
+									 schemaoid,
+									 relid,
 	                                 &ybc_table_desc));
 
 	for (AttrNumber attrNum = 1; attrNum <= rel->rd_att->natts; attrNum++)
@@ -94,8 +97,6 @@ void ybcLoadTableInfo(const char *db_name, Oid relid, YbScanPlan scan_plan)
 	}
 	HandleYBStatus(YBCPgDeleteTableDesc(ybc_table_desc));
 	ybc_table_desc = NULL;
-	RelationClose(rel);
-	rel = NULL;
 }
 
 static void analyzeOperator(OpExpr* opExpr, bool *is_eq, bool *is_ineq)
@@ -237,12 +238,9 @@ static void ybcAddWhereCond(Expr *expr, YBCPgStatement yb_stmt)
 
 YbScanState ybcBeginScan(Relation rel, List *target_attrs, List *yb_conds)
 {
-	Oid        schemaoid   = RelationGetNamespace(rel);
-	Oid        relid       = RelationGetRelid(rel);
-	const char *tablename  = RelationGetRelationName(rel);
-	const char *schemaname = YBCGetSchemaName(schemaoid);
-	const char *dbname     = YBCGetDatabaseName(relid);
-
+	Oid         dboid     = YBCGetDatabaseOid(rel);
+	Oid         schemaoid = RelationGetNamespace(rel);
+	Oid         relid     = RelationGetRelid(rel);
 	YbScanState ybc_state = NULL;
 	ListCell    *lc;
 
@@ -250,9 +248,9 @@ YbScanState ybcBeginScan(Relation rel, List *target_attrs, List *yb_conds)
 	ybc_state = (YbScanState) palloc0(sizeof(YbScanStateData));
 
 	HandleYBStatus(YBCPgNewSelect(ybc_pg_session,
-	                              dbname,
-	                              schemaname,
-	                              tablename,
+								  dboid,
+								  schemaoid,
+								  relid,
 	                              &ybc_state->handle));
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
@@ -260,7 +258,7 @@ YbScanState ybcBeginScan(Relation rel, List *target_attrs, List *yb_conds)
 	ybc_state->tupleDesc  = RelationGetDescr(rel);
 
 	YbScanPlan ybc_plan = (YbScanPlan) palloc0(sizeof(YbScanPlanData));
-	ybcLoadTableInfo(dbname, RelationGetRelid(rel), ybc_plan);
+	ybcLoadTableInfo(rel, ybc_plan);
 
 	foreach(lc, yb_conds)
 	{
