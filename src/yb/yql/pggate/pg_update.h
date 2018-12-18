@@ -31,10 +31,7 @@ class PgUpdate : public PgDmlWrite {
   typedef scoped_refptr<PgUpdate> ScopedRefPtr;
 
   // Constructors.
-  PgUpdate(PgSession::ScopedRefPtr pg_session,
-           const char *database_name,
-           const char *schema_name,
-           const char *table_name);
+  PgUpdate(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
   virtual ~PgUpdate();
 
  private:

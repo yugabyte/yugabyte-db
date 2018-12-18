@@ -394,11 +394,11 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
 }
 
 Status YBClient::Data::GetTabletServer(YBClient* client,
-                                         const scoped_refptr<RemoteTablet>& rt,
-                                         ReplicaSelection selection,
-                                         const set<string>& blacklist,
-                                         vector<RemoteTabletServer*>* candidates,
-                                         RemoteTabletServer** ts) {
+                                       const scoped_refptr<RemoteTablet>& rt,
+                                       ReplicaSelection selection,
+                                       const set<string>& blacklist,
+                                       vector<RemoteTabletServer*>* candidates,
+                                       RemoteTabletServer** ts) {
   // TODO: write a proper async version of this for async client.
   RemoteTabletServer* ret = SelectTServer(rt.get(), selection, blacklist, candidates);
   if (PREDICT_FALSE(ret == nullptr)) {
@@ -419,17 +419,18 @@ Status YBClient::Data::GetTabletServer(YBClient* client,
   return Status::OK();
 }
 
-Status YBClient::Data::CreateTable(
-    YBClient* client,
-    const CreateTableRequestPB& req,
-    const YBSchema& schema,
-    const MonoTime& deadline) {
+Status YBClient::Data::CreateTable(YBClient* client,
+                                   const CreateTableRequestPB& req,
+                                   const YBSchema& schema,
+                                   const MonoTime& deadline,
+                                   string* table_id) {
   CreateTableResponsePB resp;
 
   int attempts = 0;
   Status s = SyncLeaderMasterRpc<CreateTableRequestPB, CreateTableResponsePB>(
       deadline, client, req, &resp, &attempts, "CreateTable", &MasterServiceProxy::CreateTable);
   RETURN_NOT_OK(s);
+  *table_id = resp.table_id();
   if (resp.has_error()) {
     if (resp.error().code() == MasterErrorPB::TABLE_ALREADY_PRESENT && attempts > 1) {
       // If the table already exists and the number of attempts is >
@@ -449,7 +450,7 @@ Status YBClient::Data::CreateTable(
       // created, we can sometimes see an empty schema. Wait until the table is fully created
       // before we compare the schema.
       RETURN_NOT_OK_PREPEND(
-          WaitForCreateTableToFinish(client, table_name, deadline),
+          WaitForCreateTableToFinish(client, table_name, resp.table_id(), deadline),
           Substitute("Failed waiting for table $0 to finish being created", table_name.ToString()));
 
       RETURN_NOT_OK_PREPEND(
@@ -490,12 +491,18 @@ Status YBClient::Data::CreateTable(
 
 Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
                                                const YBTableName& table_name,
+                                               const string& table_id,
                                                const MonoTime& deadline,
                                                bool* create_in_progress) {
   DCHECK_ONLY_NOTNULL(create_in_progress);
   IsCreateTableDoneRequestPB req;
   IsCreateTableDoneResponsePB resp;
-  table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  if (table_name.has_table()) {
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  }
+  if (!table_id.empty()) {
+    req.mutable_table()->set_table_id(table_id);
+  }
 
   const Status s =
       SyncLeaderMasterRpc<IsCreateTableDoneRequestPB, IsCreateTableDoneResponsePB>(
@@ -520,14 +527,17 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
 
 Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
                                                   const YBTableName& table_name,
+                                                  const string& table_id,
                                                   const MonoTime& deadline) {
   return RetryFunc(
       deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
-      std::bind(&YBClient::Data::IsCreateTableInProgress, this, client, table_name, _1, _2));
+      std::bind(&YBClient::Data::IsCreateTableInProgress, this, client,
+                table_name, table_id, _1, _2));
 }
 
 Status YBClient::Data::DeleteTable(YBClient* client,
                                    const YBTableName& table_name,
+                                   const string& table_id,
                                    const bool is_index_table,
                                    const MonoTime& deadline,
                                    YBTableName* indexed_table_name,
@@ -536,7 +546,12 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   DeleteTableResponsePB resp;
   int attempts = 0;
 
-  table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  if (table_name.has_table()) {
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  }
+  if (!table_id.empty()) {
+    req.mutable_table()->set_table_id(table_id);
+  }
   req.set_is_index_table(is_index_table);
   const Status s = SyncLeaderMasterRpc<DeleteTableRequestPB, DeleteTableResponsePB>(
       deadline, client, req, &resp,
@@ -569,13 +584,13 @@ Status YBClient::Data::DeleteTable(YBClient* client,
 }
 
 Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
-                                               const std::string& deleted_table_id,
+                                               const std::string& table_id,
                                                const MonoTime& deadline,
                                                bool* delete_in_progress) {
   DCHECK_ONLY_NOTNULL(delete_in_progress);
   IsDeleteTableDoneRequestPB req;
   IsDeleteTableDoneResponsePB resp;
-  req.set_table_id(deleted_table_id);
+  req.set_table_id(table_id);
 
   const Status s =
       SyncLeaderMasterRpc<IsDeleteTableDoneRequestPB, IsDeleteTableDoneResponsePB>(
@@ -599,11 +614,11 @@ Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
 }
 
 Status YBClient::Data::WaitForDeleteTableToFinish(YBClient* client,
-                                                  const std::string& deleted_table_id,
+                                                  const std::string& table_id,
                                                   const MonoTime& deadline) {
   return RetryFunc(
       deadline, "Waiting on Delete Table to be completed", "Timed out waiting for Table Deletion",
-      std::bind(&YBClient::Data::IsDeleteTableInProgress, this, client, deleted_table_id, _1, _2));
+      std::bind(&YBClient::Data::IsDeleteTableInProgress, this, client, table_id, _1, _2));
 }
 
 Status YBClient::Data::TruncateTables(YBClient* client,

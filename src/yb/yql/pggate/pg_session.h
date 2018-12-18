@@ -75,13 +75,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // API for table operations.
   client::YBTableCreator *NewTableCreator();
-  std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name);
-  CHECKED_STATUS DropTable(const client::YBTableName& name);
+  CHECKED_STATUS DropTable(const PgObjectId& table_id);
+  Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
 
-  // API for read and write database content.
-  Result<PgTableDesc::ScopedRefPtr> LoadTable(const client::YBTableName& name, bool for_write);
-
-  // Apply the given operation.
+  // Apply the given operation to read and write database content.
   CHECKED_STATUS Apply(const std::shared_ptr<client::YBPgsqlOp>& op);
   CHECKED_STATUS ApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op);
   void FlushAsync(StatusFunctor callback);

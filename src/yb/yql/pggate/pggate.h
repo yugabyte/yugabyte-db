@@ -142,9 +142,7 @@ class PgApiImpl {
                                 const char *database_name,
                                 const char *schema_name,
                                 const char *table_name,
-                                PgOid database_oid,
-                                PgOid schema_oid,
-                                PgOid table_oid,
+                                const PgObjectId& table_id,
                                 bool is_shared_table,
                                 bool if_not_exist,
                                 bool add_primary_key,
@@ -156,17 +154,14 @@ class PgApiImpl {
   CHECKED_STATUS ExecCreateTable(PgStatement *handle);
 
   CHECKED_STATUS NewDropTable(PgSession *pg_session,
-                              const char *database_name,
-                              const char *schema_name,
-                              const char *table_name,
+                              const PgObjectId& table_id,
                               bool if_exist,
                               PgStatement **handle);
 
   CHECKED_STATUS ExecDropTable(PgStatement *handle);
 
   CHECKED_STATUS GetTableDesc(PgSession *pg_session,
-                              const char *database_name,
-                              const char *table_name,
+                              const PgObjectId& table_id,
                               PgTableDesc **handle);
 
   CHECKED_STATUS DeleteTableDesc(PgTableDesc *handle);
@@ -216,41 +211,25 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Insert.
-  CHECKED_STATUS NewInsert(PgSession *pg_session,
-                           const char *database_name,
-                           const char *schema_name,
-                           const char *table_name,
-                           PgStatement **handle);
+  CHECKED_STATUS NewInsert(PgSession *pg_session, const PgObjectId& table_id, PgStatement **handle);
 
   CHECKED_STATUS ExecInsert(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Update.
-  CHECKED_STATUS NewUpdate(PgSession *pg_session,
-                           const char *database_name,
-                           const char *schema_name,
-                           const char *table_name,
-                           PgStatement **handle);
+  CHECKED_STATUS NewUpdate(PgSession *pg_session, const PgObjectId& table_id, PgStatement **handle);
 
   CHECKED_STATUS ExecUpdate(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Delete.
-  CHECKED_STATUS NewDelete(PgSession *pg_session,
-                           const char *database_name,
-                           const char *schema_name,
-                           const char *table_name,
-                           PgStatement **handle);
+  CHECKED_STATUS NewDelete(PgSession *pg_session, const PgObjectId& table_id, PgStatement **handle);
 
   CHECKED_STATUS ExecDelete(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Select.
-  CHECKED_STATUS NewSelect(PgSession *pg_session,
-                           const char *database_name,
-                           const char *schema_name,
-                           const char *table_name,
-                           PgStatement **handle);
+  CHECKED_STATUS NewSelect(PgSession *pg_session, const PgObjectId& table_id, PgStatement **handle);
 
   CHECKED_STATUS ExecSelect(PgStatement *handle);
 

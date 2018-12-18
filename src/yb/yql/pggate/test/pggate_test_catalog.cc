@@ -54,7 +54,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
-  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabaseOid, schema_oid, tab_oid, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -104,7 +104,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, schema_oid, tab_oid, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -172,7 +172,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, schema_oid, tab_oid, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgNewColumnRef(pg_stmt, 1, &colref);
@@ -229,7 +229,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // UPDATE ----------------------------------------------------------------------------------------
   // Allocate new update.
-  CHECK_YBC_STATUS(YBCPgNewUpdate(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewUpdate(pg_session_, kDefaultDatabaseOid, schema_oid, tab_oid, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -273,7 +273,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, schema_oid, tab_oid, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgNewColumnRef(pg_stmt, 1, &colref);
@@ -373,7 +373,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
 
-  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabase, nullptr, tabname, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabaseOid, schema_oid, tab_oid, &pg_stmt));
 
   YBCPgExpr expr_key;
   YBCPgExpr expr_value;
@@ -404,7 +404,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Select from from test table in the new database";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, copy_db_name, nullptr, tabname, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, copy_db_oid, schema_oid, tab_oid, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;

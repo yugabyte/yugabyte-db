@@ -53,7 +53,8 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
 
   // SELECT: Empty Table ---------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from empty table";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, kDefaultSchemaOid, tab_oid,
+                                  &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -88,7 +89,8 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
 
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
-  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabaseOid, kDefaultSchemaOid, tab_oid,
+                                  &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -139,7 +141,8 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from partitioned table WITH specifying RANGE column";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, kDefaultSchemaOid, tab_oid,
+                                  &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgNewColumnRef(pg_stmt, 1, &colref);
@@ -211,7 +214,8 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from partitioned table WITHOUT specifying RANGE column";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, nullptr, nullptr, tabname, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, kDefaultSchemaOid, tab_oid,
+                                  &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgNewColumnRef(pg_stmt, 1, &colref);

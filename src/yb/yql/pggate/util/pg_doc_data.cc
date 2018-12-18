@@ -116,7 +116,7 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
 // Read Tuple Routine in DocDB Format (wire_protocol).
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PgDocData::LoadCache(const string& cache, int64_t *total_row_count, Slice *cursor) {
+Status PgDocData::LoadCache(const string& cache, int64_t *total_row_count, Slice *cursor) {
   // Setup the buffer to read the next set of tuples.
   CHECK(cursor->empty()) << "Existing cache is not yet fully read";
   *cursor = cache;

@@ -34,10 +34,7 @@ class PgInsert : public PgDmlWrite {
   typedef std::unique_ptr<const PgInsert> UniPtrConst;
 
   // Constructors.
-  PgInsert(PgSession::ScopedRefPtr pg_session,
-           const char *database_name,
-           const char *schema_name,
-           const char *table_name);
+  PgInsert(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
   virtual ~PgInsert();
 
   // Prepare write operations.

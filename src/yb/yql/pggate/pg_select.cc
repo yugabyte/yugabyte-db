@@ -26,11 +26,8 @@ using std::make_shared;
 // PgSelect
 //--------------------------------------------------------------------------------------------------
 
-PgSelect::PgSelect(PgSession::ScopedRefPtr pg_session,
-                   const char *database_name,
-                   const char *schema_name,
-                   const char *table_name)
-    : PgDml(std::move(pg_session), database_name, schema_name, table_name, StmtOp::STMT_SELECT) {
+PgSelect::PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id)
+    : PgDml(std::move(pg_session), table_id, StmtOp::STMT_SELECT) {
 }
 
 PgSelect::~PgSelect() {
