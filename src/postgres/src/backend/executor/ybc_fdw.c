@@ -231,26 +231,21 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	Relation			rel = NULL;
 	ListCell 			*cell = NULL;
 	YbFdwPlanState		*ybc_plan = NULL;
-	const char			*table_name = NULL;
-	const char			*db_name = NULL;
+
 	ybc_plan = (YbFdwPlanState *) palloc0(sizeof(YbFdwPlanState));
 
 	relid = root->simple_rte_array[baserel->relid]->relid;
-	if (IsSharedRelation(relid))
-		db_name = "template1";
-	else
-		db_name = get_database_name(MyDatabaseId);
 
 	/*
 	 * Get table info (from both Postgres and YugaByte).
 	 * YugaByte info is currently mainly primary and partition (hash) keys.
 	 */
 	rel = RelationIdGetRelation(relid);
-	table_name = rel->rd_rel->relname.data;
 	YBCPgTableDesc ybc_table_desc = NULL;
 	HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session,
-	                                 db_name,
-	                                 table_name,
+									 YBCGetDatabaseOid(rel),
+									 RelationGetNamespace(rel),
+									 relid,
 	                                 &ybc_table_desc));
 
 	for (AttrNumber col = baserel->min_attr; col <= baserel->max_attr; col++)
@@ -500,15 +495,6 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 {
 	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
 	Relation    relation     = node->ss.ss_currentRelation;
-	char        *dbname      = NULL;
-	char        *schemaname  = get_namespace_name(relation->rd_rel
-	                                                      ->relnamespace);
-	char        *tablename   = NameStr(relation->rd_rel->relname);
-
-	if (IsSharedRelation(RelationGetRelid(relation)))
-		dbname = "template1";
-	else
-		dbname = get_database_name(MyDatabaseId);
 
 	/* Planning function above should ensure both target and conds are set */
 	Assert(foreignScan->fdw_private->length == 2);
@@ -527,9 +513,9 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 	node->fdw_state = (void *) ybc_state;
 	HandleYBStatus(YBCPgNewSelect(ybc_pg_session,
-	                              dbname,
-	                              schemaname,
-	                              tablename,
+								  YBCGetDatabaseOid(relation),
+								  RelationGetNamespace(relation),
+								  RelationGetRelid(relation),
 	                              &ybc_state->handle));
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);

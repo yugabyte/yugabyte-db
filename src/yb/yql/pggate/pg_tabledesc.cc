@@ -58,9 +58,7 @@ Result<PgColumn *> PgTableDesc::FindColumn(int attr_num) {
   return STATUS_FORMAT(InvalidArgument, "Invalid column number $0", attr_num);
 }
 
-CHECKED_STATUS PgTableDesc::GetColumnInfo(int16_t attr_number,
-                                          bool *is_primary,
-                                          bool *is_hash) const {
+Status PgTableDesc::GetColumnInfo(int16_t attr_number, bool *is_primary, bool *is_hash) const {
   const auto itr = attr_num_map_.find(attr_number);
   if (itr != attr_num_map_.end()) {
     const ColumnDesc* desc = columns_[itr->second].desc();

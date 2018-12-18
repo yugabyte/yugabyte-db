@@ -180,9 +180,9 @@ YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
                               bool if_not_exist,
                               bool add_primary_key,
                               YBCPgStatement *handle) {
+  const PgObjectId table_id(database_oid, schema_oid, table_oid);
   return ToYBCStatus(pgapi->NewCreateTable(pg_session, database_name, schema_name, table_name,
-                                           database_oid, schema_oid, table_oid,
-                                           is_shared_table, if_not_exist, add_primary_key,
+                                           table_id, is_shared_table, if_not_exist, add_primary_key,
                                            handle));
 }
 
@@ -197,13 +197,13 @@ YBCStatus YBCPgExecCreateTable(YBCPgStatement handle) {
 }
 
 YBCStatus YBCPgNewDropTable(YBCPgSession pg_session,
-                            const char *database_name,
-                            const char *schema_name,
-                            const char *table_name,
+                            const YBCPgOid database_oid,
+                            const YBCPgOid schema_oid,
+                            const YBCPgOid table_oid,
                             bool if_exist,
                             YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->NewDropTable(pg_session, database_name, schema_name, table_name,
-                                         if_exist, handle));
+  const PgObjectId table_id(database_oid, schema_oid, table_oid);
+  return ToYBCStatus(pgapi->NewDropTable(pg_session, table_id, if_exist, handle));
 }
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
@@ -211,11 +211,12 @@ YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
 }
 
 YBCStatus YBCPgGetTableDesc(YBCPgSession pg_session,
-                            const char *database_name,
-                            const char *table_name,
+                            const YBCPgOid database_oid,
+                            const YBCPgOid schema_oid,
+                            const YBCPgOid table_oid,
                             YBCPgTableDesc *handle) {
-  return ToYBCStatus(pgapi->GetTableDesc(pg_session, database_name, table_name, handle));
-
+  const PgObjectId table_id(database_oid, schema_oid, table_oid);
+  return ToYBCStatus(pgapi->GetTableDesc(pg_session, table_id, handle));
 }
 
 YBCStatus YBCPgDeleteTableDesc(YBCPgTableDesc handle) {
@@ -237,9 +238,7 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
-YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle,
-                             int attr_num,
-                             YBCPgExpr attr_value) {
+YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }
 
@@ -250,15 +249,12 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
 
 // INSERT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgSession pg_session,
-                         const char *database_name,
-                         const char *schema_name,
-                         const char *table_name,
+                         const YBCPgOid database_oid,
+                         const YBCPgOid schema_oid,
+                         const YBCPgOid table_oid,
                          YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->NewInsert(pg_session,
-                                      database_name,
-                                      schema_name,
-                                      table_name,
-                                      handle));
+  const PgObjectId table_id(database_oid, schema_oid, table_oid);
+  return ToYBCStatus(pgapi->NewInsert(pg_session, table_id, handle));
 }
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
@@ -267,15 +263,12 @@ YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
 
 // UPDATE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(YBCPgSession pg_session,
-                         const char *database_name,
-                         const char *schema_name,
-                         const char *table_name,
+                         const YBCPgOid database_oid,
+                         const YBCPgOid schema_oid,
+                         const YBCPgOid table_oid,
                          YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->NewUpdate(pg_session,
-                                      database_name,
-                                      schema_name,
-                                      table_name,
-                                      handle));
+  const PgObjectId table_id(database_oid, schema_oid, table_oid);
+  return ToYBCStatus(pgapi->NewUpdate(pg_session, table_id, handle));
 }
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
@@ -284,15 +277,12 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
 
 // DELETE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(YBCPgSession pg_session,
-                         const char *database_name,
-                         const char *schema_name,
-                         const char *table_name,
+                         const YBCPgOid database_oid,
+                         const YBCPgOid schema_oid,
+                         const YBCPgOid table_oid,
                          YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->NewDelete(pg_session,
-                                      database_name,
-                                      schema_name,
-                                      table_name,
-                                      handle));
+  const PgObjectId table_id(database_oid, schema_oid, table_oid);
+  return ToYBCStatus(pgapi->NewDelete(pg_session, table_id, handle));
 }
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle) {
@@ -301,15 +291,12 @@ YBCStatus YBCPgExecDelete(YBCPgStatement handle) {
 
 // SELECT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
-                         const char *database_name,
-                         const char *schema_name,
-                         const char *table_name,
+                         const YBCPgOid database_oid,
+                         const YBCPgOid schema_oid,
+                         const YBCPgOid table_oid,
                          YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->NewSelect(pg_session,
-                                      database_name,
-                                      schema_name,
-                                      table_name,
-                                      handle));
+  const PgObjectId table_id(database_oid, schema_oid, table_oid);
+  return ToYBCStatus(pgapi->NewSelect(pg_session, table_id, handle));
 }
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle) {

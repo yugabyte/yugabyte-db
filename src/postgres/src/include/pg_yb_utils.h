@@ -207,4 +207,10 @@ const char* YBCGetDatabaseName(Oid relid);
  */
 const char* YBCGetSchemaName(Oid schemaoid);
 
+/**
+ * Get the real database id of a relation. For shared relations, it will be
+ * template1.
+ */
+Oid YBCGetDatabaseOid(Relation rel);
+
 #endif /* PG_YB_UTILS_H */

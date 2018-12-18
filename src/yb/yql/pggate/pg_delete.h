@@ -34,10 +34,7 @@ class PgDelete : public PgDmlWrite {
   typedef std::unique_ptr<const PgDelete> UniPtrConst;
 
   // Constructors.
-  PgDelete(PgSession::ScopedRefPtr pg_session,
-           const char *database_name,
-           const char *schema_name,
-           const char *table_name);
+  PgDelete(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
   virtual ~PgDelete();
 
  private:

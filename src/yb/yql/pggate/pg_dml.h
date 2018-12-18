@@ -58,11 +58,7 @@ class PgDml : public PgStatement {
  protected:
   // Method members.
   // Constructor.
-  PgDml(PgSession::ScopedRefPtr pg_session,
-        const char *database_name,
-        const char *schema_name,
-        const char *table_name,
-        StmtOp stmt_op);
+  PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, StmtOp stmt_op);
 
   // Load table.
   CHECKED_STATUS LoadTable(bool for_write);
@@ -81,7 +77,7 @@ class PgDml : public PgStatement {
   //
   // TODO(neil) All related information to table descriptor should be cached in the global API
   // object or some global data structures.
-  client::YBTableName table_name_;
+  const PgObjectId table_id_;
   PgTableDesc::ScopedRefPtr table_desc_;
 
   // Postgres targets of statements. These are either selected or returned expressions.

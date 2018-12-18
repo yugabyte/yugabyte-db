@@ -88,31 +88,35 @@ class YBClient::Data {
   CHECKED_STATUS CreateTable(YBClient* client,
                              const master::CreateTableRequestPB& req,
                              const YBSchema& schema,
-                             const MonoTime& deadline);
+                             const MonoTime& deadline,
+                             std::string* table_id);
 
   CHECKED_STATUS IsCreateTableInProgress(YBClient* client,
                                          const YBTableName& table_name,
+                                         const std::string& table_id,
                                          const MonoTime& deadline,
                                          bool *create_in_progress);
 
   CHECKED_STATUS WaitForCreateTableToFinish(YBClient* client,
                                             const YBTableName& table_name,
+                                            const std::string& table_id,
                                             const MonoTime& deadline);
 
   CHECKED_STATUS DeleteTable(YBClient* client,
                              const YBTableName& table_name,
+                             const std::string& table_id,
                              bool is_index_table,
                              const MonoTime& deadline,
                              YBTableName* indexed_table_name,
                              bool wait = true);
 
   CHECKED_STATUS IsDeleteTableInProgress(YBClient* client,
-                                         const std::string& deleted_table_id,
+                                         const std::string& table_id,
                                          const MonoTime& deadline,
                                          bool *delete_in_progress);
 
   CHECKED_STATUS WaitForDeleteTableToFinish(YBClient* client,
-                                            const std::string& deleted_table_id,
+                                            const std::string& table_id,
                                             const MonoTime& deadline);
 
   CHECKED_STATUS TruncateTables(YBClient* client,

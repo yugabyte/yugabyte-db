@@ -93,13 +93,11 @@ Oid GetTypeId(int attrNum, TupleDesc tupleDesc)
  */
 Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 {
+	Oid            dboid         = YBCGetDatabaseOid(rel);
 	Oid            schemaoid     = RelationGetNamespace(rel);
 	Oid            relid         = RelationGetRelid(rel);
-	char           *tablename    = RelationGetRelationName(rel);
 	AttrNumber     minattr       = FirstLowInvalidHeapAttributeNumber + 1;
 	int            natts         = RelationGetNumberOfAttributes(rel);
-	const char     *schemaname   = YBCGetSchemaName(schemaoid);
-	const char     *dbname       = YBCGetDatabaseName(relid);
 	Bitmapset      *pkey         = NULL;
 	YBCPgStatement ybc_stmt      = NULL;
 	YBCPgTableDesc ybc_tabledesc = NULL;
@@ -116,8 +114,9 @@ Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 	 * check that values for all primary key columns are given (not null)
 	 */
 	HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session,
-	                                 dbname,
-	                                 tablename,
+									 dboid,
+									 schemaoid,
+									 relid,
 	                                 &ybc_tabledesc));
 	for (AttrNumber attnum = minattr; attnum <= natts; attnum++)
 	{
@@ -142,9 +141,9 @@ Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 
 	/* Create the INSERT request and add the values from the tuple. */
 	HandleYBStatus(YBCPgNewInsert(ybc_pg_session,
-	                              dbname,
-	                              schemaname,
-	                              tablename,
+								  dboid,
+								  schemaoid,
+								  relid,
 	                              &ybc_stmt));
 	bool is_null = false;
 	for (AttrNumber attnum  = minattr; attnum <= natts; attnum++)
@@ -183,9 +182,9 @@ Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 
 void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot *slot)
 {
-	char           *dbname     = get_database_name(MyDatabaseId);
-	char           *schemaname = get_namespace_name(rel->rd_rel->relnamespace);
-	char           *tablename  = NameStr(rel->rd_rel->relname);
+	Oid            dboid       = YBCGetDatabaseOid(rel);
+	Oid            schemaoid   = RelationGetNamespace(rel);
+	Oid            relid       = RelationGetRelid(rel);
 	YBCPgStatement delete_stmt = NULL;
 
 	// Find ybctid value.
@@ -212,18 +211,18 @@ void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot
 
 	// Execute DELETE.
 	HandleYBStatus(YBCPgNewDelete(ybc_pg_session,
-	                              dbname,
-	                              schemaname,
-	                              tablename,
-	                              &delete_stmt));
+								  dboid,
+								  schemaoid,
+								  relid,
+								  &delete_stmt));
 
 	YBCPgExpr ybctid_expr = YBCNewConstant(delete_stmt,
-	                                       BYTEAOID,
-	                                       ybctid,
-	                                       false);
+										   BYTEAOID,
+										   ybctid,
+										   false);
 	HandleYBStmtStatus(YBCPgDmlBindColumn(delete_stmt,
-	                                      YBTupleIdAttributeNumber,
-	                                      ybctid_expr), delete_stmt);
+										  YBTupleIdAttributeNumber,
+										  ybctid_expr), delete_stmt);
 	HandleYBStmtStatus(YBCPgExecDelete(delete_stmt), delete_stmt);
 
 	/* Complete execution */
@@ -233,17 +232,17 @@ void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot
 
 void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple, Bitmapset *pkey)
 {
-	char           *dbname     = get_database_name(MyDatabaseId);
-	char           *schemaname = get_namespace_name(rel->rd_rel->relnamespace);
-	char           *tablename  = NameStr(rel->rd_rel->relname);
-	TupleDesc tupdesc = RelationGetDescr(rel);
+	Oid            dboid       = YBCGetDatabaseOid(rel);
+	Oid            schemaoid   = RelationGetNamespace(rel);
+	Oid            relid       = RelationGetRelid(rel);
+	TupleDesc      tupdesc     = RelationGetDescr(rel);
 	YBCPgStatement delete_stmt = NULL;
 
 	// Execute DELETE.
 	HandleYBStatus(YBCPgNewDelete(ybc_pg_session,
-	                              dbname,
-	                              schemaname,
-	                              tablename,
+								  dboid,
+								  schemaoid,
+								  relid,
 	                              &delete_stmt));
 
 	int col = -1;
@@ -272,4 +271,3 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple, Bitmapset *pkey)
 	HandleYBStatus(YBCPgDeleteStatement(delete_stmt));
 	delete_stmt = NULL;
 }
-

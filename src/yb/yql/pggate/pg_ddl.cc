@@ -52,7 +52,7 @@ PgCreateDatabase::PgCreateDatabase(PgSession::ScopedRefPtr pg_session,
 PgCreateDatabase::~PgCreateDatabase() {
 }
 
-CHECKED_STATUS PgCreateDatabase::Exec() {
+Status PgCreateDatabase::Exec() {
   return pg_session_->CreateDatabase(database_name_, database_oid_, source_database_oid_,
                                      next_oid_);
 }
@@ -68,7 +68,7 @@ PgDropDatabase::PgDropDatabase(PgSession::ScopedRefPtr pg_session,
 PgDropDatabase::~PgDropDatabase() {
 }
 
-CHECKED_STATUS PgDropDatabase::Exec() {
+Status PgDropDatabase::Exec() {
   return pg_session_->DropDatabase(database_name_, if_exist_);
 }
 
@@ -89,7 +89,7 @@ PgCreateSchema::PgCreateSchema(PgSession::ScopedRefPtr pg_session,
 PgCreateSchema::~PgCreateSchema() {
 }
 
-CHECKED_STATUS PgCreateSchema::Exec() {
+Status PgCreateSchema::Exec() {
   LOG(FATAL) << "Create schema (" << database_name_ << "," << schema_name_ << "," << if_not_exist_
              << ") is under development";
   return STATUS(NotSupported, "SCHEMA is not yet implemented");
@@ -108,7 +108,7 @@ PgDropSchema::PgDropSchema(PgSession::ScopedRefPtr pg_session,
 PgDropSchema::~PgDropSchema() {
 }
 
-CHECKED_STATUS PgDropSchema::Exec() {
+Status PgDropSchema::Exec() {
   LOG(FATAL) << "Drop schema " << database_name_ << "." << schema_name_ << "," << if_exist_
              << ") is underdevelopment";
   return STATUS(NotSupported, "SCHEMA is not yet implemented");
@@ -122,15 +122,13 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              const char *database_name,
                              const char *schema_name,
                              const char *table_name,
-                             const PgOid database_oid,
-                             const PgOid schema_oid,
-                             const PgOid table_oid,
+                             const PgObjectId& table_id,
                              bool is_shared_table,
                              bool if_not_exist,
                              bool add_primary_key)
     : PgDdl(pg_session, StmtOp::STMT_CREATE_TABLE),
       table_name_(database_name, table_name),
-      table_id_(GetPgsqlTableId(database_oid, table_oid)),
+      table_id_(table_id),
       is_pg_catalog_table_(strcmp(schema_name, "pg_catalog") == 0 ||
                            strcmp(schema_name, "information_schema") == 0),
       is_shared_table_(is_shared_table),
@@ -145,8 +143,8 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
 PgCreateTable::~PgCreateTable() {
 }
 
-CHECKED_STATUS PgCreateTable::AddColumn(const char *attr_name, int attr_num, int attr_ybtype,
-                                        bool is_hash, bool is_range) {
+Status PgCreateTable::AddColumn(const char *attr_name, int attr_num, int attr_ybtype,
+                                bool is_hash, bool is_range) {
   shared_ptr<QLType> yb_type = QLType::Create(static_cast<DataType>(attr_ybtype));
   client::YBColumnSpec* col = schema_builder_.AddColumn(attr_name)->Type(yb_type)->Order(attr_num);
 
@@ -162,7 +160,7 @@ CHECKED_STATUS PgCreateTable::AddColumn(const char *attr_name, int attr_num, int
   return Status::OK();
 }
 
-CHECKED_STATUS PgCreateTable::Exec() {
+Status PgCreateTable::Exec() {
   // Construct schema.
   client::YBSchema schema;
   if (!is_pg_catalog_table_) {
@@ -175,8 +173,8 @@ CHECKED_STATUS PgCreateTable::Exec() {
   // Create table.
   shared_ptr<client::YBTableCreator> table_creator(pg_session_->NewTableCreator());
   table_creator->table_name(table_name_).table_type(client::YBTableType::PGSQL_TABLE_TYPE)
-                                        .table_id(table_id_)
-                                        .schema(&schema);
+                .table_id(table_id_.GetYBTableId())
+                .schema(&schema);
   if (is_pg_catalog_table_) {
     table_creator->is_pg_catalog_table();
   } else {
@@ -204,20 +202,18 @@ CHECKED_STATUS PgCreateTable::Exec() {
 }
 
 PgDropTable::PgDropTable(PgSession::ScopedRefPtr pg_session,
-                         const char *database_name,
-                         const char *schema_name,
-                         const char *table_name,
+                         const PgObjectId& table_id,
                          bool if_exist)
     : PgDdl(pg_session, StmtOp::STMT_DROP_TABLE),
-      table_name_(database_name, table_name),
+      table_id_(table_id),
       if_exist_(if_exist) {
 }
 
 PgDropTable::~PgDropTable() {
 }
 
-CHECKED_STATUS PgDropTable::Exec() {
-  Status s = pg_session_->DropTable(table_name_);
+Status PgDropTable::Exec() {
+  Status s = pg_session_->DropTable(table_id_);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     return Status::OK();
   }

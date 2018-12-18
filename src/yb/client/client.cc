@@ -448,7 +448,8 @@ Status YBClient::IsCreateTableInProgress(const YBTableName& table_name,
                                          bool *create_in_progress) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
-  return data_->IsCreateTableInProgress(this, table_name, deadline, create_in_progress);
+  return data_->IsCreateTableInProgress(this, table_name, "" /* table_id */, deadline,
+                                        create_in_progress);
 }
 
 Status YBClient::TruncateTable(const string& table_id, bool wait) {
@@ -465,6 +466,19 @@ Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
   deadline.AddDelta(default_admin_operation_timeout());
   return data_->DeleteTable(this,
                             table_name,
+                            "" /* table_id */,
+                            false /* is_index_table */,
+                            deadline,
+                            nullptr /* indexed_table_name */,
+                            wait);
+}
+
+Status YBClient::DeleteTable(const string& table_id, bool wait) {
+  MonoTime deadline = MonoTime::Now();
+  deadline.AddDelta(default_admin_operation_timeout());
+  return data_->DeleteTable(this,
+                            YBTableName(),
+                            table_id,
                             false /* is_index_table */,
                             deadline,
                             nullptr /* indexed_table_name */,
@@ -478,6 +492,7 @@ Status YBClient::DeleteIndexTable(const YBTableName& table_name,
   deadline.AddDelta(default_admin_operation_timeout());
   return data_->DeleteTable(this,
                             table_name,
+                            "" /* table_id */,
                             true /* is_index_table */,
                             deadline,
                             indexed_table_name,
@@ -1561,14 +1576,16 @@ Status YBTableCreator::Create() {
   RETURN_NOT_OK_PREPEND(data_->client_->data_->CreateTable(data_->client_,
                                                            req,
                                                            *data_->schema_,
-                                                           deadline),
+                                                           deadline,
+                                                           &data_->table_id_),
                         strings::Substitute("Error creating $0 $1 on the master",
                                             object_type, data_->table_name_.ToString()));
 
   // Spin until the table is fully created, if requested.
   if (data_->wait_) {
     RETURN_NOT_OK(data_->client_->data_->WaitForCreateTableToFinish(data_->client_,
-                                                                    data_->table_name_,
+                                                                    YBTableName(),
+                                                                    data_->table_id_,
                                                                     deadline));
   }
 

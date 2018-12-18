@@ -21,6 +21,7 @@
 #ifndef YB_YQL_PGGATE_PG_ENV_H_
 #define YB_YQL_PGGATE_PG_ENV_H_
 
+#include "yb/common/entity_ids.h"
 #include "yb/client/client.h"
 
 namespace yb {
@@ -30,9 +31,33 @@ namespace pggate {
 typedef uint32_t PgOid;
 static constexpr PgOid kPgInvalidOid = 0;
 
+// A struct to identify a Postgres object by oid and the database oid it belongs to. The schema
+// oid is optional and is used for information purpose only.
+struct PgObjectId {
+  const PgOid database_oid;
+  const PgOid schema_oid;
+  const PgOid object_oid;
+
+  PgObjectId(const PgOid database_oid, const PgOid schema_oid, const PgOid object_oid)
+      : database_oid(database_oid), schema_oid(schema_oid), object_oid(object_oid) {}
+
+  TableId GetYBTableId() const {
+    return GetPgsqlTableId(database_oid, object_oid);
+  }
+
+  std::string ToString() const {
+    return Format("{$0, $1, $2}", database_oid, schema_oid, object_oid);
+  }
+};
+
+inline std::ostream& operator<<(std::ostream& out, const PgObjectId& id) {
+  return out << id.ToString();
+}
+
+//------------------------------------------------------------------------------------------------
+
 class PgEnv {
  public:
-  //------------------------------------------------------------------------------------------------
   // Public types and constants.
   typedef std::unique_ptr<PgEnv> UniPtr;
   typedef std::unique_ptr<const PgEnv> UniPtrConst;

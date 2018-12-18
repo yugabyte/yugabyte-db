@@ -238,18 +238,14 @@ YBCCreateTable(CreateStmt *stmt,
 }
 
 void
-YBCDropTable(Oid relationId,
-			 const char *relname,
-			 const char *schemaname)
+YBCDropTable(Oid namespaceId, Oid relationId)
 {
 	YBCPgStatement handle;
 
-	char *db_name = get_database_name(MyDatabaseId);
-
 	HandleYBStatus(YBCPgNewDropTable(ybc_pg_session,
-	                                 db_name,
-	                                 schemaname,
-	                                 relname,
+									 MyDatabaseId,
+									 namespaceId,
+									 relationId,
 	                                 false,    /* if_exists */
 	                                 &handle));
 	HandleYBStmtStatus(YBCPgExecDropTable(handle), handle);

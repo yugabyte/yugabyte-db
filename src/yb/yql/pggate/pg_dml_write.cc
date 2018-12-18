@@ -40,11 +40,9 @@ static MonoDelta kSessionTimeout = 60s;
 //--------------------------------------------------------------------------------------------------
 
 PgDmlWrite::PgDmlWrite(PgSession::ScopedRefPtr pg_session,
-                       const char *database_name,
-                       const char *schema_name,
-                       const char *table_name,
+                       const PgObjectId& table_id,
                        StmtOp stmt_op)
-  : PgDml(std::move(pg_session), database_name, schema_name, table_name, stmt_op) {
+  : PgDml(std::move(pg_session), table_id, stmt_op) {
 }
 
 PgDmlWrite::~PgDmlWrite() {
