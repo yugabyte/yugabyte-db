@@ -70,6 +70,9 @@ fi
 # Create group-writable files by default. Useful in an NFS environment.
 umask 0002
 
+echo "Test is running on host $HOSTNAME, arguments: $*"
+
+set_java_home
 set_test_invocation_id
 trap cleanup EXIT
 
@@ -77,8 +80,21 @@ if [[ -z ${BUILD_ROOT:-} ]]; then
   handle_build_root_from_current_dir
 fi
 
-set_build_root
+if [[ -z ${BUILD_ROOT:-} ]]; then
+  set_build_root
+else
+  preset_build_root=$BUILD_ROOT
+  set_build_root --no-readonly
+  if [[ $preset_build_root != $BUILD_ROOT ]]; then
+    fatal "Build root was already set to $preset_build_root, but we determined it must be set" \
+          "to $BUILD_ROOT"
+  fi
+  readonly BUILD_ROOT
+  unset preset_build_root
+fi
+
 set_common_test_paths
+add_brew_bin_to_path
 if [[ $# -eq 1 && $1 == *\#* ]]; then
   # We are trying to run a specific test method or even a parameterized test.
   resolve_and_run_java_test "$1"

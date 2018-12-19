@@ -396,6 +396,9 @@ set_build_root() {
   normalize_build_type
   readonly build_type
 
+  if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
+    fatal "YB_COMPILER_TYPE is not set"
+  fi
   validate_compiler_type "$YB_COMPILER_TYPE"
   determine_linking_type
 
@@ -740,8 +743,12 @@ set_cmake_build_type_and_compiler_type() {
 }
 
 set_mvn_parameters() {
+  local should_use_shared_dirs=false
+  if is_jenkins && is_src_root_on_nfs; then
+    should_use_shared_dirs=true
+  fi
   if [[ -z ${YB_MVN_LOCAL_REPO:-} ]]; then
-    if is_jenkins && is_src_root_on_nfs; then
+    if "$should_use_shared_dirs"; then
       YB_MVN_LOCAL_REPO=/n/jenkins/m2_repository
     else
       YB_MVN_LOCAL_REPO=$HOME/.m2/repository
@@ -750,7 +757,7 @@ set_mvn_parameters() {
   export YB_MVN_LOCAL_REPO
 
   if [[ -z ${YB_MVN_SETTINGS_PATH:-} ]]; then
-    if is_jenkins && is_src_root_on_nfs; then
+    if "$should_use_shared_dirs"; then
       YB_MVN_SETTINGS_PATH=/n/jenkins/m2_settings.xml
     else
       YB_MVN_SETTINGS_PATH=$HOME/.m2/settings.xml
@@ -977,6 +984,14 @@ put_path_entry_first() {
   local path_entry=$1
   remove_path_entry "$path_entry"
   export PATH=$path_entry:$PATH
+}
+
+add_path_entry() {
+  expect_num_args 1 "$@"
+  local path_entry=$1
+  if [[ $PATH != *:$path_entry && $PATH != $path_entry:* && $PATH != *:$path_entry:* ]]; then
+    export PATH+=:$path_entry
+  fi
 }
 
 # Removes the ccache wrapper directory from PATH so we can find the real path to a compiler, e.g.
@@ -1267,13 +1282,44 @@ using_custom_homebrew() {
 
 set_use_ninja() {
   if [[ -z ${YB_USE_NINJA:-} ]]; then
-    if which ninja &>/dev/null; then
-      export YB_USE_NINJA=1
-    elif using_linuxbrew; then
-      local yb_ninja_path=$YB_LINUXBREW_DIR/bin/ninja
-      if [[ -f $yb_ninja_path ]]; then
+    if [[ -n ${BUILD_ROOT:-} ]]; then
+      if [[ $BUILD_ROOT == *-ninja ]]; then
         export YB_USE_NINJA=1
-        export YB_NINJA_PATH=$yb_ninja_path
+      else
+        export YB_USE_NINJA=0
+      fi
+    else
+      if which ninja &>/dev/null; then
+        export YB_USE_NINJA=1
+      elif using_linuxbrew; then
+        local yb_ninja_path=$YB_LINUXBREW_DIR/bin/ninja
+        if [[ -f $yb_ninja_path ]]; then
+          export YB_USE_NINJA=1
+          export YB_NINJA_PATH=$yb_ninja_path
+        fi
+      fi
+    fi
+
+    if using_ninja && [[ -z ${yb_ninja_path:-} ]]; then
+      set +e
+      local which_ninja=$( which ninja 2>/dev/null )
+      set -e
+      if using_linuxbrew; then
+        local yb_ninja_path=$YB_LINUXBREW_DIR/bin/ninja
+        if [[ ! -f $yb_ninja_path ]]; then
+          fatal "When using Linuxbrew, Ninja must be installed as part of Linuxbrew, but this" \
+                "file does not exist: $yb_ninja_path"
+        fi
+      elif using_custom_homebrew; then
+        local yb_ninja_path=$YB_CUSTOM_HOMEBREW_DIR/bin/ninja
+        if [[ ! -f $yb_ninja_path ]]; then
+          fatal "When using custom Homebrew, Ninja must be installed as part of Linuxbrew, but" \
+                "this file does not exist: $yb_ninja_path"
+        fi
+      elif [[ -f $which_ninja ]]; then
+        local yb_ninja_path=$which_ninja
+      else
+        fatal "Could not set yb_ninja_path, ninja not found on PATH: $PATH"
       fi
     fi
   fi
@@ -1394,7 +1440,7 @@ is_jenkins_user() {
 }
 
 is_jenkins() {
-  if [[ -n ${BUILD_ID:-} && -n ${JOB_NAME:-} ]] && is_jenkins_user; then
+  if [[ -n ${JOB_NAME:-} ]] && is_jenkins_user; then
     return 0  # Yes, we're running on Jenkins.
   fi
   return 1  # Probably running locally.
@@ -1629,7 +1675,9 @@ find_thirdparty_dir() {
     if is_jenkins; then
       log "Cleaning the old dedicated third-party dependency build in '$YB_SRC_ROOT/thirdparty'"
       unset YB_THIRDPARTY_DIR
-      "$YB_SRC_ROOT/thirdparty/clean_thirdparty.sh" --all
+      if ! ( set -x; "$YB_SRC_ROOT/thirdparty/clean_thirdparty.sh" --all ); then
+        log "Failed to clean the old third-party directory. Ignoring this error."
+      fi
     fi
     export YB_THIRDPARTY_DIR=$existing_thirdparty_dir
     found_shared_thirdparty_dir=true
@@ -2029,6 +2077,35 @@ run_with_retries() {
     sleep "$delay_sec"
   done
   fatal "Failed to execute command after $max_attempts attempts: $*"
+}
+
+debug_log_boolean_function_result() {
+  expect_num_args 1 "$@"
+  local fn_name=$1
+  if "$fn_name"; then
+    log "$fn_name is true"
+  else
+    log "$fn_name is false"
+  fi
+}
+
+set_java_home() {
+  if ! is_mac; then
+    return
+  fi
+  # macOS has a peculiar way of setting JAVA_HOME
+  local cmd_to_get_java_home="/usr/libexec/java_home --version 1.8"
+  local new_java_home=$( $cmd_to_get_java_home )
+  if [[ ! -d $new_java_home ]]; then
+    fatal "Directory returned by '$cmd_to_get_java_home' does not exist: $new_java_home"
+  fi
+  if [[ -n ${JAVA_HOME:-} && $JAVA_HOME != $new_java_home ]]; then
+    log "Warning: updating JAVA_HOME from $JAVA_HOME to $new_java_home"
+  else
+    log "Setting JAVA_HOME: $new_java_home"
+  fi
+  export JAVA_HOME=$new_java_home
+  put_path_entry_first "$JAVA_HOME/bin"
 }
 
 # -------------------------------------------------------------------------------------------------
