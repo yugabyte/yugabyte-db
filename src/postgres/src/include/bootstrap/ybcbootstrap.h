@@ -37,7 +37,6 @@
 /*  Table Functions ----------------------------------------------------------------------------- */
 
 extern void YBCCreateSysCatalogTable(const char *table_name,
-                                     Oid schema_oid,
                                      Oid table_oid,
                                      TupleDesc tupDecs,
                                      bool is_shared_relation,

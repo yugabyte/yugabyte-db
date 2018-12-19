@@ -768,7 +768,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 	if (IsYugaByteEnabled())
 	{
-		YBCCreateTable(stmt, relkind, descriptor, namespaceId, relationId);
+		YBCCreateTable(stmt, relkind, descriptor, relationId);
 	}
 
 	/* Store inheritance information for new rel. */
@@ -1091,7 +1091,7 @@ RemoveRelations(DropStmt *drop)
 			Relation full_rel = relation_openrv(rel, NoLock);
 			if (full_rel->rd_rel->relpersistence != RELPERSISTENCE_TEMP)
 			{
-				YBCDropTable(InvalidOid /* namespaceId */, relOid);
+				YBCDropTable(relOid);
 				/*
 				 * Remove the associated type.
 				 * TODO: When we fully support dependencies this should be

@@ -174,13 +174,12 @@ YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
                               const char *schema_name,
                               const char *table_name,
                               const YBCPgOid database_oid,
-                              const YBCPgOid schema_oid,
                               const YBCPgOid table_oid,
                               bool is_shared_table,
                               bool if_not_exist,
                               bool add_primary_key,
                               YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, schema_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_oid);
   return ToYBCStatus(pgapi->NewCreateTable(pg_session, database_name, schema_name, table_name,
                                            table_id, is_shared_table, if_not_exist, add_primary_key,
                                            handle));
@@ -198,11 +197,10 @@ YBCStatus YBCPgExecCreateTable(YBCPgStatement handle) {
 
 YBCStatus YBCPgNewDropTable(YBCPgSession pg_session,
                             const YBCPgOid database_oid,
-                            const YBCPgOid schema_oid,
                             const YBCPgOid table_oid,
                             bool if_exist,
                             YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, schema_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_oid);
   return ToYBCStatus(pgapi->NewDropTable(pg_session, table_id, if_exist, handle));
 }
 
@@ -212,10 +210,9 @@ YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
 
 YBCStatus YBCPgGetTableDesc(YBCPgSession pg_session,
                             const YBCPgOid database_oid,
-                            const YBCPgOid schema_oid,
                             const YBCPgOid table_oid,
                             YBCPgTableDesc *handle) {
-  const PgObjectId table_id(database_oid, schema_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_oid);
   return ToYBCStatus(pgapi->GetTableDesc(pg_session, table_id, handle));
 }
 
@@ -256,10 +253,9 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
 // INSERT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
-                         const YBCPgOid schema_oid,
                          const YBCPgOid table_oid,
                          YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, schema_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_oid);
   return ToYBCStatus(pgapi->NewInsert(pg_session, table_id, handle));
 }
 
@@ -270,10 +266,9 @@ YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
 // UPDATE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
-                         const YBCPgOid schema_oid,
                          const YBCPgOid table_oid,
                          YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, schema_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_oid);
   return ToYBCStatus(pgapi->NewUpdate(pg_session, table_id, handle));
 }
 
@@ -284,10 +279,9 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
 // DELETE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
-                         const YBCPgOid schema_oid,
                          const YBCPgOid table_oid,
                          YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, schema_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_oid);
   return ToYBCStatus(pgapi->NewDelete(pg_session, table_id, handle));
 }
 
@@ -298,10 +292,9 @@ YBCStatus YBCPgExecDelete(YBCPgStatement handle) {
 // SELECT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
-                         const YBCPgOid schema_oid,
                          const YBCPgOid table_oid,
                          YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, schema_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_oid);
   return ToYBCStatus(pgapi->NewSelect(pg_session, table_id, handle));
 }
 

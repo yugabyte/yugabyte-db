@@ -31,22 +31,20 @@ namespace pggate {
 typedef uint32_t PgOid;
 static constexpr PgOid kPgInvalidOid = 0;
 
-// A struct to identify a Postgres object by oid and the database oid it belongs to. The schema
-// oid is optional and is used for information purpose only.
+// A struct to identify a Postgres object by oid and the database oid it belongs to.
 struct PgObjectId {
   const PgOid database_oid;
-  const PgOid schema_oid;
   const PgOid object_oid;
 
-  PgObjectId(const PgOid database_oid, const PgOid schema_oid, const PgOid object_oid)
-      : database_oid(database_oid), schema_oid(schema_oid), object_oid(object_oid) {}
+  PgObjectId(const PgOid database_oid, const PgOid object_oid)
+      : database_oid(database_oid), object_oid(object_oid) {}
 
   TableId GetYBTableId() const {
     return GetPgsqlTableId(database_oid, object_oid);
   }
 
   std::string ToString() const {
-    return Format("{$0, $1, $2}", database_oid, schema_oid, object_oid);
+    return Format("{$0, $2}", database_oid, object_oid);
   }
 };
 

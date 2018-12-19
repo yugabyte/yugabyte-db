@@ -117,7 +117,6 @@ void YBCAddSysCatalogColumns(YBCPgStatement yb_stmt,
 }
 
 void YBCCreateSysCatalogTable(const char *table_name,
-                              Oid schema_oid,
                               Oid table_oid,
                               TupleDesc tupdesc,
                               bool is_shared_relation,
@@ -162,7 +161,6 @@ void YBCCreateSysCatalogTable(const char *table_name,
 	                                   schema_name,
 	                                   table_name,
 	                                   TemplateDbOid,
-	                                   schema_oid,
 	                                   table_oid,
 	                                   is_shared_relation,
 	                                   false, /* if_not_exists */

@@ -38,7 +38,6 @@ class PggateTest : public YBTest {
   static constexpr const char* kDefaultDatabase = "pggate_test_database";
   static constexpr const char* kDefaultSchema = "pggate_test_schema";
   static constexpr YBCPgOid kDefaultDatabaseOid = 1;
-  static constexpr YBCPgOid kDefaultSchemaOid = 2;
 
   PggateTest();
   virtual ~PggateTest();
