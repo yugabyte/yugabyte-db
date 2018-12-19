@@ -329,6 +329,10 @@ Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
 }
 
+CHECKED_STATUS PgApiImpl::DmlAssignColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
+  return down_cast<PgDml*>(handle)->AssignColumn(attr_num, attr_value);
+}
+
 Status PgApiImpl::DmlFetch(PgStatement *handle, int32_t natts, uint64_t *values, bool *isnulls,
                            PgSysColumns *syscols, bool *has_data) {
   return down_cast<PgDml*>(handle)->Fetch(natts, values, isnulls, syscols, has_data);

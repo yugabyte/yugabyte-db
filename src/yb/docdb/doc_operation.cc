@@ -3274,30 +3274,66 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   QLTableRow::SharedPtr table_row = make_shared<QLTableRow>();
   RETURN_NOT_OK(ReadColumns(data, table_row));
 
-  for (const auto& column_value : request_.column_values()) {
-    // Get the column.
-    if (!column_value.has_column_id()) {
-      return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
-                           column_value.DebugString());
+  if (request_.has_ybctid_column_value()) {
+    for (const auto& column_value : request_.column_new_values()) {
+      // Get the column.
+      if (!column_value.has_column_id()) {
+        return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
+                             column_value.DebugString());
+      }
+      const ColumnId column_id(column_value.column_id());
+      auto column = schema_.column_by_id(column_id);
+      RETURN_NOT_OK(column);
+
+      // Check column-write operator.
+      CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
+        << "Illegal write instruction";
+
+      // Evaluate column value.
+      QLValue expr_result;
+      RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
+
+      // Compare with existing value.
+      QLValue old_value;
+      RETURN_NOT_OK(EvalColumnRef(column_value.column_id(), table_row, &old_value));
+
+      // Inserting into specified column.
+      if (expr_result != old_value) {
+        const SubDocument sub_doc =
+          SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
+        DocPath sub_path(encoded_range_doc_key_.as_slice(), PrimitiveValue(column_id));
+        RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+            sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
+      }
     }
-    const ColumnId column_id(column_value.column_id());
-    auto column = schema_.column_by_id(column_id);
-    RETURN_NOT_OK(column);
+  } else {
+    // This UPDATE is calling PGGATE directly without going thru PosgreSQL layer.
+    // Keep it here as we might need it.
+    for (const auto& column_value : request_.column_new_values()) {
+      // Get the column.
+      if (!column_value.has_column_id()) {
+        return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
+                             column_value.DebugString());
+      }
+      const ColumnId column_id(column_value.column_id());
+      auto column = schema_.column_by_id(column_id);
+      RETURN_NOT_OK(column);
 
-    // Check column-write operator.
-    CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
-      << "Illegal write instruction";
+      // Check column-write operator.
+      CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
+        << "Illegal write instruction";
 
-    // Evaluate column value.
-    QLValue expr_result;
-    RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
-    const SubDocument sub_doc =
+      // Evaluate column value.
+      QLValue expr_result;
+      RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
+      const SubDocument sub_doc =
         SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
 
-    // Inserting into specified column.
-    DocPath sub_path(encoded_range_doc_key_.as_slice(), PrimitiveValue(column_id));
-    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-        sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
+      // Inserting into specified column.
+      DocPath sub_path(encoded_range_doc_key_.as_slice(), PrimitiveValue(column_id));
+      RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+          sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
+    }
   }
 
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);

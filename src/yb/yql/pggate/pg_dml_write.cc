@@ -119,6 +119,7 @@ Status PgDmlWrite::Exec() {
 
   // First update protobuf with new bind values.
   RETURN_NOT_OK(UpdateBindPBs());
+  RETURN_NOT_OK(UpdateAssignPBs());
 
   if (write_req_->has_ybctid_column_value()) {
     PgsqlExpressionPB *exprpb = write_req_->mutable_ybctid_column_value();
@@ -135,6 +136,10 @@ Status PgDmlWrite::Exec() {
 
 PgsqlExpressionPB *PgDmlWrite::AllocColumnBindPB(PgColumn *col) {
   return col->AllocBindPB(write_req_);
+}
+
+PgsqlExpressionPB *PgDmlWrite::AllocColumnAssignPB(PgColumn *col) {
+  return col->AllocAssignPB(write_req_);
 }
 
 PgsqlExpressionPB *PgDmlWrite::AllocTargetPB() {
