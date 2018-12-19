@@ -66,15 +66,10 @@ void ybcFreeScanState(YbScanState ybc_state)
 static void ybcLoadTableInfo(Relation rel, YbScanPlan scan_plan)
 {
 	Oid            dboid          = YBCGetDatabaseOid(rel);
-	Oid            schemaoid      = RelationGetNamespace(rel);
 	Oid            relid          = RelationGetRelid(rel);
 	YBCPgTableDesc ybc_table_desc = NULL;
 
-	HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session,
-									 dboid,
-									 schemaoid,
-									 relid,
-	                                 &ybc_table_desc));
+	HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session, dboid, relid, &ybc_table_desc));
 
 	for (AttrNumber attrNum = 1; attrNum <= rel->rd_att->natts; attrNum++)
 	{
@@ -139,9 +134,7 @@ static void analyzeOperator(OpExpr* opExpr, bool *is_eq, bool *is_ineq)
  * (i.e. will get pushed down) or not (i.e. will get evaluated/filtered by
  * Postgres).
  */
-static void ybClassifyWhereExpr(Expr *expr,
-                                bool is_supported_rel,
-                                YbScanPlan yb_plan)
+static void ybClassifyWhereExpr(Expr *expr, bool is_supported_rel, YbScanPlan yb_plan)
 {
 	/* YugaByte only supports base relations (e.g. no joins or child rels) */
 	if (is_supported_rel)
@@ -239,7 +232,6 @@ static void ybcAddWhereCond(Expr *expr, YBCPgStatement yb_stmt)
 YbScanState ybcBeginScan(Relation rel, List *target_attrs, List *yb_conds)
 {
 	Oid         dboid     = YBCGetDatabaseOid(rel);
-	Oid         schemaoid = RelationGetNamespace(rel);
 	Oid         relid     = RelationGetRelid(rel);
 	YbScanState ybc_state = NULL;
 	ListCell    *lc;
@@ -247,11 +239,7 @@ YbScanState ybcBeginScan(Relation rel, List *target_attrs, List *yb_conds)
 	/* Allocate and initialize YB scan state. */
 	ybc_state = (YbScanState) palloc0(sizeof(YbScanStateData));
 
-	HandleYBStatus(YBCPgNewSelect(ybc_pg_session,
-								  dboid,
-								  schemaoid,
-								  relid,
-	                              &ybc_state->handle));
+	HandleYBStatus(YBCPgNewSelect(ybc_pg_session, dboid, relid, &ybc_state->handle));
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
 	ybc_state->stmt_owner = CurrentResourceOwner;

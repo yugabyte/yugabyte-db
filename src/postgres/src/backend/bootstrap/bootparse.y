@@ -303,13 +303,9 @@ Boot_CreateStmt:
 						elog(DEBUG4, "relation created with OID %u", id);
 					}
 
-                    if (IsYugaByteEnabled()) {
-                        YBCCreateSysCatalogTable($2,
-                                                 PG_CATALOG_NAMESPACE,
-                                                 $3,
-                                                 tupdesc,
-                                                 shared_relation,
-                                                 $13);
+                    if (IsYugaByteEnabled())
+					{
+                        YBCCreateSysCatalogTable($2, $3, tupdesc, shared_relation, $13);
 					}
 
                     do_end();

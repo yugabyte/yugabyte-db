@@ -328,7 +328,7 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
     string state = SysTablesEntryPB_State_Name(l->data().pb.state());
     Capitalize(&state);
     (*ordered_tables[table_cat])[long_table_name] = Substitute(
-        "<tr><td>$0</td><td><a href=\"/table?keyspace_name=$0&table_name=$1\">$1</a>"
+        "<tr><td>$0</td><td><a href=\"/table?id=$4\">$1</a>"
             "</td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
         EscapeForHtmlToString(keyspace),
         EscapeForHtmlToString(l->data().name()),
