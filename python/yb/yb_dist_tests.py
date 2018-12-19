@@ -19,7 +19,7 @@ import os
 import re
 import time
 
-from yb.common_util import get_build_type_from_build_root  # nopep8
+from yb.common_util import get_build_type_from_build_root, is_macos  # nopep8
 
 
 # This is used to separate relative binary path from gtest_filter for C++ tests in what we call
@@ -140,11 +140,10 @@ class TestDescriptor:
 
 
 class GlobalTestConfig:
-    def __init__(self, build_root, build_type, yb_src_root, mvn_local_repo):
+    def __init__(self, build_root, build_type, yb_src_root):
         self.build_root = build_root
         self.build_type = build_type
         self.yb_src_root = yb_src_root
-        self.mvn_local_repo = mvn_local_repo
 
     def get_run_test_script_path(self):
         return os.path.join(self.yb_src_root, 'build-support', 'run-test.sh')
@@ -155,8 +154,6 @@ class GlobalTestConfig:
         necessary environment.
         """
         os.environ['BUILD_ROOT'] = self.build_root
-        if global_conf.mvn_local_repo:
-            os.environ['YB_MVN_LOCAL_REPO'] = global_conf.mvn_local_repo
         # This is how we tell run-test.sh what set of C++ binaries to use for mini-clusters in Java
         # tests.
         for env_var_name, env_var_value in propagated_env_vars.iteritems():
@@ -194,10 +191,7 @@ def set_global_conf_from_args(args):
     global_conf = GlobalTestConfig(
             build_root=build_root,
             build_type=build_type,
-            yb_src_root=yb_src_root,
-            mvn_local_repo=os.environ.get(
-                'YB_MVN_LOCAL_REPO',
-                os.path.join(os.path.expanduser('~'), '.m2', 'repository')))
+            yb_src_root=yb_src_root)
     return global_conf
 
 
@@ -207,11 +201,17 @@ def set_global_conf_from_dict(global_conf_dict):
     the main program to distributed workers.
     """
     global global_conf
-    global_conf = GlobalTestConfig(**global_conf_dict)
+    try:
+        global_conf = GlobalTestConfig(**global_conf_dict)
+    except TypeError as ex:
+        raise TypeError("Cannot set global configuration from dictionary %s: %s" % (
+            repr(global_conf_dict), ex.message))
+
     return global_conf
 
 
 def is_clock_synchronized():
+    assert not is_macos()
     result = command_util.run_program('ntpstat', error_ok=True)
     return ClockSyncCheckResult(
         is_synchronized=result.stdout.startswith('synchron'),
@@ -219,6 +219,9 @@ def is_clock_synchronized():
 
 
 def wait_for_clock_sync():
+    if is_macos():
+        return
+
     start_time = time.time()
     last_log_time = start_time
     waited_for_clock_sync = False

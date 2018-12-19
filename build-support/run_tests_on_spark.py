@@ -42,19 +42,35 @@ import pwd
 import random
 import re
 import socket
+import subprocess
 import sys
 import time
 import traceback
-import subprocess
 from collections import defaultdict
 
 BUILD_SUPPORT_DIR = os.path.dirname(os.path.realpath(__file__))
 YB_PYTHONPATH_ENTRY = os.path.realpath(os.path.join(BUILD_SUPPORT_DIR, '..', 'python'))
-sys.path.append(YB_PYTHONPATH_ENTRY)
+YB_ENT_PYTHONPATH_ENTRY = os.path.realpath(os.path.join(BUILD_SUPPORT_DIR, '..', 'ent', 'python'))
+is_yb_internal_env = os.path.isdir(YB_ENT_PYTHONPATH_ENTRY)
+
+
+def adjust_pythonpath():
+    if YB_PYTHONPATH_ENTRY not in sys.path:
+        sys.path.append(YB_PYTHONPATH_ENTRY)
+    if is_yb_internal_env and YB_ENT_PYTHONPATH_ENTRY not in sys.path:
+        sys.path.append(YB_ENT_PYTHONPATH_ENTRY)
+
+
+adjust_pythonpath()
+
 
 from yb import yb_dist_tests  # noqa
 from yb import command_util  # noqa
-from yb.common_util import set_to_comma_sep_str, get_bool_env_var  # noqa
+from yb.common_util import set_to_comma_sep_str, get_bool_env_var, is_macos  # noqa
+
+
+if is_yb_internal_env:
+    from yb_ent import yb_dist_tests_internal
 
 
 # Special Jenkins environment variables. They are propagated to tasks running in a distributed way
@@ -80,6 +96,10 @@ JENKINS_ENV_VARS = [
 
 # In addition, all variables with names starting with the following prefix are propagated.
 PROPAGATED_ENV_VAR_PREFIX = 'YB_'
+NON_PROPAGATED_YB_ENV_VARS = set([
+    'YB_MVN_LOCAL_REPO',
+    'YB_MVN_SETTINGS_PATH'
+    ])
 
 # This directory inside $BUILD_ROOT contains files listing all C++ tests (one file per test
 # program).
@@ -91,8 +111,11 @@ LIST_OF_TESTS_DIR_NAME = 'list_of_tests'
 propagated_env_vars = {}
 global_conf_dict = None
 
-DEFAULT_SPARK_MASTER_URL = 'spark://buildmaster.c.yugabyte.internal:7077'
-DEFAULT_SPARK_MASTER_URL_ASAN_TSAN = 'spark://buildmaster.c.yugabyte.internal:7078'
+SPARK_URLS = yb_dist_tests_internal.SPARK_URLS if is_yb_internal_env else {
+    'linux_default': 'spark://spark-for-yugabyte-linux-default.example.com:7077',
+    'macos': 'spark://spark-for-yugabyte-macos.example.com:7077',
+    'linux_asan_tsan': 'spark://spark-for-yugabyte-linux-asan-tsan.example.com:7078'
+}
 
 # This has to match what we output in run-test.sh if YB_LIST_CTEST_TESTS_ONLY is set.
 CTEST_TEST_PROGRAM_RE = re.compile(r'^.* ctest test: \"(.*)\"$')
@@ -120,6 +143,16 @@ SPARK_TASK_MAX_FAILURES = 100
 verbose = False
 
 
+def get_sys_path_info_str():
+    return 'Host: %s, sys.path entries: %s' % (
+        socket.gethostname(),
+        ', '.join([
+            '%s (%s)' % (path_entry, "exists" if os.path.exists(path_entry) else "does NOT exist")
+            for path_entry in sys.path
+        ])
+    )
+
+
 # Initializes the spark context. The details list will be incorporated in the Spark application
 # name visible in the Spark web UI.
 def init_spark_context(details=[]):
@@ -134,14 +167,18 @@ def init_spark_context(details=[]):
     # NOTE: we never retry failed tests to avoid hiding bugs. This failure tolerance mechanism
     #       is just for the resilience of the test framework itself.
     SparkContext.setSystemProperty('spark.task.maxFailures', str(SPARK_TASK_MAX_FAILURES))
-    if yb_dist_tests.global_conf.build_type in ['asan', 'tsan']:
-        logging.info("Using a separate default Spark cluster for ASAN and TSAN tests")
-        default_spark_master_url = DEFAULT_SPARK_MASTER_URL_ASAN_TSAN
+    if is_macos():
+        logging.info("This is macOS, using the macOS Spark cluster")
+        spark_master_url = SPARK_URLS['macos']
+    elif yb_dist_tests.global_conf.build_type in ['asan', 'tsan']:
+        logging.info("Using a separate Spark cluster for ASAN and TSAN tests")
+        spark_master_url = SPARK_URLS['linux_asan_tsan']
     else:
-        logging.info("Using the regular default Spark cluster for non-ASAN/TSAN tests")
-        default_spark_master_url = DEFAULT_SPARK_MASTER_URL
+        logging.info("Using the regular Spark cluster for non-ASAN/TSAN tests")
+        spark_master_url = SPARK_URLS['linux_default']
 
-    spark_master_url = os.environ.get('YB_SPARK_MASTER_URL', default_spark_master_url)
+    logging.info("Spark master URL: %s", spark_master_url)
+    spark_master_url = os.environ.get('YB_SPARK_MASTER_URL', spark_master_url)
     details += [
         'user: {}'.format(getpass.getuser()),
         'build type: {}'.format(build_type)
@@ -154,11 +191,6 @@ def init_spark_context(details=[]):
     spark_context.addPyFile(yb_dist_tests.__file__)
 
 
-def adjust_pythonpath():
-    if YB_PYTHONPATH_ENTRY not in sys.path:
-        sys.path.append(YB_PYTHONPATH_ENTRY)
-
-
 def set_global_conf_for_spark_jobs():
     global global_conf_dict
     global_conf_dict = vars(yb_dist_tests.global_conf)
@@ -169,7 +201,10 @@ def parallel_run_test(test_descriptor_str):
     This is invoked in parallel to actually run tests.
     """
     adjust_pythonpath()
-    from yb import yb_dist_tests, command_util
+    try:
+        from yb import yb_dist_tests, command_util
+    except ImportError as ex:
+        raise ImportError("%s. %s" % (ex.message, get_sys_path_info_str()))
 
     global_conf = yb_dist_tests.set_global_conf_from_dict(global_conf_dict)
     global_conf.set_env(propagated_env_vars)
@@ -177,6 +212,7 @@ def parallel_run_test(test_descriptor_str):
     test_descriptor = yb_dist_tests.TestDescriptor(test_descriptor_str)
     os.environ['YB_TEST_ATTEMPT_INDEX'] = str(test_descriptor.attempt_index)
     os.environ['build_type'] = global_conf.build_type
+    os.environ['YB_RUNNING_TEST_ON_SPARK'] = '1'
 
     yb_dist_tests.wait_for_clock_sync()
 
@@ -228,7 +264,10 @@ def parallel_list_test_descriptors(rel_test_path):
     minutes in debug.
     """
     adjust_pythonpath()
-    from yb import yb_dist_tests, command_util
+    try:
+        from yb import yb_dist_tests, command_util
+    except ImportError as ex:
+        raise ImportError("%s. %s" % (ex.message, get_sys_path_info_str()))
     global_conf = yb_dist_tests.set_global_conf_from_dict(global_conf_dict)
     global_conf.set_env(propagated_env_vars)
     prog_result = command_util.run_program(
@@ -606,13 +645,20 @@ def load_test_list(test_list_path):
 
 
 def propagate_env_vars():
+    num_propagated = 0
     for env_var_name in JENKINS_ENV_VARS:
         if env_var_name in os.environ:
             propagated_env_vars[env_var_name] = os.environ[env_var_name]
+            num_propagated += 1
 
     for env_var_name, env_var_value in os.environ.iteritems():
-        if env_var_name.startswith(PROPAGATED_ENV_VAR_PREFIX):
+        if (env_var_name.startswith(PROPAGATED_ENV_VAR_PREFIX) and
+                env_var_name not in NON_PROPAGATED_YB_ENV_VARS):
             propagated_env_vars[env_var_name] = env_var_value
+            logging.info("Propagating env var %s (value: %s) to Spark workers",
+                         env_var_name, env_var_value)
+            num_propagated += 1
+    logging.info("Number of propagated environment variables: %s", num_propagated)
 
 
 def run_spark_action(action):

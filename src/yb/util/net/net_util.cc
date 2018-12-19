@@ -295,6 +295,12 @@ Status GetHostname(string* hostname) {
   return Status::OK();
 }
 
+Result<string> GetHostname() {
+  std::string result;
+  RETURN_NOT_OK(GetHostname(&result));
+  return result;
+}
+
 Status GetLocalAddresses(std::vector<IpAddress>* result, AddressFilter filter) {
   ifaddrs* addresses;
   if (getifaddrs(&addresses)) {
