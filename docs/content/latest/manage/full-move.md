@@ -8,15 +8,20 @@ menu:
   latest:
     identifier: manage-full-move
     parent: manage
-    weight: 706
+    weight: 704
 ---
 
-## Introduction
-Customers might want to move the data on the nodes in a universe to a new set of nodes, either to change the instance/machine type or update AMIs or similar IaaS related enhancements. YugaByte DB provides mechanisms to allow this data migration. Below we provide the steps needed to migrate the data onto a new set of nodes in an online manner.
+There might be situations where  want the data on the nodes in a universe needs to be moved to a new set of nodes. These include, but are not limited to:
 
-For example, the data from a 6 node c3.large cluster (on say, AWS) can be moved to 6 nodes on c3.4xlarge machines, in an online fashion using these steps.
+- changing the IaaS instance/machine type.
+- updating (rehydrate) the AMIs on a regular basis.
+- moving to a different geo topology (ex., different set of regions).
 
-## New Machine Setup
+YugaByte DB provides mechanisms that allow this form of data migration.
+
+Below we provide the steps needed to migrate the data onto a new set of nodes in an online manner. For example, the data from a 6 node c3.large cluster (on say, AWS) can be moved to 6 nodes on c3.4xlarge machines, in an online fashion using these steps.
+
+## 1. Setup New Machines
 
 - Ensure the universe to be moved is not in any failure mode. That is, all yb-master and yb-tserver processes are running and able to talk to each other. This can be verified by checking the master UI (ex., *http://node1-ip:7000/tablet-servers*) which lists all the tablet servers. This is a sanity check to ensure that we do not inadvertently cause any further under replication on top of ongoing failures.
 
@@ -37,7 +42,7 @@ Choose three of the new master nodes in the new set of machines, as the masters.
 To read further about YugaByte DB process architecture, see [here](../../../../architecture/concepts/universe/). Now we start the server processes needed on each of the new nodes.
 
 
-## Start YugaByte DB processes
+## 2. Start YugaByte DB processes
 
 - Start the new master processes in *shell* mode.
 
@@ -80,7 +85,7 @@ The *tserver_master_addrs* parameter includes the new master ips as well, so tha
 {{< /note >}}
 
 
-## Peform Data Move
+## 3. Perform Data Move
 - Mark all the old tablet servers as blacklisted.
 This helps move the data from those tablet servers into the new set of tablet servers. This is achieved by the [load balancing mechanism](https://docs.yugabyte.com/latest/architecture/concepts/universe/#leader-balancing) running periodically on the master leader. The java cli has mechanism to blacklist the tservers and then check for completion of data move from those servers, as shown in the commands below. This can be done from one of the old master nodes.
 
@@ -140,7 +145,7 @@ The time needed for this data move depends on the number of tablets/tables, the 
 {{< /note >}}
 
 
-## Master Quorum Change
+## 4. Master Quorum Change
 Now that the data is moved, we can move the masters which track the metadata. This section provides steps to move the active set of masters from node1-ip,node2-ip,node3 to node7-ip,node8-ip,node9-ip. This is done by adding one new master and removing one old master respectively, repeated as pairs, till all the old masters are removed. This can be run from one of the new masters.
 
 After the first step, it is recommended to check Masters tab on the node7-ip master UI home page (i.e., *http://node7-ip:7000*).
@@ -174,7 +179,7 @@ Master UUID         RPC Host/Port            State     Role
 ```
 
 
-## Cleanup
+## 5. Cleanup
 
 The old nodes are not part of the universe any more and can be terminated/shutdown.
 Only once the old tserver processes are terminated, one can cleanup the blacklist from the master configuration as well using java cli.za
@@ -200,7 +205,7 @@ ensure there are no *server_blacklist* entries.
 If the new yb-tserver processes need to be restarted, the *tserver_master_addrs* parameter needs to be set to the list of three new master ip’s only.
 {{< /note >}}
 
-## Verify
+## 6. Verify
 
 On one of the new masters’ UI page, ensure that the new tablet servers are reporting to the master quorum and have the tablet load distributed.
 For example, *http://node7-ip:7000/tablet-servers*.

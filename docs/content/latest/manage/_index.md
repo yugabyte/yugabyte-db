@@ -38,18 +38,6 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./upgrade-deployment/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
-        <div class="title">Upgrade Deployment</div>
-      </div>
-      <div class="body">
-          Upgrade the YB software deployment.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="./full-move/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
@@ -57,6 +45,18 @@ menu:
       </div>
       <div class="body">
           Move universe data to a new set of machines.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="./upgrade-deployment/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
+        <div class="title">Upgrade Deployment</div>
+      </div>
+      <div class="body">
+          Upgrade the YB software deployment.
       </div>
     </a>
   </div>
