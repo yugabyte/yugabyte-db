@@ -44,6 +44,9 @@ class PgColumn {
   PgsqlExpressionPB *AllocPartitionBindPB(PgsqlReadRequestPB *read_req);
   PgsqlExpressionPB *AllocBindPB(PgsqlReadRequestPB *read_req);
 
+  // Assign values for write requests.
+  PgsqlExpressionPB *AllocAssignPB(PgsqlWriteRequestPB *write_req);
+
   // Access functions.
   ColumnDesc *desc() {
     return &desc_;
@@ -55,6 +58,10 @@ class PgColumn {
 
   PgsqlExpressionPB *bind_pb() {
     return bind_pb_;
+  }
+
+  PgsqlExpressionPB *assign_pb() {
+    return assign_pb_;
   }
 
   const string& attr_name() const {
@@ -81,6 +88,14 @@ class PgColumn {
     return read_requested_ = value;
   }
 
+  bool write_requested() const {
+    return write_requested_;
+  }
+
+  bool set_write_requested(bool value) {
+    return write_requested_ = value;
+  }
+
   bool is_system_column() {
     return attr_num() < 0;
   }
@@ -100,8 +115,14 @@ class PgColumn {
   // - The data-member "primary_exprs" is to map column id with the reserved expression spaces.
   PgsqlExpressionPB *bind_pb_ = nullptr;
 
+  // Protobuf for new-values of a column in the tuple.
+  PgsqlExpressionPB *assign_pb_ = nullptr;
+
   // Wether or not this column must be read from DB for the SQL request.
   bool read_requested_ = false;
+
+  // Wether or not this column will be written for the request.
+  bool write_requested_ = false;
 };
 
 }  // namespace pggate

@@ -53,6 +53,9 @@ class PgSelect : public PgDml {
   // Allocate protobuf for target.
   PgsqlExpressionPB *AllocTargetPB() override;
 
+  // Allocate column expression.
+  PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
+
   // Delete allocated target for columns that have no bind-values.
   CHECKED_STATUS DeleteEmptyPrimaryBinds();
 

@@ -29,4 +29,7 @@ void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot
 
 void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple, Bitmapset *pkey);
 
+void YBCExecuteUpdate(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
+											HeapTuple tuple);
+
 #endif							/* YBCMODIFYTABLE_H */

@@ -82,6 +82,15 @@ PgsqlExpressionPB *PgColumn::AllocBindPB(PgsqlWriteRequestPB *write_req) {
   return bind_pb_;
 }
 
+PgsqlExpressionPB *PgColumn::AllocAssignPB(PgsqlWriteRequestPB *write_req) {
+  if (assign_pb_ == nullptr) {
+    PgsqlColumnValuePB* col_pb = write_req->add_column_new_values();
+    col_pb->set_column_id(id());
+    assign_pb_ = col_pb->mutable_expr();
+  }
+  return assign_pb_;
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PgsqlExpressionPB *PgColumn::AllocPrimaryBindPB(PgsqlReadRequestPB *read_req) {

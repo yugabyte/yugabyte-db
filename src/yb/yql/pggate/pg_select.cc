@@ -66,6 +66,12 @@ PgsqlExpressionPB *PgSelect::AllocColumnBindPB(PgColumn *col) {
   return col->AllocBindPB(read_req_);
 }
 
+PgsqlExpressionPB *PgSelect::AllocColumnAssignPB(PgColumn *col) {
+  // SELECT statement should not have an assign expression (SET clause).
+  LOG(FATAL) << "Pure virtual function is being call";
+  return nullptr;
+}
+
 PgsqlExpressionPB *PgSelect::AllocTargetPB() {
   return read_req_->add_targets();
 }
