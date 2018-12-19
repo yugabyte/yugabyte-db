@@ -26,6 +26,7 @@
 
 #include "access/sysattr.h"
 #include "catalog/pg_type.h"
+#include "commands/dbcommands.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -44,6 +45,7 @@
 #include "rewrite/rewriteManip.h"
 #include "utils/rel.h"
 
+#include "pg_yb_utils.h"
 
 /* Hook for plugins to get control at end of parse analysis */
 post_parse_analyze_hook_type post_parse_analyze_hook = NULL;
@@ -2304,13 +2306,49 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 
 		attrno = attnameAttNum(pstate->p_target_relation,
 							   origTarget->name, true);
-		if (attrno == InvalidAttrNumber)
+		if (attrno == InvalidAttrNumber) {
+			YBC_LOG_FATAL("column \"%s\" of relation \"%s\" does not exist",
+										origTarget->name,
+										RelationGetRelationName(pstate->p_target_relation));
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
 					 errmsg("column \"%s\" of relation \"%s\" does not exist",
 							origTarget->name,
 							RelationGetRelationName(pstate->p_target_relation)),
 					 parser_errposition(pstate, origTarget->location)));
+		}
+
+		if (IsYugaByteEnabled()) {
+			if (!IsYBRelation(pstate->p_target_relation)) {
+				ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_OBJECT),
+								 errmsg("This relational object does not exist in YugaByte database")));
+			}
+
+			// Currently, YugaByte does not allow updating primary key columns that were specified when
+			// creating table.
+			YBCPgTableDesc ybc_tabledesc = NULL;
+			bool is_primary = false;
+			bool is_hash = false;
+			HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session,
+																			 YBCGetDatabaseOid(pstate->p_target_relation),
+																			 RelationGetNamespace(pstate->p_target_relation),
+																			 RelationGetRelid(pstate->p_target_relation),
+																			 &ybc_tabledesc));
+			HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_tabledesc,
+																								 attrno,
+																								 &is_primary,
+																								 &is_hash), ybc_tabledesc);
+			HandleYBStatus(YBCPgDeleteTableDesc(ybc_tabledesc));
+			ybc_tabledesc = NULL;
+
+			if (is_hash || is_primary) {
+				ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("Update PRIMARY KEY columns are not yet supported"),
+								 errhint("Please contact YugaByte for its release schedule.")));
+			}
+		}
 
 		updateTargetListEntry(pstate, tle, origTarget->name,
 							  attrno,

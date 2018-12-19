@@ -74,7 +74,7 @@ PgExpr::Opcode PgExpr::NameToOpcode(const char *name) {
   return iter->second;
 }
 
-Status PgExpr::Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
+Status PgExpr::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   // For expression that doesn't need to be setup and prepared at construction time.
   return Status::OK();
 }
@@ -335,7 +335,7 @@ PgColumnRef::PgColumnRef(int attr_num)
 PgColumnRef::~PgColumnRef() {
 }
 
-Status PgColumnRef::Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
+Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   const PgColumn *col;
   RETURN_NOT_OK(pg_stmt->PrepareColumnForRead(attr_num_, expr_pb, &col));
 

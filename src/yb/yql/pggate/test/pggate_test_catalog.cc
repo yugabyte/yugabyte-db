@@ -243,12 +243,15 @@ TEST_F(PggateTestCatalog, TestDml) {
   CHECK_YBC_STATUS(YBCPgNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
   attr_num = 0;
+  // Specify the row we want to update by binding primary columns.
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_compid));
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_empid));
-  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_depcnt));
-  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_projcnt));
-  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_salary));
-  CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_job));
+
+  // Specify new values for the columns we want to update.
+  CHECK_YBC_STATUS(YBCPgDmlAssignColumn(pg_stmt, ++attr_num, expr_depcnt));
+  CHECK_YBC_STATUS(YBCPgDmlAssignColumn(pg_stmt, ++attr_num, expr_projcnt));
+  CHECK_YBC_STATUS(YBCPgDmlAssignColumn(pg_stmt, ++attr_num, expr_salary));
+  CHECK_YBC_STATUS(YBCPgDmlAssignColumn(pg_stmt, ++attr_num, expr_job));
   CHECK_EQ(attr_num, col_count);
 
   // UPDATE all of odd rows.

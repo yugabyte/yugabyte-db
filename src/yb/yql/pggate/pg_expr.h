@@ -62,7 +62,7 @@ class PgExpr {
   virtual ~PgExpr();
 
   // Prepare expression when constructing a statement.
-  virtual CHECKED_STATUS Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
+  virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
 
   // Convert this expression structure to PB format.
   virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
@@ -210,7 +210,7 @@ class PgColumnRef : public PgExpr {
   virtual ~PgColumnRef();
 
   // Setup ColumnRef expression when constructing statement.
-  virtual CHECKED_STATUS Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
+  virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
 
   int attr_num() const {
     return attr_num_;

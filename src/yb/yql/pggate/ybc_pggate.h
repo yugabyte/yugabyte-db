@@ -170,14 +170,19 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 //     execution of the same allocated statement.
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 
+// API for SET clause.
+YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
+                               int attr_num,
+                               YBCPgExpr attr_value);
+
 // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
 // by YBCPgDmlBindColumn().
 YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
                         YBCPgSysColumns *syscols, bool *has_data);
 
-// DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
+// DB Operations: WHERE, ORDER_BY, GROUP_BY, etc.
 // + The following operations are run by DocDB.
-//   - API for "set_clause" (not yet implemented).
+//   - Not yet
 //
 // + The following operations are run by Postgres layer. An API might be added to move these
 //   operations to DocDB.

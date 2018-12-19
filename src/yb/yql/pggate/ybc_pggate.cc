@@ -242,6 +242,12 @@ YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }
 
+YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
+                               int attr_num,
+                               YBCPgExpr attr_value) {
+  return ToYBCStatus(pgapi->DmlAssignColumn(handle, attr_num, attr_value));
+}
+
 YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
                         YBCPgSysColumns *syscols, bool *has_data) {
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));

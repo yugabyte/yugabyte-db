@@ -39,10 +39,18 @@ class PgDml : public PgStatement {
   // Prepare column for both ends.
   // - Prepare protobuf to communicate with DocDB.
   // - Prepare PgExpr to send data back to Postgres layer.
-  CHECKED_STATUS PrepareColumnForRead(int attr_num, PgsqlExpressionPB *proto, const PgColumn **col);
+  CHECKED_STATUS PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb,
+                                      const PgColumn **col);
+  CHECKED_STATUS PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_pb);
+
+  // Indicate in the protobuf that the given column must be read before the statement is processed.
+  void AddColumnRefId(int col_id);
 
   // Bind a column with an expression.
   CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
+
+  // Assign an expression to a column.
+  CHECKED_STATUS AssignColumn(int attnum, PgExpr *attr_value);
 
   // This function is not yet working and might not be needed.
   virtual CHECKED_STATUS ClearBinds();
@@ -63,14 +71,20 @@ class PgDml : public PgStatement {
   // Load table.
   CHECKED_STATUS LoadTable(bool for_write);
 
-  // Allocate column protobuf.
+  // Allocate protobuf for a SELECTed expression.
+  virtual PgsqlExpressionPB *AllocTargetPB() = 0;
+
+  // Allocate protobuf for expression whose value is bounded to a column.
   virtual PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) = 0;
 
-  // Allocate column protobuf.
-  virtual PgsqlExpressionPB *AllocTargetPB() = 0;
+  // Allocate protobuf for expression whose value is assigned to a column (SET clause).
+  virtual PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) = 0;
 
   // Update bind values.
   CHECKED_STATUS UpdateBindPBs();
+
+  // Update set values.
+  CHECKED_STATUS UpdateAssignPBs();
 
   // -----------------------------------------------------------------------------------------------
   // Data members that define the DML statement.
@@ -97,8 +111,12 @@ class PgDml : public PgStatement {
   // - These expressions might not yet have values for place_holders or literals.
   // - During execution, the place_holder values are updated, and the statement protobuf need to
   //   be updated accordingly.
+  //
+  // * Bind values are used to identify the selected rows to be operated on.
+  // * Set values are used to hold columns' new values in the selected rows.
   std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
   string ybctid_bind_;
+  std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_assigns_;
 
   // DML Operator.
   PgDocOp::SharedPtr doc_op_;

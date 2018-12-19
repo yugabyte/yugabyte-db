@@ -949,11 +949,14 @@ ExecUpdate(ModifyTableState *mtstate,
 		 */
 		tuple->t_tableOid = RelationGetRelid(resultRelationDesc);
 	}
-	else if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
+	else if (IsYugaByteEnabled())
 	{
-		ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("UPDATE YugaByte table is not yet supported")));
+		if (!IsYBRelation(resultRelationDesc)) {
+			ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_OBJECT),
+							 errmsg("This relational object does not exist in YugaByte database")));
+		}
+		YBCExecuteUpdate(resultRelationDesc, resultRelInfo, planSlot, tuple);
 	}
 	else
 	{
