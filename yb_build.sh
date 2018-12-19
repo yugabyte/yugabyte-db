@@ -1147,6 +1147,8 @@ activate_virtualenv
 check_python_interpreter_versions
 check_python_script_syntax
 
+set_java_home
+
 if "$clean_thirdparty"; then
   log "Removing and re-building third-party dependencies (--clean-thirdparty specified)"
   (

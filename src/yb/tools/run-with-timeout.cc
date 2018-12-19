@@ -24,6 +24,8 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
+#include "yb/util/result.h"
+#include "yb/util/net/net_util.h"
 
 #ifdef __linux__
 #include <sys/resource.h>
@@ -48,6 +50,8 @@ using std::chrono::milliseconds;
 
 using yb::Subprocess;
 using yb::Status;
+using yb::Result;
+using yb::GetHostname;
 
 bool SendSignalAndWait(Subprocess* subprocess, int signal, const string& signal_str, int wait_sec) {
   LOG(ERROR) << "Timeout reached, trying to stop the child process with " << signal_str;
@@ -123,6 +127,18 @@ int main(int argc, char** argv) {
     perror("setrlimit64 failed");
   }
 #endif
+
+  {
+    auto host_name = GetHostname();
+    if (host_name.ok()) {
+      LOG(INFO) << "Running on host " << *host_name;
+    } else {
+      LOG(WARNING) << "Failed to get current host name: " << host_name.status();
+    }
+  }
+
+  const char* path_env_var = getenv("PATH");
+  LOG(INFO) << "PATH environment variable: " << (path_env_var != NULL ? path_env_var : "N/A");
 
   // Arguments include the program name, so we only erase the first argument from our own args: the
   // timeout value.

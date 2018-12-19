@@ -181,6 +181,7 @@ log "YB_NINJA_PATH=${YB_NINJA_PATH:-undefined}"
 set_build_root --no-readonly
 
 set_common_test_paths
+set_java_home
 
 export YB_DISABLE_LATEST_SYMLINK=1
 remove_latest_symlink
@@ -213,7 +214,7 @@ YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
 YB_BUILD_CPP=${YB_BUILD_CPP:-1}
 
 if [[ -z ${YB_RUN_AFFECTED_TESTS_ONLY:-} ]] && is_jenkins_phabricator_build; then
-  log "YB_RUN_AFFECTED_TESTS_ONLY is not set, and this is a Jenkins phabricator test." \
+  log "YB_RUN_AFFECTED_TESTS_ONLY is not set, and this is a Jenkins Phabricator test." \
       "Setting YB_RUN_AFFECTED_TESTS_ONLY=1 automatically."
   export YB_RUN_AFFECTED_TESTS_ONLY=1
 fi

@@ -152,6 +152,9 @@ bool IsPrivilegedPort(uint16_t port);
 // Return the local machine's hostname.
 CHECKED_STATUS GetHostname(std::string* hostname);
 
+// Return the local machine's hostname as a Result.
+Result<std::string> GetHostname();
+
 // Return the local machine's FQDN.
 CHECKED_STATUS GetFQDN(std::string* fqdn);
 
@@ -197,4 +200,5 @@ CHECKED_STATUS HostToAddresses(
 Result<IpAddress> HostToAddress(const std::string& host);
 
 } // namespace yb
+
 #endif  // YB_UTIL_NET_NET_UTIL_H

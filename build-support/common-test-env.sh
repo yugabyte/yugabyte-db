@@ -108,6 +108,9 @@ set_common_test_paths() {
   fi
 
   mkdir_safe "$YB_TEST_LOG_ROOT_DIR"
+
+  # This is needed for tests to find the lsof program.
+  add_path_entry /usr/sbin
 }
 
 validate_relative_test_binary_path() {
@@ -1204,7 +1207,7 @@ find_spark_submit_cmd() {
 
 spark_available() {
   find_spark_submit_cmd
-  if is_running_on_gcp && [[ -f $spark_submit_cmd_path ]]; then
+  if [[ -f $spark_submit_cmd_path ]]; then
     return 0  # true
   fi
   return 1  # false
@@ -1220,7 +1223,7 @@ run_tests_on_spark() {
     --build-root "$BUILD_ROOT"
     --save_report_to_build_dir
   )
-  if is_jenkins && [[ -d "$JENKINS_NFS_BUILD_REPORT_BASE_DIR" ]]; then
+  if is_jenkins && [[ -d $JENKINS_NFS_BUILD_REPORT_BASE_DIR ]]; then
     run_tests_args+=( "--reports-dir" "$JENKINS_NFS_BUILD_REPORT_BASE_DIR" --write_report )
   fi
 
@@ -1406,6 +1409,9 @@ run_java_test() {
 
   mvn_opts+=( surefire:test )
 
+  if ! which mvn >/dev/null; then
+    fatal "Maven not found on PATH. PATH: $PATH"
+  fi
   local mvn_output_path=""
   if [[ ${YB_REDIRECT_MVN_OUTPUT_TO_FILE:-0} == 1 ]]; then
     mkdir -p "$surefire_reports_dir"
