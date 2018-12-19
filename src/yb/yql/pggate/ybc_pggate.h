@@ -108,7 +108,6 @@ YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
                               const char *schema_name,
                               const char *table_name,
                               YBCPgOid database_oid,
-                              YBCPgOid schema_oid,
                               YBCPgOid table_oid,
                               bool is_shared_table,
                               bool if_not_exist,
@@ -122,7 +121,6 @@ YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
 YBCStatus YBCPgNewDropTable(YBCPgSession pg_session,
                             YBCPgOid database_oid,
-                            YBCPgOid schema_oid,
                             YBCPgOid table_oid,
                             bool if_exist,
                             YBCPgStatement *handle);
@@ -131,7 +129,6 @@ YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
 
 YBCStatus YBCPgGetTableDesc(YBCPgSession pg_session,
                             YBCPgOid database_oid,
-                            YBCPgOid schema_oid,
                             YBCPgOid table_oid,
                             YBCPgTableDesc *handle);
 
@@ -193,7 +190,6 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgSession pg_session,
                          YBCPgOid database_oid,
-                         YBCPgOid schema_oid,
                          YBCPgOid table_oid,
                          YBCPgStatement *handle);
 
@@ -202,7 +198,6 @@ YBCStatus YBCPgExecInsert(YBCPgStatement handle);
 // UPDATE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(YBCPgSession pg_session,
                          YBCPgOid database_oid,
-                         YBCPgOid schema_oid,
                          YBCPgOid table_oid,
                          YBCPgStatement *handle);
 
@@ -211,7 +206,6 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle);
 // DELETE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(YBCPgSession pg_session,
                          YBCPgOid database_oid,
-                         YBCPgOid schema_oid,
                          YBCPgOid table_oid,
                          YBCPgStatement *handle);
 
@@ -220,7 +214,6 @@ YBCStatus YBCPgExecDelete(YBCPgStatement handle);
 // SELECT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
                          YBCPgOid database_oid,
-                         YBCPgOid schema_oid,
                          YBCPgOid table_oid,
                          YBCPgStatement *handle);
 

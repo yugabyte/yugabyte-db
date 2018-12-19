@@ -244,7 +244,6 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	YBCPgTableDesc ybc_table_desc = NULL;
 	HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session,
 									 YBCGetDatabaseOid(rel),
-									 RelationGetNamespace(rel),
 									 relid,
 	                                 &ybc_table_desc));
 
@@ -514,7 +513,6 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	node->fdw_state = (void *) ybc_state;
 	HandleYBStatus(YBCPgNewSelect(ybc_pg_session,
 								  YBCGetDatabaseOid(relation),
-								  RelationGetNamespace(relation),
 								  RelationGetRelid(relation),
 	                              &ybc_state->handle));
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);

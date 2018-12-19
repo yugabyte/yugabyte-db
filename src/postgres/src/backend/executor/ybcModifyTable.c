@@ -94,7 +94,6 @@ Oid GetTypeId(int attrNum, TupleDesc tupleDesc)
 Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 {
 	Oid            dboid         = YBCGetDatabaseOid(rel);
-	Oid            schemaoid     = RelationGetNamespace(rel);
 	Oid            relid         = RelationGetRelid(rel);
 	AttrNumber     minattr       = FirstLowInvalidHeapAttributeNumber + 1;
 	int            natts         = RelationGetNumberOfAttributes(rel);
@@ -113,11 +112,7 @@ Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 	 * Get the primary key columns 'pkey' from YugaByte. Used below to
 	 * check that values for all primary key columns are given (not null)
 	 */
-	HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session,
-																	 dboid,
-																	 schemaoid,
-																	 relid,
-	                                 &ybc_tabledesc));
+	HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session, dboid, relid, &ybc_tabledesc));
 	for (AttrNumber attnum = minattr; attnum <= natts; attnum++)
 	{
 		if (!IsRealYBColumn(rel, attnum))
@@ -140,11 +135,7 @@ Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 	ybc_tabledesc = NULL;
 
 	/* Create the INSERT request and add the values from the tuple. */
-	HandleYBStatus(YBCPgNewInsert(ybc_pg_session,
-																dboid,
-																schemaoid,
-																relid,
-	                              &ybc_stmt));
+	HandleYBStatus(YBCPgNewInsert(ybc_pg_session, dboid, relid, &ybc_stmt));
 	bool is_null = false;
 	for (AttrNumber attnum  = minattr; attnum <= natts; attnum++)
 	{
@@ -183,7 +174,6 @@ Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot *slot)
 {
 	Oid            dboid       = YBCGetDatabaseOid(rel);
-	Oid            schemaoid   = RelationGetNamespace(rel);
 	Oid            relid       = RelationGetRelid(rel);
 	YBCPgStatement delete_stmt = NULL;
 
@@ -210,20 +200,16 @@ void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot
 	}
 
 	// Execute DELETE.
-	HandleYBStatus(YBCPgNewDelete(ybc_pg_session,
-																dboid,
-																schemaoid,
-																relid,
-																&delete_stmt));
+	HandleYBStatus(YBCPgNewDelete(ybc_pg_session, dboid, relid, &delete_stmt));
 
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(delete_stmt,
-																				 BYTEAOID,
-																				 ybctid,
-																				 false);
+										   BYTEAOID,
+										   ybctid,
+										   false);
 	HandleYBStmtStatus(YBCPgDmlBindColumn(delete_stmt,
-																				YBTupleIdAttributeNumber,
-																				ybctid_expr), delete_stmt);
+										  YBTupleIdAttributeNumber,
+										  ybctid_expr), delete_stmt);
 	HandleYBStmtStatus(YBCPgExecDelete(delete_stmt), delete_stmt);
 
 	/* Complete execution */
@@ -234,17 +220,12 @@ void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot
 void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple, Bitmapset *pkey)
 {
 	Oid            dboid       = YBCGetDatabaseOid(rel);
-	Oid            schemaoid   = RelationGetNamespace(rel);
 	Oid            relid       = RelationGetRelid(rel);
 	TupleDesc      tupdesc     = RelationGetDescr(rel);
 	YBCPgStatement delete_stmt = NULL;
 
 	// Execute DELETE.
-	HandleYBStatus(YBCPgNewDelete(ybc_pg_session,
-																dboid,
-																schemaoid,
-																relid,
-	                              &delete_stmt));
+	HandleYBStatus(YBCPgNewDelete(ybc_pg_session, dboid, relid, &delete_stmt));
 
 	int col = -1;
 	bool is_null = false;
@@ -273,54 +254,52 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple, Bitmapset *pkey)
 	delete_stmt = NULL;
 }
 
-void YBCExecuteUpdate(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
-											HeapTuple tuple) {
-	TupleDesc tupleDesc = slot->tts_tupleDescriptor;
-	Oid dboid = YBCGetDatabaseOid(rel);
-	Oid schemaoid = RelationGetNamespace(rel);
-	Oid relid = RelationGetRelid(rel);
+void YBCExecuteUpdate(Relation rel,
+					  ResultRelInfo *resultRelInfo,
+					  TupleTableSlot *slot,
+					  HeapTuple tuple)
+{
+	TupleDesc      tupleDesc   = slot->tts_tupleDescriptor;
+	Oid            dboid       = YBCGetDatabaseOid(rel);
+	Oid            relid       = RelationGetRelid(rel);
 	YBCPgStatement update_stmt = NULL;
 
 	/* Look for ybctid. */
 	int idx;
 	Datum ybctid = 0;
 	Form_pg_attribute *attrs = slot->tts_tupleDescriptor->attrs;
-	for (idx = 0; idx < slot->tts_nvalid; idx++) {
-		if (strcmp(NameStr(attrs[idx]->attname), "ybctid") == 0 &&	!slot->tts_isnull[idx])	{
+	for (idx = 0; idx < slot->tts_nvalid; idx++)
+	{
+		if (strcmp(NameStr(attrs[idx]->attname), "ybctid") == 0 &&	!slot->tts_isnull[idx])
+		{
 			Assert(attrs[idx]->atttypid == BYTEAOID);
 			ybctid = slot->tts_values[idx];
 		}
 	}
 
 	/* Raise error if ybctid is not found. */
-	if (ybctid == 0) {
+	if (ybctid == 0)
+	{
 		ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_COLUMN),
-						 errmsg("Missing column ybctid in UPDATE request to YugaByte database")));
+				(errcode(ERRCODE_UNDEFINED_COLUMN), errmsg(
+						"Missing column ybctid in UPDATE request to YugaByte database")));
 	}
 
 	/* Create update statement. */
-	HandleYBStatus(YBCPgNewUpdate(ybc_pg_session,
-																dboid,
-																schemaoid,
-																relid,
-																&update_stmt));
+	HandleYBStatus(YBCPgNewUpdate(ybc_pg_session, dboid, relid, &update_stmt));
 
 	/* Bind ybctid to identify the current row. */
-	YBCPgExpr ybctid_expr = YBCNewConstant(update_stmt,
-																				 BYTEAOID,
-																				 ybctid,
-																				 false);
+	YBCPgExpr ybctid_expr = YBCNewConstant(update_stmt, BYTEAOID, ybctid, false);
 	HandleYBStmtStatus(YBCPgDmlBindColumn(update_stmt,
-																				YBTupleIdAttributeNumber,
-																				ybctid_expr), update_stmt);
+										  YBTupleIdAttributeNumber,
+										  ybctid_expr), update_stmt);
 
 	/* Assign new values to columns for updating the current row. */
 	Form_pg_attribute *table_attrs = rel->rd_att->attrs;
 	for (idx = 0; idx < rel->rd_att->natts; idx++) {
 		AttrNumber attnum = table_attrs[idx]->attnum;
 
-		bool is_null;
+		bool is_null = false;
 		Datum d = heap_getattr(tuple, attnum, tupleDesc, &is_null);
 		YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, table_attrs[idx]->atttypid, d, is_null);
 		HandleYBStmtStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr), update_stmt);

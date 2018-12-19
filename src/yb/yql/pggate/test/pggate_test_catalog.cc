@@ -26,14 +26,13 @@ TEST_F(PggateTestCatalog, TestDml) {
   CHECK_OK(Init("TestDml"));
 
   const char *tabname = "basic_table";
-  const YBCPgOid schema_oid = 11; // pg_catalog schema oid
   const YBCPgOid tab_oid = 2;
   YBCPgStatement pg_stmt;
 
   // Create table in the connected database.
   int col_count = 0;
   CHECK_YBC_STATUS(YBCPgNewCreateTable(pg_session_, kDefaultDatabase, "pg_catalog", tabname,
-                                       kDefaultDatabaseOid, schema_oid, tab_oid,
+                                       kDefaultDatabaseOid, tab_oid,
                                        false /* is_shared_table */, true /* if_not_exist */,
                                        false /* add_primary_key */, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "company_id", ++col_count,
@@ -54,7 +53,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
-  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabaseOid, schema_oid, tab_oid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabaseOid, tab_oid, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -104,7 +103,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, schema_oid, tab_oid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -172,7 +171,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, schema_oid, tab_oid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgNewColumnRef(pg_stmt, 1, &colref);
@@ -229,7 +228,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // UPDATE ----------------------------------------------------------------------------------------
   // Allocate new update.
-  CHECK_YBC_STATUS(YBCPgNewUpdate(pg_session_, kDefaultDatabaseOid, schema_oid, tab_oid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewUpdate(pg_session_, kDefaultDatabaseOid, tab_oid, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -276,7 +275,7 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, schema_oid, tab_oid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgNewColumnRef(pg_stmt, 1, &colref);
@@ -360,14 +359,13 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   const char *tabname = "basic_table";
   const char *copy_db_name = "pggate_test_copy";
   const YBCPgOid copy_db_oid = 101;
-  const YBCPgOid schema_oid = 11; // pg_catalog schema oid
   const YBCPgOid tab_oid = 2;
   YBCPgStatement pg_stmt;
 
   // Create sys catalog table in default database.
   LOG(INFO) << "Create database with source database";
   CHECK_YBC_STATUS(YBCPgNewCreateTable(pg_session_, kDefaultDatabase, "pg_catalog", tabname,
-                                       kDefaultDatabaseOid, schema_oid, tab_oid,
+                                       kDefaultDatabaseOid, tab_oid,
                                        false /* is_shared_table */, true /* if_not_exist */,
                                        false /* add_primary_key */, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "key", 1, DataType::INT32, false, true));
@@ -376,7 +374,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
 
-  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabaseOid, schema_oid, tab_oid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabaseOid, tab_oid, &pg_stmt));
 
   YBCPgExpr expr_key;
   YBCPgExpr expr_value;
@@ -407,7 +405,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Select from from test table in the new database";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, copy_db_oid, schema_oid, tab_oid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, copy_db_oid, tab_oid, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;

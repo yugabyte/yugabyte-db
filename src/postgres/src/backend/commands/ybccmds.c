@@ -146,11 +146,7 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 }
 
 void
-YBCCreateTable(CreateStmt *stmt,
-			   char relkind,
-			   TupleDesc desc,
-			   Oid namespaceId,
-			   Oid relationId)
+YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId)
 {
 	if (relkind != RELKIND_RELATION)
 	{
@@ -198,7 +194,6 @@ YBCCreateTable(CreateStmt *stmt,
 	                                   stmt->relation->schemaname,
 	                                   stmt->relation->relname,
 	                                   MyDatabaseId,
-	                                   namespaceId,
 	                                   relationId,
 	                                   false, /* is_shared_table */
 	                                   false, /* if_not_exists */
@@ -238,13 +233,12 @@ YBCCreateTable(CreateStmt *stmt,
 }
 
 void
-YBCDropTable(Oid namespaceId, Oid relationId)
+YBCDropTable(Oid relationId)
 {
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewDropTable(ybc_pg_session,
 									 MyDatabaseId,
-									 namespaceId,
 									 relationId,
 	                                 false,    /* if_exists */
 	                                 &handle));
