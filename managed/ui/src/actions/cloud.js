@@ -79,11 +79,6 @@ export const BOOTSTRAP_PROVIDER_RESPONSE = 'BOOTSTRAP_PROVIDER_RESPONSE';
 export const DELETE_INSTANCE = 'DELETE_INSTANCE';
 export const DELETE_INSTANCE_RESPONSE = 'DELETE_INSTANCE_RESPONSE';
 
-export const GET_SUGGESTED_SPOT_PRICE = 'GET_SUGGESTED_SPOT_PRICE';
-export const GET_SUGGESTED_SPOT_PRICE_RESPONSE = 'GET_SUGGESTED_SPOT_PRICE_RESPONSE';
-
-export const RESET_SUGGESTED_SPOT_PRICE = 'RESET_SUGGESTED_SPOT_PRICE';
-
 export const EDIT_PROVIDER = 'EDIT_PROVIDER';
 export const EDIT_PROVIDER_RESPONSE = 'EDIT_PROVIDER_RESPONSE';
 
@@ -132,29 +127,6 @@ export function getInstanceTypeListResponse(responsePayload) {
   return {
     type: GET_INSTANCE_TYPE_LIST_RESPONSE,
     payload: responsePayload
-  };
-}
-
-export function getSuggestedSpotPrice(providerUUID, instanceType, regions) {
-  const payload = {'regions': regions};
-  const url =`${getProviderEndpoint(providerUUID)}/instance_types/${instanceType}/spot_price`;
-  const request = axios.post(url, payload);
-  return {
-    type: GET_SUGGESTED_SPOT_PRICE,
-    payload: request
-  };
-}
-
-export function getSuggestedSpotPriceResponse(responsePayload) {
-  return {
-    type: GET_SUGGESTED_SPOT_PRICE_RESPONSE,
-    payload: responsePayload
-  };
-}
-
-export function resetSuggestedSpotPrice() {
-  return {
-    type: RESET_SUGGESTED_SPOT_PRICE
   };
 }
 

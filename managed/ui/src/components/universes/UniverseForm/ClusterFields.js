@@ -6,7 +6,7 @@ import { Field, FieldArray } from 'redux-form';
 import {browserHistory} from 'react-router';
 import _ from 'lodash';
 import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, isEmptyObject,
-         isNonEmptyArray, normalizeToPositiveFloat, trimSpecialChars } from 'utils/ObjectUtils';
+         isNonEmptyArray, trimSpecialChars } from 'utils/ObjectUtils';
 import { YBTextInput, YBTextInputWithLabel, YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
          YBToggle, YBUnControlledNumericInput, YBControlledNumericInputWithLabel } from 'components/common/forms/fields';
 import {getPromiseState} from 'utils/PromiseUtils';
@@ -14,7 +14,6 @@ import AZSelectorTable from './AZSelectorTable';
 import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 import GFlagArrayComponent from './GFlagArrayComponent';
-import { IN_DEVELOPMENT_MODE } from '../../../config';
 import { getPrimaryCluster, getReadOnlyCluster, getClusterByType } from "../../../utils/UniverseUtils";
 
 // Default instance types for each cloud provider
@@ -42,12 +41,8 @@ const initialState = {
   accessKeyCode: 'yugabyte-default',
   // Maximum Number of nodes currently in use OnPrem case
   maxNumNodes: -1,
-  // Do not use spot price anywhere, by default.
-  useSpotPrice: IN_DEVELOPMENT_MODE,
-  spotPrice: normalizeToPositiveFloat('0.00'),
   assignPublicIP: true,
   useTimeSync: false,
-  gettingSuggestedSpotPrice: false,
   storageClass: ''
 };
 
@@ -63,13 +58,11 @@ export default class ClusterFields extends Component {
     this.getCurrentProvider = this.getCurrentProvider.bind(this);
     this.configureUniverseNodeList = this.configureUniverseNodeList.bind(this);
     this.handleUniverseConfigure = this.handleUniverseConfigure.bind(this);
-    this.getSuggestedSpotPrice = this.getSuggestedSpotPrice.bind(this);
     this.ebsTypeChanged = this.ebsTypeChanged.bind(this);
     this.numVolumesChanged = this.numVolumesChanged.bind(this);
     this.volumeSizeChanged = this.volumeSizeChanged.bind(this);
     this.diskIopsChanged = this.diskIopsChanged.bind(this);
     this.setDeviceInfo = this.setDeviceInfo.bind(this);
-    this.toggleSpotPrice = this.toggleSpotPrice.bind(this);
     this.toggleAssignPublicIP = this.toggleAssignPublicIP.bind(this);
     this.toggleUseTimeSync = this.toggleUseTimeSync.bind(this);
     this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
@@ -128,9 +121,7 @@ export default class ClusterFields extends Component {
           storageClass: userIntent.deviceInfo.storageClass,
           ebsType: ebsType,
           regionList: userIntent.regionList,
-          volumeType: (ebsType === null) ? "SSD" : "EBS",
-          useSpotPrice: parseFloat(userIntent.spotPrice) > 0.0,
-          spotPrice: userIntent.spotPrice
+          volumeType: (ebsType === null) ? "SSD" : "EBS"
         });
       }
 
@@ -153,11 +144,6 @@ export default class ClusterFields extends Component {
           this.props.getRegionListItems(formValues[clusterType].provider);
           this.setState({instanceTypeSelected: formValues[clusterType].instanceType});
 
-          if (formValues[clusterType].spotPrice && formValues[clusterType].spotPrice > 0) {
-            this.setState({useSpotPrice: true, spotPrice: formValues[clusterType].spotPrice});
-          } else {
-            this.setState({useSpotPrice: false, spotPrice: 0.0});
-          }
           if (formValues[clusterType].assignPublicIP) {
             // We would also default to whatever primary cluster's state for this one.
             this.setState({assignPublicIP: formValues['primary'].assignPublicIP});
@@ -176,7 +162,7 @@ export default class ClusterFields extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-    const {universe: {currentUniverse}, cloud: {nodeInstanceList, instanceTypes, suggestedSpotPrice}, clusterType, formValues, updateFormField} = nextProps;
+    const {universe: {currentUniverse}, cloud: {nodeInstanceList, instanceTypes}, clusterType, formValues } = nextProps;
 
     const currentFormValues = formValues[clusterType];
     let providerSelected = this.state.providerSelected;
@@ -228,29 +214,6 @@ export default class ClusterFields extends Component {
     if (isNonEmptyArray(this.getStorageClasses()) && !isDefinedNotNull(this.state.storageClass)) {
       this.setState({storageClass: this.getStorageClasses()[0]});
       this.props.updateFormField(`${clusterType}.storageClass`, this.getStorageClasses()[0]);
-    }
-
-    // Set spot price
-    const currentPromiseState = getPromiseState(this.props.cloud.suggestedSpotPrice);
-    const nextPromiseState = getPromiseState(suggestedSpotPrice);
-    if (currentPromiseState.isLoading()) {
-      if (nextPromiseState.isSuccess()) {
-        this.setState({
-          spotPrice: normalizeToPositiveFloat(suggestedSpotPrice.data.toString()),
-          useSpotPrice: true,
-          gettingSuggestedSpotPrice: false
-        });
-        updateFormField(`${clusterType}.spotPrice`, normalizeToPositiveFloat(suggestedSpotPrice.data.toString()));
-        updateFormField(`${clusterType}.useSpotPrice`, true);
-      } else if (nextPromiseState.isError()) {
-        this.setState({
-          spotPrice: normalizeToPositiveFloat('0.00'),
-          useSpotPrice: false,
-          gettingSuggestedSpotPrice: false
-        });
-        updateFormField(`${clusterType}.spotPrice`, normalizeToPositiveFloat('0.00'));
-        updateFormField(`${clusterType}.useSpotPrice`, false);
-      }
     }
 
     // Form Actions on Create Universe Success
@@ -307,23 +270,12 @@ export default class ClusterFields extends Component {
       currentProviderUUID = formValues[clusterType].provider;
     }
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
-    const hasSpotPriceChanged = function() {
-      if (formValues[clusterType] && prevProps.formValues[clusterType]) {
-        return formValues[clusterType].spotPrice !== prevProps.formValues[clusterType].spotPrice;
-      } else {
-        return false;
-      }
-    };
 
     const configureIntentValid = function() {
-      return (!_.isEqual(self.state, prevState) || hasSpotPriceChanged()) &&
+      return (!_.isEqual(self.state, prevState)) &&
         isNonEmptyObject(currentProvider) &&
         isNonEmptyArray(formValues[clusterType].regionList) &&
         (prevState.maxNumNodes !== -1 || currentProvider.code !== "onprem") &&
-
-        (currentProvider.code !== "aws" || (!self.state.gettingSuggestedSpotPrice && (!self.state.useSpotPrice ||
-        (self.state.useSpotPrice && formValues[clusterType].spotPrice > 0))))
-        &&
         ((currentProvider.code === "onprem" &&
         self.state.numNodes <= self.state.maxNumNodes) || (currentProvider.code !== "onprem")) &&
         self.state.numNodes >= self.state.replicationFactor &&
@@ -423,7 +375,6 @@ export default class ClusterFields extends Component {
         accessKeyCode: formValues[clusterType].accessKeyCode,
         gflags: formValues[clusterType].gflags,
         instanceTags: formValues[clusterType].instanceTags,
-        spotPrice: formValues[clusterType].spotPrice,
         useTimeSync: formValues[clusterType].useTimeSync,
         storageClass: formValues[clusterType].storageClass
       };
@@ -470,20 +421,6 @@ export default class ClusterFields extends Component {
     }
   }
 
-  toggleSpotPrice(event) {
-    const {updateFormField, clusterType} = this.props;
-    const nextState = {useSpotPrice: event.target.checked};
-    if (event.target.checked) {
-      this.getSuggestedSpotPrice(this.state.instanceTypeSelected, this.state.regionList);
-    } else {
-      nextState['spotPrice'] = initialState.spotPrice;
-      this.props.resetSuggestedSpotPrice();
-      updateFormField(`${clusterType}.spotPrice`, normalizeToPositiveFloat('0.00'));
-    }
-    this.setState(nextState);
-    updateFormField(`${clusterType}.useSpotPrice`, event.target.checked);
-  }
-
   toggleUseTimeSync(event) {
     const {updateFormField, clusterType} = this.props;
     updateFormField(`${clusterType}.useTimeSync`, event.target.checked);
@@ -499,18 +436,6 @@ export default class ClusterFields extends Component {
       updateFormField('primary.assignPublicIP', event.target.checked);
       updateFormField('async.assignPublicIP', event.target.checked);
       this.setState({assignPublicIP: event.target.checked});
-    }
-  }
-
-  spotPriceChanged(val, normalize) {
-    const {updateFormField, clusterType} = this.props;
-    this.setState({spotPrice: normalize ? normalizeToPositiveFloat(val) : val});
-    if (normalize) {
-      this.setState({spotPrice: normalizeToPositiveFloat(val)});
-      updateFormField(`${clusterType}.spotPrice`, normalizeToPositiveFloat(val));
-    } else {
-      this.setState({spotPrice: val});
-      updateFormField(`${clusterType}.spotPrice`, val);
     }
   }
 
@@ -637,8 +562,7 @@ export default class ClusterFields extends Component {
         diskIops: formValues[clusterType].diskIops,
         storageClass: formValues[clusterType].storageClass
       },
-      accessKeyCode: formValues[clusterType].accessKeyCode,
-      spotPrice: formValues[clusterType].spotPrice
+      accessKeyCode: formValues[clusterType].accessKeyCode
     };
 
     if (isNonEmptyObject(formValues[clusterType].masterGFlags)) {
@@ -717,34 +641,14 @@ export default class ClusterFields extends Component {
     this.setState({instanceTypeSelected: instanceTypeValue, nodeSetViaAZList: false});
 
     this.setDeviceInfo(instanceTypeValue, this.props.cloud.instanceTypes.data);
-    if (this.state.useSpotPrice) {
-      this.getSuggestedSpotPrice(instanceTypeValue, this.state.regionList);
-    } else {
-      this.props.resetSuggestedSpotPrice();
-    }
   }
 
   regionListChanged(value) {
     const {formValues, clusterType, updateFormField, cloud:{providers}} = this.props;
     this.setState({nodeSetViaAZList: false, regionList: value});
-    if (this.state.useSpotPrice) {
-      this.getSuggestedSpotPrice(this.state.instanceTypeSelected, value);
-    } else {
-      this.props.resetSuggestedSpotPrice();
-    }
     const currentProvider = providers.data.find((a)=>(a.uuid === formValues[clusterType].provider));
     if (!isNonEmptyString(formValues[clusterType].instanceType)) {
       updateFormField(`${clusterType}.instanceType`, DEFAULT_INSTANCE_TYPE_MAP[currentProvider.code]);
-    }
-  }
-
-  getSuggestedSpotPrice(instanceType, regions) {
-    const currentProvider = this.getCurrentProvider(this.state.providerSelected);
-    const regionUUIDs = regions.map(region => region.value);
-    if ((this.props.type === "Create" || (this.props.clusterType === "async" && !this.state.isReadOnlyExists)) && isDefinedNotNull(currentProvider) &&
-        (currentProvider.code === "aws" || currentProvider.code === "gcp") && isNonEmptyArray(regionUUIDs)) {
-      this.props.getSuggestedSpotPrice(this.state.providerSelected, instanceType, regionUUIDs);
-      this.setState({gettingSuggestedSpotPrice: true});
     }
   }
 
@@ -761,7 +665,7 @@ export default class ClusterFields extends Component {
   }
 
   render() {
-    const {clusterType, cloud, softwareVersions, accessKeys, universe, cloud: {suggestedSpotPrice}, formValues} = this.props;
+    const {clusterType, cloud, softwareVersions, accessKeys, universe, formValues} = this.props;
     const self = this;
     let gflagArray = <span/>;
     let tagsArray = <span/>;
@@ -886,8 +790,6 @@ export default class ClusterFields extends Component {
       }
     }
 
-    let spotPriceToggle = <span />;
-    let spotPriceField = <span />;
     let assignPublicIP = <span />;
     let useTimeSync = <span />;
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
@@ -905,41 +807,6 @@ export default class ClusterFields extends Component {
                onToggle={this.toggleAssignPublicIP}
                label="Assign Public IP"
                subLabel="Whether or not to assign a public IP."/>
-      );
-      if (this.state.gettingSuggestedSpotPrice) {
-        spotPriceField = (
-          <div className="form-group">
-            <label className="form-item-label">Spot Price (Per Hour)</label>
-            <div className="extra-info-field text-center">Loading suggested spot price...</div>
-          </div>
-        );
-      } else if (!this.state.gettingSuggestedSpotPrice && this.state.useSpotPrice) {
-        spotPriceField = (
-          <Field name={`${clusterType}.spotPrice`} type="text"
-                 component={YBTextInputWithLabel}
-                 label="Spot Price (Per Hour)"
-                 isReadOnly={isFieldReadOnly || !this.state.useSpotPrice || currentProvider.code === "gcp"}
-                 normalizeOnBlur={(val) => this.spotPriceChanged(val, true)}
-                 initValue={this.state.spotPrice.toString()}
-                 onValueChanged={(val) => this.spotPriceChanged(val, false)}/>
-        );
-      } else if (getPromiseState(suggestedSpotPrice).isError()) {
-        spotPriceField = (
-          <div className="form-group">
-            <label className="form-item-label">Spot Price (Per Hour)</label>
-            <div className="extra-info-field text-center">Spot pricing not supported for {this.state.instanceTypeSelected} in selected regions.</div>
-          </div>
-        );
-      }
-
-      spotPriceToggle = (
-        <Field name={`${clusterType}.useSpotPrice`}
-               component={YBToggle}
-               label="Use Spot Pricing"
-               subLabel="spot pricing is suitable for test environments only, because spot instances might go away any time"
-               onToggle={this.toggleSpotPrice}
-               checkedVal={this.state.useSpotPrice}
-               isReadOnly={isFieldReadOnly || this.state.gettingSuggestedSpotPrice}/>
       );
     }
     // Only enable Time Sync Service toggle for AWS.
@@ -1071,7 +938,7 @@ export default class ClusterFields extends Component {
     }
 
     // Instance Type is read-only if use spot price is selected
-    const isInstanceTypeReadOnly = isFieldReadOnly && this.state.useSpotPrice;
+    const isInstanceTypeReadOnly = isFieldReadOnly;// && this.state.useSpotPrice;
     return (
       <div>
         <div className="form-section">
@@ -1154,8 +1021,6 @@ export default class ClusterFields extends Component {
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
                 {storageClassField}
-                {spotPriceToggle}
-                {spotPriceField}
                 {assignPublicIP}
                 {useTimeSync}
                 <Field name={`${clusterType}.mountPoints`} component={YBTextInput}  type="hidden"/>

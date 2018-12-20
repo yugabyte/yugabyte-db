@@ -302,21 +302,4 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     JsonNode json = doDeleteInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST);
     assertErrorNodeValue(json, "Invalid Provider UUID: " + randomUUID);
   }
-
-  @Test
-  public void testGetSpotPrice() {
-    String regionCode = "test-region";
-    Region region = Region.create(awsProvider, regionCode, regionCode, "0.0.19.37");
-    String instanceTypeCode = setUpValidInstanceTypes(1)[0].idKey.instanceTypeCode;
-    when(mockCloudQueryHelper.getSuggestedSpotPrice(ImmutableList.of(region), instanceTypeCode)).thenReturn(0.5);
-
-    JsonNode body = Json.newObject().set("regions", Json.newArray().add(region.uuid.toString()));
-    String method = "POST";
-    String uri =  "/api/customers/" + customer.uuid + "/providers/" + awsProvider.uuid + "/instance_types/" +
-        instanceTypeCode + "/spot_price";
-    Result result = FakeApiHelper.doRequestWithBody(method, uri, body);
-
-    assertEquals(OK, result.status());
-    assertThat(Double.parseDouble(contentAsString(result)), equalTo(0.5));
-  }
 }

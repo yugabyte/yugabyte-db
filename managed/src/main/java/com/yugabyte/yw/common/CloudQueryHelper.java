@@ -99,40 +99,6 @@ public class CloudQueryHelper extends DevopsBase {
         regionList.get(0).uuid, "instance_types", commandArgs);
   }
 
-  /**
-   * Get a suggested spot price for a given list of regions. Will find the max spot price amongst all the regions and
-   * return a suggested spot price of double the max spot price found.
-   *
-   * @param regions Regions to get the suggested spot price for.
-   * @param instanceType Instance type to get the suggested spot price for.
-   * @return Double value which is the suggested spot price for a given instance type over all regions.
-   */
-  public double getSuggestedSpotPrice(List<Region> regions, String instanceType) {
-    String command = "spot-pricing";
-    double maxPriceFound = 0.0;
-    String providerCode = null;
-    for (Region region : regions) {
-      if (providerCode == null) {
-        providerCode = region.provider.code;
-      }
-      for (AvailabilityZone availabilityZone : AvailabilityZone.getAZsForRegion(region.uuid)) {
-        List<String> cloudArgs = ImmutableList.of("--zone", availabilityZone.code);
-        List<String> commandArgs = ImmutableList.of("--instance_type", instanceType);
-        JsonNode result = parseShellResponse(execCommand(region.uuid, null, null, command, commandArgs, cloudArgs), command);
-        if (result.has("error")) {
-          throw new RuntimeException(result.get("error").asText());
-        }
-        double price = result.get("SpotPrice").asDouble();
-        if (price > maxPriceFound) maxPriceFound = price;
-      }
-    }
-    if (providerCode.equals("aws")) {
-      return 2.0 * maxPriceFound;
-    } else {
-      return maxPriceFound;
-    }
-  }
-
   public JsonNode queryVpcs(UUID regionUUID) {
     List<String> commandArgs = new ArrayList<String>();
     return execAndParseCommandRegion(regionUUID, "vpc", commandArgs);

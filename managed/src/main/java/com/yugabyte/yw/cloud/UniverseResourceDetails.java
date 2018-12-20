@@ -83,17 +83,12 @@ public class UniverseResourceDetails {
       }
       Region region = Region.getByCode(provider, nodeDetails.cloudInfo.region);
 
-      // Add price of instance, using spotPrice if this universe is a spotPrice-based universe.
-      if (userIntent.providerType.equals(Common.CloudType.aws) && userIntent.spotPrice > 0.0) {
-        hourlyPrice += userIntent.spotPrice;
-      } else {
-        PriceComponent instancePrice = PriceComponent.get(provider.code, region.code,
-                userIntent.instanceType);
-        if (instancePrice == null) {
-          continue;
-        }
-        hourlyPrice += instancePrice.priceDetails.pricePerHour;
+      PriceComponent instancePrice = PriceComponent.get(provider.code, region.code,
+              userIntent.instanceType);
+      if (instancePrice == null) {
+        continue;
       }
+      hourlyPrice += instancePrice.priceDetails.pricePerHour;
 
       // Add price of volumes if necessary
       // TODO: Remove aws check once GCP volumes are decoupled from "EBS" designation
