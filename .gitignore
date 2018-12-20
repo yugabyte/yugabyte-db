@@ -78,3 +78,6 @@ build/python_virtual_env
 hs_err_pid*.log
 
 compile_commands.json
+
+# This might be added by some editors' Java plugins
+ent/java/yb-cqlent/bin/
