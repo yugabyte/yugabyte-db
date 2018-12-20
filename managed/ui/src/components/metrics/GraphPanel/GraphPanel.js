@@ -9,6 +9,10 @@ import { YBLoading } from '../../common/indicators';
 import { isNonEmptyObject, isEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
 
 const panelTypes = {
+  container: {title: "Container",
+    metrics: ["container_cpu_usage",
+      "container_memory_usage",
+      "container_volume_stats"]},
   server: {title: "Node",
     metrics: ["cpu_usage",
       "memory_usage",
