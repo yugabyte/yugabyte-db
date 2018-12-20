@@ -400,8 +400,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.subnetId = cloudInfo.subnet_id;
       // Set the instance type.
       params.instanceType = cloudInfo.instance_type;
-      // Set the spot price.
-      params.spotPrice = cloudInfo.spotPrice;
       // Set the assign public ip param.
       params.assignPublicIP = cloudInfo.assignPublicIP;
       params.useTimeSync = cloudInfo.useTimeSync;
