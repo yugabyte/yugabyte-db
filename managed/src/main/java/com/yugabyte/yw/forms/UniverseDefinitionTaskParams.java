@@ -219,8 +219,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public DeviceInfo deviceInfo;
 
-    public double spotPrice = 0.0;
-
     public boolean assignPublicIP = true;
 
     public boolean useTimeSync = false;
@@ -255,7 +253,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.numNodes = numNodes;
       newUserIntent.ybSoftwareVersion = ybSoftwareVersion;
       newUserIntent.accessKeyCode = accessKeyCode;
-      newUserIntent.spotPrice = spotPrice;
       newUserIntent.assignPublicIP = assignPublicIP;
       newUserIntent.masterGFlags = new HashMap<>(masterGFlags);
       newUserIntent.tserverGFlags = new HashMap<>(tserverGFlags);
@@ -276,7 +273,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           numNodes == other.numNodes &&
           ybSoftwareVersion.equals(other.ybSoftwareVersion) &&
           (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode)) &&
-          spotPrice == other.spotPrice &&
           assignPublicIP == other.assignPublicIP &&
           useTimeSync == other.useTimeSync) {
         return true;

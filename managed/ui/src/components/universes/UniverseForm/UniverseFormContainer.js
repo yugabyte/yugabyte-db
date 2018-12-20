@@ -5,8 +5,7 @@ import { connect } from 'react-redux';
 import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../actions/tasks';
 import UniverseForm from './UniverseForm';
 import { getInstanceTypeList, getRegionList, getRegionListResponse, getInstanceTypeListResponse,
-         getNodeInstancesForProvider, getNodesInstancesForProviderResponse, getSuggestedSpotPrice,
-         getSuggestedSpotPriceResponse, resetSuggestedSpotPrice } from '../../../actions/cloud';
+         getNodeInstancesForProvider, getNodesInstancesForProviderResponse } from '../../../actions/cloud';
 import { createUniverse, createUniverseResponse, editUniverse, editUniverseResponse,
          configureUniverseTemplate, configureUniverseTemplateResponse, configureUniverseTemplateSuccess,
          configureUniverseResources, configureUniverseResourcesResponse,
@@ -17,9 +16,8 @@ import { createUniverse, createUniverseResponse, editUniverse, editUniverseRespo
 
 import { openDialog, closeDialog } from '../../../actions/modal';
 
-import { isNonEmptyArray, isDefinedNotNull, isNonEmptyObject, isNonEmptyString, normalizeToPositiveFloat, isEmptyObject }
+import { isNonEmptyArray, isDefinedNotNull, isNonEmptyObject, isNonEmptyString, isEmptyObject }
   from '../../../utils/ObjectUtils';
-import { IN_DEVELOPMENT_MODE } from '../../../config';
 import { getClusterByType } from '../../../utils/UniverseUtils';
 
 const mapDispatchToProps = (dispatch) => {
@@ -97,16 +95,6 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    getSuggestedSpotPrice: (providerUUID, instanceType, regions) => {
-      dispatch(getSuggestedSpotPrice(providerUUID, instanceType, regions)).then((response) => {
-        dispatch(getSuggestedSpotPriceResponse(response.payload));
-      });
-    },
-
-    resetSuggestedSpotPrice: () => {
-      dispatch(resetSuggestedSpotPrice());
-    },
-
     setPlacementStatus: (currentStatus) => {
       dispatch(setPlacementStatus(currentStatus));
     },
@@ -147,11 +135,11 @@ const mapDispatchToProps = (dispatch) => {
 const formFieldNames =
   ['formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
     'primary.numNodes', 'primary.instanceType', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
-    'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.spotPrice', 'primary.diskIops', 'primary.numVolumes',
+    'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes',
     'primary.volumeSize', 'primary.ebsType', 'primary.assignPublicIP', 'primary.useTimeSync', 'primary.mountPoints',
-    'async.universeName', 'async.provider', 'async.providerType', 'async.spotPrice', 'async.regionList', 'async.numNodes',
+    'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.numNodes',
     'async.instanceType', 'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP', 'async.useTimeSync', 'async.mountPoints',
-    'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags', 'instanceTags', 'asyncClusters'];
+    'masterGFlags', 'tserverGFlags', 'instanceTags', 'asyncClusters'];
 
 
 function getFormData(currentUniverse, formType, clusterType) {
@@ -169,8 +157,6 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].instanceType = userIntent.instanceType;
     data[clusterType].ybSoftwareVersion = userIntent.ybSoftwareVersion;
     data[clusterType].accessKeyCode = userIntent.accessKeyCode;
-    data[clusterType].spotPrice = normalizeToPositiveFloat(userIntent.spotPrice.toString());
-    data[clusterType].useSpotPrice = parseFloat(userIntent.spotPrice) > 0.0;
     data[clusterType].diskIops = userIntent.deviceInfo.diskIops;
     data[clusterType].numVolumes = userIntent.deviceInfo.numVolumes;
     data[clusterType].volumeSize = userIntent.deviceInfo.volumeSize;
@@ -205,8 +191,6 @@ function mapStateToProps(state, ownProps) {
       "isMultiAZ": true,
       "instanceType": "c4.2xlarge",
       "accessKeyCode": "yugabyte-default",
-      "spotPrice": "0.00",
-      "useSpotPrice": IN_DEVELOPMENT_MODE,
       "assignPublicIP":  true,
       "useTimeSync": false
     },
@@ -214,8 +198,6 @@ function mapStateToProps(state, ownProps) {
       "universeName": "",
       "numNodes": 3,
       "isMultiAZ": true,
-      "spotPrice": "0.00",
-      "useSpotPrice": IN_DEVELOPMENT_MODE,
       "assignPublicIP":  true,
       "useTimeSync": false
     }
@@ -242,11 +224,11 @@ function mapStateToProps(state, ownProps) {
       'formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
       'primary.numNodes', 'primary.instanceType', 'primary.replicationFactor', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
       'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType',
-      'primary.diskIops', 'primary.spotPrice', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync', 'primary.storageClass',
+      'primary.diskIops', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync', 'primary.storageClass',
       'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
-      'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.spotPrice', 'async.ybSoftwareVersion', 'async.accessKeyCode',
+      'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.ybSoftwareVersion', 'async.accessKeyCode',
       'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.ebsType', 'async.assignPublicIP', 'async.mountPoints',
-      'async.useTimeSync', 'async.storageClass', 'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags', 'instanceTags' )
+      'async.useTimeSync', 'async.storageClass', 'masterGFlags', 'tserverGFlags', 'instanceTags' )
   };
 }
 
@@ -297,9 +279,6 @@ const validateProviderFields = (values, props, clusterType) => {
   }
   if (!isDefinedNotNull(values[clusterType].instanceType)) {
     errors.instanceType = 'Instance Type is Required';
-  }
-  if (values.useSpotPrice && values[clusterType].spotPrice === '0.00') {
-    errors.spotPrice = 'Spot Price must be greater than $0.00';
   }
   return errors;
 };

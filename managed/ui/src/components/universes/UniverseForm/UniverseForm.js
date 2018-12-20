@@ -6,12 +6,11 @@ import { Grid } from 'react-bootstrap';
 import { change, Fields } from 'redux-form';
 import {browserHistory, withRouter} from 'react-router';
 import _ from 'lodash';
-import { isNonEmptyObject, isDefinedNotNull, isNonEmptyString, isNonEmptyArray, normalizeToPositiveFloat } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isDefinedNotNull, isNonEmptyString, isNonEmptyArray } from 'utils/ObjectUtils';
 import { YBButton } from 'components/common/forms/fields';
 import { UniverseResources } from '../UniverseResources';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import './UniverseForm.scss';
-import { IN_DEVELOPMENT_MODE } from '../../../config';
 import ClusterFields from './ClusterFields';
 import { getPrimaryCluster, getReadOnlyCluster } from "../../../utils/UniverseUtils";
 import { DeleteUniverseContainer } from '../../universes';
@@ -20,9 +19,6 @@ const initialState = {
   instanceTypeSelected: '',
   nodeSetViaAZList: false,
   placementInfo: {},
-  useSpotPrice: IN_DEVELOPMENT_MODE,
-  spotPrice: normalizeToPositiveFloat('0.00'),
-  gettingSuggestedSpotPrice: false,
   currentView: 'Primary',
 };
 
@@ -182,7 +178,6 @@ class UniverseForm extends Component {
           ebsType: formValues[clusterType].ebsType,
           storageClass: formValues[clusterType].storageClass
         },
-        spotPrice: normalizeToPositiveFloat(formValues[clusterType].spotPrice)
       };
       const currentProvider = self.getCurrentProvider(formValues[clusterType].provider).code;
       if (clusterType === "primary") {
@@ -267,8 +262,8 @@ class UniverseForm extends Component {
 
   render() {
     const {handleSubmit, universe, softwareVersions, cloud,  getInstanceTypeListItems, submitConfigureUniverse, type,
-      getRegionListItems, resetConfig, formValues, getSuggestedSpotPrice, fetchUniverseResources, fetchNodeInstanceList,
-      resetSuggestedSpotPrice, showDeleteReadReplicaModal, closeModal} = this.props;
+      getRegionListItems, resetConfig, formValues, fetchUniverseResources, fetchNodeInstanceList, 
+      showDeleteReadReplicaModal, closeModal} = this.props;
     const createUniverseTitle =
       (<h2 className="content-title">
         <FlexContainer>
@@ -343,9 +338,9 @@ class UniverseForm extends Component {
       getInstanceTypeListItems: getInstanceTypeListItems, cloud: cloud, resetConfig: resetConfig,
       accessKeys: this.props.accessKeys, softwareVersions: softwareVersions, updateFormField: this.updateFormField,
       formValues: formValues, submitConfigureUniverse: submitConfigureUniverse, setPlacementStatus: this.props.setPlacementStatus,
-      getSuggestedSpotPrice: getSuggestedSpotPrice, fetchUniverseResources: fetchUniverseResources, fetchUniverseTasks: this.props.fetchUniverseTasks,
+      fetchUniverseResources: fetchUniverseResources, fetchUniverseTasks: this.props.fetchUniverseTasks,
       fetchNodeInstanceList: fetchNodeInstanceList,
-      resetSuggestedSpotPrice: resetSuggestedSpotPrice, reset: this.props.reset, fetchUniverseMetadata: this.props.fetchUniverseMetadata,
+      reset: this.props.reset, fetchUniverseMetadata: this.props.fetchUniverseMetadata,
       fetchCustomerTasks: this.props.fetchCustomerTasks, type: type, getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration,
       fetchCurrentUniverse: this.props.fetchCurrentUniverse, location: this.props.location,
     };
@@ -387,7 +382,7 @@ class PrimaryClusterFields extends Component {
     return (
       <Fields names={['primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList', 'primary.replicationFactor',
         'primary.numNodes', 'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.ybSoftwareVersion',
-        'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType', 'primary.spotPrice', 'primary.useSpotPrice',
+        'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType',
         'primary.assignPublicIP', 'primary.useTimeSync', 'primary.storageClass']} component={ClusterFields} {...this.props} clusterType={"primary"} />
     );
   }
@@ -398,7 +393,7 @@ class ReadOnlyClusterFields extends Component {
     return (
       <Fields names={['primary.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
         'async.numNodes', 'async.instanceType', 'async.ybSoftwareVersion', 'async.diskIops',
-        'async.numVolumes','async.volumeSize', 'async.spotPrice', 'async.useSpotPrice',
+        'async.numVolumes','async.volumeSize',
         'async.ebsType', 'async.assignPublicIP', 'async.useTimeSync', 'async.storageClass']}
               component={ClusterFields} {...this.props} clusterType={"async"}/>
     );
