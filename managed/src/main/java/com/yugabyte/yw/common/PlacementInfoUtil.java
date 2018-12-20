@@ -1721,8 +1721,8 @@ public class PlacementInfoUtil {
   }
 
   /**
-   * Given a node, return its tserver & master alive/not-alive status and detect if the node isn't
-   * running.
+   * Given a node, return its tserver & master alive/not-alive status and if either server is
+   * running we claim that the node is live else we claim it unreachable.
    *
    * @param nodeDetails The node to get the status of.
    * @param nodeJson Metadata about all the nodes in the node's universe.
@@ -1734,7 +1734,6 @@ public class PlacementInfoUtil {
    *  }
    */
   private static ObjectNode getNodeAliveStatus(NodeDetails nodeDetails, JsonNode nodeJson) {
-    boolean nodeAlive = false;
     boolean tserverAlive = false;
     boolean masterAlive = false;
 
@@ -1743,14 +1742,6 @@ public class PlacementInfoUtil {
         String[] name = json.get("name").asText().split(":", 2);
         if (name.length == 2 && name[0].equals(nodeDetails.cloudInfo.private_ip)) {
           switch (SwamperHelper.TargetType.createFromPort(Integer.valueOf(name[1]))) {
-            case NODE_EXPORT:
-              for (JsonNode upData : json.get("y")) {
-                nodeAlive = nodeAlive || upData.asText().equals("1");
-              }
-              if (!nodeAlive && nodeDetails.isQueryable()) {
-                nodeDetails.state = NodeDetails.NodeState.Unreachable;
-              }
-              break;
             case TSERVER_EXPORT:
               for (JsonNode upData : json.get("y")) {
                 tserverAlive = tserverAlive || upData.asText().equals("1");
@@ -1761,18 +1752,15 @@ public class PlacementInfoUtil {
                 masterAlive = masterAlive || upData.asText().equals("1");
               }
               break;
-            case CQL_EXPORT: // Ignore results from the CQL port
-            case REDIS_EXPORT: // Ignore results from the Redis port
-              break;
             default:
-              if (Integer.valueOf(name[1]) != 0) {
-                LOG.error("Invalid port " + name[1]);
-              }
               break;
           }
         }
       }
     }
+
+    nodeDetails.state = (!masterAlive && !tserverAlive) ?
+        NodeDetails.NodeState.Unreachable : NodeDetails.NodeState.Live;
 
     return Json.newObject()
             .put("tserver_alive", tserverAlive)
@@ -1801,13 +1789,13 @@ public class PlacementInfoUtil {
                 .put("tserver_alive", false)
                 .put("master_alive", false)
                 .put("node_status", nodeDetails.state.toString());
-        response.put(nodeDetails.nodeName, result);
+        response.set(nodeDetails.nodeName, result);
       }
     } else {
       JsonNode nodeJson = metricQueryResult.get(UNIVERSE_ALIVE_METRIC);
       for (NodeDetails nodeDetails : universe.getNodes()) {
         ObjectNode result = getNodeAliveStatus(nodeDetails, nodeJson);
-        response.put(nodeDetails.nodeName, result);
+        response.set(nodeDetails.nodeName, result);
       }
     }
     return response;

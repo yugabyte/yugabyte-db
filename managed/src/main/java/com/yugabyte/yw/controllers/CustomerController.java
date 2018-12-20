@@ -142,15 +142,23 @@ public class CustomerController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
     Map<String, String> params = formData.data();
+
+    // Given we have a limitation on not being able to rename the pod labels in kuberentes cadvisor metrics,
+    // we try to see if the metric being queried is for container or not, and use pod_name vs exported_instance
+    // accordingly. Expect for container metrics, all the metrics would with node_prefix and exported_instance.
+    boolean hasContainerMetric = formData.get().metrics.stream().anyMatch(s -> s.startsWith("container"));
+    String universeFilterLabel = hasContainerMetric ? "namespace" : "node_prefix";
+    String nodeFilterLabel = hasContainerMetric ? "pod_name" : "exported_instance";
+
     ObjectNode filterJson = Json.newObject();
     if (!params.containsKey("nodePrefix")) {
       String universePrefixes = customer.getUniverses().stream()
         .map((universe -> universe.getUniverseDetails().nodePrefix)).collect(Collectors.joining("|"));
-      filterJson.put("node_prefix", String.join("|", universePrefixes));
+      filterJson.put(universeFilterLabel, String.join("|", universePrefixes));
     } else {
-      filterJson.put("node_prefix", params.remove("nodePrefix"));
+      filterJson.put(universeFilterLabel, params.remove("nodePrefix"));
       if (params.containsKey("nodeName")) {
-        filterJson.put("exported_instance", params.remove("nodeName"));
+        filterJson.put(nodeFilterLabel, params.remove("nodeName"));
       }
     }
     if (params.containsKey("tableName")) {

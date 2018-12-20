@@ -592,8 +592,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(nodes.size(), 9);
   }
 
-  private JsonNode getPerNodeStatus(Universe u, Set<NodeDetails> deadTservers, Set<NodeDetails> deadMasters,
-                                    Set<NodeDetails> deadNodes) {
+  private JsonNode getPerNodeStatus(Universe u, Set<NodeDetails> deadTservers, Set<NodeDetails> deadMasters) {
     ObjectNode status = Json.newObject();
     ArrayNode dataArray = Json.newArray();
     ArrayNode aliveArray = Json.newArray().add("1").add("1").add("1");
@@ -616,14 +615,6 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       } else {
         dataArray.add(masterStatus.set("y", deadArray.deepCopy()));
       }
-
-      // Set up node running status for node
-      ObjectNode nodeStatus = Json.newObject().put("name", nodeDetails.cloudInfo.private_ip + ":9300");
-      if (deadNodes == null || !deadNodes.contains(nodeDetails)) {
-        dataArray.add(nodeStatus.set("y", aliveArray.deepCopy()));
-      } else {
-        dataArray.add(nodeStatus.set("y", deadArray.deepCopy()));
-      }
     }
 
     status.set(UNIVERSE_ALIVE_METRIC, Json.newObject().set("data", dataArray));
@@ -635,8 +626,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   }
 
   private void validatePerNodeStatus(JsonNode result, Collection<NodeDetails> baseNodeDetails,
-                                     Set<NodeDetails> deadTservers, Set<NodeDetails> deadMasters,
-                                     Set<NodeDetails> deadNodes) {
+                                     Set<NodeDetails> deadTservers, Set<NodeDetails> deadMasters) {
     for (NodeDetails nodeDetails : baseNodeDetails) {
       JsonNode jsonNode = result.get(nodeDetails.nodeName);
       assertNotNull(jsonNode);
@@ -644,7 +634,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       assertTrue(tserverAlive == jsonNode.get("tserver_alive").asBoolean());
       boolean masterAlive = deadMasters == null || !deadMasters.contains(nodeDetails);
       assertTrue(masterAlive == jsonNode.get("master_alive").asBoolean());
-      NodeDetails.NodeState nodeState = deadNodes != null && deadNodes.contains(nodeDetails) ?
+      NodeDetails.NodeState nodeState =  (!masterAlive && !tserverAlive) ?
           Unreachable : Live;
       assertEquals(nodeState.toString(), jsonNode.get("node_status").asText());
     }
@@ -653,11 +643,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   @Test
   public void testGetUniversePerNodeStatusAllHealthy() {
     for (TestData t : testData) {
-      JsonNode result = getPerNodeStatus(t.universe, null, null, null);
+      JsonNode result = getPerNodeStatus(t.universe, null, null);
 
       assertFalse(result.has("error"));
       assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
-      validatePerNodeStatus(result, t.universe.getNodes(), null, null, null);
+      validatePerNodeStatus(result, t.universe.getNodes(), null, null);
     }
   }
 
@@ -665,11 +655,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void testGetUniversePerNodeStatusAllDead() {
     for (TestData t : testData) {
       Set<NodeDetails> deadNodes = ImmutableSet.copyOf(t.universe.getNodes());
-      JsonNode result = getPerNodeStatus(t.universe, deadNodes, deadNodes, deadNodes);
+      JsonNode result = getPerNodeStatus(t.universe, deadNodes, deadNodes);
 
       assertFalse(result.has("error"));
       assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
-      validatePerNodeStatus(result, t.universe.getNodes(), deadNodes, deadNodes, deadNodes);
+      validatePerNodeStatus(result, t.universe.getNodes(), deadNodes, deadNodes);
     }
   }
 
@@ -691,11 +681,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void testGetUniversePerNodeStatusOneTserverDead() {
     for (TestData t : testData) {
       Set<NodeDetails> deadTservers = ImmutableSet.of(t.universe.getNodes().stream().findFirst().get());
-      JsonNode result = getPerNodeStatus(t.universe, deadTservers, null, null);
+      JsonNode result = getPerNodeStatus(t.universe, deadTservers, null);
 
       assertFalse(result.has("error"));
       assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
-      validatePerNodeStatus(result, t.universe.getNodes(), deadTservers, null, null);
+      validatePerNodeStatus(result, t.universe.getNodes(), deadTservers, null);
     }
   }
 
@@ -704,11 +694,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     for (TestData t : testData) {
       Iterator<NodeDetails> nodesIt = t.universe.getNodes().iterator();
       Set<NodeDetails> deadTservers = ImmutableSet.of(nodesIt.next(), nodesIt.next());
-      JsonNode result = getPerNodeStatus(t.universe, deadTservers, null, null);
+      JsonNode result = getPerNodeStatus(t.universe, deadTservers, null);
 
       assertFalse(result.has("error"));
       assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
-      validatePerNodeStatus(result, t.universe.getNodes(), deadTservers, null, null);
+      validatePerNodeStatus(result, t.universe.getNodes(), deadTservers, null);
     }
   }
 
@@ -716,11 +706,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void testGetUniversePerNodeStatusOneMasterDead() {
     for (TestData t : testData) {
       Set<NodeDetails> deadMasters = ImmutableSet.of(t.universe.getNodes().iterator().next());
-      JsonNode result = getPerNodeStatus(t.universe, null, deadMasters, null);
+      JsonNode result = getPerNodeStatus(t.universe, null, deadMasters);
 
       assertFalse(result.has("error"));
       assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
-      validatePerNodeStatus(result, t.universe.getNodes(), null, deadMasters, null);
+      validatePerNodeStatus(result, t.universe.getNodes(), null, deadMasters);
     }
   }
 
@@ -729,38 +719,14 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     for (TestData t : testData) {
       Iterator<NodeDetails> nodesIt = t.universe.getNodes().iterator();
       Set<NodeDetails> deadMasters = ImmutableSet.of(nodesIt.next(), nodesIt.next());
-      JsonNode result = getPerNodeStatus(t.universe, null, deadMasters, null);
+      JsonNode result = getPerNodeStatus(t.universe, null, deadMasters);
 
       assertFalse(result.has("error"));
       assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
-      validatePerNodeStatus(result, t.universe.getNodes(), null, deadMasters, null);
+      validatePerNodeStatus(result, t.universe.getNodes(), null, deadMasters);
     }
   }
 
-  @Test
-  public void testGetUniversePerNodeStatusOneNodeDead() {
-    for (TestData t : testData) {
-      Set<NodeDetails> deadNodes = ImmutableSet.of(t.universe.getNodes().iterator().next());
-      JsonNode result = getPerNodeStatus(t.universe, null, null, deadNodes);
-
-      assertFalse(result.has("error"));
-      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
-      validatePerNodeStatus(result, t.universe.getNodes(), null, null, deadNodes);
-    }
-  }
-
-  @Test
-  public void testGetUniversePerNodeStatusManyNodesDead() {
-    for (TestData t : testData) {
-      Iterator<NodeDetails> nodesIt = t.universe.getNodes().iterator();
-      Set<NodeDetails> deadNodes = ImmutableSet.of(nodesIt.next(), nodesIt.next());
-      JsonNode result = getPerNodeStatus(t.universe, null, null, deadNodes);
-
-      assertFalse(result.has("error"));
-      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
-      validatePerNodeStatus(result, t.universe.getNodes(), null, null, deadNodes);
-    }
-  }
 
   @Test
   public void testUpdateUniverseDefinitionForCreate() {

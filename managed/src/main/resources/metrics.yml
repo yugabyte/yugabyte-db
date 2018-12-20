@@ -90,6 +90,52 @@ memory_usage:
         "node_memory_MemFree": "free"
       ticksuffix: "&nbsp;GB"
 
+
+container_cpu_usage:
+  metric: "container_cpu_usage_seconds_total"
+  function: "rate|sum"
+  range: "1m"
+  filters:
+    pod_name: "yb-tserver-(.*)"
+  group_by: "saved_name"
+  layout:
+    title: "CPU Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "container_cpu_usage_seconds_total": "cpu_usage"
+      ticksuffix: "&nbsp;"
+
+container_memory_usage:
+  metric: "container_memory_usage_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    pod_name: "yb-tserver-(.*)"
+  layout:
+    title: "Memory Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;GB"
+
+container_volume_stats:
+  metric: "kubelet_volume_stats_used_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    pod_name: "yb-tserver-(.*)"
+  layout:
+    title: "Persistent Volume Stats"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;GB"
+      alias:
+        "kubelet_volume_stats_used_bytes": "used"
+
+
 network_bytes:
   metric: ""
   function: "rate|avg"
