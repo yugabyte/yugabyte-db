@@ -6,7 +6,7 @@ import { browserHistory, Link } from 'react-router';
 import { YBButton } from 'components/common/forms/fields';
 import { UniverseTableContainer } from 'components/universes';
 import { HighlightedStatsPanelContainer } from '../../panels';
-import './ListUniverse.css';
+import './ListUniverse.scss';
 
 export default class ListUniverse extends Component {
   createNewUniverse = () => {
