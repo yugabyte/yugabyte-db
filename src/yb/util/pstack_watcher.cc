@@ -146,7 +146,9 @@ Status PstackWatcher::DumpPidStacks(pid_t pid, int flags) {
 }
 
 Status PstackWatcher::RunGdbStackDump(pid_t pid, int flags) {
-  // Command: gdb -quiet -batch -nx -ex cmd1 -ex cmd2 /proc/$PID/exe $PID
+  // Command:
+  // gdb -quiet -batch -nx -ex "set print pretty on" -ex "info threads" -ex "thread apply all bt"
+  //     <executable_path> <pid>>
   string prog("gdb");
   vector<string> argv;
   argv.push_back(prog);

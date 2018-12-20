@@ -53,12 +53,21 @@ YB_PYTHONPATH_ENTRY = os.path.realpath(os.path.join(BUILD_SUPPORT_DIR, '..', 'py
 YB_ENT_PYTHONPATH_ENTRY = os.path.realpath(os.path.join(BUILD_SUPPORT_DIR, '..', 'ent', 'python'))
 is_yb_internal_env = os.path.isdir(YB_ENT_PYTHONPATH_ENTRY)
 
+# Additional Python module path elements that we've successfully added (that were not already in
+# sys.path).
+pythonpath_adjustments = []
+
+
+def add_pythonpath_entry(entry):
+    if entry not in sys.path:
+        sys.path.append(entry)
+        pythonpath_adjustments.append(entry)
+
 
 def adjust_pythonpath():
-    if YB_PYTHONPATH_ENTRY not in sys.path:
-        sys.path.append(YB_PYTHONPATH_ENTRY)
-    if is_yb_internal_env and YB_ENT_PYTHONPATH_ENTRY not in sys.path:
-        sys.path.append(YB_ENT_PYTHONPATH_ENTRY)
+    add_pythonpath_entry(YB_PYTHONPATH_ENTRY)
+    if is_yb_internal_env:
+        add_pythonpath_entry(YB_ENT_PYTHONPATH_ENTRY)
 
 
 adjust_pythonpath()
@@ -144,10 +153,12 @@ verbose = False
 
 
 def get_sys_path_info_str():
-    return 'Host: %s, sys.path entries: %s' % (
+    return 'Host: %s, is_yb_internal_env=%s, pythonpath_adjustments=%s, sys.path entries: %s' % (
+        is_yb_internal_env,
+        repr(pythonpath_adjustments),
         socket.gethostname(),
         ', '.join([
-            '%s (%s)' % (path_entry, "exists" if os.path.exists(path_entry) else "does NOT exist")
+            '"%s" (%s)' % (path_entry, "exists" if os.path.exists(path_entry) else "does NOT exist")
             for path_entry in sys.path
         ])
     )
@@ -382,6 +393,7 @@ def save_json_to_paths(short_description, json_data, output_paths, should_gzip=F
 
 def save_report(report_base_dir, results, total_elapsed_time_sec, spark_succeeded,
                 save_to_build_dir=False):
+    historical_report_path = None
     global_conf = yb_dist_tests.global_conf
 
     if report_base_dir:
@@ -436,11 +448,13 @@ def save_report(report_base_dir, results, total_elapsed_time_sec, spark_succeede
         tests=test_reports_by_descriptor
         )
 
-    full_report_paths = [historical_report_path]
-    if save_to_build_dir:
-        full_report_paths.append(os.path.join(global_conf.build_root, 'full_build_report.json'))
+    if historical_report_path:
+        full_report_paths = [historical_report_path]
+        if save_to_build_dir:
+            full_report_paths.append(os.path.join(global_conf.build_root, 'full_build_report.json'))
 
-    save_json_to_paths('full build report', report, full_report_paths, should_gzip=True)
+        save_json_to_paths('full build report', report, full_report_paths, should_gzip=True)
+
     if save_to_build_dir:
         del report['tests']
         short_report_path = os.path.join(global_conf.build_root, 'short_build_report.json')

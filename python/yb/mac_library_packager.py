@@ -244,7 +244,7 @@ class MacLibraryPackager:
     def remove_rpaths(self, filename, rpaths):
         for rpath in rpaths:
             run_program(['install_name_tool', '-delete_rpath', rpath, filename])
-            logging.info('Successfully removed rpath %s from %s', rpath, filename)
+            logging.debug('Successfully removed rpath %s from %s', rpath, filename)
 
     def set_new_path(self, filename, old_path, new_path):
         # We need to use a different command if the path is pointing to itself. Example:
@@ -303,7 +303,7 @@ class MacLibraryPackager:
             # Create symlink in lib_bin_dir.
             symlink_path = os.path.join(lib_bin_dir, lib_file_name)
             if not os.path.exists(symlink_path):
-                logging.info('Creating symlink %s -> %s', symlink_path, relative_lib_path)
+                logging.debug('Creating symlink %s -> %s', symlink_path, relative_lib_path)
                 os.symlink(relative_lib_path, symlink_path)
 
         # Restore the file's mode.
@@ -336,7 +336,7 @@ class MacLibraryPackager:
         # Remove rpaths since we will only use @loader_path and absolute paths for system libraries.
         self.remove_rpaths(filename, rpaths)
 
-        print 'Processing file %s for rpaths %s' % (filename, rpaths)
+        logging.debug('Processing file %s for rpaths %s', filename, rpaths)
 
         # Dependency path will have the paths as extracted by 'otool -L'
         dependency_paths, absolute_dependency_paths = \
@@ -351,7 +351,7 @@ class MacLibraryPackager:
             if basename in lib_files:
                 # If the library is in postgres/lib, then add @loader_path/../
                 new_path = os.path.join('@loader_path/../lib', basename)
-                print 'Setting new path to %s for file %s' % (new_path, filename)
+                logging.info('Setting new path to %s for file %s', new_path, filename)
                 self.set_new_path(filename, dependency_path, new_path)
             else:
                 # Search in dst/lib
@@ -359,7 +359,7 @@ class MacLibraryPackager:
                 dst_lib = os.path.join(dst, 'lib')
                 if basename in os.listdir(dst_lib):
                     new_path = os.path.join('@loader_path/../../lib', basename, basename)
-                    print 'Setting new path to %s for file %s' % (new_path, filename)
+                    logging.info('Setting new path to %s for file %s', new_path, filename)
                     self.set_new_path(filename, dependency_path, new_path)
                 else:
                     # Search the file in the rpaths directories.
@@ -375,7 +375,7 @@ class MacLibraryPackager:
                 new_path = os.path.join('@loader_path/../lib', basename)
                 self.set_new_path(filename, absolute_dependency, new_path)
                 libs.append(basename)
-            print 'Absolute dependency %s' % absolute_dependency
+            logging.info('Absolute dependency %s', absolute_dependency)
 
         # Restore the file's mode.
         try:
