@@ -7,12 +7,12 @@ import { PanelGroup } from 'react-bootstrap';
 
 const graphPanelTypes = {
   "universe": {
-    data: ['proxies', 'server', 'cql', 'redis', 'tserver', 'lsmdb'],
-    isOpen: [true, true, false, false, false]
+    data: ['proxies', 'container', 'server', 'cql', 'redis', 'tserver', 'lsmdb'],
+    isOpen: [true, false, false, false, false, false]
   },
   "customer": {
-    data: ['proxies', 'server', 'cql', 'redis', 'tserver', 'lsmdb'],
-    isOpen: [true, true, false, false, false]
+    data: ['proxies', 'container', 'server', 'cql', 'redis', 'tserver', 'lsmdb'],
+    isOpen: [true, false, false, false, false, false]
   },
   "table": {
     data: ['lsmdb_table', 'tserver_table'],

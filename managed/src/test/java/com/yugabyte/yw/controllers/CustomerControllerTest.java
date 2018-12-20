@@ -34,8 +34,10 @@ import java.util.Map;
 import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.core.StringContains.containsString;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Mockito.*;
@@ -190,6 +192,55 @@ public class CustomerControllerTest extends WithApplication {
 
     when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(response);
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/metrics").cookie(validCookie).bodyJson(params));
+    assertEquals(OK, result.status());
+    assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
+  }
+
+  @Test
+  public void testCustomerMetricsForContainerMetrics() {
+    String authToken = customer.createAuthToken();
+    ObjectNode params = Json.newObject();
+    params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
+    params.put("start", "1479281737000");
+    params.put("nodePrefix", "demo");
+
+    ObjectNode response = Json.newObject();
+    response.put("foo", "bar");
+    ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
+    ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
+    when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(response);
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("POST",
+        "/api/customers/" + customer.uuid + "/metrics", authToken, params);
+    verify(mockMetricQueryHelper).query((List<String>) metricKeys.capture(),
+        (Map<String, String>) queryParams.capture());
+    assertThat(queryParams.getValue(), is(notNullValue()));
+    JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
+    assertValue(filters, "namespace", "demo");
+    assertEquals(OK, result.status());
+    assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
+  }
+
+  @Test
+  public void testCustomerMetricsForContainerMetricsWithNodeName() {
+    String authToken = customer.createAuthToken();
+    ObjectNode params = Json.newObject();
+    params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
+    params.put("start", "1479281737000");
+    params.put("nodePrefix", "demo");
+    params.put("nodeName", "demo-n1");
+    ObjectNode response = Json.newObject();
+    response.put("foo", "bar");
+    ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
+    ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
+    when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(response);
+    Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("POST",
+        "/api/customers/" + customer.uuid + "/metrics", authToken, params);
+    verify(mockMetricQueryHelper).query((List<String>) metricKeys.capture(),
+        (Map<String, String>) queryParams.capture());
+    assertThat(queryParams.getValue(), is(notNullValue()));
+    JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
+    assertValue(filters, "namespace", "demo");
+    assertValue(filters, "pod_name", "demo-n1");
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
   }
