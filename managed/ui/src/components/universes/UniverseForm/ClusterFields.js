@@ -796,7 +796,7 @@ export default class ClusterFields extends Component {
       return num + ' GB';
     }
     const ebsTypesList =
-      cloud.ebsTypes && cloud.ebsTypes.map(function (ebsType, idx) {
+      cloud.ebsTypes && cloud.ebsTypes.sort().map(function (ebsType, idx) {
         return <option key={ebsType} value={ebsType}>{ebsType}</option>;
       });
     const isFieldReadOnly = isNonEmptyObject(universe.currentUniverse.data) && (this.props.type === "Edit" || (this.props.type === "Async" && this.state.isReadOnlyExists));
@@ -826,7 +826,7 @@ export default class ClusterFields extends Component {
         const fixedVolumeInfo = self.state.volumeType === 'SSD' &&
                                 currentProvider.code !== 'kubernetes';
         if (currentProvider.code === 'kubernetes') {
-          const storageClassOptions = this.getStorageClasses().map(function(storageClassName, idx) {
+          const storageClassOptions = this.getStorageClasses().sort().map(function(storageClassName, idx) {
             return (
               <option key={"storageClass-" + idx} value={storageClassName}>
                 {storageClassName}
@@ -835,7 +835,7 @@ export default class ClusterFields extends Component {
           });
 
           storageClassField = (<Field name={`${clusterType}.storageClass`} type="select"
-            component={YBControlledSelectWithLabel} defaultValue="GP2" label="Storage Class" readOnly={isFieldReadOnly}
+            component={YBControlledSelectWithLabel} label="Storage Class" readOnly={isFieldReadOnly}
             options={storageClassOptions} onInputChanged={self.storageClassChanged} />);
         }
 
@@ -878,7 +878,7 @@ export default class ClusterFields extends Component {
           ebsTypeSelector = (
             <span className="volume-info form-group-shrinked">
               <Field name={`${clusterType}.ebsType`} component={YBSelectWithLabel}
-                     options={ebsTypesList} label="EBS Type" onInputChanged={self.ebsTypeChanged}
+                     options={ebsTypesList} label="EBS Type" defaultValue="GP2" onInputChanged={self.ebsTypeChanged}
                      readOnlySelect={isFieldReadOnly} />
             </span>
           );
