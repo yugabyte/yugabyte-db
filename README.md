@@ -8,12 +8,12 @@
 [![Gitter chat](https://badges.gitter.im/gitlabhq/gitlabhq.svg)](https://gitter.im/YugaByte/Lobby)
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
 
-YugaByte Database is a transactional, high-performance database for planet-scale cloud applications.  This repository contains the Community Edition of the YugaByte Database.
+YugaByte Database is transactional, globally distributed database for powering high-performance, internet-scale applications.  This repository contains the Community Edition of the YugaByte Database.
 
 ## Table of Contents
 
 - [About YugaByte DB](#about-yugabyte)
-- [Supported APIs](#supported-apis)
+- [Architecture](#architecture)
 - [Getting Started](#getting-started)
 - [Developing Apps](#developing-apps)
 - [Building YugaByte code](#building-yugabyte-code)
@@ -31,52 +31,56 @@ YugaByte Database is a transactional, high-performance database for planet-scale
 
 ## About YugaByte DB
 
-YugaByte DB offers **both** NoSQL and SQL in a single, unified database. It is meant to be a system-of-record/authoritative database that applications can rely on for correctness and availability. It allows applications to easily scale up and scale down in the cloud, on-premises or across hybrid environments without creating operational complexity or increasing the risk of outages.
+Built using a unique combination of log-structured merge storage engine, auto-sharding, per-shard distributed consensus replication and multi-shard ACID transactions (inspired by Google Spanner), YugaByte DB is world's 1st distributed database that is both NoSQL (supports Redis-compatible key-value & Cassandra-compatible flexible schema APIs) and SQL (PostgreSQL-compatible distributed SQL API) at the same time. It is purpose-built to power fast-growing online services on public, private and hybrid clouds with transactional integrity, low latency, high throughput and multi-region scalability while also providing unparalleled data modeling freedom to application architects. Enterprises gain more functional depth and agility without any cloud lock-in when compared to proprietary cloud databases such as Amazon DynamoDB, Microsoft Azure Cosmos DB and Google Cloud Spanner. Enterprises also benefit from stronger data integrity guarantees and higher performance than those offered by legacy open source NoSQL databases such as MongoDB and Apache Cassandra. 
 
 * See how YugaByte DB [compares with other databases](https://docs.yugabyte.com/comparisons/).
 * Read more about YugaByte DB in our [docs](https://docs.yugabyte.com/introduction/overview/).
 
-## Supported APIs
+## Architecture
 
-In terms of data model and APIs, YugaByte DB supports the following on top of a common core data platform: 
-* [Cassandra Query Language (CQL)](https://docs.yugabyte.com/api/cassandra/) - with strong consistency, distributed ACID transactions, low latency secondary indexes and a native JSONB data type 
-* [Redis](https://docs.yugabyte.com/api/redis/) - as a full database with automatic sharding, clustering, elasticity
-* PostgreSQL (in progress) - with linear scalability, high availability and fault tolerance
+YugaByte DB architecture has 2 layers. At the core is DocDB, YugaByte DB's distributed document store. DocDB is the common database engine for the YugaByte DB API layer. Applications interact with the YugaByte DB API layer using one or more of the APIs highlighted below.
 
-**Note**: You can run your Apache Spark applications on YugaByte DB
+### YugaByte DB APIs
 
-YugaByte DB is driver compatible with Apache Cassandra CQL and Redis - you can run existing
-applications written using existing open-source client drivers.
+YugaByte DB supports both Transactional NoSQL and Distributed SQL APIs.
+* [YugaByte Dictionary Service (YEDIS)](https://docs.yugabyte.com/api/redis/) - A Redis-compatible Key-Value API with support for hash, sorted sets, pub/sub and time series data structures.
+* [YugaByte Cloud Query Language (YCQL)](https://docs.yugabyte.com/api/cassandra/) - A Cassandra-compatible Flexible Schema API with strong consistency, distributed ACID transactions, globally consistent secondary indexes and a native JSONB data type.
+* [YugaByte Structured Query Language (YSQL)](https://docs.yugabyte.com/api/postgresql/) - A PostgreSQL-compatible Distributed SQL API (currently in beta) with linear write scalability and extreme fault tolerance against infrastructure failures.
 
-The distributed transactions feature is supported in the core data platform. The work to expose this
-as strongly consistent secondary indexes, multi-table/row ACID operations and SQL support is
-actively in progress. You can follow the progress of these features in our [community
-forum](https://forum.yugabyte.com/).
+For transactional, internet-scale workloads, the question of which API to choose is a trade-off between data modeling richness and query performance. On one end of the spectrum is the YEDIS API that is completely optimized for single key access patterns, has simpler data modeling constructs and provides blazing-fast (sub-ms) query performance. On the other end of the spectrum is the YSQL API that supports complex multi-key relationships (through JOINS and foreign keys) and provides normal (single-digit ms) query performance. This is expected since multiple keys can be located on multiple shards hosted on multiple nodes, resulting in higher latency than a key-value API that accesses only a single key at any time. At the middle of the spectrum is the YCQL API that is still optimized for majority single-key workloads but has richer data modeling features such as globally consistent secondary indexes (powered by distributed ACID transactions) that can accelerate internet-scale application development significantly.
+
+### DocDB, YugaByte DB's Distributed Document Store
+
+[DocDB](https://docs.yugabyte.com/latest/architecture/concepts/persistence/) builds on top of the popular [RocksDB](https://rocksdb.org/) project by transforming RocksDB from a key-value store (with only primitive data types) to a document store (with complex data types). Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key. DocDB’s sharding, replication/fault-tolerance and distributed ACID transactions architecture are all based on the the [Google Spanner](https://ai.google/research/pubs/pub39966) design first published in 2012.
 
 ## Getting Started
 
 Here are a few resources for getting started with YugaByte DB:
 
 * [Quick start guide](http://docs.yugabyte.com/quick-start/) - install, create a local cluster and read/write from YugaByte DB.
-* [Explore core features](https://docs.yugabyte.com/explore/) - automatic sharding & rebalancing, linear scalability, fault tolerance, tunable reads etc.
-* [Real world apps](https://docs.yugabyte.com/develop/realworld-apps/) - how real-world, end-to-end applications can be built using YugaByte DB.
-* [Architecture docs](https://docs.yugabyte.com/architecture/) - to understand how YugaByte was designed and how it works
+* [Explore core features](https://docs.yugabyte.com/explore/) - automatic sharding & re-balancing, linear scalability, fault tolerance, tunable reads etc.
+* [Ecosystem integrations](https://docs.yugabyte.com/latest/develop/ecosystem-integrations/) - integrations with Apache Kafka/KSQL, Apache Spark, JanusGraph, KairosDB, Presto and more.
+* [Real world apps](https://docs.yugabyte.com/develop/realworld-apps/) - sample real-world, end-to-end applications built using YugaByte DB.
+* [Architecture docs](https://docs.yugabyte.com/architecture/) - to understand how YugaByte DB was designed and how it works
 
-Cannot find what you are looking for? Have a question? We love to hear from you - please post your questions or comments to our [community forum](https://forum.yugabyte.com).
+Cannot find what you are looking for? Have a question? We love to hear from you - please [file a GitHub issue](https://github.com/YugaByte/yugabyte-db/issues).
 
 ## Developing Apps
 
-Here is a tutorial on implementing a simple Hello World application for YugaByte DB's Cassandra-compatible YCQL and Redis-compatible YEDIS APIs in different languages:
+Here is a tutorial on implementing a simple Hello World application for YugaByte DB's YCQL and YEDIS APIs in different languages:
 * [Java](https://docs.yugabyte.com/develop/client-drivers/java/) using Maven
 * [NodeJS](https://docs.yugabyte.com/develop/client-drivers/nodejs/)
 * [Python](https://docs.yugabyte.com/develop/client-drivers/python/)
+* [Go](https://docs.yugabyte.com/latest/develop/client-drivers/go/)
+* [C#](https://docs.yugabyte.com/latest/develop/client-drivers/csharp/)
+* [C/C++](https://docs.yugabyte.com/latest/develop/client-drivers/cpp/)
 
 We are constantly adding documentation on how to build apps using the client drivers in various
 languages, as well as the ecosystem integrations we support. Please see [our app-development
 docs](https://docs.yugabyte.com/develop/) for the latest information.
 
-Once again, please post your questions or comments to our [community
-forum](https://forum.yugabyte.com) if you need something.
+Once again, please post your questions or comments as a [GitHub issue
+](https://github.com/YugaByte/yugabyte-db/issues) if you need something.
 
 ## Building YugaByte code
 
@@ -265,3 +269,4 @@ We accept contributions as GitHub pull requests. Our code style is available
 YugaByte DB Community Edition is distributed under an Apache 2.0 license. See the
 [LICENSE.txt](https://github.com/YugaByte/yugabyte-db/blob/master/LICENSE.txt) file for
 details.
+
