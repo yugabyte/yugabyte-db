@@ -28,6 +28,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
@@ -314,6 +315,33 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
 
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+    subTaskGroupQueue.add(subTaskGroup);
+  }
+
+  /**
+   * Creates a task list to update tags on the nodes.
+   *
+   * @param nodes : a collection of nodes that need to be updated.
+   * @param deleteTags : csv version of keys of tags to be deleted, if any.
+   */
+  public void createUpdateInstanceTagsTasks(Collection<NodeDetails> nodes, String deleteTags) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("InstanceActions", executor);
+    for (NodeDetails node : nodes) {
+      InstanceActions.Params params = new InstanceActions.Params();
+      // Add the node name.
+      params.nodeName = node.nodeName;
+      // Add the universe uuid.
+      params.universeUUID = taskParams().universeUUID;
+      // Add the az uuid.
+      params.azUuid = node.azUuid;
+      // Add delete tags info.
+      params.deleteTags = deleteTags;
+      // Create and add a task for this node.
+      InstanceActions task = new InstanceActions();
+      task.initialize(params);
+      subTaskGroup.addTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.Provisioning);
     subTaskGroupQueue.add(subTaskGroup);
   }
 

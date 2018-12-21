@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
@@ -56,7 +57,8 @@ public class NodeManager extends DevopsBase {
     Configure,
     Destroy,
     List,
-    Control
+    Control,
+    Tags
   }
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
@@ -387,11 +389,31 @@ public class NodeManager extends DevopsBase {
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
         break;
       }
+      case Tags:
+      {
+        if (!(nodeTaskParam instanceof InstanceActions.Params)) {
+          throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
+        }
+        InstanceActions.Params taskParam = (InstanceActions.Params)nodeTaskParam;
+        UserIntent userIntent = getUserIntentFromParams(taskParam);
+        if (userIntent.providerType.equals(Common.CloudType.aws)) {
+          if (userIntent.instanceTags == null || userIntent.instanceTags.isEmpty()) {
+            throw new RuntimeException("Invalid instance tags");
+          }
+          commandArgs.add("--instance_tags");
+          commandArgs.add(Json.stringify(Json.toJson(userIntent.instanceTags)));
+          if (!taskParam.deleteTags.isEmpty()) {
+            commandArgs.add("--remove_tags");
+            commandArgs.add(taskParam.deleteTags);
+          }
+        }
+        break;
+      }
     }
 
     commandArgs.add(nodeTaskParam.nodeName);    
 
     return execCommand(nodeTaskParam.getRegion().uuid, null, null, type.toString().toLowerCase(),
-        commandArgs, getCloudArgs(nodeTaskParam));
+                       commandArgs, getCloudArgs(nodeTaskParam));
   }
 }

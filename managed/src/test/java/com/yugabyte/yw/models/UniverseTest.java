@@ -2,7 +2,7 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
-
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
@@ -10,10 +10,13 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.junit.Before;
@@ -425,6 +428,79 @@ public class UniverseTest extends FakeDBApplication {
     JsonNode clusterJson = Json.toJson(taskParams).get("clusters").get(0);
 
     assertThat(clusterJson.get("userIntent").get("masterGFlags").get("emulate_redis_responses"), notNullValue());
+  }
+
+  @Test
+  public void testAreTagsSame() {
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
+    Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    UserIntent userIntent = getBaseIntent();
+    userIntent.providerType = CloudType.aws;
+    userIntent.instanceTags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
+    Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null);
+
+    UserIntent newUserIntent = getBaseIntent();
+    newUserIntent.providerType = CloudType.aws;
+    newUserIntent.instanceTags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
+    Cluster newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
+    assertTrue(cluster.areTagsSame(newCluster));
+
+    newUserIntent = getBaseIntent();
+    newUserIntent.providerType = CloudType.aws;
+    newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
+    newUserIntent.instanceTags = ImmutableMap.of("Cust", "Test");
+    assertFalse(cluster.areTagsSame(newCluster));
+
+    newUserIntent = getBaseIntent();
+    newUserIntent.providerType = CloudType.aws;
+    newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
+    assertFalse(cluster.areTagsSame(newCluster));
+  }
+
+  // Tags do not apply to non-AWS provider. This checks that tags check are always
+  // considered 'same' for those providers.
+  @Test
+  public void testAreTagsSameOnGCP() {
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
+    Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    UserIntent userIntent = getBaseIntent();
+    userIntent.providerType = CloudType.gcp;
+    userIntent.instanceTags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
+    Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null);
+
+    UserIntent newUserIntent = getBaseIntent();
+    newUserIntent.providerType = CloudType.gcp;
+    newUserIntent.instanceTags = ImmutableMap.of("Cust", "Test");
+    Cluster newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
+    assertTrue(cluster.areTagsSame(newCluster));
+
+    newUserIntent = getBaseIntent();
+    newUserIntent.providerType = CloudType.gcp;
+    newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
+    assertTrue(cluster.areTagsSame(newCluster));
+  }
+
+  @Test
+  public void testAreTagsSameErrors() {
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
+    Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    UserIntent userIntent = getBaseIntent();
+    userIntent.providerType = CloudType.gcp;
+    userIntent.instanceTags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
+    Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null);
+
+    UserIntent newUserIntent = getBaseIntent();
+    newUserIntent.providerType = CloudType.aws;
+    Cluster newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
+    newUserIntent.instanceTags = ImmutableMap.of("Cust", "Test");
+    try {
+      cluster.areTagsSame(newCluster);
+    } catch (IllegalArgumentException iae) {
+      assertThat(iae.getMessage(), allOf(notNullValue(), containsString("Mismatched provider types")));
+    }
   }
 
   private UserIntent getBaseIntent() {

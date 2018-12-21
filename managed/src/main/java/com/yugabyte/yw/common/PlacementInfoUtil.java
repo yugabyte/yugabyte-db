@@ -469,7 +469,7 @@ public class PlacementInfoUtil {
       }
       int rf = cluster.userIntent.replicationFactor;
       LOG.info("UserIntent replication factor={} while total zone replication factor={}.",
-          rf, totalRF);
+                rf, totalRF);
       if (rf < totalRF) {
         cluster.placementInfo = getPlacementInfo(cluster.clusterType, cluster.userIntent);
         LOG.info("New placement has {} zones.", getNumZones(cluster.placementInfo));
@@ -482,16 +482,31 @@ public class PlacementInfoUtil {
     // If not a pure expand/shrink, we will pick a new set of nodes. If the provider or region list
     // changed, we will pick a new placement (i.e full move, create primary/RO cluster).
     if (!mode_changed && (mode == ConfigureNodesMode.NEW_CONFIG)) {
+      boolean changeNodeStates = false;
       if (isProviderOrRegionChange(
               cluster,
               (primaryClusterEdit || readOnlyClusterEdit) ?
                   universe.getNodes() : taskParams.nodeDetailsSet)) {
         LOG.info("Provider or region changed, getting new placement info.");
         cluster.placementInfo = getPlacementInfo(cluster.clusterType, cluster.userIntent);
+        changeNodeStates = true;
       } else {
-        LOG.info("Performing full move with existing placement info.");
-        clearPlacementAZCounts(cluster.placementInfo);
+        String newInstType = cluster.userIntent.instanceType;
+        String existingInstType =
+            taskParams.getNodesInCluster(cluster.uuid).iterator().next().cloudInfo.instance_type;
+        if (!newInstType.equals(existingInstType)) {
+          LOG.info("Performing full move with existing placement info for instance type change " +
+                   "from  {} to {}.", existingInstType, newInstType);
+          clearPlacementAZCounts(cluster.placementInfo);
+          changeNodeStates = true;
+        } // else can check if RF changed : not supported yet.
       }
+
+      if (!changeNodeStates && oldCluster != null && !oldCluster.areTagsSame(cluster)) {
+        LOG.info("No node config change needed, only instance tags changed.");
+        return;
+      }
+
       taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
     }
 
@@ -603,6 +618,12 @@ public class PlacementInfoUtil {
     return servers;
   }
 
+  public static Set<NodeDetails> getLiveNodes(Set<NodeDetails> nodeDetailsSet) {
+    return nodeDetailsSet.stream()
+	           .filter(n -> n.state.equals(NodeDetails.NodeState.Live))
+               .collect(Collectors.toSet());
+  }
+
   public static Set<NodeDetails> getNodesToProvision(Set<NodeDetails> nodeDetailsSet) {
     return getServersToProvision(nodeDetailsSet, ServerType.EITHER);
   }
@@ -683,6 +704,7 @@ public class PlacementInfoUtil {
     LOG.info("new intent: {}", userIntent.toString());
     // Error out if no fields are modified.
     if (userIntent.equals(existingIntent) &&
+        userIntent.instanceTags.equals(existingIntent.instanceTags) &&
         isSamePlacement(oldCluster.placementInfo, newCluster.placementInfo)) {
       LOG.error("No fields were modified for edit universe.");
       throw new IllegalArgumentException("Invalid operation: At least one field should be " +
