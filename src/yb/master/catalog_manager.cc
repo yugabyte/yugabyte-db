@@ -202,6 +202,7 @@ DEFINE_string(cluster_uuid, "", "Cluster UUID to be used by this cluster");
 TAG_FLAG(cluster_uuid, hidden);
 
 DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_int32(master_discovery_timeout_ms);
 
 DEFINE_uint64(transaction_table_num_tablets, 0,
     "Number of tablets to use when creating the transaction status table."
@@ -1378,8 +1379,12 @@ Status CatalogManager::CheckLocalHostInMasterAddresses() {
   }
 
   auto master_addresses_shared_ptr = master_->opts().GetMasterAddresses();
-  const auto kResolveSleepInterval = 1s;
-  const auto kResolveMaxIterations = 5;
+  const auto kResolveSleepIntervalSec = 1;
+  auto kResolveMaxIterations =
+     (FLAGS_master_discovery_timeout_ms / 1000) / kResolveSleepIntervalSec;
+  if (kResolveMaxIterations < 120) {
+    kResolveMaxIterations = 120;
+  }
   for (const auto& list : *master_addresses_shared_ptr) {
     for (const HostPort& peer_addr : list) {
       std::vector<Endpoint> addresses;
@@ -1392,7 +1397,7 @@ Status CatalogManager::CheckLocalHostInMasterAddresses() {
           return STATUS_FORMAT(ConfigurationError, "Could not resolve address of $0",
               peer_addr.ToString());
         }
-        std::this_thread::sleep_for(kResolveSleepInterval);
+        std::this_thread::sleep_for(std::chrono::seconds(kResolveSleepIntervalSec));
         s = peer_addr.ResolveAddresses(&addresses);
       }
       for (auto const& addr : addresses) {
