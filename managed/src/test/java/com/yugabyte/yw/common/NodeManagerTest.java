@@ -2,6 +2,7 @@
 package com.yugabyte.yw.common;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Common;
@@ -12,6 +13,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -21,6 +23,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
@@ -48,6 +51,7 @@ import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.fail;
 import org.mockito.ArgumentCaptor;
 import static org.mockito.Mockito.times;
@@ -266,6 +270,8 @@ public class NodeManagerTest extends FakeDBApplication {
               expectedCommand.add("--tags");
               expectedCommand.add("install-software");
               break;
+            case None:
+              break;
           }
         }
 
@@ -298,6 +304,18 @@ public class NodeManagerTest extends FakeDBApplication {
       case Destroy:
         expectedCommand.add("--instance_type");
         expectedCommand.add(instanceTypeCode);
+        break;
+      case Tags:
+        InstanceActions.Params tagsParams = (InstanceActions.Params)params;
+        if (cloud.equals(Common.CloudType.aws)) {
+          expectedCommand.add("--instance_tags");
+          // The quotes in format is needed here, so cannot use instanceTags.toString().
+          expectedCommand.add("{\"Cust\":\"Test\",\"Dept\":\"HR\"}");
+          if (!tagsParams.deleteTags.isEmpty()) {
+            expectedCommand.add("--remove_tags");
+            expectedCommand.add(tagsParams.deleteTags);            
+          }
+        }
         break;
     }
     if (params.deviceInfo != null) {
@@ -442,12 +460,10 @@ public class NodeManagerTest extends FakeDBApplication {
     }
   }
 
-  private void setInstanceTags(AnsibleSetupServer.Params params) {
+  private void setInstanceTags(NodeTaskParams params) {
     UserIntent userIntent = new UserIntent();
-    userIntent.instanceTags.put("Cust", "Test");
-    userIntent.instanceTags.put("Dept", "HR");
-    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
-    params.clusters.add(cluster);
+    userIntent.instanceTags = ImmutableMap.of("Cust", "Test", "Dept", "HR");
+    params.clusters.add(new Cluster(ClusterType.PRIMARY, userIntent));
   }
 
   private void runAndTestProvisionWithAccessKeyAndSG(String sgId) {
@@ -956,6 +972,66 @@ public class NodeManagerTest extends FakeDBApplication {
       nodeManager.nodeCommand(NodeManager.NodeCommandType.List, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand,
           t.region.provider.getConfig());
+    }
+  }
+
+  @Test
+  public void testSetInstanceTags() {
+    for (TestData t : testData) {
+      InstanceActions.Params params = new InstanceActions.Params();
+      UUID univUUID = createUniverse().universeUUID;
+      Universe universe = Universe.saveDetails(univUUID,ApiUtils.mockUniverseUpdater(t.cloudType));
+      buildValidParams(t, params, universe);
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        ApiUtils.insertInstanceTags(univUUID);
+        setInstanceTags(params);
+      }
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Tags, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand,
+          t.region.provider.getConfig());
+    }
+  }
+
+  @Test
+  public void testRemoveInstanceTags() {
+    for (TestData t : testData) {
+      InstanceActions.Params params = new InstanceActions.Params();
+      UUID univUUID = createUniverse().universeUUID;
+      Universe universe = Universe.saveDetails(univUUID,ApiUtils.mockUniverseUpdater(t.cloudType));
+      buildValidParams(t, params, universe);
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        ApiUtils.insertInstanceTags(univUUID);
+        setInstanceTags(params);
+        params.deleteTags = "Remove,Also";
+      }
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Tags, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand,
+          t.region.provider.getConfig());
+    }
+  }
+
+  @Test
+  public void testEmptyInstanceTags() {
+    for (TestData t : testData) {
+      InstanceActions.Params params = new InstanceActions.Params();
+      UUID univUUID = createUniverse().universeUUID;
+      Universe universe = Universe.saveDetails(univUUID,ApiUtils.mockUniverseUpdater(t.cloudType));
+      buildValidParams(t, params, universe);
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Tags, params, t));
+      try {
+          nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
+          assertNotEquals(t.cloudType, Common.CloudType.aws);
+        } catch (RuntimeException re) {
+          if (t.cloudType == Common.CloudType.aws) {
+            assertThat(
+                re.getMessage(), allOf(notNullValue(), is("Invalid instance tags")));
+          }
+        }
     }
   }
 }

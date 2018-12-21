@@ -14,11 +14,14 @@ import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -255,5 +258,20 @@ public class Util {
   // Validate the universe name pattern.
   public static boolean isValidUniverseNameFormat(String univName) {
     return univName.matches("^[a-zA-Z0-9-]*$");
+  }
+
+  // Helper API to create a CSV of any keys present in existing map but not in new map.
+  public static String getKeysNotPresent(Map<String, String> existing,
+                                         Map<String, String> newMap) {
+    Set<String> keysNotPresent = new HashSet<String>();
+    Set<String> existingKeySet = existing.keySet();
+    Set<String> newKeySet = newMap.keySet();
+    for (String key : existingKeySet) {
+      if (!newKeySet.contains(key)) {
+        keysNotPresent.add(key);
+      }
+    }
+    LOG.info("KeysNotPresent  = " + keysNotPresent);
+    return keysNotPresent.stream().collect(Collectors.joining(","));
   }
 }

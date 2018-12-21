@@ -108,6 +108,8 @@ public enum TaskType {
 
   DeleteClusterFromUniverse("subtasks.DeleteClusterFromUniverse"),
 
+  InstanceActions("subtasks.InstanceActions"),
+
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
 
