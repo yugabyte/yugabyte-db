@@ -25,7 +25,7 @@
      "orafce": {
        "file": "sql/orafce.sql",
        "docfile": "README.orafce",
-       "version": "3.7.0",
+       "version": "3.7.1",
        "abstract": "Oracle's compatibility functions and packages"
      }
    },
