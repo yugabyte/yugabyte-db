@@ -174,6 +174,31 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public boolean equals(Cluster other) {
       return uuid.equals(other.uuid);
     }
+
+    /**
+     * Check if instance tags are same as the passed in cluster.
+     *
+     * @param cluster another cluster to check against.
+     * @return true if the tag maps are same for aws provider, false otherwise.
+     */
+    public boolean areTagsSame(Cluster cluster) {
+      if (cluster == null) {
+        throw new IllegalArgumentException("Invalid cluster to compare.");
+      }
+
+      if (!cluster.userIntent.providerType.equals(userIntent.providerType)) {
+        throw new IllegalArgumentException("Mismatched provider types, expected " +
+            userIntent.providerType.name() + " but got " + cluster.userIntent.providerType.name());
+      }
+
+      // We only deal with AWS instance tags.
+      if (!userIntent.providerType.equals(CloudType.aws) ||
+          userIntent.instanceTags.equals(cluster.userIntent.instanceTags)) {
+        return true;
+      }
+
+      return false;
+    }
   }
 
   /**

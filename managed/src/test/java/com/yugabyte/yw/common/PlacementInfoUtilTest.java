@@ -6,10 +6,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.InstanceType;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.*;
@@ -865,7 +867,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         }
       }
 
-      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(), primaryCluster.uuid, EDIT);
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(),
+                                                 primaryCluster.uuid, EDIT);
       Set<NodeDetails> nodes = udtp.nodeDetailsSet;
       // Should not change process counts or node distribution.
       assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
@@ -942,6 +945,65 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       for (NodeDetails node : readOnlyTservers) {
         assertEquals(node.placementUuid, clusterUUID);
       }
+    }
+  }
+
+  private enum TagTest {
+    DEFAULT,
+    WITH_EXPAND,
+    WITH_FULL_MOVE
+  }
+
+  @Test
+  public void testEditInstanceTags() {
+    testEditInstanceTagsHelper(TagTest.DEFAULT);
+  }
+
+  @Test
+  public void testEditInstanceTagsWithExpand() {
+    testEditInstanceTagsHelper(TagTest.WITH_EXPAND);
+  }
+
+  @Test
+  public void testEditInstanceTagsWithFullMove() {
+    testEditInstanceTagsHelper(TagTest.WITH_FULL_MOVE);
+  }
+
+  private void testEditInstanceTagsHelper(TagTest mode) {
+    for (TestData t : testData) {
+      Universe universe = t.universe;
+      UUID univUuid = t.univUuid;
+      UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
+      Cluster primaryCluster = udtp.getPrimaryCluster();
+      udtp.universeUUID = univUuid;
+      Universe.saveDetails(univUuid, t.setAzUUIDs());
+      t.setAzUUIDs(udtp);
+      setPerAZCounts(primaryCluster.placementInfo, udtp.nodeDetailsSet);
+      Map<String, String> myTags = ImmutableMap.of("MyKey", "MyValue", "Keys", "Values");
+      primaryCluster.userIntent.instanceTags = myTags;
+      switch (mode) {
+      case WITH_EXPAND:
+        primaryCluster.userIntent.numNodes = INITIAL_NUM_NODES + 2;
+        break;
+      case WITH_FULL_MOVE:
+        primaryCluster.userIntent.instanceType = "m4.medium";
+        break;
+      case DEFAULT:
+        break;
+      }
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId(),
+                                                 primaryCluster.uuid, EDIT);
+      Set<NodeDetails> nodes = udtp.nodeDetailsSet;
+      assertEquals(mode == TagTest.WITH_FULL_MOVE ? REPLICATION_FACTOR : 0,
+                   PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
+      assertEquals(mode == TagTest.WITH_FULL_MOVE ? INITIAL_NUM_NODES : 0,
+                   PlacementInfoUtil.getTserversToBeRemoved(nodes).size());
+      assertEquals(mode == TagTest.WITH_EXPAND ? 2 :
+                   (mode == TagTest.WITH_FULL_MOVE ? INITIAL_NUM_NODES : 0),
+                   PlacementInfoUtil.getTserversToProvision(nodes).size());
+      assertEquals(mode == TagTest.WITH_FULL_MOVE ? REPLICATION_FACTOR : 0,
+                   PlacementInfoUtil.getMastersToProvision(nodes).size());
+      assertEquals(myTags, udtp.getPrimaryCluster().userIntent.instanceTags);
     }
   }
 }

@@ -6,10 +6,13 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -90,21 +93,28 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
   private void editCluster(Universe universe, Cluster cluster) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
-    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
     LOG.info("Configure numNodes={}, Replication factor={}", userIntent.numNodes,
              userIntent.replicationFactor);
 
-    Collection<NodeDetails> nodesToBeRemoved =
-        PlacementInfoUtil.getNodesToBeRemoved(nodes);
+    Collection<NodeDetails> nodesToBeRemoved = PlacementInfoUtil.getNodesToBeRemoved(nodes);
 
-    Collection<NodeDetails> nodesToProvision =
-        PlacementInfoUtil.getNodesToProvision(nodes);
+    Collection<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(nodes);
 
     // Set the old nodes' state to to-be-removed.
     if (!nodesToBeRemoved.isEmpty()) {
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.ToBeRemoved)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+    }
+
+    // Update any tags on nodes that are not going to be removed and not being added.
+    Cluster existingCluster = universe.getCluster(cluster.uuid);
+    if (!cluster.areTagsSame(existingCluster)) {
+      LOG.info("Tags changed from '{}' to '{}'.", existingCluster.userIntent.instanceTags,
+               cluster.userIntent.instanceTags);
+      createUpdateInstanceTagsTasks(PlacementInfoUtil.getLiveNodes(nodes),
+                                    Util.getKeysNotPresent(existingCluster.userIntent.instanceTags,
+                                                           cluster.userIntent.instanceTags));
     }
 
     if (!nodesToProvision.isEmpty()) {
@@ -218,7 +228,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     if (cluster.clusterType == ClusterType.PRIMARY &&
         PlacementInfoUtil.didAffinitizedLeadersChange(
-            universeDetails.getPrimaryCluster().placementInfo,
+            universe.getUniverseDetails().getPrimaryCluster().placementInfo,
             cluster.placementInfo)) {
       createWaitForLeadersOnPreferredOnlyTask();
     }

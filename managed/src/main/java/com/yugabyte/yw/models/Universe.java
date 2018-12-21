@@ -532,11 +532,21 @@ public class Universe extends Model {
   /**
    * Returns the list of nodes in a given cluster in the universe.
    *
-   * @param placementUuid UUID of the cluster to get nodes from.
+   * @param clusterUUID UUID of the cluster to get the list of nodes.
    * @return a collection of nodes in a given cluster in this universe.
    */
-  public Collection<NodeDetails> getNodesInCluster(UUID placementUuid) {
-    return getUniverseDetails().getNodesInCluster(placementUuid);
+  public Collection<NodeDetails> getNodesInCluster(UUID clusterUUID) {
+    return getUniverseDetails().getNodesInCluster(clusterUUID);
+  }
+
+  /**
+   * Returns the cluster with the given uuid in the universe.
+   *
+   * @param clusterUUID UUID of the cluster to check.
+   * @return The cluster object if it is in this universe, null otherwise.
+   */
+  public Cluster getCluster(UUID clusterUUID) {
+    return getUniverseDetails().getClusterByUuid(clusterUUID);
   }
 
   /**
