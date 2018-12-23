@@ -267,6 +267,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   std::string ToString() const;
 
+  MonoTime refresh_time() { return refresh_time_.load(std::memory_order_acquire); }
+
  private:
   // Same as ReplicasAsString(), except that the caller must hold lock_.
   std::string ReplicasAsStringUnlocked() const;
@@ -278,6 +280,10 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   mutable simple_spinlock lock_;
   bool stale_;
   std::vector<RemoteReplica> replicas_;
+
+  // Last time this object was refreshed. Initialized to MonoTime::Min() so we don't have to be
+  // checking whether it has been initialized everytime we use this value.
+  std::atomic<MonoTime> refresh_time_{MonoTime::Min()};
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTablet);
 };

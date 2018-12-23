@@ -24,11 +24,10 @@
 #include "yb/util/flag_tags.h"
 
 DEFINE_test_flag(bool, assert_local_op, false,
-                 "When set, we crash if we received an operation that cannot be served locally");
-DEFINE_int32(force_lookup_cache_refresh_secs, 0, "If greater than 0, the lookup cache will be "
-             "refreshed if a tablet server is selected in a different zone than the client's "
-             "placement zone and it hasn't been updated for at least the specified number of "
-             "seconds");
+                 "When set, we crash if we received an operation that cannot be served locally.");
+DEFINE_int32(force_lookup_cache_refresh_secs, 60, "When non-zero, specifies how often we send a "
+             "GetTabletLocations request to the master leader to update the tablet replicas cache. "
+             "This request is only sent if we are processing a ConsistentPrefix read.");
 
 using namespace std::placeholders;
 
@@ -165,14 +164,21 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
                               std::bind(&TabletInvoker::LookupTabletCb, this, _1),
                               UseCache::kTrue);
     return;
-  } else if (FLAGS_force_lookup_cache_refresh_secs > 0 &&
-             last_tablet_refresh_time_ != MonoTime::kUninitialized &&
-             MonoTime::Now().GetDeltaSince(last_tablet_refresh_time_).ToSeconds() >
+  } else if (consistent_prefix_ &&
+             FLAGS_force_lookup_cache_refresh_secs > 0 &&
+             MonoTime::Now().GetDeltaSince(tablet_->refresh_time()).ToSeconds() >
                  FLAGS_force_lookup_cache_refresh_secs) {
+
+    VLOG(1) << "Updating tablet " << tablet_->tablet_id() << " replicas cache for tablet "
+            << " after " << MonoTime::Now().GetDeltaSince(tablet_->refresh_time()).ToSeconds()
+            << " seconds since the last update. Replicas: "
+            << tablet_->ReplicasAsString();
+
     client_->LookupTabletById(tablet_id_,
                               retrier_->deadline(),
                               std::bind(&TabletInvoker::LookupTabletCb, this, _1),
                               UseCache::kFalse);
+    return;
   }
 
   // Make sure we have a working proxy before sending out the RPC.
@@ -319,7 +325,6 @@ void TabletInvoker::InitialLookupTabletDone(const Result<RemoteTabletPtr>& resul
 
   if (result.ok()) {
     tablet_ = *result;
-    last_tablet_refresh_time_ = MonoTime::Now();
     Execute(std::string());
   } else {
     command_->Finished(result.status());
@@ -356,7 +361,6 @@ void TabletInvoker::LookupTabletCb(const Result<RemoteTabletPtr>& result) {
   // but unnecessary the first time through. Seeing as leader failures are
   // rare, perhaps this doesn't matter.
   followers_.clear();
-  last_tablet_refresh_time_ = MonoTime::Now();
   auto retry_status = retrier_->DelayedRetry(
       command_, result.ok() ? Status::OK() : result.status());
   if (!retry_status.ok()) {

@@ -236,6 +236,7 @@ void RemoteTablet::Refresh(const TabletServerMap& tservers,
     replicas_.emplace_back(it->second.get(), r.role());
   }
   stale_ = false;
+  refresh_time_.store(MonoTime::Now(), std::memory_order_release);
 }
 
 void RemoteTablet::MarkStale() {
