@@ -128,6 +128,9 @@ void TcpStream::Shutdown(const Status& status) {
 
   io_.stop();
   is_epoll_registered_ = false;
+
+  read_buffer_.Reset();
+
   WARN_NOT_OK(socket_.Close(), "Error closing socket");
 }
 
@@ -282,7 +285,8 @@ Status TcpStream::ReadHandler() {
 }
 
 Result<bool> TcpStream::Receive() {
-  auto iov = read_buffer_.PrepareAppend();
+  auto iov = read_buffer_.valid() ? read_buffer_.PrepareAppend()
+                                  : STATUS(IllegalState, "Read buffer was reset");
   if (!iov.ok()) {
     if (iov.status().IsBusy()) {
       read_buffer_full_ = true;

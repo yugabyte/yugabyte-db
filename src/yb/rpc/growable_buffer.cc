@@ -245,6 +245,15 @@ void GrowableBuffer::DataAppended(size_t len) {
   size_ += len;
 }
 
+void GrowableBuffer::Reset() {
+  Clear();
+  buffers_.clear();
+  buffers_.set_capacity(0);
+}
+
+bool GrowableBuffer::valid() const {
+  return !buffers_.empty();
+}
 
 std::ostream& operator<<(std::ostream& out, const GrowableBuffer& receiver) {
   receiver.DumpTo(out);
