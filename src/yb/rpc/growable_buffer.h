@@ -109,6 +109,12 @@ class GrowableBuffer {
   // Mark next `len` bytes as used.
   void DataAppended(size_t len);
 
+  // Releases all memory allocated by this buffer. And makes this buffer unusable.
+  // valid() will return false after call to Reset.
+  void Reset();
+
+  bool valid() const;
+
  private:
   IoVecs IoVecsForRange(size_t begin, size_t end);
 
