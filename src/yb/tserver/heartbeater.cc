@@ -185,6 +185,8 @@ class Heartbeater::Thread {
 
   MonoTime start_time_;
 
+  rpc::Rpcs rpcs_;
+
   DISALLOW_COPY_AND_ASSIGN(Thread);
 };
 
@@ -258,7 +260,6 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
   if (master_sock_addrs.empty()) {
     return STATUS(NotFound, "unable to resolve any of the master addresses!");
   }
-  rpc::Rpcs rpcs;
   Synchronizer sync;
   auto rpc = rpc::StartRpc<GetLeaderMasterRpc>(
       Bind(&LeaderMasterCallback, leader_hostport, &sync),
@@ -266,9 +267,11 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
       deadline,
       server_->messenger(),
       &server_->proxy_cache(),
-      &rpcs,
+      &rpcs_,
       true /* should_timeout_to_follower_ */);
-  return sync.Wait();
+  auto result = sync.Wait();
+  rpcs_.RequestAbortAll();
+  return result;
 }
 
 Status Heartbeater::Thread::ConnectToMaster() {
