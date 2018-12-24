@@ -113,8 +113,8 @@ void GetMasterRegistrationRpc::SendRpc() {
 }
 
 string GetMasterRegistrationRpc::ToString() const {
-  return strings::Substitute("GetMasterRegistrationRpc(address: $0, num_attempts: $1)",
-      yb::ToString(addr_), num_attempts());
+  return Format("GetMasterRegistrationRpc(address: $0, num_attempts: $1, retries: $2)",
+                addr_, num_attempts(), retrier());
 }
 
 void GetMasterRegistrationRpc::Finished(const Status& status) {
