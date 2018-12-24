@@ -216,6 +216,8 @@ class Rpc : public RpcCommand {
   DISALLOW_COPY_AND_ASSIGN(Rpc);
 };
 
+YB_STRONGLY_TYPED_BOOL(RequestShutdown);
+
 class Rpcs {
  public:
   explicit Rpcs(std::mutex* mutex = nullptr);
@@ -230,6 +232,8 @@ class Rpcs {
   void RegisterAndStart(RpcCommandPtr call, Handle* handle);
   RpcCommandPtr Unregister(Handle* handle);
   void Abort(std::initializer_list<Handle*> list);
+  // Request all active calls to abort.
+  void RequestAbortAll();
   Rpcs::Handle Prepare();
 
   RpcCommandPtr Unregister(Handle handle) {
@@ -239,6 +243,10 @@ class Rpcs {
   Handle InvalidHandle() { return calls_.end(); }
 
  private:
+  // Requests all active calls to abort. Returns deadline for waiting on abort completion.
+  // If shutdown is true - switches Rpcs to shutting down state.
+  MonoTime DoRequestAbortAll(RequestShutdown shutdown);
+
   boost::optional<std::mutex> mutex_holder_;
   std::mutex* mutex_;
   std::condition_variable cond_;
