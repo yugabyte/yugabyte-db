@@ -29,6 +29,7 @@ message KeyValueWriteBatchPB {
   repeated KeyValuePairPB kv_pairs = 1;
   TransactionMetadataPB transaction = 2;
   bool may_have_metadata = 3;
+  bool read = 4;
 }
 
 message ConsensusFrontierPB {

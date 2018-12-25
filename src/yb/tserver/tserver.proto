@@ -279,6 +279,8 @@ message ReadRequestPB {
   optional ReadHybridTimePB read_time = 9;
 
   optional string proxy_uuid = 11;
+
+  optional bool may_have_metadata = 12;
 }
 
 message ReadResponsePB {

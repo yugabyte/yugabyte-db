@@ -54,7 +54,9 @@ struct IntentTypePair {
   }
 };
 
-IntentTypePair GetWriteIntentsForIsolationLevel(IsolationLevel level);
+YB_STRONGLY_TYPED_BOOL(Read);
+
+IntentTypePair GetIntentTypes(IsolationLevel level, Read read);
 
 inline void AppendIntentKeySuffix(
     docdb::IntentType intent_type, const DocHybridTime& doc_ht, KeyBytes* key) {

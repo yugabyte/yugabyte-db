@@ -232,7 +232,7 @@ void SetTransactionMetadata(const TransactionMetadata& metadata, bool may_have_m
 void SetTransactionMetadata(const TransactionMetadata& metadata, bool may_have_metadata,
                             tserver::ReadRequestPB* req) {
   metadata.ToPB(req->mutable_transaction());
-  // Don't need may_have_metadata for read requests.
+  req->set_may_have_metadata(may_have_metadata);
 }
 
 } // namespace
@@ -632,6 +632,16 @@ void ReadRpc::CallRemoteMethod() {
       req_, &resp_, PrepareController(),
       std::bind(&ReadRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
+}
+
+void ReadRpc::Finished(const Status& status) {
+  // It is possible that call succeeded, but failed to send response.
+  // So in case of retry to should tell server that it could have metadata.
+  if (req_.has_transaction() &&
+      req_.transaction().isolation() == IsolationLevel::SERIALIZABLE_ISOLATION) {
+    req_.set_may_have_metadata(true);
+  }
+  AsyncRpc::Finished(status);
 }
 
 void ReadRpc::SwapRequestsAndResponses(bool skip_responses) {

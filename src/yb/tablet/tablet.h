@@ -44,8 +44,6 @@
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/write_batch.h"
 
-#include "yb/tserver/tserver.pb.h"
-
 #include "yb/client/client.h"
 #include "yb/client/transaction_manager.h"
 
@@ -120,6 +118,8 @@ class TruncateOperationState;
 class WriteOperationState;
 
 using docdb::LockBatch;
+
+YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 
 class TabletFlushStats : public rocksdb::EventListener {
  public:
@@ -460,9 +460,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   void ForceRocksDBCompactInTest();
 
-  std::string DocDBDumpStrInTest();
+  std::string TEST_DocDBDumpStr(IncludeIntents include_intents = IncludeIntents::kFalse);
 
   size_t TEST_CountRocksDBRecords();
+
+  CHECKED_STATUS ConvertReadToWrite(
+      const TransactionMetadataPB& transaction_metadata, const QLReadRequestPB& inp,
+      docdb::KeyValueWriteBatchPB* out);
 
   // Returns last committed write index.
   // The main purpose of this method is to make correct log cleanup when tablet does not have

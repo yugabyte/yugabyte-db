@@ -1186,6 +1186,12 @@ Status Tablet::KeyValueBatchFromPgsqlWriteBatch(WriteOperation* operation) {
 //--------------------------------------------------------------------------------------------------
 
 void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation> operation) {
+  if (table_type_ == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    operation->state()->CompleteWithStatus(
+        STATUS(NotSupported, "Transaction status table does not support write"));
+    return;
+  }
+
   WriteRequestPB* key_value_write_request = operation->state()->mutable_request();
 
   if (!key_value_write_request->redis_write_batch().empty()) {
@@ -1193,20 +1199,26 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
     WriteOperation::StartSynchronization(std::move(operation), status);
     return;
   }
+
   if (!key_value_write_request->ql_write_batch().empty()) {
     KeyValueBatchFromQLWriteBatch(std::move(operation));
     return;
   }
+
   if (!key_value_write_request->pgsql_write_batch().empty()) {
     auto status = KeyValueBatchFromPgsqlWriteBatch(operation.get());
     WriteOperation::StartSynchronization(std::move(operation), status);
     return;
   }
-  if (table_type_ == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    operation->state()->CompleteWithStatus(
-        STATUS(NotSupported, "Transaction status table does not support write"));
+
+  if (key_value_write_request->has_write_batch()) {
+    WriteOperation::StartSynchronization(std::move(operation), Status::OK());
     return;
   }
+
+  // Empty write should not happen, but we could handle it.
+  // Just report it as error in release mode.
+  LOG(DFATAL) << "Empty write";
 
   operation->state()->CompleteWithStatus(Status::OK());
 }
@@ -1584,7 +1596,8 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
   auto isolation_level = VERIFY_RESULT(GetIsolationLevel(
       *write_batch, transaction_participant_.get()));
   auto prepare_result = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
-      operation->doc_ops(), metrics_->write_lock_latency, isolation_level, &shared_lock_manager_));
+      operation->doc_ops(), metrics_->write_lock_latency, isolation_level,
+      docdb::Read(write_batch->read()), &shared_lock_manager_));
 
   RequestScope request_scope;
   if (transaction_participant_) {
@@ -1716,8 +1729,12 @@ void Tablet::ForceRocksDBCompactInTest() {
   }
 }
 
-std::string Tablet::DocDBDumpStrInTest() {
-  return docdb::DocDBDebugDumpToStr(regular_db_.get());
+std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
+  if (!include_intents) {
+    return docdb::DocDBDebugDumpToStr(regular_db_.get());
+  }
+
+  return docdb::DocDBDebugDumpToStr(docdb::DocDB{regular_db_.get(), intents_db_.get()});
 }
 
 size_t Tablet::TEST_CountRocksDBRecords() {
@@ -1791,6 +1808,15 @@ TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
   } else {
     return boost::none;
   }
+}
+
+Status Tablet::ConvertReadToWrite(
+    const TransactionMetadataPB& transaction_metadata, const QLReadRequestPB& inp,
+    docdb::KeyValueWriteBatchPB* out) {
+  auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(transaction_metadata));
+
+  docdb::QLReadOperation doc_op(inp, txn_op_ctx);
+  return doc_op.GetIntents(SchemaRef(), out);
 }
 
 // ------------------------------------------------------------------------------------------------
