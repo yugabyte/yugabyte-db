@@ -510,7 +510,7 @@ TEST_F(AlterTableTest, DISABLED_TestCompactionAfterDrop) {
   LOG(INFO) << "Inserting rows";
   InsertRows(0, 3);
 
-  std::string docdb_dump = tablet_peer_->tablet()->DocDBDumpStrInTest();
+  std::string docdb_dump = tablet_peer_->tablet()->TEST_DocDBDumpStr();
   // DocDB should not be empty right now.
   ASSERT_NE(0, docdb_dump.length());
 
@@ -521,7 +521,7 @@ TEST_F(AlterTableTest, DISABLED_TestCompactionAfterDrop) {
   LOG(INFO) << "Forcing compaction";
   tablet_peer_->tablet()->ForceRocksDBCompactInTest();
 
-  docdb_dump = tablet_peer_->tablet()->DocDBDumpStrInTest();
+  docdb_dump = tablet_peer_->tablet()->TEST_DocDBDumpStr();
 
   LOG(INFO) << "Checking that docdb is empty";
   ASSERT_EQ("", docdb_dump);

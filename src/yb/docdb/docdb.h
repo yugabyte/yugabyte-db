@@ -110,6 +110,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const scoped_refptr<Histogram>& write_lock_latency,
     IsolationLevel isolation_level,
+    Read read,
     SharedLockManager *lock_manager);
 
 // This constructs a DocWriteBatch using the given list of DocOperations, reading the previous

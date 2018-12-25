@@ -66,18 +66,23 @@ Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value) {
   return DecodeTransactionId(intent_value);
 }
 
-IntentTypePair GetWriteIntentsForIsolationLevel(IsolationLevel level) {
+int IsolationLevelAsIntentTypeFlag(IsolationLevel level) {
   switch(level) {
     case IsolationLevel::SNAPSHOT_ISOLATION:
-      return { docdb::IntentType::kStrongSnapshotWrite,
-               docdb::IntentType::kWeakSnapshotWrite };
+      return kSnapshotIntentFlag;
     case IsolationLevel::SERIALIZABLE_ISOLATION:
-      return { docdb::IntentType::kStrongSerializableWrite,
-               docdb::IntentType::kWeakSerializableWrite };
+      return kSerializableIntentFlag;
     case IsolationLevel::NON_TRANSACTIONAL:
       FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
   }
   FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
+}
+
+IntentTypePair GetIntentTypes(IsolationLevel level, Read read) {
+  int result_base = IsolationLevelAsIntentTypeFlag(level) |
+                    (read ? kReadIntentFlag : kWriteIntentFlag);
+  return { static_cast<IntentType>(result_base | kStrongIntentFlag),
+           static_cast<IntentType>(result_base | kWeakIntentFlag) };
 }
 
 #define INTENT_VALUE_SCHECK(lhs, op, rhs, msg) \

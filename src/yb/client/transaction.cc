@@ -109,9 +109,6 @@ class YBTransaction::Impl final {
       return STATUS_FORMAT(IllegalState, "Read point already specified: $0",
                            read_point_.GetReadTime());
     }
-    if (isolation != IsolationLevel::SNAPSHOT_ISOLATION) {
-      return STATUS_FORMAT(NotSupported, "Isolation level $0 is not implemented", isolation);
-    }
 
     if (read_time.read.is_valid()) {
       read_point_.SetReadTime(read_time, ConsistentReadPoint::HybridTimeMap());

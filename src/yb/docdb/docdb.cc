@@ -129,7 +129,8 @@ struct DetermineKeysToLockResult {
 
 Result<DetermineKeysToLockResult> DetermineKeysToLock(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-    IsolationLevel isolation_level) {
+    IsolationLevel isolation_level,
+    Read read) {
   DetermineKeysToLockResult result;
   boost::container::small_vector<RefCntPrefix, 8> doc_paths;
   boost::container::small_vector<size_t, 32> key_prefix_lengths;
@@ -141,7 +142,7 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
     if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
       level = isolation_level;
     }
-    const IntentTypePair intent_types = GetWriteIntentsForIsolationLevel(level);
+    const IntentTypePair intent_types = GetIntentTypes(level, read);
 
     for (const auto& doc_path : doc_paths) {
       key_prefix_lengths.clear();
@@ -210,11 +211,12 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const scoped_refptr<Histogram>& write_lock_latency,
     IsolationLevel isolation_level,
+    Read read,
     SharedLockManager *lock_manager) {
   PrepareDocWriteOperationResult result;
 
   auto determine_keys_to_lock_result = VERIFY_RESULT(DetermineKeysToLock(
-      doc_write_ops, isolation_level));
+      doc_write_ops, isolation_level, read));
   result.need_read_snapshot = determine_keys_to_lock_result.need_read_snapshot;
 
   FilterKeysToLock(&determine_keys_to_lock_result.lock_batch);
@@ -361,11 +363,12 @@ class PrepareTransactionWriteBatchHelper {
                                      rocksdb::WriteBatch* rocksdb_write_batch,
                                      const TransactionId& transaction_id,
                                      IsolationLevel isolation_level,
+                                     Read read,
                                      IntraTxnWriteId* intra_txn_write_id)
       : hybrid_time_(hybrid_time),
         rocksdb_write_batch_(rocksdb_write_batch),
         transaction_id_(transaction_id),
-        intent_types_(GetWriteIntentsForIsolationLevel(isolation_level)),
+        intent_types_(GetIntentTypes(isolation_level, read)),
         intra_txn_write_id_(intra_txn_write_id) {
   }
 
@@ -457,7 +460,8 @@ void PrepareTransactionWriteBatch(
   VLOG(4) << "PrepareTransactionWriteBatch(), write_id = " << *write_id;
 
   PrepareTransactionWriteBatchHelper helper(
-      hybrid_time, rocksdb_write_batch, transaction_id, isolation_level, write_id);
+      hybrid_time, rocksdb_write_batch, transaction_id, isolation_level, Read(put_batch.read()),
+      write_id);
 
   // We cannot recover from failures here, because it means that we cannot apply replicated
   // operation.
