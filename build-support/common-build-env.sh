@@ -79,6 +79,8 @@ readonly DISTRIBUTED_BUILD_MASTER_HOST=buildmaster
 # We create a Python Virtual Environment inside this directory in the build directory.
 readonly YB_VIRTUALENV_BASENAME=python_virtual_env
 
+readonly YB_LINUXBREW_LOCAL_ROOT=$HOME/.linuxbrew-yb-build
+
 # -------------------------------------------------------------------------------------------------
 # Functions used in initializing some constants
 # -------------------------------------------------------------------------------------------------
@@ -1123,6 +1125,55 @@ detect_brew() {
   fi
 }
 
+install_linuxbrew() {
+  if ! is_linux; then
+    fatal "Expected this function to only be called on Linux"
+  fi
+  local version=$1
+  local linuxbrew_dirname=linuxbrew-$version
+  local linuxbrew_dir=$YB_LINUXBREW_LOCAL_ROOT/$linuxbrew_dirname
+  local linuxbrew_archive="${linuxbrew_dir}.tar.gz"
+  local linuxbrew_archive_checksum="${linuxbrew_archive}.sha256"
+  local url="https://github.com/YugaByte/linuxbrew-build/releases/download/v$version/\
+linuxbrew-$version.tar.gz"
+  mkdir -p "$YB_LINUXBREW_LOCAL_ROOT"
+  if [[ ! -f $linuxbrew_archive ]]; then
+    echo "Downloading Linuxbrew from $url..."
+    rm -f "$linuxbrew_archive_checksum"
+    curl -L "$url" -o "$linuxbrew_archive"
+  fi
+  if [[ ! -f $linuxbrew_archive_checksum ]]; then
+    echo "Downloading Linuxbrew archive checksum file for $url..."
+    curl -L "$url.sha256" -o "$linuxbrew_archive_checksum"
+  fi
+  echo "Verifying Linuxbrew archive checksum ..."
+  pushd "$YB_LINUXBREW_LOCAL_ROOT"
+  sha256sum -c --strict "$linuxbrew_archive_checksum"
+  popd
+  echo "Installing Linuxbrew into $linuxbrew_dir..."
+  local tmp=$YB_LINUXBREW_LOCAL_ROOT/tmp/$$_$RANDOM$RANDOM
+  mkdir -p "$tmp"
+  tar zxf "$linuxbrew_archive" -C "$tmp"
+  if mv "$tmp/$linuxbrew_dirname" "$YB_LINUXBREW_LOCAL_ROOT/"; then
+    pushd "$linuxbrew_dir"
+    ./post_install.sh
+    popd
+  fi
+}
+
+try_set_linuxbrew_dir() {
+  local linuxbrew_dir=$1
+  if [[ -d "$linuxbrew_dir" &&
+        -d "$linuxbrew_dir/bin" &&
+        -d "$linuxbrew_dir/lib" &&
+        -d "$linuxbrew_dir/include" ]]; then
+    export YB_LINUXBREW_DIR=$(realpath "$linuxbrew_dir")
+    return 0
+  else
+    return 1
+  fi
+}
+
 detect_linuxbrew() {
   if ! is_linux; then
     fatal "Expected this function to only be called on Linux"
@@ -1132,63 +1183,67 @@ detect_linuxbrew() {
   if ! is_linux; then
     return
   fi
-  local candidates=(
-    "$HOME/.linuxbrew-yb-build"
-  )
 
-  local version_for_jenkins_file=$YB_SRC_ROOT/thirdparty/linuxbrew_version_for_jenkins.txt
-  if [[ -f $version_for_jenkins_file ]]; then
-    local version_for_jenkins=$( read_file_and_trim "$version_for_jenkins_file" )
-    preferred_linuxbrew_dir="$SHARED_LINUXBREW_BUILDS_DIR/linuxbrew_$version_for_jenkins"
-    if [[ -d $preferred_linuxbrew_dir ]]; then
-      if is_jenkins_user; then
-        # If we're running on Jenkins (or building something for consumption by Jenkins under the
-        # "jenkins" user), then the "Linuxbrew for Jenkins" directory takes precedence.
-        candidates=( "$preferred_linuxbrew_dir" "${candidates[@]}" )
-      else
-        # Otherwise, the user's local Linuxbrew build takes precedence.
-        candidates=( "${candidates[@]}" "$preferred_linuxbrew_dir" )
-      fi
-    elif is_jenkins; then
-      if is_jenkins && is_src_root_on_nfs; then
-        declare -i attempt=0
-        while [[ ! -d $preferred_linuxbrew_dir ]]; do
-          if [[ $attempt -ge 120 ]]; then
-            fatal "Gave up waiting for '$preferred_linuxbrew_dir' to mount after $attempt attempts"
-          fi
-          log "Directory '$preferred_linuxbrew_dir' not found, waiting for it to mount"
-          ( set +e; ls "$preferred_linuxbrew_dir"/* >/dev/null )
-          let attempt+=1
-          sleep 1
-        done
-      else
-        yb_fatal_exit_code=$YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY
-        fatal "Warning: Linuxbrew directory referenced by '$version_for_jenkins_file' does not" \
-              "exist: '$preferred_linuxbrew_dir', refusing to proceed to prevent " \
-              "non-deterministic builds."
-      fi
-    fi
+  local version_file=$YB_SRC_ROOT/thirdparty/linuxbrew_version.txt
+  if [[ ! -f $version_file ]]; then
+    fatal "'$version_file' does not exist"
+  fi
+  local linuxbrew_version=$( read_file_and_trim "$version_file" )
+  local linuxbrew_dirname="linuxbrew-$linuxbrew_version"
+
+  local candidates=()
+  local jenkins_linuxbrew_dir="$SHARED_LINUXBREW_BUILDS_DIR/$linuxbrew_dirname"
+  if [[ -d $jenkins_linuxbrew_dir ]]; then
+    candidates=( "$jenkins_linuxbrew_dir" )
   elif is_jenkins; then
-    log "Warning: '$version_for_jenkins_file' does not exist"
+    if is_src_root_on_nfs; then
+      declare -i attempt=0
+      while [[ ! -d $jenkins_linuxbrew_dir ]]; do
+        if [[ $attempt -ge 120 ]]; then
+          fatal "Gave up waiting for '$jenkins_linuxbrew_dir' to mount after $attempt attempts"
+        fi
+        log "Directory '$jenkins_linuxbrew_dir' not found, waiting for it to mount"
+        ( set +e; ls "$jenkins_linuxbrew_dir"/* >/dev/null )
+        let attempt+=1
+        sleep 1
+      done
+      candidates=( "$jenkins_linuxbrew_dir" )
+    else
+      yb_fatal_exit_code=$YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY
+      fatal "Warning: Linuxbrew directory referenced by '$version_file' does not" \
+            "exist: '$jenkins_linuxbrew_dir', refusing to proceed to prevent " \
+            "non-deterministic builds."
+    fi
   fi
 
   if [[ -n $user_specified_linuxbrew_dir ]]; then
-    candidates=( "$user_specified_linuxbrew_dir" "${candidates[@]}" )
+    if [[ ${#candidates[@]} -gt 0 ]]; then
+      candidates=( "$user_specified_linuxbrew_dir" "${candidates[@]}" )
+    else
+      candidates=( "$user_specified_linuxbrew_dir" )
+    fi
   fi
 
-  local linuxbrew_dir
-  for linuxbrew_dir in "${candidates[@]}"; do
-    if [[ -d "$linuxbrew_dir" &&
-          -d "$linuxbrew_dir/bin" &&
-          -d "$linuxbrew_dir/lib" &&
-          -d "$linuxbrew_dir/include" ]]; then
-      export YB_LINUXBREW_DIR=$linuxbrew_dir
-      break
-    fi
-  done
+  if [[ ${#candidates[@]} -gt 0 ]]; then
+    local linuxbrew_dir
+    for linuxbrew_dir in "${candidates[@]}"; do
+      if try_set_linuxbrew_dir "$linuxbrew_dir"; then
+        return
+      fi
+    done
+  fi
 
-  if [[ -z ${YB_LINUXBREW_DIR:-} ]]; then
-    log "Could not find Linuxbrew in any of these directories:" "${candidates[@]}"
+  local linuxbrew_local_dir="$YB_LINUXBREW_LOCAL_ROOT/$linuxbrew_dirname"
+  if ! is_jenkins && [[ ! -d $linuxbrew_local_dir ]]; then
+    install_linuxbrew "$linuxbrew_version"
+  fi
+  if ! try_set_linuxbrew_dir "$linuxbrew_local_dir"; then
+    if [[ ${#candidates[@]} -gt 0 ]]; then
+      log "Could not find Linuxbrew in any of these directories: ${candidates[@]}."
+    else
+      log "Could not find Linuxbrew candidate directories."
+    fi
+    log "Failed to install Linuxbrew $linuxbrew_version into $linuxbrew_local_dir."
   fi
 }
 

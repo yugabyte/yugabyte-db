@@ -108,18 +108,13 @@ sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 You could also symlink them into another directory that is on your PATH.
 
 We also use [Linuxbrew](https://github.com/linuxbrew/brew) to provide some of the third-party
-dependencies on CentOS. We install Linuxbrew in a separate directory, `~/.linuxbrew-yb-build`,
-so that it does not conflict with any other Linuxbrew installation on your workstation, and does
-not contain any unnecessary packages that would interfere with the build.
+dependencies on CentOS. During the build we install Linuxbrew in a separate directory,
+`~/.linuxbrew-yb-build/linuxbrew-<version>`, so that it does not conflict with any other Linuxbrew
+installation on your workstation, and does not contain any unnecessary packages that would
+interfere with the build.
 
-```
-git clone https://github.com/Linuxbrew/brew.git ~/.linuxbrew-yb-build
-~/.linuxbrew-yb-build/bin/brew install autoconf automake flex gcc libtool maven readline openssl \
-libuuid bzip2
-```
-
-We don't need to add `~/.linuxbrew-yb-build/bin` to PATH. The build scripts will automatically
-discover this Linuxbrew installation.
+We don't need to add `~/.linuxbrew-yb-build/linuxbrew-<version>/bin` to PATH. The build scripts
+will automatically discover this Linuxbrew installation.
 
 ### Prerequisites for Mac OS X
 
@@ -186,6 +181,9 @@ The above command will build the release configuration, put the C++ binaries in
 `build/release-gcc-dynamic-community`, and will also create the `build/latest` symlink to that
 directory. Then it will build the Java code as well. The `--with-assembly` flag tells the build
 script to build the `yb-sample-apps.jar` file containing sample Java apps.
+
+For Linux it will first make sure our custom Linuxbrew distribution is installed into
+`~/.linuxbrew-yb-build/linuxbrew-<version>`.
 
 ### Running the C++ tests
 

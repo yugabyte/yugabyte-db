@@ -15,7 +15,7 @@ import re
 
 from subprocess import call, check_output
 from xml.dom import minidom
-from yb.command_util import run_program
+from yb.command_util import run_program, mkdir_p, copy_deep
 from yb.common_util import get_thirdparty_dir
 
 RELEASE_MANIFEST_NAME = "yb_release_manifest.json"
@@ -102,35 +102,15 @@ class ReleaseUtil(object):
             if prefix_dir is not None and not dir_from_manifest.startswith(prefix_dir):
                 continue
             current_dest_dir = os.path.join(distribution_dir, dir_from_manifest)
-            if not os.path.exists(current_dest_dir):
-                os.makedirs(current_dest_dir)
+            mkdir_p(current_dest_dir)
 
             for elem in self.release_manifest[dir_from_manifest]:
                 if not elem.startswith('/'):
                     elem = os.path.join(self.repo, elem)
                 files = glob.glob(elem)
                 for file_path in files:
-                    if os.path.islink(file_path):
-                        link_path = os.path.join(current_dest_dir, os.path.basename(file_path))
-                        link_target = os.readlink(file_path)
-                        logging.debug("Creating symlink {} -> {}".format(link_path, link_target))
-                        os.symlink(link_target, link_path)
-                    elif os.path.isdir(file_path):
-                        current_dest_subdir = os.path.join(
-                            current_dest_dir,
-                            os.path.basename(file_path))
-                        if os.path.exists(current_dest_subdir) and \
-                                platform.system().lower() == "darwin":
-                            logging.warning("Not copying directory {} to {} because destination"
-                                            "already exists".format(file_path, current_dest_subdir))
-                            continue
-                        logging.debug("Copying directory {} to {}".format(file_path,
-                                                                          current_dest_subdir))
-                        shutil.copytree(file_path, current_dest_subdir)
-                    else:
-                        logging.debug("Copying file {} to directory {}".format(file_path,
-                                                                               current_dest_dir))
-                        shutil.copy(file_path, current_dest_dir)
+                    copy_deep(file_path,
+                              os.path.join(current_dest_dir, os.path.basename(file_path)))
         logging.info("Created the distribution at '{}'".format(distribution_dir))
 
     def update_manifest(self, distribution_dir):
@@ -138,8 +118,14 @@ class ReleaseUtil(object):
             if release_subdir in self.release_manifest:
                 del self.release_manifest[release_subdir]
         for root, dirs, files in os.walk(distribution_dir):
+            paths = [os.path.join(root, f) for f in files]
+            # We also need to include dirs which are really links to directories.
+            for d in dirs:
+                path = os.path.join(root, d)
+                if os.path.islink(path):
+                    paths.append(path)
             self.release_manifest.setdefault(os.path.relpath(root, distribution_dir), []).extend(
-                [os.path.join(root, f) for f in files])
+                paths)
 
         logging.debug("Effective release manifest:\n" +
                       json.dumps(self.release_manifest, indent=2, sort_keys=True))

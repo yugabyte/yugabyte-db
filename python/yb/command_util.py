@@ -18,6 +18,7 @@ This module provides utilities for running commands.
 """
 
 import os
+import shutil
 import subprocess
 import logging
 
@@ -89,3 +90,26 @@ def mkdir_p(d):
         if os.path.isdir(d):
             return
         raise e
+
+
+def copy_deep(src, dst, create_dst_dir=False):
+    """
+    Does recursive copy of src path to dst path. Copies symlinks as symlinks. Doesn't overwrite
+    existing files and symlinks (even if they are broken).
+    """
+    if create_dst_dir:
+        mkdir_p(os.path.dirname(dst))
+    src_is_link = os.path.islink(src)
+    if os.path.isdir(src) and not src_is_link:
+        logging.debug("Copying directory {} to {}".format(src, dst))
+        mkdir_p(dst)
+        for name in os.listdir(src):
+            copy_deep(os.path.join(src, name), os.path.join(dst, name))
+    elif not os.path.lexists(dst):
+        if src_is_link:
+            target = os.readlink(src)
+            logging.debug("Creating symlink {} -> {}".format(dst, target))
+            os.symlink(target, dst)
+        else:
+            logging.debug("Copying file {} to {}".format(src, dst))
+            shutil.copy(src, dst)
