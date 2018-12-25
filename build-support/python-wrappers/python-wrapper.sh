@@ -31,17 +31,17 @@ if [[ -n ${VIRTUAL_ENV:-} ]]; then
   python_interpreter_dirs+=( "$VIRTUAL_ENV/bin" )
 fi
 
+python_interpreter_dirs+=(
+  /usr/local/bin
+  /usr/bin
+)
+
 if using_linuxbrew; then
   python_interpreter_dirs+=( "$YB_LINUXBREW_DIR/bin" )
 fi
 if using_custom_homebrew; then
   python_interpreter_dirs+=( "$YB_CUSTOM_HOMEBREW_DIR/bin" )
 fi
-
-python_interpreter_dirs+=(
-  /usr/local/bin
-  /usr/bin
-)
 
 interpreter_name=${0##*/}
 
