@@ -9,7 +9,7 @@ aliases:
 menu:
   latest:
     identifier: manage
-    weight: 700
+    weight: 900
 ---
 
 <div class="row">

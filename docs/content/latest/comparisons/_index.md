@@ -9,7 +9,7 @@ aliases:
 menu:
   latest:
     identifier: comparisons
-    weight: 1070
+    weight: 1270
 ---
 
 ## NoSQL Databases

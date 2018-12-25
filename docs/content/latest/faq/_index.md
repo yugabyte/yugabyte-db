@@ -9,7 +9,7 @@ aliases:
 menu:
   latest:
     identifier: faq
-    weight: 2460
+    weight: 2660
 ---
 
 <div class="row">
