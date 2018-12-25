@@ -158,6 +158,7 @@ class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadRespons
   virtual ~ReadRpc();
 
  private:
+  void Finished(const Status& status) override;
   void SwapRequestsAndResponses(bool skip_responses);
   void CallRemoteMethod() override;
   void ProcessResponseFromTserver(const Status& status) override;

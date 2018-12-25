@@ -3063,6 +3063,18 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   return Status::OK();
 }
 
+Status QLReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* out) {
+  std::vector<PrimitiveValue> hashed_components;
+  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+      request_.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
+      &hashed_components));
+  DocKey doc_key(request_.hash_code(), hashed_components);
+  auto pair = out->mutable_kv_pairs()->Add();
+  pair->set_key(doc_key.Encode().data());
+  pair->set_value(std::string(1, ValueTypeAsChar::kNull));
+  return Status::OK();
+}
+
 Status QLReadOperation::PopulateResultSet(const QLTableRow& table_row, QLResultSet *resultset) {
   resultset->AllocateRow();
   int rscol_index = 0;

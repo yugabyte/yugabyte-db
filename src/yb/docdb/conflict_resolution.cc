@@ -352,7 +352,7 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
       metadata_ = std::move(*stored_metadata);
     }
 
-    intent_types_ = GetWriteIntentsForIsolationLevel(metadata_.isolation);
+    intent_types_ = GetIntentTypes(metadata_.isolation, Read(write_batch_.read()));
 
     return EnumerateIntents(
         write_batch_.kv_pairs(),
@@ -464,7 +464,7 @@ class OperationConflictResolverContext : public ConflictResolverContext {
       IsolationLevel isolation;
       doc_op->GetDocPathsToLock(&doc_paths, &isolation);
 
-      const IntentTypePair intent_types = GetWriteIntentsForIsolationLevel(isolation);
+      const IntentTypePair intent_types = GetIntentTypes(isolation, Read::kFalse);
 
       for (const auto& doc_path : doc_paths) {
         key_prefix_lengths.clear();

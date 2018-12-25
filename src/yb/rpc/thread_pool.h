@@ -19,6 +19,8 @@
 #include <memory>
 #include <string>
 
+#include "yb/gutil/port.h"
+
 namespace yb {
 
 class Status;

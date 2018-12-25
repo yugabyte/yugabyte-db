@@ -46,6 +46,7 @@ namespace yb {
 namespace docdb {
 
 class DocWriteBatch;
+class KeyValueWriteBatchPB;
 
 // Useful for calculating expiration.
 struct Expiration {
@@ -403,6 +404,8 @@ class QLReadOperation : public DocExprExecutor {
                                 QLResultSet* resultset,
                                 int* match_count,
                                 size_t* num_rows_skipped);
+
+  CHECKED_STATUS GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
 
   QLResponsePB& response() { return response_; }
 

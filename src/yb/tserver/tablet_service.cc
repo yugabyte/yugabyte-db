@@ -876,6 +876,81 @@ bool TabletServiceImpl::DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::Rp
   return true;
 }
 
+struct ReadContext {
+  const ReadRequestPB* req = nullptr;
+  ReadResponsePB* resp = nullptr;
+  rpc::RpcContext* context = nullptr;
+
+  std::shared_ptr<tablet::AbstractTablet> tablet;
+
+  ReadHybridTime read_time;
+  HybridTime safe_ht_to_read;
+  tablet::RequireLease require_lease = tablet::RequireLease::kFalse;
+  HostPortPB* host_port_pb = nullptr;
+  bool allow_retry = false;
+};
+
+// Used when we write intents during read, i.e. for serializable isolation.
+// We cannot proceed with read from ReadOperationCompletionCallback, to avoid holding
+// replica state lock for too long.
+// So ThreadPool is used to proceed with read.
+class ReadCompletionTask : public rpc::ThreadPoolTask {
+ public:
+  ReadCompletionTask(
+      TabletServiceImpl* service,
+      const ReadContext& read_context,
+      std::shared_ptr<rpc::RpcContext> context)
+      : service_(service), read_context_(read_context), context_(std::move(context)) {
+  }
+
+  virtual ~ReadCompletionTask() {}
+ private:
+  void Run() override {
+    service_->CompleteRead(&read_context_);
+  }
+
+  void Done(const Status& status) override {
+    if (!status.ok()) {
+      SetupErrorAndRespond(
+          read_context_.resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR,
+          context_.get());
+    }
+
+    delete this;
+  }
+
+  TabletServiceImpl* service_;
+  ReadContext read_context_;
+  std::shared_ptr<rpc::RpcContext> context_;
+};
+
+class ReadOperationCompletionCallback : public OperationCompletionCallback {
+ public:
+  explicit ReadOperationCompletionCallback(
+      TabletServiceImpl* service,
+      tablet::TabletPeerPtr tablet_peer,
+      const ReadContext& read_context,
+      std::shared_ptr<rpc::RpcContext> context)
+      : service_(service), tablet_peer_(std::move(tablet_peer)), read_context_(read_context),
+        context_(std::move(context)) {}
+
+  void OperationCompleted() override {
+    if (!status_.ok()) {
+      SetupErrorAndRespond(read_context_.resp->mutable_error(), status_, code_,
+                           context_.get());
+      return;
+    }
+
+    tablet_peer_->thread_pool().Enqueue(new ReadCompletionTask(service_, read_context_, context_));
+  }
+
+ private:
+  TabletServiceImpl* service_;
+  tablet::TabletPeerPtr tablet_peer_;
+  ReadContext read_context_;
+  std::shared_ptr<rpc::RpcContext> context_;
+};
+
 void TabletServiceImpl::Read(const ReadRequestPB* req,
                              ReadResponsePB* resp,
                              rpc::RpcContext context) {
@@ -885,21 +960,40 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   }
   TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read",
-               "tablet_id", req->tablet_id());
+      "tablet_id", req->tablet_id());
   DVLOG(3) << "Received Read RPC: " << req->DebugString();
 
-  shared_ptr<tablet::AbstractTablet> tablet;
-  if (!GetTabletOrRespond(req, resp, &context, &tablet)) {
-    return;
+  const bool serializable_isolation =
+      req->has_transaction() &&
+          req->transaction().isolation() == IsolationLevel::SERIALIZABLE_ISOLATION;
+
+  LeaderTabletPeer leader_peer;
+  ReadContext read_context = {req, resp, &context};
+
+  if (serializable_isolation) {
+    // At this point we expect that we don't have pure read serializable transactions, and
+    // always write read intents to detect conflicts with other writes.
+    leader_peer = LookupLeaderTabletOrRespond(
+        server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+    // Serialiable read adds intents, i.e. writes data.
+    // We should check for memory pressure in this case.
+    if (!leader_peer || !CheckMemoryPressure(leader_peer.peer->tablet(), resp, &context)) {
+      return;
+    }
+    read_context.tablet = leader_peer.peer->shared_tablet();
+  } else {
+    if (!GetTabletOrRespond(req, resp, &context, &read_context.tablet)) {
+      return;
+    }
+    leader_peer.leader_term = yb::OpId::kUnknownTerm;
   }
 
   if (PREDICT_FALSE(FLAGS_simulate_time_out_failures) && RandomUniformInt(0, 10) < 3) {
     LOG(INFO) << "Marking request as timed out for test";
     SetupErrorAndRespond(resp->mutable_error(), STATUS(TimedOut, "timed out for test"),
-                         TabletServerErrorPB::UNKNOWN_ERROR, &context);
+        TabletServerErrorPB::UNKNOWN_ERROR, &context);
     return;
   }
-
 
   if (server_ && server_->Clock()) {
     server::UpdateClock(*req, server_->Clock());
@@ -907,17 +1001,18 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
 
   // safe_ht_to_read is used only for read restart, so if read_time is valid, then we would respond
   // with "restart required".
-  HybridTime safe_ht_to_read;
-  auto read_time = ReadHybridTime::FromReadTimePB(*req);
-  bool allow_retry = !read_time;
-  tablet::RequireLease require_lease(req->consistency_level() == YBConsistencyLevel::STRONG);
+  ReadHybridTime& read_time = read_context.read_time;
+  read_time = ReadHybridTime::FromReadTimePB(*req);
+  read_context.allow_retry = !read_time;
+  read_context.require_lease = tablet::RequireLease(
+      req->consistency_level() == YBConsistencyLevel::STRONG);
   // TODO: should check all the tables referenced by the requests to decide if it is transactional.
-  bool transactional = tablet->SchemaRef().table_properties().is_transactional();
+  const bool transactional = read_context.tablet->SchemaRef().table_properties().is_transactional();
   if (!read_time) {
-    safe_ht_to_read = tablet->SafeTime(require_lease);
+    read_context.safe_ht_to_read = read_context.tablet->SafeTime(read_context.require_lease);
     // If the read time is not specified, then it is non transactional read.
     // So we should restart it in server in case of failure.
-    read_time.read = safe_ht_to_read;
+    read_time.read = read_context.safe_ht_to_read;
     if (transactional) {
       read_time.local_limit = server_->Clock()->MaxGlobalNow();
       read_time.global_limit = read_time.local_limit;
@@ -928,11 +1023,12 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       read_time.global_limit = read_time.read;
     }
   } else {
-    safe_ht_to_read = tablet->SafeTime(require_lease, read_time.read, context.GetClientDeadline());
-    if (!safe_ht_to_read.is_valid()) { // Timed out
+    read_context.safe_ht_to_read = read_context.tablet->SafeTime(
+        read_context.require_lease, read_time.read, context.GetClientDeadline());
+    if (!read_context.safe_ht_to_read.is_valid()) { // Timed out
       TRACE("Timed out waiting for read time");
       SetupErrorAndRespond(resp->mutable_error(), STATUS(TimedOut, ""),
-                           TabletServerErrorPB::UNKNOWN_ERROR, &context);
+          TabletServerErrorPB::UNKNOWN_ERROR, &context);
       return;
     }
   }
@@ -941,7 +1037,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   if (transactional) {
     // Serial number is used for check whether this operation was initiated before
     // transaction status request. So we should initialize it as soon as possible.
-    request_scope = RequestScope(down_cast<Tablet*>(tablet.get())->transaction_participant());
+    request_scope = RequestScope(
+        down_cast<Tablet*>(read_context.tablet.get())->transaction_participant());
     read_time.serial_no = request_scope.request_id();
   }
 
@@ -949,46 +1046,85 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   HostPortPB host_port_pb;
   host_port_pb.set_host(remote_address.address().to_string());
   host_port_pb.set_port(remote_address.port());
+  read_context.host_port_pb = &host_port_pb;
 
+  if (serializable_isolation) {
+    WriteRequestPB write_req;
+    *write_req.mutable_write_batch()->mutable_transaction() = req->transaction();
+    write_req.set_tablet_id(req->tablet_id());
+    read_time.AddToPB(&write_req);
+    write_req.mutable_write_batch()->set_may_have_metadata(req->may_have_metadata());
+    // TODO(dtxn) write request id
+
+    auto* write_batch = write_req.mutable_write_batch();
+    write_batch->set_read(true);
+    // TODO(dtxn) support not only CQL
+    for (const auto& ql_read : req->ql_batch()) {
+      auto status = leader_peer.peer->tablet()->ConvertReadToWrite(
+          req->transaction(), ql_read, write_batch);
+      if (!status.ok()) {
+        SetupErrorAndRespond(
+            resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, &context);
+        return;
+      }
+    }
+
+    auto operation_state = std::make_unique<WriteOperationState>(
+        leader_peer.peer->tablet(), &write_req);
+
+    auto context_ptr = std::make_shared<RpcContext>(std::move(context));
+    read_context.context = context_ptr.get();
+    operation_state->set_completion_callback(std::make_unique<ReadOperationCompletionCallback>(
+        this, leader_peer.peer, read_context, context_ptr));
+    leader_peer.peer->WriteAsync(
+        std::move(operation_state), leader_peer.leader_term, context_ptr->GetClientDeadline());
+    return;
+  }
+
+  CompleteRead(&read_context);
+}
+
+void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
   for (;;) {
-    resp->Clear();
-    context.ResetRpcSidecars();
-    VLOG(1) << "Read time: " << read_time << ", safe: " << safe_ht_to_read;
-    auto result = DoRead(tablet.get(), req, read_time, safe_ht_to_read, require_lease,
-                         &host_port_pb, resp, &context);
+    read_context->resp->Clear();
+    read_context->context->ResetRpcSidecars();
+    VLOG(1) << "Read time: " << read_context->read_time
+            << ", safe: " << read_context->safe_ht_to_read;
+    auto result = DoRead(read_context);
     if (!result.ok()) {
       SetupErrorAndRespond(
-          resp->mutable_error(), result.status(), TabletServerErrorPB::UNKNOWN_ERROR, &context);
+          read_context->resp->mutable_error(), result.status(), TabletServerErrorPB::UNKNOWN_ERROR,
+          read_context->context);
       return;
     }
-    read_time = *result;
+    read_context->read_time = *result;
     // If read was successful, then restart time is invalid. Finishing.
-    if (!read_time) {
+    if (!read_context->read_time) {
       break;
     }
-    if (!allow_retry) {
+    if (!read_context->allow_retry) {
       // The read time is specified, than we read as part of transaction. So we should restart
       // whole transaction. In this case we report restart time and abort reading.
-      resp->Clear();
-      auto restart_read_time = resp->mutable_restart_read_time();
-      restart_read_time->set_read_ht(read_time.read.ToUint64());
-      restart_read_time->set_local_limit_ht(read_time.local_limit.ToUint64());
+      read_context->resp->Clear();
+      auto restart_read_time = read_context->resp->mutable_restart_read_time();
+      restart_read_time->set_read_ht(read_context->read_time.read.ToUint64());
+      restart_read_time->set_local_limit_ht(read_context->read_time.local_limit.ToUint64());
       // Global limit is ignored by caller, so we don't set it.
-      down_cast<Tablet*>(tablet.get())->metrics()->restart_read_requests->Increment();
+      down_cast<Tablet*>(read_context->tablet.get())->metrics()->restart_read_requests->Increment();
       break;
     }
-    if (MonoTime::Now() > context.GetClientDeadline()) {
+    if (MonoTime::Now() > read_context->context->GetClientDeadline()) {
       TRACE("Read timed out");
-      SetupErrorAndRespond(resp->mutable_error(), STATUS(TimedOut, ""),
-                           TabletServerErrorPB::UNKNOWN_ERROR, &context);
+      SetupErrorAndRespond(read_context->resp->mutable_error(), STATUS(TimedOut, ""),
+                           TabletServerErrorPB::UNKNOWN_ERROR, read_context->context);
       return;
     }
   }
-  if (req->include_trace() && Trace::CurrentTrace() != nullptr) {
-    resp->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
+  if (read_context->req->include_trace() && Trace::CurrentTrace() != nullptr) {
+    read_context->resp->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
   }
   RpcOperationCompletionCallback<ReadResponsePB> callback(
-      std::move(context), resp, server_->Clock());
+      std::move(*read_context->context), read_context->resp, server_->Clock());
   callback.OperationCompleted();
   TRACE("Done Read");
 }
@@ -1004,23 +1140,17 @@ void HandleRedisReadRequestAsync(
   status_cb(tablet->HandleRedisReadRequest(deadline, read_time, redis_read_request, response));
 }
 
-Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
-                                                 const ReadRequestPB* req,
-                                                 ReadHybridTime read_time,
-                                                 HybridTime safe_ht_to_read,
-                                                 tablet::RequireLease require_lease,
-                                                 HostPortPB* host_port_pb,
-                                                 ReadResponsePB* resp,
-                                                 rpc::RpcContext* context) {
-  tablet::ScopedReadOperation read_tx(tablet, require_lease, read_time);
-  if (!req->redis_batch().empty()) {
+Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
+  tablet::ScopedReadOperation read_tx(
+      read_context->tablet.get(), read_context->require_lease, read_context->read_time);
+  if (!read_context->req->redis_batch().empty()) {
     // Assert the primary table is a redis table.
-    DCHECK_EQ(tablet->table_type(), TableType::REDIS_TABLE_TYPE);
-    size_t count = req->redis_batch_size();
+    DCHECK_EQ(read_context->tablet->table_type(), TableType::REDIS_TABLE_TYPE);
+    size_t count = read_context->req->redis_batch_size();
     std::vector<Status> rets(count);
     CountDownLatch latch(count);
     for (int idx = 0; idx < count; idx++) {
-      const RedisReadRequestPB& redis_read_req = req->redis_batch(idx);
+      const RedisReadRequestPB& redis_read_req = read_context->req->redis_batch(idx);
       Status &failed_status_ = rets[idx];
       auto cb = [&latch, &failed_status_] (const Status &status) -> void {
                   if (!status.ok())
@@ -1029,11 +1159,11 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
                 };
       auto func = Bind(
           &HandleRedisReadRequestAsync,
-          Unretained(tablet),
-          context->GetClientDeadline(),
+          Unretained(read_context->tablet.get()),
+          read_context->context->GetClientDeadline(),
           read_tx.read_time(),
           redis_read_req,
-          Unretained(resp->add_redis_batch()),
+          Unretained(read_context->resp->add_redis_batch()),
           cb);
 
       Status s;
@@ -1063,13 +1193,13 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
     }
   }
 
-  if (!req->ql_batch().empty()) {
+  if (!read_context->req->ql_batch().empty()) {
     // Assert the primary table is a YQL table.
-    DCHECK_EQ(tablet->table_type(), TableType::YQL_TABLE_TYPE);
-    ReadRequestPB* mutable_req = const_cast<ReadRequestPB*>(req);
+    DCHECK_EQ(read_context->tablet->table_type(), TableType::YQL_TABLE_TYPE);
+    ReadRequestPB* mutable_req = const_cast<ReadRequestPB*>(read_context->req);
     for (QLReadRequestPB& ql_read_req : *mutable_req->mutable_ql_batch()) {
       // Update the remote endpoint.
-      ql_read_req.set_allocated_remote_endpoint(host_port_pb);
+      ql_read_req.set_allocated_remote_endpoint(read_context->host_port_pb);
       ql_read_req.set_allocated_proxy_uuid(mutable_req->mutable_proxy_uuid());
       BOOST_SCOPE_EXIT(&ql_read_req) {
         ql_read_req.release_remote_endpoint();
@@ -1078,52 +1208,52 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
 
       tablet::QLReadRequestResult result;
       TRACE("Start HandleQLReadRequest");
-      RETURN_NOT_OK(tablet->HandleQLReadRequest(
-          context->GetClientDeadline(), read_tx.read_time(), ql_read_req, req->transaction(),
-          &result));
+      RETURN_NOT_OK(read_context->tablet->HandleQLReadRequest(
+          read_context->context->GetClientDeadline(), read_tx.read_time(), ql_read_req,
+          read_context->req->transaction(), &result));
       TRACE("Done HandleQLReadRequest");
       if (result.restart_read_ht.is_valid()) {
-        DCHECK_GT(result.restart_read_ht, read_time.read);
+        DCHECK_GT(result.restart_read_ht, read_context->read_time.read);
         VLOG(1) << "Restart read required at: " << result.restart_read_ht
-                << ", original: " << read_time;
-        read_time.read = result.restart_read_ht;
-        read_time.local_limit = safe_ht_to_read;
-        return read_time;
+                << ", original: " << read_context->read_time;
+        read_context->read_time.read = result.restart_read_ht;
+        read_context->read_time.local_limit = read_context->safe_ht_to_read;
+        return read_context->read_time;
       }
       int rows_data_sidecar_idx = 0;
-      RETURN_NOT_OK(context->AddRpcSidecar(
+      RETURN_NOT_OK(read_context->context->AddRpcSidecar(
           RefCntBuffer(result.rows_data), &rows_data_sidecar_idx));
       result.response.set_rows_data_sidecar(rows_data_sidecar_idx);
-      resp->add_ql_batch()->Swap(&result.response);
+      read_context->resp->add_ql_batch()->Swap(&result.response);
     }
     return ReadHybridTime();
   }
 
-  if (!req->pgsql_batch().empty()) {
-    ReadRequestPB* mutable_req = const_cast<ReadRequestPB*>(req);
+  if (!read_context->req->pgsql_batch().empty()) {
+    ReadRequestPB* mutable_req = const_cast<ReadRequestPB*>(read_context->req);
     for (PgsqlReadRequestPB& pgsql_read_req : *mutable_req->mutable_pgsql_batch()) {
       tablet::PgsqlReadRequestResult result;
       TRACE("Start HandlePgsqlReadRequest");
-      RETURN_NOT_OK(tablet->HandlePgsqlReadRequest(
-          context->GetClientDeadline(), read_tx.read_time(), pgsql_read_req, req->transaction(),
-          &result));
+      RETURN_NOT_OK(read_context->tablet->HandlePgsqlReadRequest(
+          read_context->context->GetClientDeadline(), read_tx.read_time(), pgsql_read_req,
+          read_context->req->transaction(), &result));
       TRACE("Done HandlePgsqlReadRequest");
       if (result.restart_read_ht.is_valid()) {
         VLOG(1) << "Restart read required at: " << result.restart_read_ht;
-        read_time.read = result.restart_read_ht;
-        read_time.local_limit = safe_ht_to_read;
-        return read_time;
+        read_context->read_time.read = result.restart_read_ht;
+        read_context->read_time.local_limit = read_context->safe_ht_to_read;
+        return read_context->read_time;
       }
       int rows_data_sidecar_idx = 0;
-      RETURN_NOT_OK(context->AddRpcSidecar(
+      RETURN_NOT_OK(read_context->context->AddRpcSidecar(
           RefCntBuffer(result.rows_data), &rows_data_sidecar_idx));
       result.response.set_rows_data_sidecar(rows_data_sidecar_idx);
-      resp->add_pgsql_batch()->Swap(&result.response);
+      read_context->resp->add_pgsql_batch()->Swap(&result.response);
     }
     return ReadHybridTime();
   }
 
-  if (tablet->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+  if (read_context->tablet->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     return STATUS(NotSupported, "Transaction status table does not support read");
   }
 
