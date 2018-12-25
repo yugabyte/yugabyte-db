@@ -287,6 +287,18 @@ ifdef PGXS
 else
   LDFLAGS = -L$(top_builddir)/src/port -L$(top_builddir)/src/common
 endif
+
+# YugaByte-specific change: we want rpath for postgres libs to go before rpath from external
+# LDFLAGS.
+
+# Set up rpath if enabled.  By default it will point to our libdir,
+# but individual Makefiles can force other rpath paths if needed.
+rpathdir = $(libdir)
+
+ifeq ($(enable_rpath), yes)
+LDFLAGS += $(rpath)
+endif
+
 LDFLAGS += @LDFLAGS@
 
 LDFLAGS_EX = @LDFLAGS_EX@
@@ -460,14 +472,7 @@ have_win32_dbghelp = @have_win32_dbghelp@
 # Pull in platform-specific magic
 include $(top_builddir)/src/Makefile.port
 
-# Set up rpath if enabled.  By default it will point to our libdir,
-# but individual Makefiles can force other rpath paths if needed.
-rpathdir = $(libdir)
-
-ifeq ($(enable_rpath), yes)
-LDFLAGS += $(rpath)
-endif
-
+# YugaByte-specific change: moved rpath setup to happen before @LDFLAGS@ appending.
 
 ##########################################################################
 #
