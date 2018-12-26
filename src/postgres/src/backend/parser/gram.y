@@ -11226,7 +11226,6 @@ opt_conf_expr:
 returning_clause:
 			RETURNING target_list
 				{
-					parser_ybc_not_support(@1, "RETURNING clause");
 					$$ = $2;
 				}
 			| /* EMPTY */				{ $$ = NIL; }
