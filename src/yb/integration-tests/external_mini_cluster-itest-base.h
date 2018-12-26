@@ -52,6 +52,11 @@ namespace yb {
 // setup routines useful for integration tests.
 class ExternalMiniClusterITestBase : public YBTest {
  public:
+  virtual void SetUpCluster(ExternalMiniClusterOptions* opts) {
+    // Fsync causes flakiness on EC2.
+    CHECK_NOTNULL(opts)->extra_tserver_flags.push_back("--never_fsync");
+  }
+
   virtual void TearDown() override {
     if (cluster_) {
       if (HasFatalFailure()) {
@@ -92,7 +97,8 @@ void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& 
   opts.num_tablet_servers = num_tablet_servers;
   opts.extra_master_flags = extra_master_flags;
   opts.extra_tserver_flags = extra_ts_flags;
-  opts.extra_tserver_flags.push_back("--never_fsync"); // fsync causes flakiness on EC2.
+  SetUpCluster(&opts);
+
   cluster_.reset(new ExternalMiniCluster(opts));
   ASSERT_OK(cluster_->Start());
   inspect_.reset(new itest::ExternalMiniClusterFsInspector(cluster_.get()));

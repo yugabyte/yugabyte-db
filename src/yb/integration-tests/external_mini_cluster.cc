@@ -168,11 +168,6 @@ constexpr size_t kDefaultMemoryLimitHardBytes = NonTsanVsTsan(1_GB, 512_MB);
 ExternalMiniClusterOptions::ExternalMiniClusterOptions()
     : bind_to_unique_loopback_addresses(kBindToUniqueLoopbackAddress),
       timeout(MonoDelta::FromMilliseconds(1000 * 10)) {
-  if (bind_to_unique_loopback_addresses && sizeof(pid_t) > 2) {
-    LOG(WARNING) << "pid size is " << sizeof(pid_t)
-                 << ", setting bind_to_unique_loopback_addresses=false";
-    bind_to_unique_loopback_addresses = false;
-  }
 }
 
 ExternalMiniClusterOptions::~ExternalMiniClusterOptions() {
@@ -249,6 +244,9 @@ Status ExternalMiniCluster::Start() {
   if (!s.ok() && !s.IsAlreadyPresent()) {
     RETURN_NOT_OK_PREPEND(s, "Could not create root dir " + data_root_);
   }
+
+  LOG(INFO) << "Starting cluster with option bind_to_unique_loopback_addresses="
+      << (opts_.bind_to_unique_loopback_addresses ? "true" : "false");
 
   LOG(INFO) << "Starting " << opts_.num_masters << " masters";
   RETURN_NOT_OK_PREPEND(StartMasters(), "Failed to start masters.");
@@ -915,10 +913,12 @@ Status ExternalMiniCluster::StartMasters() {
 
 string ExternalMiniCluster::GetBindIpForTabletServer(int index) const {
   if (opts_.bind_to_unique_loopback_addresses) {
-    pid_t p = getpid();
-    CHECK_LE(p, MathLimits<uint16_t>::kMax)
-        << "bind_to_unique_loopback_addresses does not work on systems with >16-bit pid";
-    return Substitute("127.$0.$1.$2", p >> 8, p & 0xff, index);
+#if defined(__APPLE__)
+    return Substitute("127.0.0.$0", index + 1); // Use default 127.0.0.x IPs.
+#else
+    const pid_t p = getpid();
+    return Substitute("127.$0.$1.$2", (p >> 8) & 0xff, p & 0xff, index);
+#endif
   } else {
     return "127.0.0.1";
   }
@@ -936,14 +936,36 @@ Status ExternalMiniCluster::AddTabletServer(bool start_cql_proxy, bool start_pgs
     master_hostports.push_back(DCHECK_NOTNULL(master(i))->bound_rpc_hostport());
   }
 
-  const uint16_t ts_rpc_port = AllocateFreePort();
-  const uint16_t ts_http_port = AllocateFreePort();
-  const uint16_t redis_rpc_port = AllocateFreePort();
-  const uint16_t redis_http_port = AllocateFreePort();
-  const uint16_t cql_rpc_port = AllocateFreePort();
-  const uint16_t cql_http_port = AllocateFreePort();
-  const uint16_t pgsql_rpc_port = AllocateFreePort();
-  const uint16_t pgsql_http_port = AllocateFreePort();
+  uint16_t ts_rpc_port = 0;
+  uint16_t ts_http_port = 0;
+  uint16_t redis_rpc_port = 0;
+  uint16_t redis_http_port = 0;
+  uint16_t cql_rpc_port = 0;
+  uint16_t cql_http_port = 0;
+  uint16_t pgsql_rpc_port = 0;
+  uint16_t pgsql_http_port = 0;
+
+  if (idx > 0 && opts_.use_same_ts_ports && opts_.bind_to_unique_loopback_addresses) {
+    const scoped_refptr<ExternalTabletServer>& first_ts = tablet_servers_[0];
+    ts_rpc_port = first_ts->rpc_port();
+    ts_http_port = first_ts->http_port();
+    redis_rpc_port = first_ts->redis_rpc_port();
+    redis_http_port = first_ts->redis_http_port();
+    cql_rpc_port = first_ts->cql_rpc_port();
+    cql_http_port = first_ts->cql_http_port();
+    pgsql_rpc_port = first_ts->pgsql_rpc_port();
+    pgsql_http_port = first_ts->pgsql_http_port();
+  } else {
+    ts_rpc_port = AllocateFreePort();
+    ts_http_port = AllocateFreePort();
+    redis_rpc_port = AllocateFreePort();
+    redis_http_port = AllocateFreePort();
+    cql_rpc_port = AllocateFreePort();
+    cql_http_port = AllocateFreePort();
+    pgsql_rpc_port = AllocateFreePort();
+    pgsql_http_port = AllocateFreePort();
+  }
+
   scoped_refptr<ExternalTabletServer> ts = new ExternalTabletServer(
       idx, messenger_, exe, GetDataPath(Substitute("ts-$0", idx)), GetBindIpForTabletServer(idx),
       ts_rpc_port, ts_http_port, redis_rpc_port, redis_http_port,
@@ -1757,15 +1779,16 @@ const string& ExternalDaemon::uuid() const {
   return status_->node_instance().permanent_uuid();
 }
 
-Status ExternalDaemon::GetInt64Metric(const MetricEntityPrototype* entity_proto,
-                                      const char* entity_id,
-                                      const MetricPrototype* metric_proto,
-                                      const char* value_field,
-                                      int64_t* value) const {
+Status ExternalDaemon::GetInt64MetricFromHost(const HostPort& hostport,
+                                              const MetricEntityPrototype* entity_proto,
+                                              const char* entity_id,
+                                              const MetricPrototype* metric_proto,
+                                              const char* value_field,
+                                              int64_t* value) {
   // Fetch metrics whose name matches the given prototype.
   string url = Substitute(
       "http://$0/jsonmetricz?metrics=$1",
-      bound_http_hostport().ToString(),
+      hostport.ToString(),
       metric_proto->name());
   EasyCurl curl;
   faststring dst;
