@@ -30,7 +30,7 @@
 
 using namespace yb::size_literals;  // NOLINT.
 
-DEFINE_int32(rocksdb_max_background_flushes, 1, "Number threads to do background flushes.");
+DEFINE_int32(rocksdb_max_background_flushes, -1, "Number threads to do background flushes.");
 DEFINE_bool(rocksdb_disable_compactions, false, "Disable background compactions.");
 DEFINE_int32(rocksdb_base_background_compactions, -1,
              "Number threads to do background compactions.");
@@ -370,10 +370,59 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
       doc_db, read_opts, deadline, read_time, txn_op_context);
 }
 
+namespace {
+
+std::mutex rocksdb_flags_mutex;
+const int kNumCpus = std::thread::hardware_concurrency();
+
+// Auto initialize some of the RocksDB flags that are defaulted to -1.
+void AutoInitRocksDBFlags(rocksdb::Options* options) {
+  std::unique_lock<std::mutex> lock(rocksdb_flags_mutex);
+
+  if (FLAGS_rocksdb_max_background_flushes == -1) {
+    constexpr auto kCpusPerFlushThread = 8;
+    constexpr auto kAutoMaxBackgroundFlushesHighLimit = 4;
+    auto flushes = 1 + kNumCpus / kCpusPerFlushThread;
+    FLAGS_rocksdb_max_background_flushes = std::min(flushes, kAutoMaxBackgroundFlushesHighLimit);
+    LOG(INFO) << "Auto setting FLAGS_rocksdb_max_background_flushes to "
+              << FLAGS_rocksdb_max_background_flushes;
+  }
+  options->max_background_flushes = FLAGS_rocksdb_max_background_flushes;
+
+  if (FLAGS_rocksdb_disable_compactions) {
+    return;
+  }
+
+  if (FLAGS_rocksdb_max_background_compactions == -1) {
+    if (kNumCpus <= 4) {
+      FLAGS_rocksdb_max_background_compactions = 1;
+    } else if (kNumCpus <= 8) {
+      FLAGS_rocksdb_max_background_compactions = 2;
+    } else if (kNumCpus <= 32) {
+      FLAGS_rocksdb_max_background_compactions = 3;
+    } else {
+      FLAGS_rocksdb_max_background_compactions = 4;
+    }
+    LOG(INFO) << "Auto setting FLAGS_rocksdb_max_background_compactions to "
+              << FLAGS_rocksdb_max_background_compactions;
+  }
+  options->max_background_compactions = FLAGS_rocksdb_max_background_compactions;
+
+  if (FLAGS_rocksdb_base_background_compactions == -1) {
+    FLAGS_rocksdb_base_background_compactions = FLAGS_rocksdb_max_background_compactions;
+    LOG(INFO) << "Auto setting FLAGS_rocksdb_base_background_compactions to "
+              << FLAGS_rocksdb_base_background_compactions;
+  }
+  options->base_background_compactions = FLAGS_rocksdb_base_background_compactions;
+}
+
+} // namespace
+
 void InitRocksDBOptions(
     rocksdb::Options* options, const string& tablet_id,
     const shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options) {
+  AutoInitRocksDBFlags(options);
   options->create_if_missing = true;
   options->disableDataSync = true;
   options->statistics = statistics;
@@ -429,27 +478,8 @@ void InitRocksDBOptions(
   // Set the number of levels to 1.
   options->num_levels = 1;
 
+  AutoInitRocksDBFlags(options);
   if (compactions_enabled) {
-    auto rocksdb_max_background_compactions = FLAGS_rocksdb_max_background_compactions;
-    if (rocksdb_max_background_compactions == -1) {
-      int num_cpus = std::thread::hardware_concurrency();
-      if (num_cpus <= 4) {
-        rocksdb_max_background_compactions = 1;
-      } else if (num_cpus <= 8) {
-        rocksdb_max_background_compactions = 2;
-      } else if (num_cpus <= 32) {
-        rocksdb_max_background_compactions = 3;
-      } else {
-        rocksdb_max_background_compactions = 4;
-      }
-    }
-    auto rocksdb_base_background_compactions = FLAGS_rocksdb_base_background_compactions;
-    if (rocksdb_base_background_compactions == -1) {
-      rocksdb_base_background_compactions = rocksdb_max_background_compactions;
-    }
-    options->base_background_compactions = rocksdb_base_background_compactions;
-    options->max_background_compactions = rocksdb_max_background_compactions;
-    options->max_background_flushes = FLAGS_rocksdb_max_background_flushes;
     options->level0_file_num_compaction_trigger = FLAGS_rocksdb_level0_file_num_compaction_trigger;
     options->level0_slowdown_writes_trigger = FLAGS_rocksdb_level0_slowdown_writes_trigger;
     options->level0_stop_writes_trigger = FLAGS_rocksdb_level0_stop_writes_trigger;
