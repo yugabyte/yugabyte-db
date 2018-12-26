@@ -19,11 +19,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
+import static java.lang.Math.toIntExact;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
@@ -34,7 +36,7 @@ public class TestPgUpdate extends BasePgSQLTest {
   @Test
   public void testBasicUpdate() throws SQLException {
     String tableName = "test_basic_update";
-    Set<Row> allRows = setupSimpleTable(tableName);
+    List<Row> allRows = setupSimpleTable(tableName);
 
     // UPDATE with condition on partition columns.
     String query = String.format("SELECT h FROM %s WHERE h = 2 AND vi = 1000", tableName);
@@ -91,7 +93,7 @@ public class TestPgUpdate extends BasePgSQLTest {
 
   @Test
   public void testUpdateWithSingleColumnKey() throws SQLException {
-    Set<Row> allRows = new HashSet<>();
+    List<Row> allRows = new ArrayList<>();
     String tableName = "test_update_single_column_key";
     try (Statement statement = connection.createStatement()) {
       createSimpleTableWithSingleColumnKey(tableName);
@@ -133,6 +135,42 @@ public class TestPgUpdate extends BasePgSQLTest {
         while (rs.next()) rcount++;
         assertEquals(4, rcount);
       }
+    }
+  }
+
+  @Test
+  public void testUpdateReturn() throws SQLException {
+    String tableName = "test_update_return";
+    createSimpleTable(tableName);
+
+    List<Row> expectedRows = new ArrayList<>();
+    try (Statement insert_stmt = connection.createStatement()) {
+      String insert_format = "INSERT INTO %s(h, r, vi, vs) VALUES(%d, %f, %d, '%s')";
+      for (long h = 0; h < 5; h++) {
+        for (int r = 0; r < 5; r++) {
+          String insert_text = String.format(insert_format, tableName,
+                                             h, r + 0.5, h * 10 + r, "v" + h + r);
+          if (h == 2 || h == 3) {
+            // Constructring rows to be returned by UPDATE.
+            expectedRows.add(new Row(h + 100L, r + 0.5 + 100, toIntExact(h * 10 + r + 2000)));
+          }
+          insert_stmt.execute(insert_text);
+        }
+      }
+    }
+
+    // Sort expected rows to match with result set.
+    Collections.sort(expectedRows);
+
+    try (Statement update_stmt = connection.createStatement()) {
+        // Update with RETURNING clause.
+      String update_text = String.format("UPDATE %s SET vi = vi + 1000 WHERE h = 2 OR h = 3 " +
+                                         "RETURNING h + 100, r + 100, vi + 1000", tableName);
+      update_stmt.execute(update_text);
+
+      // Verify RETURNING clause.
+      ResultSet returning = update_stmt.getResultSet();
+      assertEquals(expectedRows, getSortedRowSet(returning));
     }
   }
 }

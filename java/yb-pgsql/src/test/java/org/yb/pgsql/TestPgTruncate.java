@@ -22,7 +22,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.Set;
+import java.util.List;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
@@ -33,7 +33,7 @@ public class TestPgTruncate extends BasePgSQLTest {
   @Test
   public void testBasicTruncate() throws SQLException {
     String tableName = "test_truncate";
-    Set<Row> allRows = setupSimpleTable(tableName);
+    List<Row> allRows = setupSimpleTable(tableName);
 
     try (Statement statement = connection.createStatement()) {
       String query = String.format("SELECT count(*) FROM %s", tableName);
@@ -61,9 +61,9 @@ public class TestPgTruncate extends BasePgSQLTest {
     String tableName1 = "test_truncate1";
     String tableName2 = "test_truncate2";
     String tableName3 = "test_truncate3";
-    Set<Row> allRows1 = setupSimpleTable(tableName1);
-    Set<Row> allRows2 = setupSimpleTable(tableName2);
-    Set<Row> allRows3 = setupSimpleTable(tableName3);
+    List<Row> allRows1 = setupSimpleTable(tableName1);
+    List<Row> allRows2 = setupSimpleTable(tableName2);
+    List<Row> allRows3 = setupSimpleTable(tableName3);
 
     try (Statement statement = connection.createStatement()) {
       String query = String.format("SELECT (SELECT count(*) FROM %s)," +

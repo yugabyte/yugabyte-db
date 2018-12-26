@@ -23,7 +23,7 @@ import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.Set;
+import java.util.List;
 import java.util.stream.Collectors;
 
 import static org.yb.AssertionWrappers.*;
@@ -34,86 +34,86 @@ public class TestPgSelect extends BasePgSQLTest {
 
   @Test
   public void testWhereClause() throws Exception {
-    Set<Row> allRows = setupSimpleTable("test_where");
+    List<Row> allRows = setupSimpleTable("test_where");
     try (Statement statement = connection.createStatement()) {
       // Test no where clause -- select all rows.
       String query = "SELECT * FROM test_where";
       try (ResultSet rs = statement.executeQuery(query)) {
-        assertEquals(allRows, getRowSet(rs));
+        assertEquals(allRows, getSortedRowSet(rs));
       }
       assertFalse(needsPgFiltering(query));
 
       // Test fixed hash key.
       query = "SELECT * FROM test_where WHERE h = 2";
       try (ResultSet rs = statement.executeQuery(query)) {
-        Set<Row> expectedRows = allRows.stream()
+        List<Row> expectedRows = allRows.stream()
             .filter(row -> row.getLong(0).equals(2L))
-            .collect(Collectors.toSet());
+            .collect(Collectors.toList());
         assertEquals(10, expectedRows.size());
-        assertEquals(expectedRows, getRowSet(rs));
+        assertEquals(expectedRows, getSortedRowSet(rs));
       }
       assertFalse(needsPgFiltering(query));
 
       // Test fixed primary key.
       query = "SELECT * FROM test_where WHERE h = 2 AND r = 3.5";
       try (ResultSet rs = statement.executeQuery(query)) {
-        Set<Row> expectedRows = allRows.stream()
+        List<Row> expectedRows = allRows.stream()
             .filter(row -> row.getLong(0).equals(2L) &&
                 row.getDouble(1).equals(3.5))
-            .collect(Collectors.toSet());
+            .collect(Collectors.toList());
         assertEquals(1, expectedRows.size());
-        assertEquals(expectedRows, getRowSet(rs));
+        assertEquals(expectedRows, getSortedRowSet(rs));
       }
       assertFalse(needsPgFiltering(query));
 
       // Test fixed range key without fixed hash key.
       query = "SELECT * FROM test_where WHERE r = 6.5";
       try (ResultSet rs = statement.executeQuery(query)) {
-        Set<Row> expectedRows = allRows.stream()
+        List<Row> expectedRows = allRows.stream()
             .filter(row -> row.getDouble(1).equals(6.5))
-            .collect(Collectors.toSet());
+            .collect(Collectors.toList());
         assertEquals(10, expectedRows.size());
-        assertEquals(expectedRows, getRowSet(rs));
+        assertEquals(expectedRows, getSortedRowSet(rs));
       }
       assertTrue(needsPgFiltering(query));
 
       // Test range scan.
       query = "SELECT * FROM test_where WHERE h = 2 AND r >= 3.5 AND r < 8.5";
       try (ResultSet rs = statement.executeQuery(query)) {
-        Set<Row> expectedRows = allRows.stream()
+        List<Row> expectedRows = allRows.stream()
             .filter(row -> row.getLong(0).equals(2L) &&
                 row.getDouble(1) >= 3.5 &&
                 row.getDouble(1) < 8.5)
-            .collect(Collectors.toSet());
+            .collect(Collectors.toList());
         assertEquals(5, expectedRows.size());
-        assertEquals(expectedRows, getRowSet(rs));
+        assertEquals(expectedRows, getSortedRowSet(rs));
       }
       assertTrue(needsPgFiltering(query));
 
       // Test conditions on regular (non-primary-key) columns.
       query = "SELECT * FROM test_where WHERE vi < 14 AND vs != 'v09'";
       try (ResultSet rs = statement.executeQuery(query)) {
-        Set<Row> expectedRows = allRows.stream()
+        List<Row> expectedRows = allRows.stream()
             .filter(row -> row.getInt(2) < 14 &&
                 !row.getString(3).equals("v09"))
-            .collect(Collectors.toSet());
+            .collect(Collectors.toList());
         // 14 options (for hash key) minus [9,'v09'].
         assertEquals(13, expectedRows.size());
-        assertEquals(expectedRows, getRowSet(rs));
+        assertEquals(expectedRows, getSortedRowSet(rs));
       }
       assertTrue(needsPgFiltering(query));
 
       // Test other WHERE operators (IN, OR, LIKE).
       query = "SELECT * FROM test_where WHERE h IN (2,3) OR vs LIKE 'v_2'";
       try (ResultSet rs = statement.executeQuery(query)) {
-        Set<Row> expectedRows = allRows.stream()
+        List<Row> expectedRows = allRows.stream()
             .filter(row -> row.getLong(0).equals(2L) ||
                 row.getLong(0).equals(3L) ||
                 row.getString(3).matches("v.2"))
-            .collect(Collectors.toSet());
+            .collect(Collectors.toList());
         // 20 plus 10 options but 2 common ones ('v22' and 'v32').
         assertEquals(28, expectedRows.size());
-        assertEquals(expectedRows, getRowSet(rs));
+        assertEquals(expectedRows, getSortedRowSet(rs));
       }
       assertTrue(needsPgFiltering(query));
     }
@@ -121,23 +121,23 @@ public class TestPgSelect extends BasePgSQLTest {
 
   @Test
   public void testSelectTargets() throws SQLException {
-    Set<Row> allRows = setupSimpleTable("test_target");
+    List<Row> allRows = setupSimpleTable("test_target");
     Statement statement = connection.createStatement();
 
     // Test all columns -- different order.
     try (ResultSet rs = statement.executeQuery("SELECT vs,vi,r,h FROM test_target")) {
-      Set<Row> expectedRows = allRows.stream()
+      List<Row> expectedRows = allRows.stream()
           .map(row -> new Row(row.get(3), row.get(2), row.get(1), row.get(0)))
-          .collect(Collectors.toSet());
-      assertEquals(expectedRows, getRowSet(rs));
+          .collect(Collectors.toList());
+      assertEquals(expectedRows, getSortedRowSet(rs));
     }
 
     // Test partial columns -- different order.
     try (ResultSet rs = statement.executeQuery("SELECT vs,r FROM test_target")) {
-      Set<Row> expectedRows = allRows.stream()
+      List<Row> expectedRows = allRows.stream()
           .map(row -> new Row(row.get(3), row.get(1)))
-          .collect(Collectors.toSet());
-      assertEquals(expectedRows, getRowSet(rs));
+          .collect(Collectors.toList());
+      assertEquals(expectedRows, getSortedRowSet(rs));
     }
 
     // Test aggregates.
@@ -146,11 +146,11 @@ public class TestPgSelect extends BasePgSQLTest {
 
     // Test distinct.
     try (ResultSet rs = statement.executeQuery("SELECT distinct(h) FROM test_target")) {
-      Set<Row> expectedRows = allRows.stream()
+      List<Row> expectedRows = allRows.stream()
           .map(row -> new Row(row.get(0)))
           .distinct()
-          .collect(Collectors.toSet());
-      assertEquals(expectedRows, getRowSet(rs));
+          .collect(Collectors.toList());
+      assertEquals(expectedRows, getSortedRowSet(rs));
     }
 
     // Test selecting non-existent column.
