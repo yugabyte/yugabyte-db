@@ -804,6 +804,16 @@ ldelete:;
 			Assert(!TupIsNull(slot));
 			delbuffer = InvalidBuffer;
 		}
+		else if (IsYugaByteEnabled())
+		{
+			if (!IsYBRelation(resultRelationDesc)) {
+				ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_OBJECT),
+								 errmsg("This relational object does not exist in YugaByte database")));
+			}
+			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+			delbuffer = InvalidBuffer;
+		}
 		else
 		{
 			slot = estate->es_trig_tuple_slot;
@@ -957,6 +967,8 @@ ExecUpdate(ModifyTableState *mtstate,
 							 errmsg("This relational object does not exist in YugaByte database")));
 		}
 		YBCExecuteUpdate(resultRelationDesc, resultRelInfo, planSlot, tuple);
+		if (resultRelInfo->ri_projectReturning)
+			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
 	}
 	else
 	{

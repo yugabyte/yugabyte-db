@@ -27,6 +27,7 @@ import org.yb.minicluster.MiniYBDaemon;
 import org.yb.util.*;
 
 import java.io.File;
+import java.lang.Comparable;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -583,14 +584,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   //------------------------------------------------------------------------------------------------
   // Test Utilities
 
-  protected class Row {
-    List<Object> elems = new ArrayList<>();
+  protected class Row implements Comparable<Row> {
+    ArrayList<Comparable> elems = new ArrayList<>();
 
-    Row(Object... args) {
+    Row(Comparable... args) {
       Collections.addAll(elems, args);
     }
 
-    Object get(int index) {
+    Comparable get(int index) {
       return elems.get(index);
     }
 
@@ -619,12 +620,32 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         return false;
       }
       Row other = (Row)obj;
-      return elems.equals(other.elems);
+      return compareTo(other) == 0;
+    }
+
+    @Override
+    public int compareTo(Row other) {
+      // In our test, if selected Row has different number of columns from expected row, something
+      // must be very wrong. Stop the test here.
+      assertEquals(elems.size(), other.elems.size());
+      for (int i = 0; i < elems.size(); i++) {
+        if (elems.get(i) == null || other.elems.get(i) == null) {
+          if (elems.get(i) != other.elems.get(i)) {
+            return elems.get(i) == null ? -1 : 1;
+          }
+        } else {
+          int compare_result = elems.get(i).compareTo(other.elems.get(i));
+          if (compare_result != 0) {
+            return compare_result;
+          }
+        }
+      }
+      return 0;
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(elems);
+      return elems.hashCode();
     }
 
     @Override
@@ -636,6 +657,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         if (elems.get(i) == null) {
           sb.append("null");
         } else {
+          sb.append(elems.get(i).getClass().getName() + "::");
           sb.append(elems.get(i).toString());
         }
       }
@@ -644,15 +666,22 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected Set<Row> getRowSet(ResultSet rs) throws SQLException {
-    Set<Row> rows = new HashSet<>();
+  protected List<Row> getRowSet(ResultSet rs) throws SQLException {
+    List<Row> rows = new ArrayList<>();
     while (rs.next()) {
-      Object[] elems = new Object[rs.getMetaData().getColumnCount()];
+      Comparable[] elems = new Comparable[rs.getMetaData().getColumnCount()];
       for (int i = 0; i < elems.length; i++) {
-        elems[i] = rs.getObject(i + 1); // Column index starts from 1.
+        elems[i] = (Comparable)rs.getObject(i + 1); // Column index starts from 1.
       }
       rows.add(new Row(elems));
     }
+    return rows;
+  }
+
+  protected List<Row> getSortedRowSet(ResultSet rs) throws SQLException {
+    // Sort all rows and return.
+    List<Row> rows = getRowSet(rs);
+    Collections.sort(rows);
     return rows;
   }
 
@@ -740,8 +769,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return pgPort;
   }
 
-  protected Set<Row> setupSimpleTable(String tableName) throws SQLException {
-    Set<Row> allRows = new HashSet<>();
+  protected List<Row> setupSimpleTable(String tableName) throws SQLException {
+    List<Row> allRows = new ArrayList<>();
     try (Statement statement = connection.createStatement()) {
       createSimpleTable(tableName);
       String insertTemplate = "INSERT INTO %s(h, r, vi, vs) VALUES (%d, %f, %d, '%s')";
@@ -757,6 +786,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         }
       }
     }
+
+    // Sort inserted rows and return.
+    Collections.sort(allRows);
     return allRows;
   }
 

@@ -22,8 +22,8 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
@@ -33,7 +33,7 @@ public class TestPgDelete extends BasePgSQLTest {
 
   @Test
   public void testBasicDelete() throws SQLException {
-    Set<Row> allRows = setupSimpleTable("test_basic_del");
+    List<Row> allRows = setupSimpleTable("test_basic_del");
 
     try (Statement statement = connection.createStatement()) {
       String query = "SELECT h FROM test_basic_del WHERE h = 2";
@@ -60,7 +60,7 @@ public class TestPgDelete extends BasePgSQLTest {
 
   @Test
   public void testBasicDelete2() throws SQLException {
-    Set<Row> allRows = setupSimpleTable("test_basic_del2");
+    List<Row> allRows = setupSimpleTable("test_basic_del2");
 
     try (Statement statement = connection.createStatement()) {
       String query = "SELECT h FROM test_basic_del2 WHERE h > 8";
@@ -87,7 +87,7 @@ public class TestPgDelete extends BasePgSQLTest {
 
   @Test
   public void testDeleteWithSingleColumnKey() throws SQLException {
-    Set<Row> allRows = new HashSet<>();
+    List<Row> allRows = new ArrayList<>();
     String tableName = "test_delete_single_column_key";
     try (Statement statement = connection.createStatement()) {
       createSimpleTableWithSingleColumnKey(tableName);
@@ -129,7 +129,7 @@ public class TestPgDelete extends BasePgSQLTest {
 
   @Test
   public void testDeleteWithSingleColumnKey2() throws SQLException {
-    Set<Row> allRows = new HashSet<>();
+    List<Row> allRows = new ArrayList<>();
     String tableName = "test_delete_single_column_key2";
     try (Statement statement = connection.createStatement()) {
       createSimpleTableWithSingleColumnKey(tableName);
@@ -166,6 +166,39 @@ public class TestPgDelete extends BasePgSQLTest {
         while (rs.next()) rcount++;
         assertEquals(0, rcount);
       }
+    }
+  }
+
+  @Test
+  public void testDeleteReturn() throws SQLException {
+    String tableName = "test_delete_return";
+    createSimpleTable(tableName);
+
+    List<Row> expectedRows = new ArrayList<>();
+    try (Statement insert_stmt = connection.createStatement()) {
+      String insert_format = "INSERT INTO %s(h, r, vi, vs) VALUES(%d, %f, %d, '%s')";
+      for (long h = 0; h < 5; h++) {
+        for (int r = 0; r < 5; r++) {
+          String insert_text = String.format(insert_format, tableName,
+                                             h, r + 0.5, h * 10 + r, "v" + h + r);
+          if (h == 2 || h == 3) {
+            // Constructing rows to be returned by DELETE.
+            expectedRows.add(new Row(h + 100L, r + 0.5 + 100, "v" + h + r));
+          }
+          insert_stmt.execute(insert_text);
+        }
+      }
+    }
+
+    try (Statement delete_stmt = connection.createStatement()) {
+        // Delete with RETURNING clause.
+      String delete_text = String.format("DELETE FROM %s WHERE h = 2 OR h = 3 " +
+                                         "RETURNING h + 100, r + 100, vs", tableName);
+      delete_stmt.execute(delete_text);
+
+      // Verify RETURNING clause.
+      ResultSet returning = delete_stmt.getResultSet();
+      assertEquals(expectedRows, getSortedRowSet(returning));
     }
   }
 }
