@@ -588,6 +588,16 @@ class Version {
   void operator=(const Version&);
 };
 
+typedef boost::intrusive_ptr<Version> VersionPtr;
+
+inline void intrusive_ptr_add_ref(Version* version) {
+  version->Ref();
+}
+
+inline void intrusive_ptr_release(Version* version) {
+  version->Unref();
+}
+
 class VersionSet {
  public:
   static constexpr uint64_t kInitialNextFileNumber = 2;
