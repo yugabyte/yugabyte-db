@@ -34,10 +34,10 @@ def get_linuxbrew_dir():
         find_script_result = run_program(os.path.join(
             YB_SRC_ROOT, 'build-support', 'find_linuxbrew.sh'))
         linuxbrew_dir = find_script_result.stdout.strip()
-        if not os.path.isdir(linuxbrew_dir):
+        if not os.path.isdir(linuxbrew_dir) and os.path.exists('/etc/centos-release'):
             raise RuntimeError(
                     ("Directory returned by the '{}' script does not exist: '{}'. " +
-                     "Details: {}").format(
+                     "This is only an error on CentOS. Details: {}").format(
                             find_script_result.program_path,
                             linuxbrew_dir,
                             find_script_result))

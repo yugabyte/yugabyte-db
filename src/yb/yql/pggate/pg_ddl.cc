@@ -165,8 +165,15 @@ Status PgCreateTable::Exec() {
   client::YBSchema schema;
   if (!is_pg_catalog_table_) {
     TableProperties table_properties;
-    table_properties.SetTransactional(true);
-    schema_builder_.SetTableProperties(table_properties);
+    const char* pg_txn_enabled_env_var = getenv("YB_PG_TRANSACTIONS_ENABLED");
+    const bool transactional = (pg_txn_enabled_env_var && strcmp(pg_txn_enabled_env_var, "1") == 0);
+    LOG(INFO) << Format(
+        "PgCreateTable: creating a $0 table: $1",
+        transactional ? "transactional" : "non-transactional", table_name_.ToString());
+    if (transactional) {
+      table_properties.SetTransactional(true);
+      schema_builder_.SetTableProperties(table_properties);
+    }
   }
   RETURN_NOT_OK(schema_builder_.Build(&schema));
 

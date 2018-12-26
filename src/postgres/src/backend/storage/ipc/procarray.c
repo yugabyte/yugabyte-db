@@ -61,6 +61,7 @@
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 
+#include "pg_yb_utils.h"
 
 /* Our shared memory area */
 typedef struct ProcArrayStruct
@@ -277,6 +278,10 @@ ProcArrayAdd(PGPROC *proc)
 	ProcArrayStruct *arrayP = procArray;
 	int			index;
 
+	if (IsYugaByteEnabled()) {
+		return;
+	}
+
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 
 	if (arrayP->numProcs >= arrayP->maxProcs)
@@ -334,6 +339,10 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 {
 	ProcArrayStruct *arrayP = procArray;
 	int			index;
+
+	if (IsYugaByteEnabled()) {
+		return;
+	}
 
 #ifdef XIDCACHE_DEBUG
 	/* dump stats at backend shutdown, but not prepared-xact end */
@@ -397,6 +406,10 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 {
 	PGXACT	   *pgxact = &allPgXact[proc->pgprocno];
 
+	if (IsYugaByteEnabled()) {
+		return;
+	}
+
 	if (TransactionIdIsValid(latestXid))
 	{
 		/*
@@ -450,6 +463,10 @@ static inline void
 ProcArrayEndTransactionInternal(PGPROC *proc, PGXACT *pgxact,
 								TransactionId latestXid)
 {
+	if (IsYugaByteEnabled()) {
+		return;
+	}
+
 	pgxact->xid = InvalidTransactionId;
 	proc->lxid = InvalidLocalTransactionId;
 	pgxact->xmin = InvalidTransactionId;
@@ -486,6 +503,10 @@ ProcArrayGroupClearXid(PGPROC *proc, TransactionId latestXid)
 	volatile PROC_HDR *procglobal = ProcGlobal;
 	uint32		nextidx;
 	uint32		wakeidx;
+
+	if (IsYugaByteEnabled()) {
+		return;
+	}
 
 	/* We should definitely have an XID to clear. */
 	Assert(TransactionIdIsValid(allPgXact[proc->pgprocno].xid));
@@ -606,6 +627,10 @@ ProcArrayClearTransaction(PGPROC *proc)
 {
 	PGXACT	   *pgxact = &allPgXact[proc->pgprocno];
 
+	if (IsYugaByteEnabled()) {
+		return;
+	}
+
 	/*
 	 * We can skip locking ProcArrayLock here, because this action does not
 	 * actually change anyone's view of the set of running XIDs: our entry is
@@ -639,6 +664,10 @@ ProcArrayInitRecovery(TransactionId initializedUptoXID)
 	Assert(standbyState == STANDBY_INITIALIZED);
 	Assert(TransactionIdIsNormal(initializedUptoXID));
 
+	if (IsYugaByteEnabled()) {
+		return;
+	}
+
 	/*
 	 * we set latestObservedXid to the xid SUBTRANS has been initialized up
 	 * to, so we can extend it from that point onwards in
@@ -671,6 +700,10 @@ ProcArrayApplyRecoveryInfo(RunningTransactions running)
 	int			nxids;
 	TransactionId nextXid;
 	int			i;
+
+	if (IsYugaByteEnabled()) {
+		return;
+	}
 
 	Assert(standbyState >= STANDBY_INITIALIZED);
 	Assert(TransactionIdIsValid(running->nextXid));
@@ -918,6 +951,10 @@ ProcArrayApplyXidAssignment(TransactionId topxid,
 	TransactionId max_xid;
 	int			i;
 
+	if (IsYugaByteEnabled()) {
+		return;
+	}
+
 	Assert(standbyState >= STANDBY_INITIALIZED);
 
 	max_xid = TransactionIdLatest(topxid, nsubxids, subxids);
@@ -1004,6 +1041,10 @@ TransactionIdIsInProgress(TransactionId xid)
 	TransactionId topxid;
 	int			i,
 				j;
+
+	if (IsYugaByteEnabled()) {
+		return false;
+	}
 
 	/*
 	 * Don't bother checking a transaction older than RecentXmin; it could not
@@ -1219,6 +1260,10 @@ TransactionIdIsActive(TransactionId xid)
 	ProcArrayStruct *arrayP = procArray;
 	int			i;
 
+	if (IsYugaByteEnabled()) {
+		return false;
+	}
+
 	/*
 	 * Don't bother checking a transaction older than RecentXmin; it could not
 	 * possibly still be running.
@@ -1318,6 +1363,10 @@ GetOldestXmin(Relation rel, int flags)
 	TransactionId result;
 	int			index;
 	bool		allDbs;
+
+	if (IsYugaByteEnabled()) {
+		return InvalidTransactionId;
+	}
 
 	volatile TransactionId replication_slot_xmin = InvalidTransactionId;
 	volatile TransactionId replication_slot_catalog_xmin = InvalidTransactionId;
