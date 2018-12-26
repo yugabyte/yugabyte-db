@@ -111,7 +111,12 @@ ADD_YB_TEST(update_scan_delta_compact-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)
+set(CASS_DRIVER_VERSION "2.9.0-yb-4")
+set(CASS_DRIVER_INTERNAL_INCLUDE "${YB_THIRDPARTY_DIR}/src/cassandra-cpp-driver-${CASS_DRIVER_VERSION}/src")
 ADD_YB_TEST(cassandra_cpp_driver-test)
+target_include_directories(cassandra_cpp_driver-test PUBLIC
+  ${CASS_DRIVER_INTERNAL_INCLUDE}
+  "${CASS_DRIVER_INTERNAL_INCLUDE}/third_party/sparsehash/src")
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})
 
 # Additional tests

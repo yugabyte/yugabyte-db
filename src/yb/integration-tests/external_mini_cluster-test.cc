@@ -30,12 +30,6 @@
 // under the License.
 //
 
-#include <glog/logging.h>
-#include <gtest/gtest.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <vector>
-
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
@@ -78,34 +72,40 @@ TEST_F(EMCTest, TestBasicOperation) {
     EXPECT_TRUE(HasPrefixString(master_http.ToString(), "127.0.0.1:")) << master_http.ToString();
 
     // Retrieve a thread metric, which should always be present on any master.
-    int64_t value;
+    int64_t value = 0;
     ASSERT_OK(master->GetInt64Metric(&METRIC_ENTITY_server,
                                      "yb.master",
                                      &METRIC_threads_running,
                                      "value",
                                      &value));
+    LOG(INFO) << "Master " << i << ": " << METRIC_threads_running.name() << '=' << value;
     EXPECT_GT(value, 0);
   }
 
   // Verify each of the tablet servers.
   for (int i = 0; i < opts.num_tablet_servers; i++) {
     SCOPED_TRACE(i);
-    ExternalTabletServer* ts = CHECK_NOTNULL(cluster.tablet_server(i));
-    HostPort ts_rpc = ts->bound_rpc_hostport();
-    string expected_prefix = strings::Substitute("$0:", cluster.GetBindIpForTabletServer(i));
-    EXPECT_NE(expected_prefix, "127.0.0.1") << "Should bind to unique per-server hosts";
-    EXPECT_TRUE(HasPrefixString(ts_rpc.ToString(), expected_prefix)) << ts_rpc.ToString();
+    const ExternalTabletServer* const ts = CHECK_NOTNULL(cluster.tablet_server(i));
+    const HostPort ts_rpc = ts->bound_rpc_hostport();
+    const HostPort ts_http = ts->bound_http_hostport();
+    const string expected_prefix = strings::Substitute("$0:", cluster.GetBindIpForTabletServer(i));
 
-    HostPort ts_http = ts->bound_http_hostport();
+    // Let TS 0 be on 127.0.0.1 address on MAC.
+    if (opts.bind_to_unique_loopback_addresses && i > 0) {
+      EXPECT_NE(expected_prefix, "127.0.0.1:") << "Should bind to unique per-server hosts";
+    }
+
+    EXPECT_TRUE(HasPrefixString(ts_rpc.ToString(), expected_prefix)) << ts_rpc.ToString();
     EXPECT_TRUE(HasPrefixString(ts_http.ToString(), expected_prefix)) << ts_http.ToString();
 
     // Retrieve a thread metric, which should always be present on any TS.
-    int64_t value;
+    int64_t value = 0;
     ASSERT_OK(ts->GetInt64Metric(&METRIC_ENTITY_server,
                                  "yb.tabletserver",
                                  &METRIC_threads_running,
                                  "value",
                                  &value));
+    LOG(INFO) << "TServer " << i << ": " << METRIC_threads_running.name() << '=' << value;
     EXPECT_GT(value, 0);
   }
 

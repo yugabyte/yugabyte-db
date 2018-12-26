@@ -123,3 +123,8 @@ signal:src/postgres/src/backend/postmaster/postmaster.c
 # The implementation is correct but TSAN has false positive data races during SharedPtr
 # destruction.
 race:cass::RefCounted<cass::*>::dec_ref
+# Races in libuv.so
+race:uv__io_feed
+race:uv__update_time
+race:uv_timer_start
+

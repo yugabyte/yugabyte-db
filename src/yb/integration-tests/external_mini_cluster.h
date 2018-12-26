@@ -114,9 +114,13 @@ struct ExternalMiniClusterOptions {
   // '127.0.0.1/8'.
   //
   // This option is disabled by default on OS X.
-  //
-  // NOTE: this does not currently affect the HTTP server.
+  // Enabling of this option on OS X means usage of default IPs: 127.0.0.x.
   bool bind_to_unique_loopback_addresses = true;
+
+  // If true, second and other TSes will use the same ports as the first TS uses.
+  // Else every TS will allocate unique ports for itself.
+  // The option is applicable ONLY with bind_to_unique_loopback_addresses == true.
+  bool use_same_ts_ports = false;
 
   // The path where the yb daemons should be run from.
   // Default: "../bin", which points to the path where non-test executables are located.
@@ -496,16 +500,26 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // 'entity_id' may be NULL, in which case the first entity of the same type as 'entity_proto' will
   // be matched.
   CHECKED_STATUS GetInt64Metric(const MetricEntityPrototype* entity_proto,
-                        const char* entity_id,
-                        const MetricPrototype* metric_proto,
-                        const char* value_field,
-                        int64_t* value) const;
+                                const char* entity_id,
+                                const MetricPrototype* metric_proto,
+                                const char* value_field,
+                                int64_t* value) const {
+    return GetInt64MetricFromHost(
+        bound_http_hostport(), entity_proto, entity_id, metric_proto, value_field, value);
+  }
 
   std::string LogPrefix();
 
   void SetLogListener(StringListener* listener);
 
   void RemoveLogListener(StringListener* listener);
+
+  static CHECKED_STATUS GetInt64MetricFromHost(const HostPort& hostport,
+                                               const MetricEntityPrototype* entity_proto,
+                                               const char* entity_id,
+                                               const MetricPrototype* metric_proto,
+                                               const char* value_field,
+                                               int64_t* value);
 
  protected:
   friend class RefCountedThreadSafe<ExternalDaemon>;
@@ -643,16 +657,43 @@ class ExternalTabletServer : public ExternalDaemon {
     return bind_host_;
   }
 
+  // Assigned ports.
+  uint16_t rpc_port() const {
+    return rpc_port_;
+  }
+  uint16_t http_port() const {
+    return http_port_;
+  }
+
   uint16_t pgsql_rpc_port() const {
     return pgsql_rpc_port_;
   }
+  uint16_t pgsql_http_port() const {
+    return pgsql_http_port_;
+  }
+
   uint16_t redis_rpc_port() const {
     return redis_rpc_port_;
   }
+  uint16_t redis_http_port() const {
+    return redis_http_port_;
+  }
 
-  // CQL addresses.
   uint16_t cql_rpc_port() const {
     return cql_rpc_port_;
+  }
+  uint16_t cql_http_port() const {
+    return cql_http_port_;
+  }
+
+  CHECKED_STATUS GetInt64CQLMetric(const MetricEntityPrototype* entity_proto,
+                                   const char* entity_id,
+                                   const MetricPrototype* metric_proto,
+                                   const char* value_field,
+                                   int64_t* value) const {
+    return GetInt64MetricFromHost(
+        HostPort(bind_host(), cql_http_port()),
+        entity_proto, entity_id, metric_proto, value_field, value);
   }
 
  protected:
