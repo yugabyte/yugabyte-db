@@ -13,15 +13,14 @@
 package org.yb.pgsql;
 
 import org.apache.commons.lang3.RandomUtils;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.postgresql.core.TransactionState;
 import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.YBTestRunner;
 import org.yb.util.SanitizerUtil;
+import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -32,14 +31,15 @@ import static org.yb.AssertionWrappers.*;
 
 // TODO this test suite is disabled as of 14/12/2019 until we fully handle transactions for system
 // catalog tables (used during initdb).
-@RunWith(value=YBTestRunner.class)
-@Ignore
+@RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgTransactions extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
 
-  protected void customizePostgresEnvVars(Map<String, String> envVars) {
-    // Temporary: YugaByte transactions are only enabled in the PostgreSQL API under a flag.
+  @Override
+  protected Map<String, String> getExtraPostgresEnvVars() {
+    Map<String, String> envVars = super.getExtraPostgresEnvVars();
     envVars.put("YB_PG_TRANSACTIONS_ENABLED", "1");
+    return envVars;
   }
 
   @Test

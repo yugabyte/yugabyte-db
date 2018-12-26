@@ -112,11 +112,27 @@ YBReportFeatureUnsupported(const char *msg)
 			 errmsg("%s", msg)));
 }
 
+
+static bool
+YBShouldReportErrorStatus()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrue("YB_PG_REPORT_ERROR_STATUS");
+	}
+
+	return cached_value;
+}
+
 void
 HandleYBStatus(YBCStatus status)
 {
 	if (!status)
 		return;
+	if (YBShouldReportErrorStatus()) {
+		YBC_LOG_ERROR("HandleYBStatus: %s", status->msg);
+	}
 	/* Copy the message to the current memory context and free the YBCStatus. */
 	size_t status_len = strlen(status->msg);
 	char* msg_buf = palloc(status_len + 1);
@@ -394,7 +410,9 @@ void
 YBReportIfYugaByteEnabled()
 {
 	if (YBIsEnabledInPostgresEnvVar()) {
-		ereport(LOG, (errmsg("YugaByte is ENABLED in PostgreSQL")));
+		ereport(LOG, (errmsg(
+			"YugaByte is ENABLED in PostgreSQL. Transactions are %s.",
+			YBCIsEnvVarTrue("YB_PG_TRANSACTIONS_ENABLED") ? "enabled" : "disabled")));
 	} else {
 		ereport(LOG, (errmsg("YugaByte is NOT ENABLED -- "
 							"this is a vanilla PostgreSQL server!")));

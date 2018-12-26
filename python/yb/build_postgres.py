@@ -471,7 +471,10 @@ class PostgresBuilder:
 
     def postprocess_pg_compile_command(self, compile_command_item):
         directory = compile_command_item['directory']
-        command = compile_command_item['command']
+        if 'command' not in compile_command_item and 'arguments' not in compile_command_item:
+            logging.error(
+                "Invalid compile command item: %s (neither 'command' nor 'arguments' are present)",
+                repr(compile_command_item))
         file_path = compile_command_item['file']
 
         new_directory = directory
@@ -484,8 +487,15 @@ class PostgresBuilder:
                     not os.path.isfile(os.path.join(new_directory, file_path))):
                 new_directory = directory
 
+        if 'arguments' in compile_command_item:
+            had_arguments = True
+            arguments = compile_command_item['arguments']
+        else:
+            had_arguments = False
+            arguments = compile_command_item['command'].split()
+
         new_args = []
-        for arg in command.split():
+        for arg in arguments:
             added = False
             if arg.startswith('-I'):
                 include_path = arg[2:]
@@ -497,18 +507,24 @@ class PostgresBuilder:
 
             if not added:
                 new_args.append(arg)
-        new_command = ' '.join(new_args)
 
         if not os.path.isabs(file_path):
             new_file_path = os.path.join(new_directory, file_path)
             if not os.path.isfile(new_file_path):
                 new_file_path = file_path
 
-        return {
+        result = {
             'directory': new_directory,
-            'command': new_command,
             'file': new_file_path
         }
+
+        # Preserve the existing format with either "command" or "arguments".
+        if had_arguments:
+            result['arguments'] = new_args
+        else:
+            result['command'] = ' '.join(new_args)
+
+        return result
 
     def run(self):
         if get_bool_env_var('YB_SKIP_POSTGRES_BUILD'):

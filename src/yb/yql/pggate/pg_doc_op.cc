@@ -145,7 +145,8 @@ void PgDocReadOp::InitUnlocked(std::unique_lock<std::mutex>* lock) {
 Status PgDocReadOp::SendRequestUnlocked() {
   RETURN_NOT_OK(pg_session_->ApplyAsync(read_op_));
   waiting_for_response_ = true;
-  pg_session_->FlushAsync([this](const Status& s) { PgDocReadOp::ReceiveResponse(s); });
+  RETURN_NOT_OK(
+      pg_session_->FlushAsync([this](const Status& s) { PgDocReadOp::ReceiveResponse(s); }));
   return Status::OK();
 }
 
@@ -193,7 +194,11 @@ Status PgDocWriteOp::SendRequestUnlocked() {
 
   RETURN_NOT_OK(pg_session_->ApplyAsync(write_op_));
   waiting_for_response_ = true;
-  pg_session_->FlushAsync([this](const Status& s) { PgDocWriteOp::ReceiveResponse(s); });
+  Status s = pg_session_->FlushAsync([this](const Status& s) { PgDocWriteOp::ReceiveResponse(s); });
+  if (!s.ok()) {
+    waiting_for_response_ = false;
+    return s;
+  }
   VLOG(1) << __PRETTY_FUNCTION__ << ": Sending request for " << this;
   return Status::OK();
 }

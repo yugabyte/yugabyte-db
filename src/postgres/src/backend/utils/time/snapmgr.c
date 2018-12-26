@@ -68,6 +68,7 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
 
 /*
  * GUC parameters
@@ -979,6 +980,10 @@ SnapshotResetXmin(void)
 {
 	Snapshot	minSnapshot;
 
+	if (IsYugaByteEnabled()) {
+		return;
+	}
+
 	if (ActiveSnapshot != NULL)
 		return;
 
@@ -1003,6 +1008,10 @@ AtSubCommit_Snapshot(int level)
 {
 	ActiveSnapshotElt *active;
 
+	if (IsYugaByteEnabled()) {
+		return;
+	}
+
 	/*
 	 * Relabel the active snapshots set in this subtransaction as though they
 	 * are owned by the parent subxact.
@@ -1022,6 +1031,10 @@ AtSubCommit_Snapshot(int level)
 void
 AtSubAbort_Snapshot(int level)
 {
+	if (IsYugaByteEnabled()) {
+		return;
+	}
+
 	/* Forget the active snapshots set by this subtransaction */
 	while (ActiveSnapshot && ActiveSnapshot->as_level >= level)
 	{
@@ -1067,6 +1080,10 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
 	 * stacked as active, we don't want the code below to be chasing through a
 	 * dangling pointer.
 	 */
+	if (IsYugaByteEnabled()) {
+		return;
+	}
+
 	if (FirstXactSnapshot != NULL)
 	{
 		Assert(FirstXactSnapshot->regd_count > 0);

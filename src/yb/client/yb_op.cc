@@ -70,6 +70,10 @@ void YBOperation::ResetTable(std::shared_ptr<YBTable> new_table) {
   tablet_.reset();
 }
 
+bool YBOperation::IsTransactional() const {
+  return table_->schema().table_properties().is_transactional();
+}
+
 //--------------------------------------------------------------------------------------------------
 // YBRedisOp
 //--------------------------------------------------------------------------------------------------

@@ -113,14 +113,14 @@ build_cpp_code() {
     log "Building a dummy target to check if Ninja re-runs CMake (it should not)."
     # The "-d explain" option will make Ninja explain why it is building a particular target.
     (
-      time run_centralized_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
+      time "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
         --make-ninja-extra-args "-d explain" \
         --target dummy_target \
         "${yb_build_args[@]}"
     )
   fi
 
-  time run_centralized_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
+  time "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
     "${yb_build_args[@]}" 2>&1 | \
     filter_boring_cpp_build_output
 
@@ -349,9 +349,7 @@ fi
 declare -i -r MAX_CMAKE_RETRIES=3
 declare -i cmake_attempt_index=1
 while true; do
-  # We run CMake on the "central build master" in case of a distributed build.
-  if run_centralized_build_cmd "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" --cmake-only --no-remote
-  then
+  if "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" --cmake-only --no-remote; then
     log "CMake succeeded after attempt $cmake_attempt_index"
     break
   fi
@@ -417,7 +415,7 @@ if [[ ${YB_TRACK_REGRESSIONS:-} == "1" ]]; then
 
   if [[ -e $YB_SRC_ROOT_REGR ]]; then
     log "Removing the existing contents of '$YB_SRC_ROOT_REGR'"
-    time run_centralized_build_cmd rm -rf "$YB_SRC_ROOT_REGR"
+    time rm -rf "$YB_SRC_ROOT_REGR"
     if [[ -e $YB_SRC_ROOT_REGR ]]; then
       log "Failed to remove '$YB_SRC_ROOT_REGR' right away"
       sleep 0.5
@@ -428,7 +426,7 @@ if [[ ${YB_TRACK_REGRESSIONS:-} == "1" ]]; then
   fi
 
   log "Cloning '$YB_SRC_ROOT' to '$YB_SRC_ROOT_REGR'"
-  time run_centralized_build_cmd git clone "$YB_SRC_ROOT" "$YB_SRC_ROOT_REGR"
+  time git clone "$YB_SRC_ROOT" "$YB_SRC_ROOT_REGR"
   if [[ ! -d $YB_SRC_ROOT_REGR ]]; then
     log "Directory $YB_SRC_ROOT_REGR did not appear right away"
     sleep 0.5

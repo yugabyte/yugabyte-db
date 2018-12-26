@@ -117,41 +117,77 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_i
   VLOG(3) << "Loading table descriptor for " << table_id;
   const TableId yb_table_id = table_id.GetYBTableId();
   shared_ptr<YBTable> table;
-  Status s = client_->OpenTable(yb_table_id, &table);
-  if (!s.ok()) {
-    VLOG(3) << "GetTableDesc: Server returns an error: " << s;
-    return STATUS_FORMAT(NotFound, "Table $0 does not exist", yb_table_id);
+
+  auto cached_yb_table = table_cache_.find(yb_table_id);
+  if (cached_yb_table == table_cache_.end()) {
+    Status s = client_->OpenTable(yb_table_id, &table);
+    if (!s.ok()) {
+      VLOG(3) << "GetTableDesc: Server returns an error: " << s;
+      // TODO: NotFound might not always be the right status here.
+      return STATUS_FORMAT(
+          NotFound, "Error loading table with id $0: $1", yb_table_id, s.ToString());
+    }
+    table_cache_[yb_table_id] = table;
+  } else {
+    table = cached_yb_table->second;
   }
+
   DCHECK_EQ(table->table_type(), YBTableType::PGSQL_TABLE_TYPE);
+
   return make_scoped_refptr<PgTableDesc>(table);
 }
 
-Status PgSession::Apply(const std::shared_ptr<client::YBPgsqlOp>& op) {
-  YBSession* session = GetSession(op->read_only());
-  return session->ApplyAndFlush(op);
-}
-
 Status PgSession::ApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op) {
-  return GetSession(op->read_only())->Apply(op);
+  VLOG(2) << __PRETTY_FUNCTION__ << " called, is_transactional="
+          << op->IsTransactional();
+  if (op->IsTransactional()) {
+    has_txn_ops_ = true;
+  } else {
+    has_non_txn_ops_ = true;
+  }
+  return VERIFY_RESULT(GetSessionForOp(op))->Apply(op);
 }
 
-void PgSession::FlushAsync(StatusFunctor callback) {
-  // Even in case of read-write operations, Apply or ApplyAsync would have already been called
-  // with that operation, and that would have started the YB transaction.
-  GetSession(/* read_only_op */ true)->FlushAsync(callback);
+Status PgSession::FlushAsync(StatusFunctor callback) {
+  VLOG(2) << __PRETTY_FUNCTION__ << " called";
+  if (has_txn_ops_ && has_non_txn_ops_) {
+    return STATUS(IllegalState,
+        "Cannot flush transactional and non-transactional operations together");
+  }
+  bool transactional = has_txn_ops_;
+  VLOG(2) << __PRETTY_FUNCTION__
+          << ": has_txn_ops_=" << has_txn_ops_ << ", has_non_txn_ops_=" << has_non_txn_ops_;
+  has_txn_ops_ = false;
+  has_non_txn_ops_ = false;
+  // We specify read_only_op true here because we never start a new write transaction at this point.
+  VERIFY_RESULT(GetSession(transactional, /* read_only_op */ true))->FlushAsync(callback);
+  return Status::OK();
 }
 
-YBSession* PgSession::GetSession(bool read_only_op) {
-  YBSession* txn_session = pg_txn_manager_->GetTransactionalSession();
+Result<client::YBSession*> PgSession::GetSessionForOp(
+    const std::shared_ptr<client::YBPgsqlOp>& op) {
+  return GetSession(op->IsTransactional(), op->read_only());
+}
+
+Result<YBSession*> PgSession::GetSession(bool transactional, bool read_only_op) {
+  YBSession* const txn_session =
+      transactional ? pg_txn_manager_->GetTransactionalSession() : nullptr;
+  if (transactional && !txn_session) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "GetSession called for a transactional operation, read_only_op=$0, but the transactional "
+            "session has not been created",
+        read_only_op);
+  }
   if (txn_session) {
-    VLOG(1) << __PRETTY_FUNCTION__
+    VLOG(2) << __PRETTY_FUNCTION__
             << ": read_only_op=" << read_only_op << ", returning transactional session";
     if (!read_only_op) {
       pg_txn_manager_->BeginWriteTransactionIfNecessary();
     }
     return txn_session;
   }
-  VLOG(1) << __PRETTY_FUNCTION__
+  VLOG(2) << __PRETTY_FUNCTION__
           << ": read_only_op=" << read_only_op << ", returning non-transactional session";
   return session_.get();
 }
