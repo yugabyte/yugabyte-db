@@ -14,8 +14,6 @@
  */
 package org.yb;
 
-import org.junit.runner.Description;
-import org.junit.runner.notification.RunNotifier;
 import org.junit.runners.BlockJUnit4ClassRunner;
 import org.junit.runners.model.FrameworkMethod;
 import org.junit.runners.model.InitializationError;
@@ -31,14 +29,15 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
 
   private static final Logger LOG = LoggerFactory.getLogger(YBTestRunner.class);
 
-  /**
-   * Creates a BlockJUnit4ClassRunner to run {@code klass}
-   *
-   * @param klass
-   * @throws InitializationError if the test class is malformed.
-   */
+  protected boolean shouldRunTests() {
+    return true;
+  }
+
   public YBTestRunner(Class<?> klass) throws InitializationError {
     super(klass);
+    if (!shouldRunTests()) {
+      return;
+    }
     if (ConfForTesting.onlyCollectingTests()) {
       for (FrameworkMethod method : super.getChildren()) {
         TestUtils.reportCollectedTest(
@@ -49,7 +48,7 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
 
   @Override
   protected List<FrameworkMethod> getChildren() {
-    if (ConfForTesting.onlyCollectingTests()) {
+    if (ConfForTesting.onlyCollectingTests() || !shouldRunTests()) {
       return Collections.emptyList();
     }
     return super.getChildren();

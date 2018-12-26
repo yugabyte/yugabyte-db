@@ -103,8 +103,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return 1;
   }
 
-  protected void customizePostgresEnvVars(Map<String, String> envVars) { }
-
   //------------------------------------------------------------------------------------------------
   // Postgres process integration.
 
@@ -242,7 +240,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       throw new Exception("Failed to create postgres data dir " + pgDataDir);
     }
 
-    Map<String, String> postgresEnvVars = getExtraPostgresEnvVars();
+    Map<String, String> postgresEnvVars = new TreeMap<>();
+
     pgNoRestartAllChildrenOnCrashFlagPath = new File(
         TestUtils.getBaseTmpDir() + "/yb_pg_no_restart_all_children_on_crash.flag-" +
             System.currentTimeMillis());
@@ -250,9 +249,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "YB_PG_NO_RESTART_ALL_CHILDREN_ON_CRASH_FLAG_PATH",
         pgNoRestartAllChildrenOnCrashFlagPath.getPath());
 
-    // Allow test subclasses to add/remove env vars to test specific features.
-    customizePostgresEnvVars(postgresEnvVars);
+    postgresEnvVars.putAll(getExtraPostgresEnvVars());
 
+    String portStr = String.valueOf(port);
+
+    // Postgres bin directory.
+    pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
+
+    runInitDb(postgresEnvVars, pgBinDir.toString());
+
+    // Dump environment variables we'll be using for the postgres process.
     {
       List<String> postgresEnvVarsDump = new ArrayList<>();
       for (Map.Entry<String, String> entry : postgresEnvVars.entrySet()) {
@@ -263,15 +269,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
           "Setting the following environment variables for the PostgreSQL process:\n    " +
               String.join("\n    ", postgresEnvVarsDump));
     }
-
-    String portStr = String.valueOf(port);
-
-    // Postgres bin directory.
-    pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
-
-    // Run initdb to initialize the postgres data folder.
-
-    runInitDb(postgresEnvVars, pgBinDir.toString());
 
     // Start the postgres server process.
     startPostgresProcess(host, port, postgresEnvVars, portStr, pgBinDir.toString());
@@ -338,7 +335,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     initProc.waitFor();
     initDbLogPrinter.stop();
     CoreFileUtil.processCoreFile(ProcessUtil.pidOfProcess(initProc),
-        initCmd, "initdb", initDbWorkDir, CoreFileUtil.CoreFileMatchMode.NO_PID_OR_EXACT_PID);
+        initCmd, "initdb", initDbWorkDir, CoreFileUtil.CoreFileMatchMode.ANY_CORE_FILE);
   }
 
   @After

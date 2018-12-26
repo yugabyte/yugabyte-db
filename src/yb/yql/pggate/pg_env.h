@@ -21,6 +21,8 @@
 #ifndef YB_YQL_PGGATE_PG_ENV_H_
 #define YB_YQL_PGGATE_PG_ENV_H_
 
+#include <boost/functional/hash/hash.hpp>
+
 #include "yb/common/entity_ids.h"
 #include "yb/client/client.h"
 
@@ -44,9 +46,23 @@ struct PgObjectId {
   }
 
   std::string ToString() const {
-    return Format("{$0, $2}", database_oid, object_oid);
+    return Format("{$0, $1}", database_oid, object_oid);
   }
+
+  bool operator== (const PgObjectId& other) const {
+    return database_oid == other.database_oid && object_oid == other.object_oid;
+  }
+
+  friend std::size_t hash_value(const PgObjectId& pgobject_id) {
+    std::size_t value = 0;
+    boost::hash_combine(value, pgobject_id.database_oid);
+    boost::hash_combine(value, pgobject_id.object_oid);
+    return value;
+  }
+
 };
+
+typedef boost::hash<PgObjectId> PgObjectIdHash;
 
 inline std::ostream& operator<<(std::ostream& out, const PgObjectId& id) {
   return out << id.ToString();

@@ -22,6 +22,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/callback.h"
 #include "yb/util/oid_generator.h"
+#include "yb/util/result.h"
 
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_column.h"
@@ -32,6 +33,8 @@ namespace pggate {
 
 class PgTxnManager;
 
+// This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
+// process.
 class PgSession : public RefCountedThreadSafe<PgSession> {
  public:
   // Public types.
@@ -79,16 +82,14 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
 
   // Apply the given operation to read and write database content.
-  CHECKED_STATUS Apply(const std::shared_ptr<client::YBPgsqlOp>& op);
   CHECKED_STATUS ApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op);
-  void FlushAsync(StatusFunctor callback);
+  CHECKED_STATUS FlushAsync(StatusFunctor callback);
 
   // Return the number of errors which are pending.
   int CountPendingErrors() const;
 
   // Return the pending errors.
   std::vector<std::unique_ptr<client::YBError>> GetPendingErrors();
-
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -124,12 +125,16 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   }
 
  private:
-  // Returns the appopriate session to use, in most cases the one used by the current transaction.
+  // Returns the appropriate session to use, in most cases the one used by the current transaction.
   // read_only_op - whether this is being done in the context of a read-only operation. For
   //                non-read-only operations we make sure to start a YB transaction.
   // We are returning a raw pointer here because the returned session is owned either by the
   // PgTxnManager or by this object.
-  client::YBSession* GetSession(bool read_only_op);
+  Result<client::YBSession*> GetSession(bool transactional, bool read_only_op);
+
+  // Get the appropriate YBSession to apply the given operation to, based on whether or not this
+  // is an operation on a transactional table, as well as read-only vs. non-read-only operation.
+  Result<client::YBSession*> GetSessionForOp(const std::shared_ptr<client::YBPgsqlOp>& op);
 
   // YBClient, an API that SQL engine uses to communicate with all servers.
   std::shared_ptr<client::YBClient> client_;
@@ -149,6 +154,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Rowid generator.
   ObjectIdGenerator rowid_generator_;
+
+  std::unordered_map<TableId, std::shared_ptr<client::YBTable>> table_cache_;
+
+  bool has_txn_ops_ = false;
+  bool has_non_txn_ops_ = false;
 };
 
 }  // namespace pggate

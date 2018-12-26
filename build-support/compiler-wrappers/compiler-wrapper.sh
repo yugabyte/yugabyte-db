@@ -379,7 +379,7 @@ Exit code:  $exit_code
     PS4=$old_ps4
   fi
   exit $exit_code
-elif [[ ${YB_DEBUG_REMOTE_COMPILATION:-undefined} == "1" ]] && ! $is_build_worker; then
+elif debugging_remote_compilation && ! $is_build_worker; then
   log "Not doing remote build: local_build_only=$local_build_only," \
     "YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined}," \
     "HOSTNAME=$HOSTNAME"

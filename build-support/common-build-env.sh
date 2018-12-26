@@ -68,14 +68,6 @@ readonly MVN_OUTPUT_FILTER_REGEX
 # outside of main (non-thirdparty) YB codebase's build pipeline.
 readonly NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY=/n/jenkins/thirdparty
 
-# This node is the NFS server and is also used to run the non-distributed part of distributed builds
-# (e.g. "cmake" or "make" commands) in a way such that it would have access to the build directory
-# as a local filesystem.
-#
-# This must be something that could be compared with $HOSTNAME, i.e. this can't be
-# "buildmaster.c.yugabyte.internal", only "buildmaster".
-readonly DISTRIBUTED_BUILD_MASTER_HOST=buildmaster
-
 # We create a Python Virtual Environment inside this directory in the build directory.
 readonly YB_VIRTUALENV_BASENAME=python_virtual_env
 
@@ -1576,27 +1568,24 @@ escape_cmd_line() {
   escape_cmd_line_rv=${escape_cmd_line_rv# }
 }
 
+debugging_remote_compilation() {
+  [[ ${YB_DEBUG_REMOTE_COMPILATION:-undefined} == "1" ]]
+}
+
 run_remote_cmd() {
   local build_host=$1
   local executable=$2
   shift 2
   local escape_cmd_line_rv
   escape_cmd_line "$@"
-  ssh "$build_host" \
-      "'$YB_BUILD_SUPPORT_DIR/remote_cmd.sh' '$PWD' '$PATH' '$executable' $escape_cmd_line_rv"
-}
-
-# Run the build command (cmake / make) on the appropriate host. This is localhost in most cases.
-# However, in a remote build (i.e. a build where we run the compiler on an auto-scaling group
-# of build workers), we ensure we run this command on the "distributed build master host"
-# machine, as there are some issues with running cmake or make over NFS (e.g. stale file handles).
-run_centralized_build_cmd() {
-  if using_remote_compilation &&
-     [[ ${YB_USE_CENTRALIZED_BUILD_HOST:-1} == "1" ]] &&
-     [[ $HOSTNAME != $DISTRIBUTED_BUILD_MASTER_HOST ]]; then
-    run_remote_cmd "$DISTRIBUTED_BUILD_MASTER_HOST" "$@"
+  local ssh_args=(
+    "$build_host"
+    "'$YB_BUILD_SUPPORT_DIR/remote_cmd.sh' '$PWD' '$PATH' '$executable' $escape_cmd_line_rv"
+  )
+  if debugging_remote_compilation; then
+    ( set -x; ssh "${ssh_args[@]}" )
   else
-    "$@"
+    ssh "${ssh_args[@]}"
   fi
 }
 
@@ -2087,10 +2076,14 @@ lint_java_code() {
     for java_test_file in "${java_test_files[@]}"; do
       local log_prefix="YB JAVA LINT: $java_test_file"
       if ! grep -Fq '@RunWith(value=YBParameterizedTestRunner.class)' "$java_test_file" &&
-         ! grep -Fq '@RunWith(YBParameterizedTestRunner.class)' "$java_test_file" &&
-         ! grep -Fq '@RunWith(value=YBTestRunner.class)' "$java_test_file" &&
-         ! grep -Fq '@RunWith(YBTestRunner.class)' "$java_test_file"; then
-        log "$log_prefix: neither YBTestRunner nor YBParameterizedTestRunner being used in test"
+         ! grep -Fq       '@RunWith(YBParameterizedTestRunner.class)' "$java_test_file" &&
+         ! grep -Fq '@RunWith(value=YBTestRunner.class)'              "$java_test_file" &&
+         ! grep -Fq       '@RunWith(YBTestRunner.class)'              "$java_test_file" &&
+         ! grep -Fq '@RunWith(value=YBTestRunnerNonTsanOnly.class)'   "$java_test_file" &&
+         ! grep -Fq       '@RunWith(YBTestRunnerNonTsanOnly.class)'   "$java_test_file"
+      then
+        log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, nor" \
+            "YBTestRunnerNonTsanOnly are being used in test"
         num_errors+=1
       fi
       if grep -Fq 'import static org.junit.Assert' "$java_test_file" ||

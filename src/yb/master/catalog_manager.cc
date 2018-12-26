@@ -1943,7 +1943,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   RETURN_NOT_OK(CheckOnline());
 
   LOG(INFO) << "CreateTable from " << RequestorString(rpc)
-            << ":\n" << orig_req->DebugString();
+              << ":\n" << orig_req->DebugString();
 
   if (orig_req->table_type() == PGSQL_TABLE_TYPE && orig_req->is_pg_catalog_table()) {
     return CreatePgsqlSysTable(orig_req, resp, rpc);

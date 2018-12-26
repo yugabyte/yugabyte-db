@@ -431,9 +431,9 @@ errfinish(int dummy,...)
 	elevel = edata->elevel;
 
 	/* TODO Make this a YB-debug-mode feature */
-	if (IsYugaByteEnabled() && elevel >= ERROR)
+	if (IsYugaByteEnabled() && elevel >= FATAL)
 	{
-		YBC_LOG_ERROR_STACK_TRACE("Stack trace on a FATAL log");
+		YBC_LOG_ERROR_STACK_TRACE("Stack trace for a FATAL log message");
 	}
 
 	/*

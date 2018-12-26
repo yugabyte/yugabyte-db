@@ -31,6 +31,7 @@ if [[ -n ${VIRTUAL_ENV:-} ]]; then
   python_interpreter_dirs+=( "$VIRTUAL_ENV/bin" )
 fi
 
+# Prefer system Python to Python coming from Homebrew/Linuxbrew.
 python_interpreter_dirs+=(
   /usr/local/bin
   /usr/bin
@@ -39,6 +40,7 @@ python_interpreter_dirs+=(
 if using_linuxbrew; then
   python_interpreter_dirs+=( "$YB_LINUXBREW_DIR/bin" )
 fi
+
 if using_custom_homebrew; then
   python_interpreter_dirs+=( "$YB_CUSTOM_HOMEBREW_DIR/bin" )
 fi

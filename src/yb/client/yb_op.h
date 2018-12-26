@@ -111,6 +111,10 @@ class YBOperation {
   // Returns the partition key of the operation.
   virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const = 0;
 
+  // Returns whether this operation is being performed on a table where distributed transactions
+  // are enabled.
+  bool IsTransactional() const;
+
  protected:
   explicit YBOperation(const std::shared_ptr<YBTable>& table);
 

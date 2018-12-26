@@ -197,7 +197,7 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
       string env_var_name = "FLAGS_" + flag_info.name;
       // We already set FLAGS_pggate_master_addresses explicitly above, based on
       // conf_.master_addresses and not based on FLAGS_pggate_masster_addresses, so skip it here.
-      if (env_var_name != "FLAGS_pggate_master_addresses" && !flag_info.is_default) {
+      if (flag_info.name != "pggate_master_addresses" && !flag_info.is_default) {
         proc->SetEnv(env_var_name, flag_info.current_value);
       }
     }
