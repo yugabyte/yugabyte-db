@@ -38,10 +38,10 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./full-move/">
+    <a class="section-link icon-offset" href="./change-cluster-config/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
-        <div class="title">Full Move</div>
+        <div class="title">Change Cluster Config</div>
       </div>
       <div class="body">
           Move universe data to a new set of machines.
