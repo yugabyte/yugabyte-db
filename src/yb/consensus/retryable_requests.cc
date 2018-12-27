@@ -21,6 +21,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
 
@@ -255,7 +256,8 @@ class RetryableRequests::Impl {
   yb::OpId CleanExpiredReplicatedAndGetMinOpId() {
     yb::OpId result(std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max());
     auto now = clock_.Now();
-    auto clean_start = now - std::chrono::seconds(FLAGS_retryable_request_timeout_secs);
+    auto clean_start =
+        now - std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
     for (auto ci = clients_.begin(); ci != clients_.end();) {
       ClientRetryableRequests& client_retryable_requests = ci->second;
       auto& op_id_index = client_retryable_requests.replicated.get<OpIdIndex>();
