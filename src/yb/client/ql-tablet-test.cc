@@ -427,29 +427,35 @@ void VerifyLogIndicies(MiniCluster* cluster) {
   }
 }
 
+namespace {
+
+constexpr auto kRetryableRequestTimeoutSecs = 4;
+
+} // namespace
+
 TEST_F(QLTabletTest, GCLogWithoutWrites) {
-  FLAGS_retryable_request_timeout_secs = 4;
+  SetAtomicFlag(kRetryableRequestTimeoutSecs, &FLAGS_retryable_request_timeout_secs);
 
   TableHandle table;
   CreateTable(kTable1Name, &table);
 
   FillTable(0, kTotalKeys, &table);
 
-  std::this_thread::sleep_for(1s * (FLAGS_retryable_request_timeout_secs + 1));
+  std::this_thread::sleep_for(1s * (kRetryableRequestTimeoutSecs + 1));
   ASSERT_OK(cluster_->FlushTablets());
   DoStepDowns(cluster_.get());
   VerifyLogIndicies(cluster_.get());
 }
 
 TEST_F(QLTabletTest, GCLogWithRestartWithoutWrites) {
-  FLAGS_retryable_request_timeout_secs = 4;
+  SetAtomicFlag(kRetryableRequestTimeoutSecs, &FLAGS_retryable_request_timeout_secs);
 
   TableHandle table;
   CreateTable(kTable1Name, &table);
 
   FillTable(0, kTotalKeys, &table);
 
-  std::this_thread::sleep_for(1s * (FLAGS_retryable_request_timeout_secs + 1));
+  std::this_thread::sleep_for(1s * (kRetryableRequestTimeoutSecs + 1));
   ASSERT_OK(cluster_->FlushTablets());
 
   ASSERT_OK(cluster_->RestartSync());
