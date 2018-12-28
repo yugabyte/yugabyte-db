@@ -29,5 +29,8 @@
                 "java/yb-loadtester/target/yb-sample-apps.jar",
                 "java/yb-loadtester/target/yb-sample-apps-sources.jar"],
   "java/lib" : ["java/yb-cli/target/lib/*.jar",
-                "java/yb-loadtester/target/lib/*.jar"]
+                "java/yb-loadtester/target/lib/*.jar"],
+  "%symlinks%": {
+    "bin/psql": "../postgres/bin/psql"
+  }
 }
