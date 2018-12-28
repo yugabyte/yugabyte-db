@@ -13,7 +13,8 @@ aliases:
 Early Releases: Single-key request only. Requests with multiple keys are not yet supported.
 
 ## Synopsis
-<b>`DEL key [key ...]`</b><br>
+<!-- <b>`DEL key [key ...]`</b><br> -->
+<b>`DEL key`</b><br>
 This command deletes the given `key`.
 
 <li>If the `key` does not exist, it is ignored and not counted toward the total number of removed keys.</li>
@@ -35,10 +36,22 @@ $ SET yuga2 "Africa"
 "OK"
 ```
 ```{.sh .copy .separator-dollar}
-$ DEL yuga1 yuga2 not_a_key
+$ DEL yuga1
 ```
 ```sh
-2
+1
+```
+```{.sh .copy .separator-dollar}
+$ DEL not_a_key
+```
+```sh
+0
+```
+```{.sh .copy .separator-dollar}
+$ DEL yuga1 yuga2
+```
+```sh
+"ERR del: Wrong number of arguments"
 ```
 
 ## See Also
