@@ -1533,7 +1533,7 @@ TEST_F(TestQLQuery, TestInvalidPeerTableEntries) {
   TestQLProcessor* processor = GetQLProcessor();
   ASSERT_OK(processor->Run("SELECT * FROM system.peers"));
   std::shared_ptr<QLRowBlock> row_block = processor->row_block();
-  ASSERT_EQ(num_tservers, row_block->row_count());
+  ASSERT_EQ(num_tservers - 1, row_block->row_count()) << row_block->ToString();
 
   auto ts_manager = cluster_->leader_mini_master()->master()->ts_manager();
   NodeInstancePB instance;
@@ -1553,7 +1553,7 @@ TEST_F(TestQLQuery, TestInvalidPeerTableEntries) {
   // Verify the peers table and ensure the invalid host is not present.
   ASSERT_OK(processor->Run("SELECT * FROM system.peers"));
   row_block = processor->row_block();
-  ASSERT_EQ(num_tservers, row_block->row_count());
+  ASSERT_EQ(num_tservers - 1, row_block->row_count()) << row_block->ToString();
   for (const auto& row : row_block->rows()) {
     ASSERT_NE(invalid_host, row.column(0).inetaddress_value().ToString());
   }
