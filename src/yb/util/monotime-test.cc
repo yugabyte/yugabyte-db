@@ -231,7 +231,11 @@ TEST(TestMonoTime, TestCondition) {
   std::condition_variable cond;
   std::unique_lock<std::mutex> lock(mutex);
   auto kWaitTime = 500ms;
+#ifndef __APPLE__
   auto kAllowedError = 50ms;
+#else
+  auto kAllowedError = 200ms;
+#endif
   for (;;) {
     auto start = CoarseMonoClock::Now();
     if (cond.wait_until(lock, CoarseMonoClock::Now() + kWaitTime) != std::cv_status::timeout) {
