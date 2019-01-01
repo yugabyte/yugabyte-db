@@ -299,6 +299,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     return importedState != ImportedState.NONE;
   }
 
+  @JsonIgnore
+  // Returns true if universe is allowed edits or node-actions.
+  public boolean isUniverseEditable() {
+    return capability == Capability.EDITS_ALLOWED;
+  }
+
   /**
    * Helper API to remove node from nodeDetailSet
    *

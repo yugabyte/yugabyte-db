@@ -263,6 +263,18 @@ public class UniverseController extends AuthenticatedController {
       // Get the universe. This makes sure that a universe of this name does exist
       // for this customer id.
       Universe universe = Universe.get(universeUUID);
+      if (universe == null) {
+        String errMsg= "Invalid universe UUID: " + universeUUID;
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+
+      if (!universe.getUniverseDetails().isUniverseEditable()) {
+        String errMsg= "Universe UUID " + universeUUID + " cannot be edited.";
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+
       Cluster primaryCluster = taskParams.getPrimaryCluster();
       UUID uuid = null;
       PlacementInfo placementInfo = null;
