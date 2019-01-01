@@ -160,6 +160,13 @@ public class NodeInstanceController extends AuthenticatedController {
 
     try {
       Universe universe = Universe.get(universeUUID);
+
+      if (!universe.getUniverseDetails().isUniverseEditable()) {
+        String errMsg= "Node actions cannot be performed on universe UUID " + universeUUID;
+        LOG.error(errMsg);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+      }
+
       Customer customer =  Customer.get(customerUUID);
       NodeTaskParams taskParams = new NodeTaskParams();
       taskParams.universeUUID = universe.universeUUID;

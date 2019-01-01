@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -26,6 +27,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ImportUniverseFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
@@ -155,6 +157,24 @@ public class ImportControllerTest extends CommissionerBaseTest {
       numNodes++;
     }
     assertEquals(3, numNodes);
+
+    // Edit should fail.
+    bodyJson = Json.newObject();
+    ObjectNode userIntentJson = Json.newObject()
+      .put("universeName", universe.name)
+      .put("numNodes", 5)
+      .put("replicationFactor", 3);
+    bodyJson.set("clusters", Json.newArray().add(Json.newObject().set("userIntent", userIntentJson)));
+    url = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
+    result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
+    assertBadRequest(result, "cannot be edited");
+
+    // Node ops should fail.
+    url = "/api/customers/" + customer.uuid + "/universes/" + univUUID + "/nodes/" +
+          nodeDetailsMap.elements().next().get("nodeName").asText();
+    bodyJson.put("nodeAction", NodeActionType.REMOVE.name());
+    result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
+    assertBadRequest(result, "Node actions cannot be performed on universe");
   }
 
   @Test
@@ -200,5 +220,6 @@ public class ImportControllerTest extends CommissionerBaseTest {
     Universe universe = Universe.get(UUID.fromString(univUUID));
     assertEquals(universe.getUniverseDetails().importedState, ImportedState.STARTED);
     assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
+    assertFalse(universe.getUniverseDetails().isUniverseEditable());
   }
 }
