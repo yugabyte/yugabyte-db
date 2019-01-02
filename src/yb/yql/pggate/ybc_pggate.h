@@ -127,6 +127,13 @@ YBCStatus YBCPgNewDropTable(YBCPgSession pg_session,
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
 
+YBCStatus YBCPgNewTruncateTable(YBCPgSession pg_session,
+                                YBCPgOid database_oid,
+                                YBCPgOid table_oid,
+                                YBCPgStatement *handle);
+
+YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle);
+
 YBCStatus YBCPgGetTableDesc(YBCPgSession pg_session,
                             YBCPgOid database_oid,
                             YBCPgOid table_oid,

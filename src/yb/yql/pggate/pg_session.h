@@ -79,6 +79,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // API for table operations.
   client::YBTableCreator *NewTableCreator();
   CHECKED_STATUS DropTable(const PgObjectId& table_id);
+  CHECKED_STATUS TruncateTable(const PgObjectId& table_id);
   Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
 
   // Apply the given operation to read and write database content.

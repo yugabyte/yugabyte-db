@@ -227,5 +227,18 @@ Status PgDropTable::Exec() {
   return s;
 }
 
+PgTruncateTable::PgTruncateTable(PgSession::ScopedRefPtr pg_session,
+                                 const PgObjectId& table_id)
+    : PgDdl(pg_session, StmtOp::STMT_TRUNCATE_TABLE),
+      table_id_(table_id) {
+}
+
+PgTruncateTable::~PgTruncateTable() {
+}
+
+Status PgTruncateTable::Exec() {
+  return pg_session_->TruncateTable(table_id_);
+}
+
 }  // namespace pggate
 }  // namespace yb

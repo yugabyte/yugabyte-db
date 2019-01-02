@@ -238,10 +238,20 @@ YBCDropTable(Oid relationId)
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewDropTable(ybc_pg_session,
-									 MyDatabaseId,
-									 relationId,
+																	 MyDatabaseId,
+																	 relationId,
 	                                 false,    /* if_exists */
 	                                 &handle));
 	HandleYBStmtStatus(YBCPgExecDropTable(handle), handle);
+	HandleYBStatus(YBCPgDeleteStatement(handle));
+}
+
+void
+YBCTruncateTable(Relation rel) {
+	YBCPgStatement handle;
+	Oid relationId = RelationGetRelid(rel);
+
+	HandleYBStatus(YBCPgNewTruncateTable(ybc_pg_session, MyDatabaseId, relationId, &handle));
+	HandleYBStmtStatus(YBCPgExecTruncateTable(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 }

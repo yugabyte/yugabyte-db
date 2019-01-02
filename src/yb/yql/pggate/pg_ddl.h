@@ -200,6 +200,26 @@ class PgDropTable : public PgDdl {
   bool if_exist_;
 };
 
+class PgTruncateTable : public PgDdl {
+ public:
+  // Public types.
+  typedef scoped_refptr<PgTruncateTable> ScopedRefPtr;
+  typedef scoped_refptr<const PgTruncateTable> ScopedRefPtrConst;
+
+  typedef std::unique_ptr<PgTruncateTable> UniPtr;
+  typedef std::unique_ptr<const PgTruncateTable> UniPtrConst;
+
+  // Constructors.
+  PgTruncateTable(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
+  virtual ~PgTruncateTable();
+
+  // Execute.
+  CHECKED_STATUS Exec();
+
+ private:
+  const PgObjectId table_id_;
+};
+
 }  // namespace pggate
 }  // namespace yb
 

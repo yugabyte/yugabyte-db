@@ -227,6 +227,18 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
   return ToYBCStatus(pgapi->GetColumnInfo(table_desc, attr_number, is_primary, is_hash));
 }
 
+YBCStatus YBCPgNewTruncateTable(YBCPgSession pg_session,
+                                const YBCPgOid database_oid,
+                                const YBCPgOid table_oid,
+                                YBCPgStatement *handle) {
+  const PgObjectId table_id(database_oid, table_oid);
+  return ToYBCStatus(pgapi->NewTruncateTable(pg_session, table_id, handle));
+}
+
+YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecTruncateTable(handle));
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML Statements.
 //--------------------------------------------------------------------------------------------------
