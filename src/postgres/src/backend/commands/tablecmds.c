@@ -1437,8 +1437,18 @@ ExecuteTruncate(TruncateStmt *stmt)
 		 * truncate it in-place, because a rollback would cause the whole
 		 * table or the current physical file to be thrown away anyway.
 		 */
-		if (rel->rd_createSubid == mySubid ||
-			rel->rd_newRelfilenodeSubid == mySubid)
+		if (IsYugaByteEnabled())
+		{
+			if (!IsYBRelation(rel)) {
+				ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_OBJECT),
+								 errmsg("This relational object does not exist in YugaByte database")));
+			}
+			// Call YugaByte API to truncate tables.
+			YBCTruncateTable(rel);
+		}
+		else if (rel->rd_createSubid == mySubid ||
+						 rel->rd_newRelfilenodeSubid == mySubid)
 		{
 			/* Immediate, non-rollbackable truncation is OK */
 			heap_truncate_one_rel(rel);

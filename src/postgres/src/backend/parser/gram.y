@@ -827,6 +827,7 @@ stmt :
 			| CreateUserStmt
 			| CreatedbStmt
 			| DeleteStmt
+			| DropStmt
 			| ExecuteStmt
 			| ExplainStmt
 			| GrantStmt
@@ -840,6 +841,7 @@ stmt :
 			| VariableShowStmt
 			| AlterDatabaseStmt
 			| AlterDatabaseSetStmt
+			| TruncateStmt
 			| UpdateStmt
 			| VariableResetStmt
 
@@ -920,7 +922,6 @@ stmt :
 			| DropOpFamilyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropOwnedStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropPLangStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DropStmt
 			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropTableSpaceStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -944,7 +945,6 @@ stmt :
 			| RevokeRoleStmt { parser_ybc_not_support(@1, "This statement"); }
 			| RuleStmt { parser_ybc_not_support(@1, "This statement"); }
 			| SecLabelStmt { parser_ybc_not_support(@1, "This statement"); }
-			| TruncateStmt { parser_ybc_not_support(@1, "This statement"); }
 			| UnlistenStmt { parser_ybc_not_support(@1, "This statement"); }
 			| VacuumStmt { parser_ybc_not_support(@1, "This statement"); }
 		;
@@ -2645,7 +2645,7 @@ alter_column_default:
 		;
 
 opt_drop_behavior:
-			CASCADE						{ $$ = DROP_CASCADE; }
+			CASCADE						{ $$ = DROP_CASCADE; parser_ybc_not_support(@1, "CASCADE"); }
 			| RESTRICT					{ $$ = DROP_RESTRICT; }
 			| /* EMPTY */				{ $$ = DROP_RESTRICT; /* default */ }
 		;
@@ -6601,7 +6601,6 @@ type_name_list:
 TruncateStmt:
 			TRUNCATE opt_table relation_expr_list opt_restart_seqs opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "TRUNCATE");
 					TruncateStmt *n = makeNode(TruncateStmt);
 					n->relations = $3;
 					n->restart_seqs = $4;
@@ -6611,8 +6610,8 @@ TruncateStmt:
 		;
 
 opt_restart_seqs:
-			CONTINUE_P IDENTITY_P		{ $$ = false; }
-			| RESTART IDENTITY_P		{ $$ = true; }
+			CONTINUE_P IDENTITY_P		{ $$ = false; parser_ybc_not_support(@1, "sequences"); }
+			| RESTART IDENTITY_P		{ $$ = true; parser_ybc_not_support(@1, "sequences"); }
 			| /* EMPTY */				{ $$ = false; }
 		;
 

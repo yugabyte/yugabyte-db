@@ -160,6 +160,12 @@ class PgApiImpl {
 
   CHECKED_STATUS ExecDropTable(PgStatement *handle);
 
+  CHECKED_STATUS NewTruncateTable(PgSession *pg_session,
+                                  const PgObjectId& table_id,
+                                  PgStatement **handle);
+
+  CHECKED_STATUS ExecTruncateTable(PgStatement *handle);
+
   CHECKED_STATUS GetTableDesc(PgSession *pg_session,
                               const PgObjectId& table_id,
                               PgTableDesc **handle);
