@@ -291,6 +291,22 @@ Status PgApiImpl::ExecDropTable(PgStatement *handle) {
   return down_cast<PgDropTable*>(handle)->Exec();
 }
 
+Status PgApiImpl::NewTruncateTable(PgSession *pg_session,
+                                   const PgObjectId& table_id,
+                                   PgStatement **handle) {
+  auto stmt = make_scoped_refptr<PgTruncateTable>(pg_session, table_id);
+  *handle = stmt.detach();
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecTruncateTable(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_TRUNCATE_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  return down_cast<PgTruncateTable*>(handle)->Exec();
+}
+
 Status PgApiImpl::GetTableDesc(PgSession *pg_session,
                                const PgObjectId& table_id,
                                PgTableDesc **handle) {

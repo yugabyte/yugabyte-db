@@ -46,4 +46,6 @@ extern void YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid r
 
 extern void YBCDropTable(Oid relationId);
 
+extern void YBCTruncateTable(Relation	rel);
+
 #endif

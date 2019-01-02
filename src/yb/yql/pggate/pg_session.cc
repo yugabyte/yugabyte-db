@@ -111,6 +111,10 @@ Status PgSession::DropTable(const PgObjectId& table_id) {
   return client_->DeleteTable(table_id.GetYBTableId());
 }
 
+Status PgSession::TruncateTable(const PgObjectId& table_id) {
+  return client_->TruncateTable(table_id.GetYBTableId());
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_id) {
