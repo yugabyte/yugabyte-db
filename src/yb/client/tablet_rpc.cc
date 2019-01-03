@@ -25,7 +25,7 @@
 
 DEFINE_test_flag(bool, assert_local_op, false,
                  "When set, we crash if we received an operation that cannot be served locally.");
-DEFINE_int32(force_lookup_cache_refresh_secs, 60, "When non-zero, specifies how often we send a "
+DEFINE_int32(force_lookup_cache_refresh_secs, 0, "When non-zero, specifies how often we send a "
              "GetTabletLocations request to the master leader to update the tablet replicas cache. "
              "This request is only sent if we are processing a ConsistentPrefix read.");
 
