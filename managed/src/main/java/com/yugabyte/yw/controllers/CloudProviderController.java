@@ -42,6 +42,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import javax.persistence.PersistenceException;
 
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
@@ -180,7 +181,11 @@ public class CloudProviderController extends AuthenticatedController {
             break;
           case "kubernetes":
             updateKubeConfig(provider, config);
-            createKubernetesInstanceTypes(provider);
+            try {
+              createKubernetesInstanceTypes(provider);
+            } catch (javax.persistence.PersistenceException ex) {
+              // TODO: make instance types more multi-tenant friendly...
+            }
             kubernetesProvision(provider, customerUUID);
             break;
         }
