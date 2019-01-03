@@ -35,7 +35,7 @@ struct LockedBatchEntry;
 
 struct LockBatchEntry {
   RefCntPrefix key;
-  IntentType intent;
+  IntentTypeSet intent_types;
 
   // Memory is owned by SharedLockManager.
   LockedBatchEntry* locked = nullptr;

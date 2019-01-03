@@ -147,8 +147,8 @@ class KeyBytes {
     AppendUInt32ToKey(~x, &data_);
   }
 
-  void AppendIntentType(IntentType intent_type) {
-    data_.push_back(static_cast<char>(intent_type));
+  void AppendIntentTypeSet(IntentTypeSet intent_type_set) {
+    data_.push_back(static_cast<char>(intent_type_set.ToUIntPtr()));
   }
 
   void AppendDescendingInt64(int64_t x) {
@@ -284,7 +284,6 @@ class KeyBytes {
   std::string data_;
 };
 
-void AppendIntentType(IntentType intent_type, KeyBytes* key);
 void AppendDocHybridTime(const DocHybridTime& time, KeyBytes* key);
 
 }  // namespace docdb

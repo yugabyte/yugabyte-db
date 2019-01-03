@@ -161,16 +161,11 @@ using yb::tserver::WriteRequestPB;
 using yb::tserver::WriteResponsePB;
 using yb::docdb::KeyValueWriteBatchPB;
 using yb::tserver::ReadRequestPB;
-using yb::docdb::ValueType;
-using yb::docdb::KeyBytes;
 using yb::docdb::DocOperation;
 using yb::docdb::RedisWriteOperation;
 using yb::docdb::QLWriteOperation;
 using yb::docdb::PgsqlWriteOperation;
 using yb::docdb::DocDBCompactionFilterFactory;
-using yb::docdb::IntentKind;
-using yb::docdb::IntentTypePair;
-using yb::docdb::LockBatchEntries;
 using yb::docdb::InitMarkerBehavior;
 
 namespace yb {
@@ -1595,9 +1590,12 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
   auto write_batch = operation->request()->mutable_write_batch();
   auto isolation_level = VERIFY_RESULT(GetIsolationLevel(
       *write_batch, transaction_participant_.get()));
+  auto operation_kind = write_batch->read() ? docdb::OperationKind::kRead
+                                            : docdb::OperationKind::kWrite;
+
   auto prepare_result = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
       operation->doc_ops(), metrics_->write_lock_latency, isolation_level,
-      docdb::Read(write_batch->read()), &shared_lock_manager_));
+      operation_kind, &shared_lock_manager_));
 
   RequestScope request_scope;
   if (transaction_participant_) {

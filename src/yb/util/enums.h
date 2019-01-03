@@ -14,6 +14,7 @@
 #ifndef YB_UTIL_ENUMS_H_
 #define YB_UTIL_ENUMS_H_
 
+#include <bitset>
 #include <string>
 
 #include <boost/preprocessor/cat.hpp>
@@ -115,6 +116,13 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
       BOOST_PP_CAT(k, BOOST_PP_CAT(enum_name, List)) = {\
           BOOST_PP_SEQ_FOR_EACH(YB_ENUM_LIST_ITEM, (enum_name, prefix), list) \
   };\
+  /* Functions returning kEnumMapSize and kEnumList that could be used in templates. */ \
+  constexpr __attribute__((unused)) size_t MapSize(enum_name*) { \
+    return BOOST_PP_CAT(k, BOOST_PP_CAT(enum_name, MapSize)); \
+  } \
+  constexpr __attribute__((unused)) auto List(enum_name*) { \
+    return BOOST_PP_CAT(k, BOOST_PP_CAT(enum_name, List)); \
+  } \
   /**/
 
 // Please see the usage of YB_DEFINE_ENUM before the auxiliary macros above.
@@ -176,6 +184,122 @@ struct EnumHash {
   template <class T>
   size_t operator()(T t) const {
     return to_underlying(t);
+  }
+};
+
+template <class Enum>
+class EnumBitSetIterator {
+ public:
+  typedef typename decltype(List(static_cast<Enum*>(nullptr)))::const_iterator ImplIterator;
+  typedef std::bitset<MapSize(static_cast<Enum*>(nullptr))> BitSet;
+
+  EnumBitSetIterator(ImplIterator iter, const BitSet* set) : iter_(iter), set_(set) {
+    FindSetBit();
+  }
+
+  Enum operator*() const {
+    return *iter_;
+  }
+
+  EnumBitSetIterator& operator++() {
+    ++iter_;
+    FindSetBit();
+    return *this;
+  }
+
+  EnumBitSetIterator operator++(int) {
+    EnumBitSetIterator result(*this);
+    ++(*this);
+    return result;
+  }
+
+ private:
+  void FindSetBit() {
+    while (iter_ != List(static_cast<Enum*>(nullptr)).end() && !set_->test(to_underlying(*iter_))) {
+      ++iter_;
+    }
+  }
+
+  friend bool operator!=(const EnumBitSetIterator<Enum>& lhs, const EnumBitSetIterator<Enum>& rhs) {
+    return lhs.iter_ != rhs.iter_;
+  }
+
+  ImplIterator iter_;
+  const BitSet* set_;
+};
+
+// EnumBitSet wraps std::bitset for enum type, to avoid casting to/from underlying type for each
+// operation. Also adds type safety.
+template <class Enum>
+class EnumBitSet {
+ public:
+  typedef EnumBitSetIterator<Enum> const_iterator;
+
+  EnumBitSet() = default;
+  explicit EnumBitSet(uint64_t value) : impl_(value) {}
+
+  explicit EnumBitSet(const std::initializer_list<Enum>& inp) {
+    for (auto i : inp) {
+      impl_.set(to_underlying(i));
+    }
+  }
+
+  bool Test(Enum value) const {
+    return impl_.test(to_underlying(value));
+  }
+
+  uintptr_t ToUIntPtr() const {
+    return impl_.to_ulong();
+  }
+
+  bool None() const {
+    return impl_.none();
+  }
+
+  bool Any() const {
+    return impl_.any();
+  }
+
+  bool All() const {
+    return impl_.all();
+  }
+
+  EnumBitSet& Set(Enum value) {
+    impl_.set(to_underlying(value));
+    return *this;
+  }
+
+  const_iterator begin() const {
+    return const_iterator(List(static_cast<Enum*>(nullptr)).begin(), &impl_);
+  }
+
+  const_iterator end() const {
+    return const_iterator(List(static_cast<Enum*>(nullptr)).end(), &impl_);
+  }
+
+  EnumBitSet<Enum>& operator|=(const EnumBitSet& rhs) {
+    impl_ |= rhs.impl_;
+    return *this;
+  }
+
+  EnumBitSet<Enum>& operator&=(const EnumBitSet& rhs) {
+    impl_ &= rhs.impl_;
+    return *this;
+  }
+
+ private:
+  std::bitset<MapSize(static_cast<Enum*>(nullptr))> impl_;
+
+  friend EnumBitSet<Enum> operator&(const EnumBitSet& lhs, const EnumBitSet& rhs) {
+    EnumBitSet<Enum> result;
+    result.impl_ = lhs.impl_ & rhs.impl_;
+    return result;
+  }
+
+  friend EnumBitSet<Enum> operator|(const EnumBitSet& lhs, const EnumBitSet& rhs) {
+    EnumBitSet<Enum> result;
+    result.impl_ = lhs.impl_ | rhs.impl_;
+    return result;
   }
 };
 
