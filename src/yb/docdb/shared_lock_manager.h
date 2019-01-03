@@ -47,11 +47,7 @@ class SharedLockManager {
   // Release the batch of locks. Requires that the locks are held.
   void Unlock(const LockBatchEntries& key_to_intent_type);
 
-  // Combine two intents and return the strongest lock type that covers both.
-  static IntentType CombineIntents(IntentType i1, IntentType i2);
-
   // Whether or not the state is possible
-  static bool IsStatePossible(const LockState& state);
   static std::string ToString(const LockState& state);
 
  private:
@@ -59,10 +55,13 @@ class SharedLockManager {
   std::unique_ptr<Impl> impl_;
 };
 
-// Masks of intent types. I.e. bits that related to this intent type is filled with 1, others are 0.
-extern const std::array<LockState, kIntentTypeMapSize> kIntentMask;
-// Conflicts of intent types. I.e. combination of masks of intent types that conflict with it.
-extern const std::array<LockState, kIntentTypeMapSize> kIntentConflicts;
+// Masks of intent type sets.
+// I.e. bits that related to any of intents from this set is filled with 1, others are 0.
+extern const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetMask;
+// Conflicts of intent types. I.e. combination of masks of intent type sets that conflict with it.
+extern const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetConflicts;
+
+bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs);
 
 }  // namespace docdb
 }  // namespace yb

@@ -111,25 +111,38 @@ class ConflictResolver {
   }
 
   // Reads conflicts for specified intent from DB.
-  CHECKED_STATUS ReadIntentConflicts(IntentType type, KeyBytes* intent_key_prefix) {
+  CHECKED_STATUS ReadIntentConflicts(IntentTypeSet type, KeyBytes* intent_key_prefix) {
     EnsureIntentIteratorCreated();
 
-    const auto& conflicting_intent_types = kIntentConflicts[static_cast<size_t>(type)];
+    const auto conflicting_intent_types = kIntentTypeSetConflicts[type.ToUIntPtr()];
 
     KeyBytes upperbound_key(*intent_key_prefix);
     upperbound_key.AppendValueType(ValueType::kMaxByte);
     intent_key_upperbound_ = upperbound_key.AsSlice();
 
-    intent_key_prefix->AppendValueType(ValueType::kIntentType);
+    intent_key_prefix->AppendValueType(ValueType::kIntentTypeSet);
     BOOST_SCOPE_EXIT(intent_key_prefix, &intent_key_upperbound_) {
-      intent_key_prefix->RemoveValueTypeSuffix(ValueType::kIntentType);
+      intent_key_prefix->RemoveValueTypeSuffix(ValueType::kIntentTypeSet);
       intent_key_upperbound_.clear();
     } BOOST_SCOPE_EXIT_END;
+    auto prefix_slice = intent_key_prefix->AsSlice();
+    prefix_slice.remove_suffix(1);
     intent_iter_->Seek(intent_key_prefix->data());
     while (intent_iter_->Valid()) {
       auto existing_key = intent_iter_->key();
       auto existing_value = intent_iter_->value();
-      if (!existing_key.starts_with(intent_key_prefix->data())) {
+      if (!existing_key.starts_with(prefix_slice)) {
+        break;
+      }
+      // Support for obsolete intent type.
+      // When looking for intent with specific prefix it should start with this prefix, followed
+      // by ValueType::kIntentTypeSet.
+      // Previously we were using intent type, so should support its value type also, now it is
+      // kObsoleteIntentType.
+      // Actual handling of obsolete intent type is done in ParseIntentKey.
+      if (existing_key.size() <= prefix_slice.size() ||
+          (existing_key[prefix_slice.size()] != ValueTypeAsChar::kIntentTypeSet &&
+           existing_key[prefix_slice.size()] != ValueTypeAsChar::kObsoleteIntentType)) {
         break;
       }
       if (existing_value.empty() || existing_value[0] != ValueTypeAsChar::kTransactionId) {
@@ -142,7 +155,7 @@ class ConflictResolver {
       auto existing_intent = docdb::ParseIntentKey(intent_iter_->key(), existing_value);
       RETURN_NOT_OK(existing_intent);
 
-      const auto& intent_mask = kIntentMask[static_cast<size_t>(existing_intent->type)];
+      const auto intent_mask = kIntentTypeSetMask[existing_intent->types.ToUIntPtr()];
       if ((conflicting_intent_types & intent_mask) != 0) {
         auto transaction_id = VERIFY_RESULT(FullyDecodeTransactionId(
             Slice(existing_value.data(), TransactionId::static_size())));
@@ -352,7 +365,9 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
       metadata_ = std::move(*stored_metadata);
     }
 
-    intent_types_ = GetIntentTypes(metadata_.isolation, Read(write_batch_.read()));
+    auto operation_kind = write_batch_.read() ? docdb::OperationKind::kRead
+                                              : docdb::OperationKind::kWrite;
+    strong_intent_types_ = GetStrongIntentTypeSet(metadata_.isolation, operation_kind);
 
     return EnumerateIntents(
         write_batch_.kv_pairs(),
@@ -364,7 +379,8 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
   CHECKED_STATUS ProcessIntent(ConflictResolver* resolver,
                                IntentKind kind,
                                KeyBytes* intent_key_prefix) {
-    auto intent_type = intent_types_[kind];
+    auto intent_type = kind == IntentKind::kWeak
+        ? StrongToWeak(strong_intent_types_) : strong_intent_types_;
 
     if (kind == IntentKind::kStrong &&
         metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
@@ -438,7 +454,7 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
   HybridTime hybrid_time_;
   Result<TransactionId> transaction_id_;
   TransactionMetadata metadata_;
-  IntentTypePair intent_types_;
+  IntentTypeSet strong_intent_types_;
   Status result_ = Status::OK();
   bool fetched_metadata_for_transactions_ = false;
   Counter* conflicts_metric_ = nullptr;
@@ -464,7 +480,7 @@ class OperationConflictResolverContext : public ConflictResolverContext {
       IsolationLevel isolation;
       doc_op->GetDocPathsToLock(&doc_paths, &isolation);
 
-      const IntentTypePair intent_types = GetIntentTypes(isolation, Read::kFalse);
+      auto strong_intent_types = GetStrongIntentTypeSet(isolation, OperationKind::kWrite);
 
       for (const auto& doc_path : doc_paths) {
         key_prefix_lengths.clear();
@@ -476,7 +492,8 @@ class OperationConflictResolverContext : public ConflictResolverContext {
               *it - current_intent_prefix.size());
           ++it;
           RETURN_NOT_OK(resolver->ReadIntentConflicts(
-              it == end ? intent_types.strong : intent_types.weak, &current_intent_prefix));
+              it == end ? strong_intent_types : StrongToWeak(strong_intent_types),
+              &current_intent_prefix));
         }
       }
     }
@@ -550,9 +567,13 @@ Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_sourc
   INTENT_KEY_SCHECK(result.doc_path.size(), GE, doc_ht_size + 3, "key too short");
   result.doc_path.remove_suffix(doc_ht_size + 3);
   auto intent_type_and_doc_ht = result.doc_path.end();
-  INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, ValueTypeAsChar::kIntentType,
-                    "intent type value type expected");
-  result.type = static_cast<IntentType>(intent_type_and_doc_ht[1]);
+  if (intent_type_and_doc_ht[0] != ValueTypeAsChar::kObsoleteIntentType) {
+    INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, ValueTypeAsChar::kIntentTypeSet,
+        "intent type set type expected");
+    result.types = IntentTypeSet(intent_type_and_doc_ht[1]);
+  } else {
+    result.types = ObsoleteIntentTypeToSet(intent_type_and_doc_ht[1]);
+  }
   INTENT_KEY_SCHECK(intent_type_and_doc_ht[2], EQ, ValueTypeAsChar::kHybridTime,
                     "hybrid time value type expected");
   result.doc_ht = Slice(result.doc_path.end() + 2, doc_ht_size + 1);
@@ -574,7 +595,7 @@ std::string DebugIntentKeyToString(Slice intent_key) {
   return Format("$0 (key: $1 type: $2 doc_ht: $3 )",
                 intent_key.ToDebugHexString(),
                 SubDocKey::DebugSliceToString(parsed->doc_path),
-                ToString(parsed->type),
+                parsed->types,
                 doc_ht.ToString());
 }
 

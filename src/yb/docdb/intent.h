@@ -20,12 +20,16 @@
 namespace yb {
 namespace docdb {
 
-// Decodes intent RocksDB key. intent_prefix should point to slice to hold intent prefix
-// (SubDocKey (no HT)).
-// intent_type and doc_ht are optional parameters (could be nullptr) to store decoded
-// intent type and intent doc hybrid time.
-CHECKED_STATUS DecodeIntentKey(const Slice &encoded_intent_key, Slice* intent_prefix,
-                               IntentType* intent_type, DocHybridTime* doc_ht);
+// DecodeIntentKey result.
+// intent_prefix - intent prefix (SubDocKey (no HT)).
+struct DecodedIntentKey {
+  Slice intent_prefix;
+  IntentTypeSet intent_types;
+  DocHybridTime doc_ht;
+};
+
+// Decodes intent RocksDB key.
+Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key);
 
 CHECKED_STATUS DecodeIntentValue(
     const Slice& encoded_intent_value, const Slice& transaction_id_slice, IntraTxnWriteId* write_id,
@@ -45,24 +49,25 @@ enum class IntentKind {
   kStrong
 };
 
-struct IntentTypePair {
-  docdb::IntentType strong;
-  docdb::IntentType weak;
+YB_DEFINE_ENUM(OperationKind, (kRead)(kWrite));
 
-  docdb::IntentType operator[](IntentKind kind) {
-    return kind == IntentKind::kWeak ? weak : strong;
-  }
-};
+IntentTypeSet GetStrongIntentTypeSet(IsolationLevel level, OperationKind operation_kind);
 
-YB_STRONGLY_TYPED_BOOL(Read);
-
-IntentTypePair GetIntentTypes(IsolationLevel level, Read read);
-
-inline void AppendIntentKeySuffix(
-    docdb::IntentType intent_type, const DocHybridTime& doc_ht, KeyBytes* key) {
-  AppendIntentType(intent_type, key);
-  AppendDocHybridTime(doc_ht, key);
+inline IntentTypeSet StrongToWeak(IntentTypeSet inp) {
+  IntentTypeSet result(inp.ToUIntPtr() >> kStrongIntentFlag);
+  DCHECK((inp & result).None());
+  return result;
 }
+
+inline IntentTypeSet WeakToStrong(IntentTypeSet inp) {
+  IntentTypeSet result(inp.ToUIntPtr() << kStrongIntentFlag);
+  DCHECK((inp & result).None());
+  return result;
+}
+
+bool HasStrong(IntentTypeSet inp);
+
+IntentTypeSet ObsoleteIntentTypeToSet(uint8_t obsolete_intent_type);
 
 }  // namespace docdb
 }  // namespace yb

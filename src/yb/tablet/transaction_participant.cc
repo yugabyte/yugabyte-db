@@ -1080,18 +1080,17 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     key.Truncate(key.size() - 1);
     IntraTxnWriteId next_write_id = 0;
     while (iter->Valid() && iter->key().starts_with(key)) {
-      Slice intent_prefix;
-      docdb::IntentType intent_type;
-      DocHybridTime doc_ht;
-      auto status = docdb::DecodeIntentKey(iter->value(), &intent_prefix, &intent_type, &doc_ht);
-      LOG_IF_WITH_PREFIX(DFATAL, !status.ok()) << "Failed to decode intent: " << status;
-      if (status.ok() && docdb::IsStrongIntent(intent_type)) {
+      auto decoded_key = docdb::DecodeIntentKey(iter->value());
+      LOG_IF_WITH_PREFIX(DFATAL, !decoded_key.ok())
+          << "Failed to decode intent " << iter->value().ToDebugHexString() << ": "
+          << decoded_key.status();
+      if (decoded_key.ok() && docdb::HasStrong(decoded_key->intent_types)) {
         iter->Seek(iter->value());
         if (iter->Valid()) {
           VLOG_WITH_PREFIX(1)
               << "Found latest record: " << docdb::SubDocKey::DebugSliceToString(iter->key())
               << " => " << iter->value().ToDebugHexString();
-          status = docdb::DecodeIntentValue(
+          auto status = docdb::DecodeIntentValue(
               iter->value(), Slice(id.data, id.size()), &next_write_id, nullptr /* body */);
           LOG_IF_WITH_PREFIX(DFATAL, !status.ok()) << "Failed to decode intent value: " << status;
           ++next_write_id;

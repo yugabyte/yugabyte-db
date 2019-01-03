@@ -72,7 +72,7 @@ Result<HybridTime> ResolveOperationConflicts(const DocOperations& doc_ops,
 struct ParsedIntent {
   // Intent DocPath.
   Slice doc_path;
-  IntentType type;
+  IntentTypeSet types;
   // Intent doc hybrid time.
   Slice doc_ht;
 };

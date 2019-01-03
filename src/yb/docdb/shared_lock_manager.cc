@@ -38,82 +38,67 @@ namespace {
 
 // We have 128 bits in LockState and 6 types of intents. So 21 bits is max number of bits
 // that we could reserve for block of single intent type.
-const size_t kIntentTypeBits = 21;
+const size_t kIntentTypeBits = 16;
 const LockState kSingleIntentMask = (static_cast<LockState>(1) << kIntentTypeBits) - 1;
 
-// Since we have 6 types of intents that takes values from 0 to 7 we cannot just shift
-// by kIntentTypeBits * intent_type. So we use this mapping.
-// Also we have two 8-byte words in LockState, so align blocks for intent types so they don't wrap
-// across those words.
-std::array<int, kIntentTypeMapSize> kIntentTypeShift = {
-    0, kIntentTypeBits, kIntentTypeBits * 2, 64,
-    -1 /* not used */, -1 /* not used */, 64 + kIntentTypeBits, 64 + kIntentTypeBits * 2};
-
-LockState CombineToLockState(std::initializer_list<IntentType> lock_types) {
-  LockState state = 0;
-  for (auto type : lock_types) {
-    int shift = kIntentTypeShift[static_cast<size_t>(type)];
-    DCHECK_GE(shift, 0) << "Bad shift for " << ToString(type);
-    state |= kSingleIntentMask << shift;
-  }
-  return state;
+bool IntentTypesConflict(IntentType lhs, IntentType rhs) {
+  auto lhs_value = to_underlying(lhs);
+  auto rhs_value = to_underlying(rhs);
+  // The rules are the following:
+  // 1) At least one intent should be strong for conflict.
+  // 2) Read and write conflict only with opposite type.
+  return ((lhs_value & kStrongIntentFlag) || (rhs_value & kStrongIntentFlag)) &&
+         ((lhs_value & kWriteIntentFlag) != (rhs_value & kWriteIntentFlag));
 }
 
-std::array<LockState, kIntentTypeMapSize> MakeConflicts() {
-  std::array<LockState, kIntentTypeMapSize> result;
-  memset(&result, 0, sizeof(result));
-  result[static_cast<size_t>(IntentType::kWeakSerializableRead)] = CombineToLockState({
-      IntentType::kStrongSerializableWrite,
-      IntentType::kStrongSnapshotWrite
-  });
-  result[static_cast<size_t>(IntentType::kStrongSerializableRead)] = CombineToLockState({
-      IntentType::kWeakSerializableWrite,
-      IntentType::kStrongSerializableWrite,
-      IntentType::kWeakSnapshotWrite,
-      IntentType::kStrongSnapshotWrite
-  });
-  result[static_cast<size_t>(IntentType::kWeakSerializableWrite)] = CombineToLockState({
-      IntentType::kStrongSerializableRead,
-      IntentType::kStrongSnapshotWrite
-  });
-  result[static_cast<size_t>(IntentType::kStrongSerializableWrite)] = CombineToLockState({
-      IntentType::kWeakSerializableRead,
-      IntentType::kStrongSerializableRead,
-      IntentType::kWeakSnapshotWrite,
-      IntentType::kStrongSnapshotWrite
-  });
-  result[static_cast<size_t>(IntentType::kWeakSnapshotWrite)] = CombineToLockState({
-      IntentType::kStrongSerializableRead,
-      IntentType::kStrongSerializableWrite,
-      IntentType::kStrongSnapshotWrite
-  });
-  result[static_cast<size_t>(IntentType::kStrongSnapshotWrite)] = CombineToLockState({
-      IntentType::kWeakSerializableRead,
-      IntentType::kStrongSerializableRead,
-      IntentType::kWeakSerializableWrite,
-      IntentType::kStrongSerializableWrite,
-      IntentType::kWeakSnapshotWrite,
-      IntentType::kStrongSnapshotWrite
-  });
-
-  return result;
+LockState IntentTypeMask(IntentType intent_type) {
+  return kSingleIntentMask << (to_underlying(intent_type) * kIntentTypeBits);
 }
 
-std::array<LockState, kIntentTypeMapSize> MakeMasks() {
-  std::array<LockState, kIntentTypeMapSize> result;
-  for (IntentType intent_type : kIntentTypeList) {
-    result[static_cast<size_t>(intent_type)] = CombineToLockState({intent_type});
+// Generate conflict mask for all possible subsets of intent type set.
+std::array<LockState, kIntentTypeSetMapSize> GenerateConflicts() {
+  std::array<LockState, kIntentTypeSetMapSize> result;
+  for (size_t idx = 0; idx != kIntentTypeSetMapSize; ++idx) {
+    result[idx] = 0;
+    for (auto intent_type : IntentTypeSet(idx)) {
+      for (auto other_intent_type : kIntentTypeList) {
+        if (IntentTypesConflict(intent_type, other_intent_type)) {
+          result[idx] |= IntentTypeMask(other_intent_type);
+        }
+      }
+    }
   }
   return result;
 }
 
-const auto kLockStateEmpty = CombineToLockState({});
-const auto kLockStateAllButWeakSerializableRead =
-    ~CombineToLockState({IntentType::kWeakSerializableRead});
-const auto kLockStateAllButWeakSerializableWrite =
-    ~CombineToLockState({IntentType::kWeakSerializableWrite});
+// Generate array for all possible subsets of intent type set.
+// The entry is combination of single_intent_mask for intents from set.
+std::array<LockState, kIntentTypeSetMapSize> GenerateByMask(LockState single_intent_mask) {
+  DCHECK_EQ(single_intent_mask & kSingleIntentMask, single_intent_mask);
+  std::array<LockState, kIntentTypeSetMapSize> result;
+  for (size_t idx = 0; idx != kIntentTypeSetMapSize; ++idx) {
+    result[idx] = 0;
+    for (auto intent_type : IntentTypeSet(idx)) {
+      result[idx] |= single_intent_mask << (to_underlying(intent_type) * kIntentTypeBits);
+    }
+  }
+  return result;
+}
+
+const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetAdd = GenerateByMask(1);
 
 } // namespace
+
+bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs) {
+  for (auto intent1 : lhs) {
+    for (auto intent2 : rhs) {
+      if (IntentTypesConflict(intent1, intent2)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 struct LockedBatchEntry {
   // Taken only for short duration, with no blocking wait.
@@ -130,9 +115,9 @@ struct LockedBatchEntry {
 
   std::atomic<size_t> num_waiters{0};
 
-  void Lock(IntentType lock_type);
+  void Lock(IntentTypeSet lock);
 
-  void Unlock(IntentType lock_type);
+  void Unlock(IntentTypeSet lock);
 };
 
 class SharedLockManager::Impl {
@@ -160,31 +145,16 @@ class SharedLockManager::Impl {
   std::vector<LockedBatchEntry*> free_lock_entries_ GUARDED_BY(global_mutex_);
 };
 
-// The conflict matrix. (CONFLICTS[i] & (1 << j)) is one iff LockTypes i and j conflict.
-// https://docs.google.com/document/d/1MLpW-9Hjx64U6mNQzVY9w5zUliJ9TYJ7772oAp7jwaA
-// https://docs.google.com/spreadsheets/d/1h8GosY5XnJvrsyjEqyuXdKYlwvfKIaqx_RyDQGd7rSc
-const std::array<LockState, kIntentTypeMapSize> kIntentConflicts = MakeConflicts();
-const std::array<LockState, kIntentTypeMapSize> kIntentMask = MakeMasks();
+const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetMask = GenerateByMask(
+    kSingleIntentMask);
 
-bool SharedLockManager::IsStatePossible(const LockState& state) {
-  LockState not_allowed = 0;
-  for (auto intent : kIntentTypeList) {
-    size_t i = static_cast<size_t>(intent);
-    if (state & kIntentMask[i]) {
-      if ((not_allowed & kIntentMask[i]) != 0) {
-        return false;
-      }
-      not_allowed |= kIntentConflicts[i];
-    }
-  }
-  return true;
-}
+const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetConflicts = GenerateConflicts();
 
 std::string SharedLockManager::ToString(const LockState& state) {
   std::string result = "{";
   bool first = true;
   for (auto type : kIntentTypeList) {
-    if ((state & kIntentMask[static_cast<size_t>(type)]) != 0) {
+    if ((state & IntentTypeMask(type)) != 0) {
       if (first) {
         first = false;
       } else {
@@ -197,90 +167,13 @@ std::string SharedLockManager::ToString(const LockState& state) {
   return result;
 }
 
-// Combine two intents and return the strongest lock type that covers both. The following rules
-// apply:
-// - strong > weak.
-// - snapshot isolation > serializable write
-// - snapshot isolation > serializable read
-// - serializable read + serializable write = snapshot isolation
-IntentType SharedLockManager::CombineIntents(const IntentType i1, const IntentType i2) {
-  switch (i1) {
-    case IntentType::kWeakSerializableRead:
-      switch (i2) {
-        case IntentType::kWeakSerializableRead:    return IntentType::kWeakSerializableRead;
-        case IntentType::kStrongSerializableRead:  return IntentType::kStrongSerializableRead;
-        case IntentType::kWeakSerializableWrite:   return IntentType::kWeakSnapshotWrite;
-        case IntentType::kStrongSerializableWrite: return IntentType::kStrongSnapshotWrite;
-        case IntentType::kWeakSnapshotWrite:       return IntentType::kWeakSnapshotWrite;
-        case IntentType::kStrongSnapshotWrite:     return IntentType::kStrongSnapshotWrite;
-      }
-      FATAL_INVALID_ENUM_VALUE(IntentType, i2);
-
-    case IntentType::kStrongSerializableRead:
-      switch (i2) {
-        case IntentType::kWeakSerializableRead:    return IntentType::kStrongSerializableRead;
-        case IntentType::kStrongSerializableRead:  return IntentType::kStrongSerializableRead;
-        case IntentType::kWeakSerializableWrite:   return IntentType::kStrongSnapshotWrite;
-        case IntentType::kStrongSerializableWrite: return IntentType::kStrongSnapshotWrite;
-        case IntentType::kWeakSnapshotWrite:       return IntentType::kStrongSnapshotWrite;
-        case IntentType::kStrongSnapshotWrite:     return IntentType::kStrongSnapshotWrite;
-      }
-      FATAL_INVALID_ENUM_VALUE(IntentType, i2);
-
-    case IntentType::kWeakSerializableWrite:
-      switch (i2) {
-        case IntentType::kWeakSerializableRead:    return IntentType::kWeakSnapshotWrite;
-        case IntentType::kStrongSerializableRead:  return IntentType::kStrongSnapshotWrite;
-        case IntentType::kWeakSerializableWrite:   return IntentType::kWeakSerializableWrite;
-        case IntentType::kStrongSerializableWrite: return IntentType::kStrongSerializableWrite;
-        case IntentType::kWeakSnapshotWrite:       return IntentType::kWeakSnapshotWrite;
-        case IntentType::kStrongSnapshotWrite:     return IntentType::kStrongSnapshotWrite;
-      }
-      FATAL_INVALID_ENUM_VALUE(IntentType, i2);
-
-    case IntentType::kStrongSerializableWrite:
-      switch (i2) {
-        case IntentType::kWeakSerializableRead:    return IntentType::kStrongSnapshotWrite;
-        case IntentType::kStrongSerializableRead:  return IntentType::kStrongSnapshotWrite;
-        case IntentType::kWeakSerializableWrite:   return IntentType::kStrongSerializableWrite;
-        case IntentType::kStrongSerializableWrite: return IntentType::kStrongSerializableWrite;
-        case IntentType::kWeakSnapshotWrite:       return IntentType::kStrongSnapshotWrite;
-        case IntentType::kStrongSnapshotWrite:     return IntentType::kStrongSnapshotWrite;
-      }
-      FATAL_INVALID_ENUM_VALUE(IntentType, i2);
-
-    case IntentType::kWeakSnapshotWrite:
-      switch (i2) {
-        case IntentType::kWeakSerializableRead:    return IntentType::kWeakSnapshotWrite;
-        case IntentType::kStrongSerializableRead:  return IntentType::kStrongSnapshotWrite;
-        case IntentType::kWeakSerializableWrite:   return IntentType::kWeakSnapshotWrite;
-        case IntentType::kStrongSerializableWrite: return IntentType::kStrongSnapshotWrite;
-        case IntentType::kWeakSnapshotWrite:       return IntentType::kWeakSnapshotWrite;
-        case IntentType::kStrongSnapshotWrite:     return IntentType::kStrongSnapshotWrite;
-      }
-      FATAL_INVALID_ENUM_VALUE(IntentType, i2);
-
-    case IntentType::kStrongSnapshotWrite:
-      switch (i2) {
-        case IntentType::kWeakSerializableRead:    return IntentType::kStrongSnapshotWrite;
-        case IntentType::kStrongSerializableRead:  return IntentType::kStrongSnapshotWrite;
-        case IntentType::kWeakSerializableWrite:   return IntentType::kStrongSnapshotWrite;
-        case IntentType::kStrongSerializableWrite: return IntentType::kStrongSnapshotWrite;
-        case IntentType::kWeakSnapshotWrite:       return IntentType::kStrongSnapshotWrite;
-        case IntentType::kStrongSnapshotWrite:     return IntentType::kStrongSnapshotWrite;
-      }
-      FATAL_INVALID_ENUM_VALUE(IntentType, i2);
-  }
-  FATAL_INVALID_ENUM_VALUE(IntentType, i1);
-}
-
-void LockedBatchEntry::Lock(IntentType lock_type) {
-  size_t type_idx = static_cast<size_t>(lock_type);
+void LockedBatchEntry::Lock(IntentTypeSet lock_type) {
+  size_t type_idx = lock_type.ToUIntPtr();
   auto& num_holding = this->num_holding;
   auto old_value = num_holding.load(std::memory_order_acquire);
-  auto add = static_cast<LockState>(1) << kIntentTypeShift[type_idx];
+  auto add = kIntentTypeSetAdd[type_idx];
   for (;;) {
-    if ((old_value & kIntentConflicts[type_idx]) == 0) {
+    if ((old_value & kIntentTypeSetConflicts[type_idx]) == 0) {
       auto new_value = old_value + add;
       if (num_holding.compare_exchange_weak(old_value, new_value, std::memory_order_acq_rel)) {
         return;
@@ -291,7 +184,7 @@ void LockedBatchEntry::Lock(IntentType lock_type) {
     {
       std::unique_lock<std::mutex> lock(mutex);
       old_value = num_holding.load(std::memory_order_acquire);
-      if ((old_value & kIntentConflicts[type_idx]) != 0) {
+      if ((old_value & kIntentTypeSetConflicts[type_idx]) != 0) {
         cond_var.wait(lock);
       }
     }
@@ -299,9 +192,9 @@ void LockedBatchEntry::Lock(IntentType lock_type) {
   }
 }
 
-void LockedBatchEntry::Unlock(IntentType lock_type) {
-  size_t type_idx = static_cast<size_t>(lock_type);
-  auto sub = static_cast<LockState>(1) << kIntentTypeShift[type_idx];
+void LockedBatchEntry::Unlock(IntentTypeSet lock_types) {
+  size_t type_idx = lock_types.ToUIntPtr();
+  auto sub = kIntentTypeSetAdd[type_idx];
 
   // Have to emulate fetch_sub here, because GCC 5.5 don't have it for int128
   auto old_state = num_holding.load(std::memory_order_acquire);
@@ -317,33 +210,36 @@ void LockedBatchEntry::Unlock(IntentType lock_type) {
     return;
   }
 
-  // If number of holding locks for this type is not 0, then we should not notify.
-  if ((new_state & kIntentMask[type_idx]) != 0) {
+  bool has_zero = false;
+  for (auto intent_type : lock_types) {
+    if (!(new_state & IntentTypeMask(intent_type))) {
+      has_zero = true;
+      break;
+    }
+  }
+
+  // At least one of counters should become 0 to unblock waiting locks.
+  if (!has_zero) {
     return;
   }
 
-  // There are only several combinations of locks that could allow new type of lock.
-  if (new_state == kLockStateEmpty ||
-      (new_state & kLockStateAllButWeakSerializableRead) == 0 ||
-      (new_state & kLockStateAllButWeakSerializableWrite) == 0) {
-    {
-      // Lock/unlock mutex as a barrier for Lock.
-      // So we don't unlock and notify between check and wait in Lock.
-      std::lock_guard<std::mutex> lock(mutex);
-    }
-
-    cond_var.notify_all();
+  {
+    // Lock/unlock mutex as a barrier for Lock.
+    // So we don't unlock and notify between check and wait in Lock.
+    std::lock_guard<std::mutex> lock(mutex);
   }
+
+  cond_var.notify_all();
 }
 
 void SharedLockManager::Impl::Lock(LockBatchEntries* key_to_intent_type) {
   TRACE("Locking a batch of $0 keys", key_to_intent_type->size());
   Reserve(key_to_intent_type);
   for (const auto& key_and_intent_type : *key_to_intent_type) {
-    const auto intent_type = key_and_intent_type.intent;
-    VLOG(4) << "Locking " << docdb::ToString(intent_type) << ": "
+    const auto intent_types = key_and_intent_type.intent_types;
+    VLOG(4) << "Locking " << yb::ToString(intent_types) << ": "
             << key_and_intent_type.key.as_slice().ToDebugHexString();
-    key_and_intent_type.locked->Lock(intent_type);
+    key_and_intent_type.locked->Lock(intent_types);
   }
   TRACE("Acquired a lock batch of $0 keys", key_to_intent_type->size());
 }
@@ -370,7 +266,7 @@ void SharedLockManager::Impl::Unlock(const LockBatchEntries& key_to_intent_type)
   TRACE("Unlocking a batch of $0 keys", key_to_intent_type.size());
 
   for (const auto& key_and_intent_type : boost::adaptors::reverse(key_to_intent_type)) {
-    key_and_intent_type.locked->Unlock(key_and_intent_type.intent);
+    key_and_intent_type.locked->Unlock(key_and_intent_type.intent_types);
   }
 
   Cleanup(key_to_intent_type);

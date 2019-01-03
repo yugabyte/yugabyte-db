@@ -22,7 +22,7 @@ namespace yb {
 namespace docdb {
 
 class LockBatch;
-typedef unsigned __int128 LockState;
+typedef uint64_t LockState;
 
 class SharedLockManager;
 
