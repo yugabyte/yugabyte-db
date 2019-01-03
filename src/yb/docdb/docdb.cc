@@ -103,7 +103,7 @@ void AddIntent(
 
 // key should be valid prefix of doc key, ending with some complete pritimive value or group end.
 CHECKED_STATUS ApplyIntent(RefCntPrefix key,
-                           const IntentType intent,
+                           const IntentTypeSet intent_types,
                            LockBatchEntries *keys_locked) {
   // Have to strip kGroupEnd from end of key, because when only hash key is specified, we will
   // get two kGroupEnd at end of strong intent.
@@ -119,7 +119,7 @@ CHECKED_STATUS ApplyIntent(RefCntPrefix key,
     --size;
   }
   key.Resize(size);
-  keys_locked->push_back({key, intent});
+  keys_locked->push_back({key, intent_types});
   return Status::OK();
 }
 
@@ -131,7 +131,7 @@ struct DetermineKeysToLockResult {
 Result<DetermineKeysToLockResult> DetermineKeysToLock(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     IsolationLevel isolation_level,
-    Read read) {
+    OperationKind operation_kind) {
   DetermineKeysToLockResult result;
   boost::container::small_vector<RefCntPrefix, 8> doc_paths;
   boost::container::small_vector<size_t, 32> key_prefix_lengths;
@@ -143,7 +143,7 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
     if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
       level = isolation_level;
     }
-    const IntentTypePair intent_types = GetIntentTypes(level, read);
+    const IntentTypeSet strong_intent_types = GetStrongIntentTypeSet(level, operation_kind);
 
     for (const auto& doc_path : doc_paths) {
       key_prefix_lengths.clear();
@@ -158,10 +158,11 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
       auto partial_key = doc_path;
       for (size_t prefix_length : key_prefix_lengths) {
         partial_key.Resize(prefix_length);
-        RETURN_NOT_OK(ApplyIntent(partial_key, intent_types.weak, &result.lock_batch));
+        RETURN_NOT_OK(ApplyIntent(
+            partial_key, StrongToWeak(strong_intent_types), &result.lock_batch));
       }
 
-      RETURN_NOT_OK(ApplyIntent(doc_path, intent_types.strong, &result.lock_batch));
+      RETURN_NOT_OK(ApplyIntent(doc_path, strong_intent_types, &result.lock_batch));
     }
 
     if (doc_op->RequireReadSnapshot()) {
@@ -185,7 +186,7 @@ void FilterKeysToLock(LockBatchEntries *keys_locked) {
   auto w = keys_locked->begin();
   for (auto it = keys_locked->begin(); ++it != keys_locked->end();) {
     if (it->key == w->key) {
-      w->intent = SharedLockManager::CombineIntents(w->intent, it->intent);
+      w->intent_types |= it->intent_types;
     } else {
       ++w;
       *w = *it;
@@ -212,12 +213,12 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const scoped_refptr<Histogram>& write_lock_latency,
     IsolationLevel isolation_level,
-    Read read,
+    OperationKind operation_kind,
     SharedLockManager *lock_manager) {
   PrepareDocWriteOperationResult result;
 
   auto determine_keys_to_lock_result = VERIFY_RESULT(DetermineKeysToLock(
-      doc_write_ops, isolation_level, read));
+      doc_write_ops, isolation_level, operation_kind));
   result.need_read_snapshot = determine_keys_to_lock_result.need_read_snapshot;
 
   FilterKeysToLock(&determine_keys_to_lock_result.lock_batch);
@@ -364,12 +365,12 @@ class PrepareTransactionWriteBatchHelper {
                                      rocksdb::WriteBatch* rocksdb_write_batch,
                                      const TransactionId& transaction_id,
                                      IsolationLevel isolation_level,
-                                     Read read,
+                                     OperationKind operation_kind,
                                      IntraTxnWriteId* intra_txn_write_id)
       : hybrid_time_(hybrid_time),
         rocksdb_write_batch_(rocksdb_write_batch),
         transaction_id_(transaction_id),
-        intent_types_(GetIntentTypes(isolation_level, read)),
+        strong_intent_types_(GetStrongIntentTypeSet(isolation_level, operation_kind)),
         intra_txn_write_id_(intra_txn_write_id) {
   }
 
@@ -393,7 +394,8 @@ class PrepareTransactionWriteBatchHelper {
 
     ++*intra_txn_write_id_;
 
-    char intent_type[2] = { ValueTypeAsChar::kIntentType, static_cast<char>(intent_types_.strong) };
+    char intent_type[2] = { ValueTypeAsChar::kIntentTypeSet,
+                            static_cast<char>(strong_intent_types_.ToUIntPtr()) };
 
     DocHybridTimeBuffer doc_ht_buffer;
 
@@ -409,7 +411,8 @@ class PrepareTransactionWriteBatchHelper {
 
   void Finish() {
     char transaction_id_value_type = ValueTypeAsChar::kTransactionId;
-    char intent_type[2] = { ValueTypeAsChar::kIntentType, static_cast<char>(intent_types_.weak) };
+    char intent_type[2] = { ValueTypeAsChar::kIntentTypeSet,
+                            static_cast<char>(StrongToWeak(strong_intent_types_).ToUIntPtr()) };
 
     DocHybridTimeBuffer doc_ht_buffer;
 
@@ -435,7 +438,7 @@ class PrepareTransactionWriteBatchHelper {
   HybridTime hybrid_time_;
   rocksdb::WriteBatch* rocksdb_write_batch_;
   const TransactionId& transaction_id_;
-  IntentTypePair intent_types_;
+  IntentTypeSet strong_intent_types_;
   std::unordered_set<std::string> weak_intents_;
   IntraTxnWriteId write_id_ = 0;
   IntraTxnWriteId* intra_txn_write_id_;
@@ -460,8 +463,11 @@ void PrepareTransactionWriteBatch(
     IntraTxnWriteId* write_id) {
   VLOG(4) << "PrepareTransactionWriteBatch(), write_id = " << *write_id;
 
+  auto operation_kind = put_batch.read() ? docdb::OperationKind::kRead
+                                         : docdb::OperationKind::kWrite;
+
   PrepareTransactionWriteBatchHelper helper(
-      hybrid_time, rocksdb_write_batch, transaction_id, isolation_level, Read(put_batch.read()),
+      hybrid_time, rocksdb_write_batch, transaction_id, isolation_level, operation_kind,
       write_id);
 
   // We cannot recover from failures here, because it means that we cannot apply replicated
@@ -959,14 +965,11 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type, K
   switch (*key_type) {
     case KeyType::kIntentKey:
     {
-      Slice intent_prefix;
-      IntentType intent_type;
-      DocHybridTime doc_ht;
-      RETURN_NOT_OK_PREPEND(
-          DecodeIntentKey(key_slice, &intent_prefix, &intent_type, &doc_ht),
-          "Error: failed decoding RocksDB intent key " + FormatRocksDBSliceAsStr(key_slice));
-      RETURN_NOT_OK(subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(intent_prefix));
-      return subdoc_key.ToString() + " " + ToString(intent_type) + " " + doc_ht.ToString();
+      auto decoded_intent_key = VERIFY_RESULT(DecodeIntentKey(key_slice));
+      RETURN_NOT_OK(subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(
+          decoded_intent_key.intent_prefix));
+      return subdoc_key.ToString() + " " + ToString(decoded_intent_key.intent_types) + " " +
+             decoded_intent_key.doc_ht.ToString();
     }
     case KeyType::kReverseTxnKey:
     {
@@ -1153,7 +1156,7 @@ CHECKED_STATUS IntentToWriteRequest(
   }
   auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter->key(), transaction_id_slice));
 
-  if (IsStrongIntent(intent.type)) {
+  if (intent.types.Test(IntentType::kStrongWrite)) {
     IntraTxnWriteId stored_write_id;
     Slice intent_value;
     RETURN_NOT_OK(DecodeIntentValue(

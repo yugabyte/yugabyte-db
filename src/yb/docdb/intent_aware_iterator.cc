@@ -144,16 +144,16 @@ struct DecodeStrongWriteIntentResult {
   Slice intent_prefix;
   Slice intent_value;
   DocHybridTime value_time;
-  IntentType intent_type;
+  IntentTypeSet intent_types;
 
   // Whether this intent from the same transaction as specified in context.
   bool same_transaction = false;
 
   std::string ToString() const {
     return Format("{ intent_prefix: $0 intent_value: $1 value_time: $2 same_transaction: $3 "
-                  "intent_type: $4 }",
+                  "intent_types: $4 }",
                   intent_prefix.ToDebugHexString(), intent_value.ToDebugHexString(), value_time,
-                  same_transaction, yb::ToString(intent_type));
+                  same_transaction, intent_types);
   }
 };
 
@@ -169,11 +169,11 @@ std::ostream& operator<<(std::ostream& out, const DecodeStrongWriteIntentResult&
 Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
     TransactionOperationContext txn_op_context, rocksdb::Iterator* intent_iter,
     TransactionStatusCache* transaction_status_cache) {
-  DocHybridTime intent_ht;
   DecodeStrongWriteIntentResult result;
-  RETURN_NOT_OK(DecodeIntentKey(
-      intent_iter->key(), &result.intent_prefix, &result.intent_type, &intent_ht));
-  if (IsStrongWriteIntent(result.intent_type)) {
+  auto decoded_intent_key = VERIFY_RESULT(DecodeIntentKey(intent_iter->key()));
+  result.intent_prefix = decoded_intent_key.intent_prefix;
+  result.intent_types = decoded_intent_key.intent_types;
+  if (result.intent_types.Test(IntentType::kStrongWrite)) {
     result.intent_value = intent_iter->value();
     auto txn_id = VERIFY_RESULT(DecodeTransactionIdFromIntentValue(&result.intent_value));
     result.same_transaction = txn_id == txn_op_context.transaction_id;
@@ -186,7 +186,7 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
     IntraTxnWriteId in_txn_write_id = BigEndian::Load32(result.intent_value.data());
     result.intent_value.remove_prefix(sizeof(IntraTxnWriteId));
     if (result.same_transaction) {
-      result.value_time = intent_ht;
+      result.value_time = decoded_intent_key.doc_ht;
     } else {
       auto commit_ht = VERIFY_RESULT(transaction_status_cache->GetCommitTime(txn_id));
       result.value_time = DocHybridTime(
@@ -205,7 +205,8 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
 bool IsIntentForTheSameKey(const Slice& key, const Slice& intent_prefix) {
   return key.starts_with(intent_prefix)
       && key.size() > intent_prefix.size()
-      && key[intent_prefix.size()] == ValueTypeAsChar::kIntentType;
+      && (key[intent_prefix.size()] == ValueTypeAsChar::kIntentTypeSet ||
+          key[intent_prefix.size()] == ValueTypeAsChar::kObsoleteIntentType);
 }
 
 std::string DebugDumpKeyToStr(const Slice &key) {
@@ -317,7 +318,7 @@ void IntentAwareIterator::SeekPastSubKey(const Slice& key) {
     seek_intent_iter_needed_ = SeekIntentIterNeeded::kSeekForward;
     GetIntentPrefixForKeyWithoutHt(key, &seek_key_buffer_);
     // Skip all intents for subdoc_key.
-    seek_key_buffer_.mutable_data()->push_back(ValueTypeAsChar::kIntentType + 1);
+    seek_key_buffer_.mutable_data()->push_back(ValueTypeAsChar::kObsoleteIntentType + 1);
   }
 }
 

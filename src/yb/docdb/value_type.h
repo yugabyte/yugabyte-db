@@ -14,6 +14,7 @@
 #ifndef YB_DOCDB_VALUE_TYPE_H_
 #define YB_DOCDB_VALUE_TYPE_H_
 
+#include <bitset>
 #include <string>
 
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -32,10 +33,14 @@ namespace docdb {
     ((kLowest, 0)) \
     /* Obsolete intent prefix. Should be deleted when DBs in old format are gone. */ \
     ((kObsoleteIntentPrefix, 10)) \
-    /* We use ASCII code 20 in order to have it before all other value types which can occur in */ \
+    /* We use ASCII code 15 in order to have it before all other value types which can occur in */ \
     /* key, so intents will be written in the same order as original keys for which intents are */ \
     /* written. */ \
-    ((kIntentType, 20)) \
+    ((kIntentTypeSet, 15)) \
+    /* Obsolete intent prefix. Should be deleted when DBs in old format are gone. */ \
+    /* Old intent type had 6 different types of intents, one for each possible intent. */ \
+    /* Intent type set has 4 different types of intents, but allow their combinations. */ \
+    ((kObsoleteIntentType, 20)) \
     /* This indicates the end of the "hashed" or "range" group of components of the primary */ \
     /* key. This needs to sort before all other value types, so that a DocKey that has a prefix */ \
     /* of the sequence of components of another key sorts before the other key. kGroupEnd is */ \
@@ -160,47 +165,15 @@ constexpr int kStrongIntentFlag       = 0b001;
 constexpr int kReadIntentFlag         = 0b000;
 constexpr int kWriteIntentFlag        = 0b010;
 
-constexpr int kSerializableIntentFlag = 0b000;
-constexpr int kSnapshotIntentFlag     = 0b100;
-
-constexpr int kStrongWriteIntentFlags = kStrongIntentFlag | kWriteIntentFlag;
-
 YB_DEFINE_ENUM(IntentType,
-    ((kStrongSnapshotWrite,     kStrongIntentFlag | kWriteIntentFlag | kSnapshotIntentFlag))
-    ((kWeakSnapshotWrite,       kWeakIntentFlag   | kWriteIntentFlag | kSnapshotIntentFlag))
-    ((kStrongSerializableWrite, kStrongIntentFlag | kWriteIntentFlag | kSerializableIntentFlag))
-    ((kWeakSerializableWrite,   kWeakIntentFlag   | kWriteIntentFlag | kSerializableIntentFlag))
-    ((kStrongSerializableRead,  kStrongIntentFlag | kReadIntentFlag  | kSerializableIntentFlag))
-    ((kWeakSerializableRead,    kWeakIntentFlag   | kReadIntentFlag  | kSerializableIntentFlag))
+    ((kWeakRead,      kWeakIntentFlag |  kReadIntentFlag))
+    ((kStrongRead,  kStrongIntentFlag |  kReadIntentFlag))
+    ((kWeakWrite,     kWeakIntentFlag | kWriteIntentFlag))
+    ((kStrongWrite, kStrongIntentFlag | kWriteIntentFlag))
 );
 
-inline bool IsStrongIntent(IntentType intent) {
-  return (static_cast<int>(intent) & kStrongIntentFlag) != 0;
-}
-
-inline bool IsStrongWriteIntent(IntentType intent_type) {
-  return (static_cast<int>(intent_type) & kStrongWriteIntentFlags) == kStrongWriteIntentFlags;
-}
-
-inline bool IsWeakIntent(IntentType intent) {
-  return !IsStrongIntent(intent);
-}
-
-inline bool IsWriteIntent(IntentType intent) {
-  return (static_cast<int>(intent) & kWriteIntentFlag) != 0;
-}
-
-inline bool IsReadIntent(IntentType intent) {
-  return !IsWriteIntent(intent);
-}
-
-inline bool IsSnapshotIntent(IntentType intent) {
-  return (static_cast<int>(intent) & kSnapshotIntentFlag) != 0;
-}
-
-inline bool IsSerializableIntent(IntentType intent) {
-  return !IsSnapshotIntent(intent);
-}
+constexpr int kIntentTypeSetMapSize = 1 << kIntentTypeMapSize;
+typedef EnumBitSet<IntentType> IntentTypeSet;
 
 // All primitive value types fall into this range, but not all value types in this range are
 // primitive (e.g. object and tombstone are not).

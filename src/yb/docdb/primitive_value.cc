@@ -207,8 +207,10 @@ string PrimitiveValue::ToString() const {
       return Substitute("TransactionId($0)", uuid_val_.ToString());
     case ValueType::kWriteId:
       return Format("WriteId($0)", int32_val_);
-    case ValueType::kIntentType:
-      return Substitute("Intent($0)", docdb::ToString(static_cast<enum IntentType>(uint16_val_)));
+    case ValueType::kIntentTypeSet:
+      return Format("Intents($0)", IntentTypeSet(uint16_val_));
+    case ValueType::kObsoleteIntentType:
+      return Format("Intent($0)", uint16_val_);
     case ValueType::kMergeFlags: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
@@ -375,8 +377,12 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       key_bytes->AppendColumnId(column_id_val_);
       return;
 
-    case ValueType::kIntentType:
-      key_bytes->AppendIntentType(static_cast<IntentType>(uint16_val_));
+    case ValueType::kObsoleteIntentType:
+      key_bytes->AppendIntentTypeSet(ObsoleteIntentTypeToSet(uint16_val_));
+      return;
+
+    case ValueType::kIntentTypeSet:
+      key_bytes->AppendIntentTypeSet(IntentTypeSet(uint16_val_));
       return;
 
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
@@ -510,7 +516,8 @@ string PrimitiveValue::ToValue() const {
       // Hashes are not allowed in a value.
       break;
 
-    case ValueType::kIntentType: FALLTHROUGH_INTENDED;
+    case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
+    case ValueType::kObsoleteIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kMergeFlags: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
@@ -834,7 +841,8 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       return Status::OK();
     }
 
-    case ValueType::kIntentType: {
+    case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
+    case ValueType::kObsoleteIntentType: {
       if (out) {
         out->uint16_val_ = static_cast<uint16_t>(*slice->data());
       }
@@ -1057,7 +1065,8 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       return Status::OK();
     }
 
-    case ValueType::kIntentType: FALLTHROUGH_INTENDED;
+    case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
+    case ValueType::kObsoleteIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case ValueType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED;
@@ -1187,12 +1196,6 @@ PrimitiveValue PrimitiveValue::TableId(Uuid table_id) {
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::IntentTypeValue(IntentType intent_type) {
-  PrimitiveValue primitive_value(static_cast<uint16_t>(intent_type));
-  primitive_value.type_ = ValueType::kIntentType;
-  return primitive_value;
-}
-
 PrimitiveValue PrimitiveValue::Jsonb(const std::string& json) {
   PrimitiveValue primitive_value;
   primitive_value.type_ = ValueType::kJsonb;
@@ -1259,7 +1262,8 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kDecimal: return decimal_val_ == other.decimal_val_;
     case ValueType::kVarIntDescending: FALLTHROUGH_INTENDED;
     case ValueType::kVarInt: return varint_val_ == other.varint_val_;
-    case ValueType::kIntentType: FALLTHROUGH_INTENDED;
+    case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
+    case ValueType::kObsoleteIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kUInt16Hash: return uint16_val_ == other.uint16_val_;
 
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
@@ -1332,7 +1336,8 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return other.varint_val_.compare(varint_val_);
     case ValueType::kVarInt:
       return varint_val_.compare(other.varint_val_);
-    case ValueType::kIntentType: FALLTHROUGH_INTENDED;
+    case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
+    case ValueType::kObsoleteIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kUInt16Hash:
       return CompareUsingLessThan(uint16_val_, other.uint16_val_);
     case ValueType::kTimestampDescending:
