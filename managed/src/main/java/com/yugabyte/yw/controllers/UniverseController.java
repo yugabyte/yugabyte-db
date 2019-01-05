@@ -12,8 +12,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
-import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -33,8 +31,11 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
+import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HealthCheck;
@@ -183,8 +184,8 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
 
-    if (!taskParams.getPrimaryCluster().userIntent.universeName.matches("^[a-zA-Z0-9-]*$")) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Universe Name, valid characters [a-zA-Z0-9-]");
+    if (!Util.isValidUniverseNameFormat(taskParams.getPrimaryCluster().userIntent.universeName)) {
+      return ApiResponse.error(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
     }
 
     try {
@@ -259,22 +260,25 @@ public class UniverseController extends AuthenticatedController {
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
+
+    // Get the universe. This makes sure that a universe of this name does exist
+    // for this customer id.
+    Universe universe = null;
     try {
-      // Get the universe. This makes sure that a universe of this name does exist
-      // for this customer id.
-      Universe universe = Universe.get(universeUUID);
-      if (universe == null) {
-        String errMsg= "Invalid universe UUID: " + universeUUID;
-        LOG.error(errMsg);
-        return ApiResponse.error(BAD_REQUEST, errMsg);
-      }
+      universe = Universe.get(universeUUID);
+    } catch (RuntimeException re) {
+      String errMsg= "Invalid universe UUID: " + universeUUID;
+      LOG.error(errMsg);
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
 
-      if (!universe.getUniverseDetails().isUniverseEditable()) {
-        String errMsg= "Universe UUID " + universeUUID + " cannot be edited.";
-        LOG.error(errMsg);
-        return ApiResponse.error(BAD_REQUEST, errMsg);
-      }
+    if (!universe.getUniverseDetails().isUniverseEditable()) {
+      String errMsg= "Universe UUID " + universeUUID + " cannot be edited.";
+      LOG.error(errMsg);
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
 
+    try {
       Cluster primaryCluster = taskParams.getPrimaryCluster();
       UUID uuid = null;
       PlacementInfo placementInfo = null;
@@ -414,7 +418,7 @@ public class UniverseController extends AuthenticatedController {
       CustomerTask.TaskType.Delete,
       universe.name);
 
-    LOG.info("Dropped universe " + universeUUID + " for customer [" + customer.name + "]");
+    LOG.info("Destroyed universe " + universeUUID + " for customer [" + customer.name + "]");
 
     ObjectNode response = Json.newObject();
     response.put("taskUUID", taskUUID.toString());
@@ -599,15 +603,13 @@ public class UniverseController extends AuthenticatedController {
     // Make sure the universe exists, this method will throw an exception if it does not.
     try {
       universe = Universe.get(universeUUID);
-    }
-    catch (RuntimeException e) {
+    } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
     }
     try {
       return ApiResponse.success(Json.toJson(UniverseResourceDetails.create(universe.getNodes(),
           universe.getUniverseDetails())));
-    }
-    catch (Exception e) {
+    } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR,
         "Error getting cost for customer " + customerUUID);
     }
@@ -745,8 +747,7 @@ public class UniverseController extends AuthenticatedController {
     Universe universe;
     try {
       universe = Universe.get(universeUUID);
-    }
-    catch (RuntimeException e) {
+    } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
     }
 
@@ -777,8 +778,7 @@ public class UniverseController extends AuthenticatedController {
     Universe universe;
     try {
       universe = Universe.get(universeUUID);
-    }
-    catch (RuntimeException e) {
+    } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
     }
 

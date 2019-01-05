@@ -249,4 +249,11 @@ public class Util {
     }
     return false;
   }
+
+  public static String UNIV_NAME_ERROR_MESG =
+      "Invalid universe name format, valid characters [a-zA-Z0-9-].";
+  // Validate the universe name pattern.
+  public static boolean isValidUniverseNameFormat(String univName) {
+    return univName.matches("^[a-zA-Z0-9-]*$");
+  }
 }
