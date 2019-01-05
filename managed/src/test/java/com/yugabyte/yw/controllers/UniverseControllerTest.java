@@ -297,7 +297,7 @@ public class UniverseControllerTest extends WithApplication {
     ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
-    assertBadRequest(result, "Invalid Universe Name, valid characters [a-zA-Z0-9-]");
+    assertBadRequest(result, "Invalid universe name format, valid characters [a-zA-Z0-9-].");
   }
 
   @Test

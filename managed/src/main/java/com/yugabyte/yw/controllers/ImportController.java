@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ImportUniverseFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -207,14 +208,19 @@ public class ImportController extends Controller {
     String universeName = importForm.universeName;
     String masterAddresses = importForm.masterAddresses;
 
-    // TODO: Check name pattern/size validity as well.
     if (universeName == null || universeName.isEmpty()) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid universe name.");
+      return ApiResponse.error(BAD_REQUEST, "Null or empty universe name.");
+    }
+
+    if (!Util.isValidUniverseNameFormat(universeName)) {
+      return ApiResponse.error(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
     }
 
     if (masterAddresses == null || masterAddresses.isEmpty()) {
       return ApiResponse.error(BAD_REQUEST, "Invalid master addresses list.");
     }
+
+    masterAddresses = masterAddresses.replaceAll("\\s+","");
 
     //---------------------------------------------------------------------------------------------
     // Get the user specified master node ips.
@@ -287,10 +293,15 @@ public class ImportController extends Controller {
                            importForm.universeUUID);
       return ApiResponse.error(BAD_REQUEST, results);
     }
+    masterAddresses = masterAddresses.replaceAll("\\s+","");
 
-    Universe universe = Universe.get(importForm.universeUUID);
-    if (universe == null) {
-      results.put("error", "Invalid universe uuid " + importForm.universeUUID + ", universe not found.");
+    Universe universe = null;
+    try {
+      universe = Universe.get(importForm.universeUUID);
+    } catch (RuntimeException re) {
+      String errMsg= "Invalid universe UUID: " + importForm.universeUUID + ", universe not found.";
+      LOG.error(errMsg);
+      results.put("error", errMsg);
       return ApiResponse.error(BAD_REQUEST, results);
     }
 
@@ -397,7 +408,6 @@ public class ImportController extends Controller {
     return ApiResponse.success(results);
   }
 
-
   /**
    * Finalizes the universe in the database by:
    *   - setting up Prometheus config for metrics.
@@ -411,9 +421,13 @@ public class ImportController extends Controller {
       return ApiResponse.error(BAD_REQUEST, results);
     }
 
-    Universe universe = Universe.get(importForm.universeUUID);
-    if (universe == null) {
-      results.put("error", "Universe uuid was not created.");
+    Universe universe = null;
+    try {
+      universe = Universe.get(importForm.universeUUID);
+    } catch (RuntimeException re) {
+      String errMsg= "Invalid universe UUID: " + importForm.universeUUID + ", universe not found.";
+      LOG.error(errMsg);
+      results.put("error", errMsg);
       return ApiResponse.error(BAD_REQUEST, results);
     }
 
@@ -433,7 +447,6 @@ public class ImportController extends Controller {
     //---------------------------------------------------------------------------------------------
 
     // TODO: verify we can reach the various YB ports.
-    // TODO: verify node exporter is running on the various nodes.
 
     UniverseDefinitionTaskBase createPrometheusConfig = new UniverseDefinitionTaskBase() {
       @Override
