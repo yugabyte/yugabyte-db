@@ -23,8 +23,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     public Boolean isForceDelete;
   }
 
-  public Params params()
-  {
+  public Params params() {
     return (Params)taskParams;
   }
 
@@ -43,21 +42,23 @@ public class DestroyUniverse extends UniverseTaskBase {
         universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       }
 
-      // Update the DNS entry for all clusters in this universe.
-      for (Cluster cluster : universe.getUniverseDetails().clusters) {
-        createDnsManipulationTask(DnsManager.DnsCommandType.Delete, params().isForceDelete,
-                                  cluster.userIntent.providerType, cluster.userIntent.provider,
+      if (!universe.getUniverseDetails().isImportedUniverse()) {
+        // Update the DNS entry for all clusters in this universe.
+        for (Cluster cluster : universe.getUniverseDetails().clusters) {
+          createDnsManipulationTask(DnsManager.DnsCommandType.Delete, params().isForceDelete,
+                                    cluster.userIntent.providerType, cluster.userIntent.provider,
                                   cluster.userIntent.universeName)
-          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
-      }
+              .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+        }
 
-      // Create tasks to destroy the existing nodes.
-      createDestroyServerTasks(universe.getNodes(), params().isForceDelete, true)
-        .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+        // Create tasks to destroy the existing nodes.
+        createDestroyServerTasks(universe.getNodes(), params().isForceDelete, true)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+      }
 
       // Create tasks to remove the universe entry from the Universe table.
       createRemoveUniverseEntryTask()
-        .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(true /* removeFile */);

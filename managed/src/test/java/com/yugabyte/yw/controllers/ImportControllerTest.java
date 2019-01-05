@@ -8,6 +8,7 @@ import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -33,6 +34,7 @@ import com.yugabyte.yw.forms.ImportUniverseFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Capability;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 
 import org.junit.Before;
@@ -175,6 +177,32 @@ public class ImportControllerTest extends CommissionerBaseTest {
     bodyJson.put("nodeAction", NodeActionType.REMOVE.name());
     result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
     assertBadRequest(result, "Node actions cannot be performed on universe");
+
+    // Delete should succeed.
+    url = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
+    result = doRequestWithAuthToken("DELETE", url, authToken);
+    assertOk(result);
+    json = Json.parse(contentAsString(result));
+    UUID taskUUID = UUID.fromString(json.get("taskUUID").asText());
+    TaskInfo deleteTaskInfo = null;
+    try {
+      deleteTaskInfo = waitForTask(taskUUID);
+    } catch (InterruptedException e) {
+      assertNull(e.getMessage());
+    }
+    assertNotNull(deleteTaskInfo);
+    assertValue(Json.toJson(deleteTaskInfo), "taskState", "Success");
+
+    url = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
+    result = doRequestWithAuthToken("GET", url, authToken);
+    assertBadRequest(result, "Invalid Universe UUID");
+
+    try {
+      universe = Universe.get(UUID.fromString(univUUID));
+    } catch (RuntimeException e) {
+      assertThat(e.getMessage(),
+                 allOf(notNullValue(), containsString("Cannot find universe")));
+    }
   }
 
   @Test
