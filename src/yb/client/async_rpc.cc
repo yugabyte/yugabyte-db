@@ -143,9 +143,10 @@ void AsyncRpc::SendRpc() {
 }
 
 std::string AsyncRpc::ToString() const {
-  return Substitute("$0(tablet: $1, num_ops: $2, num_attempts: $3)",
-                    ops_.front()->yb_op->read_only() ? "Read" : "Write",
-                    tablet().tablet_id(), ops_.size(), num_attempts());
+  return Format("$0(tablet: $1, num_ops: $2, num_attempts: $3, txn: $4)",
+                ops_.front()->yb_op->read_only() ? "Read" : "Write",
+                tablet().tablet_id(), ops_.size(), num_attempts(),
+                batcher_->transaction_metadata().transaction_id);
 }
 
 const YBTable* AsyncRpc::table() const {

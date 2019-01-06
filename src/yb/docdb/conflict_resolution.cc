@@ -280,6 +280,8 @@ class ConflictResolver {
           } else if (result.status().IsTryAgain()) {
             // It is safe to suppose that transaction in PENDING state in case of try again error.
             transaction.status = TransactionStatus::PENDING;
+          } else if (result.status().IsNotFound()) {
+            transaction.status = TransactionStatus::ABORTED;
           } else {
             transaction.failure = result.status();
           }
