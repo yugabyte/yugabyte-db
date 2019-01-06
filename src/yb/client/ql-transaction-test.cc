@@ -458,6 +458,7 @@ TEST_F(QLTransactionTest, ConflictResolution) {
   constexpr size_t kNumRows = 10;
   std::vector<YBTransactionPtr> transactions;
   std::vector<YBSessionPtr> sessions;
+  std::vector<std::vector<YBqlWriteOpPtr>> write_ops(kTotalTransactions);
 
   CountDownLatch latch(kTotalTransactions);
   for (size_t i = 0; i != kTotalTransactions; ++i) {
@@ -465,7 +466,8 @@ TEST_F(QLTransactionTest, ConflictResolution) {
     auto session = CreateSession(transactions.back());
     sessions.push_back(session);
     for (size_t r = 0; r != kNumRows; ++r) {
-      ASSERT_OK(WriteRow(sessions.back(), r, i, WriteOpType::INSERT, Flush::kFalse));
+      write_ops[i].push_back(ASSERT_RESULT(WriteRow(
+          sessions.back(), r, i, WriteOpType::INSERT, Flush::kFalse)));
     }
     session->FlushAsync([&latch](const Status& status) { latch.CountDown(); });
   }
@@ -475,8 +477,20 @@ TEST_F(QLTransactionTest, ConflictResolution) {
   std::atomic<size_t> successes(0);
   std::atomic<size_t> failures(0);
 
-  for (auto& transaction : transactions) {
-    transaction->Commit([&latch, &successes, &failures](const Status& status) {
+  for (size_t i = 0; i != kTotalTransactions; ++i) {
+    bool success = true;
+    for (auto& op : write_ops[i]) {
+      if (!op->succeeded()) {
+        success = false;
+        break;
+      }
+    }
+    if (!success) {
+      failures.fetch_add(1, std::memory_order_release);
+      latch.CountDown(1);
+      continue;
+    }
+    transactions[i]->Commit([&latch, &successes, &failures](const Status& status) {
       if (status.ok()) {
         successes.fetch_add(1, std::memory_order_release);
       } else {

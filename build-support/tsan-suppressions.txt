@@ -98,8 +98,9 @@ race:read_line_header
 race:read_abbrevs
 race:backtrace_alloc
 race:dwarf_lookup_pc
+race:read_function_entry
 
-# False positives of TSAN, because we use atomic to check wether all responses are filled.
+# False positives of TSAN, because we use atomic to check whether all responses are filled.
 race:yb::redisserver::RedisInboundCall::Serialize
 race:yb::redisserver::(anonymous namespace)::BatchContext::LookupDone
 
