@@ -2273,6 +2273,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
       }
     }
 
+    std::string obsolete_manifest;
     // If we just created a new descriptor file, install it by writing a
     // new CURRENT file that points to it.
     if (s.ok() && new_descriptor_log) {
@@ -2280,8 +2281,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
         db_options_->disableDataSync);
       // Leave the old file behind since PurgeObsoleteFiles will take care of it
       // later. It's unsafe to delete now since file deletion may be disabled.
-      obsolete_manifests_.emplace_back(
-          DescriptorFileName("", manifest_file_number_));
+      obsolete_manifest = DescriptorFileName("", manifest_file_number_);
     }
 
     if (s.ok()) {
@@ -2298,6 +2298,10 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     LogFlush(db_options_->info_log);
     TEST_SYNC_POINT("VersionSet::LogAndApply:WriteManifestDone");
     mu->Lock();
+
+    if (!obsolete_manifest.empty()) {
+      obsolete_manifests_.push_back(std::move(obsolete_manifest));
+    }
   }
 
   // Install the new version
