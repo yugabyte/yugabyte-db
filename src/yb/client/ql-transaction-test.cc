@@ -69,6 +69,11 @@ class QLTransactionTest : public TransactionTestBase {
   IsolationLevel GetIsolationLevel() override {
     return IsolationLevel::SNAPSHOT_ISOLATION;
   }
+
+  CHECKED_STATUS WaitTransactionsCleaned() {
+    return WaitFor(
+      [this] { return CountTransactions() == 0; }, kTransactionApplyTime, "Transactions cleaned");
+  }
 };
 
 TEST_F(QLTransactionTest, Simple) {
@@ -372,8 +377,7 @@ TEST_F(QLTransactionTest, Cleanup) {
   VerifyData();
 
   // Wait transaction apply. Otherwise count could be non zero.
-  ASSERT_OK(WaitFor(
-      [this] { return CountTransactions() == 0; }, kTransactionApplyTime, "Transactions cleaned"));
+  ASSERT_OK(WaitTransactionsCleaned());
   VerifyData();
   ASSERT_OK(cluster_->RestartSync());
   CheckNoRunningTransactions();
@@ -446,8 +450,7 @@ TEST_F(QLTransactionTest, ResendApplying) {
 
   SetIgnoreApplyingProbability(0.0);
 
-  ASSERT_OK(WaitFor(
-      [this] { return CountTransactions() == 0; }, kTransactionApplyTime, "Transactions cleaned"));
+  ASSERT_OK(WaitTransactionsCleaned());
   VerifyData();
   ASSERT_OK(cluster_->RestartSync());
   CheckNoRunningTransactions();
@@ -680,8 +683,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
     txn->Abort();
   }
 
-  ASSERT_OK(WaitFor(
-      [this] { return CountTransactions() == 0; }, kTransactionApplyTime, "Transactions cleaned"));
+  ASSERT_OK(WaitTransactionsCleaned());
 
   // Should read { 1 -> 1, 2 -> 2 }, since T1 has been aborted.
   {
@@ -723,8 +725,7 @@ TEST_F(QLTransactionTest, CheckCompactionAbortCleanup) {
     txn->Abort();
   }
 
-  ASSERT_OK(WaitFor(
-      [this] { return CountTransactions() == 0; }, kTransactionApplyTime, "Transactions cleaned"));
+  ASSERT_OK(WaitTransactionsCleaned());
 
   std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_aborted_intent_cleanup_ms));
   tserver::TSTabletManager::TabletPeers peers;
