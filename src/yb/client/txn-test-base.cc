@@ -38,7 +38,7 @@ DECLARE_int32(load_balancer_max_concurrent_adds);
 namespace yb {
 namespace client {
 
-const MonoDelta kTransactionApplyTime = NonTsanVsTsan(3s, 15s);
+const MonoDelta kTransactionApplyTime = 6s * kTimeMultiplier;
 
 // We use different sign to distinguish inserted and updated values for testing.
 int32_t GetMultiplier(const WriteOpType op_type) {
@@ -239,13 +239,24 @@ size_t TransactionTestBase::CountIntents() {
 }
 
 void TransactionTestBase::CheckNoRunningTransactions() {
-  MonoTime deadline = MonoTime::Now() + 5s;
+  MonoTime deadline = MonoTime::Now() + 7s * kTimeMultiplier;
   bool has_bad = false;
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto server = cluster_->mini_tablet_server(i)->server();
     auto tablets = server->tablet_manager()->GetTabletPeers();
     for (const auto& peer : tablets) {
-      auto tablet_title = Format("Tablet: $0", peer->tablet()->tablet_id());
+      auto status = Wait([peer] {
+            return peer->tablet() != nullptr;
+          },
+          deadline,
+          "Wait until peer has tablet");
+      if (!status.ok()) {
+        LOG(ERROR) << Format(
+            "Server: $0, tablet: $1, tablet object is not created",
+            server->permanent_uuid(), peer->tablet_id());
+        has_bad = true;
+        continue;
+      }
       auto participant = peer->tablet()->transaction_participant();
       if (participant) {
         auto status = Wait([participant] {
@@ -256,7 +267,7 @@ void TransactionTestBase::CheckNoRunningTransactions() {
         if (!status.ok()) {
           LOG(ERROR) << Format(
               "Server: $0, tablet: $1, transactions: $2",
-              server->permanent_uuid(), peer->tablet()->tablet_id(),
+              server->permanent_uuid(), peer->tablet_id(),
               participant->TEST_GetNumRunningTransactions());
           has_bad = true;
         }
