@@ -225,6 +225,14 @@ static unsigned int msgqno = 0;
 static char qnostr[32];
 static const char *current_hint_str = NULL;
 
+/*
+ * However we usually take a hint stirng in post_parse_analyze_hook, we still
+ * need to do so in planner_hook when client starts query execution from the
+ * bind message on a prepared query. This variable prevent duplicate and
+ * sometimes harmful hint string retrieval.
+ */
+static bool current_hint_retrieved = false;
+
 /* common data for all hints. */
 struct Hint
 {
@@ -388,6 +396,11 @@ static void push_hint(HintState *hstate);
 static void pop_hint(void);
 
 static void pg_hint_plan_post_parse_analyze(ParseState *pstate, Query *query);
+static void pg_hint_plan_ProcessUtility(PlannedStmt *pstmt,
+					const char *queryString,
+					ProcessUtilityContext context,
+					ParamListInfo params, QueryEnvironment *queryEnv,
+					DestReceiver *dest, char *completionTag);
 static PlannedStmt *pg_hint_plan_planner(Query *parse, int cursorOptions,
 										 ParamListInfo boundParams);
 static RelOptInfo *pg_hint_plan_join_search(PlannerInfo *root,
@@ -543,6 +556,7 @@ static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 static planner_hook_type prev_planner = NULL;
 static join_search_hook_type prev_join_search = NULL;
 static set_rel_pathlist_hook_type prev_set_rel_pathlist = NULL;
+static ProcessUtility_hook_type prev_ProcessUtility_hook = NULL;
 
 /* Hold reference to currently active hint */
 static HintState *current_hint_state = NULL;
@@ -672,6 +686,8 @@ _PG_init(void)
 	join_search_hook = pg_hint_plan_join_search;
 	prev_set_rel_pathlist = set_rel_pathlist_hook;
 	set_rel_pathlist_hook = pg_hint_plan_set_rel_pathlist;
+	prev_ProcessUtility_hook = ProcessUtility_hook;
+	ProcessUtility_hook = pg_hint_plan_ProcessUtility;
 
 	/* setup PL/pgSQL plugin hook */
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
@@ -694,6 +710,7 @@ _PG_fini(void)
 	planner_hook = prev_planner;
 	join_search_hook = prev_join_search;
 	set_rel_pathlist_hook = prev_set_rel_pathlist;
+	ProcessUtility_hook = prev_ProcessUtility_hook;
 
 	/* uninstall PL/pgSQL plugin hook */
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
@@ -1795,17 +1812,15 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 	/*
 	 * If debug_query_string is set, it is the top level statement. But in some
 	 * cases we reach here with debug_query_string set NULL for example in the
-	 * case of DESCRIBE message handling. We may still see a candidate
-	 * top-level query in pstate in the case.
+	 * case of DESCRIBE message handling or EXECUTE command. We may still see a
+	 * candidate top-level query in pstate in the case.
 	 */
-	if (!p)
-	{
-		/* We don't see a query string, return NULL */
-		if (!pstate->p_sourcetext)
-			return NULL;
-
+	if (!p && pstate)
 		p = pstate->p_sourcetext;
-	}
+
+	/* We don't see a query string, return NULL */
+	if (!p)
+		return NULL;
 
 	if (jumblequery != NULL)
 		*jumblequery = query;
@@ -1879,8 +1894,12 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 		if (jumblequery)
 			*jumblequery = target_query;
 	}
-	/* Return NULL if the pstate is not identical to the top-level query */
-	else if (strcmp(pstate->p_sourcetext, p) != 0)
+	/*
+	 * Return NULL if pstate is not of top-level query.  We don't need this
+	 * when jumble info is not requested or cannot do this when pstate is NULL.
+	 */
+	else if (!jumblequery && pstate && pstate->p_sourcetext != p &&
+			 strcmp(pstate->p_sourcetext, p) != 0)
 		p = NULL;
 
 	return p;
@@ -2749,23 +2768,24 @@ pop_hint(void)
 }
 
 /*
- * Retrieve and store a hint string from given query or from the hint table.
- * If we are using the hint table, the query string is needed to be normalized.
- * However, ParseState, which is not available in planner_hook, is required to
- * check if the query tree (Query) is surely corresponding to the target query.
+ * Retrieve and store hint string from given query or from the hint table.
  */
 static void
-pg_hint_plan_post_parse_analyze(ParseState *pstate, Query *query)
+get_current_hint_string(ParseState *pstate, Query *query)
 {
 	const char *query_str;
 	MemoryContext	oldcontext;
 
-	if (prev_post_parse_analyze_hook)
-		prev_post_parse_analyze_hook(pstate, query);
-
 	/* do nothing under hint table search */
 	if (hint_inhibit_level > 0)
 		return;
+
+	/* We alredy have one, don't parse it again. */
+	if (current_hint_retrieved)
+		return;
+
+	/* Don't parse the current query hereafter */
+	current_hint_retrieved = true;
 
 	if (!pg_hint_plan_enable_hint)
 	{
@@ -2807,8 +2827,8 @@ pg_hint_plan_post_parse_analyze(ParseState *pstate, Query *query)
 		if (jumblequery)
 		{
 			/*
-			 * XXX: normalizing code is copied from pg_stat_statements.c, so be
-			 * careful to PostgreSQL's version up.
+			 * XXX: normalization code is copied from pg_stat_statements.c.
+			 * Make sure to keep up-to-date with it.
 			 */
 			jstate.jumble = (unsigned char *) palloc(JUMBLE_SIZE);
 			jstate.jumble_len = 0;
@@ -2885,8 +2905,8 @@ pg_hint_plan_post_parse_analyze(ParseState *pstate, Query *query)
 	{
 		/*
 		 * get hints from the comment. However we may have the same query
-		 * string with the previous call, but just retrieving hints is expected
-		 * to be faster than checking for identicalness before retrieval.
+		 * string with the previous call, but the extra comparison seems no
+		 * use..
 		 */
 		if (current_hint_str)
 			pfree((void *)current_hint_str);
@@ -2915,6 +2935,41 @@ pg_hint_plan_post_parse_analyze(ParseState *pstate, Query *query)
 					 errhidecontext(msgqno != qno)));
 		msgqno = qno;
 	}
+}
+
+/*
+ * Retrieve hint string from the current query.
+ */
+static void
+pg_hint_plan_post_parse_analyze(ParseState *pstate, Query *query)
+{
+	if (prev_post_parse_analyze_hook)
+		prev_post_parse_analyze_hook(pstate, query);
+
+	/* always retrieve hint from the top-level query string */
+	if (plpgsql_recurse_level == 0)
+		current_hint_retrieved = false;
+
+	get_current_hint_string(pstate, query);
+}
+
+/*
+ * We need to reset current_hint_retrieved flag always when a command execution
+ * is finished. This is true even for a pure utility command that doesn't
+ * involve planning phase.
+ */
+static void
+pg_hint_plan_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+					ProcessUtilityContext context,
+					ParamListInfo params, QueryEnvironment *queryEnv,
+					DestReceiver *dest, char *completionTag)
+{
+	if (prev_ProcessUtility_hook)
+		prev_ProcessUtility_hook(pstmt, queryString, context, params, queryEnv,
+								 dest, completionTag);
+
+	if (plpgsql_recurse_level == 0)
+		current_hint_retrieved = false;
 }
 
 /*
@@ -2963,6 +3018,14 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		MemoryContextSwitchTo(oldcontext);
 	}
 
+	/*
+	 * Query execution in extended protocol can be started without the analyze
+	 * phase. In the case retrieve hint string here.
+	 */
+	if (!current_hint_str)
+		get_current_hint_string(NULL, parse);
+
+	/* No hint, go the normal way */
 	if (!current_hint_str)
 		goto standard_planner_proc;
 
@@ -3034,6 +3097,17 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+
+
+	/*
+	 * current_hint_str is useless after planning of the top-level query.
+	 */
+	if (plpgsql_recurse_level < 1 && current_hint_str)
+	{
+		pfree((void *)current_hint_str);
+		current_hint_str = NULL;
+		current_hint_retrieved = false;
+	}
 
 	/* Print hint in debug mode. */
 	if (debug_level == 1)
