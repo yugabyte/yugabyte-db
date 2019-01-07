@@ -512,7 +512,7 @@ public class TestIndex extends BaseCQLTest {
                     "primary key ((h1, h2), r1, r2)) " +
                     "with transactions = {'enabled' : true};");
     session.execute("create index i1 on test_prepare (h1);");
-    session.execute("create index i2 on test_prepare ((r1, r2));");
+    session.execute("create index i2 on test_prepare ((r1, r2)) include (c2);");
     session.execute("create index i3 on test_prepare (r2, r1);");
     session.execute("create index i4 on test_prepare (c1);");
     session.execute("create index i5 on test_prepare (c2) include (c1);");
@@ -539,12 +539,13 @@ public class TestIndex extends BaseCQLTest {
                            new Object[] {"a"},
                            "Row[1, a, 2, b]");
 
-    // Select using index i2 because (r1, r2) is more selective than i1 alone.
-    assertRoutingVariables("select h1, h2, r1, r2 from test_prepare " +
+    // Select using index i2 because (r1, r2) is more selective than i1 alone. i3 is equally
+    // selective by i2 covers c2 also.
+    assertRoutingVariables("select h1, h2, r1, r2, c2 from test_prepare " +
                            "where h1 = ? and r1 = ? and r2 = ?;",
                            Arrays.asList("i2.r1", "i2.r2"),
                            new Object[] {Integer.valueOf(1), Integer.valueOf(2), "b"},
-                           "Row[1, a, 2, b]");
+                           "Row[1, a, 2, b, c]");
 
     // Select using index i3.
     assertRoutingVariables("select h1, h2, r1, r2 from test_prepare where h2 = ? and r2 = ?;",
