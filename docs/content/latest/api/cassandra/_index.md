@@ -17,7 +17,7 @@ aliases:
 ---
 
 ## Introduction
-YugaByte DB's YCQL API is compatible with the Cassandra Query Language (CQL) and supports the following features.
+YCQL is a transactional flexible-schema API that is compatible with the Cassandra Query Language (CQL). It supports the following features.
 
 - Data definition language (DDL) statements.
 - Data manipulation language (DML) statements.

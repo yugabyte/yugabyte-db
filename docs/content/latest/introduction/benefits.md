@@ -22,9 +22,9 @@ Default single-row ACID operations with optional distributed ACID transactions w
 
 A ground-up C++ implementation combined with 3x read throughput compared to simple quorum-based consistency of traditional NoSQL.
 
-### 3. Popular APIs and mature ecosystems
+### 3. Data modeling freedom
 
-Choose between 2 popular NoSQL APIs rather than learn a new proprietary language, even port existing applications fast by leveraging the maturity of these ecosystems. SQL support is in the works.
+Model data for your business-critical apps using two transaction NoSQL (KV and flexible-schema) and a distributed SQL API. 
 
 ### 4. Converged caching
 

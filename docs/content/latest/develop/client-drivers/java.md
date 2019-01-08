@@ -15,13 +15,13 @@ menu:
   <li>
     <a href="#cql" class="nav-link active" id="cql-tab" data-toggle="tab" role="tab" aria-controls="cql" aria-selected="true">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      Cassandra
+      YCQL
     </a>
   </li>
   <li>
     <a href="#redis" class="nav-link" id="redis-tab" data-toggle="tab" role="tab" aria-controls="redis" aria-selected="false">
       <i class="icon-redis" aria-hidden="true"></i>
-      Redis
+      YEDIS
     </a>
   </li>
 </ul>

@@ -10,7 +10,7 @@ algolia:
   appID: 4LBMOWH4F9
 params:
   author: Team YugaByte
-  description: 'YugaByte DB, a transactional, high performance, planet-scale operational database'
+  description: 'YugaByte DB, the transactional, high-performance database for building internet-scale, globally-distributed apps.'
   copyright: 'YugaByte, Inc.'
   block_indexing: false
   version: Beta

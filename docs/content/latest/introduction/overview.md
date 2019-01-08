@@ -14,25 +14,42 @@ menu:
 
 ## What is YugaByte DB?
 
-YugaByte DB is Apache 2.0 open source, transactional, high-performance database for planet-scale applications. It is meant to be a system-of-record/authoritative database that geo-distributed applications can rely on for correctness and availability. It allows applications to easily scale up and scale down across multiple regions in the public cloud, on-premises datacenters or across hybrid environments without creating operational complexity or increasing the risk of outages.
+YugaByte DB is a transactional, high-performance database for building internet-scale, globally-distributed applications. Built using a unique combination of distributed document store, auto sharding, per-shard distributed consensus replication and multi-shard ACID transactions (inspired by Google Spanner), it is world's only distributed database that is both non-relational (support for Redis-compatible KV & Cassandra-compatible flexible schema transactional NoSQL APIs) and relational (support for PostgreSQL-compatible distributed SQL API) at the same time. 
 
-In terms of data model and APIs, YugaByte DB currently supports 3 APIs. 
+YugaByte DB is purpose-built to power fast-growing online services on public, private and hybrid clouds with transactional integrity, high availabilty, low latency, high throughput and multi-region scalability while also providing unparalleled data modeling freedom to application architects. Enterprises gain more functional depth and agility without any cloud lock-in when compared to proprietary cloud databases such as Amazon DynamoDB, Microsoft Azure Cosmos DB and Google Cloud Spanner. Enterprises also benefit from stronger data integrity guarantees, more reliable scaling and higher performance than those offered by legacy open source NoSQL databases such as MongoDB and Apache Cassandra. 
 
-1. [Cassandra-compatible YCQL](../../api/cassandra/) - YCQL is compatible with [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html). It also extends CQL by adding [distributed ACID transactions](../../explore/transactional/), [strongly consistent secondary indexes](../../explore/transactional/secondary-indexes/) and a [native JSON data type](../../explore/transactional/json-documents/).
+YugaByte DB Community Edition is developed and distributed as an [Apache 2.0 open source project](https://github.com/YugaByte/yugabyte-db/).
 
-2. [Redis-compatible YEDIS](../../api/redis/) - YugaByte DB supports an auto-sharded, clustered, elastic [Redis](https://redis.io/commands)-as-a-Database in a driver compatible manner with its YEDIS API. YEDIS also extends Redis with a new native [Time Series](https://blog.yugabyte.com/extending-redis-with-a-native-time-series-data-type-e5483c7116f8) data type.
+## What client APIs are supported by YugaByte DB?
 
-3. [PostgreSQL (Beta)](../../api/postgresql/) - Compatible with the SQL language in PostgreSQL.
+YugaByte DB supports both Transactional NoSQL and Distributed SQL APIs. 
+
+1. [YEDIS](../../api/redis/) - YEDIS is a transactional key-value API that is compatible with the [Redis](https://redis.io/commands) commands. YEDIS extends Redis with a new native [Time Series](https://blog.yugabyte.com/extending-redis-with-a-native-time-series-data-type-e5483c7116f8) data type.
+
+2. [YCQL](../../api/cassandra/) - YCQL is a transactional flexible-schema API that is compatible with [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html). It also extends CQL by adding [distributed ACID transactions](../../explore/transactional/), [strongly consistent secondary indexes](../../explore/transactional/secondary-indexes/) and a [native JSON data type](../../explore/transactional/json-documents/).
+
+3. [YSQL (Beta)](../../api/postgresql/) - YSQL is a distributed SQL API that is compatible with the SQL language in [PostgreSQL](https://www.postgresql.org/docs/10/sql-syntax.html).
+
+
+**For transactional, internet-scale workloads, the question of which API to choose is a trade-off between data modeling richness and query performance.** On one end of the spectrum is the YEDIS API that is completely optimized for single key access patterns, has simpler data modeling constructs and provides blazing-fast (sub-ms) query performance. On the other end of the spectrum is the YSQL API that supports complex multi-key relationships (through JOINS and foreign keys) and provides normal (single-digit ms) query performance. This is expected since multiple keys can be located on multiple shards hosted on multiple nodes, resulting in higher latency than a key-value API that accesses only a single key at any time. At the middle of the spectrum is the YCQL API that is still optimized for majority single-key workloads but has richer data modeling features such as globally consistent secondary indexes (powered by distributed ACID transactions) that can accelerate internet-scale application development significantly.
+
+## How does YugaByte DB's common storage engine work?
+
+[DocDB](../../architecture/concepts/persistence/), YugaByte DB's distributed document store common across all APIs, builds on top of the popular RocksDB project by transforming RocksDB from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB’s [sharding](../../architecture/concepts/sharding/), [replication/fault-tolerance](../../architecture/concepts/replication/) and [distributed ACID transactions](../../architecture/transactions/distributed-txns/) architecture are all based on the the Google Spanner design first published in 2012.
 
 ## What makes YugaByte DB unique?
 
-YugaByte DB is a single operational database that brings together 3 must-have needs of user-facing cloud applications, namely ACID transactions, high performance and multi-region scalability. Monolithic SQL databases offer transactions and performance but do not have ability to scale across multi-regions. Distributed NoSQL databases offer performance and multi-region scalablility but give up on transactional guarantees. Additionally, it is built for the modern cloud native era and is completely open source both at the core and the API layer.
+YugaByte DB is a single operational database that brings together three must-have needs of user-facing cloud applications, namely ACID transactions, high performance and multi-region scalability. Monolithic SQL databases offer transactions and performance but do not have ability to scale across multi-regions. Distributed NoSQL databases offer performance and multi-region scalablility but give up on transactional guarantees.
+
+Additionally, for the first time ever, application developers have unparalleled freedom when it comes to modeling data for workloads that require internet-scale, transactions and geo-distribution. As highlighted previously, they have two transactional NoSQL APIs and a distributed SQL API to choose from.
+
+YugaByte DB feature highlights are listed below.
 
 ### 1. Transactional
 
 - [Distributed acid transactions](../../explore/transactional/) that allow multi-row updates across any number of shards at any scale.
 
-- Transactional key-document [storage engine](../../architecture/concepts/persistence/) that's backed by self-healing, strongly consistent [replication](../../architecture/concepts/replication/).
+- Transactional document store [storage engine](../../architecture/concepts/persistence/) that's backed by self-healing, strongly consistent [replication](../../architecture/concepts/replication/).
 
 ### 2. High Performance
 
@@ -40,7 +57,7 @@ YugaByte DB is a single operational database that brings together 3 must-have ne
 
 - High throughput for ingesting and serving ever-growing datasets.
 
-### 3. Planet-Scale
+### 3. Planet Scale
 
 - [Global data distribution](../../explore/planet-scale/global-distribution/) that brings consistent data close to users through multi-region and multi-cloud deployments.
 

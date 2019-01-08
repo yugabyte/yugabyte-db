@@ -13,19 +13,11 @@ menu:
     weight: 550
 ---
 
-An application interacts with YugaByte DB using of a client library, also known as a client driver. Client drivers handle all interaction with the database in a language appropriate to the application. Here is a list of client drivers in various languages for YugaByte DB for building Apache Cassandra and Redis apps.
+An application interacts with YugaByte DB using of a client library, also known as a client driver. Client drivers handle all interaction with the database in a language appropriate to the application. Here is a list of client drivers in various languages for YugaByte DB for building transactional, internet-scale apps. Note that YugaByte DB's two transactional NoSQL APIs (YCQL and YEDIS) and distributed SQL API (YSQL) are wire compatible with Cassandra Query Language, Redis commands and PostgreSQL respectively. As a result, we will be leveraging the client drivers of these popular languages to connect to YugaByte DB.
 
 For each of these languages, we are going to understand using the client driver as well as implement a simple Hello World application. The example application will insert an employee profile entry with the employee id 1, name "John" and age 35. The application will then query the the profile data for employee id 1 and print it out to the console.
 
 <div class="row">
-<!-- <a class="section-link icon-offset" href="cpp/">
-  <div class="icon">
-    <i class="fa fa-cplusplus" aria-hidden="true"></i>
-  </div>
-  <div class="text">
-     C++
-  </div>
-</a> -->
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cpp/">
