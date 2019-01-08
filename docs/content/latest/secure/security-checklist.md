@@ -63,11 +63,10 @@ Limit the interfaces on which YugaByte DB instances listen for incoming connecti
 
 ## Enable encryption on the wire (Enterprise Edition)
 
-YugaByte DB uses OpenSSL in order to perform TLS encryption, which is native to Linux/BSD operating systems. You can configure YugaByte DB to use TLS/SSL for all incoming and outgoing connections, these include the following:
 
-* communication internal to YugaByte DB, for example, between YB-Masters and YB-TServers
-* communication between the applications and YugaByte DB
-* communication from a command line shell to YugaByte DB
+[TLS/SSL encryption](https://en.wikipedia.org/wiki/Transport_Layer_Security) ensures that network communication between servers is secure. You can configure YugaByte DB to use TLS to encrypt intra-cluster and client to cluster network communication. It is recommended to enable TLS encryption over the wire in YugaByte DB clusters and clinets to ensure privacy and integrity of data transferred over the network.
+
+Read more about enabling [TLS/SSL encryption](/secure/tls-encryption) in YugaByte DB.
 
 
 

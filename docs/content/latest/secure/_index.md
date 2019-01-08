@@ -47,4 +47,15 @@ menu:
       </div>
     </a>
   </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="tls-encryption/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/tls-encryption.png" aria-hidden="true" />
+        <div class="title">TLS Encryption</div>
+      </div>
+      <div class="body">
+          Enable TLS encryption over the wire in YugaByte DB to secure and protect network communication.
+      </div>
+    </a>
+  </div>
 </div>
