@@ -5,25 +5,13 @@
 
 #include "postgres.h"
 
-#if PG_VERSION_NUM >= 90600
-
-#include "common/keywords.h"
-
-#else
-
-#include "parser/keywords.h"
-
-#endif
-
 #include "parser/gramparse.h"
 /* Not needed now that this file is compiled as part of gram.y */
 /* #include "parser/parse.h" */
 #include "parser/scansup.h"
 #include "mb/pg_wchar.h"
 
-extern PGDLLIMPORT const ScanKeyword ScanKeywords[];
-extern PGDLLIMPORT const int	NumScanKeywords;
-#define ScanKeywordLookupArgs	, ScanKeywords, NumScanKeywords
+#include "parse_keyword.h"
 
 /* Avoid exit() on fatal scanner errors (a bit ugly -- see yy_fatal_error) */
 #undef fprintf
@@ -476,15 +464,16 @@ other			.
 					 * We will pass this along as a normal character string,
 					 * but preceded with an internally-generated "NCHAR".
 					 */
-					const ScanKeyword *keyword;
+					const char *keyword;
+					int		keycode;
 
 					SET_YYLLOC();
 					yyless(1);				/* eat only 'n' this time */
 					/* nchar had better be a keyword! */
-					keyword = ScanKeywordLookup("nchar" ScanKeywordLookupArgs);
+					keyword = orafce_scan_keyword("nchar", &keycode);
 					Assert(keyword != NULL);
-					yylval.val.str = (char*) keyword->name;
-					yylval.val.keycode = keyword->value;
+					yylval.val.str = (char*) keyword;
+					yylval.val.keycode = keycode;
 					yylval.val.modificator = NULL;
 					yylval.val.sep = NULL;
 					return X_KEYWORD;
@@ -824,17 +813,21 @@ other			.
 
 
 {identifier}	{
-					const ScanKeyword *keyword;
 					char		   *ident;
+					const char *keyword;
+					int		keycode;
 
 					SET_YYLLOC();
 
+					/* nchar had better be a keyword! */
+					keyword = orafce_scan_keyword("nchar", &keycode);
+
 					/* Is it a keyword? */
-					keyword = ScanKeywordLookup(yytext ScanKeywordLookupArgs);
+					keyword = orafce_scan_keyword(yytext, &keycode);
 					if (keyword != NULL)
 					{
-						yylval.val.str = (char*) keyword->name;
-						yylval.val.keycode = keyword->value;
+						yylval.val.str = (char*) keyword;
+						yylval.val.keycode = keycode;
 						yylval.val.modificator = NULL;
 						yylval.val.sep = NULL;
 						return X_KEYWORD;
