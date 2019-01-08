@@ -38,7 +38,7 @@ export default class HighlightedStatsPanel extends Component {
     );
     return (
       <div className="tile_count highlighted-stats-panel">
-        <YBResourceCount kind="Universes" size={universeList.data.length}/>  
+        <YBResourceCount kind="Universes" size={isDefinedNotNull(universeList.data) ? universeList.data.length : 0}/>
         <YBResourceCount kind="Nodes" size={numNodes}/>  
         <YBResourceCount kind="Per Month" size={formattedCost}/>
       </div>
