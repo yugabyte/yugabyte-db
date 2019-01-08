@@ -557,6 +557,10 @@ is_gcc() {
   fi
 }
 
+is_ubuntu() {
+  [[ -f /etc/issue ]] && grep -q Ubuntu /etc/issue
+}
+
 build_compiler_if_necessary() {
   # Sometimes we have to build the compiler before we can run CMake.
   if is_clang && is_linux; then
@@ -1121,6 +1125,9 @@ install_linuxbrew() {
   if ! is_linux; then
     fatal "Expected this function to only be called on Linux"
   fi
+  if is_ubuntu; then
+    return
+  fi
   local version=$1
   local linuxbrew_dirname=linuxbrew-$version
   local linuxbrew_dir=$YB_LINUXBREW_LOCAL_ROOT/$linuxbrew_dirname
@@ -1173,6 +1180,10 @@ detect_linuxbrew() {
   local user_specified_linuxbrew_dir=${YB_LINUXBREW_DIR:-}
   unset YB_LINUXBREW_DIR
   if ! is_linux; then
+    return
+  fi
+  if is_ubuntu; then
+    # Not using Linuxbrew on Ubuntu.
     return
   fi
 

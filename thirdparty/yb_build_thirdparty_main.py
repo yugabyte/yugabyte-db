@@ -44,6 +44,12 @@ def hashsum_file(hash, filename, block_size=65536):
     return hash.hexdigest()
 
 
+def indent_lines(s, num_spaces=4):
+    return "\n".join([
+        ' ' * num_spaces + line for line in s.split("\n")
+    ])
+
+
 class Builder:
     def __init__(self):
         self.tp_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
@@ -594,9 +600,9 @@ class Builder:
             return False
         else:
             log("Have to rebuild {} ({}):".format(dep.name, self.build_type))
-            log("Old build stamp for {}: {} (from {})".format(
-                    dep.name, old_build_stamp, stamp_path))
-            log("New build stamp for {}: {}".format(dep.name, new_build_stamp))
+            log("Old build stamp for {} (from {}):\n{}".format(
+                    dep.name, stamp_path, indent_lines(old_build_stamp)))
+            log("New build stamp for {}:\n{}".format(dep.name, indent_lines(new_build_stamp)))
             return True
 
     def get_build_stamp_path_for_dependency(self, dep):
@@ -620,16 +626,21 @@ class Builder:
         with PushDir(self.tp_dir):
             git_commit_sha1 = subprocess.check_output(
                     ['git', 'log', '--pretty=%H', '-n', '1'] + input_files_for_stamp).strip()
-            git_diff = subprocess.check_output(['git', 'diff'] + input_files_for_stamp)
-            git_diff_sha256 = hashlib.sha256(git_diff).hexdigest()
-            return 'git_commit_sha1={}\ngit_diff_sha256={}\n'.format(git_commit_sha1,
-                                                                     git_diff_sha256)
+            build_stamp = 'git_commit_sha1={}\n'.format(git_commit_sha1)
+            for git_extra_args in ([], ['--cached']):
+                git_diff = subprocess.check_output(
+                    ['git', 'diff'] + git_extra_args + input_files_for_stamp)
+                git_diff_sha256 = hashlib.sha256(git_diff).hexdigest()
+                build_stamp += 'git_diff_sha256{}={}\n'.format(
+                    '_'.join(git_extra_args).replace('--', '_'),
+                    git_diff_sha256)
+            return build_stamp
 
     def save_build_stamp_for_dependency(self, dep):
         stamp = self.get_build_stamp_for_dependency(dep)
         stamp_path = self.get_build_stamp_path_for_dependency(dep)
 
-        log("Saving new build stamp to '{}': {}".format(stamp_path, stamp))
+        log("Saving new build stamp to '{}':\n{}".format(stamp_path, indent_lines(stamp)))
         with open(stamp_path, "wt") as out:
             out.write(stamp)
 
