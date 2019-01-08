@@ -317,17 +317,20 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 				elog(DEBUG1, "filter-tables argument is null");
 				data->filter_tables = NIL;
 			}
-
-			rawstr = pstrdup(strVal(elem->arg));
-			if (!string_to_SelectTable(rawstr, ',', &data->filter_tables))
+			else
 			{
+
+				rawstr = pstrdup(strVal(elem->arg));
+				if (!string_to_SelectTable(rawstr, ',', &data->filter_tables))
+				{
+					pfree(rawstr);
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_NAME),
+							 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+								 strVal(elem->arg), elem->defname)));
+				}
 				pfree(rawstr);
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_NAME),
-						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
-							 strVal(elem->arg), elem->defname)));
 			}
-			pfree(rawstr);
 		}
 		else if (strcmp(elem->defname, "add-tables") == 0)
 		{
