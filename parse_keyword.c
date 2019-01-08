@@ -14,7 +14,7 @@
 
 #endif
 
-#if PG_VERSION_NUM >= 110000
+#if PG_VERSION_NUM >= 120000
 
 #define PG_KEYWORD(kwname, value, category) value,
 
