@@ -7,7 +7,7 @@ import './stylesheets/YBResourceCount.scss';
 
 export default class YBResourceCount extends PureComponent {
   static propTypes = {
-    kind: PropTypes.string.isRequired,
+    kind: PropTypes.string,
     unit: PropTypes.string,
     className: PropTypes.string,
     pluralizeKind: PropTypes.bool,
@@ -39,7 +39,7 @@ export default class YBResourceCount extends PureComponent {
           {size}
           {displayUnit && <span className="yb-resource-count-unit">{displayUnit}</span>}
         </div>
-        <div className="yb-resource-count-kind">{displayKind}</div>
+        {kind && <div className="yb-resource-count-kind">{displayKind}</div>}
       </div>
     );
   }
