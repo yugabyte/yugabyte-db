@@ -1018,7 +1018,23 @@ tserver_cache_reader_num_ops:
     yaxis:
       alias:
         "log_cache_num_ops": "Num Ops"
-
+tserver_glog_info_messages:
+  metric: ""
+  function: "rate|sum"
+  range: "1m"
+  filters:
+    export_type: "tserver_export"
+    saved_name: "glog_info_messages|glog_warning_messages|glog_error_messages"
+  group_by: "saved_name"
+  layout:
+    title: "Glog messages"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "glog_info_messages": "Info"
+        "glog_warning_messages": "Warning"
+        "glog_error_messages": "Error"
 node_up:
   metric: "up"
   function: "avg"
