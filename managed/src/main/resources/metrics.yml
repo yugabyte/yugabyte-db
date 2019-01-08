@@ -27,6 +27,25 @@ cpu_usage_system:
       type: "date"
     yaxis:
       ticksuffix: "&nbsp;%"
+
+disk_usage:
+  metric: ""
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    saved_name: "node_filesystem_free|node_filesystem_size"
+    mountpoint: "/mnt/.*"
+  group_by: saved_name
+  layout:
+    title: "Disk Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_filesystem_free": "free"
+        "node_filesystem_size": "size"
+      ticksuffix: "&nbsp;GB"
+
 cpu_usage:
   metric: "node_cpu"
   function: "irate|avg"

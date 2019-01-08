@@ -8,18 +8,31 @@
   margin: 5px 7.5px;
 }
 
-.widget-panel .metrics-panel {
-  padding: 0;
-  background-color: transparent;
-  margin: 0;
+.widget-panel {
+  .metrics-panel {
+    padding: 0;
+    background-color: transparent;
+    margin: 0;
 
-  .main-svg {
+    .main-svg {
 
-    .hoverlayer {
-      
-      .axistext {
-        display: none;
+      .hoverlayer {
+        
+        .axistext {
+          display: none;
+        }
       }
+    }
+  }
+
+  .metrics-padded-panel {
+    padding: 15px 20px;
+  }
+
+  .disk-usage-panel {
+    span.metric-subtitle {
+      display: block;
+      margin: 10px 0;
     }
   }
 }

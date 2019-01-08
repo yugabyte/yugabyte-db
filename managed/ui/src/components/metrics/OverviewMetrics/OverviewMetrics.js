@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { MetricsPanelOverview } from '../../metrics';
+import { MetricsPanelOverview, DiskUsagePanel } from '../';
 import './OverviewMetrics.scss';
 import { YBLoading } from '../../common/indicators';
 import { isNonEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
@@ -16,7 +16,8 @@ const panelTypes = {
     metrics: ["cql_server_rpc_per_second",
       "cql_sql_latency",
       "redis_rpcs_per_sec_all",
-      "redis_ops_latency_all", "cpu_usage", "memory_usage"]}
+      "redis_ops_latency_all", "cpu_usage", 
+      "disk_usage", "memory_usage"]}
 };
 
 class OverviewMetrics extends Component {
@@ -109,11 +110,17 @@ class OverviewMetrics extends Component {
                   <YBPanelLegend data={legendData} />
                 }
                 headerLeft={metrics[type][metricKey].layout.title}
-                body={
-                  <MetricsPanelOverview metricKey={metricKey}
-                                metric={metrics[type][metricKey]}
-                                className={"metrics-panel-container"}
-                                width={width} />
+                body={metricKey === "disk_usage" ?
+                  <DiskUsagePanel 
+                    metric={metrics[type][metricKey]}
+                    className={"disk-usage-container"}
+                  /> :
+                  <MetricsPanelOverview 
+                    metricKey={metricKey}
+                    metric={metrics[type][metricKey]}
+                    className={"metrics-panel-container"}
+                    width={width}
+                  />
                 }
               />
             </Col>
