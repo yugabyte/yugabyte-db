@@ -16,7 +16,7 @@ And check Java build JAR file:
 ~/code/yugabyte/java/yb-loadtester/target/yb-sample-apps.jar
 
 * Install JDK8
-* Need to have `vault_password`, yugabyte dev pem file `no-such-key.pem` (AWS) inside of `~/.yugabyte`
+* Need to have `vault_password`, yugabyte dev pem file `no-such-key.pem` (AWS) inside of `~/.yugabyte`, but this is only needed to access the releases, not if you're building from source
 * And also `ansible.env` file with AWS credentials inside of `~/.yugabyte`:
   ```
   export AWS_ACCESS_KEY=<your AWS access key>
@@ -166,6 +166,14 @@ $ ./run_itest --help
   $ npm install
   $ npm start
 ```
+If this doesn't work, try using node v.10
+
+```
+  $ brew uninstall --force node
+  $ brew install node@10
+  $ echo 'export PATH="<node/bin path>:$PATH"' >> ~/.bash_profile
+  $ source ~/.bash_profile
+```
 
 * To build production version of the UI code.
 ```
@@ -173,6 +181,10 @@ $ ./run_itest --help
   $ npm install
   $ npm build
 ```
+
+* Explore the UI
+
+Go to localhost:3000 and login with admin/admin
 
 #### Developing Yugaware in Eclipse
 
