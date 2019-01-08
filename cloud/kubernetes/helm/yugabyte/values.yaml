@@ -13,7 +13,7 @@ storage:
     size: 10Gi
     storageClass: standard
   tserver:
-    count: 3
+    count: 2
     size: 10Gi
     storageClass: standard
 
