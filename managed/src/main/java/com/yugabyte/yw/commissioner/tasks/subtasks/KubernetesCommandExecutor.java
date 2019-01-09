@@ -4,7 +4,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
@@ -317,21 +316,26 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
           ": " +  userIntent.instanceType);
     }
 
-    // Override disk count and size according to user intent.
-    Map<String, Object> diskSpecs = new HashMap<>();
+    Map<String, Object> storageOverrides = (HashMap) overrides.getOrDefault("storage", new HashMap<>());
+    // Override disk count and size for just the tserver pods according to user intent.
     if (userIntent.deviceInfo != null) {
+      Map<String, Object> tserverDiskSpecs = (HashMap) storageOverrides.getOrDefault("tserver", new HashMap<>());
+      Map<String, Object> masterDiskSpecs = (HashMap) storageOverrides.getOrDefault("master", new HashMap<>());
+
       if (userIntent.deviceInfo.numVolumes != null) {
-        diskSpecs.put("count", userIntent.deviceInfo.numVolumes);
+        tserverDiskSpecs.put("count", userIntent.deviceInfo.numVolumes);
       }
       if (userIntent.deviceInfo.volumeSize != null) {
-        diskSpecs.put("storage", String.format("%dGi", userIntent.deviceInfo.volumeSize));
+        tserverDiskSpecs.put("size", String.format("%dGi", userIntent.deviceInfo.volumeSize));
       }
+      // Storage class override applies to both tserver and master.
       if (userIntent.deviceInfo.storageClass != null) {
-        diskSpecs.put("storageClass", userIntent.deviceInfo.storageClass);
+        tserverDiskSpecs.put("storageClass", userIntent.deviceInfo.storageClass);
+        masterDiskSpecs.put("storageClass", userIntent.deviceInfo.storageClass);
       }
-      if (!diskSpecs.isEmpty()) {
-        overrides.put("persistentVolume", diskSpecs);
-      }
+
+      storageOverrides.put("tserver", tserverDiskSpecs);
+      storageOverrides.put("master", masterDiskSpecs);
     }
 
     // Override resource request and limit based on instance type.

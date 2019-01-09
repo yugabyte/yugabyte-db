@@ -11,3 +11,11 @@ serviceEndpoints:
     ports:
       ycql-port: "9042"
       yedis-port: "6379"
+
+storage:
+  master:
+    count: 2
+    size: 50Gi
+  tserver:
+    count: 2
+    size: 100Gi
