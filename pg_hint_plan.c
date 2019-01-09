@@ -2967,6 +2967,9 @@ pg_hint_plan_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	if (prev_ProcessUtility_hook)
 		prev_ProcessUtility_hook(pstmt, queryString, context, params, queryEnv,
 								 dest, completionTag);
+	else
+		standard_ProcessUtility(pstmt, queryString, context, params, queryEnv,
+								 dest, completionTag);
 
 	if (plpgsql_recurse_level == 0)
 		current_hint_retrieved = false;
