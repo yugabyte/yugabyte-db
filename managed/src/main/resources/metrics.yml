@@ -861,8 +861,7 @@ tserver_change_config_latency:
 
 tserver_threads:
   metric: ""
-  function: "rate|avg"
-  range: "1m"
+  function: "avg"
   filters:
     export_type: "tserver_export"
     saved_name: "threads_running|threads_started"
