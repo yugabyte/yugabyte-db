@@ -116,6 +116,8 @@ class ReleaseUtil(object):
         for dir_from_manifest in self.release_manifest:
             if dir_from_manifest == '%symlinks%':
                 for dst, target in self.release_manifest[dir_from_manifest].iteritems():
+                    if prefix_dir is not None and not dst.startswith(prefix_dir):
+                        continue
                     dst = os.path.join(distribution_dir, dst)
                     logging.debug("Creating symlink {} -> {}".format(dst, target))
                     mkdir_p(os.path.dirname(dst))
