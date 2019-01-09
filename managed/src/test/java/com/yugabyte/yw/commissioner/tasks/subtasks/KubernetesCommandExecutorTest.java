@@ -131,20 +131,23 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     double burstVal = 1.2;
     Map<String, String> config = defaultProvider.getConfig();
 
-    Map<String, Object> diskSpecs = new HashMap<>();
+    Map<String, Object> storageOverrides = (HashMap) expectedOverrides.getOrDefault("storage", new HashMap<>());
     if (defaultUserIntent.deviceInfo != null) {
+      Map<String, Object> tserverDiskSpecs = (HashMap) storageOverrides.getOrDefault("tserver", new HashMap<>());
+      Map<String, Object> masterDiskSpecs = (HashMap) storageOverrides.getOrDefault("master", new HashMap<>());
+
       if (defaultUserIntent.deviceInfo.numVolumes != null) {
-        diskSpecs.put("count", defaultUserIntent.deviceInfo.numVolumes);
+        tserverDiskSpecs.put("count", defaultUserIntent.deviceInfo.numVolumes);
       }
       if (defaultUserIntent.deviceInfo.volumeSize != null) {
-        diskSpecs.put("storage", String.format("%dGi", defaultUserIntent.deviceInfo.volumeSize));
+        tserverDiskSpecs.put("size", String.format("%dGi", defaultUserIntent.deviceInfo.volumeSize));
       }
       if (defaultUserIntent.deviceInfo.storageClass != null) {
-        diskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
+        tserverDiskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
+        masterDiskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
       }
-      if (!diskSpecs.isEmpty()) {
-        expectedOverrides.put("persistentVolume", diskSpecs);
-      }
+      storageOverrides.put("tserver", tserverDiskSpecs);
+      storageOverrides.put("master", masterDiskSpecs);
     }
     Map<String, Object> resourceOverrides = new HashMap();
 
