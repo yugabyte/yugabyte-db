@@ -10,8 +10,9 @@ import { Row, Col } from 'react-bootstrap';
 import { Link, browserHistory } from 'react-router';
 import { YBCopyButton } from '../../../common/descriptors';
 import { KUBERNETES_PROVIDERS } from 'config';
-import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
+import { isDefinedNotNull } from 'utils/ObjectUtils';
 import { YBTextInput, YBModal } from '../../../common/forms/fields';
+import { getPromiseState } from 'utils/PromiseUtils';
 
 export default class ListKubernetesConfigurations extends Component {
   static propTypes  = {
@@ -20,12 +21,18 @@ export default class ListKubernetesConfigurations extends Component {
     type: PropTypes.string.isRequired
   }
 
+  deleteProviderEnabled = (providerUUID) => {
+    return getPromiseState(this.props.universeList).isSuccess() 
+      && isDefinedNotNull(this.props.providers) 
+      && isDefinedNotNull(providerUUID) 
+      && !this.props.universeList.data.some(universe => universe.universeDetails.clusters && universe.universeDetails.clusters.some(cluster => cluster.userIntent.provider === providerUUID));
+  }
+
   render() {
     const { 
-      providers, 
-      deleteProviderConfig,
+      providers,
       activeProviderUUID,
-      type 
+      type
     } = this.props;
 
     const providerLinkFormatter = function(cell, row) {
@@ -37,8 +44,7 @@ export default class ListKubernetesConfigurations extends Component {
       return false;
     });
 
-    const self = this;
-    const formatConfigPath = function(item, row) {
+    const formatConfigPath = (item, row) => {
       return (
         <FlexContainer>
           <FlexGrow style={{width: '75%', overflow: 'hidden', textOverflow: 'ellipsis'}}>
@@ -49,10 +55,11 @@ export default class ListKubernetesConfigurations extends Component {
           </FlexGrow>
         </FlexContainer>
       );
-    };
-    const actionList = function(item, row) {
+    };  
+    const actionList = (item, row) => {
+      const enabled = this.deleteProviderEnabled(row.uuid);
       return (
-        <Button bsClass="btn btn-default btn-config pull-right" onClick={deleteProviderConfig.bind(self, row.uuid)}>
+        <Button disabled={enabled ? false : true} title={enabled ? "Delete provider" : "Cannot delete provider with associated clusters" } bsClass="btn btn-default btn-config pull-right" onClick={this.props.deleteProviderConfig.bind(this, row.uuid)}>
           Delete Configuration
         </Button>
       );
