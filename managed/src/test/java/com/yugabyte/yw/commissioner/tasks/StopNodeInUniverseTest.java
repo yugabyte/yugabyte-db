@@ -105,6 +105,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
             TaskType.AnsibleClusterServerCtl,
             TaskType.WaitForMasterLeader,
             TaskType.UpdateNodeProcess,
+            TaskType.ChangeMasterConfig,
             TaskType.UpdateNodeProcess,
             TaskType.SetNodeState,
             TaskType.UniverseUpdateSucceeded
@@ -119,6 +120,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
             Json.toJson(ImmutableMap.of()),
             Json.toJson(ImmutableMap.of("processType", "TSERVER",
                     "isAdd", false)),
+            Json.toJson(ImmutableMap.of()),
             Json.toJson(ImmutableMap.of("processType", "MASTER",
                     "isAdd", false)),
             Json.toJson(ImmutableMap.of("state", "Stopped")),
@@ -126,7 +128,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     );
 
     private void assertStopNodeSequence(Map<Integer, List<TaskInfo>> subTasksByPosition,
-                                         boolean isMaster) {
+                                        boolean isMaster) {
         int position = 0;
         if (isMaster) {
             for (TaskType taskType: STOP_NODE_TASK_SEQUENCE_MASTER) {
@@ -167,6 +169,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         List<TaskInfo> subTasks = taskInfo.getSubTasks();
         Map<Integer, List<TaskInfo>> subTasksByPosition =
                 subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        assertEquals(subTasksByPosition.size(), STOP_NODE_TASK_SEQUENCE_MASTER.size());
         assertStopNodeSequence(subTasksByPosition, true);
     }
 
@@ -188,6 +191,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         List<TaskInfo> subTasks = taskInfo.getSubTasks();
         Map<Integer, List<TaskInfo>> subTasksByPosition =
                 subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        assertEquals(subTasksByPosition.size(), STOP_NODE_TASK_SEQUENCE.size());
         assertStopNodeSequence(subTasksByPosition, false);
     }
 
