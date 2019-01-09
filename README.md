@@ -8,7 +8,7 @@
 [![Gitter chat](https://badges.gitter.im/gitlabhq/gitlabhq.svg)](https://gitter.im/YugaByte/Lobby)
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
 
-YugaByte Database is transactional, globally distributed database for powering high-performance, internet-scale applications.  This repository contains the Community Edition of the YugaByte Database.
+YugaByte Database is the open source, transactional, high-performance database for building internet-scale, globally-distributed applications.  This repository contains the Community Edition of the YugaByte Database.
 
 ## Table of Contents
 
@@ -31,7 +31,7 @@ YugaByte Database is transactional, globally distributed database for powering h
 
 ## About YugaByte DB
 
-Built using a unique combination of log-structured merge storage engine, auto-sharding, per-shard distributed consensus replication and multi-shard ACID transactions (inspired by Google Spanner), YugaByte DB is world's 1st distributed database that is both NoSQL (supports Redis-compatible key-value & Cassandra-compatible flexible schema APIs) and SQL (PostgreSQL-compatible distributed SQL API) at the same time. It is purpose-built to power fast-growing online services on public, private and hybrid clouds with transactional integrity, low latency, high throughput and multi-region scalability while also providing unparalleled data modeling freedom to application architects. Enterprises gain more functional depth and agility without any cloud lock-in when compared to proprietary cloud databases such as Amazon DynamoDB, Microsoft Azure Cosmos DB and Google Cloud Spanner. Enterprises also benefit from stronger data integrity guarantees and higher performance than those offered by legacy open source NoSQL databases such as MongoDB and Apache Cassandra. 
+Built using a unique combination of log-structured merge document store, auto-sharding, per-shard distributed consensus replication and multi-shard ACID transactions (inspired by Google Spanner), YugaByte DB is world's only distributed database that is both non-relational (supports Redis-compatible key-value & Cassandra-compatible flexible schema APIs) and relational (PostgreSQL-compatible distributed SQL API) at the same time. It is purpose-built to power fast-growing online services on public, private and hybrid clouds with transactional integrity, low latency, high throughput and multi-region scalability while also providing unparalleled data modeling freedom to application architects. Enterprises gain more functional depth and agility without any cloud lock-in when compared to proprietary cloud databases such as Amazon DynamoDB, Microsoft Azure Cosmos DB and Google Cloud Spanner. Enterprises also benefit from stronger data integrity guarantees and higher performance than those offered by legacy open source NoSQL databases such as MongoDB and Apache Cassandra. 
 
 * See how YugaByte DB [compares with other databases](https://docs.yugabyte.com/comparisons/).
 * Read more about YugaByte DB in our [docs](https://docs.yugabyte.com/introduction/overview/).
