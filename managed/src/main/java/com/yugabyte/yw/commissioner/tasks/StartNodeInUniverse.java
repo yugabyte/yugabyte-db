@@ -74,6 +74,9 @@ public class StartNodeInUniverse extends UniverseTaskBase {
         // Mark node as isMaster in YW DB.
         createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, true)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+        // Add stopped master to the quorum.
+        createChangeConfigTask(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
       }
 
       // Update node state to running

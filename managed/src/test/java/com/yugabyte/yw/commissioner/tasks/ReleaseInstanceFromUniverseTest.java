@@ -52,6 +52,26 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
   ModifyMasterClusterConfigBlacklist modifyBL;
   ShellProcessHandler.ShellResponse dummyShellResponse;
 
+  static final String DEFAULT_NODE_NAME = "host-n1";
+
+  private void setDefaultNodeState(final NodeState desiredState) {
+    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        Set<NodeDetails> nodes = universeDetails.nodeDetailsSet;
+        for (NodeDetails node : nodes) {
+          if (node.nodeName.equals(DEFAULT_NODE_NAME)) {
+            node.state = desiredState;
+            break;
+          }
+        }
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+    Universe.saveDetails(defaultUniverse.universeUUID, updater);
+  }
+
   @Before
   public void setUp() {
     super.setUp();
@@ -69,23 +89,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */));
 
-    // Change one of the nodes' state to removed.
-    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        Set<NodeDetails> nodes = universeDetails.nodeDetailsSet;
-        for (NodeDetails node : nodes) {
-          if (node.nodeName.equals("host-n1")) {
-            node.state = NodeState.Removed;
-            break;
-          }
-        }
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
-
-    Universe.saveDetails(defaultUniverse.universeUUID, updater);
+    setDefaultNodeState(NodeState.Removed);
 
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any())).thenReturn(mockClient);
@@ -100,8 +104,8 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
   }
 
-  private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
-    taskParams.expectedUniverseVersion = 3;
+  private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName, int version) {
+    taskParams.expectedUniverseVersion = version;
     taskParams.nodeName = nodeName;
     try {
       UUID taskUUID = commissioner.submit(TaskType.ReleaseInstanceFromUniverse, taskParams);
@@ -138,8 +142,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       assertEquals(1, tasks.size());
       assertEquals(taskType, tasks.get(0).getTaskType());
-      JsonNode expectedResults =
-          RELEASE_INSTANCE_TASK_EXPECTED_RESULTS.get(position);
+      JsonNode expectedResults = RELEASE_INSTANCE_TASK_EXPECTED_RESULTS.get(position);
       List<JsonNode> taskDetails = tasks.stream()
           .map(t -> t.getTaskDetails())
           .collect(Collectors.toList());
@@ -153,10 +156,25 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
 
-    TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    TaskInfo taskInfo = submitTask(taskParams, DEFAULT_NODE_NAME, 3);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+    assertEquals(subTasksByPosition.size(), RELEASE_INSTANCE_TASK_SEQUENCE.size());
+    assertReleaseInstanceSequence(subTasksByPosition);
+  }
+
+  @Test
+  public void testReleaseStoppedInstanceSuccess() {
+    setDefaultNodeState(NodeState.Stopped);
+    NodeTaskParams taskParams = new NodeTaskParams();
+    taskParams.universeUUID = defaultUniverse.universeUUID;
+
+    TaskInfo taskInfo = submitTask(taskParams, DEFAULT_NODE_NAME, 4);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+    assertEquals(subTasksByPosition.size(), RELEASE_INSTANCE_TASK_SEQUENCE.size());
     assertReleaseInstanceSequence(subTasksByPosition);
   }
 
@@ -164,7 +182,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
   public void testReleaseUnknownNode() {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
-    TaskInfo taskInfo = submitTask(taskParams, "host-n9");
+    TaskInfo taskInfo = submitTask(taskParams, "host-n9", 3);
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
   }
 }

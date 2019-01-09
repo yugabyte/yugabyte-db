@@ -64,6 +64,8 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, false)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       if (currentNode.isMaster) {
+        createChangeConfigTask(currentNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse,
+                               true /* useHostPort */);
         createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       }
