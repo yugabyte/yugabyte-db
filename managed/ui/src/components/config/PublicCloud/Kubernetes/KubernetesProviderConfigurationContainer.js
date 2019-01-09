@@ -24,6 +24,7 @@ const mapDispatchToProps = (dispatch) => {
 
 const mapStateToProps = (state) => {
   return {
+    universeList: state.universe.universeList,
     providers: state.cloud.providers,
     regions: state.cloud.supportedRegionList
   };

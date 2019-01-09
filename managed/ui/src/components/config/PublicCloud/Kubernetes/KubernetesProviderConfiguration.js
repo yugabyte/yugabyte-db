@@ -28,7 +28,7 @@ class KubernetesProviderConfiguration extends Component {
   }
 
   render() {
-    const { providers, regions, type, params: {uuid} } = this.props;
+    const { providers, regions, universeList, type, params: {uuid} } = this.props;
 
     if (getPromiseState(providers).isLoading() ||
         getPromiseState(providers).isInit()) {
@@ -61,6 +61,7 @@ class KubernetesProviderConfiguration extends Component {
           providers={configuredProviderData}
           onCreate={this.toggleListView}
           activeProviderUUID={uuid}
+          universeList={universeList}
           deleteProviderConfig={this.props.deleteProviderConfig}
           type={type} />
       );
