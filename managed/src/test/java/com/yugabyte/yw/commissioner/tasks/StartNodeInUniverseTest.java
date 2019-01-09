@@ -98,6 +98,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
             TaskType.UpdateNodeProcess,
             TaskType.AnsibleClusterServerCtl,
             TaskType.UpdateNodeProcess,
+            TaskType.ChangeMasterConfig,
             TaskType.SetNodeState,
             TaskType.UniverseUpdateSucceeded
     );
@@ -112,6 +113,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
                     "command", "start")),
             Json.toJson(ImmutableMap.of("processType", "MASTER",
                     "isAdd", true)),
+            Json.toJson(ImmutableMap.of()),
             Json.toJson(ImmutableMap.of("state", "Live")),
             Json.toJson(ImmutableMap.of())
 
@@ -161,6 +163,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         List<TaskInfo> subTasks = taskInfo.getSubTasks();
         Map<Integer, List<TaskInfo>> subTasksByPosition =
                 subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        assertEquals(subTasksByPosition.size(), START_NODE_TASK_SEQUENCE.size());
         assertStartNodeSequence(subTasksByPosition, false);
     }
 
@@ -176,6 +179,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         List<TaskInfo> subTasks = taskInfo.getSubTasks();
         Map<Integer, List<TaskInfo>> subTasksByPosition =
                 subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        assertEquals(subTasksByPosition.size(), WITH_MASTER_UNDER_REPLICATED.size());
         assertStartNodeSequence(subTasksByPosition, true);
     }
 
