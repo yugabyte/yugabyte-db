@@ -68,7 +68,7 @@ class MonoDelta {
   static const MonoDelta kMax;
   static const MonoDelta kZero;
 
-  MonoDelta();
+  MonoDelta() noexcept;
 
   template<class Rep, class Period>
   MonoDelta(const std::chrono::duration<Rep, Period>& duration) // NOLINT

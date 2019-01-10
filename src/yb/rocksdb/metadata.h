@@ -83,14 +83,17 @@ struct LevelMetaData {
 
 class UserFrontier;
 
-// Frontier should be able to be copied preserving its virtual nature.
-// We cannot use shared_ptr here, because we are planning to change cloned value,
-// with shared_ptr original would also be changed.
+// Frontier should be copyable, but should still preserve its polymorphic nature. We cannot use
+// shared_ptr here, because we are planning to modify the copied value. If we used shared_ptr and
+// modified the copied value, the original value would also change.
 typedef yb::clone_ptr<UserFrontier> UserFrontierPtr;
 
-// When writing a batch user could specify frontier values of that batch.
-// So we would maintain those values for each SST file and whole DB.
-// This class defines an abstract interface for single user frontier.
+// When writing a batch of RocksDB records, the user could specify "frontier" values of that batch,
+// such as smallest/largest Raft OpId or smallest/largest HybridTime of records in that batch. We
+// maintain these values for each SSTable file and whole DB. This class defines an abstract
+// interface for a single user frontier, i.e. only smallest values or only largest values, but all
+// types of these values together as a tuple (e.g. OpId / hybrid time / etc.) See
+// consensus_frontier.h for a concrete example.
 class UserFrontier {
  public:
   virtual std::unique_ptr<UserFrontier> Clone() const = 0;
@@ -127,7 +130,7 @@ class UserFrontiers {
   virtual const UserFrontier& Smallest() const = 0;
   virtual const UserFrontier& Largest() const = 0;
 
-  virtual void Merge(const UserFrontiers& rhs) = 0;
+  virtual void MergeFrontiers(const UserFrontiers& rhs) = 0;
 
   virtual ~UserFrontiers() {}
 };
@@ -149,7 +152,7 @@ class UserFrontiersBase : public rocksdb::UserFrontiers {
     return std::make_unique<UserFrontiersBase>(*this);
   }
 
-  void Merge(const UserFrontiers& pre_rhs) override {
+  void MergeFrontiers(const UserFrontiers& pre_rhs) override {
     const auto& rhs = down_cast<const UserFrontiersBase&>(pre_rhs);
     smallest_.Update(rhs.smallest_, rocksdb::UpdateUserValueType::kSmallest);
     largest_.Update(rhs.largest_, rocksdb::UpdateUserValueType::kLargest);

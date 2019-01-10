@@ -658,7 +658,7 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
                "TS: ", req->dest_uuid());
 
   LOG(INFO) << "Processing FlushTablets from " << context.requestor_string();
-  VLOG(1) << "Full request: " << req->DebugString();
+  VLOG(1) << "Full FlushTablets request: " << req->DebugString();
   TabletPeers tablet_peers;
 
   for (const TabletId& id : req->tablet_ids()) {
@@ -667,8 +667,12 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
     auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
         server_->tablet_peer_lookup(), id, resp, &context));
 
-    RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-        tablet_peer->tablet()->Flush(tablet::FlushMode::kAsync), resp, &context);
+    auto tablet = tablet_peer->tablet();
+    if (req->is_compaction()) {
+      tablet->ForceRocksDBCompactInTest();
+    } else {
+      RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
+    }
 
     tablet_peers.push_back(tablet_peer);
     resp->clear_failed_tablet_id();
@@ -1141,8 +1145,9 @@ void HandleRedisReadRequestAsync(
 }
 
 Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
-  tablet::ScopedReadOperation read_tx(
-      read_context->tablet.get(), read_context->require_lease, read_context->read_time);
+  auto read_tx = VERIFY_RESULT(
+      tablet::ScopedReadOperation::Create(
+          read_context->tablet.get(), read_context->require_lease, read_context->read_time));
   if (!read_context->req->redis_batch().empty()) {
     // Assert the primary table is a redis table.
     DCHECK_EQ(read_context->tablet->table_type(), TableType::REDIS_TABLE_TYPE);

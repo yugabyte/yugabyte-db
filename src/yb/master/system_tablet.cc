@@ -41,8 +41,8 @@ const TabletId& SystemTablet::tablet_id() const {
   return tablet_id_;
 }
 
-void SystemTablet::RegisterReaderTimestamp(HybridTime read_point) {
-  // NOOP.
+Status SystemTablet::RegisterReaderTimestamp(HybridTime read_point) {
+  return Status::OK();
 }
 
 void SystemTablet::UnregisterReader(HybridTime read_point) {

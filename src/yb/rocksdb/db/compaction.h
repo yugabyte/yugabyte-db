@@ -75,15 +75,14 @@ struct LightweightBoundaries {
   }
 };
 
-// A compressed copy of file meta data that just contain
-// smallest and largest key's slice
+// A compressed copy of file meta data that just contains smallest and largest key's slice.
 struct FdWithBoundaries {
   FileDescriptor fd;
   LightweightBoundaries smallest; // smallest boundaries in this file
   LightweightBoundaries largest;  // largest boundaries in this file
 
   explicit FdWithBoundaries(Arena* arena, const FileMetaData& source)
-    : fd(source.fd), smallest(arena, source.smallest), largest(arena, source.largest) {}
+      : fd(source.fd), smallest(arena, source.smallest), largest(arena, source.largest) {}
 };
 
 // Data structure to store an array of FdWithKeyRange in one level

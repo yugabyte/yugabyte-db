@@ -27,6 +27,7 @@ void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
   ConsensusFrontierPB pb;
   op_id_.ToPB(pb.mutable_op_id());
   pb.set_hybrid_time(ht_.ToUint64());
+  pb.set_history_cutoff(history_cutoff_.ToUint64());
   any->PackFrom(pb);
 }
 
@@ -35,6 +36,11 @@ void ConsensusFrontier::FromPB(const google::protobuf::Any& any) {
   any.UnpackTo(&pb);
   op_id_ = OpId::FromPB(pb.op_id());
   ht_ = HybridTime(pb.hybrid_time());
+  if (pb.has_history_cutoff()) {
+    history_cutoff_ = HybridTime(pb.history_cutoff());
+  } else {
+    history_cutoff_ = HybridTime();
+  }
 }
 
 void ConsensusFrontier::FromOpIdPBDeprecated(const OpIdPB& pb) {
@@ -52,10 +58,12 @@ void ConsensusFrontier::Update(
     case rocksdb::UpdateUserValueType::kLargest:
       op_id_.MakeAtLeast(rhs.op_id_);
       ht_.MakeAtLeast(rhs.ht_);
+      history_cutoff_.MakeAtLeast(rhs.history_cutoff_);
       return;
     case rocksdb::UpdateUserValueType::kSmallest:
       op_id_.MakeAtMost(rhs.op_id_);
       ht_.MakeAtMost(rhs.ht_);
+      history_cutoff_.MakeAtMost(rhs.history_cutoff_);
       return;
   }
   FATAL_INVALID_ENUM_VALUE(rocksdb::UpdateUserValueType, type);

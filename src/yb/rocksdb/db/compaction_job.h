@@ -35,6 +35,8 @@
 #include <utility>
 #include <vector>
 
+#include "yb/gutil/thread_annotations.h"
+
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/compaction_iterator.h"
 #include "yb/rocksdb/db/dbformat.h"
@@ -183,6 +185,8 @@ class CompactionJob {
   std::vector<Slice> boundaries_;
   // Stores the approx size of keys covered in the range of each subcompaction
   std::vector<uint64_t> sizes_;
+
+  UserFrontierPtr largest_user_frontier_;
 };
 
 }  // namespace rocksdb

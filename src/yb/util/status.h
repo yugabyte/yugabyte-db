@@ -124,42 +124,44 @@
 namespace yb {
 
 #define YB_STATUS_CODES \
-    ((Ok, 0, "OK")) \
-    ((NotFound, 1, "Not found")) \
-    ((Corruption, 2, "Corruption")) \
-    ((NotSupported, 3, "Not implemented")) \
-    ((InvalidArgument, 4, "Invalid argument")) \
-    ((IOError, 5, "IO error")) \
-    ((AlreadyPresent, 6, "Already present")) \
-    ((RuntimeError, 7, "Runtime error")) \
-    ((NetworkError, 8, "Network error")) \
-    ((IllegalState, 9, "Illegal state")) \
-    ((NotAuthorized, 10, "Not authorized")) \
-    ((Aborted, 11, "Aborted")) \
-    ((RemoteError, 12, "Remote error")) \
-    ((ServiceUnavailable, 13, "Service unavailable")) \
-    ((TimedOut, 14, "Timed out")) \
-    ((Uninitialized, 15, "Uninitialized")) \
-    ((ConfigurationError, 16, "Configuration error")) \
-    ((Incomplete, 17, "Incomplete")) \
-    ((EndOfFile, 18, "End of file")) \
-    ((InvalidCommand, 19, "Invalid command")) \
-    ((QLError, 20, "SQL error")) \
-    ((InternalError, 21, "Internal error")) \
-    ((ShutdownInProgress, 22, "Shutdown in progress")) \
-    ((MergeInProgress, 23, "Merge in progress")) \
-    ((Busy, 24, "Resource busy")) \
-    ((Expired, 25, "Operation expired")) \
-    ((TryAgain, 26, "Operation failed. Try again.")) \
-    ((LeaderNotReadyToServe, 27, "Leader not ready to serve requests.")) \
-    ((LeaderHasNoLease, 28, "Leader does not have a valid lease.")) \
-    ((Combined, 29, "Combined status representing multiple status failures.")) \
+    ((Ok, OK, 0, "OK")) \
+    ((NotFound, NOT_FOUND, 1, "Not found")) \
+    ((Corruption, CORRUPTION, 2, "Corruption")) \
+    ((NotSupported, NOT_SUPPORTED, 3, "Not implemented")) \
+    ((InvalidArgument, INVALID_ARGUMENT, 4, "Invalid argument")) \
+    ((IOError, IO_ERROR, 5, "IO error")) \
+    ((AlreadyPresent, ALREADY_PRESENT, 6, "Already present")) \
+    ((RuntimeError, RUNTIME_ERROR, 7, "Runtime error")) \
+    ((NetworkError, NETWORK_ERROR, 8, "Network error")) \
+    ((IllegalState, ILLEGAL_STATE, 9, "Illegal state")) \
+    ((NotAuthorized, NOT_AUTHORIZED, 10, "Not authorized")) \
+    ((Aborted, ABORTED, 11, "Aborted")) \
+    ((RemoteError, REMOTE_ERROR, 12, "Remote error")) \
+    ((ServiceUnavailable, SERVICE_UNAVAILABLE, 13, "Service unavailable")) \
+    ((TimedOut, TIMED_OUT, 14, "Timed out")) \
+    ((Uninitialized, UNINITIALIZED, 15, "Uninitialized")) \
+    ((ConfigurationError, CONFIGURATION_ERROR, 16, "Configuration error")) \
+    ((Incomplete, INCOMPLETE, 17, "Incomplete")) \
+    ((EndOfFile, END_OF_FILE, 18, "End of file")) \
+    ((InvalidCommand, INVALID_COMMAND, 19, "Invalid command")) \
+    ((QLError, SQL_ERROR, 20, "SQL error")) \
+    ((InternalError, INTERNAL_ERROR, 21, "Internal error")) \
+    ((Expired, EXPIRED, 22, "Operation expired")) \
+    ((LeaderNotReadyToServe, LEADER_NOT_READY_TO_SERVE, 23, \
+        "Leader not ready to serve requests.")) \
+    ((LeaderHasNoLease, LEADER_HAS_NO_LEASE, 24, "Leader does not have a valid lease.")) \
+    ((TryAgain, TRY_AGAIN_CODE, 25, "Operation failed. Try again.")) \
+    ((Busy, BUSY, 26, "Resource busy")) \
+    ((ShutdownInProgress, SHUTDOWN_IN_PROGRESS, 27, "Shutdown in progress")) \
+    ((MergeInProgress, MERGE_IN_PROGRESS, 28, "Merge in progress")) \
+    ((Combined, COMBINED_ERROR, 29, "Combined status representing multiple status failures.")) \
+    ((SnapshotTooOld, SNAPSHOT_TOO_OLD, 30, "Snapshot too old")) \
     /**/
 
-#define YB_STATUS_CODE_DECLARE(name, value, message) \
+#define YB_STATUS_CODE_DECLARE(name, pb_name, value, message) \
     BOOST_PP_CAT(k, name) = value,
 
-#define YB_STATUS_CODE_IS_FUNC(name, value, message) \
+#define YB_STATUS_CODE_IS_FUNC(name, pb_name, value, message) \
     bool BOOST_PP_CAT(Is, name)() const { \
       return code() == BOOST_PP_CAT(k, name); \
     } \

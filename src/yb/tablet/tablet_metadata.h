@@ -80,9 +80,9 @@ struct TableInfo {
   PartitionSchema partition_schema;
 
   // A vector of column IDs that have been deleted, so that the compaction filter can free the
-  // associated memory. At present, deleted column IDs are persisted forever, even if all the
-  // associated data has been discarded. In the future, we can garbage collect such column IDs
-  // to make sure this vector doesn't grow too large.
+  // associated memory. As of 01/2019, deleted column IDs are persisted forever, even if all the
+  // associated data has been discarded. In the future, we can garbage collect such column IDs to
+  // make sure this vector doesn't grow too large.
   std::vector<DeletedColumn> deleted_cols;
 
   TableInfo() = default;

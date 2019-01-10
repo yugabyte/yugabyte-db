@@ -1271,8 +1271,13 @@ message UDTypeInfoPB {
   optional NamespaceIdentifierPB namespace = 5;
 }
 
+// TODO: rename to FlushOrCompact TablesRequestPB
+// https://github.com/YugaByte/yugabyte-db/issues/729
 message FlushTablesRequestPB {
   repeated TableIdentifierPB tables = 1;
+
+  // Whether we want to compact the tablets instead of flushing them.
+  optional bool is_compaction = 2;
 }
 
 message FlushTablesResponsePB {
