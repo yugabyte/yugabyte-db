@@ -31,7 +31,7 @@ class TableTitle extends Component {
           </div>
           <div className="table-type-count">
             <Image src={tableIcon} className="table-type-logo"/>
-            <YBResourceCount kind="PostgreSQL" size={numPostgresTables}/>
+            <YBResourceCount kind="YSQL" size={numPostgresTables}/>
           </div>
         </div>
       </div>
@@ -94,7 +94,7 @@ class ListTableGrid extends Component {
       } else if (tableType === "REDIS_TABLE_TYPE") {
         return "YEDIS";
       } else {
-        return "PostgreSQL";
+        return "YSQL";
       }
     };
 
