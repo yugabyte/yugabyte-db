@@ -24,6 +24,9 @@ Revision history for pgTAP
 * Fixed `col_default_is()` to properly report special SQL syntax functions
   like `CURRENT_USER` and `CURRENT_CATALOG` instead of evaluating them on
   PostgreSQL 10 and higher.
+* Changed the uninstall script to use `DROP IF EXISTS` rather than just `DROP`
+  so that it works even with partial or failed installs. Thanks to Sandro
+  Santilli for the PR (#194).
 
 0.99.0 2018-09-16T20:55:41Z
 ---------------------------
