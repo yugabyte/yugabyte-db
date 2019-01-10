@@ -45,6 +45,8 @@ def hashsum_file(hash, filename, block_size=65536):
 
 
 def indent_lines(s, num_spaces=4):
+    if s is None:
+        return s
     return "\n".join([
         ' ' * num_spaces + line for line in s.split("\n")
     ])
@@ -391,7 +393,7 @@ class Builder:
             if filename.endswith(ext):
                 with PushDir(out_dir):
                     cmd = ARCHIVE_TYPES[ext].format(filename)
-                    log("Extracting: {}".format(cmd))
+                    log("Extracting: {} (directory: {})".format(cmd, out_dir))
                     subprocess.check_call(cmd, shell=True)
                     return
         fatal("Unknown archive type for: {}".format(filename))

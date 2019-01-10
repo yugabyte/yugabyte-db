@@ -33,7 +33,7 @@ using {0} : :
 class BoostDependency(Dependency):
     def __init__(self):
         super(BoostDependency, self).__init__(
-            'boost', '1.66.0',
+            'boost', '1.69.0',
             'https://dl.bintray.com/boostorg/release/{0}/source/boost_{1}.tar.bz2',
             BUILD_GROUP_INSTRUMENTED)
         self.dir = '{}_{}'.format(self.name, self.underscored_version)

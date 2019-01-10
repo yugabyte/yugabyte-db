@@ -12,6 +12,7 @@
 //
 
 #include <boost/uuid/random_generator.hpp>
+#include <boost/uuid/detail/sha1.hpp>
 #include "yb/util/uuid.h"
 #include "yb/util/random_util.h"
 #include "yb/gutil/endian.h"

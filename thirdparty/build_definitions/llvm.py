@@ -21,7 +21,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from build_definitions import *
 
 class LLVMDependency(Dependency):
-    VERSION = '6.0.1'
+    VERSION = '7.0.1'
 
     def __init__(self):
         url_prefix="http://releases.llvm.org/{0}/"
@@ -35,6 +35,10 @@ class LLVMDependency(Dependency):
             ExtraDownload('compiler-rt', self.version, url_prefix + 'compiler-rt-{0}.src.tar.xz',
                           'projects',
                           ['mv', 'compiler-rt-{}.src'.format(self.version), 'compiler-rt']),
+            ExtraDownload(
+                'clang-tools-extra', self.version, url_prefix + 'clang-tools-extra-{0}.src.tar.xz',
+                'tools/cfe/tools',
+                ['mv', 'clang-tools-extra-{}.src'.format(self.version), 'extra']),
         ]
 
         self.copy_sources = False
