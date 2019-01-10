@@ -79,6 +79,8 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/enums.h"
 
+#include "yb/gutil/thread_annotations.h"
+
 namespace rocksdb {
 class DB;
 }
@@ -354,6 +356,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS WaitForFlush();
 
+  // Synchronously perform a full compaction on both regular and intents RocksDBs.
+  CHECKED_STATUS CompactSync();
+
   // Prepares the transaction context for the alter schema operation.
   // An error will be returned if the specified schema is invalid (e.g.
   // key mismatch, or missing IDs)
@@ -423,12 +428,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // request in state. Due to acquiring locks it can block the thread.
   void AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation> operation);
 
-  static const char* kDMSMemTrackerId;
-
-  // Returns the timestamp corresponding to the oldest active reader. If none exists returns
-  // the latest timestamp that is safe to read.
-  // This is used to figure out what can be garbage collected during a compaction.
-  HybridTime OldestReadPoint() const;
+  // Given a propopsed "history cutoff" timestamp, returns either that value, if possible, or a
+  // smaller value corresponding to the oldest active reader, whichever is smaller. This ensures
+  // that data needed by active read operations is not compacted away.
+  //
+  // Also updates the "earliest allowed read time" of the tablet to be equal to the returned value,
+  // (if it is still lower than the value about to be returned), so that new readers with timestamps
+  // earlier than that will be rejected.
+  HybridTime UpdateHistoryCutoff(HybridTime proposed_cutoff);
 
   // The HybridTime of the oldest write that is still not scheduled to be flushed in RocksDB.
   TabletFlushStats* flush_stats() const { return flush_stats_.get(); }
@@ -486,6 +493,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     mem_table_flush_filter_factory_ = std::move(factory);
   }
 
+  // When a compaction starts with a particular "history cutoff" timestamp, it calls this function
+  // to disallow reads at a time lower than that history cutoff timestamp, to avoid reading
+  // invalid/incomplete data.
+  //
+  // Returns true if the new history cutoff timestamp was successfully registered, or false if
+  // it can't be used because there are pending reads at lower timestamps.
+  HybridTime Get(HybridTime lower_bound);
+
   rocksdb::DB* TEST_db() const {
     return regular_db_.get();
   }
@@ -507,7 +522,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Register/Unregister a read operation, with an associated timestamp, for the purpose of
   // tracking the oldest read point.
-  void RegisterReaderTimestamp(HybridTime read_point) override;
+  CHECKED_STATUS RegisterReaderTimestamp(HybridTime read_point) override;
   void UnregisterReader(HybridTime read_point) override;
 
   void PrepareTransactionWriteBatch(
@@ -571,13 +586,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   scoped_refptr<log::LogAnchorRegistry> log_anchor_registry_;
   std::shared_ptr<MemTracker> mem_tracker_;
-  std::shared_ptr<MemTracker> dms_mem_tracker_;
 
   MetricEntityPtr metric_entity_;
   gscoped_ptr<TabletMetrics> metrics_;
   FunctionGaugeDetacher metric_detacher_;
-
-  int64_t next_mrs_id_ = 0;
 
   // A pointer to the server's clock.
   scoped_refptr<server::Clock> clock_;
@@ -586,18 +598,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Maps a timestamp to the number active readers with that timestamp.
   // TODO(ENG-961): Check if this is a point of contention. If so, shard it as suggested in D1219.
-  std::map<HybridTime, int64_t> active_readers_cnt_;
+  std::map<HybridTime, int64_t> active_readers_cnt_ GUARDED_BY(active_readers_mutex_);
+  HybridTime earliest_read_time_allowed_ GUARDED_BY(active_readers_mutex_) {HybridTime::kMin};
   mutable std::mutex active_readers_mutex_;
-
-  // Lock protecting the selection of rowsets for compaction.
-  // Only one thread may run the compaction selection algorithm at a time
-  // so that they don't both try to select the same rowset.
-  mutable std::mutex compact_select_lock_;
-
-  // We take this lock when flushing the tablet's rowsets in Tablet::Flush.  We
-  // don't want to have two flushes in progress at once, in case the one which
-  // started earlier completes after the one started later.
-  mutable Semaphore rowsets_flush_sem_{1};
 
   // Lock used to serialize the creation of RocksDB checkpoints.
   mutable std::mutex create_checkpoint_lock_;
@@ -699,8 +702,10 @@ class ScopedReadOperation {
     rhs.tablet_ = nullptr;
   }
 
-  explicit ScopedReadOperation(
-      AbstractTablet* tablet, RequireLease require_lease, const ReadHybridTime& read_time);
+  static Result<ScopedReadOperation> Create(
+      AbstractTablet* tablet,
+      RequireLease require_lease,
+      ReadHybridTime read_time);
 
   ScopedReadOperation(const ScopedReadOperation&) = delete;
   void operator=(const ScopedReadOperation&) = delete;
@@ -709,9 +714,15 @@ class ScopedReadOperation {
 
   const ReadHybridTime& read_time() const { return read_time_; }
 
+  Status status() const { return status_; }
+
  private:
+  explicit ScopedReadOperation(
+      AbstractTablet* tablet, RequireLease require_lease, const ReadHybridTime& read_time);
+
   AbstractTablet* tablet_;
   ReadHybridTime read_time_;
+  Status status_;
 };
 
 }  // namespace tablet

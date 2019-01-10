@@ -20,6 +20,7 @@
 #include <boost/scope_exit.hpp>
 #include <gflags/gflags.h>
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/env_util.h"
@@ -28,6 +29,11 @@
 #include "yb/util/errno.h"
 
 DEFINE_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
+DEFINE_bool(pg_transactions_enabled, false,
+            "True to enable transactions in YugaByte PostgreSQL API. This should eventually "
+            "be set to true by default.");
+TAG_FLAG(pg_transactions_enabled, advanced);
+TAG_FLAG(pg_transactions_enabled, hidden);
 
 using std::vector;
 using std::string;
@@ -190,6 +196,9 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
     proc->SetEnv("YB_ENABLED_IN_POSTGRES", "1");
     proc->SetEnv("FLAGS_pggate_master_addresses", conf_.master_addresses);
 
+    if (FLAGS_pg_transactions_enabled) {
+      proc->SetEnv("YB_PG_TRANSACTIONS_ENABLED", "1");
+    }
     // Pass non-default flags to the child process using FLAGS_... environment variables.
     std::vector<google::CommandLineFlagInfo> flag_infos;
     google::GetAllFlags(&flag_infos);

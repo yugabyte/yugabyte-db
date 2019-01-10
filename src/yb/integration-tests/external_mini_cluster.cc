@@ -1167,6 +1167,10 @@ std::shared_ptr<server::GenericServiceProxy> ExternalMiniCluster::master_generic
 
 Status ExternalMiniCluster::DoCreateClient(client::YBClientBuilder* builder,
                                            std::shared_ptr<client::YBClient>* client) {
+  if (builder == nullptr) {
+    client::YBClientBuilder default_builder;
+    return DoCreateClient(&default_builder, client);
+  }
   CHECK(!masters_.empty());
   builder->clear_master_server_addrs();
   for (const scoped_refptr<ExternalMaster>& master : masters_) {

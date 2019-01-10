@@ -37,7 +37,7 @@ class SystemTablet : public tablet::AbstractTablet {
 
   const TabletId& tablet_id() const override;
 
-  void RegisterReaderTimestamp(HybridTime read_point) override;
+  CHECKED_STATUS RegisterReaderTimestamp(HybridTime read_point) override;
   void UnregisterReader(HybridTime read_point) override;
 
   CHECKED_STATUS HandleRedisReadRequest(MonoTime deadline,

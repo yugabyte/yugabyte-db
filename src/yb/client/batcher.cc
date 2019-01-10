@@ -86,6 +86,11 @@ namespace client {
 
 namespace internal {
 
+// TODO: instead of using a string error message, make Batcher return a status other than IOError.
+// (https://github.com/YugaByte/yugabyte-db/issues/702)
+const std::string Batcher::kErrorReachingOutToTServersMsg(
+    "Errors occured while reaching out to the tablet servers");
+
 // About lock ordering in this file:
 // ------------------------------
 // The locks must be acquired in the following order:
@@ -194,8 +199,10 @@ void Batcher::CheckForFinishedFlush() {
 
   Status s;
   if (had_errors_) {
-    // User is responsible for fetching errors from the error collector.
-    s = STATUS(IOError, "Errors occured while reaching out to the tablet servers");
+    // In the general case, the user is responsible for fetching errors from the error collector.
+    // TODO: use the Combined status here, so it is easy to recognize.
+    // https://github.com/YugaByte/yugabyte-db/issues/702
+    s = STATUS(IOError, kErrorReachingOutToTServersMsg);
   }
 
   RunCallback(s);

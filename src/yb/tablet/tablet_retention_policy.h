@@ -22,17 +22,16 @@
 namespace yb {
 namespace tablet {
 
-// History retention policy used by a tablet. Currently just keeps history for a fixed amount of
-// time. As the next step we need to start tracking pending reads.
+// History retention policy used by a tablet. It is based on pending reads and a fixed retention
+// interval configured by the user.
 class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
  public:
-  explicit TabletRetentionPolicy(const Tablet* tablet);
-  HybridTime GetHistoryCutoff() override;
-  ColumnIdsPtr GetDeletedColumns() override;
-  MonoDelta GetTableTTL() override;
+  explicit TabletRetentionPolicy(Tablet* tablet);
+
+  docdb::HistoryRetentionDirective GetRetentionDirective() override;
 
  private:
-  const Tablet* tablet_;
+  Tablet* tablet_;
 
   // The delta to be added to the current time to get the history cutoff timestamp. This is always
   // a negative amount.

@@ -83,8 +83,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
 
   // Apply the given operation to read and write database content.
-  CHECKED_STATUS ApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op);
-  CHECKED_STATUS FlushAsync(StatusFunctor callback);
+  CHECKED_STATUS PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op);
+  CHECKED_STATUS PgFlushAsync(StatusFunctor callback);
 
   // Return the number of errors which are pending.
   int CountPendingErrors() const;
@@ -136,6 +136,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Get the appropriate YBSession to apply the given operation to, based on whether or not this
   // is an operation on a transactional table, as well as read-only vs. non-read-only operation.
   Result<client::YBSession*> GetSessionForOp(const std::shared_ptr<client::YBPgsqlOp>& op);
+
+  // Given a set of errors from operations, this function attempts to combine them into one status
+  // that is later passed to PostgreSQL and further converted into a more specific error code.
+  Status CombineErrorsToStatus(client::CollectedErrors errors, Status status);
 
   // YBClient, an API that SQL engine uses to communicate with all servers.
   std::shared_ptr<client::YBClient> client_;

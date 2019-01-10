@@ -164,6 +164,10 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
       const TabletId& tablet_id);
   void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
 
+  // This is a status error string used when there are multiple errors that need to be fetched
+  // from the error collector.
+  static const std::string kErrorReachingOutToTServersMsg;
+
  private:
   friend class RefCountedThreadSafe<Batcher>;
   friend class AsyncRpc;

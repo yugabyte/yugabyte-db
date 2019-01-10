@@ -34,20 +34,14 @@ namespace yb {
 using StringVector = std::vector<std::string>;
 StringVector StringSplit(const std::string& arg, char delim);
 
+template<typename Iterator>
+inline std::string RangeToString(Iterator begin, Iterator end) {
+  return ToString(boost::make_iterator_range(begin, end));
+}
+
 template <typename T>
 inline std::string VectorToString(const std::vector<T>& vec) {
-  std::stringstream os;
-  os << "[";
-  bool need_separator = false;
-  for (auto item : vec) {
-    if (need_separator) {
-      os << ", ";
-    }
-    need_separator = true;
-    os << item;
-  }
-  os << "]";
-  return os.str();
+  return ToString(vec);
 }
 
 std::string RightPadToWidth(const std::string& s, int w);

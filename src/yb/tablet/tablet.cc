@@ -286,8 +286,6 @@ CHECKED_STATUS EmitRocksDbMetricsAsPrometheus(
 
 } // namespace
 
-const char* Tablet::kDMSMemTrackerId = "DeltaMemStores";
-
 Tablet::Tablet(
     const scoped_refptr<TabletMetadata>& metadata,
     const std::shared_future<client::YBClientPtr> &client_future,
@@ -341,7 +339,6 @@ Tablet::Tablet(
 
     mem_tracker_->SetMetricEntity(metric_entity_);
   }
-  dms_mem_tracker_ = MemTracker::CreateTracker(kDMSMemTrackerId, mem_tracker_);
 
   if (transaction_participant_context && metadata->schema().table_properties().is_transactional()) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
@@ -381,7 +378,6 @@ Tablet::Tablet(
 
 Tablet::~Tablet() {
   Shutdown();
-  dms_mem_tracker_->UnregisterFromParent();
   mem_tracker_->UnregisterFromParent();
 }
 
@@ -438,7 +434,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable) {
     const auto& intents_largest =
         down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest());
 
-    // We allow to flush intents db only after regular DB.
+    // We allow to flush intents DB only after regular DB.
     // Otherwise we could lose applied intents when corresponding regular records were not
     // flushed.
     auto regular_flushed_frontier = regular_db_->GetFlushedFrontier();
@@ -527,8 +523,21 @@ Status Tablet::OpenKeyValueTablet() {
   if (transaction_participant_) {
     transaction_participant_->SetDB(intents_db_.get());
   }
+
+  // Don't allow reads at timestamps lower than the highest history cutoff of a past compaction.
+  auto regular_flushed_frontier = regular_db_->GetFlushedFrontier();
+  if (regular_flushed_frontier) {
+    const auto& regular_flushed_largest =
+        static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier);
+    if (regular_flushed_largest.history_cutoff()) {
+      std::lock_guard<std::mutex> lock(active_readers_mutex_);
+      earliest_read_time_allowed_ = regular_flushed_largest.history_cutoff();
+    }
+  }
+
   LOG_WITH_PREFIX(INFO) << "Successfully opened a RocksDB database at " << db_dir
                         << ", obj: " << db;
+
   return Status::OK();
 }
 
@@ -1401,7 +1410,7 @@ Status Tablet::SetFlushedFrontier(const docdb::ConsensusFrontier& frontier) {
   DCHECK_EQ(frontier, *regular_db_->GetFlushedFrontier());
 
   if (intents_db_) {
-    // It is ok to flush intents even regular DB is not yet flushed,
+    // It is OK to flush intents even if the regular DB is not yet flushed,
     // because it would wait for flush of regular DB if we have unflushed intents.
     // Otherwise it does not matter which flushed op id is stored.
     RETURN_NOT_OK(intents_db_->SetFlushedFrontier(frontier.Clone()));
@@ -1602,7 +1611,8 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
     request_scope = RequestScope(transaction_participant_.get());
   }
   auto read_op = prepare_result.need_read_snapshot
-      ? ScopedReadOperation(this, RequireLease::kTrue, operation->read_time())
+      ? VERIFY_RESULT(
+          ScopedReadOperation::Create(this, RequireLease::kTrue, operation->read_time()))
       : ScopedReadOperation();
   auto real_read_time = prepare_result.need_read_snapshot
       ? read_op.read_time()
@@ -1677,17 +1687,32 @@ HybridTime Tablet::DoGetSafeTime(
   return mvcc_.SafeTime(min_allowed, deadline, ht_lease);
 }
 
-HybridTime Tablet::OldestReadPoint() const {
+HybridTime Tablet::UpdateHistoryCutoff(HybridTime proposed_cutoff) {
   std::lock_guard<std::mutex> lock(active_readers_mutex_);
+  HybridTime allowed_cutoff;
   if (active_readers_cnt_.empty()) {
-    return mvcc_.LastReplicatedHybridTime();
+    // There are no readers restricting our garbage collection of old records.
+    allowed_cutoff = proposed_cutoff;
+  } else {
+    // Cannot garbage-collect any records that are still being read.
+    allowed_cutoff = std::min(proposed_cutoff, active_readers_cnt_.begin()->first);
   }
-  return active_readers_cnt_.begin()->first;
+  earliest_read_time_allowed_ = std::max(earliest_read_time_allowed_, proposed_cutoff);
+  return allowed_cutoff;
 }
 
-void Tablet::RegisterReaderTimestamp(HybridTime read_point) {
+Status Tablet::RegisterReaderTimestamp(HybridTime read_point) {
   std::lock_guard<std::mutex> lock(active_readers_mutex_);
+  if (read_point < earliest_read_time_allowed_) {
+    return STATUS_FORMAT(
+        SnapshotTooOld,
+        "Snapshot too old. Read point: $0, earliest read time allowed: $1, delta (usec): $2",
+        read_point,
+        earliest_read_time_allowed_,
+        earliest_read_time_allowed_.PhysicalDiff(read_point));
+}
   active_readers_cnt_[read_point]++;
+  return Status::OK();
 }
 
 void Tablet::UnregisterReader(HybridTime timestamp) {
@@ -1702,9 +1727,9 @@ namespace {
 
 void ForceRocksDBCompact(rocksdb::DB* db) {
   db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr);
-  uint64_t compaction_pending, running_compactions;
-
   while (true) {
+    uint64_t compaction_pending = 0;
+    uint64_t running_compactions = 0;
     db->GetIntProperty("rocksdb.compaction-pending", &compaction_pending);
     db->GetIntProperty("rocksdb.num-running-compactions", &running_compactions);
     if (!compaction_pending && !running_compactions) {
@@ -1819,14 +1844,20 @@ Status Tablet::ConvertReadToWrite(
 
 // ------------------------------------------------------------------------------------------------
 
+Result<ScopedReadOperation> ScopedReadOperation::Create(
+    AbstractTablet* tablet,
+    RequireLease require_lease,
+    ReadHybridTime read_time) {
+  if (!read_time) {
+    read_time = ReadHybridTime::SingleTime(tablet->SafeTime(require_lease));
+  }
+  RETURN_NOT_OK(tablet->RegisterReaderTimestamp(read_time.read));
+  return ScopedReadOperation(tablet, require_lease, read_time);
+}
+
 ScopedReadOperation::ScopedReadOperation(
     AbstractTablet* tablet, RequireLease require_lease, const ReadHybridTime& read_time)
     : tablet_(tablet), read_time_(read_time) {
-  if (!read_time_) {
-    read_time_ = ReadHybridTime::SingleTime(tablet->SafeTime(require_lease));
-  }
-
-  tablet_->RegisterReaderTimestamp(read_time_.read);
 }
 
 ScopedReadOperation::~ScopedReadOperation() {

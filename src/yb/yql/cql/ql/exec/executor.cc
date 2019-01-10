@@ -1227,7 +1227,7 @@ void Executor::FlushAsync() {
   // Buffered read/write operations are flushed in rounds. In each round, FlushAsync() is called to
   // flush buffered operations in the non-transactional session in the Executor or the transactional
   // session in each ExecContext if any. Also, transactions in any ExecContext ready to commit with
-  // no more pending operation are also be committed. If there is no session to flush nor
+  // no more pending operation are also committed. If there is no session to flush nor
   // transaction to commit, the statement is executed.
   //
   // As flushes and commits happen, multiple FlushAsyncDone() and CommitDone() callbacks can be

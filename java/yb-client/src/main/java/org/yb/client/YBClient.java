@@ -80,9 +80,6 @@ public class YBClient implements AutoCloseable {
   // Redis key column name.
   public static final String REDIS_KEY_COLUMN_NAME = "key";
 
-  // 2 power 16
-  public static final int TWO_POWER_SIXTEEN = (int)Math.pow(2, 16);
-
   // Number of response errors to tolerate.
   private static final int MAX_ERRORS_TO_IGNORE = 2500;
 
