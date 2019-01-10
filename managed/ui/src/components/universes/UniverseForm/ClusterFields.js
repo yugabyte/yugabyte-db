@@ -704,6 +704,7 @@ export default class ClusterFields extends Component {
         return <option key={ebsType} value={ebsType}>{ebsType}</option>;
       });
     const isFieldReadOnly = isNonEmptyObject(universe.currentUniverse.data) && (this.props.type === "Edit" || (this.props.type === "Async" && this.state.isReadOnlyExists));
+
     const deviceInfo = this.state.deviceInfo;
 
     if (isNonEmptyObject(formValues[clusterType])) {
@@ -727,8 +728,10 @@ export default class ClusterFields extends Component {
         const currentProvider = this.getCurrentProvider(self.state.providerSelected);
         const isInAws = currentProvider.code === 'aws';
         // We don't want to keep the volume fixed in case of Kubernetes.
-        const fixedVolumeInfo = self.state.volumeType === 'SSD' &&
-                                currentProvider.code !== 'kubernetes';
+        const fixedVolumeInfo = self.state.volumeType === 'SSD' && 
+          currentProvider.code !== 'kubernetes';
+        const fixedNumVolumes = self.state.volumeType === 'SSD' &&
+          currentProvider.code !== 'kubernetes' && currentProvider.code !== 'gcp';
         if (currentProvider.code === 'kubernetes') {
           const storageClassOptions = this.getStorageClasses().sort().map(function(storageClassName, idx) {
             return (
@@ -760,7 +763,7 @@ export default class ClusterFields extends Component {
           <span className="volume-info-field volume-info-count">
             <Field name={`${clusterType}.numVolumes`} component={YBUnControlledNumericInput}
                    label="Number of Volumes" onInputChanged={self.numVolumesChanged}
-                   readOnly={fixedVolumeInfo || isFieldReadOnly} />
+                   readOnly={fixedNumVolumes || isFieldReadOnly} />
           </span>
         );
         const volumeSize = (
