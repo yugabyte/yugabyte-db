@@ -52,8 +52,6 @@ YBCNewBinaryConstant(
 	{
 		data = VARDATA_ANY(datum);
 		size = VARSIZE_ANY_EXHDR(datum);
-		const char *data_as_str = YBCFormatBytesAsStr(data, size);
-		pfree((void *) data_as_str);
 	}
 	YBCPgExpr expr = NULL;
 	HandleYBStatus(YBCPgNewConstantBinary(ybc_stmt, data, size, is_null, &expr));

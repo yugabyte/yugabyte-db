@@ -652,6 +652,13 @@ void CompactionJob::ProcessKeyValueCompaction(
         sub_compact->compaction->CreateCompactionFilter();
     compaction_filter = compaction_filter_from_factory.get();
   }
+
+  if (compaction_filter) {
+    // This is used to persist the history cutoff hybrid time chosen for the DocDB compaction
+    // filter.
+    largest_user_frontier_ = compaction_filter->GetLargestUserFrontier();
+  }
+
   MergeHelper merge(
       env_, cfd->user_comparator(), cfd->ioptions()->merge_operator,
       compaction_filter, db_options_.info_log.get(),
@@ -959,12 +966,19 @@ Status CompactionJob::InstallCompactionResults(
   }
 
   // Add compaction outputs
-  compaction->AddInputDeletions(compact_->compaction->edit());
+  compaction->AddInputDeletions(compaction->edit());
 
   for (const auto& sub_compact : compact_->sub_compact_states) {
     for (const auto& out : sub_compact.outputs) {
       compaction->edit()->AddFile(compaction->output_level(), out.meta);
     }
+  }
+  if (largest_user_frontier_) {
+    UserFrontier* existing_flushed_frontier = versions_->FlushedFrontier();
+    if (existing_flushed_frontier) {
+      largest_user_frontier_->Update(*existing_flushed_frontier, UpdateUserValueType::kLargest);
+    }
+    compaction->edit()->SetFlushedFrontier(std::move(largest_user_frontier_));
   }
   return versions_->LogAndApply(compaction->column_family_data(),
                                 mutable_cf_options, compaction->edit(),

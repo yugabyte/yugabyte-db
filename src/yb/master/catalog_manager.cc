@@ -208,6 +208,12 @@ DEFINE_uint64(transaction_table_num_tablets, 0,
     "Number of tablets to use when creating the transaction status table."
     "0 to use the same default num tablets as for regular tables.");
 
+DEFINE_bool(
+    hide_pg_catalog_table_creation_logs, false,
+    "Whether to hide detailed log messages for PostgreSQL catalog table creation. "
+    "This cuts down test logs significantly.");
+TAG_FLAG(hide_pg_catalog_table_creation_logs, hidden);
+
 namespace yb {
 namespace master {
 
@@ -1942,10 +1948,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                                    rpc::RpcContext* rpc) {
   RETURN_NOT_OK(CheckOnline());
 
-  LOG(INFO) << "CreateTable from " << RequestorString(rpc)
-              << ":\n" << orig_req->DebugString();
+  const bool is_pg_catalog_table =
+      orig_req->table_type() == PGSQL_TABLE_TYPE && orig_req->is_pg_catalog_table();
+  if (!is_pg_catalog_table || !FLAGS_hide_pg_catalog_table_creation_logs) {
+    LOG(INFO) << "CreateTable from " << RequestorString(rpc)
+                << ":\n" << orig_req->DebugString();
+  } else {
+    LOG(INFO) << "CreateTable from " << RequestorString(rpc) << ": " << orig_req->name();
+  }
 
-  if (orig_req->table_type() == PGSQL_TABLE_TYPE && orig_req->is_pg_catalog_table()) {
+  if (is_pg_catalog_table) {
     return CreatePgsqlSysTable(orig_req, resp, rpc);
   }
 
@@ -3360,12 +3372,14 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
 
   boost::shared_lock<LockType> l(lock_);
 
-  for (const TableInfoByNameMap::value_type& entry : table_names_map_) {
-    auto ltm = entry.second->LockForRead();
+  for (const auto& entry : table_ids_map_) {
+    auto& table_info = *entry.second;
+    auto ltm = table_info.LockForRead();
+
     if (!ltm->data().is_running()) continue;
 
-    if (!namespace_id.empty() && namespace_id != entry.first.first) {
-        continue; // Skip tables from other namespaces.
+    if (!namespace_id.empty() && namespace_id != table_info.namespace_id()) {
+      continue; // Skip tables from other namespaces.
     }
 
     if (req->has_name_filter()) {
@@ -3376,7 +3390,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     }
 
     if (req->exclude_system_tables() &&
-        (IsSystemTable(*entry.second) || entry.second->IsRedisTable())) {
+        (IsSystemTable(table_info) || table_info.IsRedisTable())) {
       continue;
     }
 

@@ -1081,6 +1081,20 @@ Status YBClient::SetReplicationInfo(const ReplicationInfoPB& replication_info) {
 
 Status YBClient::ListTables(vector<YBTableName>* tables,
                             const string& filter) {
+  std::vector<std::pair<std::string, YBTableName>> tables_with_ids;
+  RETURN_NOT_OK(ListTablesWithIds(&tables_with_ids, filter));
+  tables->clear();
+  tables->reserve(tables_with_ids.size());
+  for (const auto& table_with_id : tables_with_ids) {
+    tables->emplace_back(table_with_id.second);
+  }
+  return Status::OK();
+}
+
+Status YBClient::ListTablesWithIds(
+    std::vector<std::pair<std::string, YBTableName>>* tables_with_ids,
+    const std::string& filter) {
+  tables_with_ids->clear();
   ListTablesRequestPB req;
   ListTablesResponsePB resp;
 
@@ -1092,7 +1106,9 @@ Status YBClient::ListTables(vector<YBTableName>* tables,
     const ListTablesResponsePB_TableInfo& table_info = resp.tables(i);
     DCHECK(table_info.has_namespace_());
     DCHECK(table_info.namespace_().has_name());
-    tables->push_back(YBTableName(table_info.namespace_().name(), table_info.name()));
+    tables_with_ids->emplace_back(
+        table_info.id(),
+        YBTableName(table_info.namespace_().name(), table_info.name()));
   }
   return Status::OK();
 }

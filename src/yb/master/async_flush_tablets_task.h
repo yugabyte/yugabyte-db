@@ -27,7 +27,8 @@ class AsyncFlushTablets : public RetrySpecificTSRpcTask {
                     const TabletServerId& ts_uuid,
                     const scoped_refptr<TableInfo>& table,
                     const std::vector<TabletId>& tablet_ids,
-                    const FlushRequestId& flush_id);
+                    const FlushRequestId& flush_id,
+                    bool is_compaction);
 
   Type type() const override { return ASYNC_FLUSH_TABLETS; }
 
@@ -45,6 +46,7 @@ class AsyncFlushTablets : public RetrySpecificTSRpcTask {
   const std::vector<TabletId> tablet_ids_;
   const FlushRequestId flush_id_;
   tserver::FlushTabletsResponsePB resp_;
+  bool is_compaction_ = false;
 };
 
 } // namespace master

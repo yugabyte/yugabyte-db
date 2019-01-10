@@ -92,7 +92,7 @@ MonoDelta MonoDelta::FromNanoseconds(int64_t ns) {
   return MonoDelta(ns);
 }
 
-MonoDelta::MonoDelta() : nano_delta_(kUninitialized) {
+MonoDelta::MonoDelta() noexcept : nano_delta_(kUninitialized) {
 }
 
 bool MonoDelta::Initialized() const {

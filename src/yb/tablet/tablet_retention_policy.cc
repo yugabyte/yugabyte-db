@@ -25,34 +25,33 @@ namespace yb {
 namespace tablet {
 
 using docdb::TableTTL;
+using docdb::HistoryRetentionDirective;
 
-TabletRetentionPolicy::TabletRetentionPolicy(const Tablet* tablet)
+TabletRetentionPolicy::TabletRetentionPolicy(Tablet* tablet)
     : tablet_(tablet),
-      retention_delta_(MonoDelta::FromSeconds(-FLAGS_timestamp_history_retention_interval_sec)) {}
-
-HybridTime TabletRetentionPolicy::GetHistoryCutoff() {
-  return std::min<HybridTime>(
-      tablet_->OldestReadPoint(),
-      server::HybridClock::AddPhysicalTimeToHybridTime(tablet_->clock()->Now(), retention_delta_));
+      retention_delta_(MonoDelta::FromSeconds(-FLAGS_timestamp_history_retention_interval_sec)) {
 }
 
-ColumnIdsPtr TabletRetentionPolicy::GetDeletedColumns() {
-  HybridTime history_cutoff = GetHistoryCutoff();
-  // We're getting history cutoff and deleted columns separately, so they could be inconsistent.
-  // This is not a problem because history cutoff only monotonically increases, so an inconsistency
-  // means that we might not compact all the columns we should be able to at the present time, but
-  // those will be processed in the next compaction.
+HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
+  // We try to garbage-collect history older than current time minus the configured retention
+  // interval, but we might not be able to do so if there are still read operations reading at an
+  // older snapshot.
+  const HybridTime proposed_cutoff =
+      server::HybridClock::AddPhysicalTimeToHybridTime(tablet_->clock()->Now(), retention_delta_);
+  const HybridTime history_cutoff = tablet_->UpdateHistoryCutoff(proposed_cutoff);
+
   std::shared_ptr<ColumnIds> deleted_before_history_cutoff = std::make_shared<ColumnIds>();
   for (auto deleted_col : tablet_->metadata()->deleted_cols()) {
     if (deleted_col.ht < history_cutoff) {
       deleted_before_history_cutoff->insert(deleted_col.id);
     }
   }
-  return deleted_before_history_cutoff;
-}
 
-MonoDelta TabletRetentionPolicy::GetTableTTL() {
-  return TableTTL(tablet_->metadata()->schema());
+  return {
+    history_cutoff,
+    std::move(deleted_before_history_cutoff),
+    TableTTL(tablet_->metadata()->schema())
+  };
 }
 
 }  // namespace tablet

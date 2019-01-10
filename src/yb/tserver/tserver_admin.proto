@@ -157,6 +157,7 @@ enum TSTabletManagerStatePB {
   MANAGER_SHUTDOWN = 3;
 }
 
+// TODO: rename this to FlushOrCompactTabletsRequestPB
 message FlushTabletsRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 1;
@@ -165,6 +166,9 @@ message FlushTabletsRequestPB {
   repeated bytes tablet_ids = 2;
 
   optional fixed64 propagated_hybrid_time = 3;
+
+  // Whether we want to compact the tablets instead of flushing them.
+  optional bool is_compaction = 4;
 }
 
 message FlushTabletsResponsePB {

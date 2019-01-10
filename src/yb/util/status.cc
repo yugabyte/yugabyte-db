@@ -128,7 +128,7 @@ Status::Status(Code code, const char* file_name, int line_number, TimeoutError e
 
 namespace {
 
-#define YB_STATUS_RETURN_MESSAGE(name, value, message) \
+#define YB_STATUS_RETURN_MESSAGE(name, pb_name, value, message) \
     case Status::BOOST_PP_CAT(k, name): \
       return message;
 

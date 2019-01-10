@@ -41,10 +41,12 @@ AsyncFlushTablets::AsyncFlushTablets(Master *master,
                                      const TabletServerId& ts_uuid,
                                      const scoped_refptr<TableInfo>& table,
                                      const vector<TabletId>& tablet_ids,
-                                     const FlushRequestId& flush_id)
+                                     const FlushRequestId& flush_id,
+                                     bool is_compaction)
     : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, table),
       tablet_ids_(tablet_ids),
-      flush_id_(flush_id) {
+      flush_id_(flush_id),
+      is_compaction_(is_compaction) {
 }
 
 string AsyncFlushTablets::description() const {
@@ -93,6 +95,7 @@ bool AsyncFlushTablets::SendRequest(int attempt) {
   tserver::FlushTabletsRequestPB req;
   req.set_dest_uuid(permanent_uuid_);
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+  req.set_is_compaction(is_compaction_);
 
   for (const TabletId& id : tablet_ids_) {
     req.add_tablet_ids(id);

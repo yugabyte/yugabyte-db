@@ -18,6 +18,9 @@
 
 #include "yb/client/yb_op.h"
 #include "yb/client/transaction.h"
+#include "yb/client/batcher.h"
+
+#include "yb/util/string_util.h"
 
 namespace yb {
 namespace pggate {
@@ -141,7 +144,7 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_i
   return make_scoped_refptr<PgTableDesc>(table);
 }
 
-Status PgSession::ApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op) {
+Status PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op) {
   VLOG(2) << __PRETTY_FUNCTION__ << " called, is_transactional="
           << op->IsTransactional();
   if (op->IsTransactional()) {
@@ -152,7 +155,7 @@ Status PgSession::ApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op) {
   return VERIFY_RESULT(GetSessionForOp(op))->Apply(op);
 }
 
-Status PgSession::FlushAsync(StatusFunctor callback) {
+Status PgSession::PgFlushAsync(StatusFunctor callback) {
   VLOG(2) << __PRETTY_FUNCTION__ << " called";
   if (has_txn_ops_ && has_non_txn_ops_) {
     return STATUS(IllegalState,
@@ -164,13 +167,44 @@ Status PgSession::FlushAsync(StatusFunctor callback) {
   has_txn_ops_ = false;
   has_non_txn_ops_ = false;
   // We specify read_only_op true here because we never start a new write transaction at this point.
-  VERIFY_RESULT(GetSession(transactional, /* read_only_op */ true))->FlushAsync(callback);
+  client::YBSessionPtr session =
+      VERIFY_RESULT(GetSession(transactional, /* read_only_op */ true))->shared_from_this();
+  session->FlushAsync([this, session, callback] (const Status& status) {
+    callback(CombineErrorsToStatus(session->GetPendingErrors(), status));
+  });
   return Status::OK();
 }
 
 Result<client::YBSession*> PgSession::GetSessionForOp(
     const std::shared_ptr<client::YBPgsqlOp>& op) {
   return GetSession(op->IsTransactional(), op->read_only());
+}
+
+namespace {
+
+string GetStatusStringSet(const client::CollectedErrors& errors) {
+  std::set<string> status_strings;
+  for (const auto& error : errors) {
+    status_strings.insert(error->status().ToString());
+  }
+  return RangeToString(status_strings.begin(), status_strings.end());
+}
+
+} // anonymous namespace
+
+Status PgSession::CombineErrorsToStatus(client::CollectedErrors errors, Status status) {
+  if (errors.empty())
+    return status;
+
+  if (status.IsIOError() &&
+      // TODO: move away from string comparison here and use a more specific status than IOError.
+      // See https://github.com/YugaByte/yugabyte-db/issues/702
+      status.message() == client::internal::Batcher::kErrorReachingOutToTServersMsg &&
+      errors.size() == 1) {
+    return errors.front()->status();
+  }
+
+  return status.CloneAndAppend(". Errors from tablet servers: " + GetStatusStringSet(errors));
 }
 
 Result<YBSession*> PgSession::GetSession(bool transactional, bool read_only_op) {

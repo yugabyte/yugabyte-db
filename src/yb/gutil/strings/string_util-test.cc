@@ -91,4 +91,12 @@ TEST(StringUtilTest, TestAppendWithSeparator) {
   ASSERT_EQ(s, "foo, bar -- foo");
 }
 
+TEST(StringUtilTest, TestCollectionToString) {
+  std::vector<std::string> v{"foo", "123", "bar", ""};
+  ASSERT_EQ("[foo, 123, bar, ]", VectorToString(v));
+  ASSERT_EQ("[foo, 123, bar, ]", RangeToString(v.begin(), v.end()));
+  ASSERT_EQ("[]", RangeToString(v.begin(), v.begin()));
+  ASSERT_EQ("[foo]", RangeToString(v.begin(), v.begin() + 1));
+}
+
 } // namespace yb

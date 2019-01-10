@@ -688,7 +688,7 @@ class VersionSet {
     last_sequence_.store(s, std::memory_order_release);
   }
 
-  // Set the last flushed op id to specified value.
+  // Set the last flushed op id / hybrid time / history cutoff to the specified set of values.
   void SetFlushedFrontier(UserFrontierPtr values) {
 #ifndef NDEBUG
     EnsureNonDecreasingFlushedFrontier(FlushedFrontier(), *values);

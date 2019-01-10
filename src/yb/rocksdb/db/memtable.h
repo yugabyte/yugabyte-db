@@ -342,7 +342,7 @@ class MemTable {
 
   void UpdateFrontiers(const UserFrontiers& value) {
     if (frontiers_) {
-      frontiers_->Merge(value);
+      frontiers_->MergeFrontiers(value);
     } else {
       frontiers_ = value.Clone();
     }

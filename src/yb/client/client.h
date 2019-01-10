@@ -423,6 +423,10 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   CHECKED_STATUS ListTables(std::vector<YBTableName>* tables,
                             const std::string& filter = "");
 
+  CHECKED_STATUS ListTablesWithIds(
+      std::vector<std::pair<std::string, YBTableName>>* tables,
+      const std::string& filter = "");
+
   // List all running tablets' uuids for this table.
   // 'tablets' is appended to only on success.
   CHECKED_STATUS GetTablets(const YBTableName& table_name,
