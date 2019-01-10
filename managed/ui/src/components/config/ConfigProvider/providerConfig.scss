@@ -114,6 +114,15 @@
         color: white;
       }
     }
+    &.has-error {
+      border: 1px solid desaturate(#a94442, 20%);
+    }
+    & + .standart-error {
+      color: #a94442;
+      display: block;
+      margin-top: 5px;
+      margin-bottom: 10px;
+    }
   }
 
   .config-region-list {
