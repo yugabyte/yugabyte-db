@@ -5,7 +5,7 @@ import { Row, Col, Alert } from 'react-bootstrap';
 import { YBInputField, YBTextInputWithLabel, YBControlledSelectWithLabel, YBSelectWithLabel, YBToggle, YBAddRowButton, YBButton } from 'components/common/forms/fields';
 
 import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
-import { isDefinedNotNull, isNonEmptyString, isValidObject, trimString } from 'utils/ObjectUtils';
+import { isDefinedNotNull, isNonEmptyString, isNonEmptyArray, isValidObject, trimString } from 'utils/ObjectUtils';
 import { reduxForm, formValueSelector, change, FieldArray, Field, getFormValues } from 'redux-form';
 import { connect } from 'react-redux';
 import AddRegionPopupForm from './AddRegionPopupForm';
@@ -179,7 +179,7 @@ class renderRegions extends Component {
   }
 
   render() {
-    const { fields, networkSetupType, modal, showModal, updateFormField, formRegions } = this.props;
+    const { fields, networkSetupType, modal, showModal, updateFormField, formRegions, meta: { error, submitFailed } } = this.props;
     const self = this;
 
     const optionsRegion = [<option key={0} value="">Select region</option>,
@@ -374,7 +374,8 @@ class renderRegions extends Component {
                 </li>);
             })}
           </ul>
-          <button type="button" className="btn btn-default btn-add-region" onClick={() => showModal("addRegionConfig")}><div className="btn-icon"><i className="fa fa-plus"></i></div>Add region</button>
+          <button type="button" className={"btn btn-default btn-add-region"+(submitFailed && error ? " has-error" : "")} onClick={() => showModal("addRegionConfig")}><div className="btn-icon"><i className="fa fa-plus"></i></div>Add region</button>
+          {submitFailed && error && <span className="standart-error has-error">{error}</span>}
         </Col>
       </Row>
     );
@@ -755,6 +756,10 @@ function validate(values) {
   const errors = {};
   if (!isNonEmptyString(values.accountName)) {
     errors.accountName = 'Account Name is required';
+  }
+
+  if (!isNonEmptyArray(values.regionList)) {
+    errors.regionList = {_error: 'Provider must have at least one region'};
   }
 
   if (!values.accessKey || values.accessKey.trim() === '') {
