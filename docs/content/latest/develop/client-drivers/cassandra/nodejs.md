@@ -33,7 +33,10 @@ const async = require('async');
 const assert = require('assert');
 
 // Create a YB CQL client.
-const client = new cassandra.Client({ contactPoints: ['127.0.0.1'] });
+// DataStax Nodejs 4.0 loadbalancing default is TokenAwarePolicy with child DCAwareRoundRobinPolicy
+// Need to provide localDataCenter option below or switch to RoundRobinPolicy
+const loadBalancingPolicy = new cassandra.policies.loadBalancing.RoundRobinPolicy ();
+const client = new cassandra.Client({ contactPoints: ['127.0.0.1'], policies : { loadBalancing : loadBalancingPolicy }});
 
 async.series([
   function connect(next) {
