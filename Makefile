@@ -178,7 +178,7 @@ ifeq ($(shell echo $(VERSION) | grep -qE "^(9[.][012]|8[.][1234])" && echo yes |
 endif
 
 sql/uninstall_pgtap.sql: sql/pgtap.sql test/setup.sql
-	grep '^CREATE ' sql/pgtap.sql | $(PERL) -e 'for (reverse <STDIN>) { chomp; s/CREATE (OR REPLACE )?/DROP /; print "$$_;\n" }' > sql/uninstall_pgtap.sql
+	grep '^CREATE ' sql/pgtap.sql | $(PERL) -e 'for (reverse <STDIN>) { chomp; s/CREATE (OR REPLACE )?/DROP /; print "$$_;\n" }' | sed 's/DROP \(FUNCTION\|VIEW\|TYPE\) /DROP \1 IF EXISTS /' > sql/uninstall_pgtap.sql
 
 sql/pgtap-static.sql: sql/pgtap.sql.in
 	cp $< $@
