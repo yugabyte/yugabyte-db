@@ -269,7 +269,6 @@ class CalculatorService: public CalculatorServiceIf {
     }
     auto messenger = messenger_.lock();
     YB_ASSERT_TRUE(messenger);
-    boost::system::error_code ec;
     HostPort hostport(req->host(), req->port());
     ProxyCache cache(messenger);
     rpc_test::CalculatorServiceProxy proxy(&cache, hostport);

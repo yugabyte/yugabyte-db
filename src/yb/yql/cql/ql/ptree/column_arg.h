@@ -115,7 +115,7 @@ class FuncOp {
             const PTExpr::SharedPtr& func_expr,
             yb::QLOperator yb_op) {
     value_expr_ = value_expr;
-    func_expr_ = func_expr_;
+    func_expr_ = std::dynamic_pointer_cast<PTBcall>(func_expr);
     yb_op_ = yb_op;
   }
 
