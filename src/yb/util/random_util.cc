@@ -89,11 +89,7 @@ std::string RandomHumanReadableString(size_t len, std::mt19937_64* rng) {
 }
 
 namespace {
-#if __clang__ and __clang_major__ < 8
-boost::thread_specific_ptr<std::mt19937_64> thread_local_random_ptr;
-#else
 thread_local std::unique_ptr<std::mt19937_64> thread_local_random_ptr;
-#endif
 }
 
 std::mt19937_64& ThreadLocalRandom() {

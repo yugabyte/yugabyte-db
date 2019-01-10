@@ -268,6 +268,9 @@ ADD_CXX_FLAGS("-Werror")
 ADD_CXX_FLAGS("-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
 ADD_CXX_FLAGS("-Winvalid-pch")
 ADD_CXX_FLAGS("-pthread -DBOOST_BIND_NO_PLACEHOLDERS")
+if (NOT APPLE)
+  ADD_CXX_FLAGS("-DBOOST_UUID_RANDOM_PROVIDER_FORCE_POSIX")
+endif()
 ADD_CXX_FLAGS("-DROCKSDB_PLATFORM_POSIX")
 
 # This duplicates part of the logic from common-build-env.sh so that we can run from CLion where
@@ -1357,7 +1360,7 @@ if (USING_CUSTOM_HOMEBREW)
             "${OPENSSL_SSL_LIBRARY}")
   endif()
   set(OPENSSL_LIBRARIES "${OPENSSL_CRYPTO_LIBRARY}" "${OPENSSL_SSL_LIBRARY}")
-  # Unset OpenSSL version because it might not be correct after we manually modified library 
+  # Unset OpenSSL version because it might not be correct after we manually modified library
   # paths. However, we are not using this variable anywhere.
   unset(OPENSSL_VERSION)
 endif()
