@@ -24,6 +24,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Capability;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -639,6 +641,9 @@ public class ImportController extends Controller {
     userIntent.regionList.add(region.uuid);
     userIntent.providerType = importForm.providerType;
     userIntent.instanceType = importForm.instanceType;
+
+    InstanceType.upsert(importForm.providerType.toString(), importForm.instanceType.toString(),
+                        0 /* numCores */, 0.0 /* memSizeGB */, new InstanceTypeDetails());
 
     // TODO: This needs to be added for things to show up right in the UI.
     PlacementInfo placementInfo = null;

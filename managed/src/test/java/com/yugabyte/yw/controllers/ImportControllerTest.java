@@ -26,6 +26,7 @@ import java.util.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeActionType;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.forms.ImportUniverseFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Capability;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 
@@ -159,6 +161,16 @@ public class ImportControllerTest extends CommissionerBaseTest {
       numNodes++;
     }
     assertEquals(3, numNodes);
+
+    // Provider should have the instance type.
+    UUID provUUID = Provider.get(customer.uuid, CloudType.other).uuid;
+    url = "/api/customers/" + customer.uuid + "/providers/" + provUUID + "/instance_types/" +
+          ImportUniverseFormData.DEFAULT_INSTANCE;
+    result = doRequestWithAuthToken("GET", url, authToken);
+    assertOk(result);
+    json = Json.parse(contentAsString(result));
+    assertEquals(json.get("instanceTypeCode").asText(), ImportUniverseFormData.DEFAULT_INSTANCE);
+    assertEquals(json.get("providerCode").asText(), CloudType.other.name());
 
     // Edit should fail.
     bodyJson = Json.newObject();
