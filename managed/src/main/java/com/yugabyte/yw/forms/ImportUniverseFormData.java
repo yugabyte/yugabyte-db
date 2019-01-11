@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import play.data.validation.Constraints;
 
 public class ImportUniverseFormData {
+  public static final String DEFAULT_INSTANCE = "default-type";
 
   public enum State {
     BEGIN,
@@ -42,5 +43,5 @@ public class ImportUniverseFormData {
   public final String zoneName = "Zone 1";
   public final String zoneCode = "zone-1";
 
-  public final String instanceType = "default-type";
+  public final String instanceType = DEFAULT_INSTANCE;
 }

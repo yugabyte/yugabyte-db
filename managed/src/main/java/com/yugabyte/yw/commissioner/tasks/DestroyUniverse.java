@@ -43,13 +43,12 @@ public class DestroyUniverse extends UniverseTaskBase {
       }
 
       if (!universe.getUniverseDetails().isImportedUniverse()) {
-        // Update the DNS entry for all clusters in this universe.
-        for (Cluster cluster : universe.getUniverseDetails().clusters) {
-          createDnsManipulationTask(DnsManager.DnsCommandType.Delete, params().isForceDelete,
-                                    cluster.userIntent.providerType, cluster.userIntent.provider,
-                                  cluster.userIntent.universeName)
-              .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
-        }
+        // Update the DNS entry for primary cluster to mirror creation.
+        Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+        createDnsManipulationTask(DnsManager.DnsCommandType.Delete, params().isForceDelete,
+                                  primaryCluster.userIntent.providerType, primaryCluster.userIntent.provider,
+                                  primaryCluster.userIntent.universeName)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
         // Create tasks to destroy the existing nodes.
         createDestroyServerTasks(universe.getNodes(), params().isForceDelete, true)
