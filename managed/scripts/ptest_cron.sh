@@ -53,10 +53,14 @@ cd $ptest_yw_repo
 . "$HOME/.yugabyte/ansible.env"
 
 # DEFAULT SETTING
-# NEW WAY: Target remote k8s cluster. Run all options against GCP only for now.
+# NEW WAY: Target remote k8s cluster. Run all options against GCP.
 "$ptest_yw_repo"/perf_itest --run_all_workload_combos --notify --perf_test_provider gcp \
     --is_k8s --k8s_cluster_name yb-gke-portal \
     --packages_location /opt/builds/$(ls -t /opt/builds | grep 20* | head -1)
+
+# NEW WAY: Create new remote k8s cluster with beefy settings. Setup load in k8s.
+"$ptest_yw_repo"/perf_itest --run_all_workload_combos --notify --perf_test_provider kubernetes \
+    --is_k8s --run_load_in_k8s
 
 # OLD WAY: Target locally running YW. Run all options against GCP only for now.
 # "$ptest_yw_repo"/perf_itest --run_all_workload_combos --notify --perf_test_provider gcp
