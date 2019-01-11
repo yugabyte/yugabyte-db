@@ -62,16 +62,16 @@ USE_MAVEN_LOCAL="true" "$itest_yw_repo"/run_itest --notify --is_k8s --k8s_cluste
 #     --local_path $HOME/code --use_latest_deploy --build_destination /opt/builds/
 
 # OLD WAY: Target a locally running YW.
-# USE_MAVEN_LOCAL="true" "$itest_yw_repo"/run_itest --perform_edits --notify
+# USE_MAVEN_LOCAL="true" "$itest_yw_repo"/run_itest --notify
 
 # OLD DEFAULT SETTING
-# USE_MAVEN_LOCAL="true" "$itest_yw_repo"/run_itest --perform_edits --perform_upgrade --perform_backup --notify
+# USE_MAVEN_LOCAL="true" "$itest_yw_repo"/run_itest --notify
 
 # Setting to use when testing local yw/devops changes
-# unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --perform_edits --notify --local_path $code_root
+# unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --notify --local_path $code_root
 
 # Setting to use existing latest build but still notify!
-# "$itest_yw_repo"/run_itest --perform_edits --notify --use_latest_deploy
+# "$itest_yw_repo"/run_itest --notify --use_latest_deploy
 
 # For testing without notify and with existing latest build on gcp only!
-# "$itest_yw_repo"/run_itest --perform_edits --use_latest_deploy --run_universe_test gcp
+# "$itest_yw_repo"/run_itest --use_latest_deploy --run_universe_test gcp
