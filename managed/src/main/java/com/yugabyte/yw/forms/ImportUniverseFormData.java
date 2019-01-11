@@ -27,7 +27,7 @@ public class ImportUniverseFormData {
   public String masterAddresses;
 
   // The cloud provider type.
-  public String cloudProviderType = "other";
+  public String cloudProviderType = CloudType.other.name();
 
   // State of the import.
   public State currentState = State.BEGIN;

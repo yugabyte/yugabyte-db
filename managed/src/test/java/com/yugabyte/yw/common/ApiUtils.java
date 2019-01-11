@@ -122,7 +122,6 @@ public class ApiUtils {
       public void run(Universe universe) {
         UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
         userIntent.instanceTags.put("Cust", "Test");
-        userIntent.instanceTags.put("Dept", "HR");
       }
     };
     return Universe.saveDetails(univUUID, updater);

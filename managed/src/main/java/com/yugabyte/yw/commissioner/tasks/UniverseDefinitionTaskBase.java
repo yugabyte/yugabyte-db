@@ -10,13 +10,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
+import com.google.common.collect.ImmutableSet;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +57,12 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UniverseDefinitionTaskBase.class);
 
+  // Enum for specifying the universe operation type.
+  public enum UniverseOpType {
+    CREATE,
+    EDIT
+  }
+
   // Enum for specifying the server type.
   public enum ServerType {
     MASTER,
@@ -59,6 +70,26 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     YQLSERVER,
     REDISSERVER,
     EITHER
+  }
+
+  // Constants needed for parsing a templated node name tag (for AWS).
+  public static final String NODE_NAME_KEY = "Name";
+  private static class TemplatedTags {
+    private static final String DOLLAR = "$";
+    private static final String LBRACE = "{";
+    private static final String PREFIX = DOLLAR + LBRACE;
+    private static final int PREFIX_LEN = PREFIX.length();
+    private static final String SUFFIX = "}";
+    private static final int SUFFIX_LEN = SUFFIX.length();
+    private static final String UNIVERSE = PREFIX + "universe" + SUFFIX;
+    private static final String INSTANCE_ID = PREFIX + "instance-id" + SUFFIX;
+    private static final String ZONE = PREFIX + "zone" + SUFFIX;
+    private static final String REGION = PREFIX + "region" + SUFFIX;
+    private static final Set<String> RESERVED_TAGS =
+        ImmutableSet.of(UNIVERSE.substring(PREFIX_LEN, UNIVERSE.length() - SUFFIX_LEN),
+                        ZONE.substring(PREFIX_LEN, ZONE.length() - SUFFIX_LEN),
+                        REGION.substring(PREFIX_LEN, REGION.length() - SUFFIX_LEN),
+                        INSTANCE_ID.substring(PREFIX_LEN, INSTANCE_ID.length() - SUFFIX_LEN));
   }
 
   // The task params.
@@ -114,6 +145,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // catch as we want to fail.
     Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
     LOG.debug("Wrote user intent for universe {}.", taskParams().universeUUID);
+
+    updateOnPremNodeUuids(universe);
+
     // Return the universe object that we have already updated.
     return universe;
   }
@@ -151,100 +185,137 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
-  // The universe name can be changed in the UI, and say if configure is not called
-  // before submitting Create, we need to fix up the node-prefix also to latest universe name.
-  private String updateUniverseName(Universe universe) {
-    final String univNewName = taskParams().getPrimaryCluster().userIntent.universeName;
-    final boolean univNameChanged = !universe.name.equals(univNewName);
-    String nodePrefix = taskParams().nodePrefix;
-
-    // Pick the universe name from the current in-memory state.
-    // Note that `universe` should have the new name persisted before this call.
-    if (!nodePrefix.contains(univNewName)) {
-      if (univNameChanged) {
-        LOG.warn("Universe name mismatched: expected {} but found {}. Updating to {}.",
-                 univNewName, universe.name, univNewName);
-      }
-      nodePrefix = Util.getNodePrefix(universe.customerId, univNewName);
-      LOG.info("Updating node prefix to {}.", nodePrefix);
+  // Check allowed patterns for tagValue.
+  public static void checkTagPattern(String tagValue) {
+    if (tagValue == null || tagValue.isEmpty()) {
+      throw new IllegalArgumentException("Invalid value '" + tagValue + "' for " + NODE_NAME_KEY);
     }
 
-    // Persist the desired node information into the DB.
-    UniverseUpdater updater = new UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        if (univNameChanged) {
-          universe.name = univNewName;
-        }
-      }
-    };
-    universe = Universe.saveDetails(taskParams().universeUUID, updater);
+    int numPrefix = StringUtils.countMatches(tagValue, TemplatedTags.PREFIX);
+    int numSuffix = StringUtils.countMatches(tagValue, TemplatedTags.SUFFIX);
+    if (numPrefix != numSuffix) {
+      throw new IllegalArgumentException("Number of '" + TemplatedTags.PREFIX + "' does not " +
+                                         "match '" + TemplatedTags.SUFFIX + "' count in " + tagValue);
+    }
 
-    return nodePrefix;
+    // Find all the content repeated within all the "{" and "}". These will be matched againt
+    // supported keywords for tags.
+    Pattern pattern =  Pattern.compile("\\" + TemplatedTags.DOLLAR + "\\" + TemplatedTags.LBRACE +
+                                       "(.*?)\\" + TemplatedTags.SUFFIX);
+    Matcher matcher = pattern.matcher(tagValue);
+    Set<String> keys = new HashSet<String>();
+    while (matcher.find()) {
+      String match = matcher.group(1);
+      if (keys.contains(match)) {
+        throw new IllegalArgumentException("Duplicate " + match + " in " + NODE_NAME_KEY + " tag.");
+      }
+      if (!TemplatedTags.RESERVED_TAGS.contains(match)) {
+        throw new IllegalArgumentException("Invalid variable " + match + " in " + NODE_NAME_KEY +
+                                           " tag. Should be one of " + TemplatedTags.RESERVED_TAGS);
+      }
+      keys.add(match);
+    }
+    LOG.debug("Found tags keys : " + keys);
+
+    if (!tagValue.contains(TemplatedTags.INSTANCE_ID)) {
+      throw new IllegalArgumentException("'"+ TemplatedTags.INSTANCE_ID + "' should be part of " +
+                                         NODE_NAME_KEY + " value " + tagValue);
+    }
   }
 
-  // Fix up names of all the nodes. This fixes the name and the node index for being created nodes.
-  public void updateNodeNames() {
-    PlacementInfoUtil.populateClusterIndices(taskParams());
-    Universe universe = Universe.get(taskParams().universeUUID);
-    final Map<String, NameAndIndex> oldToNewName = new HashMap<String, NameAndIndex>();
-    String nodePrefix = taskParams().nodePrefix;
+  /**
+   * Method to derive the expected node name from the input parameters.
+   *
+   * @param cluster         The cluster containing the node.
+   * @param tagValue        Templated name tag to use to derive the final node name.
+   * @param prefix          Name prefix if not templated.
+   * @param nodeIdx         index to be used in node name.
+   * @param region          region in which this node is present.
+   * @param az              zone in which this node is present.
+   * @return a string which can be used as the node name.
+   */
+  public static String getNodeName(Cluster cluster, String tagValue, String prefix, int nodeIdx,
+      String region, String az) {
+    if (!tagValue.isEmpty()) {
+      checkTagPattern(tagValue);
+    }
 
-    // Check if we need to change the universe name, only when creating a universe - when task
-    // contains a primary cluster.
-    if (taskParams().getPrimaryCluster() != null) {
-      nodePrefix = updateUniverseName(universe);
+    String newName = "";
+    if (cluster.clusterType == ClusterType.ASYNC) {
+      newName = prefix + Universe.READONLY + cluster.index + Universe.NODEIDX_PREFIX + nodeIdx;
+      if (!tagValue.isEmpty()) {
+        throw new UnsupportedOperationException("Instance tags not supported for Read Replicas.");
+      }
+    } else {
+      newName = prefix + Universe.NODEIDX_PREFIX + nodeIdx;
+      if (!tagValue.isEmpty()) {
+        newName = tagValue.replace(TemplatedTags.UNIVERSE, cluster.userIntent.universeName)
+                          .replace(TemplatedTags.INSTANCE_ID, Integer.toString(nodeIdx))
+                          .replace(TemplatedTags.ZONE, az)
+                          .replace(TemplatedTags.REGION, region);
+      }
+    }
+
+    LOG.info("Node name " + newName + " at index " + nodeIdx);
+
+    return newName;
+  }
+
+  // Set the universes' node prefix for universe creation op. And node names/indices of all the
+  // being added nodes.
+  public void setNodeNames(UniverseOpType opType, Universe universe) {
+    if (universe == null) {
+      throw new IllegalArgumentException("Invalid universe to update node names.");
+    }
+
+    PlacementInfoUtil.populateClusterIndices(taskParams());
+
+    Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster == null) {
+      // Can be here for ReadReplica cluster dynamic create or edit.
+      primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+
+      if (primaryCluster == null) {
+        throw new IllegalStateException("Primary cluster not found in task nor universe {} " +
+                                        universe.universeUUID);
+      }
+    }
+
+    String nameTagValue = "";
+    Map<String, String> useTags = primaryCluster.userIntent.instanceTags;
+    if (useTags.containsKey(NODE_NAME_KEY)) {
+      nameTagValue = useTags.get(NODE_NAME_KEY);
     }
 
     for (Cluster cluster : taskParams().clusters) {
-      Set<NodeDetails> nodesInClusterTask = taskParams().getNodesInCluster(cluster.uuid);
+      Set<NodeDetails> nodesInCluster = taskParams().getNodesInCluster(cluster.uuid);
       int startIndex = PlacementInfoUtil.getStartIndex(
-          universe.getUniverseDetails().getNodesInCluster(cluster.uuid));
+                           universe.getUniverseDetails().getNodesInCluster(cluster.uuid));
       int iter = 0;
-      for (NodeDetails node : nodesInClusterTask) {
+      for (NodeDetails node : nodesInCluster) {
         if (node.state == NodeDetails.NodeState.ToBeAdded) {
-          node.nodeIdx = startIndex + iter;
-          String newName = nodePrefix + "-n" + node.nodeIdx;
-          if (cluster.clusterType == ClusterType.ASYNC) {
-            newName = nodePrefix + Universe.READONLY + cluster.index + Universe.NODEIDX_PREFIX +
-                      node.nodeIdx;
+          if (node.nodeName != null) {
+            throw new IllegalStateException("Node name " + node.nodeName + " cannot be preset.");
           }
-          LOG.info("Changing in-memory node name from {} to {}.", node.nodeName , newName);
-          oldToNewName.put(node.nodeName, new NameAndIndex(newName, node.nodeIdx));
-          node.nodeName = newName;
+          node.nodeIdx = startIndex + iter;
+          node.nodeName = getNodeName(cluster, nameTagValue, taskParams().nodePrefix, node.nodeIdx,
+                                      node.cloudInfo.region, node.cloudInfo.az);
           iter++;
         }
       }
     }
 
     PlacementInfoUtil.ensureUniqueNodeNames(taskParams().nodeDetailsSet);
+  }
 
-    // Persist the desired node information into the DB.
-    UniverseUpdater updater = new UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        Collection<NodeDetails> univNodes = universe.getNodes();
-        for (NodeDetails node : univNodes) {
-          if (node.state == NodeDetails.NodeState.ToBeAdded) {
-            // Since we have already set the 'updateInProgress' flag on this universe in the DB and
-            // this step is single threaded, we are guaranteed no one else will be modifying it.
-            NameAndIndex newInfo = oldToNewName.get(node.nodeName);
-            LOG.info("Changing node name from {} to newInfo={}.", node.nodeName, newInfo);
-            node.nodeName = newInfo.name;
-            node.nodeIdx = newInfo.index;
-          }
-        }
-      }
-    };
-    universe = Universe.saveDetails(taskParams().universeUUID, updater);
-    LOG.debug("Updated {} nodes in universe {}.", taskParams().nodeDetailsSet.size(),
-              taskParams().universeUUID);
+  public void updateOnPremNodeUuids(Universe universe) {
+    LOG.debug("Update on prem nodes in universe {}.", taskParams().universeUUID);
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
     List<Cluster> onPremClusters = universeDetails.clusters.stream()
-            .filter(c -> c.userIntent.providerType.equals(CloudType.onprem))
-            .collect(Collectors.toList());
+        .filter(c -> c.userIntent.providerType.equals(CloudType.onprem))
+        .collect(Collectors.toList());
     for (Cluster onPremCluster : onPremClusters) {
       Map<UUID, List<String>> onpremAzToNodes = new HashMap<UUID, List<String>>();
       for (NodeDetails node : universeDetails.getNodesInCluster(onPremCluster.uuid)) {
@@ -265,6 +336,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           node.nodeUuid = n.nodeUuid;
         }
       }
+    }
+  }
+
+  public void selectMasters() {
+    UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
+    Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
+    LOG.info("Current active master count = " + PlacementInfoUtil.getNumActiveMasters(primaryNodes));
+    int numMastersToChoose = primaryCluster.userIntent.replicationFactor -
+                             PlacementInfoUtil.getNumActiveMasters(primaryNodes);
+    if (numMastersToChoose > 0) {
+      PlacementInfoUtil.selectMasters(primaryNodes, numMastersToChoose);
     }
   }
 
@@ -532,14 +614,31 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   /**
    * Verify that the task params are valid.
    */
-  public void verifyParams() {
+  public void verifyParams(UniverseOpType opType) {
     if (taskParams().universeUUID == null) {
-      throw new RuntimeException(getName() + ": universeUUID not set");
+      throw new IllegalArgumentException(getName() + ": universeUUID not set");
     }
     if (taskParams().nodePrefix == null) {
-      throw new RuntimeException(getName() + ": nodePrefix not set");
+      throw new IllegalArgumentException(getName() + ": nodePrefix not set");
+    }
+    if (opType == UniverseOpType.CREATE &&
+        PlacementInfoUtil.getNumMasters(taskParams().nodeDetailsSet) > 0) {
+      throw new IllegalStateException("Should not have any masters before create task is run.");
     }
     for (Cluster cluster : taskParams().clusters) {
+      if (opType == UniverseOpType.EDIT &&
+          cluster.userIntent.instanceTags.containsKey(NODE_NAME_KEY)) {
+        Universe universe = Universe.get(taskParams().universeUUID);
+        Cluster univCluster = universe.getUniverseDetails().getClusterByUuid(cluster.uuid);
+        if (univCluster == null) {
+          throw new IllegalStateException("No cluster " + cluster.uuid + " found in " +
+                                          taskParams().universeUUID);
+        }
+        if (!univCluster.userIntent.instanceTags.get(NODE_NAME_KEY).equals(
+            cluster.userIntent.instanceTags.get(NODE_NAME_KEY))) {
+          throw new IllegalArgumentException("'Name' tag value cannot be changed.");
+        }
+      }
       PlacementInfoUtil.verifyNodesAndRF(cluster.clusterType, cluster.userIntent.numNodes,
                                          cluster.userIntent.replicationFactor);
     }

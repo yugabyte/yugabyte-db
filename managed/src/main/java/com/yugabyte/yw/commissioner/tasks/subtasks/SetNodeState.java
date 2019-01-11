@@ -13,7 +13,6 @@ public class SetNodeState extends NodeTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(SetNodeState.class);
 
   public static class Params extends NodeTaskParams {
-    public String nodeName;
     public NodeDetails.NodeState state;
   }
 
