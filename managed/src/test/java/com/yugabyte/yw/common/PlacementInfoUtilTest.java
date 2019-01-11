@@ -345,7 +345,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       assertEquals(REPLICATION_FACTOR, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
       assertEquals(INITIAL_NUM_NODES, PlacementInfoUtil.getTserversToBeRemoved(nodes).size());
       assertEquals(INITIAL_NUM_NODES, PlacementInfoUtil.getTserversToProvision(nodes).size());
-      assertEquals(REPLICATION_FACTOR, PlacementInfoUtil.getMastersToProvision(nodes).size());
+      assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
     }
   }
 
@@ -367,7 +367,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       assertEquals(REPLICATION_FACTOR, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
       assertEquals(INITIAL_NUM_NODES, PlacementInfoUtil.getTserversToBeRemoved(nodes).size());
       assertEquals(INITIAL_NUM_NODES, PlacementInfoUtil.getTserversToProvision(nodes).size());
-      assertEquals(REPLICATION_FACTOR, PlacementInfoUtil.getMastersToProvision(nodes).size());
+      assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
     }
   }
 
@@ -466,7 +466,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       Set<NodeDetails> nodes = ud.nodeDetailsSet;
       assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
       assertEquals(REPLICATION_FACTOR, t.universe.getMasters().size());
-      assertEquals(REPLICATION_FACTOR, PlacementInfoUtil.getNumMasters(nodes));
+      assertEquals(REPLICATION_FACTOR, PlacementInfoUtil.getNumActiveMasters(nodes));
       assertEquals(INITIAL_NUM_NODES, nodes.size());
     }
   }
@@ -483,7 +483,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Set<NodeDetails> nodes = ud.nodeDetailsSet;
     assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
     assertEquals(5, t.universe.getMasters().size());
-    assertEquals(5, PlacementInfoUtil.getNumMasters(nodes));
+    assertEquals(5, PlacementInfoUtil.getNumActiveMasters(nodes));
     assertEquals(10, nodes.size());
   }
 
@@ -499,7 +499,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Set<NodeDetails> nodes = ud.nodeDetailsSet;
     assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
     assertEquals(1, t.universe.getMasters().size());
-    assertEquals(1, PlacementInfoUtil.getNumMasters(nodes));
+    assertEquals(1, PlacementInfoUtil.getNumActiveMasters(nodes));
     assertEquals(1, nodes.size());
   }
 
@@ -1001,8 +1001,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       assertEquals(mode == TagTest.WITH_EXPAND ? 2 :
                    (mode == TagTest.WITH_FULL_MOVE ? INITIAL_NUM_NODES : 0),
                    PlacementInfoUtil.getTserversToProvision(nodes).size());
-      assertEquals(mode == TagTest.WITH_FULL_MOVE ? REPLICATION_FACTOR : 0,
-                   PlacementInfoUtil.getMastersToProvision(nodes).size());
+      assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
       assertEquals(myTags, udtp.getPrimaryCluster().userIntent.instanceTags);
     }
   }

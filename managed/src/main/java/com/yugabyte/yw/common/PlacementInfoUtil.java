@@ -379,7 +379,7 @@ public class PlacementInfoUtil {
         taskParams.getPrimaryCluster().userIntent.universeName :
         universe.getUniverseDetails().getPrimaryCluster().userIntent.universeName;
 
-    // Compose a unique name for the nodes in the universe.
+    // Compose a default prefix for the nodes. This can be overwritten by instance tags (on AWS).
     taskParams.nodePrefix = Util.getNodePrefix(customerId, universeName);
 
     ConfigureNodesMode mode;
@@ -1048,8 +1048,7 @@ public class PlacementInfoUtil {
       });
       Cluster cluster = taskParams.getPrimaryCluster();
       taskParams.getPrimaryCluster().placementInfo = getPlacementInfo(cluster.clusterType, cluster.userIntent);
-      configureDefaultNodeStates(cluster, taskParams.nodeDetailsSet,
-                                 taskParams.nodePrefix, universe);
+      configureDefaultNodeStates(cluster, taskParams.nodeDetailsSet, universe);
     } else {
       // In other operations we need to distinguish between expand and full-move.
       Map<UUID, Integer> requiredAZToNodeMap = getAzUuidToNumNodes(taskParams.getPrimaryCluster().placementInfo);
@@ -1071,8 +1070,7 @@ public class PlacementInfoUtil {
       if (isSimpleExpand) {
         // If simple expand we can go in the configure using placement info path
         configureNodesUsingPlacementInfo(taskParams.getPrimaryCluster(),
-                                         taskParams.nodeDetailsSet,
-                                         taskParams.nodePrefix, true);
+                                         taskParams.nodeDetailsSet, true);
         // Break execution sequence because there are no nodes to be decomissioned
         return;
       } else {
@@ -1095,9 +1093,9 @@ public class PlacementInfoUtil {
                 iter ++;
                 placements.add(new PlacementIndexes(azIdx, rIdx, cIdx, true));
                 NodeDetails nodeDetails =
-                        createNodeDetailsWithPlacementIndex(taskParams.getPrimaryCluster(),
-                            taskParams.nodePrefix, new PlacementIndexes(azIdx, rIdx, cIdx, true),
-                            startIndex + iter);
+                    createNodeDetailsWithPlacementIndex(taskParams.getPrimaryCluster(),
+                        new PlacementIndexes(azIdx, rIdx, cIdx, true),
+                        startIndex + iter);
                 taskParams.nodeDetailsSet.add(nodeDetails);
                 numChange--;
               }
@@ -1115,7 +1113,6 @@ public class PlacementInfoUtil {
 
   private static void configureNodesUsingPlacementInfo(Cluster cluster,
                                                        Collection<NodeDetails> nodes,
-                                                       String nodePrefix,
                                                        boolean isEditUniverse) {
     LinkedHashSet<PlacementIndexes> indexes =
         getDeltaPlacementIndices(
@@ -1127,7 +1124,7 @@ public class PlacementInfoUtil {
     for (PlacementIndexes index : indexes) {
       if (index.action == Action.ADD) {
         NodeDetails nodeDetails =
-            createNodeDetailsWithPlacementIndex(cluster, nodePrefix, index, startIndex + iter);
+            createNodeDetailsWithPlacementIndex(cluster, index, startIndex + iter);
         deltaNodesSet.add(nodeDetails);
       } else if (index.action == Action.REMOVE) {
         PlacementCloud placementCloud = cluster.placementInfo.cloudList.get(index.cloudIdx);
@@ -1146,7 +1143,6 @@ public class PlacementInfoUtil {
 
   private static void configureNodesUsingUserIntent(Cluster cluster,
                                                     Collection<NodeDetails> nodeDetailsSet,
-                                                    String nodePrefix,
                                                     boolean isEditUniverse) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodesInCluster = nodeDetailsSet.stream()
@@ -1185,23 +1181,21 @@ public class PlacementInfoUtil {
               findPlacementsOfAZUuid(sortByValues(azUuidToNumNodes, true), cluster);
       int startIndex = getNextIndexToConfigure(nodeDetailsSet);
       addNodeDetailSetToTaskParams(indexes, startIndex, numDeltaNodes, cluster, nodeDetailsSet,
-                                   nodePrefix, deltaNodesMap);
+                                   deltaNodesMap);
     }
   }
 
   private static void configureDefaultNodeStates(Cluster cluster,
                                                  Collection<NodeDetails> nodeDetailsSet,
-                                                 String nodePrefix,
                                                  Universe universe) {
     UserIntent userIntent = cluster.userIntent;
     int startIndex = universe != null ? getNextIndexToConfigure(universe.getNodes()) :
         getNextIndexToConfigure(nodeDetailsSet);
     int numNodes = userIntent.numNodes;
-    int numMastersToChoose =  userIntent.replicationFactor;
     Map<String, NodeDetails> deltaNodesMap = new HashMap<>();
     LinkedHashSet<PlacementIndexes> indexes = getBasePlacement(numNodes, cluster);
     addNodeDetailSetToTaskParams(indexes, startIndex, numNodes, cluster, nodeDetailsSet,
-                                 nodePrefix, deltaNodesMap);
+                                 deltaNodesMap);
 
     // Full move.
     if (universe != null) {
@@ -1210,11 +1204,6 @@ public class PlacementInfoUtil {
       for (NodeDetails node : existingNodes) {
         node.state = NodeDetails.NodeState.ToBeRemoved;
         nodeDetailsSet.add(node);
-      }
-
-      // Select the masters for this cluster based on subnets.
-      if (cluster.clusterType.equals(PRIMARY)) {
-        selectMasters(deltaNodesMap, numMastersToChoose);
       }
     }
   }
@@ -1274,8 +1263,6 @@ public class PlacementInfoUtil {
         throw new IllegalStateException(msg);
       }
     }
-
-    ensureUniqueNodeNames(nodes);
   }
 
   /**
@@ -1294,34 +1281,21 @@ public class PlacementInfoUtil {
     switch (mode) {
       case NEW_CONFIG:
         // This case covers create universe and full move edit.
-        configureDefaultNodeStates(cluster, taskParams.nodeDetailsSet, taskParams.nodePrefix,
-                                   universe);
+        configureDefaultNodeStates(cluster, taskParams.nodeDetailsSet, universe);
         updatePlacementInfo(taskParams.getNodesInCluster(cluster.uuid), cluster.placementInfo);
         break;
       case UPDATE_CONFIG_FROM_PLACEMENT_INFO:
         // The case where there are custom expand/shrink in the placement info.
-        configureNodesUsingPlacementInfo(cluster, taskParams.nodeDetailsSet, taskParams.nodePrefix,
-                                         universe != null);
+        configureNodesUsingPlacementInfo(cluster, taskParams.nodeDetailsSet, universe != null);
         break;
       case UPDATE_CONFIG_FROM_USER_INTENT:
         // Case where userIntent numNodes has to be favored - as it is different from the
         // sum of all per AZ node counts).
-        configureNodesUsingUserIntent(cluster, taskParams.nodeDetailsSet, taskParams.nodePrefix,
-                                      universe != null);
+        configureNodesUsingUserIntent(cluster, taskParams.nodeDetailsSet, universe != null);
         updatePlacementInfo(taskParams.getNodesInCluster(cluster.uuid), cluster.placementInfo);
         break;
       case NEW_CONFIG_FROM_PLACEMENT_INFO:
         configureNodeEditUsingPlacementInfo(taskParams);
-    }
-
-    // Choose new Masters if this is the Primary cluster and we need more Masters.
-    if (cluster.clusterType.equals(PRIMARY)) {
-      Set<NodeDetails> primaryNodes = taskParams.getNodesInCluster(cluster.uuid);
-      int numMastersToChoose = cluster.userIntent.replicationFactor - getNumMasters(primaryNodes);
-      if (numMastersToChoose > 0 && universe != null) {
-        LOG.info("Selecting {} masters.", numMastersToChoose);
-        selectMasters(primaryNodes, numMastersToChoose);
-      }
     }
 
     removeUnusedPlacementAZs(cluster.placementInfo);
@@ -1354,18 +1328,15 @@ public class PlacementInfoUtil {
    * Method takes a placementIndex and returns a NodeDetail object for it in order to add a node.
    *
    * @param cluster     The current cluster.
-   * @param nodePrefix  The prefix for the name of the node.
    * @param index       The placement index combination.
    * @param nodeIdx     Node index to be used in node name.
    * @return a NodeDetails object.
    */
   private static NodeDetails createNodeDetailsWithPlacementIndex(Cluster cluster,
-                                                                 String nodePrefix,
                                                                  PlacementIndexes index,
                                                                  int nodeIdx) {
     NodeDetails nodeDetails = new NodeDetails();
-    // Create a temporary node name. These are fixed once the operation is actually run.
-    nodeDetails.nodeName = nodePrefix + "-fake-n" + nodeIdx;
+    // Note: node name is set during customer task run time.
     // Set the cluster.
     nodeDetails.placementUuid = cluster.uuid;
     // Set the cloud.
@@ -1402,7 +1373,6 @@ public class PlacementInfoUtil {
                                                    int numDeltaNodes,
                                                    Cluster cluster,
                                                    Collection<NodeDetails> nodeDetailsSet,
-                                                   String nodePrefix,
                                                    Map<String, NodeDetails> deltaNodesMap) {
     Set<NodeDetails> deltaNodesSet = new HashSet<NodeDetails>();
     // Create the names and known properties of all the nodes to be created.
@@ -1415,7 +1385,7 @@ public class PlacementInfoUtil {
         iter = indexes.iterator();
         index = iter.next();
       }
-      NodeDetails nodeDetails = createNodeDetailsWithPlacementIndex(cluster, nodePrefix, index, nodeIdx);
+      NodeDetails nodeDetails = createNodeDetailsWithPlacementIndex(cluster, index, nodeIdx);
       deltaNodesSet.add(nodeDetails);
       deltaNodesMap.put(nodeDetails.nodeName, nodeDetails);
     }
@@ -1659,6 +1629,17 @@ public class PlacementInfoUtil {
     return count;
   }
 
+  // Return the count of master nodes which are considered active (for ex., not ToBeRemoved).
+  public static int getNumActiveMasters(Set<NodeDetails> nodes) {
+    int count = 0;
+    for (NodeDetails node : nodes) {
+      if (node.isMaster && node.isActive()) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   private static void addPlacementZone(UUID zone, PlacementInfo placementInfo) {
     // Get the zone, region and cloud.
     AvailabilityZone az = AvailabilityZone.get(zone);
@@ -1781,7 +1762,7 @@ public class PlacementInfoUtil {
     }
 
     nodeDetails.state = (!masterAlive && !tserverAlive) ?
-        NodeDetails.NodeState.Unreachable : NodeDetails.NodeState.Live;
+        NodeDetails.NodeState.Unreachable : nodeDetails.state;
 
     return Json.newObject()
             .put("tserver_alive", tserverAlive)

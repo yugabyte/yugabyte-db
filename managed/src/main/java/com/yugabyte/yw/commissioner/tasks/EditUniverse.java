@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.UniverseOpType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
@@ -47,7 +48,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     try {
       // Verify the task params.
-      verifyParams();
+      verifyParams(UniverseOpType.EDIT);
 
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
@@ -56,12 +57,14 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
+      // Set all the node names.
+      setNodeNames(UniverseOpType.EDIT, universe);
+
+      // Select master nodes, if needed.
+      selectMasters();
+
       // Update the user intent.
       writeUserIntentToUniverse();
-
-      // Set the correct node names as they are finalized now. This is done just in case the user
-      // changes the universe name before submitting.
-      updateNodeNames();
 
       for (Cluster cluster : taskParams().clusters) {
         editCluster(universe, cluster);

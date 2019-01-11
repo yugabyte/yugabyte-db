@@ -32,10 +32,10 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleDestroyServer.class);
 
-  private void removeNodeFromUniverse(String nodeName) {
+  private void removeNodeFromUniverse(final String nodeName) {
     Universe u = Universe.get(taskParams().universeUUID);
-    if (u.getNode(taskParams().nodeName) == null) {
-      LOG.error("No node in universe with name " + taskParams().nodeName);
+    if (u.getNode(nodeName) == null) {
+      LOG.error("No node in universe with name " + nodeName);
       return;
     }
     UserIntent userIntent = u.getUniverseDetails()

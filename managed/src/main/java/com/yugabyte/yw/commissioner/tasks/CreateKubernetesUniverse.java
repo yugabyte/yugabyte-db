@@ -4,9 +4,11 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.UniverseOpType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,24 +24,21 @@ public class CreateKubernetesUniverse extends UniverseDefinitionTaskBase {
   public void run() {
     try {
       // Verify the task params.
-      verifyParams();
+      verifyParams(UniverseOpType.CREATE);
+
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
-      lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      if (PlacementInfoUtil.getNumMasters(taskParams().nodeDetailsSet) > 0) {
-        throw new IllegalStateException("Should not have any masters before create task run.");
-      }
-      UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
-      Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
-      PlacementInfoUtil.selectMasters(primaryNodes, primaryCluster.userIntent.replicationFactor);
+      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+
+      // Set all the in-memory node names first.
+      setNodeNames(UniverseOpType.CREATE, universe);
+
+      // Select the masters.
+      selectMasters();
 
       // Update the user intent.
       writeUserIntentToUniverse();
-
-      // Set the correct node names as they are finalized now. This is done just in case the user
-      // changes the universe name before submitting.
-      updateNodeNames();
 
       // In case of Kubernetes create we would do Helm Init with Service account, then do
       // Helm install the YugaByte helm chart and fetch the pod info for the IP addresses.

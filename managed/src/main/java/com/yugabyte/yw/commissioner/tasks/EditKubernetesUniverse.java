@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.UniverseOpType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 
 import com.yugabyte.yw.models.Universe;
@@ -17,17 +18,21 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
   public void run() {
     try {
       // Verify the task params.
-      verifyParams();
+      verifyParams(UniverseOpType.EDIT);
+
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+
+      // Set all the node names.
+      setNodeNames(UniverseOpType.EDIT, universe);
+
+      // Select master nodes.
+      selectMasters();
+
       // Update the user intent.
       writeUserIntentToUniverse();
-
-      // Set the correct node names as they are finalized now. This is done just in case the user
-      // changes the universe name before submitting.
-      updateNodeNames();
 
       // Run the kubectl command to change the number of replicas.
       createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.HELM_UPGRADE);

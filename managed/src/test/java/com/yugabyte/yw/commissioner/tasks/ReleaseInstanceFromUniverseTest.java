@@ -24,8 +24,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
 import org.yb.client.YBClient;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
 
@@ -43,8 +42,6 @@ import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
-  public static final Logger LOG = LoggerFactory.getLogger(AddNodeToUniverseTest.class);
-
   @InjectMocks
   Commissioner commissioner;
   Universe defaultUniverse;

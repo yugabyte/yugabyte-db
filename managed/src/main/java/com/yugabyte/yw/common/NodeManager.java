@@ -321,8 +321,9 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--use_chrony");
           }
           if (userIntent.instanceTags != null && !userIntent.instanceTags.isEmpty()) {
+            Map<String, String> useTags = userIntent.getInstanceTagsForInstanceOps();
             commandArgs.add("--instance_tags");
-            commandArgs.add(Json.stringify(Json.toJson(userIntent.instanceTags)));
+            commandArgs.add(Json.stringify(Json.toJson(useTags)));
           }
         }
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
@@ -400,8 +401,9 @@ public class NodeManager extends DevopsBase {
           if (userIntent.instanceTags == null || userIntent.instanceTags.isEmpty()) {
             throw new RuntimeException("Invalid instance tags");
           }
+          Map<String, String> useTags = userIntent.getInstanceTagsForInstanceOps();
           commandArgs.add("--instance_tags");
-          commandArgs.add(Json.stringify(Json.toJson(userIntent.instanceTags)));
+          commandArgs.add(Json.stringify(Json.toJson(useTags)));
           if (!taskParam.deleteTags.isEmpty()) {
             commandArgs.add("--remove_tags");
             commandArgs.add(taskParam.deleteTags);
