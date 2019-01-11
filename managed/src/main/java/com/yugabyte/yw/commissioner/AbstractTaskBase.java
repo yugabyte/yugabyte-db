@@ -125,6 +125,9 @@ public abstract class AbstractTaskBase implements ITask {
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         NodeDetails node = universe.getNode(nodeName);
+        if (node == null) {
+          return;
+        }
         LOG.debug("Changing node {} state from {} to {} in universe {}.",
                   nodeName, node.state, state, universeUUID);
         node.state = state;

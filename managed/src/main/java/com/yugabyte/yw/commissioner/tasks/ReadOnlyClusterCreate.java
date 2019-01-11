@@ -36,11 +36,11 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
+      // Set the correct node names for all to-be-added nodes.
+      setNodeNames(UniverseOpType.CREATE, universe);
+
       // Update the user intent.
       writeUserIntentToUniverse(true /* isReadOnly */);
-
-      // Set the correct node names for all to-be-added nodes.
-      updateNodeNames();
 
       // Sanity checks for clusters list validity are performed in the controller.
       Cluster cluster = taskParams().getReadOnlyClusters().get(0);

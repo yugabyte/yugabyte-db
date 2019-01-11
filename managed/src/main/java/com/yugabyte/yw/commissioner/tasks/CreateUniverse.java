@@ -13,9 +13,11 @@ import org.yb.client.YBClient;
 
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.UniverseOpType;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
 public class CreateUniverse extends UniverseDefinitionTaskBase {
@@ -26,30 +28,23 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     LOG.info("Started {} task.", getName());
     try {
       // Verify the task params.
-      verifyParams();
+      verifyParams(UniverseOpType.CREATE);
 
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
-      // Ensure there are no masters that were selected, pick them here.
-      if (PlacementInfoUtil.getNumMasters(taskParams().nodeDetailsSet) > 0) {
-        throw new IllegalStateException("Should not have any masters before create task run.");
-      }
+      // Set all the in-memory node names.
+      setNodeNames(UniverseOpType.CREATE, universe);
 
-      UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
-      Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
-      PlacementInfoUtil.selectMasters(primaryNodes, primaryCluster.userIntent.replicationFactor);
+      // Select master nodes.
+      selectMasters();
 
       // Update the user intent.
       writeUserIntentToUniverse();
-
-      // Set the correct node names as they are finalized now. This is done just in case the user
-      // changes the universe name before submitting.
-      updateNodeNames();
 
       // Create the required number of nodes in the appropriate locations.
       createSetupServerTasks(taskParams().nodeDetailsSet)
@@ -64,6 +59,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createConfigureServerTasks(taskParams().nodeDetailsSet, false /* isShell */)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+      Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
       // Override master flags (on primary cluster) and tserver flags as necessary.
       createGFlagsOverrideTasks(primaryNodes, ServerType.MASTER);
       createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.TSERVER);

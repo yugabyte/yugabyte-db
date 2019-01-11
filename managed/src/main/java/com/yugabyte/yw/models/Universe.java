@@ -309,7 +309,7 @@ public class Universe extends Model {
   public NodeDetails getNode(String nodeName) {
     Collection<NodeDetails> nodes = getNodes();
     for (NodeDetails node : nodes) {
-      if (node.nodeName.equals(nodeName)) {
+      if (node.nodeName != null && node.nodeName.equals(nodeName)) {
         return node;
       }
     }

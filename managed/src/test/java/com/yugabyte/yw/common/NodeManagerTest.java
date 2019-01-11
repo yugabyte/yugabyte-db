@@ -310,7 +310,7 @@ public class NodeManagerTest extends FakeDBApplication {
         if (cloud.equals(Common.CloudType.aws)) {
           expectedCommand.add("--instance_tags");
           // The quotes in format is needed here, so cannot use instanceTags.toString().
-          expectedCommand.add("{\"Cust\":\"Test\",\"Dept\":\"HR\"}");
+          expectedCommand.add("{\"Cust\":\"Test\"}");
           if (!tagsParams.deleteTags.isEmpty()) {
             expectedCommand.add("--remove_tags");
             expectedCommand.add(tagsParams.deleteTags);            
@@ -462,7 +462,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   private void setInstanceTags(NodeTaskParams params) {
     UserIntent userIntent = new UserIntent();
-    userIntent.instanceTags = ImmutableMap.of("Cust", "Test", "Dept", "HR");
+    userIntent.instanceTags = ImmutableMap.of("Cust", "Test");
     params.clusters.add(new Cluster(ClusterType.PRIMARY, userIntent));
   }
 

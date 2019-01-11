@@ -17,7 +17,9 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Iterables;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -315,6 +317,26 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
      */
     private static boolean compareRegionLists(List<UUID> left, List<UUID> right) {
       return (new HashSet<>(left)).equals(new HashSet<>(right));
+    }
+
+    /**
+     * Helper API to send the tags to be used for any instance level operation. The existing map is
+     * cloned and modifications are performed on the clone. Currently it removes just the node name,
+     * which should not be duplicated in ybcloud commands. Used only for AWS now.
+     *
+     * @return A map of tags to use.
+     */
+    @JsonIgnore
+    public Map<String, String> getInstanceTagsForInstanceOps() {
+      Map<String, String> retTags = new HashMap<String, String>();
+      if (!providerType.equals(Common.CloudType.aws)) {
+        return retTags;
+      }
+
+      retTags.putAll(instanceTags);
+      retTags.remove(UniverseDefinitionTaskBase.NODE_NAME_KEY);
+
+      return retTags;
     }
   }
 
