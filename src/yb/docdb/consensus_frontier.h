@@ -31,10 +31,18 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
     return std::make_unique<ConsensusFrontier>(*this);
   }
 
+  ConsensusFrontier() {}
+  ConsensusFrontier(const OpId& op_id, HybridTime ht, HybridTime history_cutoff)
+      : op_id_(op_id),
+        ht_(ht),
+        history_cutoff_(history_cutoff) {}
+
   bool Equals(const UserFrontier& rhs) const override;
   std::string ToString() const override;
   void ToPB(google::protobuf::Any* pb) const override;
   void Update(const rocksdb::UserFrontier& rhs, rocksdb::UpdateUserValueType type) override;
+  bool IsUpdateValid(const rocksdb::UserFrontier& rhs, rocksdb::UpdateUserValueType type) const
+      override;
   void FromPB(const google::protobuf::Any& pb) override;
   void FromOpIdPBDeprecated(const OpIdPB& pb) override;
 

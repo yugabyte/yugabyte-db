@@ -173,7 +173,7 @@ class CompactionJobTest : public testing::Test {
   void SetLastSequence(const SequenceNumber sequence_number) {
     versions_->SetLastSequence(sequence_number + 1);
     test::TestUserFrontier frontier(sequence_number + 1);
-    versions_->SetFlushedFrontier(frontier.Clone());
+    versions_->UpdateFlushedFrontier(frontier.Clone());
   }
 
   // returns expected result after compaction

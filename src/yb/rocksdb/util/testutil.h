@@ -714,6 +714,17 @@ class TestUserFrontier : public UserFrontier {
     FATAL_INVALID_ENUM_VALUE(UpdateUserValueType, type);
   }
 
+  bool IsUpdateValid(const UserFrontier& rhs, UpdateUserValueType type) const override {
+    auto rhs_value = down_cast<const TestUserFrontier&>(rhs).value_;
+    switch (type) {
+      case UpdateUserValueType::kLargest:
+        return rhs_value >= value_;
+      case UpdateUserValueType::kSmallest:
+        return rhs_value <= value_;
+    }
+    FATAL_INVALID_ENUM_VALUE(UpdateUserValueType, type);
+  }
+
   void FromOpIdPBDeprecated(const yb::OpIdPB& op_id) override {}
 
   void FromPB(const google::protobuf::Any& pb) override {
