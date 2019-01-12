@@ -1145,7 +1145,7 @@ Status DBImpl::RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
     edit.SetColumnFamily(cfd->GetID());
     auto frontier = versions_->FlushedFrontier();
     if (frontier) {
-      edit.SetFlushedFrontier(frontier->Clone());
+      edit.SetFlushedFrontierUpdate(frontier->Clone());
     }
     version_edits.insert({cfd->GetID(), edit});
   }
@@ -5462,7 +5462,7 @@ Status DBImpl::ApplyVersionEdit(VersionEdit* edit) {
 
 Status DBImpl::SetFlushedFrontier(UserFrontierPtr frontier) {
   VersionEdit edit;
-  edit.SetFlushedFrontier(std::move(frontier));
+  edit.SetFlushedFrontierUpdate(std::move(frontier));
   return ApplyVersionEdit(&edit);
 }
 
