@@ -40,6 +40,7 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/casts.h"
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/file_numbers.h"
@@ -2336,7 +2337,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     manifest_file_size_ = new_manifest_file_size;
     prev_log_number_ = edit->prev_log_number_.get_value_or(0);
     if (edit->flushed_frontier_) {
-      SetFlushedFrontier(edit->flushed_frontier_);
+      UpdateFlushedFrontier(edit->flushed_frontier_);
     }
   } else {
     RLOG(InfoLogLevel::ERROR_LEVEL, db_options_->info_log,
@@ -2744,7 +2745,7 @@ Status VersionSet::Recover(
     SetLastSequenceNoSanityChecking(last_sequence);
     prev_log_number_ = previous_log_number;
     if (flushed_frontier) {
-      SetFlushedFrontierNoSanityChecking(std::move(flushed_frontier));
+      UpdateFlushedFrontierNoSanityChecking(std::move(flushed_frontier));
     }
 
     RLOG(InfoLogLevel::INFO_LEVEL, db_options_->info_log,
@@ -3228,6 +3229,25 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
 }
 #endif  // ROCKSDB_LITE
 
+// Set the last sequence number to s.
+void VersionSet::SetLastSequence(SequenceNumber s) {
+#ifndef NDEBUG
+  EnsureNonDecreasingLastSequence(LastSequence(), s);
+#endif
+  SetLastSequenceNoSanityChecking(s);
+}
+
+// Set last sequence number without verifying that it always keeps increasing.
+void VersionSet::SetLastSequenceNoSanityChecking(SequenceNumber s) {
+  last_sequence_.store(s, std::memory_order_release);
+}
+
+// Set the last flushed op id / hybrid time / history cutoff to the specified set of values.
+void VersionSet::UpdateFlushedFrontier(UserFrontierPtr values) {
+  EnsureNonDecreasingFlushedFrontier(FlushedFrontier(), *values);
+  UpdateFlushedFrontierNoSanityChecking(std::move(values));
+}
+
 void VersionSet::MarkFileNumberUsedDuringRecovery(uint64_t number) {
   // only called during recovery which is single threaded, so this works because
   // there can't be concurrent calls
@@ -3670,28 +3690,33 @@ uint64_t VersionSet::GetTotalSstFilesSize(Version* dummy_versions) {
   return total_files_size;
 }
 
-#ifndef NDEBUG
 void VersionSet::EnsureNonDecreasingLastSequence(
     SequenceNumber prev_last_seq,
     SequenceNumber new_last_seq) {
   if (new_last_seq < prev_last_seq) {
-    LOG(FATAL) << "New last sequence id " << new_last_seq << " is lower than "
-               << "the previous last sequence " << prev_last_seq;
+    LOG(DFATAL) << "New last sequence id " << new_last_seq << " is lower than "
+                << "the previous last sequence " << prev_last_seq;
   }
 }
 
-void VersionSet::EnsureNonDecreasingFlushedFrontier(const UserFrontier* prev_value,
-                                                  const UserFrontier& new_value) {
+void VersionSet::EnsureNonDecreasingFlushedFrontier(
+    const UserFrontier* prev_value,
+    const UserFrontier& new_value) {
   if (!prev_value) {
     return;
   }
-  auto temp = prev_value->Clone();
-  temp->Update(new_value, UpdateUserValueType::kLargest);
-  if (*temp != new_value) {
-    LOG(FATAL) << "Flushed frontier decreased from " << prev_value->ToString() << " to "
-               << new_value.ToString();
+  if (!prev_value->IsUpdateValid(new_value, UpdateUserValueType::kLargest)) {
+    LOG(DFATAL) << "Attempt to decrease flushed frontier " << prev_value->ToString() << " to "
+                << new_value.ToString();
   }
 }
-#endif
+
+void VersionSet::UpdateFlushedFrontierNoSanityChecking(UserFrontierPtr values) {
+  if (flushed_frontier_) {
+    flushed_frontier_->Update(*values, UpdateUserValueType::kLargest);
+  } else {
+    flushed_frontier_ = std::move(values);
+  }
+}
 
 }  // namespace rocksdb

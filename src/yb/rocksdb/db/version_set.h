@@ -676,29 +676,17 @@ class VersionSet {
   }
 
   // Set the last sequence number to s.
-  void SetLastSequence(SequenceNumber s) {
-#ifndef NDEBUG
-    EnsureNonDecreasingLastSequence(LastSequence(), s);
-#endif
-    SetLastSequenceNoSanityChecking(s);
-  }
+  void SetLastSequence(SequenceNumber s);
 
   // Set last sequence number without verifying that it always keeps increasing.
-  void SetLastSequenceNoSanityChecking(SequenceNumber s) {
-    last_sequence_.store(s, std::memory_order_release);
-  }
+  void SetLastSequenceNoSanityChecking(SequenceNumber s);
 
-  // Set the last flushed op id / hybrid time / history cutoff to the specified set of values.
-  void SetFlushedFrontier(UserFrontierPtr values) {
-#ifndef NDEBUG
-    EnsureNonDecreasingFlushedFrontier(FlushedFrontier(), *values);
-#endif
-    SetFlushedFrontierNoSanityChecking(std::move(values));
-  }
-
-  void SetFlushedFrontierNoSanityChecking(UserFrontierPtr values) {
-    flushed_frontier_ = std::move(values);
-  }
+  // Attempts to set the last flushed op id / hybrid time / history cutoff to the specified tuple of
+  // values. The current flushed frontier is always updated to the maximum of its current and
+  // supplied values for each dimension. This will DFATAL in case the supplied frontier regresses
+  // relative to the current frontier in any of its dimensions which have non-default (defined)
+  // values.
+  void UpdateFlushedFrontier(UserFrontierPtr values);
 
   // Mark the specified file number as used.
   // REQUIRED: this is only called during single-threaded recovery
@@ -785,12 +773,12 @@ class VersionSet {
   ColumnFamilyData* CreateColumnFamily(const ColumnFamilyOptions& cf_options,
                                        VersionEdit* edit);
 
-#ifndef NDEBUG
   static void EnsureNonDecreasingLastSequence(
       SequenceNumber prev_last_seq, SequenceNumber new_last_seq);
   static void EnsureNonDecreasingFlushedFrontier(
       const UserFrontier* prev_value, const UserFrontier& new_value);
-#endif
+
+  void UpdateFlushedFrontierNoSanityChecking(UserFrontierPtr values);
 
   std::unique_ptr<ColumnFamilySet> column_family_set_;
 

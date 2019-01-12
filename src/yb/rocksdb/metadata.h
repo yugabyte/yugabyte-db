@@ -35,6 +35,7 @@
 
 #include "yb/util/clone_ptr.h"
 #include "yb/util/slice.h"
+#include "yb/util/enums.h"
 
 #include "yb/rocksdb/types.h"
 
@@ -101,7 +102,15 @@ class UserFrontier {
   virtual void ToPB(google::protobuf::Any* pb) const = 0;
   virtual bool Equals(const UserFrontier& rhs) const = 0;
 
+  // Updates the user frontier with the new values from rhs.
   virtual void Update(const UserFrontier& rhs, UpdateUserValueType type) = 0;
+
+  // Checks if the given update is valid, i.e. that it does not move the fields of the frontier
+  // (such as OpId / hybrid time) in the direction opposite to that indicated by
+  // UpdateUserValueType. A "largest" update should only increase fields, and a "smallest" should
+  // only decrease them. Fields that are not set in rhs are not checked.
+  virtual bool IsUpdateValid(const UserFrontier& rhs, UpdateUserValueType type) const = 0;
+
   virtual void FromOpIdPBDeprecated(const yb::OpIdPB& op_id) = 0;
   virtual void FromPB(const google::protobuf::Any& pb) = 0;
 
