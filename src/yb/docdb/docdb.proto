@@ -26,10 +26,12 @@ message KeyValuePairPB {
 
 // A set of key/value pairs to be written into RocksDB.
 message KeyValueWriteBatchPB {
-  repeated KeyValuePairPB kv_pairs = 1;
+  repeated KeyValuePairPB write_pairs = 1;
   TransactionMetadataPB transaction = 2;
   bool may_have_metadata = 3;
-  bool read = 4;
+  // Used by serializable isolation, to store read intents.
+  // In case of read-modify-write operation both read_pairs and write_pairs could present.
+  repeated KeyValuePairPB read_pairs = 5;
 }
 
 message ConsensusFrontierPB {

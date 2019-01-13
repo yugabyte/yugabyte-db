@@ -23,6 +23,8 @@ class SerializableTxnTest : public TransactionTestBase {
   IsolationLevel GetIsolationLevel() override {
     return IsolationLevel::SERIALIZABLE_ISOLATION;
   }
+
+  void TestIncrement(int key);
 };
 
 TEST_F(SerializableTxnTest, NonConflictingWrites) {
@@ -115,6 +117,135 @@ TEST_F(SerializableTxnTest, ReadWriteConflict) {
   LOG(INFO) << "Reads won: " << reads_won << ", writes won: " << writes_won;
   ASSERT_GE(reads_won, kKeys / 4);
   ASSERT_GE(writes_won, kKeys / 4);
+}
+
+// Execute UPDATE table SET value = value + 1 WHERE key = kKey in parallel, using
+// serializable isolation.
+// With retries the resulting value should be equal to number of increments.
+void SerializableTxnTest::TestIncrement(int key) {
+  const auto kIncrements = RegularBuildVsSanitizers(100, 20);
+
+  {
+    auto session = CreateSession();
+    auto op = ASSERT_RESULT(WriteRow(session, key, 0));
+    ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
+  }
+
+  struct Entry {
+    YBqlWriteOpPtr op;
+    YBTransactionPtr txn;
+    YBSessionPtr session;
+    std::shared_future<Status> write_future;
+    std::shared_future<Status> commit_future;
+  };
+
+  std::vector<Entry> entries;
+
+  auto value_column_id = table_.ColumnId(kValueColumn);
+  for (int i = 0; i != kIncrements; ++i) {
+    Entry entry;
+    entry.txn = CreateTransaction();
+    entry.session = CreateSession(entry.txn);
+    entries.push_back(entry);
+  }
+
+  // For each of entries we do the following:
+  // 1) Write increment operation.
+  // 2) Wait until write complete and commit transaction of this entry.
+  // 3) Wait until commit complete.
+  // When failure happens on any step - retry from step 1.
+  // Exit from loop when all entries successfully committed their transactions.
+  // We do all actions in busy loop to get most possible concurrency for operations.
+  for (;;) {
+    bool incomplete = false;
+    for (auto& entry : entries) {
+      bool entry_complete = false;
+      if (!entry.op) {
+        // Execute UPDATE table SET value = value + 1 WHERE key = kKey
+        entry.op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+        auto* const req = entry.op->mutable_request();
+        QLAddInt32HashValue(req, key);
+        req->mutable_column_refs()->add_ids(value_column_id);
+        auto* column_value = req->add_column_values();
+        column_value->set_column_id(value_column_id);
+        auto* bfcall = column_value->mutable_expr()->mutable_bfcall();
+        bfcall->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_ConvertI64ToI32_18));
+        bfcall = bfcall->add_operands()->mutable_bfcall();
+
+        bfcall->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
+        auto column_op = bfcall->add_operands()->mutable_bfcall();
+        column_op->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_ConvertI32ToI64_13));
+        column_op->add_operands()->set_column_id(value_column_id);
+        bfcall->add_operands()->mutable_value()->set_int64_value(1);
+
+        entry.session->SetTransaction(entry.txn);
+        ASSERT_OK(entry.session->Apply(entry.op));
+        entry.write_future = entry.session->FlushFuture();
+      } else if (entry.write_future.valid()) {
+        if (entry.write_future.wait_for(0s) == std::future_status::ready) {
+          auto write_status = entry.write_future.get();
+          entry.write_future = std::shared_future<Status>();
+          if (!write_status.ok()) {
+            ASSERT_TRUE(write_status.IsIOError()) << write_status;
+            auto errors = entry.session->GetPendingErrors();
+            ASSERT_EQ(errors.size(), 1);
+            auto status = errors.front()->status();
+            ASSERT_TRUE(status.IsTryAgain() || status.IsTimedOut()) << status;
+            entry.txn = CreateTransaction();
+            entry.op = nullptr;
+          } else {
+            if (entry.op->response().status() == QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
+              auto old_txn = entry.txn;
+              entry.txn = entry.txn->CreateRestartedTransaction();
+              entry.op = nullptr;
+            } else {
+              ASSERT_EQ(entry.op->response().status(), QLResponsePB::YQL_STATUS_OK);
+              entry.commit_future = entry.txn->CommitFuture();
+            }
+          }
+        }
+      } else if (entry.commit_future.valid()) {
+        if (entry.commit_future.wait_for(0s) == std::future_status::ready) {
+          auto status = entry.commit_future.get();
+          if (status.IsExpired() || status.IsTimedOut()) {
+            entry.txn = CreateTransaction();
+            entry.op = nullptr;
+          } else {
+            ASSERT_OK(status);
+            entry.commit_future = std::shared_future<Status>();
+          }
+        }
+      } else {
+        entry_complete = true;
+      }
+      incomplete = incomplete || !entry_complete;
+    }
+    if (!incomplete) {
+      break;
+    }
+  }
+
+  auto value = ASSERT_RESULT(SelectRow(CreateSession(), key));
+  ASSERT_EQ(value, kIncrements);
+}
+
+// Execute UPDATE table SET value = value + 1 WHERE key = kKey in parallel, using
+// serializable isolation.
+// With retries the resulting value should be equal to number of increments.
+TEST_F(SerializableTxnTest, Increment) {
+  const auto kThreads = 3;
+
+  std::vector<std::thread> threads;
+  while (threads.size() != kThreads) {
+    int key = threads.size();
+    threads.emplace_back([this, key] {
+      TestIncrement(key);
+    });
+  }
+
+  for (auto& thread : threads) {
+    thread.join();
+  }
 }
 
 } // namespace client

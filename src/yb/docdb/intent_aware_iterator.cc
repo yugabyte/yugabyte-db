@@ -88,7 +88,8 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
     return local_commit_time;
   }
 
-  TransactionStatusResult txn_status;
+  // Since TransactionStatusResult does not have default ctor we should init it somehow.
+  TransactionStatusResult txn_status(TransactionStatus::ABORTED, HybridTime());
   BackoffWaiter waiter(deadline_.ToSteadyTimePoint(), 50ms /* max_wait */);
   static const std::string kRequestReason = "get commit time"s;
   for(;;) {

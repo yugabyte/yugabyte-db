@@ -348,6 +348,28 @@ inline std::ostream& operator<<(std::ostream& out, const Status& status) {
       SCHECK_LE(var1, rbound, type, msg); \
     } while(false)
 
+#ifndef NDEBUG
+
+#define DSCHECK(expr, type, msg) SCHECK(expr, type, msg)
+#define DSCHECK_EQ(var1, var2, type, msg) SCHECK_EQ(var1, var2, type, msg)
+#define DSCHECK_NE(var1, var2, type, msg) SCHECK_NE(var1, var2, type, msg)
+#define DSCHECK_GT(var1, var2, type, msg) SCHECK_GT(var1, var2, type, msg)
+#define DSCHECK_GE(var1, var2, type, msg) SCHECK_GE(var1, var2, type, msg)
+#define DSCHECK_LT(var1, var2, type, msg) SCHECK_LT(var1, var2, type, msg)
+#define DSCHECK_LE(var1, var2, type, msg) SCHECK_LE(var1, var2, type, msg)
+
+#else
+
+#define DSCHECK(expr, type, msg) DCHECK(expr) << msg
+#define DSCHECK_EQ(var1, var2, type, msg) DCHECK_EQ(var1, var2) << msg
+#define DSCHECK_NE(var1, var2, type, msg) DCHECK_NE(var1, var2) << msg
+#define DSCHECK_GT(var1, var2, type, msg) DCHECK_GT(var1, var2) << msg
+#define DSCHECK_GE(var1, var2, type, msg) DCHECK_GE(var1, var2) << msg
+#define DSCHECK_LT(var1, var2, type, msg) DCHECK_LT(var1, var2) << msg
+#define DSCHECK_LE(var1, var2, type, msg) DCHECK_LE(var1, var2) << msg
+
+#endif
+
 #ifdef YB_HEADERS_NO_STUBS
 #define CHECKED_STATUS MUST_USE_RESULT ::yb::Status
 #else

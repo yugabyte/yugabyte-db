@@ -42,6 +42,12 @@ Result<TransactionId> DoDecodeTransactionId(const Slice &slice, const bool check
 
 } // namespace
 
+TransactionStatusResult::TransactionStatusResult(TransactionStatus status_, HybridTime status_time_)
+    : status(status_), status_time(status_time_) {
+  DCHECK(status == TransactionStatus::ABORTED || status_time.is_valid())
+      << "Status: " << status << ", status_time: " << status_time;
+}
+
 Result<TransactionId> FullyDecodeTransactionId(const Slice& slice) {
   return DoDecodeTransactionId(slice, true);
 }

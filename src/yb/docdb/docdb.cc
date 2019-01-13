@@ -139,11 +139,16 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     doc_paths.clear();
     IsolationLevel level;
-    doc_op->GetDocPathsToLock(&doc_paths, &level);
+    RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kLock, &doc_paths, &level));
     if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
       level = isolation_level;
     }
-    const IntentTypeSet strong_intent_types = GetStrongIntentTypeSet(level, operation_kind);
+    IntentTypeSet strong_intent_types = GetStrongIntentTypeSet(level, operation_kind);
+    if (isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION &&
+        operation_kind == OperationKind::kWrite &&
+        doc_op->RequireReadSnapshot()) {
+      strong_intent_types = IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
+    }
 
     for (const auto& doc_path : doc_paths) {
       key_prefix_lengths.clear();
@@ -283,9 +288,11 @@ void PrepareNonTransactionWriteBatch(
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     rocksdb::WriteBatch* rocksdb_write_batch) {
+  CHECK(put_batch.read_pairs().empty());
+
   DocHybridTimeBuffer doc_ht_buffer;
-  for (int write_id = 0; write_id < put_batch.kv_pairs_size(); ++write_id) {
-    const auto& kv_pair = put_batch.kv_pairs(write_id);
+  for (int write_id = 0; write_id < put_batch.write_pairs_size(); ++write_id) {
+    const auto& kv_pair = put_batch.write_pairs(write_id);
     CHECK(!kv_pair.key().empty());
     CHECK(!kv_pair.value().empty());
 
@@ -321,35 +328,40 @@ void PrepareNonTransactionWriteBatch(
   }
 }
 
-CHECKED_STATUS EnumerateIntents(
+Status EnumerateIntents(
+    Slice key, const Slice& value, const EnumerateIntentsCallback& functor,
+    KeyBytes* encoded_key_buffer) {
+  auto key_size = DocKey::EncodedSize(key, DocKeyPart::WHOLE_DOC_KEY);
+  CHECK_OK(key_size);
+
+  encoded_key_buffer->Clear();
+  encoded_key_buffer->AppendRawBytes(key.cdata(), *key_size);
+  key.remove_prefix(*key_size);
+
+  for (;;) {
+    auto subkey_begin = key.cdata();
+    auto decode_result = SubDocKey::DecodeSubkey(&key);
+    CHECK_OK(decode_result);
+    if (!decode_result.get()) {
+      break;
+    }
+    RETURN_NOT_OK(functor(IntentStrength::kWeak, Slice(), encoded_key_buffer));
+    encoded_key_buffer->AppendRawBytes(subkey_begin, key.cdata() - subkey_begin);
+  }
+
+  return functor(IntentStrength::kStrong, value, encoded_key_buffer);
+}
+
+Status EnumerateIntents(
     const google::protobuf::RepeatedPtrField<KeyValuePairPB> &kv_pairs,
-    boost::function<Status(IntentKind, Slice, KeyBytes*)> functor) {
+    const EnumerateIntentsCallback& functor) {
   KeyBytes encoded_key;
 
   for (int index = 0; index < kv_pairs.size(); ++index) {
     const auto &kv_pair = kv_pairs.Get(index);
     CHECK(!kv_pair.key().empty());
     CHECK(!kv_pair.value().empty());
-    Slice key = kv_pair.key();
-    auto key_size = DocKey::EncodedSize(key, DocKeyPart::WHOLE_DOC_KEY);
-    CHECK_OK(key_size);
-
-    encoded_key.Clear();
-    encoded_key.AppendRawBytes(key.cdata(), *key_size);
-    key.remove_prefix(*key_size);
-
-    for (;;) {
-      auto subkey_begin = key.cdata();
-      auto decode_result = SubDocKey::DecodeSubkey(&key);
-      CHECK_OK(decode_result);
-      if (!decode_result.get()) {
-        break;
-      }
-      RETURN_NOT_OK(functor(IntentKind::kWeak, Slice(), &encoded_key));
-      encoded_key.AppendRawBytes(subkey_begin, key.cdata() - subkey_begin);
-    }
-
-    RETURN_NOT_OK(functor(IntentKind::kStrong, kv_pair.value(), &encoded_key));
+    RETURN_NOT_OK(EnumerateIntents(kv_pair.key(), kv_pair.value(), functor, &encoded_key));
   }
 
   return Status::OK();
@@ -364,20 +376,21 @@ class PrepareTransactionWriteBatchHelper {
   PrepareTransactionWriteBatchHelper(HybridTime hybrid_time,
                                      rocksdb::WriteBatch* rocksdb_write_batch,
                                      const TransactionId& transaction_id,
-                                     IsolationLevel isolation_level,
-                                     OperationKind operation_kind,
                                      IntraTxnWriteId* intra_txn_write_id)
       : hybrid_time_(hybrid_time),
         rocksdb_write_batch_(rocksdb_write_batch),
         transaction_id_(transaction_id),
-        strong_intent_types_(GetStrongIntentTypeSet(isolation_level, operation_kind)),
         intra_txn_write_id_(intra_txn_write_id) {
   }
 
+  void Setup(IsolationLevel isolation_level, OperationKind kind) {
+    strong_intent_types_ = GetStrongIntentTypeSet(isolation_level, kind);
+  }
+
   // Using operator() to pass this object conveniently to EnumerateIntents.
-  CHECKED_STATUS operator()(IntentKind intent_kind, Slice value_slice, KeyBytes* key) {
-    if (intent_kind == IntentKind::kWeak) {
-      weak_intents_.insert(key->data());
+  CHECKED_STATUS operator()(IntentStrength intent_strength, Slice value_slice, KeyBytes* key) {
+    if (intent_strength == IntentStrength::kWeak) {
+      weak_intents_[key->data()] |= StrongToWeak(strong_intent_types_);
       return Status::OK();
     }
 
@@ -411,8 +424,6 @@ class PrepareTransactionWriteBatchHelper {
 
   void Finish() {
     char transaction_id_value_type = ValueTypeAsChar::kTransactionId;
-    char intent_type[2] = { ValueTypeAsChar::kIntentTypeSet,
-                            static_cast<char>(StrongToWeak(strong_intent_types_).ToUIntPtr()) };
 
     DocHybridTimeBuffer doc_ht_buffer;
 
@@ -421,9 +432,11 @@ class PrepareTransactionWriteBatchHelper {
         Slice(transaction_id_.data, transaction_id_.size()),
     }};
 
-    for (const auto& intent : weak_intents_) {
+    for (const auto& intent_and_types : weak_intents_) {
+      char intent_type[2] = { ValueTypeAsChar::kIntentTypeSet,
+                              static_cast<char>(intent_and_types.second.ToUIntPtr()) };
       std::array<Slice, 3> key = {{
-          Slice(intent),
+          Slice(intent_and_types.first),
           Slice(intent_type, 2),
           doc_ht_buffer.EncodeWithValueType(hybrid_time_, write_id_++),
       }};
@@ -439,7 +452,7 @@ class PrepareTransactionWriteBatchHelper {
   rocksdb::WriteBatch* rocksdb_write_batch_;
   const TransactionId& transaction_id_;
   IntentTypeSet strong_intent_types_;
-  std::unordered_set<std::string> weak_intents_;
+  std::unordered_map<std::string, IntentTypeSet> weak_intents_;
   IntraTxnWriteId write_id_ = 0;
   IntraTxnWriteId* intra_txn_write_id_;
 };
@@ -463,16 +476,21 @@ void PrepareTransactionWriteBatch(
     IntraTxnWriteId* write_id) {
   VLOG(4) << "PrepareTransactionWriteBatch(), write_id = " << *write_id;
 
-  auto operation_kind = put_batch.read() ? docdb::OperationKind::kRead
-                                         : docdb::OperationKind::kWrite;
-
   PrepareTransactionWriteBatchHelper helper(
-      hybrid_time, rocksdb_write_batch, transaction_id, isolation_level, operation_kind,
-      write_id);
+      hybrid_time, rocksdb_write_batch, transaction_id, write_id);
 
-  // We cannot recover from failures here, because it means that we cannot apply replicated
-  // operation.
-  CHECK_OK(EnumerateIntents(put_batch.kv_pairs(), std::ref(helper)));
+  if (!put_batch.write_pairs().empty()) {
+    helper.Setup(isolation_level, OperationKind::kWrite);
+
+    // We cannot recover from failures here, because it means that we cannot apply replicated
+    // operation.
+    CHECK_OK(EnumerateIntents(put_batch.write_pairs(), std::ref(helper)));
+  }
+
+  if (!put_batch.read_pairs().empty()) {
+    helper.Setup(isolation_level, OperationKind::kRead);
+    CHECK_OK(EnumerateIntents(put_batch.read_pairs(), std::ref(helper)));
+  }
 
   helper.Finish();
 }
