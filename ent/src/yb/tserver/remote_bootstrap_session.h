@@ -29,6 +29,9 @@ class RemoteBootstrapSession : public yb::tserver::RemoteBootstrapSession {
                                       std::string* data,
                                       int64_t* log_file_size,
                                       RemoteBootstrapErrorPB::Code* error_code);
+
+  virtual ~RemoteBootstrapSession() {}
+
  private:
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapSession);
 };
