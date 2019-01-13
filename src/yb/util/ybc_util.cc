@@ -30,6 +30,8 @@ namespace yb {
 namespace {
 
 Status InitInternal(const char* argv0) {
+  yb::InitGoogleLoggingSafeBasic(argv0);
+
   // Allow putting gflags into a file and specifying that file's path as an env variable.
   const char* pg_flagfile_path = getenv("YB_PG_FLAGFILE");
   if (pg_flagfile_path) {
@@ -57,7 +59,6 @@ Status InitInternal(const char* argv0) {
   }
 
   RETURN_NOT_OK(CheckCPUFlags());
-  yb::InitGoogleLoggingSafeBasic(argv0);
   // Not calling google::InstallFailureSignalHandler() here to avoid interfering with PostgreSQL's
   // own signal handling.
   return Status::OK();

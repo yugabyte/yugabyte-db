@@ -43,4 +43,16 @@ extern bool YBIsEnabledInPostgresEnvVar();
  */
 extern bool YBShouldAllowRunningAsAnyUser();
 
+/**
+ * Check if the environment variable indicating that this is a child process
+ * of initdb is set.
+ */
+extern bool YBIsInitDbModeEnvVarSet();
+
+/**
+ * Set the environment variable that will tell initdb's child process
+ * that they are running as part of initdb.
+ */
+extern void YBSetInitDbModeEnvVar();
+
 #endif /* PG_YB_COMMON_H */

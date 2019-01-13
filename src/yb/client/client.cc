@@ -153,6 +153,11 @@ DECLARE_int32(yb_num_shards_per_tserver);
 DEFINE_int32(update_permissions_cache_msecs, 2000,
              "How often the roles' permissions cache should be updated. 0 means never update it");
 
+DEFINE_bool(client_suppress_created_logs, false,
+            "Suppress 'Created table ...' messages");
+TAG_FLAG(client_suppress_created_logs, advanced);
+TAG_FLAG(client_suppress_created_logs, hidden);
+
 namespace yb {
 namespace client {
 
@@ -1605,8 +1610,10 @@ Status YBTableCreator::Create() {
                                                                     deadline));
   }
 
-  LOG(INFO) << "Created " << object_type << " " << data_->table_name_.ToString()
-            << " of type " << TableType_Name(data_->table_type_);
+  if (!FLAGS_client_suppress_created_logs) {
+    LOG(INFO) << "Created " << object_type << " " << data_->table_name_.ToString()
+              << " of type " << TableType_Name(data_->table_type_);
+  }
 
   return Status::OK();
 }

@@ -232,9 +232,12 @@ CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 
 	if (IsYugaByteEnabled())
 	{
-		YBC_LOG_WARNING("Ignoring unsupported tuple update for rel %s tupid %d",
-		                RelationGetRelationName(heapRel),
-		                HeapTupleGetOid(tup));
+		if (!YBIsInitDbModeEnvVarSet())
+		{
+			YBC_LOG_WARNING("Ignoring unsupported tuple update for rel %s tupid %d",
+							RelationGetRelationName(heapRel),
+							HeapTupleGetOid(tup));
+		}
 		return;
 	}
 
