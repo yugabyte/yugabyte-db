@@ -41,8 +41,6 @@
 #include <glog/stl_logging.h>
 #include <google/protobuf/message.h>
 
-#include "yb/fs/block_id.h"
-#include "yb/fs/file_block_manager.h"
 #include "yb/fs/fs.pb.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
@@ -65,10 +63,6 @@ DEFINE_bool(enable_data_block_fsync, true,
             "Disabling this flag may cause data loss in the event of a system crash.");
 TAG_FLAG(enable_data_block_fsync, unsafe);
 
-DEFINE_string(block_manager, "file", "Which block manager to use for storage. "
-              "Only the file block manager is supported for non-Linux systems.");
-TAG_FLAG(block_manager, advanced);
-
 DECLARE_string(fs_data_dirs);
 
 DEFINE_string(fs_wal_dirs, "",
@@ -84,11 +78,6 @@ DEFINE_string(instance_uuid_override, "",
 
 using google::protobuf::Message;
 using yb::env_util::ScopedFileDeleter;
-using yb::fs::BlockManagerOptions;
-using yb::fs::CreateBlockOptions;
-using yb::fs::FileBlockManager;
-using yb::fs::ReadableBlock;
-using yb::fs::WritableBlock;
 using std::map;
 using std::unordered_set;
 using strings::Substitute;
@@ -222,24 +211,8 @@ Status FsManager::Init() {
     VLOG(1) << "All roots: " << canonicalized_all_fs_roots_;
   }
 
-  // With the data roots canonicalized, we can initialize the block manager.
-  InitBlockManager();
-
   initted_ = true;
   return Status::OK();
-}
-
-void FsManager::InitBlockManager() {
-  BlockManagerOptions opts;
-  opts.metric_entity = metric_entity_;
-  opts.parent_mem_tracker = parent_mem_tracker_;
-  opts.root_paths = GetDataRootDirs();
-  opts.read_only = read_only_;
-  if (FLAGS_block_manager == "file") {
-    block_manager_.reset(new FileBlockManager(env_, opts));
-  } else {
-    LOG(FATAL) << "Invalid block manager: " << FLAGS_block_manager;
-  }
 }
 
 Status FsManager::Open() {
@@ -256,7 +229,6 @@ Status FsManager::Open() {
     }
   }
 
-  RETURN_NOT_OK(block_manager_->Open());
   LOG(INFO) << "Opened local filesystem: " << JoinStrings(canonicalized_all_fs_roots_, ",")
             << std::endl << metadata_->DebugString();
   return Status::OK();
@@ -319,8 +291,7 @@ Status FsManager::CreateInitialFileSystemLayout() {
   // subdirectories.
   //
   // In the event of failure, delete everything we created.
-  deque<ScopedFileDeleter*> delete_on_failure;
-  ElementDeleter d(&delete_on_failure);
+  std::deque<std::unique_ptr<ScopedFileDeleter>> delete_on_failure;
 
   InstanceMetadataPB metadata;
   CreateInstanceMetadata(&metadata);
@@ -330,13 +301,13 @@ Status FsManager::CreateInitialFileSystemLayout() {
     std::string out_dir;
     RETURN_NOT_OK(SetupRootDir(env_, root, server_type_, &out_dir, &created));
     if (created) {
-      delete_on_failure.push_front(new ScopedFileDeleter(env_, out_dir));
+      delete_on_failure.emplace_front(new ScopedFileDeleter(env_, out_dir));
       to_sync.insert(DirName(out_dir));
     }
     const string instance_metadata_path = GetInstanceMetadataPath(root);
     RETURN_NOT_OK_PREPEND(WriteInstanceMetadata(metadata, instance_metadata_path),
                           "Unable to write instance metadata");
-    delete_on_failure.push_front(new ScopedFileDeleter(env_, instance_metadata_path));
+    delete_on_failure.emplace_front(new ScopedFileDeleter(env_, instance_metadata_path));
   }
 
   // Initialize ancillary directories.
@@ -349,7 +320,7 @@ Status FsManager::CreateInitialFileSystemLayout() {
     RETURN_NOT_OK_PREPEND(CreateDirIfMissing(dir, &created),
                           Substitute("Unable to create directory $0", dir));
     if (created) {
-      delete_on_failure.push_front(new ScopedFileDeleter(env_, dir));
+      delete_on_failure.emplace_front(new ScopedFileDeleter(env_, dir));
       to_sync.insert(DirName(dir));
     }
   }
@@ -362,23 +333,28 @@ Status FsManager::CreateInitialFileSystemLayout() {
     }
   }
 
-  // Create the block manager.
-  RETURN_NOT_OK_PREPEND(block_manager_->Create(), "Unable to create block manager");
-
   // Create the RocksDB directory under each data directory.
   for (const string& data_root : GetDataRootDirs()) {
-    const string dir = JoinPathSegments(data_root, kRocksDBDirName);
     bool created = false;
+    RETURN_NOT_OK_PREPEND(CreateDirIfMissing(data_root, &created),
+                          Substitute("Unable to create directory $0", data_root));
+    if (created) {
+      delete_on_failure.emplace_front(new ScopedFileDeleter(env_, data_root));
+      to_sync.insert(DirName(data_root));
+    }
+
+    const string dir = JoinPathSegments(data_root, kRocksDBDirName);
+    created = false;
     RETURN_NOT_OK_PREPEND(CreateDirIfMissing(dir, &created),
                           Substitute("Unable to create directory $0", dir));
     if (created) {
-      delete_on_failure.push_front(new ScopedFileDeleter(env_, dir));
+      delete_on_failure.emplace_front(new ScopedFileDeleter(env_, dir));
       to_sync.insert(DirName(dir));
     }
   }
 
   // Success: don't delete any files.
-  for (ScopedFileDeleter* deleter : delete_on_failure) {
+  for (const auto& deleter : delete_on_failure) {
     deleter->Cancel();
   }
   return Status::OK();
@@ -578,35 +554,6 @@ void FsManager::DumpFileSystemTree(ostream& out, const string& prefix,
       out << prefix << name << std::endl;
     }
   }
-}
-
-// ==========================================================================
-//  Data read/write interfaces
-// ==========================================================================
-
-Status FsManager::CreateNewBlock(gscoped_ptr<WritableBlock>* block) {
-  CHECK(!read_only_);
-
-  return block_manager_->CreateBlock(block);
-}
-
-Status FsManager::OpenBlock(const BlockId& block_id, gscoped_ptr<ReadableBlock>* block) {
-  return block_manager_->OpenBlock(block_id, block);
-}
-
-Status FsManager::DeleteBlock(const BlockId& block_id) {
-  CHECK(!read_only_);
-
-  return block_manager_->DeleteBlock(block_id);
-}
-
-bool FsManager::BlockExists(const BlockId& block_id) const {
-  gscoped_ptr<ReadableBlock> block;
-  return block_manager_->OpenBlock(block_id, &block).ok();
-}
-
-std::ostream& operator<<(std::ostream& o, const BlockId& block_id) {
-  return o << block_id.ToString();
 }
 
 } // namespace yb

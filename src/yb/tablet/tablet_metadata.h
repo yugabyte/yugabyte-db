@@ -43,7 +43,6 @@
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/fs/block_id.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/dynamic_annotations.h"
@@ -285,27 +284,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   void set_tablet_data_state(TabletDataState state);
   TabletDataState tablet_data_state() const;
 
-  // Increments flush pin count by one: if flush pin count > 0,
-  // metadata will _not_ be flushed to disk during Flush().
-  void PinFlush();
-
-  // Decrements flush pin count by one: if flush pin count is zero,
-  // metadata will be flushed to disk during the next call to Flush()
-  // or -- if Flush() had been called after a call to PinFlush() but
-  // before this method was called -- Flush() will be called inside
-  // this method.
-  CHECKED_STATUS UnPinFlush();
-
   CHECKED_STATUS Flush();
-
-  // Adds the blocks referenced by 'block_ids' to 'orphaned_blocks_'.
-  //
-  // This set will be written to the on-disk metadata in any subsequent
-  // flushes.
-  //
-  // Blocks are removed from this set after they are successfully deleted
-  // in a call to DeleteOrphanedBlocks().
-  void AddOrphanedBlocks(const std::vector<BlockId>& block_ids);
 
   // Mark the superblock to be in state 'delete_type', sync it to disk, and
   // then delete all of the rowsets in this tablet.
@@ -391,17 +370,6 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // Requires 'data_lock_'.
   CHECKED_STATUS ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) const;
 
-  // Requires 'data_lock_'.
-  void AddOrphanedBlocksUnlocked(const std::vector<BlockId>& block_ids);
-
-  // Deletes the provided 'blocks' on disk.
-  //
-  // All blocks that are successfully deleted are removed from the
-  // 'orphaned_blocks_' set.
-  //
-  // Failures are logged, but are not fatal.
-  void DeleteOrphanedBlocks(const std::vector<BlockId>& blocks);
-
   // Return standard "T xxx P yyy" log prefix.
   std::string LogPrefix() const;
 
@@ -458,22 +426,12 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // The directory where the write-ahead log for this tablet is stored.
   std::string wal_dir_;
 
-  // Protected by 'data_lock_'.
-  std::unordered_set<BlockId, BlockIdHash, BlockIdEqual> orphaned_blocks_;
-
   // The current state of remote bootstrap for the tablet.
   TabletDataState tablet_data_state_;
 
   // Record of the last opid logged by the tablet before it was last tombstoned. Has no meaning for
   // non-tombstoned tablets.
   yb::OpId tombstone_last_logged_opid_;
-
-  // If this counter is > 0 then Flush() will not write any data to disk.
-  int32_t num_flush_pins_ = 0;
-
-  // Set if Flush() is called when num_flush_pins_ is > 0; if true, then next UnPinFlush will call
-  // Flush() again to ensure the metadata is persisted.
-  bool needs_flush_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(TabletMetadata);
 };

@@ -153,7 +153,6 @@ message CheckRemoteBootstrapSessionActiveResponsePB {
 message DataIdPB {
   enum IdType {
     UNKNOWN = 0;
-    BLOCK = 1;
     LOG_SEGMENT = 2;
     ROCKSDB_FILE = 3;
     SNAPSHOT_FILE = 4;
@@ -163,7 +162,7 @@ message DataIdPB {
   required IdType type = 1;
 
   // Exactly one of these must be set.
-  optional BlockIdPB block_id = 2;          // To fetch a block.
+  reserved 2; // Deprecated block_id
   optional uint64 wal_segment_seqno = 3;    // To fetch a log segment.
   optional string file_name = 4;            // To fetch a RocksDB file.
   optional bytes snapshot_id = 5;           // To fetch a Snapshot file.

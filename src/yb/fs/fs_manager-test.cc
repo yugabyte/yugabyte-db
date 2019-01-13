@@ -34,7 +34,6 @@
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/fs/block_manager.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/util/metrics.h"
@@ -76,25 +75,6 @@ class FsManagerTestBase : public YBTest {
 
   void ReinitFsManager(const FsManagerOpts& opts) {
     fs_manager_.reset(new FsManager(env_.get(), opts));
-  }
-
-  void TestReadWriteDataFile(const Slice& data) {
-    uint8_t buffer[64];
-    DCHECK_LT(data.size(), sizeof(buffer));
-
-    // Test Write
-    gscoped_ptr<fs::WritableBlock> writer;
-    ASSERT_OK(fs_manager()->CreateNewBlock(&writer));
-    ASSERT_OK(writer->Append(data));
-    ASSERT_OK(writer->Close());
-
-    // Test Read
-    Slice result;
-    gscoped_ptr<fs::ReadableBlock> reader;
-    ASSERT_OK(fs_manager()->OpenBlock(writer->id(), &reader));
-    ASSERT_OK(reader->Read(0, data.size(), &result, buffer));
-    ASSERT_EQ(data.size(), result.size());
-    ASSERT_EQ(0, result.compare(data));
   }
 
   void ValidateRootDataPaths(const string& data_path, const string& wal_path) {
@@ -164,15 +144,6 @@ class FsManagerTestBase : public YBTest {
   gscoped_ptr<FsManager> fs_manager_;
   string log_dir_ = "";
 };
-
-TEST_F(FsManagerTestBase, TestBaseOperations) {
-  fs_manager()->DumpFileSystemTree(std::cout);
-
-  TestReadWriteDataFile(Slice("test0"));
-  TestReadWriteDataFile(Slice("test1"));
-
-  fs_manager()->DumpFileSystemTree(std::cout);
-}
 
 TEST_F(FsManagerTestBase, TestIllegalPaths) {
   vector<string> illegal = { "", "asdf", "/foo\n\t" };

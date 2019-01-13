@@ -397,11 +397,6 @@ Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
 
 Status TabletMetadata::DeleteSuperBlock() {
   std::lock_guard<LockType> l(data_lock_);
-  if (!orphaned_blocks_.empty()) {
-    return STATUS(InvalidArgument, "The metadata for tablet " + tablet_id_ +
-                                   " still references orphaned blocks. "
-                                   "Call DeleteTabletData() first");
-  }
   if (tablet_data_state_ != TABLET_DATA_DELETED) {
     return STATUS(IllegalState,
         Substitute("Tablet $0 is not in TABLET_DATA_DELETED state. "
@@ -478,8 +473,6 @@ Status TabletMetadata::LoadFromDisk() {
 }
 
 Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) {
-  vector<BlockId> orphaned_blocks;
-
   VLOG(2) << "Loading TabletMetadata from SuperBlockPB:" << std::endl
           << superblock.DebugString();
 
@@ -510,11 +503,6 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
     wal_dir_ = superblock.wal_dir();
     tablet_data_state_ = superblock.tablet_data_state();
 
-    for (const BlockIdPB& block_pb : superblock.orphaned_blocks()) {
-      orphaned_blocks.push_back(BlockId::FromPB(block_pb));
-    }
-    AddOrphanedBlocksUnlocked(orphaned_blocks);
-
     if (superblock.has_tombstone_last_logged_opid()) {
       tombstone_last_logged_opid_ = yb::OpId::FromPB(superblock.tombstone_last_logged_opid());
     } else {
@@ -534,71 +522,6 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
     RETURN_NOT_OK(Flush());
   }
 
-  // Now is a good time to clean up any orphaned blocks that may have been
-  // left behind from a crash just after replacing the superblock.
-  if (!fs_manager()->read_only()) {
-    DeleteOrphanedBlocks(orphaned_blocks);
-  }
-
-  return Status::OK();
-}
-
-void TabletMetadata::AddOrphanedBlocks(const vector<BlockId>& blocks) {
-  std::lock_guard<LockType> l(data_lock_);
-  AddOrphanedBlocksUnlocked(blocks);
-}
-
-void TabletMetadata::AddOrphanedBlocksUnlocked(const vector<BlockId>& blocks) {
-  DCHECK(data_lock_.is_locked());
-  orphaned_blocks_.insert(blocks.begin(), blocks.end());
-}
-
-void TabletMetadata::DeleteOrphanedBlocks(const vector<BlockId>& blocks) {
-  if (PREDICT_FALSE(!FLAGS_enable_tablet_orphaned_block_deletion)) {
-    LOG_WITH_PREFIX(WARNING) << "Not deleting " << blocks.size()
-        << " block(s) from disk. Block deletion disabled via "
-        << "--enable_tablet_orphaned_block_deletion=false";
-    return;
-  }
-
-  vector<BlockId> deleted;
-  for (const BlockId& b : blocks) {
-    Status s = fs_manager()->DeleteBlock(b);
-    // If we get NotFound, then the block was actually successfully
-    // deleted before. So, we can remove it from our orphaned block list
-    // as if it was a success.
-    if (!s.ok() && !s.IsNotFound()) {
-      WARN_NOT_OK(s, Substitute("Could not delete block $0", b.ToString()));
-      continue;
-    }
-
-    deleted.push_back(b);
-  }
-
-  // Remove the successfully-deleted blocks from the set.
-  {
-    std::lock_guard<LockType> l(data_lock_);
-    for (const BlockId& b : deleted) {
-      orphaned_blocks_.erase(b);
-    }
-  }
-}
-
-void TabletMetadata::PinFlush() {
-  std::lock_guard<LockType> l(data_lock_);
-  CHECK_GE(num_flush_pins_, 0);
-  num_flush_pins_++;
-  VLOG(1) << "Number of flush pins: " << num_flush_pins_;
-}
-
-Status TabletMetadata::UnPinFlush() {
-  std::unique_lock<LockType> l(data_lock_);
-  CHECK_GT(num_flush_pins_, 0);
-  num_flush_pins_--;
-  if (needs_flush_) {
-    l.unlock();
-    RETURN_NOT_OK(Flush());
-  }
   return Status::OK();
 }
 
@@ -607,37 +530,13 @@ Status TabletMetadata::Flush() {
                "tablet_id", tablet_id_);
 
   MutexLock l_flush(flush_lock_);
-  vector<BlockId> orphaned;
   TabletSuperBlockPB pb;
   {
     std::lock_guard<LockType> l(data_lock_);
-    CHECK_GE(num_flush_pins_, 0);
-    if (num_flush_pins_ > 0) {
-      needs_flush_ = true;
-      LOG(INFO) << "Not flushing: waiting for " << num_flush_pins_ << " pins to be released.";
-      return Status::OK();
-    }
-    needs_flush_ = false;
-
     RETURN_NOT_OK(ToSuperBlockUnlocked(&pb));
-
-    // Make a copy of the orphaned blocks list which corresponds to the superblock
-    // that we're writing. It's important to take this local copy to avoid a race
-    // in which another thread may add new orphaned blocks to the 'orphaned_blocks_'
-    // set while we're in the process of writing the new superblock to disk. We don't
-    // want to accidentally delete those blocks before that next metadata update
-    // is persisted. See KUDU-701 for details.
-    orphaned.assign(orphaned_blocks_.begin(), orphaned_blocks_.end());
   }
   RETURN_NOT_OK(ReplaceSuperBlockUnlocked(pb));
   TRACE("Metadata flushed");
-  l_flush.Unlock();
-
-  // Now that the superblock is written, try to delete the orphaned blocks.
-  //
-  // If we crash just before the deletion, we'll retry when reloading from
-  // disk; the orphaned blocks were persisted as part of the superblock.
-  DeleteOrphanedBlocks(orphaned);
 
   return Status::OK();
 }
@@ -701,10 +600,6 @@ Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) cons
   pb.set_tablet_data_state(tablet_data_state_);
   if (tombstone_last_logged_opid_) {
     tombstone_last_logged_opid_.ToPB(pb.mutable_tombstone_last_logged_opid());
-  }
-
-  for (const BlockId& block_id : orphaned_blocks_) {
-    block_id.CopyToPB(pb.mutable_orphaned_blocks()->Add());
   }
 
   RETURN_NOT_OK(tables_.at(primary_table_id_)->ToSuperBlock(&pb));
