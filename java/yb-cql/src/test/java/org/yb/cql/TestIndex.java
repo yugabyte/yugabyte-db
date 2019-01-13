@@ -652,7 +652,7 @@ public class TestIndex extends BaseCQLTest {
       int currentRestarts = getRestartsCount("test_restart");
       int currentRetries = getRetriesCount();
       LOG.info("Current restarts = {}, retries = {}", currentRestarts, currentRetries);
-      if (currentRestarts > initialRestarts && currentRetries > initialRetries)
+      if (currentRetries > initialRetries)
         break;
     }
 

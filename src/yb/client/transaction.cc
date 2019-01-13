@@ -88,7 +88,13 @@ class YBTransaction::Impl final {
         transaction_(transaction),
         read_point_(manager->clock()),
         child_(Child::kTrue) {
-    read_point_.SetReadTime(std::move(data.read_time), std::move(data.local_limits));
+    // For serializable isolation we use read intents, so could always read most recent
+    // version of DB.
+    // Otherwise there is possible case when we miss value change that happened after transaction
+    // start.
+    if (data.metadata.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+      read_point_.SetReadTime(std::move(data.read_time), std::move(data.local_limits));
+    }
     metadata_ = std::move(data.metadata);
     CompleteConstruction();
     VLOG_WITH_PREFIX(2) << "Started child, metadata: " << metadata_;
@@ -112,11 +118,14 @@ class YBTransaction::Impl final {
 
     if (read_time.read.is_valid()) {
       read_point_.SetReadTime(read_time, ConsistentReadPoint::HybridTimeMap());
-    } else {
+    } else if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
       read_point_.SetCurrentReadTime();
     }
     metadata_.isolation = isolation;
     metadata_.start_time = read_point_.GetReadTime().read;
+    if (!metadata_.start_time.is_valid()) {
+      metadata_.start_time = read_point_.Now();
+    }
 
     return Status::OK();
   }

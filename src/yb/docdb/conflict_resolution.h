@@ -46,7 +46,8 @@ class KeyValueWriteBatchPB;
 // db - db that contains tablet data.
 // status_manager - status manager that should be used during this conflict resolution.
 // conflicts_metric - transaction_conflicts metric to update.
-CHECKED_STATUS ResolveTransactionConflicts(const KeyValueWriteBatchPB& write_batch,
+CHECKED_STATUS ResolveTransactionConflicts(const DocOperations& doc_ops,
+                                           const KeyValueWriteBatchPB& write_batch,
                                            HybridTime hybrid_time,
                                            const DocDB& doc_db,
                                            TransactionStatusManager* status_manager,

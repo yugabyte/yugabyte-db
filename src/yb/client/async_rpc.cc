@@ -471,8 +471,8 @@ void WriteRpc::SwapRequestsAndResponses(bool skip_responses = false) {
     switch (yb_op->type()) {
       case YBOperation::Type::REDIS_WRITE: {
         if (redis_idx >= resp_.redis_response_batch().size()) {
-          batcher_->AddOpCountMismatchError();
-          return;
+          ++redis_idx;
+          continue;
         }
         // Restore Redis write request PB and extract response.
         auto* redis_op = down_cast<YBRedisWriteOp*>(yb_op);
@@ -482,8 +482,8 @@ void WriteRpc::SwapRequestsAndResponses(bool skip_responses = false) {
       }
       case YBOperation::Type::QL_WRITE: {
         if (ql_idx >= resp_.ql_response_batch().size()) {
-          batcher_->AddOpCountMismatchError();
-          return;
+          ++ql_idx;
+          continue;
         }
         // Restore QL write request PB and extract response.
         auto* ql_op = down_cast<YBqlWriteOp*>(yb_op);
@@ -500,8 +500,8 @@ void WriteRpc::SwapRequestsAndResponses(bool skip_responses = false) {
       }
       case YBOperation::Type::PGSQL_WRITE: {
         if (pgsql_idx >= resp_.pgsql_response_batch().size()) {
-          batcher_->AddOpCountMismatchError();
-          return;
+          ++pgsql_idx;
+          continue;
         }
         // Restore QL write request PB and extract response.
         auto* pgsql_op = down_cast<YBPgsqlWriteOp*>(yb_op);
@@ -535,8 +535,11 @@ void WriteRpc::SwapRequestsAndResponses(bool skip_responses = false) {
                              redis_idx, resp_.redis_response_batch().size(),
                              ql_idx, resp_.ql_response_batch().size(),
                              pgsql_idx, resp_.pgsql_response_batch().size());
+    auto status = STATUS(IllegalState, "Write response count mismatch");
+    LOG(ERROR) << status << ", request: " << req_.ShortDebugString()
+               << ", response: " << resp_.ShortDebugString();
     batcher_->AddOpCountMismatchError();
-    Failed(STATUS(IllegalState, "Write response count mismatch"));
+    Failed(status);
   }
 }
 

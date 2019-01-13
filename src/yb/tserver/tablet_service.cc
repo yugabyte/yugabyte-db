@@ -714,7 +714,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     VLOG(1) << "Write with transaction: " << req->write_batch().transaction().ShortDebugString();
   }
 
-  if (PREDICT_FALSE(req->has_write_batch() && !req->write_batch().kv_pairs().empty())) {
+  if (PREDICT_FALSE(req->has_write_batch() &&
+      (!req->write_batch().write_pairs().empty() || !req->write_batch().read_pairs().empty()))) {
     Status s = STATUS(NotSupported, "Write Request contains write batch. This field should be "
         "used only for post-processed write requests during "
         "Raft replication.");
@@ -1061,7 +1062,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     // TODO(dtxn) write request id
 
     auto* write_batch = write_req.mutable_write_batch();
-    write_batch->set_read(true);
     // TODO(dtxn) support not only CQL
     for (const auto& ql_read : req->ql_batch()) {
       auto status = leader_peer.peer->tablet()->ConvertReadToWrite(
@@ -1074,7 +1074,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     }
 
     auto operation_state = std::make_unique<WriteOperationState>(
-        leader_peer.peer->tablet(), &write_req);
+        leader_peer.peer->tablet(), &write_req, nullptr /* response */,
+        docdb::OperationKind::kRead);
 
     auto context_ptr = std::make_shared<RpcContext>(std::move(context));
     read_context.context = context_ptr.get();

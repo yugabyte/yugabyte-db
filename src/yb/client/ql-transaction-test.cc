@@ -507,6 +507,7 @@ TEST_F(QLTransactionTest, ConflictResolution) {
   LOG(INFO) << "Committed, successes: " << successes.load() << ", failures: " << failures.load();
 
   ASSERT_GE(successes.load(std::memory_order_acquire), 1);
+  ASSERT_GE(failures.load(std::memory_order_acquire), 1);
 
   auto session = CreateSession();
   std::vector<int32_t> values;
@@ -557,7 +558,7 @@ void QLTransactionTest::TestWriteConflicts(bool do_restarts) {
 
   int value = 0;
   size_t tries = 0;
-  size_t written = 0;
+  size_t committed = 0;
   size_t flushed = 0;
   for (;;) {
     auto expired = std::chrono::steady_clock::now() >= stop;
@@ -605,7 +606,7 @@ void QLTransactionTest::TestWriteConflicts(bool do_restarts) {
           LOG(INFO) << "Commit failed: " << commit_status;
           continue;
         }
-        ++written;
+        ++committed;
         continue;
       }
 
@@ -623,10 +624,12 @@ void QLTransactionTest::TestWriteConflicts(bool do_restarts) {
     restart_thread.join();
   }
 
-  ASSERT_GE(written, kTotalKeys);
-  ASSERT_GE(flushed, written);
-  ASSERT_GE(flushed, kActiveTransactions);
-  ASSERT_GE(tries, flushed);
+  LOG(INFO) << "Committed: " << committed << ", flushed: " << flushed << ", tries: " << tries;
+
+  ASSERT_GE(committed, kTotalKeys);
+  ASSERT_GT(flushed, committed);
+  ASSERT_GT(flushed, kActiveTransactions);
+  ASSERT_GT(tries, flushed);
 }
 
 class WriteConflictsTest : public QLTransactionTest {

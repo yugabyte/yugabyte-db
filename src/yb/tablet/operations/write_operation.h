@@ -43,8 +43,9 @@
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_operation.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
+#include "yb/docdb/intent.h"
 #include "yb/docdb/lock_batch.h"
+#include "yb/docdb/shared_lock_manager_fwd.h"
 
 #include "yb/gutil/macros.h"
 
@@ -91,7 +92,8 @@ class WriteOperationState : public OperationState {
  public:
   WriteOperationState(Tablet* tablet = nullptr,
                       const tserver::WriteRequestPB *request = nullptr,
-                      tserver::WriteResponsePB *response = nullptr);
+                      tserver::WriteResponsePB *response = nullptr,
+                      docdb::OperationKind kind = docdb::OperationKind::kWrite);
   virtual ~WriteOperationState();
 
   // Returns the original client request for this transaction, if there was
@@ -150,7 +152,11 @@ class WriteOperationState : public OperationState {
   // transaction.
   void Reset();
 
-  virtual std::string ToString() const override;
+  std::string ToString() const override;
+
+  docdb::OperationKind kind() const {
+    return kind_;
+  }
 
  private:
   // Reset the response, and row_ops_ (which refers to data
@@ -176,6 +182,8 @@ class WriteOperationState : public OperationState {
   // Store the ids that have been locked for DocDB transaction. They need to be released on commit
   // or if an error happens.
   LockBatch docdb_locks_;
+
+  docdb::OperationKind kind_;
 
   DISALLOW_COPY_AND_ASSIGN(WriteOperationState);
 };

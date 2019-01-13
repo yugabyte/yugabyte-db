@@ -583,18 +583,18 @@ void DocWriteBatch::Clear() {
 }
 
 void DocWriteBatch::MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) {
-  kv_pb->mutable_kv_pairs()->Reserve(put_batch_.size());
+  kv_pb->mutable_write_pairs()->Reserve(put_batch_.size());
   for (auto& entry : put_batch_) {
-    KeyValuePairPB* kv_pair = kv_pb->add_kv_pairs();
+    KeyValuePairPB* kv_pair = kv_pb->add_write_pairs();
     kv_pair->mutable_key()->swap(entry.first);
     kv_pair->mutable_value()->swap(entry.second);
   }
 }
 
 void DocWriteBatch::TEST_CopyToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) const {
-  kv_pb->mutable_kv_pairs()->Reserve(put_batch_.size());
+  kv_pb->mutable_write_pairs()->Reserve(put_batch_.size());
   for (auto& entry : put_batch_) {
-    KeyValuePairPB* kv_pair = kv_pb->add_kv_pairs();
+    KeyValuePairPB* kv_pair = kv_pb->add_write_pairs();
     kv_pair->mutable_key()->assign(entry.first);
     kv_pair->mutable_value()->assign(entry.second);
   }

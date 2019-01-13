@@ -63,6 +63,12 @@ struct TransactionStatusResult {
   // COMMITTED - status_time is a commit time.
   // ABORTED - not used.
   HybridTime status_time;
+
+  TransactionStatusResult(TransactionStatus status_, HybridTime status_time_);
+
+  static TransactionStatusResult Aborted() {
+    return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime());
+  }
 };
 
 inline std::ostream& operator<<(std::ostream& out, const TransactionStatusResult& result) {

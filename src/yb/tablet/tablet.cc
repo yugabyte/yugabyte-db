@@ -713,7 +713,7 @@ void Tablet::PrepareTransactionWriteBatch(
 void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
                                         const rocksdb::UserFrontiers* frontiers,
                                         const HybridTime hybrid_time) {
-  if (put_batch.kv_pairs_size() == 0) {
+  if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty()) {
     return;
   }
 
@@ -1576,11 +1576,10 @@ Result<IsolationLevel> GetIsolationLevel(const KeyValueWriteBatchPB& write_batch
   if (write_batch.transaction().has_isolation()) {
     return write_batch.transaction().isolation();
   }
-  auto id = FullyDecodeTransactionId(write_batch.transaction().transaction_id());
-  RETURN_NOT_OK(id);
-  auto stored_metadata = transaction_participant->Metadata(*id);
+  auto id = VERIFY_RESULT(FullyDecodeTransactionId(write_batch.transaction().transaction_id()));
+  auto stored_metadata = transaction_participant->Metadata(id);
   if (!stored_metadata) {
-    return STATUS_FORMAT(NotFound, "Missing metadata for transaction: $0", *id);
+    return STATUS_FORMAT(NotFound, "Missing metadata for transaction: $0", id);
   }
   return stored_metadata->isolation;
 }
@@ -1599,47 +1598,107 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
   auto write_batch = operation->request()->mutable_write_batch();
   auto isolation_level = VERIFY_RESULT(GetIsolationLevel(
       *write_batch, transaction_participant_.get()));
-  auto operation_kind = write_batch->read() ? docdb::OperationKind::kRead
-                                            : docdb::OperationKind::kWrite;
 
   auto prepare_result = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
       operation->doc_ops(), metrics_->write_lock_latency, isolation_level,
-      operation_kind, &shared_lock_manager_));
+      operation->state()->kind(), &shared_lock_manager_));
 
   RequestScope request_scope;
   if (transaction_participant_) {
     request_scope = RequestScope(transaction_participant_.get());
   }
+
+  auto read_time = operation->read_time();
+
+  if (metadata_->schema().table_properties().is_transactional()) {
+    if (isolation_level == IsolationLevel::NON_TRANSACTIONAL) {
+      auto now = clock_->Now();
+      auto result = VERIFY_RESULT(docdb::ResolveOperationConflicts(
+          operation->doc_ops(), now, { regular_db_.get(), intents_db_.get() },
+          transaction_participant_.get()));
+      if (now != result) {
+        clock_->Update(result);
+      }
+    } else {
+      if (isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION &&
+          prepare_result.need_read_snapshot) {
+        boost::container::small_vector<RefCntPrefix, 16> paths;
+        for (const auto& doc_op : operation->doc_ops()) {
+          paths.clear();
+          IsolationLevel ignored_isolation_level;
+          RETURN_NOT_OK(doc_op->GetDocPaths(
+              docdb::GetDocPathsMode::kLock, &paths, &ignored_isolation_level));
+          for (const auto& path : paths) {
+            auto key = path.as_slice();
+            auto* pair = write_batch->mutable_read_pairs()->Add();
+            pair->set_key(key.data(), key.size());
+            // Empty values are disallowed by docdb.
+            // https://github.com/YugaByte/yugabyte-db/issues/736
+            pair->set_value(std::string(1, docdb::ValueTypeAsChar::kNull));
+          }
+        }
+      }
+
+      RETURN_NOT_OK(docdb::ResolveTransactionConflicts(
+          operation->doc_ops(), *write_batch, clock_->Now(),
+          { regular_db_.get(), intents_db_.get() }, transaction_participant_.get(),
+          metrics_->transaction_conflicts.get()));
+
+      if (!read_time) {
+        DSCHECK_EQ(isolation_level, IsolationLevel::SERIALIZABLE_ISOLATION, InvalidArgument,
+                   "Read time should be specified for NON serializable isolation level");
+        auto safe_time = SafeTime(RequireLease::kTrue);
+        read_time = ReadHybridTime::FromHybridTimeRange({safe_time, clock_->NowRange().second});
+      } else {
+        DSCHECK_NE(isolation_level, IsolationLevel::SERIALIZABLE_ISOLATION, InvalidArgument,
+                   "Read time should NOT be specified for serializable isolation level");
+      }
+    }
+  }
+
   auto read_op = prepare_result.need_read_snapshot
-      ? VERIFY_RESULT(
-          ScopedReadOperation::Create(this, RequireLease::kTrue, operation->read_time()))
+      ? VERIFY_RESULT(ScopedReadOperation::Create(this, RequireLease::kTrue, read_time))
       : ScopedReadOperation();
   auto real_read_time = prepare_result.need_read_snapshot
       ? read_op.read_time()
       : ReadHybridTime::SingleTime(clock_->Now());
 
-  if (isolation_level == IsolationLevel::NON_TRANSACTIONAL &&
-      metadata_->schema().table_properties().is_transactional()) {
-    auto now = clock_->Now();
-    auto result = docdb::ResolveOperationConflicts(
-        operation->doc_ops(), now, {regular_db_.get(), intents_db_.get()},
-        transaction_participant_.get());
-    RETURN_NOT_OK(result);
-    if (now != *result) {
-      clock_->Update(*result);
-    }
-  }
-
   // We expect all read operations for this transaction to be done in ExecuteDocWriteOperation.
   // Once read_txn goes out of scope, the read point is deregistered.
   HybridTime restart_read_ht;
-  RETURN_NOT_OK(docdb::ExecuteDocWriteOperation(
-      operation->doc_ops(), operation->deadline(), real_read_time,
-      {regular_db_.get(), intents_db_.get()}, write_batch,
-      table_type_ == TableType::REDIS_TABLE_TYPE ? InitMarkerBehavior::kRequired
-                                                 : InitMarkerBehavior::kOptional,
-      &monotonic_counter_,
-      &restart_read_ht));
+  bool local_limit_updated = false;
+
+  for (;;) {
+    RETURN_NOT_OK(docdb::ExecuteDocWriteOperation(
+        operation->doc_ops(), operation->deadline(), real_read_time,
+        { regular_db_.get(), intents_db_.get() }, write_batch,
+        table_type_ == TableType::REDIS_TABLE_TYPE
+            ? InitMarkerBehavior::kRequired
+            : InitMarkerBehavior::kOptional,
+        &monotonic_counter_,
+        &restart_read_ht));
+
+    // For serializable isolation we don't fix read time, so could do read restart locally,
+    // instead of failing whole transaction.
+    if (!restart_read_ht.is_valid() || isolation_level != IsolationLevel::SERIALIZABLE_ISOLATION) {
+      break;
+    }
+
+    real_read_time.read = restart_read_ht;
+    if (!local_limit_updated) {
+      local_limit_updated = true;
+      real_read_time.local_limit =
+          std::min(real_read_time.local_limit, SafeTime(RequireLease::kTrue));
+    }
+
+    restart_read_ht = HybridTime();
+
+    operation->request()->mutable_write_batch()->clear_write_pairs();
+
+    for (auto& doc_op : operation->doc_ops()) {
+      doc_op->ClearResponse();
+    }
+  }
 
   operation->SetRestartReadHt(restart_read_ht);
 
@@ -1647,11 +1706,6 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
     return Status::OK();
   }
 
-  if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
-    RETURN_NOT_OK(docdb::ResolveTransactionConflicts(
-        *write_batch, clock_->Now(), {regular_db_.get(), intents_db_.get()},
-        transaction_participant_.get(), metrics_->transaction_conflicts.get()));
-  }
   operation->state()->ReplaceDocDBLocks(std::move(prepare_result.lock_batch));
 
   return Status::OK();
