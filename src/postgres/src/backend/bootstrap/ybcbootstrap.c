@@ -172,7 +172,7 @@ void YBCCreateSysCatalogTable(const char *table_name,
 		IndexStmt *idx = lfirst(lc);
 		if (idx != pkey_idx)
 		{
-			YBC_LOG_WARNING("Ignoring unique index %s", idx->idxname);
+			YBC_DEBUG_LOG_WARNING("Ignoring unique index %s", idx->idxname);
 		}
 	}
 

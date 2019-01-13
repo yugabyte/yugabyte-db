@@ -62,6 +62,21 @@ CHECKED_YBCSTATUS YBCInit(
 #define YBC_LOG_FATAL(...) \
     YBCLogImpl(/* severity */ 3, __FILE__, __LINE__, /* stack_trace */ false, __VA_ARGS__)
 
+// Versions of these warnings that do nothing in debug mode. The fatal version logs a warning
+// in release mode but does not crash.
+#ifndef NDEBUG
+// Logging macros with printf-like formatting capabilities.
+#define YBC_DEBUG_LOG_INFO(...) YBC_LOG_INFO(__VA_ARGS__)
+#define YBC_DEBUG_LOG_WARNING(...) YBC_LOG_WARNING(__VA_ARGS__)
+#define YBC_DEBUG_LOG_ERROR(...) YBC_LOG_ERROR(__VA_ARGS__)
+#define YBC_DEBUG_LOG_FATAL(...) YBC_LOG_FATAL(__VA_ARGS__)
+#else
+#define YBC_DEBUG_LOG_INFO(...)
+#define YBC_DEBUG_LOG_WARNING(...)
+#define YBC_DEBUG_LOG_ERROR(...)
+#define YBC_DEBUG_LOG_FATAL(...) YBC_LOG_ERROR(__VA_ARGS__)
+#endif
+
 // The following functions log the given message formatted similarly to printf followed by a stack
 // trace.
 

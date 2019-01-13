@@ -2995,6 +2995,9 @@ initialize_data_directory(void)
 int
 main(int argc, char *argv[])
 {
+	if (IsYugaByteEnabledInInitdb()) {
+		YBSetInitDbModeEnvVar();
+	}
 	static struct option long_options[] = {
 		{"pgdata", required_argument, NULL, 'D'},
 		{"encoding", required_argument, NULL, 'E'},
@@ -3271,7 +3274,7 @@ main(int argc, char *argv[])
 	else
 		printf(_("\nSync to disk skipped.\nThe data directory might become corrupt if the operating system crashes.\n"));
 
-	if (authwarning != NULL)
+	if (authwarning != NULL && !IsYugaByteEnabledInInitdb())
 		fprintf(stderr, "%s", authwarning);
 
 	/* In YugaByte mode we only call this indirectly and manage starting the server automatically */
