@@ -38,7 +38,6 @@
 
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/fs/block_manager.h"
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet.h"

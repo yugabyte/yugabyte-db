@@ -245,8 +245,8 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidSessionId) {
     FetchDataResponsePB resp;
     RpcController controller;
     DataIdPB data_id;
-    data_id.set_type(DataIdPB::BLOCK);
-    data_id.mutable_block_id()->set_id(1);
+    data_id.set_type(DataIdPB::LOG_SEGMENT);
+    data_id.set_wal_segment_seqno(1);
     Status status = DoFetchData(session_id, data_id, nullptr, nullptr, &resp, &controller);
     ASSERT_REMOTE_ERROR(status, controller.error_response(), RemoteBootstrapErrorPB::NO_SESSION,
                         STATUS(NotFound, "").CodeAsString());
@@ -277,19 +277,6 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidBlockOrOpId) {
   string session_id;
   ASSERT_OK(DoBeginValidRemoteBootstrapSession(&session_id));
 
-  // Invalid BlockId.
-  {
-    FetchDataResponsePB resp;
-    RpcController controller;
-    DataIdPB data_id;
-    data_id.set_type(DataIdPB::BLOCK);
-    data_id.mutable_block_id()->set_id(1);
-    Status status = DoFetchData(session_id, data_id, nullptr, nullptr, &resp, &controller);
-    ASSERT_REMOTE_ERROR(status, controller.error_response(),
-                        RemoteBootstrapErrorPB::BLOCK_NOT_FOUND,
-                        STATUS(NotFound, "").CodeAsString());
-  }
-
   // Invalid Segment Sequence Number for log fetch.
   {
     FetchDataResponsePB resp;
@@ -316,37 +303,12 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidBlockOrOpId) {
                         STATUS(NotFound, "").CodeAsString());
   }
 
-  // Empty data type with BlockId.
-  // The RPC system will not let us send the required type field.
-  {
-    FetchDataResponsePB resp;
-    RpcController controller;
-    DataIdPB data_id;
-    data_id.mutable_block_id()->set_id(1);
-    Status status = DoFetchData(session_id, data_id, nullptr, nullptr, &resp, &controller);
-    ASSERT_TRUE(status.IsInvalidArgument());
-  }
-
-  // Empty data type id (no BlockId, no Segment Sequence Number and no RocksDB file);
+  // Empty data type id (no Segment Sequence Number and no RocksDB file);
   {
     FetchDataResponsePB resp;
     RpcController controller;
     DataIdPB data_id;
     data_id.set_type(DataIdPB::LOG_SEGMENT);
-    Status status = DoFetchData(session_id, data_id, nullptr, nullptr, &resp, &controller);
-    ASSERT_REMOTE_ERROR(status, controller.error_response(),
-                        RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST,
-                        STATUS(InvalidArgument, "").CodeAsString());
-  }
-
-  // Both BlockId and Segment Sequence Number in the same "union" PB (illegal).
-  {
-    FetchDataResponsePB resp;
-    RpcController controller;
-    DataIdPB data_id;
-    data_id.set_type(DataIdPB::BLOCK);
-    data_id.mutable_block_id()->set_id(1);
-    data_id.set_wal_segment_seqno(0);
     Status status = DoFetchData(session_id, data_id, nullptr, nullptr, &resp, &controller);
     ASSERT_REMOTE_ERROR(status, controller.error_response(),
                         RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST,

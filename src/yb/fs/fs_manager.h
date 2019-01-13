@@ -61,17 +61,10 @@ namespace yb {
 class MemTracker;
 class MetricEntity;
 
-namespace fs {
-class BlockManager;
-class ReadableBlock;
-class WritableBlock;
-} // namespace fs
-
 namespace itest {
 class ExternalMiniClusterFsInspector;
 }
 
-class BlockId;
 class InstanceMetadataPB;
 
 struct FsManagerOpts {
@@ -152,22 +145,6 @@ class FsManager {
   const std::string& uuid() const;
 
   // ==========================================================================
-  //  Data read/write interfaces
-  // ==========================================================================
-
-  // Creates a new anonymous block.
-  //
-  // Block will be synced on close.
-  CHECKED_STATUS CreateNewBlock(gscoped_ptr<fs::WritableBlock>* block);
-
-  CHECKED_STATUS OpenBlock(const BlockId& block_id,
-                   gscoped_ptr<fs::ReadableBlock>* block);
-
-  CHECKED_STATUS DeleteBlock(const BlockId& block_id);
-
-  bool BlockExists(const BlockId& block_id) const;
-
-  // ==========================================================================
   //  on-disk path
   // ==========================================================================
   std::vector<std::string> GetDataRootDirs() const;
@@ -230,21 +207,12 @@ class FsManager {
 
   CHECKED_STATUS CreateDirIfMissingAndSync(const std::string& path, bool* created = NULL);
 
-  fs::BlockManager* block_manager() {
-    return block_manager_.get();
-  }
-
  private:
   FRIEND_TEST(FsManagerTestBase, TestDuplicatePaths);
   friend class itest::ExternalMiniClusterFsInspector; // for access to directory names
 
   // Initializes, sanitizes, and canonicalizes the filesystem roots.
   CHECKED_STATUS Init();
-
-  // Select and create an instance of the appropriate block manager.
-  //
-  // Does not actually perform any on-disk operations.
-  void InitBlockManager();
 
   // Create a new InstanceMetadataPB.
   void CreateInstanceMetadata(InstanceMetadataPB* metadata);
@@ -304,8 +272,6 @@ class FsManager {
   std::set<std::string> canonicalized_all_fs_roots_;
 
   gscoped_ptr<InstanceMetadataPB> metadata_;
-
-  gscoped_ptr<fs::BlockManager> block_manager_;
 
   bool initted_;
 

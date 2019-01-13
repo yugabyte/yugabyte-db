@@ -56,8 +56,6 @@ using std::unordered_set;
 namespace yb {
 namespace tablet {
 
-using fs::ReadableBlock;
-
 DEFINE_int32(testiterator_num_inserts, 1000,
              "Number of rows inserted in TestRowIterator/TestInsert");
 

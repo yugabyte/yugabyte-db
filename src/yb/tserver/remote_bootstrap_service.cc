@@ -235,15 +235,6 @@ Status RemoteBootstrapServiceImpl::GetDataFilePiece(
     RemoteBootstrapErrorPB::Code* error_code) {
 
   switch (data_id.type()) {
-    case DataIdPB::BLOCK: {
-      // Fetching a data block chunk.
-      const BlockId& block_id = BlockId::FromPB(data_id.block_id());
-      RETURN_NOT_OK_PREPEND(session->GetBlockPiece(
-                                block_id, offset, client_maxlen,
-                                data, total_data_length, error_code),
-                            "Unable to get piece of data block");
-      break;
-    }
     case DataIdPB::LOG_SEGMENT: {
       // Fetching a log segment chunk.
       const uint64_t segment_seqno = data_id.wal_segment_seqno();
@@ -366,22 +357,15 @@ Status RemoteBootstrapServiceImpl::ValidateFetchRequestDataId(
         const DataIdPB& data_id,
         RemoteBootstrapErrorPB::Code* app_error,
         const scoped_refptr<RemoteBootstrapSessionClass>& session) const {
-  int num_set = data_id.has_block_id() + data_id.has_wal_segment_seqno() +
-      data_id.has_file_name();
-  if (PREDICT_FALSE(num_set == 0 || num_set > 1)) {
+  int num_set = data_id.has_wal_segment_seqno() + data_id.has_file_name();
+  if (PREDICT_FALSE(num_set != 1)) {
     *app_error = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
     return STATUS(InvalidArgument,
-        Substitute("Only one of BlockId, segment sequence number, and file name can be specified. "
+        Substitute("Only one of segment sequence number, and file name can be specified. "
                    "DataTypeID: $0", data_id.ShortDebugString()));
   }
 
   switch (data_id.type()) {
-    case DataIdPB::BLOCK:
-      if (PREDICT_FALSE(!data_id.has_block_id())) {
-        return STATUS(InvalidArgument, "block_id must be specified for type == BLOCK",
-                                       data_id.ShortDebugString());
-      }
-      return Status::OK();
     case DataIdPB::LOG_SEGMENT:
       if (PREDICT_FALSE(!data_id.wal_segment_seqno())) {
         return STATUS(InvalidArgument,

@@ -41,8 +41,6 @@
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/fs/block_id.h"
-#include "yb/fs/block_manager.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stl_util.h"
@@ -79,23 +77,6 @@ struct ImmutableRandomAccessFileInfo {
   }
 };
 
-// Caches block size and holds an exclusive reference to a ReadableBlock.
-// Assumes that the block underlying the ReadableBlock is immutable.
-struct ImmutableReadableBlockInfo {
-  gscoped_ptr<fs::ReadableBlock> readable;
-  int64_t size;
-
-  ImmutableReadableBlockInfo(fs::ReadableBlock* readable,
-                             int64_t size)
-  : readable(readable),
-    size(size) {
-  }
-
-  CHECKED_STATUS ReadFully(uint64_t offset, int64_t size, Slice* data, uint8_t* scratch) const {
-    return readable->Read(offset, size, data, scratch);
-  }
-};
-
 // A potential Learner must establish a RemoteBootstrapSession with the leader in order
 // to fetch the needed superblock, blocks, and log segments.
 // This class is refcounted to make it easy to remove it from the session map
@@ -120,7 +101,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // Return UUID of the requestor that initiated this session.
   const std::string& requestor_uuid() const;
 
-  // Open block for reading, if it's not already open, and read some of it.
+  // Get a piece of a log segment.
   // If maxlen is 0, we use a system-selected length for the data piece.
   // *data is set to a std::string containing the data. Ownership of this object
   // is passed to the caller. A string is used because the RPC interface is
@@ -128,13 +109,6 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // On error, Status is set to a non-OK value and error_code is filled in.
   //
   // This method is thread-safe.
-  CHECKED_STATUS GetBlockPiece(
-      const BlockId& block_id, uint64_t offset, int64_t client_maxlen,
-      std::string* data, int64_t* block_file_size, RemoteBootstrapErrorPB::Code* error_code);
-
-  // Get a piece of a log segment.
-  // The behavior and params are very similar to GetBlockPiece(), but this one
-  // is only for sending WAL segment files.
   CHECKED_STATUS GetLogSegmentPiece(
       uint64_t segment_seqno, uint64_t offset, int64_t client_maxlen,
       std::string* data, int64_t* log_file_size, RemoteBootstrapErrorPB::Code* error_code);
@@ -145,7 +119,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
       std::string* data, int64_t* log_file_size, RemoteBootstrapErrorPB::Code* error_code);
 
   // Get a piece of a RocksDB file.
-  // The behavior and params are very similar to GetBlockPiece(), but this one
+  // The behavior and params are very similar to GetLogSegmentPiece(), but this one
   // is only for sending rocksdb files.
   CHECKED_STATUS GetFilePiece(
       const std::string path, const std::string file_name, uint64_t offset, int64_t client_maxlen,
@@ -160,9 +134,6 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   }
 
   const log::SegmentSequence& log_segments() const { return log_segments_; }
-
-  // Check if a block is currently open.
-  bool IsBlockOpenForTests(const BlockId& block_id) const;
 
   void SetSuccess();
 
@@ -184,18 +155,9 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   FRIEND_TEST(RemoteBootstrapRocksDBTest, CheckSuperBlockHasRocksDBFields);
   FRIEND_TEST(RemoteBootstrapRocksDBTest, CheckSuperBlockHasSnapshotFields);
 
-  typedef std::unordered_map<BlockId, ImmutableReadableBlockInfo*, BlockIdHash> BlockMap;
-  typedef std::unordered_map<uint64_t, ImmutableRandomAccessFileInfo*> LogMap;
+  typedef std::unordered_map<uint64_t, std::unique_ptr<ImmutableRandomAccessFileInfo>> LogMap;
 
   virtual ~RemoteBootstrapSession();
-
-  // Open the block and add it to the block map.
-  CHECKED_STATUS OpenBlockUnlocked(const BlockId& block_id);
-
-  // Look up cached block information.
-  CHECKED_STATUS FindBlock(const BlockId& block_id,
-                   ImmutableReadableBlockInfo** block_info,
-                   RemoteBootstrapErrorPB::Code* error_code);
 
   // Snapshot the log segment's length and put it into segment map.
   CHECKED_STATUS OpenLogSegmentUnlocked(uint64_t segment_seqno);
@@ -218,10 +180,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   mutable simple_spinlock session_lock_;
 
-  BlockMap blocks_; // Protected by session_lock_.
   LogMap logs_;     // Protected by session_lock_.
-  ValueDeleter blocks_deleter_;
-  ValueDeleter logs_deleter_;
 
   tablet::TabletSuperBlockPB tablet_superblock_;
 

@@ -25,14 +25,7 @@ ADD_YB_LIBRARY(fs_proto
   DEPS protobuf
   NONLINK_DEPS ${FS_PROTO_TGTS})
 
-add_library(yb_fs
-  block_id.cc
-  block_manager.cc
-  block_manager_metrics.cc
-  block_manager_util.cc
-  file_block_manager.cc
-  fs_manager.cc)
-
+add_library(yb_fs fs_manager.cc)
 
 target_link_libraries(yb_fs
   fs_proto
@@ -41,7 +34,4 @@ target_link_libraries(yb_fs
 
 # Tests
 set(YB_TEST_LINK_LIBS yb_fs ${YB_MIN_TEST_LIBS})
-ADD_YB_TEST(block_manager-test)
-ADD_YB_TEST(block_manager_util-test)
-ADD_YB_TEST(block_manager-stress-test RUN_SERIAL true)
 ADD_YB_TEST(fs_manager-test)

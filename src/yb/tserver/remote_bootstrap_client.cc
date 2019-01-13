@@ -39,8 +39,6 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/metadata.pb.h"
-#include "yb/fs/block_id.h"
-#include "yb/fs/block_manager.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
@@ -128,7 +126,6 @@ using consensus::OpId;
 using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;
 using env_util::CopyFile;
-using fs::WritableBlock;
 using rpc::Messenger;
 using std::shared_ptr;
 using std::string;
@@ -718,26 +715,6 @@ Status RemoteBootstrapClient::WriteConsensusMetadata() {
                           "Unable to make copy of consensus metadata");
   }
 
-  return Status::OK();
-}
-
-Status RemoteBootstrapClient::DownloadBlock(const BlockId& old_block_id,
-                                            BlockId* new_block_id) {
-  VLOG_WITH_PREFIX(1) << "Downloading block with block_id " << old_block_id.ToString();
-
-  gscoped_ptr<WritableBlock> block;
-  RETURN_NOT_OK_PREPEND(fs_manager_->CreateNewBlock(&block),
-                        "Unable to create new block");
-
-  DataIdPB data_id;
-  data_id.set_type(DataIdPB::BLOCK);
-  old_block_id.CopyToPB(data_id.mutable_block_id());
-  RETURN_NOT_OK_PREPEND(DownloadFile(data_id, block.get()),
-                        Substitute("Unable to download block $0",
-                                   old_block_id.ToString()));
-
-  *new_block_id = block->id();
-  RETURN_NOT_OK_PREPEND(block->Close(), "Unable to close block");
   return Status::OK();
 }
 
