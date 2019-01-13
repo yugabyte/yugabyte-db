@@ -15,6 +15,8 @@
 
 #include "yb/yql/pggate/pggate.h"
 
+DECLARE_bool(client_suppress_created_logs);
+
 namespace yb {
 namespace pggate {
 
@@ -36,6 +38,10 @@ std::atomic<bool> pgapi_shutdown_done;
 extern "C" {
 
 void YBCInitPgGate() {
+  const char* initdb_mode_env_var_value = getenv("YB_PG_INITDB_MODE");
+  if (initdb_mode_env_var_value && strcmp(initdb_mode_env_var_value, "1") == 0) {
+    YBCSetInitDbMode();
+  }
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
   pgapi_shutdown_done.exchange(false);
   pgapi = new pggate::PgApiImpl();
@@ -410,6 +416,11 @@ YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg) {
 
 YBCPgTxnManager YBCGetPgTxnManager() {
   return pgapi->GetPgTxnManager();
+}
+
+void YBCSetInitDbMode() {
+  // Suppress log spew during initdb.
+  FLAGS_client_suppress_created_logs = true;
 }
 
 } // extern "C"

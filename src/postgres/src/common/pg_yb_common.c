@@ -25,6 +25,7 @@
  *-------------------------------------------------------------------------
  */
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -40,7 +41,8 @@ YBCIsEnvVarTrue(const char* env_var_name)
 }
 
 bool
-YBIsEnabledInPostgresEnvVar() {
+YBIsEnabledInPostgresEnvVar()
+{
 	static int cached_value = -1;
 	if (cached_value == -1)
     {
@@ -50,7 +52,8 @@ YBIsEnabledInPostgresEnvVar() {
 }
 
 bool
-YBShouldAllowRunningAsAnyUser() {
+YBShouldAllowRunningAsAnyUser()
+{
 	if (YBIsEnabledInPostgresEnvVar())
     {
 		return true;
@@ -61,4 +64,25 @@ YBShouldAllowRunningAsAnyUser() {
 		cached_value = YBCIsEnvVarTrue("YB_PG_ALLOW_RUNNING_AS_ANY_USER");
 	}
 	return cached_value;
+}
+
+bool YBIsInitDbModeEnvVarSet()
+{
+
+	static int cached_value = -1;
+	if (cached_value == -1)
+    {
+		cached_value = YBCIsEnvVarTrue("YB_PG_INITDB_MODE");
+	}
+	return cached_value;
+}
+
+void YBSetInitDbModeEnvVar()
+{
+	int setenv_retval = setenv("YB_PG_INITDB_MODE", "1", /* overwrite */ true);
+	if (setenv_retval != 0)
+	{
+		perror("Could not set environment variable YB_PG_INITDB_MODE");
+		exit(EXIT_FAILURE);
+	}
 }

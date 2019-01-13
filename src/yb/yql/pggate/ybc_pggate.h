@@ -269,6 +269,11 @@ YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value, int64_t bytes,
 YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname, YBCPgExpr *op_handle);
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
 
+bool YBCIsInitDbModeEnvVarSet();
+
+// This is called by initdb. Used to customize some behavior.
+void YBCSetInitDbMode();
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
