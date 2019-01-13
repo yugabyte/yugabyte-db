@@ -99,6 +99,8 @@ const int kNilSubkeyIndex = -1;
 
 typedef boost::container::small_vector_base<RefCntPrefix> DocPathsToLock;
 
+YB_DEFINE_ENUM(GetDocPathsMode, (kLock)(kIntents));
+
 class DocOperation {
  public:
   enum Type {
@@ -115,13 +117,18 @@ class DocOperation {
   // evaluate the condition before the write and needs a read snapshot for a consistent read.
   virtual bool RequireReadSnapshot() const = 0;
 
-  // Returns doc paths that should be locked for this operation and isolation level of this
-  // operation.
+  // Returns doc paths for this operation and isolation level this operation.
   // Doc paths are added to the end of paths, i.e. paths content is not cleared before it.
-  virtual void GetDocPathsToLock(DocPathsToLock *paths, IsolationLevel *level) const = 0;
+  //
+  // Returned doc paths are controlled by mode argument:
+  //   kLock - paths should be locked for this operation.
+  //   kIntents - paths that should be used when writing intents, i.e. for conflict resolution.
+  virtual CHECKED_STATUS GetDocPaths(
+      GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const = 0;
 
   virtual CHECKED_STATUS Apply(const DocOperationApplyData& data) = 0;
   virtual Type OpType() = 0;
+  virtual void ClearResponse() = 0;
 };
 
 typedef std::vector<std::unique_ptr<DocOperation>> DocOperations;
@@ -149,13 +156,18 @@ class RedisWriteOperation : public DocOperation {
 
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
 
-  void GetDocPathsToLock(DocPathsToLock *paths, IsolationLevel *level) const override;
+  CHECKED_STATUS GetDocPaths(
+      GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const override;
 
   RedisResponsePB &response() { return response_; }
 
   Type OpType() override { return Type::REDIS_WRITE_OPERATION; }
 
  private:
+  void ClearResponse() override {
+    response_.Clear();
+  }
+
   void InitializeIterator(const DocOperationApplyData& data);
   Result<RedisDataType> GetValueType(const DocOperationApplyData& data,
       int subkey_index = kNilSubkeyIndex);
@@ -266,7 +278,8 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
 
   bool RequireReadSnapshot() const override { return require_read_; }
 
-  void GetDocPathsToLock(DocPathsToLock *paths, IsolationLevel *level) const override;
+  CHECKED_STATUS GetDocPaths(
+      GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const override;
 
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
 
@@ -307,6 +320,12 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
   Type OpType() override { return Type::QL_WRITE_OPERATION; }
 
  private:
+  void ClearResponse() override {
+    if (response_) {
+      response_->Clear();
+    }
+  }
+
   // Initialize hashed_doc_key_ and/or pk_doc_key_.
   CHECKED_STATUS InitializeKeys(bool hashed_key, bool primary_key);
 
@@ -442,6 +461,12 @@ class PgsqlWriteOperation : public DocOperation, public DocExprExecutor {
   Type OpType() override { return Type::PGSQL_WRITE_OPERATION; }
 
  private:
+  void ClearResponse() override {
+    if (response_) {
+      response_->Clear();
+    }
+  }
+
   // Insert, update, and delete operations.
   CHECKED_STATUS ApplyInsert(const DocOperationApplyData& data);
   CHECKED_STATUS ApplyUpdate(const DocOperationApplyData& data);
@@ -455,7 +480,8 @@ class PgsqlWriteOperation : public DocOperation, public DocExprExecutor {
                              const QLTableRow::SharedPtr& table_row);
 
   // Reading path to operate on.
-  void GetDocPathsToLock(DocPathsToLock *paths, IsolationLevel *level) const override;
+  CHECKED_STATUS GetDocPaths(
+      GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const override;
 
   //------------------------------------------------------------------------------------------------
   // Context.
@@ -496,12 +522,14 @@ class PgsqlReadOperation : public DocOperation, public DocExprExecutor {
 
   // Execute read operations.
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override {
-    LOG(FATAL) << "This should not be callled for read operations";
+    LOG(FATAL) << "This should not be called for read operations";
     return Status::OK();
   }
 
-  void GetDocPathsToLock(DocPathsToLock *paths, IsolationLevel *level) const override {
+  CHECKED_STATUS GetDocPaths(
+      GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const override {
     LOG(FATAL) << "This lock should not be applied as writing while reading is not yet allowed";
+    return Status::OK();
   }
 
   CHECKED_STATUS Execute(const common::YQLStorageIf& ql_storage,
@@ -517,6 +545,10 @@ class PgsqlReadOperation : public DocOperation, public DocExprExecutor {
   virtual CHECKED_STATUS GetTupleId(QLValue *result) const override;
 
  private:
+  void ClearResponse() override {
+    response_.Clear();
+  }
+
   CHECKED_STATUS PopulateResultSet(const QLTableRow::SharedPtr& table_row,
                                    PgsqlResultSet *result_set);
 

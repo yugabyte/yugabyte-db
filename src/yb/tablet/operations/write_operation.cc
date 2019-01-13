@@ -176,12 +176,14 @@ void WriteOperation::DoStartSynchronization(const Status& status) {
 
 WriteOperationState::WriteOperationState(Tablet* tablet,
                                          const tserver::WriteRequestPB *request,
-                                         tserver::WriteResponsePB *response)
+                                         tserver::WriteResponsePB *response,
+                                         docdb::OperationKind kind)
     : OperationState(tablet),
       // We need to copy over the request from the RPC layer, as we're modifying it in the tablet
       // layer.
       request_(request ? new WriteRequestPB(*request) : nullptr),
-      response_(response) {
+      response_(response),
+      kind_(kind) {
 }
 
 void WriteOperationState::Abort() {

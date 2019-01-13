@@ -193,6 +193,12 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
           // to the log (maybe not synced, if durable_wal_write is disabled, but that's OK).
           return largest.op_id().index <= index;
         }
+
+        // It is correct to don't have frontiers when memtable is empty.
+        if (memtable.IsEmpty()) {
+          return true;
+        }
+
         // This is a degenerate case that should ideally never occur. An empty memtable got into the
         // list of immutable memtables. We say it is OK to flush it and move on.
         static const char* error_msg =

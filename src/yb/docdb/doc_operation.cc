@@ -95,10 +95,13 @@ ValueType ValueTypeFromRedisType(RedisDataType dt) {
   }
 }
 
-void RedisWriteOperation::GetDocPathsToLock(DocPathsToLock* paths, IsolationLevel *level) const {
+Status RedisWriteOperation::GetDocPaths(
+    GetDocPathsMode mode, DocPathsToLock* paths, IsolationLevel *level) const {
   paths->push_back(DocKey::FromRedisKey(
       request_.key_value().hash_code(), request_.key_value().key()).EncodeAsRefCntPrefix());
   *level = IsolationLevel::SNAPSHOT_ISOLATION;
+
+  return Status::OK();
 }
 
 namespace {
@@ -2211,13 +2214,33 @@ Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primar
   return Status::OK();
 }
 
-void QLWriteOperation::GetDocPathsToLock(DocPathsToLock *paths, IsolationLevel *level) const {
-  if (encoded_hashed_doc_key_) {
-    paths->push_back(encoded_hashed_doc_key_);
+Status QLWriteOperation::GetDocPaths(
+    GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const {
+  if (mode == GetDocPathsMode::kLock || request_.column_values().empty()) {
+    if (encoded_hashed_doc_key_) {
+      paths->push_back(encoded_hashed_doc_key_);
+    }
+    if (encoded_pk_doc_key_) {
+      paths->push_back(encoded_pk_doc_key_);
+    }
+  } else {
+    KeyBytes buffer;
+    for (const auto& column_value : request_.column_values()) {
+      ColumnId column_id(column_value.column_id());
+      const ColumnSchema& column = VERIFY_RESULT(schema_.column_by_id(column_id));
+
+      Slice doc_key = column.is_static() ? encoded_hashed_doc_key_.as_slice()
+                                         : encoded_pk_doc_key_.as_slice();
+      buffer.Clear();
+      buffer.AppendValueType(ValueType::kColumnId);
+      buffer.AppendColumnId(column_id);
+      RefCntBuffer path(doc_key.size() + buffer.size());
+      memcpy(path.data(), doc_key.data(), doc_key.size());
+      memcpy(path.data() + doc_key.size(), buffer.data().c_str(), buffer.size());
+      paths->push_back(RefCntPrefix(path));
+    }
   }
-  if (encoded_pk_doc_key_) {
-    paths->push_back(encoded_pk_doc_key_);
-  }
+
   // When this write operation requires a read, it requires a read snapshot so paths will be locked
   // in snapshot isolation for consistency. Otherwise, pure writes will happen in serializable
   // isolation so that they will serialize but do not conflict with one another.
@@ -2226,6 +2249,8 @@ void QLWriteOperation::GetDocPathsToLock(DocPathsToLock *paths, IsolationLevel *
   // snapshot isolation level.
   *level = require_read_ ? IsolationLevel::SNAPSHOT_ISOLATION
                          : IsolationLevel::SERIALIZABLE_ISOLATION;
+
+  return Status::OK();
 }
 
 Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
@@ -3090,7 +3115,7 @@ Status QLReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* o
       request_.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
       &hashed_components));
   DocKey doc_key(request_.hash_code(), hashed_components);
-  auto pair = out->mutable_kv_pairs()->Add();
+  auto pair = out->mutable_read_pairs()->Add();
   pair->set_key(doc_key.Encode().data());
   pair->set_value(std::string(1, ValueTypeAsChar::kNull));
   return Status::OK();
@@ -3414,7 +3439,8 @@ Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
   return Status::OK();
 }
 
-void PgsqlWriteOperation::GetDocPathsToLock(DocPathsToLock *paths, IsolationLevel *level) const {
+Status PgsqlWriteOperation::GetDocPaths(
+    GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const {
   if (encoded_hashed_doc_key_) {
     paths->push_back(encoded_hashed_doc_key_);
   }
@@ -3429,6 +3455,7 @@ void PgsqlWriteOperation::GetDocPathsToLock(DocPathsToLock *paths, IsolationLeve
   // snapshot isolation level.
   *level = RequireReadSnapshot() ? IsolationLevel::SNAPSHOT_ISOLATION
                                  : IsolationLevel::SERIALIZABLE_ISOLATION;
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------

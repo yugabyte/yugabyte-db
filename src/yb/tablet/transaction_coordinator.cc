@@ -195,10 +195,12 @@ class TransactionState {
 
     auto status = DoProcessReplicated(data);
 
-    if (data.leader_term != OpId::kUnknownTerm) {
-      ProcessQueue();
-    } else {
+    if (data.leader_term == OpId::kUnknownTerm) {
       ClearRequests(STATUS(Aborted, "Leader changed"));
+    } else if (Completed()) {
+      ClearRequests(STATUS(Aborted, "Transaction completed"));
+    } else {
+      ProcessQueue();
     }
 
     return status;
@@ -232,7 +234,8 @@ class TransactionState {
   }
 
   CHECKED_STATUS GetStatus(tserver::GetTransactionStatusResponsePB* response) const {
-    if (status_ == TransactionStatus::COMMITTED) {
+    if (status_ == TransactionStatus::COMMITTED ||
+        status_ == TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS) {
       response->set_status(TransactionStatus::COMMITTED);
       response->set_status_hybrid_time(commit_time_.ToUint64());
     } else if (status_ == TransactionStatus::ABORTED) {
@@ -257,16 +260,16 @@ class TransactionState {
     return Status::OK();
   }
 
-  TransactionStatus Abort(TransactionAbortCallback* callback) {
+  TransactionStatusResult Abort(TransactionAbortCallback* callback) {
     if (ShouldBeCommitted()) {
-      return TransactionStatus::COMMITTED;
+      return TransactionStatusResult(TransactionStatus::COMMITTED, HybridTime::kMax);
     } else if (status_ == TransactionStatus::ABORTED) {
-      return TransactionStatus::ABORTED;
+      return TransactionStatusResult::Aborted();
     } else {
       CHECK_EQ(TransactionStatus::PENDING, status_);
       abort_waiters_.emplace_back(std::move(*callback));
       Abort();
-      return TransactionStatus::PENDING;
+      return TransactionStatusResult(TransactionStatus::PENDING, HybridTime::kMax);
     }
   }
 
@@ -466,7 +469,7 @@ class TransactionState {
 
     status_ = TransactionStatus::ABORTED;
     first_entry_raft_index_ = data.op_id.index();
-    NotifyAbortWaiters(TransactionStatusResult{status_});
+    NotifyAbortWaiters(TransactionStatusResult::Aborted());
     return Status::OK();
   }
 
@@ -490,7 +493,7 @@ class TransactionState {
     for (const auto& tablet : unnotified_tablets_) {
       context_.NotifyApplying({tablet, id_, commit_time_});
     }
-    NotifyAbortWaiters(TransactionStatusResult{TransactionStatus::COMMITTED});
+    NotifyAbortWaiters(TransactionStatusResult(TransactionStatus::COMMITTED, commit_time_));
     first_entry_raft_index_ = data.op_id.index();
     return Status::OK();
   }
@@ -665,13 +668,13 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
         lock.unlock();
-        callback(TransactionStatusResult{TransactionStatus::ABORTED});
+        callback(TransactionStatusResult::Aborted());
         return;
       }
       postponed_leader_actions_.leader_term = term;
       auto status = Modify(it).Abort(&callback);
       if (callback) {
-        callback(TransactionStatusResult{status});
+        callback(status);
         return;
       }
       actions.Swap(&postponed_leader_actions_);

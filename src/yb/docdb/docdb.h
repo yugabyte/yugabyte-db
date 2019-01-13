@@ -150,9 +150,15 @@ void PrepareNonTransactionWriteBatch(
 // from it triggers heap allocation."
 // So, we use boost::function which doesn't have such issue:
 // http://www.boost.org/doc/libs/1_65_1/doc/html/function/misc.html
+typedef boost::function<Status(IntentStrength, Slice, KeyBytes*)> EnumerateIntentsCallback;
+
 CHECKED_STATUS EnumerateIntents(
-    const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB> &kv_pairs,
-    boost::function<Status(IntentKind, Slice, KeyBytes*)> functor);
+    const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB>& kv_pairs,
+    const EnumerateIntentsCallback& functor);
+
+CHECKED_STATUS EnumerateIntents(
+    Slice key, const Slice& value, const EnumerateIntentsCallback& functor,
+    KeyBytes* encoded_key_buffer);
 
 void PrepareTransactionWriteBatch(
     const docdb::KeyValueWriteBatchPB& put_batch,
