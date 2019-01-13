@@ -47,7 +47,6 @@
 #include "yb/consensus/log.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/fs/block_id.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/fastmem.h"
@@ -74,7 +73,6 @@ using consensus::ConsensusMetadata;
 using consensus::OpId;
 using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;
-using fs::ReadableBlock;
 using log::Log;
 using log::LogOptions;
 using log::LogAnchorRegistry;
@@ -206,31 +204,6 @@ class RemoteBootstrapTest : public YBTabletTest {
     session_.reset(new YB_EDITION_NS_PREFIX RemoteBootstrapSession(
         tablet_peer_, "TestSession", "FakeUUID", fs_manager(), nullptr /* nsessions */));
     ASSERT_OK(session_->Init());
-  }
-
-  // Read the specified BlockId, via the RemoteBootstrapSession, into a file.
-  // 'path' will be populated with the name of the file used.
-  // 'file' will be set to point to the SequentialFile containing the data.
-  void FetchBlockToFile(const BlockId& block_id,
-                        string* path,
-                        gscoped_ptr<SequentialFile>* file) {
-    string data;
-    int64_t block_file_size = 0;
-    RemoteBootstrapErrorPB::Code error_code;
-    ASSERT_OK(session_->GetBlockPiece(block_id, 0, 0, &data, &block_file_size, &error_code));
-    if (block_file_size > 0) {
-      CHECK_GT(data.size(), 0);
-    }
-
-    // Write the file to a temporary location.
-    WritableFileOptions opts;
-    string path_template = GetTestPath(Substitute("test_block_$0.tmp.XXXXXX", block_id.ToString()));
-    gscoped_ptr<WritableFile> writable_file;
-    ASSERT_OK(Env::Default()->NewTempWritableFile(opts, path_template, path, &writable_file));
-    ASSERT_OK(writable_file->Append(Slice(data.data(), data.size())));
-    ASSERT_OK(writable_file->Close());
-
-    ASSERT_OK(Env::Default()->NewSequentialFile(*path, file));
   }
 
   MetricRegistry metric_registry_;

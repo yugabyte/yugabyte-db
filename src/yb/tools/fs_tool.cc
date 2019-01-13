@@ -59,7 +59,6 @@
 namespace yb {
 namespace tools {
 
-using fs::ReadableBlock;
 using log::LogReader;
 using log::ReadableLogSegment;
 using std::shared_ptr;
