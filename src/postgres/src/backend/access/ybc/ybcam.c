@@ -161,15 +161,17 @@ tuple_matches_key(HeapTuple tup,
 HeapScanDesc ybc_heap_beginscan(Relation relation,
                                 Snapshot snapshot,
                                 int nkeys,
-                                ScanKey key)
+                                ScanKey key,
+								bool temp_snap)
 {
 	YbSysScanDesc ybScan = setup_ybcscan_from_scankey(relation, nkeys, key);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
-	scan_desc->rs_rd  = relation;
-	scan_desc->rs_snapshot = snapshot;
-	scan_desc->ybscan = ybScan;
+	scan_desc->rs_rd        = relation;
+	scan_desc->rs_snapshot  = snapshot;
+	scan_desc->rs_temp_snap = temp_snap;
+	scan_desc->ybscan       = ybScan;
 
 	return scan_desc;
 }
@@ -238,7 +240,8 @@ void ybc_heap_endscan(HeapScanDesc scan_desc)
 {
 	Assert(PointerIsValid(scan_desc->ybscan));
 	ybcEndScan(scan_desc->ybscan->state);
-	UnregisterSnapshot(scan_desc->rs_snapshot);
+	if (scan_desc->rs_temp_snap)
+		UnregisterSnapshot(scan_desc->rs_snapshot);
 	pfree(scan_desc->ybscan);
 	pfree(scan_desc);
 }

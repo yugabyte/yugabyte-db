@@ -1813,15 +1813,17 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
     tablet_lock->mutable_data()->pb.add_table_ids(table->id());
     table->AddTablet(tablet.get());
 
-    sys_catalog_->tablet_peer_->tablet()->metadata()->AddTable(table->id(),
-                                                               req->name(),
-                                                               PGSQL_TABLE_TYPE,
-                                                               schema,
-                                                               IndexMap(),
-                                                               partition_schema,
-                                                               partitions[0],
-                                                               boost::none,
-                                                               0 /* schema_version */);
+    TabletMetadata* metadata = sys_catalog_->tablet_peer_->tablet()->metadata();
+    metadata->AddTable(table->id(),
+                       req->name(),
+                       PGSQL_TABLE_TYPE,
+                       schema,
+                       IndexMap(),
+                       partition_schema,
+                       partitions[0],
+                       boost::none,
+                       0 /* schema_version */);
+    RETURN_NOT_OK(metadata->Flush());
 
     RETURN_NOT_OK(sys_catalog_->UpdateItem(tablet.get(), leader_ready_term_));
     tablet_lock->Commit();
