@@ -17,7 +17,8 @@
         "(^cmake_modules/cotire[.]cmake$)",
         "(^cmake_modules/FindBoost[.]cmake$)",
         "(^README[.]md$)",
-        "(^java/pom[.]xml$)"
+        "(^java/pom[.]xml$)",
+        "(^.*[.]patch$)"
       ]
     },
     "pycodestyle": {
