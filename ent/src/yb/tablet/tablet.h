@@ -21,20 +21,9 @@ class Tablet : public yb::tablet::Tablet {
   typedef yb::tablet::Tablet super;
  public:
   // Create a new tablet.
-  Tablet(
-      const scoped_refptr<TabletMetadata>& metadata,
-      const std::shared_future<client::YBClientPtr> &client_future,
-      const scoped_refptr<server::Clock>& clock,
-      const std::shared_ptr<MemTracker>& parent_mem_tracker,
-      MetricRegistry* metric_registry,
-      const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
-      const TabletOptions& tablet_options,
-      TransactionParticipantContext* transaction_participant_context,
-      client::LocalTabletFilter local_tablet_filter,
-      TransactionCoordinatorContext* transaction_coordinator_context)
-  : super(metadata, client_future, clock, parent_mem_tracker, metric_registry, log_anchor_registry,
-          tablet_options, transaction_participant_context, std::move(local_tablet_filter),
-          transaction_coordinator_context) {}
+  template <class... Args>
+  explicit Tablet(Args&&... args)
+      : super(std::forward<Args>(args)...) {}
 
   // Prepares the transaction context for a snapshot operation.
   CHECKED_STATUS PrepareForSnapshotOp(SnapshotOperationState* tx_state);
