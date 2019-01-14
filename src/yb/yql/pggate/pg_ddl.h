@@ -22,8 +22,7 @@ namespace pggate {
 
 class PgDdl : public PgStatement {
  public:
-  PgDdl(PgSession::ScopedRefPtr pg_session, StmtOp stmt_op)
-      : PgStatement(pg_session, stmt_op) {
+  explicit PgDdl(PgSession::ScopedRefPtr pg_session) : PgStatement(pg_session) {
   }
 
   virtual CHECKED_STATUS ClearBinds() {
@@ -52,6 +51,8 @@ class PgCreateDatabase : public PgDdl {
                    PgOid next_oid);
   virtual ~PgCreateDatabase();
 
+  virtual StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_DATABASE; }
+
   // Execute.
   CHECKED_STATUS Exec();
 
@@ -74,6 +75,8 @@ class PgDropDatabase : public PgDdl {
   // Constructors.
   PgDropDatabase(PgSession::ScopedRefPtr pg_session, const char *database_name, bool if_exist);
   virtual ~PgDropDatabase();
+
+  virtual StmtOp stmt_op() const override { return StmtOp::STMT_DROP_DATABASE; }
 
   // Execute.
   CHECKED_STATUS Exec();
@@ -106,6 +109,8 @@ class PgCreateSchema : public PgDdl {
                  bool if_not_exist);
   virtual ~PgCreateSchema();
 
+  virtual StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_SCHEMA; }
+
   // Execute.
   CHECKED_STATUS Exec();
 
@@ -130,6 +135,8 @@ class PgDropSchema : public PgDdl {
                const char *schema_name,
                bool if_exist);
   virtual ~PgDropSchema();
+
+  virtual StmtOp stmt_op() const override { return StmtOp::STMT_DROP_SCHEMA; }
 
   // Execute.
   CHECKED_STATUS Exec();
@@ -164,6 +171,8 @@ class PgCreateTable : public PgDdl {
                 bool add_primary_key);
   virtual ~PgCreateTable();
 
+  virtual StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_TABLE; }
+
   CHECKED_STATUS AddColumn(const char *attr_name, int attr_num, int attr_ybtype,
                            bool is_hash, bool is_range);
 
@@ -192,6 +201,8 @@ class PgDropTable : public PgDdl {
   PgDropTable(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool if_exist);
   virtual ~PgDropTable();
 
+  virtual StmtOp stmt_op() const override { return StmtOp::STMT_DROP_TABLE; }
+
   // Execute.
   CHECKED_STATUS Exec();
 
@@ -212,6 +223,8 @@ class PgTruncateTable : public PgDdl {
   // Constructors.
   PgTruncateTable(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
   virtual ~PgTruncateTable();
+
+  virtual StmtOp stmt_op() const override { return StmtOp::STMT_TRUNCATE_TABLE; }
 
   // Execute.
   CHECKED_STATUS Exec();

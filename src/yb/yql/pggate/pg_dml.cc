@@ -36,17 +36,15 @@ static MonoDelta kSessionTimeout = 60s;
 //--------------------------------------------------------------------------------------------------
 // PgDml
 //--------------------------------------------------------------------------------------------------
-PgDml::PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, StmtOp stmt_op)
-    : PgStatement(std::move(pg_session), stmt_op), table_id_(table_id) {
+PgDml::PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id)
+    : PgStatement(std::move(pg_session)), table_id_(table_id) {
 }
 
 PgDml::~PgDml() {
 }
 
-Status PgDml::LoadTable(bool for_write) {
-  auto result = pg_session_->LoadTable(table_id_);
-  RETURN_NOT_OK(result);
-  table_desc_ = *result;
+Status PgDml::LoadTable() {
+  table_desc_ = VERIFY_RESULT(pg_session_->LoadTable(table_id_));
   return Status::OK();
 }
 

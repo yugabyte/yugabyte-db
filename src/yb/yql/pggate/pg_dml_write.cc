@@ -39,17 +39,15 @@ static MonoDelta kSessionTimeout = 60s;
 // PgDmlWrite
 //--------------------------------------------------------------------------------------------------
 
-PgDmlWrite::PgDmlWrite(PgSession::ScopedRefPtr pg_session,
-                       const PgObjectId& table_id,
-                       StmtOp stmt_op)
-  : PgDml(std::move(pg_session), table_id, stmt_op) {
+PgDmlWrite::PgDmlWrite(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id)
+    : PgDml(std::move(pg_session), table_id) {
 }
 
 PgDmlWrite::~PgDmlWrite() {
 }
 
 Status PgDmlWrite::Prepare() {
-  RETURN_NOT_OK(LoadTable(true /* for_write */));
+  RETURN_NOT_OK(LoadTable());
 
   // Allocate either INSERT, UPDATE, or DELETE request.
   AllocWriteRequest();

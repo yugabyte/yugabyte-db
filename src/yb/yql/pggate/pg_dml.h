@@ -66,10 +66,10 @@ class PgDml : public PgStatement {
  protected:
   // Method members.
   // Constructor.
-  PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, StmtOp stmt_op);
+  PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
 
   // Load table.
-  CHECKED_STATUS LoadTable(bool for_write);
+  CHECKED_STATUS LoadTable();
 
   // Allocate protobuf for a SELECTed expression.
   virtual PgsqlExpressionPB *AllocTargetPB() = 0;
