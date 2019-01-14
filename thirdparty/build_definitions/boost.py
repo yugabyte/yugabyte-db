@@ -38,6 +38,8 @@ class BoostDependency(Dependency):
             BUILD_GROUP_INSTRUMENTED)
         self.dir = '{}_{}'.format(self.name, self.underscored_version)
         self.copy_sources = True
+        self.patches = ['boost-1-69-remove-pending-integer_log2-include.patch']
+        self.patch_strip = 1
 
     def build(self, builder):
         libs = ['system', 'thread']

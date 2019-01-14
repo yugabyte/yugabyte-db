@@ -28,7 +28,9 @@ if __name__ == '__main__':
     filename = sys.argv[1]
     if not os.path.exists(filename):
         print >>sys.stderr, "Python file does not exist, cannot check syntax: %s" % filename
-        sys.exit(1)
+        print >>sys.stderr, "This file might have been deleted as part of the latest commit."
+        # Don't consider this an error.
+        sys.exit(0)
 
     source = open(filename, 'r').read() + '\n'
     try:

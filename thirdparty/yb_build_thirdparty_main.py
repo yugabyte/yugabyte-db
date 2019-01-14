@@ -76,14 +76,7 @@ class Builder:
             build_definitions.rapidjson.RapidJsonDependency(),
             build_definitions.squeasel.SqueaselDependency(),
             build_definitions.curl.CurlDependency(),
-            build_definitions.hiredis.HiRedisDependency()]
-
-        if is_linux():
-            self.dependencies += [
-                build_definitions.nvml.NVMLDependency()
-            ]
-
-        self.dependencies += [
+            build_definitions.hiredis.HiRedisDependency(),
             build_definitions.cqlsh.CQLShDependency(),
             build_definitions.redis_cli.RedisCliDependency(),
         ]
