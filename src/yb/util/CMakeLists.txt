@@ -133,7 +133,6 @@ set(UTIL_SRCS
   bitmap.cc
   bloom_filter.cc
   bytes_formatter.cc
-  cache.cc
   cache_metrics.cc
   coding.cc
   concurrent_value.cc
@@ -232,12 +231,6 @@ set(UTIL_SRCS
   ${UTIL_SRCS_EXTENSIONS}
   )
 
-if(NOT APPLE)
-  set(UTIL_SRCS
-    ${UTIL_SRCS}
-    nvm_cache.cc)
-endif()
-
 set(UTIL_LIBS
   boost_system
   boost_thread
@@ -325,7 +318,6 @@ ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)
 ADD_YB_TEST(blocking_queue-test)
 ADD_YB_TEST(bloom_filter-test)
-ADD_YB_TEST(cache-test)
 ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
 ADD_YB_TEST(crc-test RUN_SERIAL true) # has a benchmark
