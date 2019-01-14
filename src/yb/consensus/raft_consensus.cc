@@ -977,7 +977,7 @@ void RaftConsensus::UpdateMajorityReplicated(
   bool committed_index_changed = false;
   s = state_->UpdateMajorityReplicatedUnlocked(
       majority_replicated_data.op_id, committed_op_id, &committed_index_changed);
-  if (majority_replicated_listener_) {
+  if (majority_replicated_listener_ && state_->GetLeaderStateUnlocked().ok()) {
     majority_replicated_listener_();
   }
   if (PREDICT_FALSE(!s.ok())) {
