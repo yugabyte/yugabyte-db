@@ -1449,7 +1449,7 @@ heap_beginscan_internal(Relation relation, Snapshot snapshot,
 
 	if (IsYugaByteEnabled())
 	{
-		return ybc_heap_beginscan(relation, snapshot, nkeys, key);
+		return ybc_heap_beginscan(relation, snapshot, nkeys, key, temp_snap);
 	}
 
 	/*

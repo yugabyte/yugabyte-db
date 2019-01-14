@@ -67,7 +67,8 @@ extern void ybc_systable_endscan(SysScanDesc scan_desc);
 extern HeapScanDesc ybc_heap_beginscan(Relation relation,
                                        Snapshot snapshot,
                                        int nkeys,
-                                       ScanKey key);
+                                       ScanKey key,
+									   bool temp_snap);
 extern HeapTuple ybc_heap_getnext(HeapScanDesc scanDesc);
 extern void ybc_heap_endscan(HeapScanDesc scanDesc);
 
