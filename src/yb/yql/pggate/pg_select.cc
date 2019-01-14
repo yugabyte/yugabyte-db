@@ -27,14 +27,14 @@ using std::make_shared;
 //--------------------------------------------------------------------------------------------------
 
 PgSelect::PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id)
-    : PgDml(std::move(pg_session), table_id, StmtOp::STMT_SELECT) {
+    : PgDml(std::move(pg_session), table_id) {
 }
 
 PgSelect::~PgSelect() {
 }
 
 Status PgSelect::Prepare() {
-  RETURN_NOT_OK(LoadTable(false /* for_write */));
+  RETURN_NOT_OK(LoadTable());
 
   // Allocate READ/SELECT operation.
   auto doc_op = make_shared<PgDocReadOp>(pg_session_, table_desc_->NewPgsqlSelect());

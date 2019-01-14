@@ -40,7 +40,7 @@ static MonoDelta kSessionTimeout = 60s;
 //--------------------------------------------------------------------------------------------------
 
 PgInsert::PgInsert(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id)
-    : PgDmlWrite(pg_session, table_id, StmtOp::STMT_INSERT) {
+    : PgDmlWrite(pg_session, table_id) {
 }
 
 PgInsert::~PgInsert() {
