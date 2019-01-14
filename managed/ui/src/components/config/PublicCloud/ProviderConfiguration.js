@@ -42,8 +42,8 @@ class ProviderConfiguration extends Component {
     } else {
       this.setState({currentView: isNonEmptyObject(currentProvider) ? 'result' : "init"});
       let currentProviderTask = null;
-      if (isNonEmptyArray(customerTaskList) && isDefinedNotNull(currentProvider)) {
-        currentProviderTask = customerTaskList.find((task) => task.targetUUID === currentProvider.uuid);
+      if (isNonEmptyArray(customerTaskList.data) && isDefinedNotNull(currentProvider)) {
+        currentProviderTask = customerTaskList.data.find((task) => task.targetUUID === currentProvider.uuid);
         if (isDefinedNotNull(currentProviderTask) && currentProviderTask.status !== "Success") {
           getCurrentTaskData(currentProviderTask.id);
           this.setState({currentTaskUUID: currentProviderTask.id, currentView: 'bootstrap'});
@@ -73,8 +73,8 @@ class ProviderConfiguration extends Component {
       this.setState({currentView: 'init'});
     }
 
-    if (isNonEmptyArray(customerTaskList) && isNonEmptyObject(currentProvider) && isNonEmptyArray(this.props.tasks.customerTaskList) && this.props.tasks.customerTaskList.length === 0) {
-      currentProviderTask = customerTaskList.find((task) => task.targetUUID === currentProvider.uuid);
+    if (isNonEmptyArray(customerTaskList.data) && isNonEmptyObject(currentProvider) && isNonEmptyArray(this.props.tasks.customerTaskList.data) && this.props.tasks.customerTaskList.data.length === 0) {
+      currentProviderTask = customerTaskList.data.find((task) => task.targetUUID === currentProvider.uuid);
       if (currentProviderTask) {
         this.props.getCurrentTaskData(currentProviderTask.id);
         if (isDefinedNotNull(currentProviderTask) && currentProviderTask.status !== "Success") {

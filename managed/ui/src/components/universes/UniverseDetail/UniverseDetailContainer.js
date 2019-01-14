@@ -2,8 +2,7 @@
 
 import { connect } from 'react-redux';
 import { UniverseDetail } from '../../universes';
-import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, fetchUniverseTasks,
-  fetchUniverseTasksResponse, resetUniverseTasks, closeUniverseDialog, getHealthCheck,
+import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, closeUniverseDialog, getHealthCheck,
   getHealthCheckResponse
 } from '../../../actions/universe';
 
@@ -39,15 +38,6 @@ const mapDispatchToProps = (dispatch) => {
     },
     resetUniverseInfo: () => {
       dispatch(resetUniverseInfo());
-    },
-    fetchUniverseTasks: (uuid) => {
-      dispatch(fetchUniverseTasks(uuid))
-      .then((response) => {
-        dispatch(fetchUniverseTasksResponse(response.payload));
-      });
-    },
-    resetUniverseTasks: () => {
-      dispatch(resetUniverseTasks());
     },
     showUniverseModal: () => {
       dispatch(openDialog("universeModal"));
@@ -100,6 +90,7 @@ function mapStateToProps(state, ownProps) {
 
   return {
     universe: state.universe,
+    tasks: state.tasks,
     modal: state.modal,
     providers: state.cloud.providers,
     updateAvailable: isUpdateAvailable(state)

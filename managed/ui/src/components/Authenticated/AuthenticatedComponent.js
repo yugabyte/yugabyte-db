@@ -55,10 +55,11 @@ class AuthenticatedComponent extends Component {
       if (typeof (this.timeout) === "undefined") {
         this.scheduleFetch();
       }
-    } else {
+    } else if (isNonEmptyArray(tasks.customerTaskList)) {
       // If there is no pending task, we clear the timer
       if (typeof (this.timeout) !== "undefined") {
         clearTimeout(this.timeout);
+        delete(this.timeout);
       }
     }
   }
