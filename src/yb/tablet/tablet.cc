@@ -294,6 +294,7 @@ Tablet::Tablet(
     MetricRegistry* metric_registry,
     const scoped_refptr<LogAnchorRegistry>& log_anchor_registry,
     const TabletOptions& tablet_options,
+    std::string log_prefix_suffix,
     TransactionParticipantContext* transaction_participant_context,
     client::LocalTabletFilter local_tablet_filter,
     TransactionCoordinatorContext* transaction_coordinator_context)
@@ -305,10 +306,11 @@ Tablet::Tablet(
           Format("tablet-$0", tablet_id()), parent_mem_tracker, AddToParent::kTrue,
           CreateMetrics::kFalse)),
       clock_(clock),
-      mvcc_(Format("T $0 ", metadata_->tablet_id()), clock),
+      mvcc_(Format("T $0$1: ", metadata_->tablet_id(), log_prefix_suffix), clock),
       tablet_options_(tablet_options),
       client_future_(client_future),
-      local_tablet_filter_(std::move(local_tablet_filter)) {
+      local_tablet_filter_(std::move(local_tablet_filter)),
+      log_prefix_suffix_(std::move(log_prefix_suffix)) {
   CHECK(schema()->has_column_ids());
 
   if (metric_registry) {
@@ -465,7 +467,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable) {
 }
 
 std::string Tablet::LogPrefix() const {
-  return Format("T $0: ", tablet_id());
+  return Format("T $0$1: ", tablet_id(), log_prefix_suffix_);
 }
 
 Status Tablet::OpenKeyValueTablet() {

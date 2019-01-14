@@ -138,7 +138,9 @@ class PlacementInfoTest : public YBTest {
     internal::RemoteTabletServer *tserver = client->data_->SelectTServer(
         remote_tablet, YBClient::ReplicaSelection::CLOSEST_REPLICA, std::set<string>(),
         &candidates);
-    ASSERT_EQ(expected_ts_index, ts_uuid_to_index_[tserver->permanent_uuid()]);
+    ASSERT_EQ(expected_ts_index, ts_uuid_to_index_[tserver->permanent_uuid()])
+        << "Client UUID: " << client_uuid << ", zone: " << placement_zone
+        << ", region: " << placement_region;
   }
 
   std::unique_ptr<MiniCluster> cluster_;
@@ -190,17 +192,14 @@ TEST_F(PlacementInfoTest, TestSelectTServer) {
   remote_tablet->Refresh(tserver_map, tablet_locations.replicas());
 
   for (int ts_index = 0; ts_index < kNumTservers; ts_index++) {
+    auto uuid = cluster_->mini_tablet_server(ts_index)->server()->permanent_uuid();
+    auto zone = PlacementZone(ts_index);
+    auto region = PlacementRegion(ts_index);
+    ValidateSelectTServer(uuid, "", "", ts_index, remote_tablet.get());
+    ValidateSelectTServer("", zone, region, ts_index, remote_tablet.get());
+    ValidateSelectTServer("", "", region, ts_index, remote_tablet.get());
     ValidateSelectTServer(
-        cluster_->mini_tablet_server(ts_index)->server()->permanent_uuid(), "", "", ts_index,
-        remote_tablet.get());
-    ValidateSelectTServer("", PlacementZone(ts_index), "", ts_index, remote_tablet.get());
-    ValidateSelectTServer("", "", PlacementRegion(ts_index), ts_index, remote_tablet.get());
-    ValidateSelectTServer("", PlacementZone(ts_index),
-                          PlacementRegion((ts_index + 1) % kNumTservers), ts_index,
-                          remote_tablet.get());
-    ValidateSelectTServer(
-        cluster_->mini_tablet_server(ts_index)->server()->permanent_uuid(),
-        PlacementZone((ts_index + 1) % kNumTservers),
+        uuid, PlacementZone((ts_index + 1) % kNumTservers),
         PlacementRegion((ts_index + 2) % kNumTservers), ts_index, remote_tablet.get());
   }
 }

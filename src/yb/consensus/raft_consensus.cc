@@ -603,7 +603,8 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
   // to transfer the leadership.
   if (req->has_new_leader_uuid()) {
     new_leader_uuid = req->new_leader_uuid();
-    if (!queue_->CanPeerBecomeLeader(new_leader_uuid)) {
+    auto forced = req->force_step_down();
+    if (!forced && !queue_->CanPeerBecomeLeader(new_leader_uuid)) {
       resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
       StatusToPB(
           STATUS(IllegalState, "Suggested peer is not caught up yet"),
@@ -614,7 +615,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     const auto& local_peer_uuid = state_->GetPeerUuid();
     const auto leadership_transfer_description =
         Format("tablet $0 from $1 to $2", tablet_id, local_peer_uuid, new_leader_uuid);
-    if (new_leader_uuid == protege_leader_uuid_ && election_lost_by_protege_at_) {
+    if (!forced && new_leader_uuid == protege_leader_uuid_ && election_lost_by_protege_at_) {
       const MonoDelta time_since_election_loss_by_protege =
           MonoTime::Now() - election_lost_by_protege_at_;
       if (time_since_election_loss_by_protege.ToMilliseconds() <
@@ -791,7 +792,6 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
 
   state_->SetLeaderNoOpCommittedUnlocked(false);
   queue_->RegisterObserver(this);
-  RefreshConsensusQueueAndPeersUnlocked();
 
   // Initiate a NO_OP operation that is sent at the beginning of every term
   // change in raft.
@@ -814,6 +814,8 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
                                              round.get(),
                                              &DoNothingStatusCB, std::placeholders::_1));
   RETURN_NOT_OK(AppendNewRoundToQueueUnlocked(round));
+
+  RefreshConsensusQueueAndPeersUnlocked();
 
   return Status::OK();
 }
@@ -1084,10 +1086,21 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
 
 Status RaftConsensus::Update(ConsensusRequestPB* request,
                              ConsensusResponsePB* response) {
-
   if (PREDICT_FALSE(FLAGS_follower_reject_update_consensus_requests)) {
     return STATUS(IllegalState, "Rejected: --follower_reject_update_consensus_requests "
                                 "is set to true.");
+  }
+
+  auto reject_mode = reject_mode_.load(std::memory_order_acquire);
+  if (reject_mode != RejectMode::kNone) {
+    if (reject_mode == RejectMode::kAll ||
+        (reject_mode == RejectMode::kNonEmpty && !request->ops().empty())) {
+      auto result = STATUS_FORMAT(IllegalState, "Rejected because of reject mode: $0",
+                                  ToString(reject_mode));
+      LOG_WITH_PREFIX(INFO) << result;
+      return result;
+    }
+    LOG_WITH_PREFIX(INFO) << "Accepted: " << request->ShortDebugString();
   }
 
   if (PREDICT_FALSE(FLAGS_follower_reject_update_consensus_requests_seconds > 0)) {

@@ -29,17 +29,12 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/util/async_util.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
 namespace client {
-
-using std::string;
-using std::vector;
-using std::shared_ptr;
-using std::unique_ptr;
-using namespace std::chrono_literals;
 
 extern const client::YBTableName kTableName;
 
@@ -49,16 +44,14 @@ class QLDmlTestBase : public YBMiniClusterTestBase<MiniCluster> {
   void DoTearDown() override;
 
   // Create a new YB session
-  shared_ptr<client::YBSession> NewSession() {
-    const shared_ptr<client::YBSession> session(client_->NewSession());
-    session->SetTimeout(60s);
-    return session;
-  }
+  std::shared_ptr<client::YBSession> NewSession();
+
+  virtual ~QLDmlTestBase() {}
 
  protected:
   virtual CHECKED_STATUS CreateClient();
 
-  shared_ptr<YBClient> client_;
+  std::shared_ptr<YBClient> client_;
 };
 
 YB_STRONGLY_TYPED_BOOL(Transactional);
@@ -74,15 +67,15 @@ class KeyValueTableTest : public QLDmlTestBase {
   // op_type == WriteOpType::INSERT: insert into t values (key, value);
   // op_type == WriteOpType::UPDATE: update t set v=value where k=key;
   // op_type == WriteOpType::DELETE: delete from t where k=key; (parameter "value" is unused).
-  Result<shared_ptr<YBqlWriteOp>> WriteRow(
+  Result<YBqlWriteOpPtr> WriteRow(
       const YBSessionPtr& session, int32_t key, int32_t value,
       const WriteOpType op_type = WriteOpType::INSERT,
       Flush flush = Flush::kTrue);
 
-  Result<shared_ptr<YBqlWriteOp>> DeleteRow(
+  Result<YBqlWriteOpPtr> DeleteRow(
       const YBSessionPtr& session, int32_t key);
 
-  Result<shared_ptr<YBqlWriteOp>> UpdateRow(
+  Result<YBqlWriteOpPtr> UpdateRow(
       const YBSessionPtr& session, int32_t key, int32_t value);
 
   // Select the specified columns of a row using a primary key, equivalent to the select statement

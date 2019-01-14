@@ -476,6 +476,9 @@ message LeaderStepDownRequestPB {
 
   // UUID of the server that should run the election to become the new leader.
   optional bytes new_leader_uuid = 3;
+
+  // Used in tests to ignore check for new leader conditions.
+  optional bool force_step_down = 4;
 }
 
 message LeaderStepDownResponsePB {

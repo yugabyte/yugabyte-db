@@ -134,6 +134,7 @@ class TabletHarness {
                                   metrics_registry_.get(),
                                   new log::LogAnchorRegistry(),
                                   tablet_options,
+                                  std::string() /* log_pefix_suffix */,
                                   nullptr /* transaction_participant_context */,
                                   client::LocalTabletFilter(),
                                   nullptr /* transaction_coordinator_context */));

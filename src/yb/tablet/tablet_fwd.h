@@ -31,6 +31,9 @@ typedef scoped_refptr<OperationDriver> OperationDriverPtr;
 class Tablet;
 typedef std::shared_ptr<Tablet> TabletPtr;
 
+class TabletPeer;
+typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
+
 typedef YB_EDITION_NS_PREFIX Tablet TabletClass;
 typedef YB_EDITION_NS_PREFIX TabletPeer TabletPeerClass;
 

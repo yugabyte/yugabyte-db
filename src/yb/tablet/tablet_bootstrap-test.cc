@@ -128,6 +128,7 @@ class BootstrapTest : public LogTestBase {
         listener.get(),
         log_anchor_registry,
         tablet_options,
+        std::string(), // log_prefix_suffix
         nullptr, // transaction_participant_context
         client::LocalTabletFilter(),
         nullptr, // transaction_coordinator_context
