@@ -295,10 +295,15 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
   private String generateHelmOverride() {
     Map<String, Object> overrides = new HashMap<String, Object>();
     Yaml yaml = new Yaml();
-    // TODO: decide if the user want to expose all the services or just master
+    
+    // TODO: decide if the user want to expose all the services or just master.
     overrides =(HashMap<String, Object>) yaml.load(
         application.resourceAsStream("k8s-expose-all.yml")
     );
+
+    if (environment.isDev()) {
+        overrides.put("enableLoadBalancer", false);
+    }
 
     Provider provider = Provider.get(taskParams().providerUUID);
     Map<String, String> config = provider.getConfig();
