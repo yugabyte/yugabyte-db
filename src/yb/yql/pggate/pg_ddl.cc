@@ -42,7 +42,7 @@ PgCreateDatabase::PgCreateDatabase(PgSession::ScopedRefPtr pg_session,
                                    const PgOid database_oid,
                                    const PgOid source_database_oid,
                                    const PgOid next_oid)
-    : PgDdl(std::move(pg_session), StmtOp::STMT_CREATE_DATABASE),
+    : PgDdl(std::move(pg_session)),
       database_name_(database_name),
       database_oid_(database_oid),
       source_database_oid_(source_database_oid),
@@ -60,7 +60,7 @@ Status PgCreateDatabase::Exec() {
 PgDropDatabase::PgDropDatabase(PgSession::ScopedRefPtr pg_session,
                                const char *database_name,
                                bool if_exist)
-    : PgDdl(pg_session, StmtOp::STMT_DROP_DATABASE),
+    : PgDdl(pg_session),
       database_name_(database_name),
       if_exist_(if_exist) {
 }
@@ -80,7 +80,7 @@ PgCreateSchema::PgCreateSchema(PgSession::ScopedRefPtr pg_session,
                                const char *database_name,
                                const char *schema_name,
                                bool if_not_exist)
-    : PgDdl(pg_session, StmtOp::STMT_CREATE_SCHEMA),
+    : PgDdl(pg_session),
       database_name_(database_name),
       schema_name_(schema_name),
       if_not_exist_(if_not_exist) {
@@ -99,7 +99,7 @@ PgDropSchema::PgDropSchema(PgSession::ScopedRefPtr pg_session,
                            const char *database_name,
                            const char *schema_name,
                            bool if_exist)
-    : PgDdl(pg_session, StmtOp::STMT_CREATE_SCHEMA),
+    : PgDdl(pg_session),
       database_name_(database_name),
       schema_name_(schema_name),
       if_exist_(if_exist) {
@@ -126,7 +126,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              bool is_shared_table,
                              bool if_not_exist,
                              bool add_primary_key)
-    : PgDdl(pg_session, StmtOp::STMT_CREATE_TABLE),
+    : PgDdl(pg_session),
       table_name_(database_name, table_name),
       table_id_(table_id),
       is_pg_catalog_table_(strcmp(schema_name, "pg_catalog") == 0 ||
@@ -208,10 +208,14 @@ Status PgCreateTable::Exec() {
   return Status::OK();
 }
 
+//--------------------------------------------------------------------------------------------------
+// PgDropTable
+//--------------------------------------------------------------------------------------------------
+
 PgDropTable::PgDropTable(PgSession::ScopedRefPtr pg_session,
                          const PgObjectId& table_id,
                          bool if_exist)
-    : PgDdl(pg_session, StmtOp::STMT_DROP_TABLE),
+    : PgDdl(pg_session),
       table_id_(table_id),
       if_exist_(if_exist) {
 }
@@ -227,9 +231,13 @@ Status PgDropTable::Exec() {
   return s;
 }
 
+//--------------------------------------------------------------------------------------------------
+// PgTruncateTable
+//--------------------------------------------------------------------------------------------------
+
 PgTruncateTable::PgTruncateTable(PgSession::ScopedRefPtr pg_session,
                                  const PgObjectId& table_id)
-    : PgDdl(pg_session, StmtOp::STMT_TRUNCATE_TABLE),
+    : PgDdl(pg_session),
       table_id_(table_id) {
 }
 

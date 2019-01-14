@@ -40,7 +40,7 @@ class PgDmlWrite : public PgDml {
 
  protected:
   // Constructor.
-  PgDmlWrite(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, StmtOp stmt_op);
+  PgDmlWrite(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
 
   // Allocate write request.
   virtual void AllocWriteRequest() = 0;

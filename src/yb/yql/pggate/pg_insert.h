@@ -37,6 +37,8 @@ class PgInsert : public PgDmlWrite {
   PgInsert(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
   virtual ~PgInsert();
 
+  virtual StmtOp stmt_op() const override { return StmtOp::STMT_INSERT; }
+
   // Prepare write operations.
   virtual CHECKED_STATUS Prepare() override;
 

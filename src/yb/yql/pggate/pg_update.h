@@ -34,6 +34,8 @@ class PgUpdate : public PgDmlWrite {
   PgUpdate(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
   virtual ~PgUpdate();
 
+  virtual StmtOp stmt_op() const override { return StmtOp::STMT_UPDATE; }
+
  private:
   virtual void AllocWriteRequest() override;
 };

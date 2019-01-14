@@ -37,6 +37,8 @@ class PgSelect : public PgDml {
   PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
   virtual ~PgSelect();
 
+  virtual StmtOp stmt_op() const override { return StmtOp::STMT_SELECT; }
+
   // Prepare SELECT before execution.
   CHECKED_STATUS Prepare();
 
@@ -48,7 +50,7 @@ class PgSelect : public PgDml {
 
  private:
   // Allocate column protobuf.
-  virtual PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
+  PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
 
   // Allocate protobuf for target.
   PgsqlExpressionPB *AllocTargetPB() override;
