@@ -206,7 +206,11 @@ class CleanupAbortsTask : public rpc::ThreadPoolTask {
         status_manager_(*status_manager) {}
 
   void Prepare(std::shared_ptr<CleanupAbortsTask> cleanup_task) {
-    retain_self_ = cleanup_task;
+    retain_self_ = std::move(cleanup_task);
+  }
+
+  void Cancel() {
+    retain_self_ = nullptr;
   }
 
   void Run() override {
@@ -874,8 +878,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   void Cleanup(TransactionIdSet&& set, TransactionStatusManager* status_manager) {
     auto cleanup_aborts_task = std::make_shared<CleanupAbortsTask>(
         &applier_, std::move(set), &participant_context_, status_manager);
-    if (participant_context_.thread_pool().Enqueue(cleanup_aborts_task.get())) {
-      cleanup_aborts_task->Prepare(cleanup_aborts_task);
+    cleanup_aborts_task->Prepare(cleanup_aborts_task);
+    if (!participant_context_.thread_pool().Enqueue(cleanup_aborts_task.get())) {
+      cleanup_aborts_task->Cancel();
     }
   }
 

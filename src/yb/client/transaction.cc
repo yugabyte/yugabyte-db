@@ -373,7 +373,8 @@ class YBTransaction::Impl final {
     return log_prefix_;
   }
 
-  std::string ToString() const {
+  std::string ToString() {
+    std::lock_guard<std::mutex> lock(mutex_);
     return Format("{ metadata: $0 state: $1 }", metadata_, state_.load(std::memory_order_acquire));
   }
 
