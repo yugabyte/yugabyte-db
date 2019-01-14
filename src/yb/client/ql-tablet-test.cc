@@ -392,19 +392,6 @@ TEST_F(QLTabletTest, OverlappedImport) {
   ASSERT_NOK(Import());
 }
 
-void StepDownAllTablets(MiniCluster* cluster) {
-  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
-    std::vector<tablet::TabletPeerPtr> peers;
-    cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
-    for (const auto& peer : peers) {
-      consensus::LeaderStepDownRequestPB req;
-      req.set_tablet_id(peer->tablet_id());
-      consensus::LeaderStepDownResponsePB resp;
-      ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
-    }
-  }
-}
-
 void DoStepDowns(MiniCluster* cluster) {
   for (int j = 0; j != 5; ++j) {
     StepDownAllTablets(cluster);

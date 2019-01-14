@@ -15,6 +15,8 @@
 
 #include "yb/client/transaction.h"
 
+using namespace std::literals;
+
 namespace yb {
 namespace client {
 

@@ -181,6 +181,8 @@ void PeriodicTimer::Callback(int64_t my_callback_generation) {
         // Stop the timer first, in case the task wants to restart it.
         StopUnlocked();
       }
+      SnoozeUnlocked();
+      delay = next_task_time_ - now;
     }
   }
 
@@ -193,7 +195,6 @@ void PeriodicTimer::Callback(int64_t my_callback_generation) {
       // the correct thing to do.
       return;
     }
-    Snooze();
   }
 
   // Capture a weak_ptr reference into the submitted functor so that we can

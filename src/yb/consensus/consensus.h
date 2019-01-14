@@ -318,6 +318,12 @@ class Consensus {
     return STATUS(NotFound, "Not implemented.");
   }
 
+  Result<OpId> GetLastReceivedOpId() {
+    OpId result;
+    RETURN_NOT_OK(GetLastOpId(OpIdType::RECEIVED_OPID, &result));
+    return result;
+  }
+
   // Assuming we are the leader, wait until we have a valid leader lease (i.e. the old leader's
   // lease has expired, and we have replicated a new lease that has not expired yet).
   virtual CHECKED_STATUS WaitForLeaderLeaseImprecise(MonoTime deadline) = 0;

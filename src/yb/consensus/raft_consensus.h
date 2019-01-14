@@ -84,6 +84,8 @@ constexpr int32_t kDefaultLeaderLeaseDurationMs = 2000;
 
 YB_STRONGLY_TYPED_BOOL(WriteEmpty);
 
+YB_DEFINE_ENUM(RejectMode, (kNone)(kAll)(kNonEmpty));
+
 class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                       public Consensus,
                       public PeerMessageQueueObserver,
@@ -226,6 +228,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   yb::OpId MinRetryableRequestOpId();
 
   RetryableRequestsCounts TEST_CountRetryableRequests();
+
+  void TEST_RejectMode(RejectMode value) {
+    reject_mode_.store(value, std::memory_order_release);
+  }
 
  protected:
   // Trigger that a non-Operation ConsensusRound has finished replication.
@@ -633,6 +639,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Used only when follower_reject_update_consensus_requests_seconds is greater than 0.
   // Any requests to update the replica will be rejected until this time. For testing only.
   MonoTime withold_replica_updates_until_ = MonoTime::kUninitialized;
+
+  std::atomic<RejectMode> reject_mode_{RejectMode::kNone};
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };

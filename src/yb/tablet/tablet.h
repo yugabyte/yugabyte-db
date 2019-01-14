@@ -210,6 +210,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       MetricRegistry* metric_registry,
       const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
       const TabletOptions& tablet_options,
+      std::string log_prefix_suffix,
       TransactionParticipantContext* transaction_participant_context,
       client::LocalTabletFilter local_tablet_filter,
       TransactionCoordinatorContext* transaction_coordinator_context);
@@ -688,6 +689,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 
   client::LocalTabletFilter local_tablet_filter_;
+
+  std::string log_prefix_suffix_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };
