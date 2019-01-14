@@ -236,6 +236,27 @@ class MiniCluster : public MiniClusterBase {
 MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     MiniCluster* cluster, std::chrono::milliseconds clock_skew);
 
+void StepDownAllTablets(MiniCluster* cluster);
+
+YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
+
+std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
+    MiniCluster* cluster, ListPeersFilter filter);
+
+std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
+    MiniCluster* cluster,
+    const std::function<bool(const std::shared_ptr<tablet::TabletPeer>&)>& filter);
+
+CHECKED_STATUS WaitForLeaderOfSingleTablet(
+    MiniCluster* cluster, tablet::TabletPeerPtr leader, MonoDelta duration,
+    const std::string& description);
+
+YB_STRONGLY_TYPED_BOOL(ForceStepDown);
+
+CHECKED_STATUS StepDown(
+    tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
+    ForceStepDown force_step_down);
+
 }  // namespace yb
 
 #endif /* YB_INTEGRATION_TESTS_MINI_CLUSTER_H_ */

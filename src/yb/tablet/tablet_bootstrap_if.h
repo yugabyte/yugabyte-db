@@ -120,6 +120,7 @@ struct BootstrapTabletData {
   TabletStatusListener* listener;
   scoped_refptr<log::LogAnchorRegistry> log_anchor_registry;
   TabletOptions tablet_options;
+  std::string log_prefix_suffix;
   TransactionParticipantContext* transaction_participant_context;
   client::LocalTabletFilter local_tablet_filter;
   TransactionCoordinatorContext* transaction_coordinator_context;

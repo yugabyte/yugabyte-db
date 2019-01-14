@@ -123,7 +123,7 @@ bool MonoDelta::IsNegative() const {
 }
 
 std::string MonoDelta::ToString() const {
-  return StringPrintf("%.3fs", ToSeconds());
+  return Initialized() ? StringPrintf("%.3fs", ToSeconds()) : "<uninitialized>";
 }
 
 MonoDelta::MonoDelta(int64_t delta)

@@ -38,6 +38,8 @@ DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 
+using namespace std::literals;
+
 namespace yb {
 namespace client {
 
@@ -126,19 +128,19 @@ class QLDmlTest : public QLDmlTestBase {
   // Insert a full, single row, equivalent to the insert statement below. Return a YB write op that
   // has been applied.
   //   insert into t values (h1, h2, r1, r2, c1, c2);
-  shared_ptr<YBqlWriteOp> InsertRow(
-      const shared_ptr<YBSession>& session,
+  YBqlWriteOpPtr InsertRow(
+      const YBSessionPtr& session,
       const RowKey& key,
       const RowValue& value) {
     return InsertRow(session, key.h1, key.h2, key.r1, key.r2, value.c1, value.c2);
   }
 
-  shared_ptr<YBqlWriteOp> InsertRow(
-      const shared_ptr<YBSession>& session,
+  YBqlWriteOpPtr InsertRow(
+      const YBSessionPtr& session,
       const int32 h1, const string& h2,
       const int32 r1, const string& r2,
       const int32 c1, const string& c2) {
-    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, h1);
     QLAddStringHashValue(req, h2);
@@ -166,12 +168,12 @@ class QLDmlTest : public QLDmlTestBase {
   // Select the specified columns of a row using a primary key, equivalent to the select statement
   // below. Return a YB read op that has been applied.
   //   select <columns...> from t where h1 = <h1> and h2 = <h2> and r1 = <r1> and r2 = <r2>;
-  shared_ptr<YBqlReadOp> SelectRow(
-      const shared_ptr<YBSession>& session,
+  YBqlReadOpPtr SelectRow(
+      const YBSessionPtr& session,
       const vector<string>& columns,
       const int32 h1, const string& h2,
       const int32 r1, const string& r2) {
-    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, h1);
     QLAddStringHashValue(req, h2);
@@ -184,14 +186,14 @@ class QLDmlTest : public QLDmlTestBase {
     return op;
   }
 
-  shared_ptr<YBqlReadOp> SelectRow(
-      const shared_ptr<YBSession>& session,
+  YBqlReadOpPtr SelectRow(
+      const YBSessionPtr& session,
       const vector<string>& columns,
       const RowKey& key) {
     return SelectRow(session, columns, key.h1, key.h2, key.r1, key.r2);
   }
 
-  std::shared_ptr<YBqlReadOp> SelectRow() {
+  YBqlReadOpPtr SelectRow() {
     auto session = NewSession();
     auto result = SelectRow(session, kAllColumns, 1, "a", 2, "b");
     EXPECT_OK(session->Flush());
@@ -216,7 +218,7 @@ class QLDmlTest : public QLDmlTestBase {
   }
 
   MUST_USE_RESULT testing::AssertionResult VerifyRow(
-      const shared_ptr<YBSession>& session,
+      const YBSessionPtr& session,
       int32 h1, const std::string& h2,
       int32 r1, const std::string& r2,
       int32 c1, const std::string& c2) {
@@ -244,8 +246,8 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
   {
     // Test inserting a row.
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
-    const shared_ptr<YBSession> session(NewSession());
-    const shared_ptr<YBqlWriteOp> op = InsertRow(session, 1, "a", 2, "b", 3, "c");
+    const YBSessionPtr session(NewSession());
+    const YBqlWriteOpPtr op = InsertRow(session, 1, "a", 2, "b", 3, "c");
     ASSERT_OK(session->Flush());
     ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
   }
@@ -253,11 +255,11 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
   {
     // Test selecting a row.
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow();
+    const YBqlReadOpPtr op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -265,7 +267,7 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
   {
     // Test updating the row.
     // update t set c1 = 4, c2 = 'd' where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -273,7 +275,7 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
     QLAddStringRangeValue(req, "b");
     table_.AddInt32ColumnValue(req, "c1", 4);
     table_.AddStringColumnValue(req, "c2", "d");
-    const shared_ptr<YBSession> session(NewSession());
+    const YBSessionPtr session(NewSession());
     CHECK_OK(session->ApplyAndFlush(op));
 
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
@@ -282,13 +284,13 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
   {
     // Test selecting the row back, but flush manually and using async API (inside FlushSession).
     // select c1, c2 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session = NewSession();
-    const shared_ptr<YBqlReadOp> op = SelectRow(session, {"c1", "c2"}, 1, "a", 2, "b");
+    const YBSessionPtr session = NewSession();
+    const YBqlReadOpPtr op = SelectRow(session, {"c1", "c2"}, 1, "a", 2, "b");
     EXPECT_OK(session->Flush());
 
     // Expect 4, 'd' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(row.column(0).int32_value(), 4);
@@ -306,7 +308,7 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
 }
 
 TEST_F(QLDmlTest, TestInsertWrongSchema) {
-  const shared_ptr<YBSession> session(NewSession());
+  const YBSessionPtr session(NewSession());
 
   // Move to schema version 1 by altering table
   gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
@@ -314,7 +316,7 @@ TEST_F(QLDmlTest, TestInsertWrongSchema) {
   EXPECT_OK(table_alterer->timeout(MonoDelta::FromSeconds(60))->Alter());
 
   // The request created has schema version 0 by default
-  const shared_ptr<YBqlWriteOp> op = InsertRow(session, 1, "a", 2, "b", 3, "c");
+  const YBqlWriteOpPtr op = InsertRow(session, 1, "a", 2, "b", 3, "c");
 
   EXPECT_OK(session->Flush());
   EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
@@ -366,13 +368,13 @@ TEST_F_EX(QLDmlTest, RangeFilter, QLDmlRangeFilterBase) {
   auto session = NewSession();
   if (!FLAGS_mini_cluster_reuse_data) {
     for(int32_t i = 0; i != kTotalLines;) {
-      const shared_ptr<YBqlWriteOp> op = InsertRow(session,
-                                                   kHashInt,
-                                                   kHashStr,
-                                                   i,
-                                                   StrRangeFor(i),
-                                                   -i,
-                                                   RandomValueAt(i));
+      const YBqlWriteOpPtr op = InsertRow(session,
+                                          kHashInt,
+                                          kHashStr,
+                                          i,
+                                          StrRangeFor(i),
+                                          -i,
+                                          RandomValueAt(i));
       ASSERT_OK(session->Flush());
       ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
       ++i;
@@ -429,13 +431,13 @@ TEST_F_EX(QLDmlTest, RangeFilter, QLDmlRangeFilterBase) {
 
 TEST_F(QLDmlTest, TestInsertMultipleRows) {
   {
-    const shared_ptr<YBSession> session(NewSession());
+    const YBSessionPtr session(NewSession());
 
     // Test inserting 2 rows.
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
     // insert into t values (1, 'a', 2, 'd', 4, 'e');
-    const shared_ptr<YBqlWriteOp> op1 = InsertRow(session, 1, "a", 2, "b", 3, "c");
-    const shared_ptr<YBqlWriteOp> op2 = InsertRow(session, 1, "a", 2, "d", 4, "e");
+    const YBqlWriteOpPtr op1 = InsertRow(session, 1, "a", 2, "b", 3, "c");
+    const YBqlWriteOpPtr op2 = InsertRow(session, 1, "a", 2, "d", 4, "e");
 
     CHECK_OK(session->Flush());
     EXPECT_EQ(op1->response().status(), QLResponsePB::YQL_STATUS_OK);
@@ -445,7 +447,7 @@ TEST_F(QLDmlTest, TestInsertMultipleRows) {
   {
     // Test selecting the first row back.
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -455,13 +457,13 @@ TEST_F(QLDmlTest, TestInsertMultipleRows) {
     table_.AddStringCondition(condition, "r2", QL_OP_EQUAL, "b");
     AddAllColumns(req);
 
-    const shared_ptr<YBSession> session(NewSession());
+    const YBSessionPtr session(NewSession());
     CHECK_OK(session->ApplyAndFlush(op));
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
     {
-      unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+      auto rowblock = RowsResult(op.get()).GetRowBlock();
       EXPECT_EQ(rowblock->row_count(), 1);
       EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
     }
@@ -476,7 +478,7 @@ TEST_F(QLDmlTest, TestInsertMultipleRows) {
     // Expect 1, 'a', 2, 'd', 4, 'e' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
     {
-      unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+      auto rowblock = RowsResult(op.get()).GetRowBlock();
       EXPECT_EQ(rowblock->row_count(), 1);
       EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "d", 4, "e");
     }
@@ -489,8 +491,8 @@ TEST_F(QLDmlTest, TestSelectMultipleRows) {
 
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
     // insert into t values (1, 'a', 2, 'd', 4, 'e');
-    const shared_ptr<YBqlWriteOp> op1 = InsertRow(session, 1, "a", 2, "b", 3, "c");
-    const shared_ptr<YBqlWriteOp> op2 = InsertRow(session, 1, "a", 2, "d", 4, "e");
+    const YBqlWriteOpPtr op1 = InsertRow(session, 1, "a", 2, "b", 3, "c");
+    const YBqlWriteOpPtr op2 = InsertRow(session, 1, "a", 2, "d", 4, "e");
 
     CHECK_OK(session->Flush());
     EXPECT_EQ(op1->response().status(), QLResponsePB::YQL_STATUS_OK);
@@ -500,7 +502,7 @@ TEST_F(QLDmlTest, TestSelectMultipleRows) {
   {
     // Test selecting 2 rows with an OR condition.
     // select * from t where h1 = 1 and h2 = 'a' and r2 = 'b' or r2 = 'd';
-    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -514,7 +516,7 @@ TEST_F(QLDmlTest, TestSelectMultipleRows) {
 
     // Expect 1, 'a', 2, 'b', 3, 'c' and 1, 'a', 2, 'd', 4, 'e' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 2);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
     EXPECT_ROW_VALUES(rowblock->row(1), 1, "a", 2, "d", 4, "e");
@@ -523,7 +525,7 @@ TEST_F(QLDmlTest, TestSelectMultipleRows) {
   {
     // Test selecting 2 rows with AND + OR column conditions.
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and (r2 = 'b' or r2 = 'd');
-    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -540,7 +542,7 @@ TEST_F(QLDmlTest, TestSelectMultipleRows) {
 
     // Expect 1, 'a', 2, 'b', 3, 'c' and 1, 'a', 2, 'd', 4, 'e' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 2);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
     EXPECT_ROW_VALUES(rowblock->row(1), 1, "a", 2, "d", 4, "e");
@@ -555,8 +557,8 @@ TEST_F(QLDmlTest, TestSelectWithoutConditionWithLimit) {
     // insert into t values (1, 'a', 4, 'b', 5, 'c');
     // ...
     // insert into t values (1, 'a', 101, 'b', 102, 'c');
-    const shared_ptr<YBSession> session(NewSession());
-    vector<shared_ptr<YBqlWriteOp>> ops;
+    const YBSessionPtr session(NewSession());
+    std::vector<YBqlWriteOpPtr> ops;
     for (int32_t i = 0; i < 100; i++) {
       ops.push_back(InsertRow(session, 1, "a", 2 + i, "b", 3 + i, "c"));
     }
@@ -569,14 +571,14 @@ TEST_F(QLDmlTest, TestSelectWithoutConditionWithLimit) {
   {
     // Test selecting multiple rows with a row limit.
     // select * from t where h1 = 1 and h2 = 'a' limit 5;
-    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
     AddAllColumns(req);
 
     req->set_limit(5);
-    const shared_ptr<YBSession> session(NewSession());
+    const YBSessionPtr session(NewSession());
     CHECK_OK(session->ApplyAndFlush(op));
 
     // Expect 5 rows:
@@ -586,7 +588,7 @@ TEST_F(QLDmlTest, TestSelectWithoutConditionWithLimit) {
     //   1, 'a', 5, 'b', 6, 'c'
     //   1, 'a', 6, 'b', 7, 'c'
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 5);
     for (int32_t i = 0; i < 5; i++) {
       EXPECT_ROW_VALUES(rowblock->row(i), 1, "a", 2 + i, "b", 3 + i, "c");
@@ -595,11 +597,11 @@ TEST_F(QLDmlTest, TestSelectWithoutConditionWithLimit) {
 }
 
 TEST_F(QLDmlTest, TestUpsert) {
-  const shared_ptr<YBSession> session(NewSession());
+  const YBSessionPtr session(NewSession());
   {
     // Test upserting a row (update as insert).
     // update t set c1 = 3 where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlWriteOp> op(table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT));
+    const YBqlWriteOpPtr op(table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT));
     auto* const req = op->mutable_request();
     req->set_hash_code(0);
     QLAddInt32HashValue(req, 1);
@@ -614,11 +616,11 @@ TEST_F(QLDmlTest, TestUpsert) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow();
+    const YBqlReadOpPtr op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, null returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(row.column(0).int32_value(), 1);
@@ -632,7 +634,7 @@ TEST_F(QLDmlTest, TestUpsert) {
   {
     // Test upsert to "insert" an additional column ("c2").
     // update t set c2 = 'c' where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -646,21 +648,21 @@ TEST_F(QLDmlTest, TestUpsert) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow();
+    const YBqlReadOpPtr op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
 }
 
 TEST_F(QLDmlTest, TestDelete) {
-  const shared_ptr<YBSession> session(NewSession());
+  const YBSessionPtr session(NewSession());
   {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
-    const shared_ptr<YBqlWriteOp> op = InsertRow(session, 1, "a", 2, "b", 3, "c");
+    const YBqlWriteOpPtr op = InsertRow(session, 1, "a", 2, "b", 3, "c");
     ASSERT_OK(session->Flush());
     ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
   }
@@ -668,7 +670,7 @@ TEST_F(QLDmlTest, TestDelete) {
   {
     // Test deleting a column ("c1").
     // delete c1 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -682,12 +684,12 @@ TEST_F(QLDmlTest, TestDelete) {
 
   {
     // select c1, c2 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow(session, {"c1", "c2"}, 1, "a", 2, "b");
+    const YBqlReadOpPtr op = SelectRow(session, {"c1", "c2"}, 1, "a", 2, "b");
     ASSERT_OK(session->Flush());
 
     // Expect null, 'c' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_TRUE(row.column(0).IsNull());
@@ -697,7 +699,7 @@ TEST_F(QLDmlTest, TestDelete) {
   {
     // Test deleting the whole row.
     // delete from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -710,32 +712,32 @@ TEST_F(QLDmlTest, TestDelete) {
 
   {
     // select c1, c2 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow(session, {"c1", "c2"}, 1, "a", 2, "b");
+    const YBqlReadOpPtr op = SelectRow(session, {"c1", "c2"}, 1, "a", 2, "b");
     ASSERT_OK(session->Flush());
 
     // Expect no row returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 0);
   }
 }
 
 TEST_F(QLDmlTest, TestConditionalInsert) {
-  const shared_ptr<YBSession> session(NewSession());
+  const YBSessionPtr session(NewSession());
   {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
-    const shared_ptr<YBqlWriteOp> op = InsertRow(session, 1, "a", 2, "b", 3, "c");
+    const YBqlWriteOpPtr op = InsertRow(session, 1, "a", 2, "b", 3, "c");
     ASSERT_OK(session->Flush());
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
   }
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow();
+    const YBqlReadOpPtr op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -743,7 +745,7 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
   {
     // Test IF NOT EXISTS when the row exists
     // insert into t values (1, 'a', 2, 'b', 4, 'd') if not exists;
-    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -757,7 +759,7 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
 
     // Expect not applied
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
@@ -767,11 +769,11 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow();
+    const YBqlReadOpPtr op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -779,7 +781,7 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
   {
     // Test IF NOT EXISTS AND a column condition when the row exists and column value is different.
     // insert into t values (1, 'a', 2, 'b', 4, 'd') if not exists or c2 = 'd';
-    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -796,7 +798,7 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
 
     // Expect not applied, return c2 = 'd'. Verify column names ("[applied]" and "c2") also.
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().num_columns(), 6);
@@ -822,11 +824,11 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow();
+    const YBqlReadOpPtr op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -834,7 +836,7 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
   {
     // Test IF NOT EXISTS AND a column condition when the row exists and column value matches.
     // insert into t values (1, 'a', 2, 'b', 4, 'd') if not exists or c2 = 'c';
-    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -851,7 +853,7 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
 
     // Expect applied
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
@@ -861,11 +863,11 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow();
+    const YBqlReadOpPtr op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 4, "d");
   }
@@ -873,39 +875,39 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
   {
     // Sanity check: test regular insert to override the old row.
     // insert into t values (1, 'a', 2, 'b', 5, 'e');
-    const shared_ptr<YBqlWriteOp> op = InsertRow(session, 1, "a", 2, "b", 5, "e");
+    const YBqlWriteOpPtr op = InsertRow(session, 1, "a", 2, "b", 5, "e");
     ASSERT_OK(session->Flush());
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
   }
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow();
+    const YBqlReadOpPtr op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 5, 'e' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 5, "e");
   }
 }
 
 TEST_F(QLDmlTest, TestConditionalUpdate) {
-  const shared_ptr<YBSession> session(NewSession());
+  const YBSessionPtr session(NewSession());
   {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
-    const shared_ptr<YBqlWriteOp> op = InsertRow(session, 1, "a", 2, "b", 3, "c");
+    const YBqlWriteOpPtr op = InsertRow(session, 1, "a", 2, "b", 3, "c");
     ASSERT_OK(session->Flush());
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
   }
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow();
+    const YBqlReadOpPtr op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -913,7 +915,7 @@ TEST_F(QLDmlTest, TestConditionalUpdate) {
   {
     // Test IF NOT EXISTS when the row exists.
     // update t set c1 = 6 where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if not exists;
-    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -926,7 +928,7 @@ TEST_F(QLDmlTest, TestConditionalUpdate) {
 
     // Expect not applied
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
@@ -936,11 +938,11 @@ TEST_F(QLDmlTest, TestConditionalUpdate) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow();
+    const YBqlReadOpPtr op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -948,7 +950,7 @@ TEST_F(QLDmlTest, TestConditionalUpdate) {
   {
     // Test IF EXISTS when the row exists.
     // update t set c1 = 6 where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if exists;
-    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -961,7 +963,7 @@ TEST_F(QLDmlTest, TestConditionalUpdate) {
 
     // Expect applied
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
@@ -971,32 +973,32 @@ TEST_F(QLDmlTest, TestConditionalUpdate) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow();
+    const YBqlReadOpPtr op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 6, 'c' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 6, "c");
   }
 }
 
 TEST_F(QLDmlTest, TestConditionalDelete) {
-  const shared_ptr<YBSession> session(NewSession());
+  const YBSessionPtr session(NewSession());
   {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
-    const shared_ptr<YBqlWriteOp> op = InsertRow(session, 1, "a", 2, "b", 3, "c");
+    const YBqlWriteOpPtr op = InsertRow(session, 1, "a", 2, "b", 3, "c");
     ASSERT_OK(session->Flush());
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
   }
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow();
+    const YBqlReadOpPtr op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -1004,7 +1006,7 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
   {
     // Test IF with a column condition when the column value is different.
     // delete c1 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if c1 = 4;
-    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -1017,7 +1019,7 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
 
     // Expect not applied, return c1 = 3. Verify column names also.
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().num_columns(), 6);
@@ -1043,11 +1045,11 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow();
+    const YBqlReadOpPtr op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -1055,7 +1057,7 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
   {
     // Test IF EXISTS AND a column condition when the row exists and the column value matches.
     // delete c1 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if exists and c1 = 3;
-    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -1071,7 +1073,7 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
 
     // Expect applied
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
@@ -1081,11 +1083,11 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
 
   {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBqlReadOp> op = SelectRow();
+    const YBqlReadOpPtr op = SelectRow();
 
     // Expect 1, 'a', 2, 'b', null, 'c' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(row.column(0).int32_value(), 1);
@@ -1099,7 +1101,7 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
   {
     // Test deleting the whole row with IF EXISTS when the row does not exist (wrong "r1").
     // delete from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'c' if exists;
-    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -1111,7 +1113,7 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
 
     // Expect not applied
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-    unique_ptr<QLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    auto rowblock = RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
@@ -1121,10 +1123,10 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
 }
 
 TEST_F(QLDmlTest, TestError) {
-  const shared_ptr<YBSession> session(NewSession());
+  const YBSessionPtr session(NewSession());
   {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
-    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -1139,7 +1141,7 @@ TEST_F(QLDmlTest, TestError) {
   {
     // Test selecting with incomparable column condition (int32 column "r1" with a string value).
     // select c1, c2 from t where h1 = 1 and h2 = 'a' and r1 <> '2' and r2 <> 'b';
-    const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -1159,7 +1161,7 @@ TEST_F(QLDmlTest, TestError) {
 
 TEST_F(QLDmlTest, TestSimultaneousReadAndWrite) {
   constexpr int kNumIterations = 10;
-  const shared_ptr<YBSession> session(NewSession());
+  const YBSessionPtr session(NewSession());
   for (int i = 0; i != kNumIterations; ++i) {
     auto write_op = InsertRow(session, 1, "a", i, "b", i * 2, "c");
     std::shared_ptr<YBqlReadOp> read_op;
@@ -1269,7 +1271,7 @@ TEST_F(QLDmlTest, DeletePartialRangeKey) {
   }
 
   {
-    const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, row_key.h1);
     QLAddStringHashValue(req, row_key.h2);

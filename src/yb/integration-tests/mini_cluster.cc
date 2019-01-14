@@ -35,6 +35,9 @@
 #include <algorithm>
 
 #include "yb/client/client.h"
+
+#include "yb/consensus/consensus.h"
+
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_manager.h"
@@ -45,15 +48,19 @@
 #include "yb/rpc/messenger.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/skewed_clock.h"
+
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
+using namespace std::literals;
 using strings::Substitute;
-
 
 DEFINE_string(mini_cluster_base_dir, "", "Directory for master/ts data");
 DEFINE_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
@@ -510,6 +517,80 @@ std::vector<server::SkewedClockDeltaChanger> SkewClocks(
         i * clock_skew, std::static_pointer_cast<server::SkewedClock>(hybrid_clock->TEST_clock()));
   }
   return delta_changers;
+}
+
+void StepDownAllTablets(MiniCluster* cluster) {
+  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+    std::vector<tablet::TabletPeerPtr> peers;
+    cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+    for (const auto& peer : peers) {
+      consensus::LeaderStepDownRequestPB req;
+      req.set_tablet_id(peer->tablet_id());
+      consensus::LeaderStepDownResponsePB resp;
+      ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
+    }
+  }
+}
+
+std::vector<tablet::TabletPeerPtr> ListTabletPeers(MiniCluster* cluster, ListPeersFilter filter) {
+  switch (filter) {
+    case ListPeersFilter::kAll:
+      return ListTabletPeers(cluster, [](const auto& peer) { return true; });
+    case ListPeersFilter::kLeaders:
+      return ListTabletPeers(cluster, [](const auto& peer) {
+        return peer->consensus()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+      });
+    case ListPeersFilter::kNonLeaders:
+      return ListTabletPeers(cluster, [](const auto& peer) {
+        return peer->consensus()->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
+      });
+  }
+
+  FATAL_INVALID_ENUM_VALUE(ListPeersFilter, filter);
+}
+
+std::vector<tablet::TabletPeerPtr> ListTabletPeers(
+    MiniCluster* cluster,
+    const std::function<bool(const std::shared_ptr<tablet::TabletPeer>&)>& filter) {
+  std::vector<tablet::TabletPeerPtr> result;
+
+  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+    auto server = cluster->mini_tablet_server(i)->server();
+    auto peers = server->tablet_manager()->GetTabletPeers();
+    for (const auto& peer : peers) {
+      if (filter(peer)) {
+        result.push_back(peer);
+      }
+    }
+  }
+
+  return result;
+}
+
+Status WaitForLeaderOfSingleTablet(
+    MiniCluster* cluster, tablet::TabletPeerPtr leader, MonoDelta duration,
+    const std::string& description) {
+  return WaitFor([cluster, &leader] {
+    auto new_leaders = ListTabletPeers(cluster, ListPeersFilter::kLeaders);
+    return new_leaders.size() == 1 && new_leaders[0] == leader;
+  }, duration, description);
+}
+
+Status StepDown(
+    tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
+    ForceStepDown force_step_down) {
+  consensus::LeaderStepDownRequestPB req;
+  req.set_tablet_id(leader->tablet_id());
+  req.set_new_leader_uuid(new_leader_uuid);
+  if (force_step_down) {
+    req.set_force_step_down(true);
+  }
+  consensus::LeaderStepDownResponsePB resp;
+  RETURN_NOT_OK(leader->consensus()->StepDown(&req, &resp));
+  if (resp.has_error()) {
+    return STATUS_FORMAT(RuntimeError, "Step down failed: $0", resp);
+  }
+  return Status::OK();
 }
 
 }  // namespace yb

@@ -21,12 +21,16 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/util/bfql/gen_opcodes.h"
 
 DECLARE_double(respond_write_failed_probability);
 DECLARE_bool(detect_duplicates_for_retryable_requests);
+DECLARE_int32(raft_heartbeat_interval_ms);
+
+using namespace std::literals;
 
 namespace yb {
 namespace client {
@@ -48,7 +52,11 @@ class QLStressTest : public QLDmlTestBase {
     YBSchemaBuilder b;
     InitSchemaBuilder(&b);
 
-    ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &b));
+    ASSERT_OK(table_.Create(kTableName, NumTablets(), client_.get(), &b));
+  }
+
+  virtual int NumTablets() {
+    return CalcNumTablets(3);
   }
 
   virtual void InitSchemaBuilder(YBSchemaBuilder* builder) {
@@ -233,7 +241,7 @@ TEST_F(QLStressTest, RetryWritesDisabled) {
 
 class QLStressTestIntValue : public QLStressTest {
  private:
-  void InitSchemaBuilder(YBSchemaBuilder* builder) {
+  void InitSchemaBuilder(YBSchemaBuilder* builder) override {
     builder->AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
     builder->AddColumn(kValueColumn)->Type(INT64);
   }
@@ -285,6 +293,91 @@ TEST_F_EX(QLStressTest, Increment, QLStressTestIntValue) {
 
   auto value = ASSERT_RESULT(ReadRow(session, kKey));
   ASSERT_EQ(value.int64_value(), kIncrements) << value.ToString();
+}
+
+class QLStressTestSingleTablet : public QLStressTest {
+ private:
+  int NumTablets() override {
+    return 1;
+  }
+};
+
+// This test has the following scenario:
+// Add some operations to the old leader, but don't add to other nodes.
+// Switch leadership to a new leader, but don't accept updates from new leader by old leader.
+// Also don't replicate no op by the new leader.
+// Switch leadership back to the old leader.
+// New leader should successfully accept old operations from old leader.
+TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleTablet) {
+  auto session = NewSession();
+  ASSERT_OK(WriteRow(session, 0, "value0"));
+
+  auto leaders = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  ASSERT_EQ(1, leaders.size());
+  auto old_leader = leaders[0];
+
+  auto followers = ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders);
+  ASSERT_EQ(2, followers.size());
+  tablet::TabletPeerPtr temp_leader = followers[0];
+  tablet::TabletPeerPtr always_follower = followers[1];
+
+  ASSERT_OK(WaitFor([old_leader, always_follower]() -> Result<bool> {
+    auto leader_op_id = VERIFY_RESULT(old_leader->consensus()->GetLastReceivedOpId());
+    auto follower_op_id = VERIFY_RESULT(always_follower->consensus()->GetLastReceivedOpId());
+    return follower_op_id.index() == leader_op_id.index();
+  }, 5s, "Follower catch up"));
+
+  for (const auto& follower : followers) {
+    down_cast<consensus::RaftConsensus*>(follower->consensus())->TEST_RejectMode(
+        consensus::RejectMode::kAll);
+  }
+
+  InsertRow(session, 1, "value1");
+  auto flush_future = session->FlushFuture();
+
+  InsertRow(session, 2, "value2");
+  auto flush_future2 = session->FlushFuture();
+
+  // Give leader some time to receive operation.
+  // TODO wait for specific event.
+  std::this_thread::sleep_for(1s);
+
+  LOG(INFO) << "Step down old leader " << old_leader->permanent_uuid()
+            << " in favor of " << temp_leader->permanent_uuid();
+
+  ASSERT_OK(StepDown(old_leader, temp_leader->permanent_uuid(), ForceStepDown::kFalse));
+
+  down_cast<consensus::RaftConsensus*>(old_leader->consensus())->TEST_RejectMode(
+      consensus::RejectMode::kAll);
+  down_cast<consensus::RaftConsensus*>(temp_leader->consensus())->TEST_RejectMode(
+      consensus::RejectMode::kNone);
+  down_cast<consensus::RaftConsensus*>(always_follower->consensus())->TEST_RejectMode(
+      consensus::RejectMode::kNonEmpty);
+
+  ASSERT_OK(WaitForLeaderOfSingleTablet(
+      cluster_.get(), temp_leader, 10s, "Waiting for new leader"));
+
+  // Give new leader some time to request lease.
+  // TODO wait for specific event.
+  std::this_thread::sleep_for(3s);
+  auto temp_leader_safe_time = temp_leader->tablet()->SafeTime(tablet::RequireLease::kTrue);
+  LOG(INFO) << "Safe time: " << temp_leader_safe_time;
+  ASSERT_FALSE(temp_leader_safe_time.is_valid());
+
+  LOG(INFO) << "Transferring leadership from " << temp_leader->permanent_uuid()
+            << " back to " << old_leader->permanent_uuid();
+  ASSERT_OK(StepDown(temp_leader, old_leader->permanent_uuid(), ForceStepDown::kTrue));
+
+  ASSERT_OK(WaitForLeaderOfSingleTablet(
+      cluster_.get(), old_leader, 10s, "Waiting old leader to restore leadership"));
+
+  down_cast<consensus::RaftConsensus*>(always_follower->consensus())->TEST_RejectMode(
+      consensus::RejectMode::kNone);
+
+  ASSERT_OK(WriteRow(session, 3, "value3"));
+
+  ASSERT_OK(flush_future.get());
+  ASSERT_OK(flush_future2.get());
 }
 
 } // namespace client

@@ -20,6 +20,8 @@
 
 #include "yb/util/random_util.h"
 
+using namespace std::literals;
+
 namespace yb {
 namespace client {
 

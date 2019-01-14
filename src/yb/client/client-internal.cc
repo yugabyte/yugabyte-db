@@ -344,18 +344,19 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
             ret = rts;
             // If the tserver is local, we are done here.
             break;
-          } else if (cloud_info_pb_.has_placement_zone() && rts->cloud_info().has_placement_zone()
-              && cloud_info_pb_.placement_zone() == rts->cloud_info().placement_zone()) {
-            // Note down that we have found a zone local tserver and continue looking for node
-            // local tserver.
-            ret = rts;
-            local_zone_ts = true;
           } else if (cloud_info_pb_.has_placement_region() &&
-              rts->cloud_info().has_placement_region() &&
-              cloud_info_pb_.placement_region() == rts->cloud_info().placement_region() &&
-              !local_zone_ts) {
-            // Look for a region local tserver only if we haven't found a zone local tserver yet.
-            ret = rts;
+                     rts->cloud_info().has_placement_region() &&
+                     cloud_info_pb_.placement_region() == rts->cloud_info().placement_region()) {
+            if (cloud_info_pb_.has_placement_zone() && rts->cloud_info().has_placement_zone() &&
+                cloud_info_pb_.placement_zone() == rts->cloud_info().placement_zone()) {
+              // Note down that we have found a zone local tserver and continue looking for node
+              // local tserver.
+              ret = rts;
+              local_zone_ts = true;
+            } else if (!local_zone_ts) {
+              // Look for a region local tserver only if we haven't found a zone local tserver yet.
+              ret = rts;
+            }
           }
         }
 

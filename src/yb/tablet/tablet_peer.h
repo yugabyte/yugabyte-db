@@ -420,8 +420,6 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };
 
-typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
-
 }  // namespace tablet
 }  // namespace yb
 

@@ -344,14 +344,23 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     }
 
     const HybridTime now_ht = clock_->Now();
-    auto ht_lease_expiration_micros = now_ht.GetPhysicalValueMicros() +
-                                      FLAGS_ht_lease_duration_ms * 1000;
-    auto leader_lease_duration_ms = GetAtomicFlag(&FLAGS_leader_lease_duration_ms);
-    request->set_leader_lease_duration_ms(leader_lease_duration_ms);
-    request->set_ht_lease_expiration(ht_lease_expiration_micros);
-    peer->last_leader_lease_expiration_sent_to_follower =
-        MonoTime::Now() + MonoDelta::FromMilliseconds(leader_lease_duration_ms);
-    peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
+
+    is_new = peer->is_new;
+    if (!is_new) {
+      auto ht_lease_expiration_micros = now_ht.GetPhysicalValueMicros() +
+                                        FLAGS_ht_lease_duration_ms * 1000;
+      auto leader_lease_duration_ms = GetAtomicFlag(&FLAGS_leader_lease_duration_ms);
+      request->set_leader_lease_duration_ms(leader_lease_duration_ms);
+      request->set_ht_lease_expiration(ht_lease_expiration_micros);
+      peer->last_leader_lease_expiration_sent_to_follower =
+          MonoTime::Now() + MonoDelta::FromMilliseconds(leader_lease_duration_ms);
+      peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
+    } else {
+      request->clear_leader_lease_duration_ms();
+      request->clear_ht_lease_expiration();
+      peer->last_leader_lease_expiration_received_by_follower = MonoTime();
+      peer->last_ht_lease_expiration_sent_to_follower = 0;
+    }
 
     if (propagated_safe_time_provider_ && FLAGS_propagate_safe_time) {
       propagated_safe_time = propagated_safe_time_provider_();
@@ -372,9 +381,8 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     if (member_type) *member_type = peer->member_type;
     if (last_exchange_successful) *last_exchange_successful = peer->is_last_exchange_successful;
     *needs_remote_bootstrap = peer->needs_remote_bootstrap;
-    is_new = peer->is_new;
     next_index = peer->next_index;
-    if (peer->member_type == RaftPeerPB::MemberType::RaftPeerPB_MemberType_VOTER) {
+    if (peer->member_type == RaftPeerPB::VOTER) {
       is_voter = true;
     }
   }
@@ -467,9 +475,11 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
           << ". Size: " << request->ops_size()
           << ". From: " << request->ops(0).id().ShortDebugString() << ". To: "
           << request->ops(request->ops_size() - 1).id().ShortDebugString();
+      VLOG_WITH_PREFIX_UNLOCKED(3) << "Operations: " << yb::ToString(request->ops());
     } else {
-      VLOG_WITH_PREFIX_UNLOCKED(2) << "Sending status only request to Peer: " << uuid
-          << ": " << request->DebugString();
+      VLOG_WITH_PREFIX_UNLOCKED(2)
+          << "Sending " << (is_new ? "new " : "") << "status only request to Peer: " << uuid
+          << ": " << request->ShortDebugString();
     }
   }
 

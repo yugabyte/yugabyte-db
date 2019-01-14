@@ -20,6 +20,8 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+using namespace std::literals;
+
 namespace yb {
 namespace client {
 
@@ -82,6 +84,12 @@ void QLDmlTestBase::DoTearDown() {
   YBMiniClusterTestBase::DoTearDown();
 }
 
+std::shared_ptr<client::YBSession> QLDmlTestBase::NewSession() {
+  auto session = client_->NewSession();
+  session->SetTimeout(60s);
+  return session;
+}
+
 void KeyValueTableTest::CreateTable(Transactional transactional) {
   YBSchemaBuilder builder;
   builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
@@ -95,7 +103,7 @@ void KeyValueTableTest::CreateTable(Transactional transactional) {
   ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &builder));
 }
 
-Result<shared_ptr<YBqlWriteOp>> KeyValueTableTest::WriteRow(
+Result<YBqlWriteOpPtr> KeyValueTableTest::WriteRow(
     const YBSessionPtr& session, int32_t key, int32_t value,
     const WriteOpType op_type, Flush flush) {
   VLOG(4) << "Calling WriteRow key=" << key << " value=" << value << " op_type="
@@ -117,19 +125,19 @@ Result<shared_ptr<YBqlWriteOp>> KeyValueTableTest::WriteRow(
   return op;
 }
 
-Result<shared_ptr<YBqlWriteOp>> KeyValueTableTest::DeleteRow(
+Result<YBqlWriteOpPtr> KeyValueTableTest::DeleteRow(
     const YBSessionPtr& session, int32_t key) {
   return WriteRow(session, key, 0 /* value */, WriteOpType::DELETE);
 }
 
-Result<shared_ptr<YBqlWriteOp>> KeyValueTableTest::UpdateRow(
+Result<YBqlWriteOpPtr> KeyValueTableTest::UpdateRow(
     const YBSessionPtr& session, int32_t key, int32_t value) {
   return WriteRow(session, key, value, WriteOpType::UPDATE);
 }
 
 Result<int32_t> KeyValueTableTest::SelectRow(
     const YBSessionPtr& session, int32_t key, const std::string& column) {
-  const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
+  const YBqlReadOpPtr op = table_.NewReadOp();
   auto* const req = op->mutable_request();
   QLAddInt32HashValue(req, key);
   table_.AddColumns({column}, req);
