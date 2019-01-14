@@ -13,7 +13,7 @@ import { YBButton } from '../../common/forms/fields';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsPanel } from '../../panels';
 import { ListTablesContainer, ListBackupsContainer } from '../../tables';
-import { isEmptyObject, isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
+import { isEmptyObject, isNonEmptyObject, isNonEmptyArray, isEmptyArray } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { hasLiveNodes } from 'utils/UniverseUtils';
 
@@ -36,7 +36,6 @@ class UniverseDetail extends Component {
 
   componentWillUnmount() {
     this.props.resetUniverseInfo();
-    this.props.resetUniverseTasks();
     this.props.resetTablesList();
   }
 
@@ -49,7 +48,6 @@ class UniverseDetail extends Component {
         uuid = this.props.universeUUID;
       }
       this.props.getUniverseInfo(uuid);
-      this.props.fetchUniverseTasks(uuid);
       this.props.getHealthCheck(uuid);
     }
   }
@@ -105,6 +103,7 @@ class UniverseDetail extends Component {
       updateAvailable,
       modal: { showModal, visibleModal },
       universe,
+      tasks,
       universe: { currentUniverse },
       location: { query, pathname },
       showSoftwareUpgradesModal,
@@ -150,7 +149,7 @@ class UniverseDetail extends Component {
         </div>
       </Tab>,
       <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab" mountOnEnter={true} unmountOnExit={true}>
-        <UniverseTaskList universe={universe}/>
+        <UniverseTaskList universe={universe} tasks={tasks} />
       </Tab>,
       <Tab eventKey={"backups"} title="Backups" key="backups-tab" mountOnEnter={true} unmountOnExit={true}>
         <ListBackupsContainer currentUniverse={currentUniverse.data} />
@@ -240,16 +239,29 @@ class UniverseDetail extends Component {
 }
 
 class UniverseTaskList extends Component {
+  tasksForUniverse = () => {
+    const {universe: {currentUniverse: { data: {universeUUID}}}, tasks: {customerTaskList}} = this.props;
+    const resultTasks = [];
+    if(isNonEmptyArray(customerTaskList)) {
+      customerTaskList.forEach((taskItem) => {
+        if (taskItem.targetUUID === universeUUID) resultTasks.push(taskItem);
+      });
+    };
+    return resultTasks;
+  };
+
   render() {
-    const {universe: {universeTasks, currentUniverse}} = this.props;
+    const {universe: {currentUniverse}, tasks: {customerTaskList}} = this.props;
+    const currentUniverseTasks = this.tasksForUniverse();
     let universeTaskUUIDs = [];
     const universeTaskHistoryArray = [];
     let universeTaskHistory = <span/>;
-    if (getPromiseState(universeTasks).isLoading()) {
+    let currentTaskProgress = <span/>;
+    if (isEmptyArray(customerTaskList)) {
       universeTaskHistory = <YBLoading />;
+      currentTaskProgress = <YBLoading/>;
     }
-    const currentUniverseTasks = universeTasks.data[currentUniverse.data.universeUUID];
-    if (getPromiseState(universeTasks).isSuccess() && isNonEmptyObject(currentUniverse.data) && isNonEmptyArray(currentUniverseTasks)) {
+    if (isNonEmptyArray(customerTaskList) && isNonEmptyObject(currentUniverse.data) && isNonEmptyArray(currentUniverseTasks)) {
       universeTaskUUIDs = currentUniverseTasks.map(function(task) {
         universeTaskHistoryArray.push(task);
         return (task.status !== "Failure" && task.percentComplete !== 100) ? task.id : false;
@@ -258,11 +270,7 @@ class UniverseTaskList extends Component {
     if (isNonEmptyArray(universeTaskHistoryArray)) {
       universeTaskHistory = <TaskListTable taskList={universeTaskHistoryArray} title={"Task History"}/>;
     }
-    let currentTaskProgress = <span/>;
-    if (getPromiseState(universeTasks).isLoading()) {
-      currentTaskProgress = <YBLoading/>;
-    }
-    else if (getPromiseState(universeTasks).isSuccess() && isNonEmptyArray(universeTaskUUIDs)) {
+    if (isNonEmptyArray(customerTaskList) && isNonEmptyArray(universeTaskUUIDs)) {
       currentTaskProgress = <TaskProgressContainer taskUUIDs={universeTaskUUIDs} type="StepBar" timeoutInterval={TASK_SHORT_TIMEOUT}/>;
     }
     return (
