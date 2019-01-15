@@ -437,7 +437,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     if (!masterOverrides.isEmpty()) {
       gflagOverrides.put("master", masterOverrides);
     }
-    // Go over master flags.
+    // Go over tserver flags.
     Map<String, Object> tserverOverrides = new HashMap<String, Object>(userIntent.tserverGFlags);
     if (placementCloud != null && tserverOverrides.get("placement_cloud") == null) {
       tserverOverrides.put("placement_cloud", placementCloud);

@@ -33,7 +33,7 @@ import static org.mockito.Mockito.mock;
 import static play.inject.Bindings.bind;
 
 public abstract class CommissionerBaseTest extends WithApplication {
-  private int maxRetryCount = 60;
+  private int maxRetryCount = 100;
   protected AccessManager mockAccessManager;
   protected NetworkManager mockNetworkManager;
   protected ConfigHelper mockConfigHelper;

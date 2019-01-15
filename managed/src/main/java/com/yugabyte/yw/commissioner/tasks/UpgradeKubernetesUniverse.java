@@ -66,24 +66,17 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
         case Software:
           LOG.info("Upgrading software version to {} in universe {}",
                    taskParams().ybSoftwareVersion, universe.name);
-          
-          for (int partition = userIntent.replicationFactor - 1; partition >= 0; partition--) {
-            createKubernetesExecutorTaskForServerType(KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
-                taskParams().ybSoftwareVersion, ServerType.MASTER,
-                partition);
-            createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
-                String.format("yb-master-%d", partition), taskParams().sleepAfterMasterRestartMillis / 1000);
-          }
-          for (int partition = userIntent.numNodes - 1; partition >= 0; partition--) {
-            createKubernetesExecutorTaskForServerType(KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
-                taskParams().ybSoftwareVersion, ServerType.TSERVER,
-                partition);
-            createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
-                String.format("yb-tserver-%d", partition), taskParams().sleepAfterTServerRestartMillis / 1000);
-          }
-          createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO);
 
-          createSwamperTargetUpdateTask(false);
+          createUpgradeTask(userIntent);
+          
+          didUpgradeUniverse = true;
+          break;
+        case GFlags:
+          LOG.info("Upgrading GFlags in universe {}", universe.name);
+          updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
+              .setSubTaskGroupType(getTaskSubGroupType());
+
+          createUpgradeTask(userIntent);
 
           didUpgradeUniverse = true;
           break;
@@ -119,5 +112,32 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
       default:
         return SubTaskGroupType.Invalid;
     }
+  }
+
+  private void createUpgradeTask(UniverseDefinitionTaskParams.UserIntent userIntent) {
+    String version = null;
+    boolean flag = true;
+    if (taskParams().taskType == UpgradeUniverse.UpgradeTaskType.Software) {
+       version = taskParams().ybSoftwareVersion;
+       flag = false;
+    }
+    if (!taskParams().masterGFlags.isEmpty() || !flag) {
+      for (int partition = userIntent.replicationFactor - 1; partition >= 0; partition--) {
+        createKubernetesExecutorTaskForServerType(KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+            version, ServerType.MASTER, partition);
+        createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
+            String.format("yb-master-%d", partition), taskParams().sleepAfterMasterRestartMillis / 1000);
+      }
+    }
+    if (!taskParams().tserverGFlags.isEmpty() || !flag) {
+      userIntent.tserverGFlags = taskParams().tserverGFlags;
+      for (int partition = userIntent.numNodes - 1; partition >= 0; partition--) {
+        createKubernetesExecutorTaskForServerType(KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+            version, ServerType.TSERVER, partition);
+        createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
+            String.format("yb-tserver-%d", partition), taskParams().sleepAfterTServerRestartMillis / 1000);
+      }
+    }
+    createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO);
   }
 }
