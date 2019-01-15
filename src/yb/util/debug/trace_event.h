@@ -732,7 +732,7 @@
 
 #define TRACE_EVENT_OBJECT_SNAPSHOT_WITH_ID(category_group, name, id, snapshot) \
     INTERNAL_TRACE_EVENT_ADD_WITH_ID(TRACE_EVENT_PHASE_SNAPSHOT_OBJECT, \
-        category_group, name, TRACE_ID_DONT_MANGLE(id), TRACE_EVENT_FLAG_NONE,\
+        category_group, name, TRACE_ID_DONT_MANGLE(id), TRACE_EVENT_FLAG_NONE, \
         "snapshot", snapshot)
 
 #define TRACE_EVENT_OBJECT_DELETED_WITH_ID(category_group, name, id) \
@@ -852,10 +852,10 @@ TRACE_EVENT_API_CLASS_EXPORT extern \
 // Implementation detail: trace event macros create temporary variables
 // to keep instrumentation overhead low. These macros give each temporary
 // variable a unique name based on the line number to prevent name collisions.
-#define INTERNAL_TRACE_EVENT_UID3(a,b) \
+#define INTERNAL_TRACE_EVENT_UID3(a, b) \
     trace_event_unique_##a##b
-#define INTERNAL_TRACE_EVENT_UID2(a,b) \
-    INTERNAL_TRACE_EVENT_UID3(a,b)
+#define INTERNAL_TRACE_EVENT_UID2(a, b) \
+    INTERNAL_TRACE_EVENT_UID3(a, b)
 #define INTERNAL_TRACE_EVENT_UID(name_prefix) \
     INTERNAL_TRACE_EVENT_UID2(name_prefix, __LINE__)
 
@@ -1016,18 +1016,18 @@ class TraceID {
    public:
     explicit DontMangle(const void* id)
         : data_(static_cast<uint64_t>(
-              reinterpret_cast<unsigned long>(id))) {}
+              reinterpret_cast<unsigned long>(id))) {}  // NOLINT(runtime/int)
     explicit DontMangle(uint64_t id) : data_(id) {}
     explicit DontMangle(unsigned int id) : data_(id) {}
-    explicit DontMangle(unsigned short id) : data_(id) {}
+    explicit DontMangle(unsigned short id) : data_(id) {}  // NOLINT(runtime/int)
     explicit DontMangle(unsigned char id) : data_(id) {}
-    explicit DontMangle(long long id)
+    explicit DontMangle(long long id)  // NOLINT(runtime/int)
         : data_(static_cast<uint64_t>(id)) {}
-    explicit DontMangle(long id)
+    explicit DontMangle(long id)  // NOLINT(runtime/int)
         : data_(static_cast<uint64_t>(id)) {}
     explicit DontMangle(int id)
         : data_(static_cast<uint64_t>(id)) {}
-    explicit DontMangle(short id)
+    explicit DontMangle(short id)  // NOLINT(runtime/int)
         : data_(static_cast<uint64_t>(id)) {}
     explicit DontMangle(signed char id)
         : data_(static_cast<uint64_t>(id)) {}
@@ -1040,15 +1040,15 @@ class TraceID {
    public:
     explicit ForceMangle(uint64_t id) : data_(id) {}
     explicit ForceMangle(unsigned int id) : data_(id) {}
-    explicit ForceMangle(unsigned short id) : data_(id) {}
+    explicit ForceMangle(unsigned short id) : data_(id) {}  // NOLINT(runtime/int)
     explicit ForceMangle(unsigned char id) : data_(id) {}
-    explicit ForceMangle(long long id)
+    explicit ForceMangle(long long id)  // NOLINT(runtime/int)
         : data_(static_cast<uint64_t>(id)) {}
-    explicit ForceMangle(long id)
+    explicit ForceMangle(long id)  // NOLINT(runtime/int)
         : data_(static_cast<uint64_t>(id)) {}
     explicit ForceMangle(int id)
         : data_(static_cast<uint64_t>(id)) {}
-    explicit ForceMangle(short id)
+    explicit ForceMangle(short id)  // NOLINT(runtime/int)
         : data_(static_cast<uint64_t>(id)) {}
     explicit ForceMangle(signed char id)
         : data_(static_cast<uint64_t>(id)) {}
@@ -1059,7 +1059,7 @@ class TraceID {
 
   TraceID(const void* id, unsigned char* flags)
       : data_(static_cast<uint64_t>(
-              reinterpret_cast<unsigned long>(id))) {
+              reinterpret_cast<unsigned long>(id))) {  // NOLINT(runtime/int)
     *flags |= TRACE_EVENT_FLAG_MANGLE_ID;
   }
   TraceID(ForceMangle id, unsigned char* flags) : data_(id.data()) {
@@ -1071,17 +1071,17 @@ class TraceID {
       : data_(id) { (void)flags; }
   TraceID(unsigned int id, unsigned char* flags)
       : data_(id) { (void)flags; }
-  TraceID(unsigned short id, unsigned char* flags)
+  TraceID(unsigned short id, unsigned char* flags)  // NOLINT(runtime/int)
       : data_(id) { (void)flags; }
   TraceID(unsigned char id, unsigned char* flags)
       : data_(id) { (void)flags; }
-  TraceID(long long id, unsigned char* flags)
+  TraceID(long long id, unsigned char* flags)  // NOLINT(runtime/int)
       : data_(static_cast<uint64_t>(id)) { (void)flags; }
-  TraceID(long id, unsigned char* flags)
+  TraceID(long id, unsigned char* flags)  // NOLINT(runtime/int)
       : data_(static_cast<uint64_t>(id)) { (void)flags; }
   TraceID(int id, unsigned char* flags)
       : data_(static_cast<uint64_t>(id)) { (void)flags; }
-  TraceID(short id, unsigned char* flags)
+  TraceID(short id, unsigned char* flags)  // NOLINT(runtime/int)
       : data_(static_cast<uint64_t>(id)) { (void)flags; }
   TraceID(signed char id, unsigned char* flags)
       : data_(static_cast<uint64_t>(id)) { (void)flags; }
@@ -1096,7 +1096,7 @@ class TraceID {
 union TraceValueUnion {
   bool as_bool;
   uint64_t as_uint;
-  long long as_int;
+  long long as_int;  // NOLINT(runtime/int)
   double as_double;
   const void* as_pointer;
   const char* as_string;
@@ -1140,12 +1140,12 @@ class TraceStringWithCopy {
 
 INTERNAL_DECLARE_SET_TRACE_VALUE_INT(uint64_t, TRACE_VALUE_TYPE_UINT)
 INTERNAL_DECLARE_SET_TRACE_VALUE_INT(unsigned int, TRACE_VALUE_TYPE_UINT)
-INTERNAL_DECLARE_SET_TRACE_VALUE_INT(unsigned short, TRACE_VALUE_TYPE_UINT)
+INTERNAL_DECLARE_SET_TRACE_VALUE_INT(unsigned short, TRACE_VALUE_TYPE_UINT)  // NOLINT(runtime/int)
 INTERNAL_DECLARE_SET_TRACE_VALUE_INT(unsigned char, TRACE_VALUE_TYPE_UINT)
-INTERNAL_DECLARE_SET_TRACE_VALUE_INT(long long, TRACE_VALUE_TYPE_INT)
-INTERNAL_DECLARE_SET_TRACE_VALUE_INT(long, TRACE_VALUE_TYPE_INT)
+INTERNAL_DECLARE_SET_TRACE_VALUE_INT(long long, TRACE_VALUE_TYPE_INT)  // NOLINT(runtime/int)
+INTERNAL_DECLARE_SET_TRACE_VALUE_INT(long, TRACE_VALUE_TYPE_INT)  // NOLINT(runtime/int)
 INTERNAL_DECLARE_SET_TRACE_VALUE_INT(int, TRACE_VALUE_TYPE_INT)
-INTERNAL_DECLARE_SET_TRACE_VALUE_INT(short, TRACE_VALUE_TYPE_INT)
+INTERNAL_DECLARE_SET_TRACE_VALUE_INT(short, TRACE_VALUE_TYPE_INT)  // NOLINT(runtime/int)
 INTERNAL_DECLARE_SET_TRACE_VALUE_INT(signed char, TRACE_VALUE_TYPE_INT)
 INTERNAL_DECLARE_SET_TRACE_VALUE(bool, arg, as_bool, TRACE_VALUE_TYPE_BOOL)
 INTERNAL_DECLARE_SET_TRACE_VALUE(double, arg, as_double,
@@ -1418,8 +1418,8 @@ class TRACE_EVENT_API_CLASS_EXPORT ScopedTracer {
   // members of this class instead, compiler warnings occur about potential
   // uninitialized accesses.
   struct Data {
-    const unsigned char* category_group_enabled;
-    const char* name;
+    const unsigned char* category_group_enabled = nullptr;
+    const char* name = nullptr;
     yb::debug::TraceEventHandle event_handle;
   };
   Data* p_data_;
@@ -1453,7 +1453,7 @@ class TRACE_EVENT_API_CLASS_EXPORT ScopedTraceBinaryEfficient {
 template<size_t BucketNumber>
 class TraceEventSamplingStateScope {
  public:
-  TraceEventSamplingStateScope(const char* category_and_name) {
+  explicit TraceEventSamplingStateScope(const char* category_and_name) {
     previous_state_ = TraceEventSamplingStateScope<BucketNumber>::Current();
     TraceEventSamplingStateScope<BucketNumber>::Set(category_and_name);
   }

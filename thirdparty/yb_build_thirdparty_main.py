@@ -35,6 +35,7 @@ sys.path = [os.path.join(os.path.dirname(__file__), '..', 'python')] + sys.path
 from yb.linuxbrew import get_linuxbrew_dir
 
 CLOUDFRONT_URL = 'http://d3dr9sfxru4sde.cloudfront.net/{}'
+CHECKSUM_FILE_NAME = 'thirdparty_src_checksums.txt'
 
 
 def hashsum_file(hash, filename, block_size=65536):
@@ -50,6 +51,31 @@ def indent_lines(s, num_spaces=4):
     return "\n".join([
         ' ' * num_spaces + line for line in s.split("\n")
     ])
+
+
+def get_make_parallelism():
+    return int(os.environ.get('YB_MAKE_PARALLELISM', multiprocessing.cpu_count()))
+
+
+# This is the equivalent of shutil.which in Python 3.
+def where_is_program(program_name):
+    path = os.getenv('PATH')
+    for path_dir in path.split(os.path.pathsep):
+        full_path = os.path.join(path_dir, program_name)
+        if os.path.exists(full_path) and os.access(full_path, os.X_OK):
+            return full_path
+
+
+g_is_ninja_available = None
+def is_ninja_available():
+    global g_is_ninja_available
+    if g_is_ninja_available is None:
+        g_is_ninja_available = bool(where_is_program('ninja'))
+    return g_is_ninja_available
+
+
+def compute_file_sha256(path):
+    return hashsum_file(hashlib.sha256(), path)
 
 
 class Builder:
@@ -87,7 +113,9 @@ class Builder:
                 build_definitions.libcxx.LibCXXDependency(),
 
                 build_definitions.libunwind.LibUnwindDependency(),
-                build_definitions.libbacktrace.LibBacktraceDependency()
+                build_definitions.libbacktrace.LibBacktraceDependency(),
+
+                build_definitions.include_what_you_use.IncludeWhatYouUseDependency()
             ]
 
         self.dependencies += [
@@ -141,7 +169,16 @@ class Builder:
                             const=True,
                             default=False,
                             help='Clean.')
-        parser.add_argument('dependencies', nargs=argparse.REMAINDER, help='Dependencies to build.')
+        parser.add_argument('--add_checksum',
+                            help='Compute and add unknown checksums to %s' % CHECKSUM_FILE_NAME,
+                            action='store_true')
+        parser.add_argument('dependencies',
+            nargs=argparse.REMAINDER, help='Dependencies to build.')
+        parser.add_argument('-j', '--make-parallelism',
+                            help='How many cores should the build use. This is passed to '
+                                 'Make/Ninja child processes. This can also be specified using the '
+                                 'YB_MAKE_PARALLELISM environment variable.',
+                            type=int)
         self.args = parser.parse_args()
 
         if self.args.dependencies:
@@ -154,6 +191,9 @@ class Builder:
                     self.selected_dependencies.append(dep)
         else:
             self.selected_dependencies = self.dependencies
+
+        if self.args.make_parallelism:
+            os.environ['YB_MAKE_PARALLELISM'] = str(self.args.make_parallelism)
 
 
     def run(self):
@@ -318,8 +358,11 @@ class Builder:
     def source_path(self, dep):
         return os.path.join(self.tp_src_dir, dep.dir)
 
+    def get_checksum_file(self):
+        return os.path.join(self.tp_dir, CHECKSUM_FILE_NAME)
+
     def load_expected_checksums(self):
-        checksum_file = os.path.join(self.tp_dir, 'thirdparty_src_checksums.txt')
+        checksum_file = self.get_checksum_file()
         if not os.path.exists(checksum_file):
             fatal("Expected checksum file not found at {}".format(checksum_file))
 
@@ -327,7 +370,7 @@ class Builder:
         with open(checksum_file, 'rt') as inp:
             for line in inp:
                 line = line.strip()
-                if not line:
+                if not line or line.startswith('#'):
                     continue
                 sum, fname = line.split(None, 1)
                 if not re.match('^[0-9a-f]{64}$', sum):
@@ -336,8 +379,20 @@ class Builder:
                                   .format(sum, fname, checksum_file))
                 self.filename2checksum[fname] = sum
 
-    def get_expected_checksum(self, filename):
+    def get_expected_checksum(self, filename, downloaded_path):
         if filename not in self.filename2checksum:
+            if self.args.add_checksum:
+                checksum_file = self.get_checksum_file()
+                with open(checksum_file, 'rt') as inp:
+                    lines = inp.readlines()
+                checksum = compute_file_sha256(downloaded_path)
+                lines += [filename, checksum]
+                with open(checksum_file, 'wt') as out:
+                    for line in lines:
+                        out.write(line + "\n")
+                self.filename2checksum[filename] = checksum
+                return checksum
+
             fatal("No expected checksum provided for {}".format(filename))
         return self.filename2checksum[filename]
 
@@ -350,7 +405,7 @@ class Builder:
             # We check the filename against our checksum map only if the file exists. This is done
             # so that we would still download the file even if we don't know the checksum, making it
             # easier to add new third-party dependencies.
-            expected_checksum = self.get_expected_checksum(filename)
+            expected_checksum = self.get_expected_checksum(filename, downloaded_path=path)
             if self.verify_checksum(path, expected_checksum):
                 log("No need to re-download {}: checksum already correct".format(filename))
                 return
@@ -367,11 +422,11 @@ class Builder:
             fatal("Downloaded '{}' but but unable to find '{}'".format(url, path))
         if filename not in self.filename2checksum:
             fatal("No expected checksum provided for {}".format(filename))
-        expected_checksum = self.get_expected_checksum(filename)
+        expected_checksum = self.get_expected_checksum(filename, downloaded_path=path)
         if not self.verify_checksum(path, expected_checksum):
             fatal("File '{}' has wrong checksum after downloading from '{}'. "
                           "Has {}, but expected: {}"
-                          .format(path, url, hashsum_file(hashlib.sha256(), path),
+                          .format(path, url, compute_file_sha256(path),
                                   expected_checksum))
 
     def verify_checksum(self, filename, expected_checksum):
@@ -442,6 +497,8 @@ class Builder:
             self.libs += ["-lc++", "-lc++abi"]
         else:
             fatal("Unsupported platform: {}".format(platform.system()))
+        # The C++ standard must match CMAKE_CXX_STANDARD our top-level CMakeLists.txt.
+        self.cxx_flags.append('-std=c++14')
 
     def add_linuxbrew_flags(self):
         if self.using_linuxbrew:
@@ -472,14 +529,18 @@ class Builder:
         if extra_args is not None:
             args += extra_args
         log_output(log_prefix, args)
-        jobs = kwargs['jobs'] if 'jobs' in kwargs else multiprocessing.cpu_count()
+        jobs = kwargs['jobs'] if 'jobs' in kwargs else get_make_parallelism()
         log_output(log_prefix, ['make', '-j{}'.format(jobs)])
         if 'install' not in kwargs or kwargs['install']:
             log_output(log_prefix, ['make', 'install'])
 
-    def build_with_cmake(self, dep, extra_args=None, **kwargs):
-        log("Building dependency {} using CMake with arguments: {}".format(
-            dep, extra_args))
+    def build_with_cmake(self, dep, extra_args=None, use_ninja=False, **kwargs):
+        if use_ninja == 'auto':
+            use_ninja = is_ninja_available()
+            log('Ninja is {}'.format('available' if use_ninja else 'unavailable'))
+
+        log("Building dependency {} using CMake with arguments: {}, use_ninja={}".format(
+            dep, extra_args, use_ninja))
         log_prefix = self.log_prefix(dep)
         os.environ["YB_REMOTE_COMPILATION"] = "0"
 
@@ -490,12 +551,20 @@ class Builder:
         if 'src_dir' in kwargs:
             src_dir = os.path.join(src_dir, kwargs['src_dir'])
         args = ['cmake', src_dir]
+        if use_ninja:
+            args += ['-G', 'Ninja']
         if extra_args is not None:
             args += extra_args
+
         log_output(log_prefix, args)
-        log_output(log_prefix, ['make', '-j{}'.format(multiprocessing.cpu_count())])
+
+        build_tool = 'ninja' if use_ninja else 'make'
+        build_tool_cmd = [build_tool, '-j{}'.format(get_make_parallelism())]
+
+        log_output(log_prefix, build_tool_cmd)
+
         if 'install' not in kwargs or kwargs['install']:
-            log_output(log_prefix, ['make', 'install'])
+            log_output(log_prefix, [build_tool, 'install'])
 
     def build(self, type):
         if type != BUILD_TYPE_COMMON and self.args.build_type is not None:

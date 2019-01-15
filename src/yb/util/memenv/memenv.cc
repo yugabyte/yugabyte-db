@@ -101,11 +101,12 @@ class FileState : public RefCountedThreadSafe<FileState> {
   }
 
   Status PreAllocate(uint64_t size) {
-    auto padding = new uint8_t[size];
+    std::vector<uint8_t> padding(static_cast<size_t>(size), static_cast<uint8_t>(0));
     // TODO optimize me
-    memset(&padding, 0, sizeof(uint8_t));
-    Status s = AppendRaw(padding, size);
-    delete [] padding;
+    memset(padding.data(), 0, sizeof(uint8_t));
+    // Clang analyzer thinks the function below can thrown an exception and cause the "padding"
+    // memory to leak.
+    Status s = AppendRaw(padding.data(), size);
     size_ -= size;
     return s;
   }

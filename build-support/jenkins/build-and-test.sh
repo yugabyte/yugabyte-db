@@ -345,6 +345,19 @@ if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
   )
 fi
 
+if [[ ${YB_ENABLE_STATIC_ANALYZER:-auto} == "auto" ]]; then
+  if is_clang && is_linux && [[ $build_type == "debug" ]] && is_jenkins_master_build; then
+    export YB_ENABLE_STATIC_ANALYZER=1
+    log "Enabling Clang static analyzer (this is a clang Linux debug build)"
+  else
+    log "Not enabling Clang static analyzer (this is not a clang Linux debug build):" \
+        "OSTYPE=$OSTYPE, YB_COMPILER_TYPE=$YB_COMPILER_TYPE, build_type=$build_type"
+  fi
+else
+  log "YB_ENABLE_STATIC_ANALYZER is already set to $YB_ENABLE_STATIC_ANALYZER," \
+      "not setting automatically"
+fi
+
 # We have a retry loop around CMake because it sometimes fails due to NFS unavailability.
 declare -i -r MAX_CMAKE_RETRIES=3
 declare -i cmake_attempt_index=1

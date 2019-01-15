@@ -21,10 +21,13 @@
 #include <stdarg.h> // For va_list and related operations
 #include <stdio.h> // MSVC requires this for _vsnprintf
 #include <vector>
-using std::vector;
+
 #include <glog/logging.h>
+
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
+
+using std::vector;
 
 #ifdef _MSC_VER
 enum { IS__MSC_VER = 1 };
@@ -141,6 +144,8 @@ string StringPrintfVector(const char* format, const vector<string>& v) {
   // this COMPILE_ASSERT right next to the actual statement.
 
   COMPILE_ASSERT(kStringPrintfVectorMaxArgs == 32, arg_count_mismatch);
+  // Getting these warnings from clang static analyzer:
+  // warning: {2nd,3rd,4th,5th} function call argument is an uninitialized value
   return StringPrintf(format,
                       cstr[0], cstr[1], cstr[2], cstr[3], cstr[4],
                       cstr[5], cstr[6], cstr[7], cstr[8], cstr[9],

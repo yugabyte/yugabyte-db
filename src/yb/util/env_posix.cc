@@ -529,7 +529,7 @@ class PosixWritableFile : public WritableFile {
 };
 
 #if defined(__linux__)
-class PosixDirectIOWritableFile : public PosixWritableFile {
+class PosixDirectIOWritableFile final : public PosixWritableFile {
  public:
   PosixDirectIOWritableFile(const std::string &fname, int fd, uint64_t file_size,
                             bool sync_on_close)
@@ -762,7 +762,7 @@ class PosixDirectIOWritableFile : public PosixWritableFile {
 };
 #endif
 
-class PosixRWFile : public RWFile {
+class PosixRWFile final : public RWFile {
 // is not employed.
  public:
   PosixRWFile(string fname, int fd, bool sync_on_close)
@@ -773,6 +773,7 @@ class PosixRWFile : public RWFile {
 
   ~PosixRWFile() {
     if (fd_ >= 0) {
+      // Virtual method call in destructor.
       WARN_NOT_OK(Close(), "Failed to close " + filename_);
     }
   }
@@ -887,6 +888,7 @@ class PosixRWFile : public RWFile {
     Status s;
 
     if (sync_on_close_) {
+      // Virtual function call in destructor.
       s = Sync();
       if (!s.ok()) {
         LOG(ERROR) << "Unable to Sync " << filename_ << ": " << s.ToString();

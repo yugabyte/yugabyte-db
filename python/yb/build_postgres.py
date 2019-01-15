@@ -206,6 +206,7 @@ class PostgresBuilder:
                     ("Invalid step specified for setting env vars, must be either 'configure' "
                      "or 'make'").format(step))
 
+        self.set_env_var('YB_PG_BUILD_STEP', step)
         self.set_env_var('YB_BUILD_ROOT', self.build_root)
         self.set_env_var('YB_SRC_ROOT', YB_SRC_ROOT)
 
@@ -223,6 +224,11 @@ class PostgresBuilder:
             '-Werror=int-conversion',
         ]
 
+        if self.compiler_type == 'clang':
+            additional_c_cxx_flags += [
+                '-Wno-error=builtin-requires-header'
+            ]
+
         if step == 'make':
             additional_c_cxx_flags += [
                 '-Wall',
@@ -230,10 +236,6 @@ class PostgresBuilder:
                 '-Wno-error=unused-function'
             ]
 
-            if self.compiler_type == 'clang':
-                additional_c_cxx_flags += [
-                    '-Wno-error=builtin-requires-header'
-                ]
             if self.build_type == 'release':
                 if self.compiler_type == 'clang':
                     additional_c_cxx_flags += [
