@@ -2820,10 +2820,16 @@ Result<FileNumbersHolder> DBImpl::BackgroundFlush(
       *cfd->GetLatestMutableCFOptions();
   YB_LOG_EVERY_N_SECS(INFO, 1) << StringPrintf(
       "Calling FlushMemTableToOutputFile with column "
-      "family [%s], flush slots available %d, compaction slots allowed %d, "
-      "compaction slots scheduled %d",
-      cfd->GetName().c_str(), db_options_.max_background_flushes,
-      bg_flush_scheduled_, BGCompactionsAllowed() - bg_compaction_scheduled_);
+      "family [%s], "
+      "flush slots scheduled %d, "
+      "total flush slots %d, "
+      "compaction slots scheduled %d, "
+      "total compaction slots %d",
+      cfd->GetName().c_str(),
+      bg_flush_scheduled_,
+      db_options_.max_background_flushes,
+      bg_compaction_scheduled_,
+      BGCompactionsAllowed());
   auto result = FlushMemTableToOutputFile(cfd, mutable_cf_options, made_progress,
                                           job_context, log_buffer);
   if (cfd->Unref()) {
