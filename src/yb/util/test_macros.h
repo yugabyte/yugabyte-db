@@ -207,4 +207,11 @@
 #define YB_DISABLE_TEST_ON_MACOS(test_name) test_name
 #endif
 
+#ifdef THREAD_SANITIZER
+#define YB_DISABLE_TEST_IN_TSAN(test_name) BOOST_PP_CAT(DISABLED_, test_name)
+#else
+#define YB_DISABLE_TEST_IN_TSAN(test_name) test_name
+#endif
+
+
 #endif  // YB_UTIL_TEST_MACROS_H
