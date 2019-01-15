@@ -91,7 +91,7 @@ std::shared_ptr<TSDescriptor> SetupTS(const string& uuid, const string& az) {
   // Fake host:port combo, with uuid as host, for ease of testing.
   auto hp = reg.mutable_common()->add_private_rpc_addresses();
   hp->set_host(uuid);
-  // Same cloud info as cluster config, with modifyable AZ.
+  // Same cloud info as cluster config, with modifiable AZ.
   auto ci = reg.mutable_common()->mutable_cloud_info();
   ci->set_placement_cloud(default_cloud);
   ci->set_placement_region(default_region);

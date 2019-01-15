@@ -40,6 +40,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/util/flag_tags.h"
+#include "yb/common/wire_protocol.h"
 
 DEFINE_int32(tserver_unresponsive_timeout_ms, 60 * 1000,
              "The period of time that a Master can go without receiving a heartbeat from a "
@@ -176,8 +177,10 @@ bool TSManager::IsTSLive(const TSDescSharedPtr& ts) {
          GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms) && !ts->IsRemoved();
 }
 
-void TSManager::GetAllLiveDescriptors(TSDescriptorVector* descs) const {
-  GetDescriptors([](const TSDescSharedPtr& ts) -> bool { return IsTSLive(ts); }, descs);
+void TSManager::GetAllLiveDescriptors(TSDescriptorVector* descs,
+    const BlacklistSet blacklist) const {
+  GetDescriptors([blacklist](const TSDescSharedPtr& ts) -> bool {
+    return IsTSLive(ts) && !IsTsBlacklisted(ts, blacklist); }, descs);
 }
 
 void TSManager::GetAllReportedDescriptors(TSDescriptorVector* descs) const {
@@ -186,17 +189,33 @@ void TSManager::GetAllReportedDescriptors(TSDescriptorVector* descs) const {
 }
 
 bool TSManager::IsTsInCluster(const TSDescSharedPtr& ts, string cluster_uuid) {
-  return cluster_uuid.empty() || ts->placement_uuid() == cluster_uuid;
+    return cluster_uuid.empty() || ts->placement_uuid() == cluster_uuid;
+}
+
+bool TSManager::IsTsBlacklisted(const TSDescSharedPtr& ts,
+    const BlacklistSet blacklist) {
+  if (blacklist.empty()) {
+    return false;
+  }
+  for (const auto tserver : blacklist) {
+    HostPortPB hp;
+    HostPortToPB(tserver, &hp);
+    if (ts->IsRunningOn(hp)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void TSManager::GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs,
-                                               string placement_uuid) const {
+    string placement_uuid,
+    const BlacklistSet blacklist) const {
   descs->clear();
   boost::shared_lock<rw_spinlock> l(lock_);
   descs->reserve(servers_by_id_.size());
   for (const TSDescriptorMap::value_type& entry : servers_by_id_) {
     const TSDescSharedPtr& ts = entry.second;
-    if (IsTSLive(ts) && IsTsInCluster(ts, placement_uuid)) {
+    if (IsTSLive(ts) && IsTsInCluster(ts, placement_uuid) && !IsTsBlacklisted(ts, blacklist)) {
       descs->push_back(ts);
     }
   }

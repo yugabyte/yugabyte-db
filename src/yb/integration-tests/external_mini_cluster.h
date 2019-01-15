@@ -216,6 +216,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Send a ping request to the rpc port of the master. Return OK() only if it is reachable.
   CHECKED_STATUS PingMaster(ExternalMaster* master) const;
 
+  // Add a Tablet Server to the blacklist
+  CHECKED_STATUS AddTServerToBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
+
   // Starts a new master and returns the handle of the new master object on success.  Not thread
   // safe for now. We could move this to a static function outside External Mini Cluster, but
   // keeping it here for now as it is currently used only in conjunction with EMC.  If there are any

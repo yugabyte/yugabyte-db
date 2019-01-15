@@ -111,6 +111,12 @@ using yb::consensus::RunLeaderElectionRequestPB;
 using yb::consensus::RunLeaderElectionResponsePB;
 using yb::master::IsMasterLeaderReadyRequestPB;
 using yb::master::IsMasterLeaderReadyResponsePB;
+using yb::master::GetMasterClusterConfigRequestPB;
+using yb::master::GetMasterClusterConfigResponsePB;
+using yb::master::ChangeMasterClusterConfigRequestPB;
+using yb::master::ChangeMasterClusterConfigResponsePB;
+using yb::master::SysClusterConfigEntryPB;
+using yb::master::BlacklistPB;
 using yb::master::ListMastersRequestPB;
 using yb::master::ListMastersResponsePB;
 using yb::master::ListMasterRaftPeersRequestPB;
@@ -654,6 +660,49 @@ Status ExternalMiniCluster::PingMaster(ExternalMaster* master) const {
   rpc::RpcController rpc;
   rpc.set_timeout(opts_.timeout);
   return proxy->Ping(req, &resp, &rpc);
+}
+
+Status ExternalMiniCluster::AddTServerToBlacklist(
+    ExternalMaster* master,
+    ExternalTabletServer* ts) {
+  GetMasterClusterConfigRequestPB config_req;
+  GetMasterClusterConfigResponsePB config_resp;
+  int index = GetIndexOfMaster(master);
+
+  if (index == -1) {
+    return STATUS(InvalidArgument, Substitute(
+        "Given master '$0' not in the current list of $1 masters.",
+        master->bound_rpc_hostport().ToString(), masters_.size()));
+  }
+
+  std::shared_ptr<MasterServiceProxy> proxy = master_proxy(index);
+  rpc::RpcController rpc;
+  rpc.set_timeout(opts_.timeout);
+  RETURN_NOT_OK(proxy->GetMasterClusterConfig(config_req, &config_resp, &rpc));
+  if (config_resp.has_error()) {
+    return STATUS(RuntimeError, Substitute(
+        "GetMasterClusterConfig RPC response hit error: $0",
+        config_resp.error().ShortDebugString()));
+  }
+  // Get current config
+  ChangeMasterClusterConfigRequestPB change_req;
+  SysClusterConfigEntryPB config = *config_resp.mutable_cluster_config();
+  // add tserver to blacklist
+  HostPortToPB(ts->bound_rpc_hostport(), config.mutable_server_blacklist()->mutable_hosts()->Add());
+  *change_req.mutable_cluster_config() = config;
+  ChangeMasterClusterConfigResponsePB change_resp;
+  rpc.Reset();
+  RETURN_NOT_OK(proxy->ChangeMasterClusterConfig(change_req, &change_resp, &rpc));
+  if (change_resp.has_error()) {
+    return STATUS(RuntimeError, Substitute(
+        "ChangeMasterClusterConfig RPC response hit error: $0",
+        change_resp.error().ShortDebugString()));
+  }
+
+  LOG(INFO) << "TServer at " << ts->bound_rpc_hostport().ToString()
+  << " was added to the blacklist";
+
+  return Status::OK();
 }
 
 Status ExternalMiniCluster::GetNumMastersAsSeenBy(ExternalMaster* master, int* num_peers) {
