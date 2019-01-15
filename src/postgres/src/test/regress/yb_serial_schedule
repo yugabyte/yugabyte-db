@@ -1,4 +1,8 @@
 # src/test/regress/yb_serial_schedule
+#
+####################################################################################################
+# Postgres Testsuits: Porting from PostgreSQL original tests.
+####################################################################################################
 # This includes all tests enabled for YugaByte.
 test: yb_boolean
 test: yb_char
@@ -16,3 +20,18 @@ test: yb_timestamp
 # Disable test because default values are disabled.
 # test: yb_insert
 test: yb_schema
+#
+####################################################################################################
+# YB Feature Testsuite: Used for reporting supported and unsupported features.
+# This testsuite walks through the 
+####################################################################################################
+# Disable test on types due to github::issue#714
+# test: yb_feature_types
+test: yb_feature_insert
+test: yb_feature_delete
+test: yb_feature_update
+test: yb_feature_select
+#
+####################################################################################################
+# Name and add new testsuites ...
+####################################################################################################
