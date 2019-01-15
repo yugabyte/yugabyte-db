@@ -2020,7 +2020,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     auto l = cluster_config_->LockForRead();
     replication_info = l->data().pb.replication_info();
   }
-
   // Calculate number of tablets to be used.
   int num_tablets = req.num_tablets();
   if (num_tablets <= 0) {
@@ -2028,7 +2027,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // to (a new) master leader.
     TSDescriptorVector ts_descs;
     master_->ts_manager()->GetAllLiveDescriptorsInCluster(
-        &ts_descs, replication_info.live_replicas().placement_uuid());
+        &ts_descs, replication_info.live_replicas().placement_uuid(), blacklistState.tservers_);
     num_tablets = ts_descs.size() * FLAGS_yb_num_shards_per_tserver;
     LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
               << ts_descs.size() << " primary servers";
@@ -5839,8 +5838,7 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
 
   // For those tablets which need to be created in this round, assign replicas.
   TSDescriptorVector ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
-
+  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklistState.tservers_);
   Status s;
   for (TabletInfo *tablet : deferred.needs_create_rpc) {
     // NOTE: if we fail to select replicas on the first pass (due to

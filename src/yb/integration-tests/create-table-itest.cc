@@ -313,4 +313,25 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   ASSERT_GE(avg_num_peers, kNumServers / 2);
 }
 
+TEST_F(CreateTableITest, TestNoAllocBlacklist) {
+  const int kNumServers = 4;
+  const int kNumTablets = 24;
+  vector<string> ts_flags;
+  vector<string> master_flags;
+  ts_flags.push_back("--never_fsync");  // run faster on slow disks
+  master_flags.push_back("--enable_load_balancing=false");  // disable load balancing moves
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumServers));
+  // add TServer to blacklist
+  ASSERT_OK(cluster_->AddTServerToBlacklist(cluster_->master(), cluster_->tablet_server(1)));
+  // create table
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+  gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
+  ASSERT_OK(table_creator->table_name(kTableName)
+                .schema(&client_schema)
+                .num_tablets(kNumTablets)
+                .Create());
+  // check that no tablets have been allocated to blacklisted TServer
+  ASSERT_EQ(inspect_->ListTabletsOnTS(1).size(), 0);
+  }
 }  // namespace yb
