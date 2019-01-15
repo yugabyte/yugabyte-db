@@ -366,6 +366,8 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
   CHECKED_STATUS ReadConflicts(ConflictResolver* resolver) override {
     RETURN_NOT_OK(transaction_id_);
 
+    VLOG(4) << "Resolve conflicts: " << transaction_id_;
+
     if (write_batch_.transaction().has_isolation()) {
       metadata_ = VERIFY_RESULT(TransactionMetadata::FromPB(write_batch_.transaction()));
     } else {
@@ -480,9 +482,21 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
     DSCHECK(commit_time.is_valid(), Corruption, "Invalid transaction commit time");
     DSCHECK(metadata_.start_time.is_valid(), Corruption, "Invalid transaction start time");
 
-    if (commit_time >= metadata_.start_time) { // TODO(dtxn) clock skew?
+    VLOG(4) << "Committed: " << id << ", " << commit_time;
+
+    bool conflicts;
+    if (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+      conflicts = commit_time >= metadata_.start_time; // TODO(dtxn) clock skew?
+    } else {
+      // HybridTime::kMax means that transaction is not actually committed, but is going to commit.
+      // So we should conflict with such transaction, because we are not able to read its results.
+      conflicts = commit_time == HybridTime::kMax;
+    }
+
+    if (conflicts) {
       return MakeConflictStatus(id, "committed", conflicts_metric_);
     }
+
     return Status::OK();
   }
 
