@@ -76,7 +76,7 @@ cqlsh> SELECT COUNT(ProductID) as supplier1_num_products FROM store.products WHE
 
 ## Numeric aggregation functions
 
-The standard aggregate functions of min, max, sum and count are built-in functions.
+The standard aggregate functions of `min`, `max`, `sum`, `avg` and `count` are built-in functions.
 
 - To find the total number of items in the store, run the following query.
 
@@ -100,6 +100,19 @@ cqlsh> SELECT MIN(Price), MAX(Price) FROM store.products;
  min(price) | max(price)
 ------------+------------
          10 |         22
+
+(1 rows)
+```
+
+- To find the average price of all the items in the store, run the following.
+
+```{.sql .copy .separator-gt}
+cqlsh> SELECT AVG(price) FROM store.products;
+```
+```sh
+ system.avg(price)
+-------------------
+             18.07
 
 (1 rows)
 ```
