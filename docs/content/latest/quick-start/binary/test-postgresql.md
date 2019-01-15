@@ -16,19 +16,18 @@ $ ./bin/yb-ctl create --enable_postgres
 $ ./bin/yb-ctl status
 ```
 ```sh
-2018-10-15 13:12:33,129 INFO: Server is running: type=master, node_id=1, PID=3076, admin service=http://127.0.0.1:7000
-2018-10-15 13:12:33,151 INFO: Server is running: type=master, node_id=2, PID=3079, admin service=http://127.0.0.2:7000
-2018-10-15 13:12:33,174 INFO: Server is running: type=master, node_id=3, PID=3082, admin service=http://127.0.0.3:7000
-2018-10-15 13:12:33,200 INFO: Server is running: type=tserver, node_id=1, PID=3085, admin service=http://127.0.0.1:9000, cql service=127.0.0.1:9042, redis service=127.0.0.1:6379
-2018-10-15 13:12:33,223 INFO: Server is running: type=tserver, node_id=2, PID=3088, admin service=http://127.0.0.2:9000, cql service=127.0.0.2:9042, redis service=127.0.0.2:6379
-2018-10-15 13:12:33,246 INFO: Server is running: type=tserver, node_id=3, PID=3091, admin service=http://127.0.0.3:9000, cql service=127.0.0.3:9042, redis service=127.0.0.3:6379
-2018-10-15 13:12:33,270 INFO: Server is running: type=postgres, node_id=1, PID=3107, pgsql service=127.0.0.1:5433
+2019-01-15 22:18:40,387 INFO: Server is running: type=master, node_id=1, PID=12818, admin service=http://127.0.0.1:7000
+2019-01-15 22:18:40,394 INFO: Server is running: type=master, node_id=2, PID=12821, admin service=http://127.0.0.2:7000
+2019-01-15 22:18:40,401 INFO: Server is running: type=master, node_id=3, PID=12824, admin service=http://127.0.0.3:7000
+2019-01-15 22:18:40,408 INFO: Server is running: type=tserver, node_id=1, PID=12827, admin service=http://127.0.0.1:9000, cql service=127.0.0.1:9042, redis service=127.0.0.1:6379, pgsql service=127.0.0.1:5433
+2019-01-15 22:18:40,415 INFO: Server is running: type=tserver, node_id=2, PID=12830, admin service=http://127.0.0.2:9000, cql service=127.0.0.2:9042, redis service=127.0.0.2:6379, pgsql service=127.0.0.2:5433
+2019-01-15 22:18:40,422 INFO: Server is running: type=tserver, node_id=3, PID=12833, admin service=http://127.0.0.3:9000, cql service=127.0.0.3:9042, redis service=127.0.0.3:6379, pgsql service=127.0.0.3:5433
 ```
 
 - Run psql to connect to the service.
 
 ```{.sh .copy .separator-dollar}
-$ ./bin/psql -p 5433 -U postgres
+$ ./bin/psql -h 127.0.0.1 -p 5433 -U postgres
 ```
 ```sh
 psql (10.3, server 10.4)
