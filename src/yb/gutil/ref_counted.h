@@ -27,6 +27,7 @@
 #include <string>
 #endif
 
+#include "yb/gutil/atomicops.h"
 #include "yb/gutil/atomic_refcount.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/threading/thread_collision_warner.h"
@@ -80,7 +81,7 @@ class RefCountedThreadSafeBase {
 
 #ifndef NDEBUG
   int32_t GetRefCountForDebugging() const {
-    return reinterpret_cast<std::atomic<int32_t>*>(&ref_count_)->load(std::memory_order_acquire);
+    return base::subtle::Acquire_Load(&ref_count_);
   }
 #endif
 

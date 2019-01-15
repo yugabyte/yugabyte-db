@@ -20,13 +20,13 @@
 #ifndef YB_UTIL_DEBUG_TRACE_EVENT_IMPL_H_
 #define YB_UTIL_DEBUG_TRACE_EVENT_IMPL_H_
 
-#include <gtest/gtest_prod.h>
 #include <stack>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include <gtest/gtest_prod.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/callback.h"
@@ -91,9 +91,9 @@ class ConvertableToTraceFormat : public yb::RefCountedThreadSafe<ConvertableToTr
 };
 
 struct TraceEventHandle {
-  uint32 chunk_seq;
-  uint16 chunk_index;
-  uint16 event_index;
+  uint32 chunk_seq = 0;
+  uint16 chunk_index = 0;
+  uint16 event_index = 0;
 };
 
 const int kTraceMaxNumArgs = 2;
@@ -103,7 +103,7 @@ class BASE_EXPORT TraceEvent {
   union TraceValue {
     bool as_bool;
     uint64_t as_uint;
-    long long as_int;
+    long long as_int;  // NOLINT(runtime/int)
     double as_double;
     const void* as_pointer;
     const char* as_string;
@@ -193,7 +193,7 @@ class BASE_EXPORT TraceEvent {
 // TraceBufferChunk is the basic unit of TraceBuffer.
 class BASE_EXPORT TraceBufferChunk {
  public:
-  TraceBufferChunk(uint32 seq)
+  explicit TraceBufferChunk(uint32 seq)
       : next_free_(0),
         seq_(seq) {
   }

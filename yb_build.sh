@@ -181,6 +181,8 @@ Options:
     work here -- they are naively split on spaces.
   --no-latest-symlink
     Disable the creation/overwriting of the "latest" symlink in the build directory.
+  --static-analyzer
+    Enable Clang static analyzer
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -520,6 +522,16 @@ run_cxx_test() {
   fi
 }
 
+register_file_to_rebuild() {
+  expect_num_args 1 "$@"
+  local file_name=${1%.o}
+  object_files_to_delete+=(
+    "$file_name.o"
+    "$file_name.c.o"
+    "$file_name.cc.o"
+  )
+}
+
 cleanup() {
   local YB_BUILD_EXIT_CODE=$?
   print_report
@@ -693,7 +705,7 @@ while [[ $# -gt 0 ]]; do
     ;;
     --rebuild-file)
       ensure_option_has_arg "$@"
-      object_files_to_delete+=( "$2.o" "$2.cc.o" )
+      register_file_to_rebuild "$2"
       shift
     ;;
     --test-args)
@@ -914,6 +926,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --no-latest-symlink)
       export YB_DISABLE_LATEST_SYMLINK=1
+    ;;
+    --static-analyzer)
+      export YB_ENABLE_STATIC_ANALYZER=1
     ;;
     *)
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then

@@ -69,7 +69,10 @@ class LLVMDependency(Dependency):
                                   '-DLLVM_TARGETS_TO_BUILD=X86',
                                   '-DLLVM_ENABLE_RTTI=ON',
                                   '-DCMAKE_CXX_FLAGS={}'.format(" ".join(cxx_flags)),
-                                  '-DPYTHON_EXECUTABLE={}'.format(python_executable)])
+                                  '-DPYTHON_EXECUTABLE={}'.format(python_executable),
+                                  '-DCLANG_BUILD_EXAMPLES=ON'
+                                 ],
+                                 use_ninja='auto')
 
         # Create a link from Clang to thirdparty/clang-toolchain. This path is used
         # for all Clang invocations. The link can't point to the Clang installed in
