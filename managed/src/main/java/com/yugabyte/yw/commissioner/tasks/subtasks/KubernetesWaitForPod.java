@@ -102,7 +102,6 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
   private String waitForPod() {
     ShellProcessHandler.ShellResponse podResponse = kubernetesManager.getPodStatus(taskParams().providerUUID, taskParams().nodePrefix, taskParams().podName);
     JsonNode podInfo = parseShellResponseAsJson(podResponse);
-    JsonNode pod = podInfo.path("items");
     JsonNode statusNode = podInfo.path("status");
     String status = statusNode.get("phase").asText();
     return status;
