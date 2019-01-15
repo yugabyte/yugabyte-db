@@ -128,8 +128,8 @@ implementation, as we're only sending time intervals over the network, and each 
 terms of its local monotonic clock. The only two requirements to the clock implementation are:
 
 * Bounded monotonic clock drift rate between different servers. E.g. if we use the standard Linux
-  assumption of less than 500us per second drift rate, we could account for it by multiplying all
-  delays mentioned above by 1.001.
+  assumption of less than 500&micro;s per second drift rate, we could account for it by multiplying
+  all delays mentioned above by 1.001.
 
 * The monotonic clock does not freeze. E.g. if we're running on a VM which freezes temporarily, the
   hypervisor needs to refresh the VM's clock from the hardware clock when it starts running again.
@@ -157,7 +157,7 @@ if [TTL
 (time-to-live)](../../../api/cassandra/dml_insert/#insert-a-row-with-expiration-time-using-the-using-ttl-clause)
 is being used: no expired values will disappear, as far as the client is concerned, until a new
 record is written to the tablet. Then, a lot of old expired values could suddenly disappear. To
-combat this anomaly, we need to assign the read timestamp to be close to the current hybrid time
+prevent this anomaly, we need to assign the read timestamp to be close to the current hybrid time
 (which is in its turn close to the physical time) to preserve natural TTL semantics. We should
 therefore try to choose **ht_read** to be the *highest possible timestamp* for which we can
 guarantee that all future write operations in the tablet will have a strictly higher hybrid time
@@ -168,7 +168,7 @@ leader leases discussed in the previous section. With every Raft AppendEntries r
 follower, whether it is a regular request or an empty / heartbeat request, a tablet leader computes
 a "hybrid time lease expiration time", or **ht_lease_exp** for short, and sends that to the
 follower. **ht_lease_exp** is usually computed as current hybrid time plus a fixed configured
-duration (e.g. 2 seconds). By replying, followers acknoweledge the old leader's exclusive authority
+duration (e.g. 2 seconds). By replying, followers acknowledge the old leader's exclusive authority
 over assigning any hybrid times up to and including **ht_lease_exp**. Similarly to regular leases,
 these hybrid time leases are propagated on votes. The leader maintains a majority-replicated
 watermark, and considers itself to have replicated a particular value of a hybrid time leader lease
@@ -202,3 +202,19 @@ typically happen very quickly, as the hybrid time on the second tablet's leader 
 updated with the propagated hybrid time from the first tablet's leader, and in the common case we
 will just have to wait for pending Raft log entries with hybrid times less than **ht_read** to be
 committed.
+
+## Propagating safe time from leader to followers for follower-side reads
+
+YugaByte DB supports reads from followers to satisfy use cases that require an extremely low read
+latency that can only be achieved by serving read requests in the datacenter closest to the client.
+This comes at the expense of potentially slightly stale results, and this is a trade-off that
+application developers have to make. Similarly to strongly-consistent leader-side reads,
+follower-side read operations also have to pick a read timestamp, which has to be safe to read at.
+As before, "safe time to read at" means that no future writes are supposed to change the view of the
+data as of the read timestamp.  However, only the leader is able to compute the safe using the
+algorithm described in the previous section.  Therefore, we propagate the latest safe time from
+leaders to followers on AppendEntries RPCs. This means, for example, that follower-side reads
+handled by a partitioned-away follower will see a "frozen" snapshot of the data, including values
+with TTL specified not timing out. When the partition is healed, the follower will start getting
+updates from the leader and will be able to return read results that would be very close to
+up-to-date.

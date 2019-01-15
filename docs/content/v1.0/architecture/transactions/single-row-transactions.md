@@ -126,8 +126,8 @@ implementation, as we're only sending time intervals over the network, and each 
 terms of its local monotonic clock. The only two requirements to the clock implementation are:
 
 * Bounded monotonic clock drift rate between different servers. E.g. if we use the standard Linux
-  assumption of less than 500us per second drift rate, we could account for it by multiplying all
-  delays mentioned above by 1.001.
+  assumption of less than 500&micro;s per second drift rate, we could account for it by multiplying
+  all delays mentioned above by 1.001.
 
 * The monotonic clock does not freeze. E.g. if we're running on a VM which freezes temporarily, the
   hypervisor needs to refresh the VM's clock from the hardware clock when it starts running again.
@@ -166,7 +166,7 @@ leader leases discussed in the previous section. With every Raft AppendEntries r
 follower, whether it is a regular request or an empty / heartbeat request, a tablet leader computes
 a "hybrid time lease expiration time", or **ht_lease_exp** for short, and sends that to the
 follower. **ht_lease_exp** is usually computed as current hybrid time plus a fixed configured
-duration (e.g. 2 seconds). By replying, followers acknoweledge the old leader's exclusive authority
+duration (e.g. 2 seconds). By replying, followers acknowledge the old leader's exclusive authority
 over assigning any hybrid times up to and including **ht_lease_exp**. Similarly to regular leases,
 these hybrid time leases are propagated on votes. The leader maintains a majority-replicated
 watermark, and considers itself to have replicated a particular value of a hybrid time leader lease
