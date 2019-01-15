@@ -65,7 +65,7 @@ class BoostDependency(Dependency):
                     ' '.join(['<compileflags>' + flag for flag in cxx_flags]),
                     ' '.join(['<linkflags>' + flag for flag in cxx_flags + builder.ld_flags]),
                     ' '.join(['--with-{}'.format(lib) for lib in libs])))
-        log_output(log_prefix, ['./b2', 'install'])
+        log_output(log_prefix, ['./b2', 'install', 'cxxstd=14'])
 
         if is_mac():
             for lib in libs:

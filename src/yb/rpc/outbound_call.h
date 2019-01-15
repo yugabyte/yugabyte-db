@@ -237,7 +237,7 @@ class OutboundCall : public RpcCall {
   bool IsTimedOut() const;
 
   // Is the call finished?
-  bool IsFinished() const override;
+  bool IsFinished() const override final;
 
   // Fill in the call response.
   void SetResponse(CallResponse&& resp);
