@@ -42,6 +42,7 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -56,6 +57,7 @@ class TSRegistrationPB;
 using TSDescSharedPtr = std::shared_ptr<TSDescriptor>;
 using TSDescriptorVector = std::vector<TSDescSharedPtr>;
 typedef std::string TabletServerId;
+typedef std::unordered_set<HostPort, HostPortHash> BlacklistSet;
 
 // Tracks the servers that the master has heard from, along with their
 // last heartbeat, etc.
@@ -99,11 +101,15 @@ class TSManager {
 
   // Return all of the currently registered TS descriptors that have sent a
   // heartbeat recently, indicating that they're alive and well.
-  void GetAllLiveDescriptors(TSDescriptorVector* descs) const;
+  // Optionally pass in blacklist as a set of HostPorts to return all live non-blacklisted servers.
+  void GetAllLiveDescriptors(TSDescriptorVector* descs,
+                             const BlacklistSet blacklist = BlacklistSet()) const;
 
   // Return all of the currently registered TS descriptors that have sent a heartbeat
   // recently and are in the same 'cluster' with given placement uuid.
-  void GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs, string placement_uuid) const;
+  // Optionally pass in blacklist as a set of HostPorts to return all live non-blacklisted servers.
+  void GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs, string placement_uuid,
+                                      const BlacklistSet blacklist = BlacklistSet()) const;
 
   // Return all of the currently registered TS descriptors that have sent a
   // heartbeat, indicating that they're alive and well, recently and have given
@@ -120,6 +126,9 @@ class TSManager {
 
   // Check if the placement uuid of the tserver is same as given cluster uuid.
   static bool IsTsInCluster(const TSDescSharedPtr& ts, string cluster_uuid);
+
+  static bool IsTsBlacklisted(const TSDescSharedPtr& ts,
+                              const BlacklistSet blacklist);
 
  private:
 
