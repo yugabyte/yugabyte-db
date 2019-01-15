@@ -203,7 +203,7 @@ class PgWrapperTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
   ExternalTabletServer* pg_ts = nullptr;
 };
 
-TEST_F(PgWrapperTest, TestStartStop) {
+TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(TestStartStop)) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'foo')"));
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (200, 'bar')"));
@@ -219,7 +219,7 @@ TEST_F(PgWrapperTest, TestStartStop) {
   ));
 }
 
-TEST_F(PgWrapperTest, TestCompactHistoryWithTxn) {
+TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(TestCompactHistoryWithTxn)) {
   RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(60));
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
