@@ -66,6 +66,11 @@ class QLScanRange {
   // Return the inclusive lower and upper range values to scan.
   std::vector<QLValuePB> range_values(bool lower_bound) const;
 
+  QLRange rangeFor(ColumnId col_id) const {
+    const auto& iter = ranges_.find(col_id);
+    return (iter == ranges_.end() ? QLRange() : iter->second);
+  }
+
   bool has_in_range_options() const {
     return has_in_range_options_;
   }
