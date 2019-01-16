@@ -3,7 +3,7 @@
  * index.c
  *	  code to create and destroy POSTGRES index relations
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -26,6 +26,7 @@
 #include "access/amapi.h"
 #include "access/multixact.h"
 #include "access/relscan.h"
+#include "access/reloptions.h"
 #include "access/sysattr.h"
 #include "access/transam.h"
 #include "access/visibilitymap.h"
@@ -40,7 +41,8 @@
 #include "catalog/pg_am.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
-#include "catalog/pg_constraint_fn.h"
+#include "catalog/pg_depend.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_tablespace.h"
@@ -48,13 +50,16 @@
 #include "catalog/pg_type.h"
 #include "catalog/storage.h"
 #include "commands/tablecmds.h"
+#include "commands/event_trigger.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
+#include "optimizer/planner.h"
 #include "parser/parser.h"
+#include "rewrite/rewriteManip.h"
 #include "storage/bufmgr.h"
 #include "storage/lmgr.h"
 #include "storage/predicate.h"
@@ -89,6 +94,18 @@ typedef struct
 				tups_inserted;
 } v_i_state;
 
+/*
+ * Pointer-free representation of variables used when reindexing system
+ * catalogs; we use this to propagate those values to parallel workers.
+ */
+typedef struct
+{
+	Oid			currentlyReindexedHeap;
+	Oid			currentlyReindexedIndex;
+	int			numPendingReindexedIndexes;
+	Oid			pendingReindexedIndexes[FLEXIBLE_ARRAY_MEMBER];
+} SerializedReindexState;
+
 /* non-export function prototypes */
 static bool relationHasPrimaryKey(Relation rel);
 static TupleDesc ConstructTupleDescriptor(Relation heapRelation,
@@ -101,6 +118,7 @@ static void InitializeAttributeOids(Relation indexRelation,
 						int numatts, Oid indexoid);
 static void AppendAttributeTuples(Relation indexRelation, int numatts);
 static void UpdateIndexRelation(Oid indexoid, Oid heapoid,
+					Oid parentIndexId,
 					IndexInfo *indexInfo,
 					Oid *collationOids,
 					Oid *classOids,
@@ -108,9 +126,10 @@ static void UpdateIndexRelation(Oid indexoid, Oid heapoid,
 					bool primary,
 					bool isexclusion,
 					bool immediate,
-					bool isvalid);
+					bool isvalid,
+					bool isready);
 static void index_update_stats(Relation rel,
-				   bool hasindex, bool isprimary,
+				   bool hasindex,
 				   double reltuples);
 static void IndexCheckExclusion(Relation heapRelation,
 					Relation indexRelation,
@@ -197,18 +216,19 @@ relationHasPrimaryKey(Relation rel)
 void
 index_check_primary_key(Relation heapRel,
 						IndexInfo *indexInfo,
-						bool is_alter_table)
+						bool is_alter_table,
+						IndexStmt *stmt)
 {
 	List	   *cmds;
 	int			i;
 
 	/*
-	 * If ALTER TABLE, check that there isn't already a PRIMARY KEY. In CREATE
-	 * TABLE, we have faith that the parser rejected multiple pkey clauses;
-	 * and CREATE INDEX doesn't have a way to say PRIMARY KEY, so it's no
-	 * problem either.
+	 * If ALTER TABLE and CREATE TABLE .. PARTITION OF, check that there isn't
+	 * already a PRIMARY KEY.  In CREATE TABLE for an ordinary relations, we
+	 * have faith that the parser rejected multiple pkey clauses; and CREATE
+	 * INDEX doesn't have a way to say PRIMARY KEY, so it's no problem either.
 	 */
-	if (is_alter_table &&
+	if ((is_alter_table || heapRel->rd_rel->relispartition) &&
 		relationHasPrimaryKey(heapRel))
 	{
 		ereport(ERROR,
@@ -222,9 +242,9 @@ index_check_primary_key(Relation heapRel,
 	 * null, otherwise attempt to ALTER TABLE .. SET NOT NULL
 	 */
 	cmds = NIL;
-	for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
+	for (i = 0; i < indexInfo->ii_NumIndexKeyAttrs; i++)
 	{
-		AttrNumber	attnum = indexInfo->ii_KeyAttrNumbers[i];
+		AttrNumber	attnum = indexInfo->ii_IndexAttrNumbers[i];
 		HeapTuple	atttuple;
 		Form_pg_attribute attform;
 
@@ -265,7 +285,11 @@ index_check_primary_key(Relation heapRel,
 	 * unduly.
 	 */
 	if (cmds)
+	{
+		EventTriggerAlterTableStart((Node *) stmt);
 		AlterTableInternal(RelationGetRelid(heapRel), cmds, true);
+		EventTriggerAlterTableEnd();
+	}
 }
 
 /*
@@ -282,6 +306,7 @@ ConstructTupleDescriptor(Relation heapRelation,
 						 Oid *classObjectId)
 {
 	int			numatts = indexInfo->ii_NumIndexAttrs;
+	int			numkeyatts = indexInfo->ii_NumIndexKeyAttrs;
 	ListCell   *colnames_item = list_head(indexColNames);
 	ListCell   *indexpr_item = list_head(indexInfo->ii_Expressions);
 	IndexAmRoutine *amroutine;
@@ -309,8 +334,8 @@ ConstructTupleDescriptor(Relation heapRelation,
 	 */
 	for (i = 0; i < numatts; i++)
 	{
-		AttrNumber	atnum = indexInfo->ii_KeyAttrNumbers[i];
-		Form_pg_attribute to = indexTupDesc->attrs[i];
+		AttrNumber	atnum = indexInfo->ii_IndexAttrNumbers[i];
+		Form_pg_attribute to = TupleDescAttr(indexTupDesc, i);
 		HeapTuple	tuple;
 		Form_pg_type typeTup;
 		Form_pg_opclass opclassTup;
@@ -336,7 +361,8 @@ ConstructTupleDescriptor(Relation heapRelation,
 				 */
 				if (atnum > natts)	/* safety check */
 					elog(ERROR, "invalid column number %d", atnum);
-				from = heapTupDesc->attrs[AttrNumberGetAttrOffset(atnum)];
+				from = TupleDescAttr(heapTupDesc,
+									 AttrNumberGetAttrOffset(atnum));
 			}
 
 			/*
@@ -355,10 +381,12 @@ ConstructTupleDescriptor(Relation heapRelation,
 			to->attcacheoff = -1;
 			to->attnotnull = false;
 			to->atthasdef = false;
+			to->atthasmissing = false;
 			to->attidentity = '\0';
 			to->attislocal = true;
 			to->attinhcount = 0;
-			to->attcollation = collationObjectId[i];
+			to->attcollation = (i < numkeyatts) ?
+				collationObjectId[i] : InvalidOid;
 		}
 		else
 		{
@@ -394,7 +422,8 @@ ConstructTupleDescriptor(Relation heapRelation,
 			to->attcacheoff = -1;
 			to->atttypmod = exprTypmod(indexkey);
 			to->attislocal = true;
-			to->attcollation = collationObjectId[i];
+			to->attcollation = (i < numkeyatts) ?
+				collationObjectId[i] : InvalidOid;
 
 			ReleaseSysCache(tuple);
 
@@ -429,32 +458,40 @@ ConstructTupleDescriptor(Relation heapRelation,
 
 		/*
 		 * Check the opclass and index AM to see if either provides a keytype
-		 * (overriding the attribute type).  Opclass takes precedence.
+		 * (overriding the attribute type).  Opclass (if exists) takes
+		 * precedence.
 		 */
-		tuple = SearchSysCache1(CLAOID, ObjectIdGetDatum(classObjectId[i]));
-		if (!HeapTupleIsValid(tuple))
-			elog(ERROR, "cache lookup failed for opclass %u",
-				 classObjectId[i]);
-		opclassTup = (Form_pg_opclass) GETSTRUCT(tuple);
-		if (OidIsValid(opclassTup->opckeytype))
-			keyType = opclassTup->opckeytype;
-		else
-			keyType = amroutine->amkeytype;
+		keyType = amroutine->amkeytype;
 
 		/*
-		 * If keytype is specified as ANYELEMENT, and opcintype is ANYARRAY,
-		 * then the attribute type must be an array (else it'd not have
-		 * matched this opclass); use its element type.
+		 * Code below is concerned to the opclasses which are not used with
+		 * the included columns.
 		 */
-		if (keyType == ANYELEMENTOID && opclassTup->opcintype == ANYARRAYOID)
+		if (i < indexInfo->ii_NumIndexKeyAttrs)
 		{
-			keyType = get_base_element_type(to->atttypid);
-			if (!OidIsValid(keyType))
-				elog(ERROR, "could not get element type of array type %u",
-					 to->atttypid);
-		}
+			tuple = SearchSysCache1(CLAOID, ObjectIdGetDatum(classObjectId[i]));
+			if (!HeapTupleIsValid(tuple))
+				elog(ERROR, "cache lookup failed for opclass %u",
+					 classObjectId[i]);
+			opclassTup = (Form_pg_opclass) GETSTRUCT(tuple);
+			if (OidIsValid(opclassTup->opckeytype))
+				keyType = opclassTup->opckeytype;
 
-		ReleaseSysCache(tuple);
+			/*
+			 * If keytype is specified as ANYELEMENT, and opcintype is
+			 * ANYARRAY, then the attribute type must be an array (else it'd
+			 * not have matched this opclass); use its element type.
+			 */
+			if (keyType == ANYELEMENTOID && opclassTup->opcintype == ANYARRAYOID)
+			{
+				keyType = get_base_element_type(to->atttypid);
+				if (!OidIsValid(keyType))
+					elog(ERROR, "could not get element type of array type %u",
+						 to->atttypid);
+			}
+
+			ReleaseSysCache(tuple);
+		}
 
 		/*
 		 * If a key type different from the heap value is specified, update
@@ -498,7 +535,7 @@ InitializeAttributeOids(Relation indexRelation,
 	tupleDescriptor = RelationGetDescr(indexRelation);
 
 	for (i = 0; i < numatts; i += 1)
-		tupleDescriptor->attrs[i]->attrelid = indexoid;
+		TupleDescAttr(tupleDescriptor, i)->attrelid = indexoid;
 }
 
 /* ----------------------------------------------------------------
@@ -527,14 +564,16 @@ AppendAttributeTuples(Relation indexRelation, int numatts)
 
 	for (i = 0; i < numatts; i++)
 	{
+		Form_pg_attribute attr = TupleDescAttr(indexTupDesc, i);
+
 		/*
 		 * There used to be very grotty code here to set these fields, but I
 		 * think it's unnecessary.  They should be set already.
 		 */
-		Assert(indexTupDesc->attrs[i]->attnum == i + 1);
-		Assert(indexTupDesc->attrs[i]->attcacheoff == -1);
+		Assert(attr->attnum == i + 1);
+		Assert(attr->attcacheoff == -1);
 
-		InsertPgAttributeTuple(pg_attribute, indexTupDesc->attrs[i], indstate);
+		InsertPgAttributeTuple(pg_attribute, attr, indstate);
 	}
 
 	CatalogCloseIndexes(indstate);
@@ -551,6 +590,7 @@ AppendAttributeTuples(Relation indexRelation, int numatts)
 static void
 UpdateIndexRelation(Oid indexoid,
 					Oid heapoid,
+					Oid parentIndexOid,
 					IndexInfo *indexInfo,
 					Oid *collationOids,
 					Oid *classOids,
@@ -558,7 +598,8 @@ UpdateIndexRelation(Oid indexoid,
 					bool primary,
 					bool isexclusion,
 					bool immediate,
-					bool isvalid)
+					bool isvalid,
+					bool isready)
 {
 	int2vector *indkey;
 	oidvector  *indcollation;
@@ -578,10 +619,10 @@ UpdateIndexRelation(Oid indexoid,
 	 */
 	indkey = buildint2vector(NULL, indexInfo->ii_NumIndexAttrs);
 	for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
-		indkey->values[i] = indexInfo->ii_KeyAttrNumbers[i];
-	indcollation = buildoidvector(collationOids, indexInfo->ii_NumIndexAttrs);
-	indclass = buildoidvector(classOids, indexInfo->ii_NumIndexAttrs);
-	indoption = buildint2vector(coloptions, indexInfo->ii_NumIndexAttrs);
+		indkey->values[i] = indexInfo->ii_IndexAttrNumbers[i];
+	indcollation = buildoidvector(collationOids, indexInfo->ii_NumIndexKeyAttrs);
+	indclass = buildoidvector(classOids, indexInfo->ii_NumIndexKeyAttrs);
+	indoption = buildint2vector(coloptions, indexInfo->ii_NumIndexKeyAttrs);
 
 	/*
 	 * Convert the index expressions (if any) to a text datum
@@ -625,6 +666,7 @@ UpdateIndexRelation(Oid indexoid,
 	values[Anum_pg_index_indexrelid - 1] = ObjectIdGetDatum(indexoid);
 	values[Anum_pg_index_indrelid - 1] = ObjectIdGetDatum(heapoid);
 	values[Anum_pg_index_indnatts - 1] = Int16GetDatum(indexInfo->ii_NumIndexAttrs);
+	values[Anum_pg_index_indnkeyatts - 1] = Int16GetDatum(indexInfo->ii_NumIndexKeyAttrs);
 	values[Anum_pg_index_indisunique - 1] = BoolGetDatum(indexInfo->ii_Unique);
 	values[Anum_pg_index_indisprimary - 1] = BoolGetDatum(primary);
 	values[Anum_pg_index_indisexclusion - 1] = BoolGetDatum(isexclusion);
@@ -632,8 +674,7 @@ UpdateIndexRelation(Oid indexoid,
 	values[Anum_pg_index_indisclustered - 1] = BoolGetDatum(false);
 	values[Anum_pg_index_indisvalid - 1] = BoolGetDatum(isvalid);
 	values[Anum_pg_index_indcheckxmin - 1] = BoolGetDatum(false);
-	/* we set isvalid and isready the same way */
-	values[Anum_pg_index_indisready - 1] = BoolGetDatum(isvalid);
+	values[Anum_pg_index_indisready - 1] = BoolGetDatum(isready);
 	values[Anum_pg_index_indislive - 1] = BoolGetDatum(true);
 	values[Anum_pg_index_indisreplident - 1] = BoolGetDatum(false);
 	values[Anum_pg_index_indkey - 1] = PointerGetDatum(indkey);
@@ -670,6 +711,10 @@ UpdateIndexRelation(Oid indexoid,
  * indexRelationId: normally, pass InvalidOid to let this routine
  *		generate an OID for the index.  During bootstrap this may be
  *		nonzero to specify a preselected OID.
+ * parentIndexRelid: if creating an index partition, the OID of the
+ *		parent index; otherwise InvalidOid.
+ * parentConstraintId: if creating a constraint on a partition, the OID
+ *		of the constraint in the parent; otherwise InvalidOid.
  * relFileNode: normally, pass InvalidOid to get new storage.  May be
  *		nonzero to attach an existing valid build.
  * indexInfo: same info executor uses to insert into the index
@@ -680,19 +725,28 @@ UpdateIndexRelation(Oid indexoid,
  * classObjectId: array of index opclass OIDs, one per index column
  * coloptions: array of per-index-column indoption settings
  * reloptions: AM-specific options
- * isprimary: index is a PRIMARY KEY
- * isconstraint: index is owned by PRIMARY KEY, UNIQUE, or EXCLUSION constraint
- * deferrable: constraint is DEFERRABLE
- * initdeferred: constraint is INITIALLY DEFERRED
+ * flags: bitmask that can include any combination of these bits:
+ *		INDEX_CREATE_IS_PRIMARY
+ *			the index is a primary key
+ *		INDEX_CREATE_ADD_CONSTRAINT:
+ *			invoke index_constraint_create also
+ *		INDEX_CREATE_SKIP_BUILD:
+ *			skip the index_build() step for the moment; caller must do it
+ *			later (typically via reindex_index())
+ *		INDEX_CREATE_CONCURRENT:
+ *			do not lock the table against writers.  The index will be
+ *			marked "invalid" and the caller must take additional steps
+ *			to fix it up.
+ *		INDEX_CREATE_IF_NOT_EXISTS:
+ *			do not throw an error if a relation with the same name
+ *			already exists.
+ *		INDEX_CREATE_PARTITIONED:
+ *			create a partitioned index (table must be partitioned)
+ * constr_flags: flags passed to index_constraint_create
+ *		(only if INDEX_CREATE_ADD_CONSTRAINT is set)
  * allow_system_table_mods: allow table to be a system catalog
- * skip_build: true to skip the index_build() step for the moment; caller
- *		must do it later (typically via reindex_index())
- * concurrent: if true, do not lock the table against writers.  The index
- *		will be marked "invalid" and the caller must take additional steps
- *		to fix it up.
  * is_internal: if true, post creation hook for new index
- * if_not_exists: if true, do not throw an error if a relation with
- *		the same name already exists.
+ * constraintId: if not NULL, receives OID of created constraint
  *
  * Returns the OID of the created index.
  */
@@ -700,6 +754,8 @@ Oid
 index_create(Relation heapRelation,
 			 const char *indexRelationName,
 			 Oid indexRelationId,
+			 Oid parentIndexRelid,
+			 Oid parentConstraintId,
 			 Oid relFileNode,
 			 IndexInfo *indexInfo,
 			 List *indexColNames,
@@ -709,15 +765,11 @@ index_create(Relation heapRelation,
 			 Oid *classObjectId,
 			 int16 *coloptions,
 			 Datum reloptions,
-			 bool isprimary,
-			 bool isconstraint,
-			 bool deferrable,
-			 bool initdeferred,
+			 bits16 flags,
+			 bits16 constr_flags,
 			 bool allow_system_table_mods,
-			 bool skip_build,
-			 bool concurrent,
 			 bool is_internal,
-			 bool if_not_exists)
+			 Oid *constraintId)
 {
 	Oid			heapRelationId = RelationGetRelid(heapRelation);
 	Relation	pg_class;
@@ -729,7 +781,19 @@ index_create(Relation heapRelation,
 	Oid			namespaceId;
 	int			i;
 	char		relpersistence;
+	bool		isprimary = (flags & INDEX_CREATE_IS_PRIMARY) != 0;
+	bool		invalid = (flags & INDEX_CREATE_INVALID) != 0;
+	bool		concurrent = (flags & INDEX_CREATE_CONCURRENT) != 0;
+	bool		partitioned = (flags & INDEX_CREATE_PARTITIONED) != 0;
+	char		relkind;
 
+	/* constraint flags can only be set when a constraint is requested */
+	Assert((constr_flags == 0) ||
+		   ((flags & INDEX_CREATE_ADD_CONSTRAINT) != 0));
+	/* partitioned indexes must never be "built" by themselves */
+	Assert(!partitioned || (flags & INDEX_CREATE_SKIP_BUILD));
+
+	relkind = partitioned ? RELKIND_PARTITIONED_INDEX : RELKIND_INDEX;
 	is_exclusion = (indexInfo->ii_ExclusionOps != NULL);
 
 	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
@@ -792,9 +856,15 @@ index_create(Relation heapRelation,
 	if (shared_relation && tableSpaceId != GLOBALTABLESPACE_OID)
 		elog(ERROR, "shared relations must be placed in pg_global tablespace");
 
+	/*
+	 * Check for duplicate name (both as to the index, and as to the
+	 * associated constraint if any).  Such cases would fail on the relevant
+	 * catalogs' unique indexes anyway, but we prefer to give a friendlier
+	 * error message.
+	 */
 	if (get_relname_relid(indexRelationName, namespaceId))
 	{
-		if (if_not_exists)
+		if ((flags & INDEX_CREATE_IF_NOT_EXISTS) != 0)
 		{
 			ereport(NOTICE,
 					(errcode(ERRCODE_DUPLICATE_TABLE),
@@ -808,6 +878,20 @@ index_create(Relation heapRelation,
 				(errcode(ERRCODE_DUPLICATE_TABLE),
 				 errmsg("relation \"%s\" already exists",
 						indexRelationName)));
+	}
+
+	if ((flags & INDEX_CREATE_ADD_CONSTRAINT) != 0 &&
+		ConstraintNameIsUsed(CONSTRAINT_RELATION, heapRelationId,
+							 indexRelationName))
+	{
+		/*
+		 * INDEX_CREATE_IF_NOT_EXISTS does not apply here, since the
+		 * conflicting constraint is not an index.
+		 */
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("constraint \"%s\" for relation \"%s\" already exists",
+						indexRelationName, RelationGetRelationName(heapRelation))));
 	}
 
 	/*
@@ -847,9 +931,9 @@ index_create(Relation heapRelation,
 	}
 
 	/*
-	 * create the index relation's relcache entry and physical disk file. (If
-	 * we fail further down, it's the smgr's responsibility to remove the disk
-	 * file again.)
+	 * create the index relation's relcache entry and, if necessary, the
+	 * physical disk file. (If we fail further down, it's the smgr's
+	 * responsibility to remove the disk file again, if any.)
 	 */
 	indexRelation = heap_create(indexRelationName,
 								namespaceId,
@@ -857,7 +941,7 @@ index_create(Relation heapRelation,
 								indexRelationId,
 								relFileNode,
 								indexTupDesc,
-								RELKIND_INDEX,
+								relkind,
 								relpersistence,
 								shared_relation,
 								mapped_relation,
@@ -875,7 +959,7 @@ index_create(Relation heapRelation,
 	}
 
 	/*
-	 * Obtain exclusive lock on it.  Although no other backends can see it
+	 * Obtain exclusive lock on it.  Although no other transactions can see it
 	 * until we commit, this prevents deadlock-risk complaints from lock
 	 * manager in cases such as CLUSTER.
 	 */
@@ -890,6 +974,7 @@ index_create(Relation heapRelation,
 	indexRelation->rd_rel->relowner = heapRelation->rd_rel->relowner;
 	indexRelation->rd_rel->relam = accessMethodObjectId;
 	indexRelation->rd_rel->relhasoids = false;
+	indexRelation->rd_rel->relispartition = OidIsValid(parentIndexRelid);
 
 	/*
 	 * store index's pg_class entry
@@ -923,11 +1008,23 @@ index_create(Relation heapRelation,
 	 *	  (Or, could define a rule to maintain the predicate) --Nels, Feb '92
 	 * ----------------
 	 */
-	UpdateIndexRelation(indexRelationId, heapRelationId, indexInfo,
+	UpdateIndexRelation(indexRelationId, heapRelationId, parentIndexRelid,
+						indexInfo,
 						collationObjectId, classObjectId, coloptions,
 						isprimary, is_exclusion,
-						!deferrable,
+						(constr_flags & INDEX_CONSTR_CREATE_DEFERRABLE) == 0,
+						!concurrent && !invalid,
 						!concurrent);
+
+	/*
+	 * Register relcache invalidation on the indexes' heap relation, to
+	 * maintain consistency of its index list
+	 */
+	CacheInvalidateRelcache(heapRelation);
+
+	/* update pg_inherits, if needed */
+	if (OidIsValid(parentIndexRelid))
+		StoreSingleInheritance(indexRelationId, parentIndexRelid, 1);
 
 	/*
 	 * Register constraint and dependencies for the index.
@@ -952,9 +1049,10 @@ index_create(Relation heapRelation,
 		myself.objectId = indexRelationId;
 		myself.objectSubId = 0;
 
-		if (isconstraint)
+		if ((flags & INDEX_CREATE_ADD_CONSTRAINT) != 0)
 		{
 			char		constraintType;
+			ObjectAddress localaddr;
 
 			if (isprimary)
 				constraintType = CONSTRAINT_PRIMARY;
@@ -968,33 +1066,35 @@ index_create(Relation heapRelation,
 				constraintType = 0; /* keep compiler quiet */
 			}
 
-			index_constraint_create(heapRelation,
-									indexRelationId,
-									indexInfo,
-									indexRelationName,
-									constraintType,
-									deferrable,
-									initdeferred,
-									false,	/* already marked primary */
-									false,	/* pg_index entry is OK */
-									false,	/* no old dependencies */
-									allow_system_table_mods,
-									is_internal);
+			localaddr = index_constraint_create(heapRelation,
+												indexRelationId,
+												parentConstraintId,
+												indexInfo,
+												indexRelationName,
+												constraintType,
+												constr_flags,
+												allow_system_table_mods,
+												is_internal);
+			if (constraintId)
+				*constraintId = localaddr.objectId;
 		}
 		else
 		{
 			bool		have_simple_col = false;
+			DependencyType deptype;
+
+			deptype = OidIsValid(parentIndexRelid) ? DEPENDENCY_INTERNAL_AUTO : DEPENDENCY_AUTO;
 
 			/* Create auto dependencies on simply-referenced columns */
 			for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
 			{
-				if (indexInfo->ii_KeyAttrNumbers[i] != 0)
+				if (indexInfo->ii_IndexAttrNumbers[i] != 0)
 				{
 					referenced.classId = RelationRelationId;
 					referenced.objectId = heapRelationId;
-					referenced.objectSubId = indexInfo->ii_KeyAttrNumbers[i];
+					referenced.objectSubId = indexInfo->ii_IndexAttrNumbers[i];
 
-					recordDependencyOn(&myself, &referenced, DEPENDENCY_AUTO);
+					recordDependencyOn(&myself, &referenced, deptype);
 
 					have_simple_col = true;
 				}
@@ -1012,17 +1112,23 @@ index_create(Relation heapRelation,
 				referenced.objectId = heapRelationId;
 				referenced.objectSubId = 0;
 
-				recordDependencyOn(&myself, &referenced, DEPENDENCY_AUTO);
+				recordDependencyOn(&myself, &referenced, deptype);
 			}
+		}
 
-			/* Non-constraint indexes can't be deferrable */
-			Assert(!deferrable);
-			Assert(!initdeferred);
+		/* Store dependency on parent index, if any */
+		if (OidIsValid(parentIndexRelid))
+		{
+			referenced.classId = RelationRelationId;
+			referenced.objectId = parentIndexRelid;
+			referenced.objectSubId = 0;
+
+			recordDependencyOn(&myself, &referenced, DEPENDENCY_INTERNAL_AUTO);
 		}
 
 		/* Store dependency on collations */
 		/* The default collation is pinned, so don't bother recording it */
-		for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
+		for (i = 0; i < indexInfo->ii_NumIndexKeyAttrs; i++)
 		{
 			if (OidIsValid(collationObjectId[i]) &&
 				collationObjectId[i] != DEFAULT_COLLATION_OID)
@@ -1036,7 +1142,7 @@ index_create(Relation heapRelation,
 		}
 
 		/* Store dependency on operator classes */
-		for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
+		for (i = 0; i < indexInfo->ii_NumIndexKeyAttrs; i++)
 		{
 			referenced.classId = OperatorClassRelationId;
 			referenced.objectId = classObjectId[i];
@@ -1068,9 +1174,7 @@ index_create(Relation heapRelation,
 	else
 	{
 		/* Bootstrap mode - assert we weren't asked for constraint support */
-		Assert(!isconstraint);
-		Assert(!deferrable);
-		Assert(!initdeferred);
+		Assert((flags & INDEX_CREATE_ADD_CONSTRAINT) == 0);
 	}
 
 	/* Post creation hook for new index */
@@ -1094,19 +1198,22 @@ index_create(Relation heapRelation,
 	else
 		Assert(indexRelation->rd_indexcxt != NULL);
 
+	indexRelation->rd_index->indnkeyatts = indexInfo->ii_NumIndexKeyAttrs;
+
 	/*
 	 * If this is bootstrap (initdb) time, then we don't actually fill in the
 	 * index yet.  We'll be creating more indexes and classes later, so we
 	 * delay filling them in until just before we're done with bootstrapping.
-	 * Similarly, if the caller specified skip_build then filling the index is
-	 * delayed till later (ALTER TABLE can save work in some cases with this).
-	 * Otherwise, we call the AM routine that constructs the index.
+	 * Similarly, if the caller specified to skip the build then filling the
+	 * index is delayed till later (ALTER TABLE can save work in some cases
+	 * with this).  Otherwise, we call the AM routine that constructs the
+	 * index.
 	 */
 	if (IsBootstrapProcessingMode())
 	{
 		index_register(heapRelationId, indexRelationId, indexInfo);
 	}
-	else if (skip_build)
+	else if ((flags & INDEX_CREATE_SKIP_BUILD) != 0)
 	{
 		/*
 		 * Caller is responsible for filling the index later on.  However,
@@ -1115,14 +1222,14 @@ index_create(Relation heapRelation,
 		 */
 		index_update_stats(heapRelation,
 						   true,
-						   isprimary,
 						   -1.0);
 		/* Make the above update visible */
 		CommandCounterIncrement();
 	}
 	else
 	{
-		index_build(heapRelation, indexRelation, indexInfo, isprimary, false);
+		index_build(heapRelation, indexRelation, indexInfo, isprimary, false,
+					true);
 	}
 
 	/*
@@ -1142,30 +1249,30 @@ index_create(Relation heapRelation,
  *
  * heapRelation: table owning the index (must be suitably locked by caller)
  * indexRelationId: OID of the index
+ * parentConstraintId: if constraint is on a partition, the OID of the
+ *		constraint in the parent.
  * indexInfo: same info executor uses to insert into the index
  * constraintName: what it say (generally, should match name of index)
  * constraintType: one of CONSTRAINT_PRIMARY, CONSTRAINT_UNIQUE, or
  *		CONSTRAINT_EXCLUSION
- * deferrable: constraint is DEFERRABLE
- * initdeferred: constraint is INITIALLY DEFERRED
- * mark_as_primary: if true, set flags to mark index as primary key
- * update_pgindex: if true, update pg_index row (else caller's done that)
- * remove_old_dependencies: if true, remove existing dependencies of index
- *		on table's columns
+ * flags: bitmask that can include any combination of these bits:
+ *		INDEX_CONSTR_CREATE_MARK_AS_PRIMARY: index is a PRIMARY KEY
+ *		INDEX_CONSTR_CREATE_DEFERRABLE: constraint is DEFERRABLE
+ *		INDEX_CONSTR_CREATE_INIT_DEFERRED: constraint is INITIALLY DEFERRED
+ *		INDEX_CONSTR_CREATE_UPDATE_INDEX: update the pg_index row
+ *		INDEX_CONSTR_CREATE_REMOVE_OLD_DEPS: remove existing dependencies
+ *			of index on table's columns
  * allow_system_table_mods: allow table to be a system catalog
  * is_internal: index is constructed due to internal process
  */
 ObjectAddress
 index_constraint_create(Relation heapRelation,
 						Oid indexRelationId,
+						Oid parentConstraintId,
 						IndexInfo *indexInfo,
 						const char *constraintName,
 						char constraintType,
-						bool deferrable,
-						bool initdeferred,
-						bool mark_as_primary,
-						bool update_pgindex,
-						bool remove_old_dependencies,
+						bits16 constr_flags,
 						bool allow_system_table_mods,
 						bool is_internal)
 {
@@ -1173,6 +1280,16 @@ index_constraint_create(Relation heapRelation,
 	ObjectAddress myself,
 				referenced;
 	Oid			conOid;
+	bool		deferrable;
+	bool		initdeferred;
+	bool		mark_as_primary;
+	bool		islocal;
+	bool		noinherit;
+	int			inhcount;
+
+	deferrable = (constr_flags & INDEX_CONSTR_CREATE_DEFERRABLE) != 0;
+	initdeferred = (constr_flags & INDEX_CONSTR_CREATE_INIT_DEFERRED) != 0;
+	mark_as_primary = (constr_flags & INDEX_CONSTR_CREATE_MARK_AS_PRIMARY) != 0;
 
 	/* constraint creation support doesn't work while bootstrapping */
 	Assert(!IsBootstrapProcessingMode());
@@ -1199,9 +1316,22 @@ index_constraint_create(Relation heapRelation,
 	 * has any expressions or predicate, but we'd never be turning such an
 	 * index into a UNIQUE or PRIMARY KEY constraint.
 	 */
-	if (remove_old_dependencies)
+	if (constr_flags & INDEX_CONSTR_CREATE_REMOVE_OLD_DEPS)
 		deleteDependencyRecordsForClass(RelationRelationId, indexRelationId,
 										RelationRelationId, DEPENDENCY_AUTO);
+
+	if (OidIsValid(parentConstraintId))
+	{
+		islocal = false;
+		inhcount = 1;
+		noinherit = false;
+	}
+	else
+	{
+		islocal = true;
+		inhcount = 0;
+		noinherit = true;
+	}
 
 	/*
 	 * Construct a pg_constraint entry.
@@ -1212,8 +1342,10 @@ index_constraint_create(Relation heapRelation,
 								   deferrable,
 								   initdeferred,
 								   true,
+								   parentConstraintId,
 								   RelationGetRelid(heapRelation),
-								   indexInfo->ii_KeyAttrNumbers,
+								   indexInfo->ii_IndexAttrNumbers,
+								   indexInfo->ii_NumIndexKeyAttrs,
 								   indexInfo->ii_NumIndexAttrs,
 								   InvalidOid,	/* no domain */
 								   indexRelationId, /* index OID */
@@ -1230,9 +1362,9 @@ index_constraint_create(Relation heapRelation,
 								   NULL,	/* no check constraint */
 								   NULL,
 								   NULL,
-								   true,	/* islocal */
-								   0,	/* inhcount */
-								   true,	/* noinherit */
+								   islocal,
+								   inhcount,
+								   noinherit,
 								   is_internal);
 
 	/*
@@ -1250,6 +1382,18 @@ index_constraint_create(Relation heapRelation,
 	referenced.objectSubId = 0;
 
 	recordDependencyOn(&myself, &referenced, DEPENDENCY_INTERNAL);
+
+	/*
+	 * Also, if this is a constraint on a partition, mark it as depending on
+	 * the constraint in the parent.
+	 */
+	if (OidIsValid(parentConstraintId))
+	{
+		ObjectAddress parentConstr;
+
+		ObjectAddressSet(parentConstr, ConstraintRelationId, parentConstraintId);
+		recordDependencyOn(&referenced, &parentConstr, DEPENDENCY_INTERNAL_AUTO);
+	}
 
 	/*
 	 * If the constraint is deferrable, create the deferred uniqueness
@@ -1278,23 +1422,9 @@ index_constraint_create(Relation heapRelation,
 		trigger->constrrel = NULL;
 
 		(void) CreateTrigger(trigger, NULL, RelationGetRelid(heapRelation),
-							 InvalidOid, conOid, indexRelationId, true);
+							 InvalidOid, conOid, indexRelationId, InvalidOid,
+							 InvalidOid, NULL, true, false);
 	}
-
-	/*
-	 * If needed, mark the table as having a primary key.  We assume it can't
-	 * have been so marked already, so no need to clear the flag in the other
-	 * case.
-	 *
-	 * Note: this might better be done by callers.  We do it here to avoid
-	 * exposing index_update_stats() globally, but that wouldn't be necessary
-	 * if relhaspkey went away.
-	 */
-	if (mark_as_primary)
-		index_update_stats(heapRelation,
-						   true,
-						   true,
-						   -1.0);
 
 	/*
 	 * If needed, mark the index as primary and/or deferred in pg_index.
@@ -1304,7 +1434,8 @@ index_constraint_create(Relation heapRelation,
 	 * is a risk that concurrent readers of the table will miss seeing this
 	 * index at all.
 	 */
-	if (update_pgindex && (mark_as_primary || deferrable))
+	if ((constr_flags & INDEX_CONSTR_CREATE_UPDATE_INDEX) &&
+		(mark_as_primary || deferrable))
 	{
 		Relation	pg_index;
 		HeapTuple	indexTuple;
@@ -1561,12 +1692,12 @@ index_drop(Oid indexId, bool concurrent)
 	}
 
 	/*
-	 * Schedule physical removal of the files
+	 * Schedule physical removal of the files (if any)
 	 * If YugaByte is enabled, there aren't any physical files to remove.
 	 */
-	if (!IsYugaByteEnabled()) {
+	if (!IsYugaByteEnabled() &&
+		userIndexRelation->rd_rel->relkind != RELKIND_PARTITIONED_INDEX)
 		RelationDropStorage(userIndexRelation);
-	}
 
 	/*
 	 * Close and flush the index's relcache entry, to ensure relcache doesn't
@@ -1586,7 +1717,8 @@ index_drop(Oid indexId, bool concurrent)
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for index %u", indexId);
 
-	hasexprs = !heap_attisnull(tuple, Anum_pg_index_indexprs);
+	hasexprs = !heap_attisnull(tuple, Anum_pg_index_indexprs,
+							   RelationGetDescr(indexRelation));
 
 	CatalogTupleDelete(indexRelation, tuple);
 
@@ -1609,6 +1741,11 @@ index_drop(Oid indexId, bool concurrent)
 	 * fix RELATION relation
 	 */
 	DeleteRelationTuple(indexId);
+
+	/*
+	 * fix INHERITS relation
+	 */
+	DeleteInheritsTuple(indexId, InvalidOid);
 
 	/*
 	 * We are presently too lazy to attempt to compute the new correct value
@@ -1656,16 +1793,20 @@ BuildIndexInfo(Relation index)
 	IndexInfo  *ii = makeNode(IndexInfo);
 	Form_pg_index indexStruct = index->rd_index;
 	int			i;
-	int			numKeys;
+	int			numAtts;
 
 	/* check the number of keys, and copy attr numbers into the IndexInfo */
-	numKeys = indexStruct->indnatts;
-	if (numKeys < 1 || numKeys > INDEX_MAX_KEYS)
+	numAtts = indexStruct->indnatts;
+	if (numAtts < 1 || numAtts > INDEX_MAX_KEYS)
 		elog(ERROR, "invalid indnatts %d for index %u",
-			 numKeys, RelationGetRelid(index));
-	ii->ii_NumIndexAttrs = numKeys;
-	for (i = 0; i < numKeys; i++)
-		ii->ii_KeyAttrNumbers[i] = indexStruct->indkey.values[i];
+			 numAtts, RelationGetRelid(index));
+	ii->ii_NumIndexAttrs = numAtts;
+	ii->ii_NumIndexKeyAttrs = indexStruct->indnkeyatts;
+	Assert(ii->ii_NumIndexKeyAttrs != 0);
+	Assert(ii->ii_NumIndexKeyAttrs <= ii->ii_NumIndexAttrs);
+
+	for (i = 0; i < numAtts; i++)
+		ii->ii_IndexAttrNumbers[i] = indexStruct->indkey.values[i];
 
 	/* fetch any expressions needed for expressional indexes */
 	ii->ii_Expressions = RelationGetIndexExpressions(index);
@@ -1701,12 +1842,132 @@ BuildIndexInfo(Relation index)
 	/* initialize index-build state to default */
 	ii->ii_Concurrent = false;
 	ii->ii_BrokenHotChain = false;
+	ii->ii_ParallelWorkers = 0;
 
 	/* set up for possible use by index AM */
+	ii->ii_Am = index->rd_rel->relam;
 	ii->ii_AmCache = NULL;
 	ii->ii_Context = CurrentMemoryContext;
 
 	return ii;
+}
+
+/*
+ * CompareIndexInfo
+ *		Return whether the properties of two indexes (in different tables)
+ *		indicate that they have the "same" definitions.
+ *
+ * Note: passing collations and opfamilies separately is a kludge.  Adding
+ * them to IndexInfo may result in better coding here and elsewhere.
+ *
+ * Use convert_tuples_by_name_map(index2, index1) to build the attmap.
+ */
+bool
+CompareIndexInfo(IndexInfo *info1, IndexInfo *info2,
+				 Oid *collations1, Oid *collations2,
+				 Oid *opfamilies1, Oid *opfamilies2,
+				 AttrNumber *attmap, int maplen)
+{
+	int			i;
+
+	if (info1->ii_Unique != info2->ii_Unique)
+		return false;
+
+	/* indexes are only equivalent if they have the same access method */
+	if (info1->ii_Am != info2->ii_Am)
+		return false;
+
+	/* and same number of attributes */
+	if (info1->ii_NumIndexAttrs != info2->ii_NumIndexAttrs)
+		return false;
+
+	/* and same number of key attributes */
+	if (info1->ii_NumIndexKeyAttrs != info2->ii_NumIndexKeyAttrs)
+		return false;
+
+
+	/*
+	 * and columns match through the attribute map (actual attribute numbers
+	 * might differ!)  Note that this implies that index columns that are
+	 * expressions appear in the same positions.  We will next compare the
+	 * expressions themselves.
+	 */
+	for (i = 0; i < info1->ii_NumIndexAttrs; i++)
+	{
+		if (maplen < info2->ii_IndexAttrNumbers[i])
+			elog(ERROR, "incorrect attribute map");
+
+		/* ignore expressions at this stage */
+		if ((info1->ii_IndexAttrNumbers[i] != InvalidAttrNumber) &&
+			(attmap[info2->ii_IndexAttrNumbers[i] - 1] !=
+			 info1->ii_IndexAttrNumbers[i]))
+			return false;
+
+		/* collation and opfamily is not valid for including columns */
+		if (i >= info1->ii_NumIndexKeyAttrs)
+			continue;
+
+		if (collations1[i] != collations2[i])
+			return false;
+		if (opfamilies1[i] != opfamilies2[i])
+			return false;
+	}
+
+	/*
+	 * For expression indexes: either both are expression indexes, or neither
+	 * is; if they are, make sure the expressions match.
+	 */
+	if ((info1->ii_Expressions != NIL) != (info2->ii_Expressions != NIL))
+		return false;
+	if (info1->ii_Expressions != NIL)
+	{
+		bool		found_whole_row;
+		Node	   *mapped;
+
+		mapped = map_variable_attnos((Node *) info2->ii_Expressions,
+									 1, 0, attmap, maplen,
+									 InvalidOid, &found_whole_row);
+		if (found_whole_row)
+		{
+			/*
+			 * we could throw an error here, but seems out of scope for this
+			 * routine.
+			 */
+			return false;
+		}
+
+		if (!equal(info1->ii_Expressions, mapped))
+			return false;
+	}
+
+	/* Partial index predicates must be identical, if they exist */
+	if ((info1->ii_Predicate == NULL) != (info2->ii_Predicate == NULL))
+		return false;
+	if (info1->ii_Predicate != NULL)
+	{
+		bool		found_whole_row;
+		Node	   *mapped;
+
+		mapped = map_variable_attnos((Node *) info2->ii_Predicate,
+									 1, 0, attmap, maplen,
+									 InvalidOid, &found_whole_row);
+		if (found_whole_row)
+		{
+			/*
+			 * we could throw an error here, but seems out of scope for this
+			 * routine.
+			 */
+			return false;
+		}
+		if (!equal(info1->ii_Predicate, mapped))
+			return false;
+	}
+
+	/* No support currently for comparing exclusion indexes. */
+	if (info1->ii_ExclusionOps != NULL || info2->ii_ExclusionOps != NULL)
+		return false;
+
+	return true;
 }
 
 /* ----------------
@@ -1724,8 +1985,10 @@ BuildIndexInfo(Relation index)
 void
 BuildSpeculativeIndexInfo(Relation index, IndexInfo *ii)
 {
-	int			ncols = index->rd_rel->relnatts;
+	int			indnkeyatts;
 	int			i;
+
+	indnkeyatts = IndexRelationGetNumberOfKeyAttributes(index);
 
 	/*
 	 * fetch info for checking unique indexes
@@ -1735,16 +1998,16 @@ BuildSpeculativeIndexInfo(Relation index, IndexInfo *ii)
 	if (index->rd_rel->relam != BTREE_AM_OID)
 		elog(ERROR, "unexpected non-btree speculative unique index");
 
-	ii->ii_UniqueOps = (Oid *) palloc(sizeof(Oid) * ncols);
-	ii->ii_UniqueProcs = (Oid *) palloc(sizeof(Oid) * ncols);
-	ii->ii_UniqueStrats = (uint16 *) palloc(sizeof(uint16) * ncols);
+	ii->ii_UniqueOps = (Oid *) palloc(sizeof(Oid) * indnkeyatts);
+	ii->ii_UniqueProcs = (Oid *) palloc(sizeof(Oid) * indnkeyatts);
+	ii->ii_UniqueStrats = (uint16 *) palloc(sizeof(uint16) * indnkeyatts);
 
 	/*
 	 * We have to look up the operator's strategy number.  This provides a
 	 * cross-check that the operator does match the index.
 	 */
 	/* We need the func OIDs and strategy numbers too */
-	for (i = 0; i < ncols; i++)
+	for (i = 0; i < indnkeyatts; i++)
 	{
 		ii->ii_UniqueStrats[i] = BTEqualStrategyNumber;
 		ii->ii_UniqueOps[i] =
@@ -1802,7 +2065,7 @@ FormIndexDatum(IndexInfo *indexInfo,
 
 	for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
 	{
-		int			keycol = indexInfo->ii_KeyAttrNumbers[i];
+		int			keycol = indexInfo->ii_IndexAttrNumbers[i];
 		Datum		iDatum;
 		bool		isNull;
 
@@ -1843,7 +2106,6 @@ FormIndexDatum(IndexInfo *indexInfo,
  * to ensure we can do all the necessary work in just one update.
  *
  * hasindex: set relhasindex to this value
- * isprimary: if true, set relhaspkey true; else no change
  * reltuples: if >= 0, set reltuples to this value; else no change
  *
  * If reltuples >= 0, relpages and relallvisible are also updated (using
@@ -1860,7 +2122,6 @@ FormIndexDatum(IndexInfo *indexInfo,
 static void
 index_update_stats(Relation rel,
 				   bool hasindex,
-				   bool isprimary,
 				   double reltuples)
 {
 	Oid			relid = RelationGetRelid(rel);
@@ -1890,11 +2151,11 @@ index_update_stats(Relation rel,
 	 * It is safe to use a non-transactional update even though our
 	 * transaction could still fail before committing.  Setting relhasindex
 	 * true is safe even if there are no indexes (VACUUM will eventually fix
-	 * it), likewise for relhaspkey.  And of course the new relpages and
-	 * reltuples counts are correct regardless.  However, we don't want to
-	 * change relpages (or relallvisible) if the caller isn't providing an
-	 * updated reltuples count, because that would bollix the
-	 * reltuples/relpages ratio which is what's really important.
+	 * it).  And of course the new relpages and reltuples counts are correct
+	 * regardless.  However, we don't want to change relpages (or
+	 * relallvisible) if the caller isn't providing an updated reltuples
+	 * count, because that would bollix the reltuples/relpages ratio which is
+	 * what's really important.
 	 */
 
 	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
@@ -1931,6 +2192,9 @@ index_update_stats(Relation rel,
 		elog(ERROR, "could not find tuple for relation %u", relid);
 	rd_rel = (Form_pg_class) GETSTRUCT(tuple);
 
+	/* Should this be a more comprehensive test? */
+	Assert(rd_rel->relkind != RELKIND_PARTITIONED_INDEX);
+
 	/* Apply required updates, if any, to copied tuple */
 
 	dirty = false;
@@ -1938,14 +2202,6 @@ index_update_stats(Relation rel,
 	{
 		rd_rel->relhasindex = hasindex;
 		dirty = true;
-	}
-	if (isprimary)
-	{
-		if (!rd_rel->relhaspkey)
-		{
-			rd_rel->relhaspkey = true;
-			dirty = true;
-		}
 	}
 
 	if (reltuples >= 0)
@@ -2006,6 +2262,7 @@ index_update_stats(Relation rel,
  *
  * isprimary tells whether to mark the index as a primary-key index.
  * isreindex indicates we are recreating a previously-existing index.
+ * parallel indicates if parallelism may be useful.
  *
  * Note: when reindexing an existing index, isprimary can be false even if
  * the index is a PK; it's already properly marked and need not be re-marked.
@@ -2019,7 +2276,8 @@ index_build(Relation heapRelation,
 			Relation indexRelation,
 			IndexInfo *indexInfo,
 			bool isprimary,
-			bool isreindex)
+			bool isreindex,
+			bool parallel)
 {
 	IndexBuildResult *stats;
 	Oid			save_userid;
@@ -2034,10 +2292,31 @@ index_build(Relation heapRelation,
 	Assert(PointerIsValid(indexRelation->rd_amroutine->ambuild));
 	Assert(PointerIsValid(indexRelation->rd_amroutine->ambuildempty));
 
-	ereport(DEBUG1,
-			(errmsg("building index \"%s\" on table \"%s\"",
-					RelationGetRelationName(indexRelation),
-					RelationGetRelationName(heapRelation))));
+	/*
+	 * Determine worker process details for parallel CREATE INDEX.  Currently,
+	 * only btree has support for parallel builds.
+	 *
+	 * Note that planner considers parallel safety for us.
+	 */
+	if (parallel && IsNormalProcessingMode() &&
+		indexRelation->rd_rel->relam == BTREE_AM_OID)
+		indexInfo->ii_ParallelWorkers =
+			plan_create_index_workers(RelationGetRelid(heapRelation),
+									  RelationGetRelid(indexRelation));
+
+	if (indexInfo->ii_ParallelWorkers == 0)
+		ereport(DEBUG1,
+				(errmsg("building index \"%s\" on table \"%s\" serially",
+						RelationGetRelationName(indexRelation),
+						RelationGetRelationName(heapRelation))));
+	else
+		ereport(DEBUG1,
+				(errmsg_plural("building index \"%s\" on table \"%s\" with request for %d parallel worker",
+							   "building index \"%s\" on table \"%s\" with request for %d parallel workers",
+							   indexInfo->ii_ParallelWorkers,
+							   RelationGetRelationName(indexRelation),
+							   RelationGetRelationName(heapRelation),
+							   indexInfo->ii_ParallelWorkers)));
 
 	/*
 	 * Switch to the table owner's userid, so that any index functions are run
@@ -2132,11 +2411,9 @@ index_build(Relation heapRelation,
 	 */
 	index_update_stats(heapRelation,
 					   true,
-					   isprimary,
 					   stats->heap_tuples);
 
 	index_update_stats(indexRelation,
-					   false,
 					   false,
 					   stats->index_tuples);
 
@@ -2170,12 +2447,12 @@ index_build(Relation heapRelation,
  * things to add it to the new index.  After we return, the AM's index
  * build procedure does whatever cleanup it needs.
  *
- * The total count of heap tuples is returned.  This is for updating pg_class
- * statistics.  (It's annoying not to be able to do that here, but we want
- * to merge that update with others; see index_update_stats.)  Note that the
- * index AM itself must keep track of the number of index tuples; we don't do
- * so here because the AM might reject some of the tuples for its own reasons,
- * such as being unable to store NULLs.
+ * The total count of live heap tuples is returned.  This is for updating
+ * pg_class statistics.  (It's annoying not to be able to do that here, but we
+ * want to merge that update with others; see index_update_stats.)  Note that
+ * the index AM itself must keep track of the number of index tuples; we don't
+ * do so here because the AM might reject some of the tuples for its own
+ * reasons, such as being unable to store NULLs.
  *
  * A side effect is to set indexInfo->ii_BrokenHotChain to true if we detect
  * any potentially broken HOT chains.  Currently, we set this if there are
@@ -2189,13 +2466,14 @@ IndexBuildHeapScan(Relation heapRelation,
 				   IndexInfo *indexInfo,
 				   bool allow_sync,
 				   IndexBuildCallback callback,
-				   void *callback_state)
+				   void *callback_state,
+				   HeapScanDesc scan)
 {
 	return IndexBuildHeapRangeScan(heapRelation, indexRelation,
 								   indexInfo, allow_sync,
 								   false,
 								   0, InvalidBlockNumber,
-								   callback, callback_state);
+								   callback, callback_state, scan);
 }
 
 /*
@@ -2205,8 +2483,8 @@ IndexBuildHeapScan(Relation heapRelation,
  * to scan cannot be done when requesting syncscan.
  *
  * When "anyvisible" mode is requested, all tuples visible to any transaction
- * are considered, including those inserted or deleted by transactions that are
- * still in progress.
+ * are indexed and counted as live, including those inserted or deleted by
+ * transactions that are still in progress.
  */
 double
 IndexBuildHeapRangeScan(Relation heapRelation,
@@ -2217,11 +2495,11 @@ IndexBuildHeapRangeScan(Relation heapRelation,
 						BlockNumber start_blockno,
 						BlockNumber numblocks,
 						IndexBuildCallback callback,
-						void *callback_state)
+						void *callback_state,
+						HeapScanDesc scan)
 {
 	bool		is_system_catalog;
 	bool		checking_uniqueness;
-	HeapScanDesc scan;
 	HeapTuple	heapTuple;
 	Datum		values[INDEX_MAX_KEYS];
 	bool		isnull[INDEX_MAX_KEYS];
@@ -2231,6 +2509,7 @@ IndexBuildHeapRangeScan(Relation heapRelation,
 	EState	   *estate;
 	ExprContext *econtext;
 	Snapshot	snapshot;
+	bool		need_unregister_snapshot = false;
 	TransactionId OldestXmin;
 	BlockNumber root_blkno = InvalidBlockNumber;
 	OffsetNumber root_offsets[MaxHeapTuplesPerPage];
@@ -2274,27 +2553,59 @@ IndexBuildHeapRangeScan(Relation heapRelation,
 	 * concurrent build, or during bootstrap, we take a regular MVCC snapshot
 	 * and index whatever's live according to that.
 	 */
-	if (IsBootstrapProcessingMode() || indexInfo->ii_Concurrent)
-	{
-		snapshot = RegisterSnapshot(GetTransactionSnapshot());
-		OldestXmin = InvalidTransactionId;	/* not used */
+	OldestXmin = InvalidTransactionId;
 
-		/* "any visible" mode is not compatible with this */
-		Assert(!anyvisible);
+	/* okay to ignore lazy VACUUMs here */
+	if (!IsBootstrapProcessingMode() && !indexInfo->ii_Concurrent)
+		OldestXmin = GetOldestXmin(heapRelation, PROCARRAY_FLAGS_VACUUM);
+
+	if (!scan)
+	{
+		/*
+		 * Serial index build.
+		 *
+		 * Must begin our own heap scan in this case.  We may also need to
+		 * register a snapshot whose lifetime is under our direct control.
+		 */
+		if (!TransactionIdIsValid(OldestXmin))
+		{
+			snapshot = RegisterSnapshot(GetTransactionSnapshot());
+			need_unregister_snapshot = true;
+		}
+		else
+			snapshot = SnapshotAny;
+
+		scan = heap_beginscan_strat(heapRelation,	/* relation */
+									snapshot,	/* snapshot */
+									0,	/* number of keys */
+									NULL,	/* scan key */
+									true,	/* buffer access strategy OK */
+									allow_sync);	/* syncscan OK? */
 	}
 	else
 	{
-		snapshot = SnapshotAny;
-		/* okay to ignore lazy VACUUMs here */
-		OldestXmin = GetOldestXmin(heapRelation, PROCARRAY_FLAGS_VACUUM);
+		/*
+		 * Parallel index build.
+		 *
+		 * Parallel case never registers/unregisters own snapshot.  Snapshot
+		 * is taken from parallel heap scan, and is SnapshotAny or an MVCC
+		 * snapshot, based on same criteria as serial case.
+		 */
+		Assert(!IsBootstrapProcessingMode());
+		Assert(allow_sync);
+		snapshot = scan->rs_snapshot;
 	}
 
-	scan = heap_beginscan_strat(heapRelation,	/* relation */
-								snapshot,	/* snapshot */
-								0,	/* number of keys */
-								NULL,	/* scan key */
-								true,	/* buffer access strategy OK */
-								allow_sync);	/* syncscan OK? */
+	/*
+	 * Must call GetOldestXmin() with SnapshotAny.  Should never call
+	 * GetOldestXmin() with MVCC snapshot. (It's especially worth checking
+	 * this for parallel builds, since ambuild routines that support parallel
+	 * builds must work these details out for themselves.)
+	 */
+	Assert(snapshot == SnapshotAny || IsMVCCSnapshot(snapshot));
+	Assert(snapshot == SnapshotAny ? TransactionIdIsValid(OldestXmin) :
+		   !TransactionIdIsValid(OldestXmin));
+	Assert(snapshot == SnapshotAny || !anyvisible);
 
 	/* set our scan endpoints */
 	if (!allow_sync)
@@ -2376,6 +2687,12 @@ IndexBuildHeapRangeScan(Relation heapRelation,
 			 */
 			LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
 
+			/*
+			 * The criteria for counting a tuple as live in this block need to
+			 * match what analyze.c's acquire_sample_rows() does, otherwise
+			 * CREATE INDEX and ANALYZE may produce wildly different reltuples
+			 * values, e.g. when there are many recently-dead tuples.
+			 */
 			switch (HeapTupleSatisfiesVacuum(heapTuple, OldestXmin,
 											 scan->rs_cbuf))
 			{
@@ -2388,6 +2705,8 @@ IndexBuildHeapRangeScan(Relation heapRelation,
 					/* Normal case, index and unique-check it */
 					indexIt = true;
 					tupleIsAlive = true;
+					/* Count it as live, too */
+					reltuples += 1;
 					break;
 				case HEAPTUPLE_RECENTLY_DEAD:
 
@@ -2401,6 +2720,9 @@ IndexBuildHeapRangeScan(Relation heapRelation,
 					 * the live tuple at the end of the HOT-chain.  Since this
 					 * breaks semantics for pre-existing snapshots, mark the
 					 * index as unusable for them.
+					 *
+					 * We don't count recently-dead tuples in reltuples, even
+					 * if we index them; see acquire_sample_rows().
 					 */
 					if (HeapTupleIsHotUpdated(heapTuple))
 					{
@@ -2423,6 +2745,7 @@ IndexBuildHeapRangeScan(Relation heapRelation,
 					{
 						indexIt = true;
 						tupleIsAlive = true;
+						reltuples += 1;
 						break;
 					}
 
@@ -2460,6 +2783,15 @@ IndexBuildHeapRangeScan(Relation heapRelation,
 							goto recheck;
 						}
 					}
+					else
+					{
+						/*
+						 * For consistency with acquire_sample_rows(), count
+						 * HEAPTUPLE_INSERT_IN_PROGRESS tuples as live only
+						 * when inserted by our own transaction.
+						 */
+						reltuples += 1;
+					}
 
 					/*
 					 * We must index such tuples, since if the index build
@@ -2479,6 +2811,7 @@ IndexBuildHeapRangeScan(Relation heapRelation,
 					{
 						indexIt = true;
 						tupleIsAlive = false;
+						reltuples += 1;
 						break;
 					}
 
@@ -2522,6 +2855,14 @@ IndexBuildHeapRangeScan(Relation heapRelation,
 						 * the same as a RECENTLY_DEAD tuple.
 						 */
 						indexIt = true;
+
+						/*
+						 * Count HEAPTUPLE_DELETE_IN_PROGRESS tuples as live,
+						 * if they were not deleted by the current
+						 * transaction.  That's what acquire_sample_rows()
+						 * does, and we want the behavior to be consistent.
+						 */
+						reltuples += 1;
 					}
 					else if (HeapTupleIsHotUpdated(heapTuple))
 					{
@@ -2539,8 +2880,8 @@ IndexBuildHeapRangeScan(Relation heapRelation,
 					{
 						/*
 						 * It's a regular tuple deleted by our own xact. Index
-						 * it but don't check for uniqueness, the same as a
-						 * RECENTLY_DEAD tuple.
+						 * it, but don't check for uniqueness nor count in
+						 * reltuples, the same as a RECENTLY_DEAD tuple.
 						 */
 						indexIt = true;
 					}
@@ -2562,9 +2903,8 @@ IndexBuildHeapRangeScan(Relation heapRelation,
 		{
 			/* heap_getnext did the time qual check */
 			tupleIsAlive = true;
+			reltuples += 1;
 		}
-
-		reltuples += 1;
 
 		MemoryContextReset(econtext->ecxt_per_tuple_memory);
 
@@ -2635,8 +2975,8 @@ IndexBuildHeapRangeScan(Relation heapRelation,
 
 	heap_endscan(scan);
 
-	/* we can now forget our snapshot, if set */
-	if (IsBootstrapProcessingMode() || indexInfo->ii_Concurrent)
+	/* we can now forget our snapshot, if set and registered by us */
+	if (need_unregister_snapshot)
 		UnregisterSnapshot(snapshot);
 
 	ExecDropSingleTupleTableSlot(slot);
@@ -2879,7 +3219,7 @@ validate_index(Oid heapId, Oid indexId, Snapshot snapshot)
 	state.tuplesort = tuplesort_begin_datum(INT8OID, Int8LessOperator,
 											InvalidOid, false,
 											maintenance_work_mem,
-											false);
+											NULL, false);
 	state.htups = state.itups = state.tups_inserted = 0;
 
 	(void) index_bulk_delete(&ivinfo, NULL,
@@ -3400,6 +3740,14 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 	iRel = index_open(indexId, AccessExclusiveLock);
 
 	/*
+	 * The case of reindexing partitioned tables and indexes is handled
+	 * differently by upper layers, so this case shouldn't arise.
+	 */
+	if (iRel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
+		elog(ERROR, "unsupported relation kind for index \"%s\"",
+			 RelationGetRelationName(iRel));
+
+	/*
 	 * Don't allow reindex on temp tables of other backends ... their local
 	 * buffer manager is not going to cope.
 	 */
@@ -3445,7 +3793,7 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 
 		/* Initialize the index and rebuild */
 		/* Note: we do not need to re-establish pkey setting */
-		index_build(heapRelation, iRel, indexInfo, false, true);
+		index_build(heapRelation, iRel, indexInfo, false, true, true);
 	}
 	PG_CATCH();
 	{
@@ -3598,6 +3946,22 @@ reindex_relation(Oid relid, int flags, int options)
 	 */
 	rel = heap_open(relid, ShareLock);
 
+	/*
+	 * This may be useful when implemented someday; but that day is not today.
+	 * For now, avoid erroring out when called in a multi-table context
+	 * (REINDEX SCHEMA) and happen to come across a partitioned table.  The
+	 * partitions may be reindexed on their own anyway.
+	 */
+	if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+	{
+		ereport(WARNING,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("REINDEX of partitioned tables is not yet implemented, skipping \"%s\"",
+						RelationGetRelationName(rel))));
+		heap_close(rel, ShareLock);
+		return false;
+	}
+
 	toast_relid = rel->rd_rel->reltoastrelid;
 
 	/*
@@ -3633,7 +3997,7 @@ reindex_relation(Oid relid, int flags, int options)
 
 	/* Ensure rd_indexattr is valid; see comments for RelationSetIndexList */
 	if (is_pg_class)
-		(void) RelationGetIndexAttrBitmap(rel, INDEX_ATTR_BITMAP_ALL);
+		(void) RelationGetIndexAttrBitmap(rel, INDEX_ATTR_BITMAP_HOT);
 
 	PG_TRY();
 	{
@@ -3721,7 +4085,8 @@ reindex_relation(Oid relid, int flags, int options)
  * When we are busy reindexing a system index, this code provides support
  * for preventing catalog lookups from using that index.  We also make use
  * of this to catch attempted uses of user indexes during reindexing of
- * those indexes.
+ * those indexes.  This information is propagated to parallel workers;
+ * attempting to change it during a parallel operation is not permitted.
  * ----------------------------------------------------------------
  */
 
@@ -3787,6 +4152,7 @@ SetReindexProcessing(Oid heapOid, Oid indexOid)
 static void
 ResetReindexProcessing(void)
 {
+	/* This may be called in leader error path */
 	currentlyReindexedHeap = InvalidOid;
 	currentlyReindexedIndex = InvalidOid;
 }
@@ -3804,6 +4170,8 @@ SetReindexPending(List *indexes)
 	/* Reindexing is not re-entrant. */
 	if (pendingReindexedIndexes)
 		elog(ERROR, "cannot reindex while reindexing");
+	if (IsInParallelMode())
+		elog(ERROR, "cannot modify reindex state during a parallel operation");
 	pendingReindexedIndexes = list_copy(indexes);
 }
 
@@ -3814,6 +4182,8 @@ SetReindexPending(List *indexes)
 static void
 RemoveReindexPending(Oid indexOid)
 {
+	if (IsInParallelMode())
+		elog(ERROR, "cannot modify reindex state during a parallel operation");
 	pendingReindexedIndexes = list_delete_oid(pendingReindexedIndexes,
 											  indexOid);
 }
@@ -3825,5 +4195,58 @@ RemoveReindexPending(Oid indexOid)
 static void
 ResetReindexPending(void)
 {
+	/* This may be called in leader error path */
 	pendingReindexedIndexes = NIL;
+}
+
+/*
+ * EstimateReindexStateSpace
+ *		Estimate space needed to pass reindex state to parallel workers.
+ */
+Size
+EstimateReindexStateSpace(void)
+{
+	return offsetof(SerializedReindexState, pendingReindexedIndexes)
+		+ mul_size(sizeof(Oid), list_length(pendingReindexedIndexes));
+}
+
+/*
+ * SerializeReindexState
+ *		Serialize reindex state for parallel workers.
+ */
+void
+SerializeReindexState(Size maxsize, char *start_address)
+{
+	SerializedReindexState *sistate = (SerializedReindexState *) start_address;
+	int			c = 0;
+	ListCell   *lc;
+
+	sistate->currentlyReindexedHeap = currentlyReindexedHeap;
+	sistate->currentlyReindexedIndex = currentlyReindexedIndex;
+	sistate->numPendingReindexedIndexes = list_length(pendingReindexedIndexes);
+	foreach(lc, pendingReindexedIndexes)
+		sistate->pendingReindexedIndexes[c++] = lfirst_oid(lc);
+}
+
+/*
+ * RestoreReindexState
+ *		Restore reindex state in a parallel worker.
+ */
+void
+RestoreReindexState(void *reindexstate)
+{
+	SerializedReindexState *sistate = (SerializedReindexState *) reindexstate;
+	int			c = 0;
+	MemoryContext oldcontext;
+
+	currentlyReindexedHeap = sistate->currentlyReindexedHeap;
+	currentlyReindexedIndex = sistate->currentlyReindexedIndex;
+
+	Assert(pendingReindexedIndexes == NIL);
+	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+	for (c = 0; c < sistate->numPendingReindexedIndexes; ++c)
+		pendingReindexedIndexes =
+			lappend_oid(pendingReindexedIndexes,
+						sistate->pendingReindexedIndexes[c]);
+	MemoryContextSwitchTo(oldcontext);
 }

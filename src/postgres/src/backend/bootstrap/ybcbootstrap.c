@@ -105,7 +105,7 @@ static void YBCAddSysCatalogColumns(YBCPgStatement yb_stmt,
 	/* Add the rest of the columns. */
 	for (int attno = 0; attno < tupdesc->natts; attno++)
 	{
-		Form_pg_attribute attr = tupdesc->attrs[attno];
+		Form_pg_attribute attr = TupleDescAttr(tupdesc, attno);
 		YBCAddSysCatalogColumn(yb_stmt,
 							   pkey_idx,
 							   attr->attname.data,

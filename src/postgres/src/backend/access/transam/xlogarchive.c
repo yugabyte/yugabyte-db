@@ -4,7 +4,7 @@
  *		Functions for archiving WAL files and restoring from the archive.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/xlogarchive.c
@@ -33,11 +33,11 @@
  * Attempt to retrieve the specified file from off-line archival storage.
  * If successful, fill "path" with its complete path (note that this will be
  * a temp file name that doesn't follow the normal naming convention), and
- * return TRUE.
+ * return true.
  *
  * If not successful, fill "path" with the name of the normal on-line file
  * (which may or may not actually exist, but we'll try to use it), and return
- * FALSE.
+ * false.
  *
  * For fixed-size files, the caller may pass the expected size as an
  * additional crosscheck on successful recovery.  If the file size is not
@@ -59,7 +59,6 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	char	   *endp;
 	const char *sp;
 	int			rc;
-	bool		signaled;
 	struct stat stat_buf;
 	XLogSegNo	restartSegNo;
 	XLogRecPtr	restartRedoPtr;
@@ -134,13 +133,14 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	if (cleanupEnabled)
 	{
 		GetOldestRestartPoint(&restartRedoPtr, &restartTli);
-		XLByteToSeg(restartRedoPtr, restartSegNo);
-		XLogFileName(lastRestartPointFname, restartTli, restartSegNo);
+		XLByteToSeg(restartRedoPtr, restartSegNo, wal_segment_size);
+		XLogFileName(lastRestartPointFname, restartTli, restartSegNo,
+					 wal_segment_size);
 		/* we shouldn't need anything earlier than last restart point */
 		Assert(strcmp(lastRestartPointFname, xlogfname) <= 0);
 	}
 	else
-		XLogFileName(lastRestartPointFname, 0, 0L);
+		XLogFileName(lastRestartPointFname, 0, 0L, wal_segment_size);
 
 	/*
 	 * construct the command to be executed
@@ -288,17 +288,12 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	 * will perform an immediate shutdown when it sees us exiting
 	 * unexpectedly.
 	 *
-	 * Per the Single Unix Spec, shells report exit status > 128 when a called
-	 * command died on a signal.  Also, 126 and 127 are used to report
-	 * problems such as an unfindable command; treat those as fatal errors
-	 * too.
+	 * We treat hard shell errors such as "command not found" as fatal, too.
 	 */
-	if (WIFSIGNALED(rc) && WTERMSIG(rc) == SIGTERM)
+	if (wait_result_is_signal(rc, SIGTERM))
 		proc_exit(1);
 
-	signaled = WIFSIGNALED(rc) || WEXITSTATUS(rc) > 125;
-
-	ereport(signaled ? FATAL : DEBUG2,
+	ereport(wait_result_is_any_signal(rc, true) ? FATAL : DEBUG2,
 			(errmsg("could not restore file \"%s\" from archive: %s",
 					xlogfname, wait_result_to_str(rc))));
 
@@ -326,7 +321,7 @@ not_available:
  * This is currently used for recovery_end_command and archive_cleanup_command.
  */
 void
-ExecuteRecoveryCommand(char *command, char *commandName, bool failOnSignal)
+ExecuteRecoveryCommand(const char *command, const char *commandName, bool failOnSignal)
 {
 	char		xlogRecoveryCmd[MAXPGPATH];
 	char		lastRestartPointFname[MAXPGPATH];
@@ -334,7 +329,6 @@ ExecuteRecoveryCommand(char *command, char *commandName, bool failOnSignal)
 	char	   *endp;
 	const char *sp;
 	int			rc;
-	bool		signaled;
 	XLogSegNo	restartSegNo;
 	XLogRecPtr	restartRedoPtr;
 	TimeLineID	restartTli;
@@ -347,8 +341,9 @@ ExecuteRecoveryCommand(char *command, char *commandName, bool failOnSignal)
 	 * archive, though there is no requirement to do so.
 	 */
 	GetOldestRestartPoint(&restartRedoPtr, &restartTli);
-	XLByteToSeg(restartRedoPtr, restartSegNo);
-	XLogFileName(lastRestartPointFname, restartTli, restartSegNo);
+	XLByteToSeg(restartRedoPtr, restartSegNo, wal_segment_size);
+	XLogFileName(lastRestartPointFname, restartTli, restartSegNo,
+				 wal_segment_size);
 
 	/*
 	 * construct the command to be executed
@@ -401,12 +396,9 @@ ExecuteRecoveryCommand(char *command, char *commandName, bool failOnSignal)
 	{
 		/*
 		 * If the failure was due to any sort of signal, it's best to punt and
-		 * abort recovery. See also detailed comments on signals in
-		 * RestoreArchivedFile().
+		 * abort recovery.  See comments in RestoreArchivedFile().
 		 */
-		signaled = WIFSIGNALED(rc) || WEXITSTATUS(rc) > 125;
-
-		ereport((signaled && failOnSignal) ? FATAL : WARNING,
+		ereport((failOnSignal && wait_result_is_any_signal(rc, true)) ? FATAL : WARNING,
 		/*------
 		   translator: First %s represents a recovery.conf parameter name like
 		  "recovery_end_command", the 2nd is the value of that parameter, the
@@ -423,7 +415,7 @@ ExecuteRecoveryCommand(char *command, char *commandName, bool failOnSignal)
  * in pg_wal (xlogfname), replacing any existing file with the same name.
  */
 void
-KeepFileRestoredFromArchive(char *path, char *xlogfname)
+KeepFileRestoredFromArchive(const char *path, const char *xlogfname)
 {
 	char		xlogfpath[MAXPGPATH];
 	bool		reload = false;
@@ -547,7 +539,7 @@ XLogArchiveNotifySeg(XLogSegNo segno)
 {
 	char		xlog[MAXFNAMELEN];
 
-	XLogFileName(xlog, ThisTimeLineID, segno);
+	XLogFileName(xlog, ThisTimeLineID, segno, wal_segment_size);
 	XLogArchiveNotify(xlog);
 }
 
@@ -618,9 +610,16 @@ XLogArchiveCheckDone(const char *xlog)
 {
 	char		archiveStatusPath[MAXPGPATH];
 	struct stat stat_buf;
+	bool		inRecovery = RecoveryInProgress();
 
-	/* Always deletable if archiving is off */
-	if (!XLogArchivingActive())
+	/*
+	 * The file is always deletable if archive_mode is "off".  On standbys
+	 * archiving is disabled if archive_mode is "on", and enabled with
+	 * "always".  On a primary, archiving is enabled if archive_mode is "on"
+	 * or "always".
+	 */
+	if (!((XLogArchivingActive() && !inRecovery) ||
+		  (XLogArchivingAlways() && inRecovery)))
 		return true;
 
 	/* First check for .done --- this means archiver is done with it */

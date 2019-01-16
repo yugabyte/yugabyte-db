@@ -8,7 +8,6 @@
 
 #include "mb/pg_wchar.h"
 #include "utils/memutils.h"
-#include "utils/palloc.h"
 
 #include "plpython.h"
 
@@ -85,7 +84,7 @@ PLyUnicode_Bytes(PyObject *unicode)
  * function.  The result is palloc'ed.
  *
  * Note that this function is disguised as PyString_AsString() when
- * using Python 3.  That function retuns a pointer into the internal
+ * using Python 3.  That function returns a pointer into the internal
  * memory of the argument, which isn't exactly the interface of this
  * function.  But in either case you get a rather short-lived
  * reference that you ought to better leave alone.

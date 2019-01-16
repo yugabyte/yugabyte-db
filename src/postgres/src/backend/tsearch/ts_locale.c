@@ -3,7 +3,7 @@
  * ts_locale.c
  *		locale compatibility layer for tsearch
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -21,20 +21,29 @@
 static void tsearch_readline_callback(void *arg);
 
 
-#ifdef USE_WIDE_UPPER_LOWER
+/*
+ * The reason these functions use a 3-wchar_t output buffer, not 2 as you
+ * might expect, is that on Windows "wchar_t" is 16 bits and what we'll be
+ * getting from char2wchar() is UTF16 not UTF32.  A single input character
+ * may therefore produce a surrogate pair rather than just one wchar_t;
+ * we also need room for a trailing null.  When we do get a surrogate pair,
+ * we pass just the first code to iswdigit() etc, so that these functions will
+ * always return false for characters outside the Basic Multilingual Plane.
+ */
+#define WC_BUF_LEN  3
 
 int
 t_isdigit(const char *ptr)
 {
 	int			clen = pg_mblen(ptr);
-	wchar_t		character[2];
+	wchar_t		character[WC_BUF_LEN];
 	Oid			collation = DEFAULT_COLLATION_OID;	/* TODO */
 	pg_locale_t mylocale = 0;	/* TODO */
 
 	if (clen == 1 || lc_ctype_is_c(collation))
 		return isdigit(TOUCHAR(ptr));
 
-	char2wchar(character, 2, ptr, clen, mylocale);
+	char2wchar(character, WC_BUF_LEN, ptr, clen, mylocale);
 
 	return iswdigit((wint_t) character[0]);
 }
@@ -43,14 +52,14 @@ int
 t_isspace(const char *ptr)
 {
 	int			clen = pg_mblen(ptr);
-	wchar_t		character[2];
+	wchar_t		character[WC_BUF_LEN];
 	Oid			collation = DEFAULT_COLLATION_OID;	/* TODO */
 	pg_locale_t mylocale = 0;	/* TODO */
 
 	if (clen == 1 || lc_ctype_is_c(collation))
 		return isspace(TOUCHAR(ptr));
 
-	char2wchar(character, 2, ptr, clen, mylocale);
+	char2wchar(character, WC_BUF_LEN, ptr, clen, mylocale);
 
 	return iswspace((wint_t) character[0]);
 }
@@ -59,14 +68,14 @@ int
 t_isalpha(const char *ptr)
 {
 	int			clen = pg_mblen(ptr);
-	wchar_t		character[2];
+	wchar_t		character[WC_BUF_LEN];
 	Oid			collation = DEFAULT_COLLATION_OID;	/* TODO */
 	pg_locale_t mylocale = 0;	/* TODO */
 
 	if (clen == 1 || lc_ctype_is_c(collation))
 		return isalpha(TOUCHAR(ptr));
 
-	char2wchar(character, 2, ptr, clen, mylocale);
+	char2wchar(character, WC_BUF_LEN, ptr, clen, mylocale);
 
 	return iswalpha((wint_t) character[0]);
 }
@@ -75,18 +84,17 @@ int
 t_isprint(const char *ptr)
 {
 	int			clen = pg_mblen(ptr);
-	wchar_t		character[2];
+	wchar_t		character[WC_BUF_LEN];
 	Oid			collation = DEFAULT_COLLATION_OID;	/* TODO */
 	pg_locale_t mylocale = 0;	/* TODO */
 
 	if (clen == 1 || lc_ctype_is_c(collation))
 		return isprint(TOUCHAR(ptr));
 
-	char2wchar(character, 2, ptr, clen, mylocale);
+	char2wchar(character, WC_BUF_LEN, ptr, clen, mylocale);
 
 	return iswprint((wint_t) character[0]);
 }
-#endif							/* USE_WIDE_UPPER_LOWER */
 
 
 /*
@@ -244,16 +252,11 @@ char *
 lowerstr_with_len(const char *str, int len)
 {
 	char	   *out;
-
-#ifdef USE_WIDE_UPPER_LOWER
 	Oid			collation = DEFAULT_COLLATION_OID;	/* TODO */
 	pg_locale_t mylocale = 0;	/* TODO */
-#endif
 
 	if (len == 0)
 		return pstrdup("");
-
-#ifdef USE_WIDE_UPPER_LOWER
 
 	/*
 	 * Use wide char code only when max encoding length > 1 and ctype != C.
@@ -300,7 +303,6 @@ lowerstr_with_len(const char *str, int len)
 		Assert(wlen < len);
 	}
 	else
-#endif							/* USE_WIDE_UPPER_LOWER */
 	{
 		const char *ptr = str;
 		char	   *outptr;

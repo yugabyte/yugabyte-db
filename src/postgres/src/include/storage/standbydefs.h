@@ -4,7 +4,7 @@
  *	   Frontend exposed definitions for hot standby mode.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/standbydefs.h
@@ -64,7 +64,7 @@ typedef struct xl_invalidations
 {
 	Oid			dbId;			/* MyDatabaseId */
 	Oid			tsId;			/* MyDatabaseTableSpace */
-	bool		relcacheInitFileInval;	/* invalidate relcache init file */
+	bool		relcacheInitFileInval;	/* invalidate relcache init files */
 	int			nmsgs;			/* number of shared inval msgs */
 	SharedInvalidationMessage msgs[FLEXIBLE_ARRAY_MEMBER];
 } xl_invalidations;

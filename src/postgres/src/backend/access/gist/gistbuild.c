@@ -4,7 +4,7 @@
  *	  build algorithm for GiST indexes implementation.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -56,6 +56,7 @@ typedef enum
 typedef struct
 {
 	Relation	indexrel;
+	Relation	heaprel;
 	GISTSTATE  *giststate;
 
 	int64		indtuples;		/* number of tuples indexed */
@@ -122,6 +123,7 @@ gistbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	int			fillfactor;
 
 	buildstate.indexrel = index;
+	buildstate.heaprel = heap;
 	if (index->rd_options)
 	{
 		/* Get buffering mode from the options string */
@@ -203,7 +205,7 @@ gistbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	 * Do the heap scan.
 	 */
 	reltuples = IndexBuildHeapScan(heap, index, indexInfo, true,
-								   gistBuildCallback, (void *) &buildstate);
+								   gistBuildCallback, (void *) &buildstate, NULL);
 
 	/*
 	 * If buffering was used, flush out all the tuples that are still in the
@@ -238,7 +240,7 @@ gistbuild(Relation heap, Relation index, IndexInfo *indexInfo)
  * and "auto" values.
  */
 void
-gistValidateBufferingOption(char *value)
+gistValidateBufferingOption(const char *value)
 {
 	if (value == NULL ||
 		(strcmp(value, "on") != 0 &&
@@ -295,10 +297,10 @@ gistInitBuffering(GISTBuildState *buildstate)
 	itupMinSize = (Size) MAXALIGN(sizeof(IndexTupleData));
 	for (i = 0; i < index->rd_att->natts; i++)
 	{
-		if (index->rd_att->attrs[i]->attlen < 0)
+		if (TupleDescAttr(index->rd_att, i)->attlen < 0)
 			itupMinSize += VARHDRSZ;
 		else
-			itupMinSize += index->rd_att->attrs[i]->attlen;
+			itupMinSize += TupleDescAttr(index->rd_att, i)->attlen;
 	}
 
 	/* Calculate average and maximal number of index tuples which fit to page */
@@ -484,7 +486,7 @@ gistBuildCallback(Relation index,
 		 * locked, we call gistdoinsert directly.
 		 */
 		gistdoinsert(index, itup, buildstate->freespace,
-					 buildstate->giststate);
+					 buildstate->giststate, buildstate->heaprel);
 	}
 
 	/* Update tuple count and total size. */
@@ -690,7 +692,8 @@ gistbufferinginserttuples(GISTBuildState *buildstate, Buffer buffer, int level,
 							   itup, ntup, oldoffnum, &placed_to_blk,
 							   InvalidBuffer,
 							   &splitinfo,
-							   false);
+							   false,
+							   buildstate->heaprel);
 
 	/*
 	 * If this is a root split, update the root path item kept in memory. This

@@ -2,7 +2,7 @@
  * output_plugin.h
  *	   PostgreSQL Logical Decode Plugin Interface
  *
- * Copyright (c) 2012-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2018, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -26,6 +26,7 @@ typedef enum OutputPluginOutputType
 typedef struct OutputPluginOptions
 {
 	OutputPluginOutputType output_type;
+	bool		receive_rewrites;
 } OutputPluginOptions;
 
 /*
@@ -59,6 +60,15 @@ typedef void (*LogicalDecodeChangeCB) (struct LogicalDecodingContext *ctx,
 									   ReorderBufferTXN *txn,
 									   Relation relation,
 									   ReorderBufferChange *change);
+
+/*
+ * Callback for every TRUNCATE in a successful transaction.
+ */
+typedef void (*LogicalDecodeTruncateCB) (struct LogicalDecodingContext *ctx,
+										 ReorderBufferTXN *txn,
+										 int nrelations,
+										 Relation relations[],
+										 ReorderBufferChange *change);
 
 /*
  * Called for every (explicit or implicit) COMMIT of a successful transaction.
@@ -97,6 +107,7 @@ typedef struct OutputPluginCallbacks
 	LogicalDecodeStartupCB startup_cb;
 	LogicalDecodeBeginCB begin_cb;
 	LogicalDecodeChangeCB change_cb;
+	LogicalDecodeTruncateCB truncate_cb;
 	LogicalDecodeCommitCB commit_cb;
 	LogicalDecodeMessageCB message_cb;
 	LogicalDecodeFilterByOriginCB filter_by_origin_cb;

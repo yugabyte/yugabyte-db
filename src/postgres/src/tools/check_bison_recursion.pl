@@ -16,7 +16,7 @@
 # To use: run bison with the -v switch, then feed the produced y.output
 # file to this script.
 #
-# Copyright (c) 2011-2017, PostgreSQL Global Development Group
+# Copyright (c) 2011-2018, PostgreSQL Global Development Group
 #
 # src/tools/check_bison_recursion.pl
 #################################################################
@@ -82,7 +82,7 @@ while (<>)
 			&& !grep { $cur_nonterminal eq $_ } @rhs)
 		{
 			print
-"Right recursion in rule $rule_number: $cur_nonterminal := $rhs\n";
+			  "Right recursion in rule $rule_number: $cur_nonterminal := $rhs\n";
 		}
 	}
 }

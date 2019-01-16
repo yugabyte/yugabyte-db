@@ -4,7 +4,7 @@
  *	  implementation for PostgreSQL generic linked list package
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1244,6 +1244,68 @@ list_copy_tail(const List *oldlist, int nskip)
 
 	newlist_prev->next = NULL;
 	newlist->tail = newlist_prev;
+
+	check_list_invariants(newlist);
+	return newlist;
+}
+
+/*
+ * Sort a list as though by qsort.
+ *
+ * A new list is built and returned.  Like list_copy, this doesn't make
+ * fresh copies of any pointed-to data.
+ *
+ * The comparator function receives arguments of type ListCell **.
+ */
+List *
+list_qsort(const List *list, list_qsort_comparator cmp)
+{
+	int			len = list_length(list);
+	ListCell  **list_arr;
+	List	   *newlist;
+	ListCell   *newlist_prev;
+	ListCell   *cell;
+	int			i;
+
+	/* Empty list is easy */
+	if (len == 0)
+		return NIL;
+
+	/* Flatten list cells into an array, so we can use qsort */
+	list_arr = (ListCell **) palloc(sizeof(ListCell *) * len);
+	i = 0;
+	foreach(cell, list)
+		list_arr[i++] = cell;
+
+	qsort(list_arr, len, sizeof(ListCell *), cmp);
+
+	/* Construct new list (this code is much like list_copy) */
+	newlist = new_list(list->type);
+	newlist->length = len;
+
+	/*
+	 * Copy over the data in the first cell; new_list() has already allocated
+	 * the head cell itself
+	 */
+	newlist->head->data = list_arr[0]->data;
+
+	newlist_prev = newlist->head;
+	for (i = 1; i < len; i++)
+	{
+		ListCell   *newlist_cur;
+
+		newlist_cur = (ListCell *) palloc(sizeof(*newlist_cur));
+		newlist_cur->data = list_arr[i]->data;
+		newlist_prev->next = newlist_cur;
+
+		newlist_prev = newlist_cur;
+	}
+
+	newlist_prev->next = NULL;
+	newlist->tail = newlist_prev;
+
+	/* Might as well free the workspace array */
+	pfree(list_arr);
 
 	check_list_invariants(newlist);
 	return newlist;

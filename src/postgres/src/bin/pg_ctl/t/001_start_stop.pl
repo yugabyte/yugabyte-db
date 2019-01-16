@@ -2,9 +2,11 @@ use strict;
 use warnings;
 
 use Config;
+use Fcntl ':mode';
+use File::stat qw{lstat};
 use PostgresNode;
 use TestLib;
-use Test::More tests => 19;
+use Test::More tests => 24;
 
 my $tempdir       = TestLib::tempdir;
 my $tempdir_short = TestLib::tempdir_short;
@@ -34,7 +36,8 @@ else
 close $conf;
 my $ctlcmd = [
 	'pg_ctl', 'start', '-D', "$tempdir/data", '-l',
-	"$TestLib::log_path/001_start_stop_server.log" ];
+	"$TestLib::log_path/001_start_stop_server.log"
+];
 if ($Config{osname} ne 'msys')
 {
 	command_like($ctlcmd, qr/done.*server started/s, 'pg_ctl start');
@@ -57,9 +60,44 @@ command_ok([ 'pg_ctl', 'stop', '-D', "$tempdir/data" ], 'pg_ctl stop');
 command_fails([ 'pg_ctl', 'stop', '-D', "$tempdir/data" ],
 	'second pg_ctl stop fails');
 
-command_ok(
-	[ 'pg_ctl', 'restart', '-D', "$tempdir/data" ],
+# Log file for default permission test.  The permissions won't be checked on
+# Windows but we still want to do the restart test.
+my $logFileName = "$tempdir/data/perm-test-600.log";
+
+command_ok([ 'pg_ctl', 'restart', '-D', "$tempdir/data", '-l', $logFileName ],
 	'pg_ctl restart with server not running');
+
+# Permissions on log file should be default
+SKIP:
+{
+	skip "unix-style permissions not supported on Windows", 2
+	  if ($windows_os);
+
+	ok(-f $logFileName);
+	ok(check_mode_recursive("$tempdir/data", 0700, 0600));
+}
+
+# Log file for group access test
+$logFileName = "$tempdir/data/perm-test-640.log";
+
+SKIP:
+{
+	skip "group access not supported on Windows", 3 if ($windows_os);
+
+	system_or_bail 'pg_ctl', 'stop', '-D', "$tempdir/data";
+
+	# Change the data dir mode so log file will be created with group read
+	# privileges on the next start
+	chmod_recursive("$tempdir/data", 0750, 0640);
+
+	command_ok(
+		[ 'pg_ctl', 'start', '-D', "$tempdir/data", '-l', $logFileName ],
+		'start server to check group permissions');
+
+	ok(-f $logFileName);
+	ok(check_mode_recursive("$tempdir/data", 0750, 0640));
+}
+
 command_ok([ 'pg_ctl', 'restart', '-D', "$tempdir/data" ],
 	'pg_ctl restart with server running');
 

@@ -4,7 +4,7 @@
  *	  POSTGRES relation scan descriptor definitions.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/relscan.h
@@ -36,11 +36,13 @@ typedef struct ParallelHeapScanDescData
 	Oid			phs_relid;		/* OID of relation to scan */
 	bool		phs_syncscan;	/* report location to syncscan logic? */
 	BlockNumber phs_nblocks;	/* # blocks in relation at start of scan */
-	slock_t		phs_mutex;		/* mutual exclusion for block number fields */
+	slock_t		phs_mutex;		/* mutual exclusion for setting startblock */
 	BlockNumber phs_startblock; /* starting block number */
-	BlockNumber phs_cblock;		/* current block number */
+	pg_atomic_uint64 phs_nallocated;	/* number of blocks allocated to
+										 * workers so far. */
+	bool		phs_snapshot_any;	/* SnapshotAny, not phs_snapshot_data? */
 	char		phs_snapshot_data[FLEXIBLE_ARRAY_MEMBER];
-}			ParallelHeapScanDescData;
+} ParallelHeapScanDescData;
 
 typedef struct HeapScanDescData
 {

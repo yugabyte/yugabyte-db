@@ -145,7 +145,7 @@
      </para>
 
      <para>
-      If your application uses some other client interface, such as <application>PHP</>, then
+      If your application uses some other client interface, such as <application>PHP</application>, then
       please try to isolate the offending queries. We will probably not set up a
       web server to reproduce your problem. In any case remember to provide
       the exact input files; do not guess that the problem happens for
@@ -167,10 +167,10 @@
      <note>
       <para>
        If you are reporting an error message, please obtain the most verbose
-       form of the message.  In <application>psql</>, say <literal>\set
-       VERBOSITY verbose</> beforehand.  If you are extracting the message
+       form of the message.  In <application>psql</application>, say <literal>\set
+       VERBOSITY verbose</literal> beforehand.  If you are extracting the message
        from the server log, set the run-time parameter
-       <xref linkend="guc-log-error-verbosity"> to <literal>verbose</> so that all
+       <xref linkend="guc-log-error-verbosity"/> to <literal>verbose</literal> so that all
        details are logged.
       </para>
      </note>
@@ -236,9 +236,9 @@
       If your version is older than &version; we will almost certainly
       tell you to upgrade. There are many bug fixes and improvements
       in each new release, so it is quite possible that a bug you have
-      encountered in an older release of <productname>PostgreSQL</>
+      encountered in an older release of <productname>PostgreSQL</productname>
       has already been fixed. We can only provide limited support for
-      sites using older releases of <productname>PostgreSQL</>; if you
+      sites using older releases of <productname>PostgreSQL</productname>; if you
       require more than we can provide, consider acquiring a
       commercial support contract.
      </para>
@@ -264,7 +264,7 @@
    It is better to report everything the first time than us having to squeeze the
    facts out of you. On the other hand, if your input files are huge, it is
    fair to ask first whether somebody is interested in looking into it.  Here is
-   an <ulink url="http://www.chiark.greenend.org.uk/~sgtatham/bugs.html">article</ulink>
+   an <ulink url="https://www.chiark.greenend.org.uk/~sgtatham/bugs.html">article</ulink>
    that outlines some more tips on reporting bugs.
   </para>
 
@@ -283,8 +283,8 @@
    are specifically talking about the backend process, mention that, do not
    just say <quote>PostgreSQL crashes</quote>.  A crash of a single
    backend process is quite different from crash of the parent
-   <quote>postgres</> process; please don't say <quote>the server
-   crashed</> when you mean a single backend process went down, nor vice versa.
+   <quote>postgres</quote> process; please don't say <quote>the server
+   crashed</quote> when you mean a single backend process went down, nor vice versa.
    Also, client programs such as the interactive frontend <quote><application>psql</application></quote>
    are completely separate from the backend.  Please try to be specific
    about whether the problem is on the client or server side.
@@ -296,7 +296,7 @@
 
   <para>
    In general, send bug reports to the bug report mailing list at
-   <email>pgsql-bugs@postgresql.org</email>.
+   <email>pgsql-bugs@lists.postgresql.org</email>.
    You are requested to use a descriptive subject for your email
    message, perhaps parts of the error message.
   </para>
@@ -306,7 +306,7 @@
    at the project's
    <ulink url="https://www.postgresql.org/">web site</ulink>.
    Entering a bug report this way causes it to be mailed to the
-   <email>pgsql-bugs@postgresql.org</email> mailing list.
+   <email>pgsql-bugs@lists.postgresql.org</email> mailing list.
   </para>
 
   <para>
@@ -318,8 +318,8 @@
 
   <para>
    Do not send bug reports to any of the user mailing lists, such as
-   <email>pgsql-sql@postgresql.org</email> or
-   <email>pgsql-general@postgresql.org</email>.
+   <email>pgsql-sql@lists.postgresql.org</email> or
+   <email>pgsql-general@lists.postgresql.org</email>.
    These mailing lists are for answering
    user questions, and their subscribers normally do not wish to receive
    bug reports. More importantly, they are unlikely to fix them.
@@ -327,7 +327,7 @@
 
   <para>
    Also, please do <emphasis>not</emphasis> send reports to
-   the developers' mailing list <email>pgsql-hackers@postgresql.org</email>.
+   the developers' mailing list <email>pgsql-hackers@lists.postgresql.org</email>.
    This list is for discussing the
    development of <productname>PostgreSQL</productname>, and it would be nice
    if we could keep the bug reports separate. We might choose to take up a
@@ -337,14 +337,14 @@
 
   <para>
    If you have a problem with the documentation, the best place to report it
-   is the documentation mailing list <email>pgsql-docs@postgresql.org</email>.
+   is the documentation mailing list <email>pgsql-docs@lists.postgresql.org</email>.
    Please be specific about what part of the documentation you are unhappy
    with.
   </para>
 
   <para>
    If your bug is a portability problem on a non-supported platform,
-   send mail to <email>pgsql-hackers@postgresql.org</email>,
+   send mail to <email>pgsql-hackers@lists.postgresql.org</email>,
    so we (and you) can work on
    porting <productname>PostgreSQL</productname> to your platform.
   </para>
@@ -352,14 +352,10 @@
   <note>
    <para>
     Due to the unfortunate amount of spam going around, all of the above
-    email addresses are closed mailing lists. That is, you need to be
-    subscribed to a list to be allowed to post on it.  (You need not be
-    subscribed to use the bug-report web form, however.)
-    If you would like to send mail but do not want to receive list traffic,
-    you can subscribe and set your subscription option to <literal>nomail</>.
-    For more information send mail to
-    <email>majordomo@postgresql.org</email>
-    with the single word <literal>help</> in the body of the message.
+    lists will be moderated unless you are subscribed. That means there
+    will be some delay before the email is delivered. If you wish to subscribe
+    to the lists, please visit
+    <ulink url="https://lists.postgresql.org/"></ulink> for instructions.
    </para>
   </note>
  </sect2>

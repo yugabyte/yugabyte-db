@@ -438,7 +438,7 @@ class PostgresBuilder:
 
     def make_postgres(self):
         self.set_env_vars('make')
-        make_cmd = ['make']
+        make_cmd = ['make', '-f', 'Makefile']
 
         make_parallelism = os.environ.get('YB_MAKE_PARALLELISM')
         if make_parallelism:

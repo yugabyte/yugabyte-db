@@ -3,7 +3,7 @@
  * postgres_fdw.h
  *		  Foreign-data wrapper for remote PostgreSQL servers
  *
- * Portions Copyright (c) 2012-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/postgres_fdw/postgres_fdw.h
@@ -140,28 +140,30 @@ extern void classifyConditions(PlannerInfo *root,
 extern bool is_foreign_expr(PlannerInfo *root,
 				RelOptInfo *baserel,
 				Expr *expr);
-extern void deparseInsertSql(StringInfo buf, PlannerInfo *root,
+extern void deparseInsertSql(StringInfo buf, RangeTblEntry *rte,
 				 Index rtindex, Relation rel,
 				 List *targetAttrs, bool doNothing, List *returningList,
 				 List **retrieved_attrs);
-extern void deparseUpdateSql(StringInfo buf, PlannerInfo *root,
+extern void deparseUpdateSql(StringInfo buf, RangeTblEntry *rte,
 				 Index rtindex, Relation rel,
 				 List *targetAttrs, List *returningList,
 				 List **retrieved_attrs);
 extern void deparseDirectUpdateSql(StringInfo buf, PlannerInfo *root,
 					   Index rtindex, Relation rel,
+					   RelOptInfo *foreignrel,
 					   List *targetlist,
 					   List *targetAttrs,
 					   List *remote_conds,
 					   List **params_list,
 					   List *returningList,
 					   List **retrieved_attrs);
-extern void deparseDeleteSql(StringInfo buf, PlannerInfo *root,
+extern void deparseDeleteSql(StringInfo buf, RangeTblEntry *rte,
 				 Index rtindex, Relation rel,
 				 List *returningList,
 				 List **retrieved_attrs);
 extern void deparseDirectDeleteSql(StringInfo buf, PlannerInfo *root,
 					   Index rtindex, Relation rel,
+					   RelOptInfo *foreignrel,
 					   List *remote_conds,
 					   List **params_list,
 					   List *returningList,

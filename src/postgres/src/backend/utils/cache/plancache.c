@@ -38,7 +38,7 @@
  * be infrequent enough that more-detailed tracking is not worth the effort.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -180,6 +180,7 @@ CreateCachedPlan(RawStmt *raw_parse_tree,
 	plansource->magic = CACHEDPLANSOURCE_MAGIC;
 	plansource->raw_parse_tree = copyObject(raw_parse_tree);
 	plansource->query_string = pstrdup(query_string);
+	MemoryContextSetIdentifier(source_context, plansource->query_string);
 	plansource->commandTag = commandTag;
 	plansource->param_types = NULL;
 	plansource->num_params = 0;
@@ -319,7 +320,7 @@ CreateOneShotCachedPlan(RawStmt *raw_parse_tree,
  * parserSetup: alternate method for handling query parameters
  * parserSetupArg: data to pass to parserSetup
  * cursor_options: options bitmask to pass to planner
- * fixed_result: TRUE to disallow future changes in query's result tupdesc
+ * fixed_result: true to disallow future changes in query's result tupdesc
  */
 void
 CompleteCachedPlan(CachedPlanSource *plansource,
@@ -951,6 +952,7 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 		plan_context = AllocSetContextCreate(CurrentMemoryContext,
 											 "CachedPlan",
 											 ALLOCSET_START_SMALL_SIZES);
+		MemoryContextCopyAndSetIdentifier(plan_context, plansource->query_string);
 
 		/*
 		 * Copy plan into the new context.
@@ -1346,6 +1348,7 @@ CopyCachedPlan(CachedPlanSource *plansource)
 	newsource->magic = CACHEDPLANSOURCE_MAGIC;
 	newsource->raw_parse_tree = copyObject(plansource->raw_parse_tree);
 	newsource->query_string = pstrdup(plansource->query_string);
+	MemoryContextSetIdentifier(source_context, newsource->query_string);
 	newsource->commandTag = plansource->commandTag;
 	if (plansource->num_params > 0)
 	{

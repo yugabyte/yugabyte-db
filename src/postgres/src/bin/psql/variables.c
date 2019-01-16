@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2018, PostgreSQL Global Development Group
  *
  * src/bin/psql/variables.c
  */
@@ -246,10 +246,10 @@ SetVariable(VariableSpace space, const char *name, const char *value)
 			bool		confirmed;
 
 			if (current->substitute_hook)
-				new_value = (*current->substitute_hook) (new_value);
+				new_value = current->substitute_hook(new_value);
 
 			if (current->assign_hook)
-				confirmed = (*current->assign_hook) (new_value);
+				confirmed = current->assign_hook(new_value);
 			else
 				confirmed = true;
 

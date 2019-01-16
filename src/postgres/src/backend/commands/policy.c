@@ -3,7 +3,7 @@
  * policy.c
  *	  Commands for manipulating policies.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/commands/policy.c
@@ -78,7 +78,7 @@ RangeVarCallbackForPolicy(const RangeVar *rv, Oid relid, Oid oldrelid,
 
 	/* Must own relation. */
 	if (!pg_class_ownercheck(relid, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS, rv->relname);
+		aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(get_rel_relkind(relid)), rv->relname);
 
 	/* No system table modifications unless explicitly allowed. */
 	if (!allowSystemTableMods && IsSystemClass(relid, classform))
@@ -213,6 +213,9 @@ RelationBuildRowSecurity(Relation relation)
 		ScanKeyData skey;
 		SysScanDesc sscan;
 		HeapTuple	tuple;
+
+		MemoryContextCopyAndSetIdentifier(rscxt,
+										  RelationGetRelationName(relation));
 
 		rsdesc = MemoryContextAllocZero(rscxt, sizeof(RowSecurityDesc));
 		rsdesc->rscxt = rscxt;
@@ -740,7 +743,7 @@ CreatePolicy(CreatePolicyStmt *stmt)
 
 	/* Get id of table.  Also handles permissions checks. */
 	table_id = RangeVarGetRelidExtended(stmt->table, AccessExclusiveLock,
-										false, false,
+										0,
 										RangeVarCallbackForPolicy,
 										(void *) stmt);
 
@@ -912,7 +915,7 @@ AlterPolicy(AlterPolicyStmt *stmt)
 
 	/* Get id of table.  Also handles permissions checks. */
 	table_id = RangeVarGetRelidExtended(stmt->table, AccessExclusiveLock,
-										false, false,
+										0,
 										RangeVarCallbackForPolicy,
 										(void *) stmt);
 
@@ -1212,7 +1215,7 @@ rename_policy(RenameStmt *stmt)
 
 	/* Get id of table.  Also handles permissions checks. */
 	table_id = RangeVarGetRelidExtended(stmt->relation, AccessExclusiveLock,
-										false, false,
+										0,
 										RangeVarCallbackForPolicy,
 										(void *) stmt);
 

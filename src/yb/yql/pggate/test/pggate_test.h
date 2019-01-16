@@ -27,7 +27,10 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
-#include "postgres/src/interfaces/ecpg/ecpglib/pg_type.h"
+// This file comes from this directory:
+// postgres_build/src/include/catalog
+// We add a special include path to CMakeLists.txt.
+#include "pg_type_d.h"
 
 namespace yb {
 namespace pggate {

@@ -8,7 +8,7 @@
  * pager open/close functions, all that stuff came with it.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/fe_utils/print.c
@@ -32,7 +32,7 @@
 
 #include "fe_utils/print.h"
 
-#include "catalog/pg_type.h"
+#include "catalog/pg_type_d.h"
 #include "fe_utils/mbprint.h"
 
 
@@ -2187,14 +2187,34 @@ latex_escaped_print(const char *in, FILE *fout)
 	for (p = in; *p; p++)
 		switch (*p)
 		{
-			case '&':
-				fputs("\\&", fout);
+				/*
+				 * We convert ASCII characters per the recommendations in
+				 * Scott Pakin's "The Comprehensive LATEX Symbol List",
+				 * available from CTAN.  For non-ASCII, you're on your own.
+				 */
+			case '#':
+				fputs("\\#", fout);
+				break;
+			case '$':
+				fputs("\\$", fout);
 				break;
 			case '%':
 				fputs("\\%", fout);
 				break;
-			case '$':
-				fputs("\\$", fout);
+			case '&':
+				fputs("\\&", fout);
+				break;
+			case '<':
+				fputs("\\textless{}", fout);
+				break;
+			case '>':
+				fputs("\\textgreater{}", fout);
+				break;
+			case '\\':
+				fputs("\\textbackslash{}", fout);
+				break;
+			case '^':
+				fputs("\\^{}", fout);
 				break;
 			case '_':
 				fputs("\\_", fout);
@@ -2202,13 +2222,17 @@ latex_escaped_print(const char *in, FILE *fout)
 			case '{':
 				fputs("\\{", fout);
 				break;
+			case '|':
+				fputs("\\textbar{}", fout);
+				break;
 			case '}':
 				fputs("\\}", fout);
 				break;
-			case '\\':
-				fputs("\\backslash", fout);
+			case '~':
+				fputs("\\~{}", fout);
 				break;
 			case '\n':
+				/* This is not right, but doing it right seems too hard */
 				fputs("\\\\", fout);
 				break;
 			default:
@@ -2870,7 +2894,9 @@ PageOutput(int lines, const printTableOpt *topt)
 			const char *pagerprog;
 			FILE	   *pagerpipe;
 
-			pagerprog = getenv("PAGER");
+			pagerprog = getenv("PSQL_PAGER");
+			if (!pagerprog)
+				pagerprog = getenv("PAGER");
 			if (!pagerprog)
 				pagerprog = DEFAULT_PAGER;
 			else

@@ -5,7 +5,7 @@
  *
  *	  Should be moved/renamed...    - vadim 07/28/98
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/tqual.h
@@ -66,6 +66,8 @@ extern bool HeapTupleSatisfiesToast(HeapTuple htup,
 						Snapshot snapshot, Buffer buffer);
 extern bool HeapTupleSatisfiesDirty(HeapTuple htup,
 						Snapshot snapshot, Buffer buffer);
+extern bool HeapTupleSatisfiesNonVacuumable(HeapTuple htup,
+								Snapshot snapshot, Buffer buffer);
 extern bool HeapTupleSatisfiesHistoricMVCC(HeapTuple htup,
 							   Snapshot snapshot, Buffer buffer);
 
@@ -100,6 +102,14 @@ extern bool ResolveCminCmaxDuringDecoding(struct HTAB *tuplecid_data,
  */
 #define InitDirtySnapshot(snapshotdata)  \
 	((snapshotdata).satisfies = HeapTupleSatisfiesDirty)
+
+/*
+ * Similarly, some initialization is required for a NonVacuumable snapshot.
+ * The caller must supply the xmin horizon to use (e.g., RecentGlobalXmin).
+ */
+#define InitNonVacuumableSnapshot(snapshotdata, xmin_horizon)  \
+	((snapshotdata).satisfies = HeapTupleSatisfiesNonVacuumable, \
+	 (snapshotdata).xmin = (xmin_horizon))
 
 /*
  * Similarly, some initialization is required for SnapshotToast.  We need

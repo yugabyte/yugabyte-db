@@ -42,7 +42,7 @@
  * where memory fragmentation is very severe, only a tiny fraction of
  * the pages under management are consumed by this btree.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -455,7 +455,7 @@ FreePageManagerDump(FreePageManager *fpm)
 	recycle = relptr_access(base, fpm->btree_recycle);
 	if (recycle != NULL)
 	{
-		appendStringInfo(&buf, "btree recycle:");
+		appendStringInfoString(&buf, "btree recycle:");
 		FreePageManagerDumpSpans(fpm, recycle, 1, &buf);
 	}
 
@@ -468,7 +468,7 @@ FreePageManagerDump(FreePageManager *fpm)
 			continue;
 		if (!dumped_any_freelist)
 		{
-			appendStringInfo(&buf, "freelists:\n");
+			appendStringInfoString(&buf, "freelists:\n");
 			dumped_any_freelist = true;
 		}
 		appendStringInfo(&buf, "  %zu:", f + 1);
@@ -1275,7 +1275,7 @@ FreePageManagerDumpBtree(FreePageManager *fpm, FreePageBtree *btp,
 							 btp->u.leaf_key[index].first_page,
 							 btp->u.leaf_key[index].npages);
 	}
-	appendStringInfo(buf, "\n");
+	appendStringInfoChar(buf, '\n');
 
 	if (btp->hdr.magic == FREE_PAGE_INTERNAL_MAGIC)
 	{
@@ -1308,7 +1308,7 @@ FreePageManagerDumpSpans(FreePageManager *fpm, FreePageSpanLeader *span,
 		span = relptr_access(base, span->next);
 	}
 
-	appendStringInfo(buf, "\n");
+	appendStringInfoChar(buf, '\n');
 }
 
 /*

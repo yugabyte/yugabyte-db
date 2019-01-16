@@ -3,7 +3,7 @@
  * pg_collation.c
  *	  routines to support manipulation of the pg_collation relation
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -22,7 +22,6 @@
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_collation.h"
-#include "catalog/pg_collation_fn.h"
 #include "catalog/pg_namespace.h"
 #include "mb/pg_wchar.h"
 #include "utils/builtins.h"

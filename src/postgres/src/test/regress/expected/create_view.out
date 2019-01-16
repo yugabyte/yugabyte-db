@@ -83,7 +83,7 @@ CREATE VIEW temp_view_test.v3_temp AS SELECT * FROM temp_table;
 NOTICE:  view "v3_temp" will be a temporary view
 ERROR:  cannot create temporary relation in non-temporary schema
 -- should fail
-CREATE SCHEMA test_schema
+CREATE SCHEMA test_view_schema
     CREATE TEMP VIEW testview AS SELECT 1;
 ERROR:  cannot create temporary relation in non-temporary schema
 -- joins: if any of the join relations are temporary, the view
@@ -1605,7 +1605,7 @@ select 'foo'::text = any((select array['abc','def','foo']::text[]));  -- fail
 ERROR:  operator does not exist: text = text[]
 LINE 1: select 'foo'::text = any((select array['abc','def','foo']::t...
                            ^
-HINT:  No operator matches the given name and argument type(s). You might need to add explicit type casts.
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
 select 'foo'::text = any((select array['abc','def','foo']::text[])::text[]);
  ?column? 
 ----------

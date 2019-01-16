@@ -3,7 +3,7 @@
  * xlogreader.h
  *		Definitions for the generic XLog reading facility
  *
- * Portions Copyright (c) 2013-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2013-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/include/access/xlogreader.h
@@ -72,6 +72,11 @@ struct XLogReaderState
 	 * Public parameters
 	 * ----------------------------------------
 	 */
+
+	/*
+	 * Segment size of the to-be-parsed data (mandatory).
+	 */
+	int			wal_segment_size;
 
 	/*
 	 * Data input callback (mandatory).
@@ -189,7 +194,8 @@ struct XLogReaderState
 };
 
 /* Get a new XLogReader */
-extern XLogReaderState *XLogReaderAllocate(XLogPageReadCB pagereadfunc,
+extern XLogReaderState *XLogReaderAllocate(int wal_segment_size,
+				   XLogPageReadCB pagereadfunc,
 				   void *private_data);
 
 /* Free an XLogReader */
@@ -201,7 +207,7 @@ extern struct XLogRecord *XLogReadRecord(XLogReaderState *state,
 
 /* Validate a page */
 extern bool XLogReaderValidatePageHeader(XLogReaderState *state,
-					XLogRecPtr recptr, char *phdr);
+							 XLogRecPtr recptr, char *phdr);
 
 /* Invalidate read state */
 extern void XLogReaderInvalReadState(XLogReaderState *state);

@@ -4,7 +4,7 @@
  *	  Search code for postgres btrees.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -147,14 +147,14 @@ _bt_search(Relation rel, int keysz, ScanKey scankey, bool nextkey,
 		offnum = _bt_binsrch(rel, *bufP, keysz, scankey, nextkey);
 		itemid = PageGetItemId(page, offnum);
 		itup = (IndexTuple) PageGetItem(page, itemid);
-		blkno = ItemPointerGetBlockNumber(&(itup->t_tid));
+		blkno = BTreeInnerTupleGetDownLink(itup);
 		par_blkno = BufferGetBlockNumber(*bufP);
 
 		/*
 		 * We need to save the location of the index entry we chose in the
 		 * parent page on a stack. In case we split the tree, we'll use the
 		 * stack to work back up to the parent page.  We also save the actual
-		 * downlink (TID) to uniquely identify the index entry, in case it
+		 * downlink (block) to uniquely identify the index entry, in case it
 		 * moves right while we're working lower in the tree.  See the paper
 		 * by Lehman and Yao for how this is detected and handled. (We use the
 		 * child link to disambiguate duplicate keys in the index -- Lehman
@@ -163,7 +163,7 @@ _bt_search(Relation rel, int keysz, ScanKey scankey, bool nextkey,
 		new_stack = (BTStack) palloc(sizeof(BTStackData));
 		new_stack->bts_blkno = par_blkno;
 		new_stack->bts_offset = offnum;
-		memcpy(&new_stack->bts_btentry, itup, sizeof(IndexTupleData));
+		new_stack->bts_btentry = blkno;
 		new_stack->bts_parent = stack_in;
 
 		/* drop the read lock on the parent page, acquire one on the child */
@@ -436,6 +436,8 @@ _bt_compare(Relation rel,
 	IndexTuple	itup;
 	int			i;
 
+	Assert(_bt_check_natts(rel, page, offnum));
+
 	/*
 	 * Force result ">" if target item is first data item on an internal page
 	 * --- see NOTE above.
@@ -498,7 +500,7 @@ _bt_compare(Relation rel,
 													 scankey->sk_argument));
 
 			if (!(scankey->sk_flags & SK_BT_DESC))
-				result = -result;
+				INVERT_COMPARE_RESULT(result);
 		}
 
 		/* if the keys are unequal, return the difference */
@@ -524,7 +526,7 @@ _bt_compare(Relation rel,
  *		scan->xs_ctup.t_self is set to the heap TID of the current tuple,
  *		and if requested, scan->xs_itup points to a copy of the index tuple.
  *
- * If there are no matching items in the index, we return FALSE, with no
+ * If there are no matching items in the index, we return false, with no
  * pins or locks held.
  *
  * Note that scan->keyData[], and the so->keyData[] scankey built from it,
@@ -1336,7 +1338,7 @@ _bt_saveitem(BTScanOpaque so, int itemIndex,
  *
  * For success on a scan using a non-MVCC snapshot we hold a pin, but not a
  * read lock, on that page.  If we do not hold the pin, we set so->currPos.buf
- * to InvalidBuffer.  We return TRUE to indicate success.
+ * to InvalidBuffer.  We return true to indicate success.
  */
 static bool
 _bt_steppage(IndexScanDesc scan, ScanDirection dir)
@@ -1440,10 +1442,10 @@ _bt_steppage(IndexScanDesc scan, ScanDirection dir)
  *
  * On success exit, so->currPos is updated to contain data from the next
  * interesting page.  Caller is responsible to release lock and pin on
- * buffer on success.  We return TRUE to indicate success.
+ * buffer on success.  We return true to indicate success.
  *
  * If there are no more matching records in the given direction, we drop all
- * locks and pins, set so->currPos.buf to InvalidBuffer, and return FALSE.
+ * locks and pins, set so->currPos.buf to InvalidBuffer, and return false.
  */
 static bool
 _bt_readnextpage(IndexScanDesc scan, BlockNumber blkno, ScanDirection dir)
@@ -1495,17 +1497,19 @@ _bt_readnextpage(IndexScanDesc scan, BlockNumber blkno, ScanDirection dir)
 			/* nope, keep going */
 			if (scan->parallel_scan != NULL)
 			{
+				_bt_relbuf(rel, so->currPos.buf);
 				status = _bt_parallel_seize(scan, &blkno);
 				if (!status)
 				{
-					_bt_relbuf(rel, so->currPos.buf);
 					BTScanPosInvalidate(so->currPos);
 					return false;
 				}
 			}
 			else
+			{
 				blkno = opaque->btpo_next;
-			_bt_relbuf(rel, so->currPos.buf);
+				_bt_relbuf(rel, so->currPos.buf);
+			}
 		}
 	}
 	else
@@ -1618,7 +1622,7 @@ _bt_readnextpage(IndexScanDesc scan, BlockNumber blkno, ScanDirection dir)
 /*
  *	_bt_parallel_readpage() -- Read current page containing valid data for scan
  *
- * On success, release lock and maybe pin on buffer.  We return TRUE to
+ * On success, release lock and maybe pin on buffer.  We return true to
  * indicate success.
  */
 static bool
@@ -1833,7 +1837,7 @@ _bt_get_endpoint(Relation rel, uint32 level, bool rightmost,
 			offnum = P_FIRSTDATAKEY(opaque);
 
 		itup = (IndexTuple) PageGetItem(page, PageGetItemId(page, offnum));
-		blkno = ItemPointerGetBlockNumber(&(itup->t_tid));
+		blkno = BTreeInnerTupleGetDownLink(itup);
 
 		buf = _bt_relandgetbuf(rel, buf, blkno, BT_READ);
 		page = BufferGetPage(buf);

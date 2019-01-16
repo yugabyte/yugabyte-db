@@ -3,7 +3,7 @@
  * seclabel.c
  *	  routines to support security label feature.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * -------------------------------------------------------------------------
@@ -122,7 +122,7 @@ ExecSecLabelStmt(SecLabelStmt *stmt)
 	}
 
 	/* Provider gets control here, may throw ERROR to veto new label. */
-	(*provider->hook) (&address, stmt->label);
+	provider->hook(&address, stmt->label);
 
 	/* Apply new label. */
 	SetSecurityLabel(&address, provider->provider_name, stmt->label);

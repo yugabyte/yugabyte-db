@@ -3,7 +3,7 @@
  * view.c
  *	  use rewrite rules to construct views
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -43,11 +43,11 @@ static void checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc);
  * are "local" and "cascaded".
  */
 void
-validateWithCheckOption(char *value)
+validateWithCheckOption(const char *value)
 {
 	if (value == NULL ||
-		(pg_strcasecmp(value, "local") != 0 &&
-		 pg_strcasecmp(value, "cascaded") != 0))
+		(strcmp(value, "local") != 0 &&
+		 strcmp(value, "cascaded") != 0))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -61,6 +61,8 @@ validateWithCheckOption(char *value)
  *
  * Create a view relation and use the rules system to store the query
  * for the view.
+ *
+ * EventTriggerAlterTableStart must have been called already.
  *---------------------------------------------------------------------
  */
 static ObjectAddress
@@ -186,6 +188,7 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 				atcmds = lappend(atcmds, atcmd);
 			}
 
+			/* EventTriggerAlterTableStart called by ProcessUtilitySlow */
 			AlterTableInternal(viewOid, atcmds, true);
 
 			/* Make the new view columns visible */
@@ -217,6 +220,7 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 		atcmd->def = (Node *) options;
 		atcmds = list_make1(atcmd);
 
+		/* EventTriggerAlterTableStart called by ProcessUtilitySlow */
 		AlterTableInternal(viewOid, atcmds, true);
 
 		ObjectAddressSet(address, RelationRelationId, viewOid);
@@ -283,8 +287,8 @@ checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc)
 
 	for (i = 0; i < olddesc->natts; i++)
 	{
-		Form_pg_attribute newattr = newdesc->attrs[i];
-		Form_pg_attribute oldattr = olddesc->attrs[i];
+		Form_pg_attribute newattr = TupleDescAttr(newdesc, i);
+		Form_pg_attribute oldattr = TupleDescAttr(olddesc, i);
 
 		/* XXX msg not right, but we don't support DROP COL on view anyway */
 		if (newattr->attisdropped != oldattr->attisdropped)
@@ -485,7 +489,7 @@ DefineView(ViewStmt *stmt, const char *queryString,
 	{
 		DefElem    *defel = (DefElem *) lfirst(cell);
 
-		if (pg_strcasecmp(defel->defname, "check_option") == 0)
+		if (strcmp(defel->defname, "check_option") == 0)
 			check_option = true;
 	}
 
@@ -502,7 +506,7 @@ DefineView(ViewStmt *stmt, const char *queryString,
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("WITH CHECK OPTION is supported only on automatically updatable views"),
-					 errhint("%s", view_updatable_error)));
+					 errhint("%s", _(view_updatable_error))));
 	}
 
 	/*

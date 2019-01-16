@@ -20,11 +20,15 @@
 #
 # NAME                  Name of library to build (no suffix nor "lib" prefix)
 # OBJS                  List of object files to include in library
-# SHLIB_LINK            If shared library relies on other libraries,
-#                       additional stuff to put in its link command
+# SHLIB_LINK            Stuff to append to library's link command
+#                       (typically, -L and -l switches for external libraries)
+# SHLIB_LINK_INTERNAL   -L and -l switches for Postgres-supplied libraries
 # SHLIB_PREREQS         Order-only prerequisites for library build target
 # SHLIB_EXPORTS         (optional) Name of file containing list of symbols to
 #                       export, in the format "function_name  number"
+#
+# Don't use SHLIB_LINK for references to files in the build tree, or the
+# wrong things will happen --- use SHLIB_LINK_INTERNAL for those!
 #
 # When building a shared library, the following version information
 # must also be set.  It should be omitted when building a dynamically
@@ -60,15 +64,12 @@
 #
 # Got that?  Look at src/interfaces/libpq/Makefile for an example.
 #
-# While the linker allows creation of most shared libraries,
-# -Bsymbolic requires resolution of all symbols, making the
-# compiler a better choice for shared library creation on ELF platforms.
-# With the linker, -Bsymbolic requires the crt1.o startup object file.
-# bjm 2001-02-10
 
 
 COMPILER = $(CC) $(CFLAGS)
 LINK.static = $(AR) $(AROPT)
+
+LDFLAGS_INTERNAL += $(SHLIB_LINK_INTERNAL)
 
 
 
@@ -100,6 +101,7 @@ endif
 # Try to keep the sections in some kind of order, folks...
 
 override CFLAGS += $(CFLAGS_SL)
+override CXXFLAGS += $(CFLAGS_SL)
 ifdef SO_MAJOR_VERSION
 # libraries ought to use this to refer to versioned gettext domain names
 override CPPFLAGS += -DSO_MAJOR_VERSION=$(SO_MAJOR_VERSION)
@@ -142,6 +144,11 @@ ifeq ($(PORTNAME), openbsd)
     ifdef soname
       LINK.shared	+= -Wl,-x,-soname,$(soname)
     endif
+    BUILD.exports	= ( echo '{ global:'; $(AWK) '/^[^\#]/ {printf "%s;\n",$$1}' $<; echo ' local: *; };' ) >$@
+    exports_file	= $(SHLIB_EXPORTS:%.txt=%.list)
+    ifneq (,$(exports_file))
+      LINK.shared	+= -Wl,--version-script=$(exports_file)
+    endif
     SHLIB_LINK		+= -lc
   else
     LINK.shared		= $(LD) -x -Bshareable -Bforcearchive
@@ -157,6 +164,11 @@ ifeq ($(PORTNAME), freebsd)
     ifdef soname
       LINK.shared	+= -Wl,-x,-soname,$(soname)
     endif
+    BUILD.exports	= ( echo '{ global:'; $(AWK) '/^[^\#]/ {printf "%s;\n",$$1}' $<; echo ' local: *; };' ) >$@
+    exports_file	= $(SHLIB_EXPORTS:%.txt=%.list)
+    ifneq (,$(exports_file))
+      LINK.shared	+= -Wl,--version-script=$(exports_file)
+    endif
   else
     ifdef SO_MAJOR_VERSION
       shlib		= lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION).$(SO_MINOR_VERSION)
@@ -171,6 +183,11 @@ ifeq ($(PORTNAME), netbsd)
     ifdef soname
       LINK.shared	+= -Wl,-x,-soname,$(soname)
     endif
+    BUILD.exports	= ( echo '{ global:'; $(AWK) '/^[^\#]/ {printf "%s;\n",$$1}' $<; echo ' local: *; };' ) >$@
+    exports_file	= $(SHLIB_EXPORTS:%.txt=%.list)
+    ifneq (,$(exports_file))
+      LINK.shared	+= -Wl,--version-script=$(exports_file)
+    endif
   else
     LINK.shared		= $(LD) -x -Bshareable -Bforcearchive
   endif
@@ -181,12 +198,12 @@ ifeq ($(PORTNAME), hpux)
     shlib			= lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION)
   endif
   ifeq ($(with_gnu_ld), yes)
-    LINK.shared		= $(CC) -shared
+    LINK.shared		= $(CC) -shared -Wl,-Bsymbolic
     ifdef soname
       LINK.shared	+= -Wl,-h -Wl,$(soname)
     endif
   else
-    LINK.shared		= $(LD) -b
+    LINK.shared		= $(LD) -b -Bsymbolic
     ifdef soname
       LINK.shared	+= +h $(soname)
     endif
@@ -223,9 +240,9 @@ endif
 
 ifeq ($(PORTNAME), solaris)
   ifeq ($(GCC), yes)
-    LINK.shared		= $(COMPILER) -shared
+    LINK.shared		= $(COMPILER) -shared -Wl,-Bsymbolic
   else
-    LINK.shared		= $(COMPILER) -G
+    LINK.shared		= $(COMPILER) -G -Bsymbolic
   endif
   ifdef soname
     ifeq ($(with_gnu_ld), yes)
@@ -270,11 +287,17 @@ all-static-lib: $(stlib)
 
 all-shared-lib: $(shlib)
 
+# In this rule, "touch $@" works around a problem on some platforms wherein
+# ranlib updates the library file's mod time with a value calculated to
+# seconds precision.  If the filesystem has sub-second timestamps, this can
+# cause the library file to appear older than its input files, triggering
+# parallel-make problems.
 ifndef haslibarule
 $(stlib): $(OBJS) | $(SHLIB_PREREQS)
 	rm -f $@
 	$(LINK.static) $@ $^
 	$(RANLIB) $@
+	touch $@
 endif #haslibarule
 
 
@@ -434,7 +457,7 @@ install-lib-static: $(stlib) installdirs-lib
 	$(INSTALL_STLIB) $< '$(DESTDIR)$(libdir)/$(stlib)'
 ifeq ($(PORTNAME), darwin)
 	cd '$(DESTDIR)$(libdir)' && \
-	ranlib $(stlib)
+	$(RANLIB) $(stlib)
 endif
 
 install-lib-shared: $(shlib) installdirs-lib

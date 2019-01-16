@@ -3,7 +3,7 @@
  * pg_lsn.c
  *	  Operations for the pg_lsn datatype.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -177,6 +177,12 @@ pg_lsn_hash(PG_FUNCTION_ARGS)
 {
 	/* We can use hashint8 directly */
 	return hashint8(fcinfo);
+}
+
+Datum
+pg_lsn_hash_extended(PG_FUNCTION_ARGS)
+{
+	return hashint8extended(fcinfo);
 }
 
 

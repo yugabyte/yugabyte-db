@@ -1,11 +1,26 @@
+/* -------------------------------------------------------------------------
+ *
+ * pg_sequence.h
+ *	  definition of the "sequence" system catalog (pg_sequence)
+ *
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ * src/include/catalog/pg_sequence.h
+ *
+ * NOTES
+ *	  The Catalog.pm module reads this file and derives schema
+ *	  information.
+ *
+ * -------------------------------------------------------------------------
+ */
 #ifndef PG_SEQUENCE_H
 #define PG_SEQUENCE_H
 
 #include "catalog/genbki.h"
+#include "catalog/pg_sequence_d.h"
 
-#define SequenceRelationId	2224
-
-CATALOG(pg_sequence,2224) BKI_WITHOUT_OIDS
+CATALOG(pg_sequence,2224,SequenceRelationId) BKI_WITHOUT_OIDS
 {
 	Oid			seqrelid;
 	Oid			seqtypid;
@@ -17,16 +32,11 @@ CATALOG(pg_sequence,2224) BKI_WITHOUT_OIDS
 	bool		seqcycle;
 } FormData_pg_sequence;
 
+/* ----------------
+ *		Form_pg_sequence corresponds to a pointer to a tuple with
+ *		the format of pg_sequence relation.
+ * ----------------
+ */
 typedef FormData_pg_sequence *Form_pg_sequence;
-
-#define Natts_pg_sequence				8
-#define Anum_pg_sequence_seqrelid		1
-#define Anum_pg_sequence_seqtypid		2
-#define Anum_pg_sequence_seqstart		3
-#define Anum_pg_sequence_seqincrement	4
-#define Anum_pg_sequence_seqmax			5
-#define Anum_pg_sequence_seqmin			6
-#define Anum_pg_sequence_seqcache		7
-#define Anum_pg_sequence_seqcycle		8
 
 #endif							/* PG_SEQUENCE_H */

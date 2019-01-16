@@ -3,13 +3,14 @@
  *
  *	file system operations
  *
- *	Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/file.c
  */
 
 #include "postgres_fe.h"
 
 #include "access/visibilitymap.h"
+#include "common/file_perm.h"
 #include "pg_upgrade.h"
 #include "storage/bufpage.h"
 #include "storage/checksum.h"
@@ -44,7 +45,7 @@ copyFile(const char *src, const char *dst,
 				 schemaName, relName, src, strerror(errno));
 
 	if ((dest_fd = open(dst, O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
-						S_IRUSR | S_IWUSR)) < 0)
+						pg_file_create_mode)) < 0)
 		pg_fatal("error while copying relation \"%s.%s\": could not create file \"%s\": %s\n",
 				 schemaName, relName, dst, strerror(errno));
 
@@ -131,8 +132,8 @@ rewriteVisibilityMap(const char *fromfile, const char *tofile,
 {
 	int			src_fd;
 	int			dst_fd;
-	char	   *buffer;
-	char	   *new_vmbuf;
+	PGAlignedBlock buffer;
+	PGAlignedBlock new_vmbuf;
 	ssize_t		totalBytesRead = 0;
 	ssize_t		src_filesize;
 	int			rewriteVmBytesPerPage;
@@ -151,19 +152,12 @@ rewriteVisibilityMap(const char *fromfile, const char *tofile,
 				 schemaName, relName, fromfile, strerror(errno));
 
 	if ((dst_fd = open(tofile, O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
-					   S_IRUSR | S_IWUSR)) < 0)
+					   pg_file_create_mode)) < 0)
 		pg_fatal("error while copying relation \"%s.%s\": could not create file \"%s\": %s\n",
 				 schemaName, relName, tofile, strerror(errno));
 
 	/* Save old file size */
 	src_filesize = statbuf.st_size;
-
-	/*
-	 * Malloc the work buffers, rather than making them local arrays, to
-	 * ensure adequate alignment.
-	 */
-	buffer = (char *) pg_malloc(BLCKSZ);
-	new_vmbuf = (char *) pg_malloc(BLCKSZ);
 
 	/*
 	 * Turn each visibility map page into 2 pages one by one. Each new page
@@ -180,7 +174,7 @@ rewriteVisibilityMap(const char *fromfile, const char *tofile,
 		PageHeaderData pageheader;
 		bool		old_lastblk;
 
-		if ((bytesRead = read(src_fd, buffer, BLCKSZ)) != BLCKSZ)
+		if ((bytesRead = read(src_fd, buffer.data, BLCKSZ)) != BLCKSZ)
 		{
 			if (bytesRead < 0)
 				pg_fatal("error while copying relation \"%s.%s\": could not read file \"%s\": %s\n",
@@ -194,7 +188,7 @@ rewriteVisibilityMap(const char *fromfile, const char *tofile,
 		old_lastblk = (totalBytesRead == src_filesize);
 
 		/* Save the page header data */
-		memcpy(&pageheader, buffer, SizeOfPageHeaderData);
+		memcpy(&pageheader, buffer.data, SizeOfPageHeaderData);
 
 		/*
 		 * These old_* variables point to old visibility map page. old_cur
@@ -202,8 +196,8 @@ rewriteVisibilityMap(const char *fromfile, const char *tofile,
 		 * old block.  old_break is the end+1 position on the old page for the
 		 * data that will be transferred to the current new page.
 		 */
-		old_cur = buffer + SizeOfPageHeaderData;
-		old_blkend = buffer + bytesRead;
+		old_cur = buffer.data + SizeOfPageHeaderData;
+		old_blkend = buffer.data + bytesRead;
 		old_break = old_cur + rewriteVmBytesPerPage;
 
 		while (old_break <= old_blkend)
@@ -213,12 +207,12 @@ rewriteVisibilityMap(const char *fromfile, const char *tofile,
 			bool		old_lastpart;
 
 			/* First, copy old page header to new page */
-			memcpy(new_vmbuf, &pageheader, SizeOfPageHeaderData);
+			memcpy(new_vmbuf.data, &pageheader, SizeOfPageHeaderData);
 
 			/* Rewriting the last part of the last old page? */
 			old_lastpart = old_lastblk && (old_break == old_blkend);
 
-			new_cur = new_vmbuf + SizeOfPageHeaderData;
+			new_cur = new_vmbuf.data + SizeOfPageHeaderData;
 
 			/* Process old page bytes one by one, and turn it into new page. */
 			while (old_cur < old_break)
@@ -252,11 +246,11 @@ rewriteVisibilityMap(const char *fromfile, const char *tofile,
 
 			/* Set new checksum for visibility map page, if enabled */
 			if (new_cluster.controldata.data_checksum_version != 0)
-				((PageHeader) new_vmbuf)->pd_checksum =
-					pg_checksum_page(new_vmbuf, new_blkno);
+				((PageHeader) new_vmbuf.data)->pd_checksum =
+					pg_checksum_page(new_vmbuf.data, new_blkno);
 
 			errno = 0;
-			if (write(dst_fd, new_vmbuf, BLCKSZ) != BLCKSZ)
+			if (write(dst_fd, new_vmbuf.data, BLCKSZ) != BLCKSZ)
 			{
 				/* if write didn't set errno, assume problem is no disk space */
 				if (errno == 0)
@@ -272,8 +266,6 @@ rewriteVisibilityMap(const char *fromfile, const char *tofile,
 	}
 
 	/* Clean up */
-	pg_free(buffer);
-	pg_free(new_vmbuf);
 	close(dst_fd);
 	close(src_fd);
 }

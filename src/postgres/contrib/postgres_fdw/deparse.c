@@ -24,7 +24,7 @@
  * with collations that match the remote table's columns, which we can
  * consider to be user error.
  *
- * Portions Copyright (c) 2012-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/postgres_fdw/deparse.c
@@ -125,23 +125,25 @@ static char *deparse_type_name(Oid type_oid, int32 typemod);
  * Functions to construct string representation of a node tree.
  */
 static void deparseTargetList(StringInfo buf,
-				  PlannerInfo *root,
+				  RangeTblEntry *rte,
 				  Index rtindex,
 				  Relation rel,
 				  bool is_returning,
 				  Bitmapset *attrs_used,
 				  bool qualify_col,
 				  List **retrieved_attrs);
-static void deparseExplicitTargetList(List *tlist, List **retrieved_attrs,
+static void deparseExplicitTargetList(List *tlist,
+						  bool is_returning,
+						  List **retrieved_attrs,
 						  deparse_expr_cxt *context);
 static void deparseSubqueryTargetList(deparse_expr_cxt *context);
-static void deparseReturningList(StringInfo buf, PlannerInfo *root,
+static void deparseReturningList(StringInfo buf, RangeTblEntry *rte,
 					 Index rtindex, Relation rel,
 					 bool trig_after_row,
 					 List *returningList,
 					 List **retrieved_attrs);
 static void deparseColumnRef(StringInfo buf, int varno, int varattno,
-				 PlannerInfo *root, bool qualify_col);
+				 RangeTblEntry *rte, bool qualify_col);
 static void deparseRelation(StringInfo buf, Relation rel);
 static void deparseExpr(Expr *expr, deparse_expr_cxt *context);
 static void deparseVar(Var *node, deparse_expr_cxt *context);
@@ -168,11 +170,13 @@ static void deparseLockingClause(deparse_expr_cxt *context);
 static void appendOrderByClause(List *pathkeys, deparse_expr_cxt *context);
 static void appendConditions(List *exprs, deparse_expr_cxt *context);
 static void deparseFromExprForRel(StringInfo buf, PlannerInfo *root,
-					  RelOptInfo *joinrel, bool use_alias, List **params_list);
+					  RelOptInfo *foreignrel, bool use_alias,
+					  Index ignore_rel, List **ignore_conds,
+					  List **params_list);
 static void deparseFromExpr(List *quals, deparse_expr_cxt *context);
 static void deparseRangeTblRef(StringInfo buf, PlannerInfo *root,
 				   RelOptInfo *foreignrel, bool make_subquery,
-				   List **params_list);
+				   Index ignore_rel, List **ignore_conds, List **params_list);
 static void deparseAggref(Aggref *node, deparse_expr_cxt *context);
 static void appendGroupByClause(List *tlist, deparse_expr_cxt *context);
 static void appendAggOrderBy(List *orderList, List *targetList,
@@ -850,10 +854,12 @@ foreign_expr_walker(Node *node,
 static char *
 deparse_type_name(Oid type_oid, int32 typemod)
 {
-	if (is_builtin(type_oid))
-		return format_type_with_typemod(type_oid, typemod);
-	else
-		return format_type_with_typemod_qualified(type_oid, typemod);
+	bits16		flags = FORMAT_TYPE_TYPEMOD_GIVEN;
+
+	if (!is_builtin(type_oid))
+		flags |= FORMAT_TYPE_FORCE_QUALIFY;
+
+	return format_type_extended(type_oid, typemod, flags);
 }
 
 /*
@@ -921,7 +927,7 @@ build_tlist_to_deparse(RelOptInfo *foreignrel)
  *
  * List of columns selected is returned in retrieved_attrs.
  */
-extern void
+void
 deparseSelectStmtForRel(StringInfo buf, PlannerInfo *root, RelOptInfo *rel,
 						List *tlist, List *remote_conds, List *pathkeys,
 						bool is_subquery, List **retrieved_attrs,
@@ -973,7 +979,7 @@ deparseSelectStmtForRel(StringInfo buf, PlannerInfo *root, RelOptInfo *rel,
 		/* Append HAVING clause */
 		if (remote_conds)
 		{
-			appendStringInfo(buf, " HAVING ");
+			appendStringInfoString(buf, " HAVING ");
 			appendConditions(remote_conds, &context);
 		}
 	}
@@ -1028,7 +1034,7 @@ deparseSelectSql(List *tlist, bool is_subquery, List **retrieved_attrs,
 		 * For a join or upper relation the input tlist gives the list of
 		 * columns required to be fetched from the foreign server.
 		 */
-		deparseExplicitTargetList(tlist, retrieved_attrs, context);
+		deparseExplicitTargetList(tlist, false, retrieved_attrs, context);
 	}
 	else
 	{
@@ -1044,7 +1050,7 @@ deparseSelectSql(List *tlist, bool is_subquery, List **retrieved_attrs,
 		 */
 		Relation	rel = heap_open(rte->relid, NoLock);
 
-		deparseTargetList(buf, root, foreignrel->relid, rel, false,
+		deparseTargetList(buf, rte, foreignrel->relid, rel, false,
 						  fpinfo->attrs_used, false, retrieved_attrs);
 		heap_close(rel, NoLock);
 	}
@@ -1071,12 +1077,12 @@ deparseFromExpr(List *quals, deparse_expr_cxt *context)
 	appendStringInfoString(buf, " FROM ");
 	deparseFromExprForRel(buf, context->root, scanrel,
 						  (bms_num_members(scanrel->relids) > 1),
-						  context->params_list);
+						  (Index) 0, NULL, context->params_list);
 
 	/* Construct WHERE clause */
 	if (quals != NIL)
 	{
-		appendStringInfo(buf, " WHERE ");
+		appendStringInfoString(buf, " WHERE ");
 		appendConditions(quals, context);
 	}
 }
@@ -1093,7 +1099,7 @@ deparseFromExpr(List *quals, deparse_expr_cxt *context)
  */
 static void
 deparseTargetList(StringInfo buf,
-				  PlannerInfo *root,
+				  RangeTblEntry *rte,
 				  Index rtindex,
 				  Relation rel,
 				  bool is_returning,
@@ -1115,7 +1121,7 @@ deparseTargetList(StringInfo buf,
 	first = true;
 	for (i = 1; i <= tupdesc->natts; i++)
 	{
-		Form_pg_attribute attr = tupdesc->attrs[i - 1];
+		Form_pg_attribute attr = TupleDescAttr(tupdesc, i - 1);
 
 		/* Ignore dropped attributes. */
 		if (attr->attisdropped)
@@ -1131,7 +1137,7 @@ deparseTargetList(StringInfo buf,
 				appendStringInfoString(buf, " RETURNING ");
 			first = false;
 
-			deparseColumnRef(buf, rtindex, i, root, qualify_col);
+			deparseColumnRef(buf, rtindex, i, rte, qualify_col);
 
 			*retrieved_attrs = lappend_int(*retrieved_attrs, i);
 		}
@@ -1307,7 +1313,7 @@ appendConditions(List *exprs, deparse_expr_cxt *context)
 }
 
 /* Output join name for given join type */
-extern const char *
+const char *
 get_jointype_name(JoinType jointype)
 {
 	switch (jointype)
@@ -1340,9 +1346,14 @@ get_jointype_name(JoinType jointype)
  *
  * retrieved_attrs is the list of continuously increasing integers starting
  * from 1. It has same number of entries as tlist.
+ *
+ * This is used for both SELECT and RETURNING targetlists; the is_returning
+ * parameter is true only for a RETURNING targetlist.
  */
 static void
-deparseExplicitTargetList(List *tlist, List **retrieved_attrs,
+deparseExplicitTargetList(List *tlist,
+						  bool is_returning,
+						  List **retrieved_attrs,
 						  deparse_expr_cxt *context)
 {
 	ListCell   *lc;
@@ -1357,13 +1368,16 @@ deparseExplicitTargetList(List *tlist, List **retrieved_attrs,
 
 		if (i > 0)
 			appendStringInfoString(buf, ", ");
+		else if (is_returning)
+			appendStringInfoString(buf, " RETURNING ");
+
 		deparseExpr((Expr *) tle->expr, context);
 
 		*retrieved_attrs = lappend_int(*retrieved_attrs, i + 1);
 		i++;
 	}
 
-	if (i == 0)
+	if (i == 0 && !is_returning)
 		appendStringInfoString(buf, "NULL");
 }
 
@@ -1406,10 +1420,17 @@ deparseSubqueryTargetList(deparse_expr_cxt *context)
  * The function constructs ... JOIN ... ON ... for join relation. For a base
  * relation it just returns schema-qualified tablename, with the appropriate
  * alias if so requested.
+ *
+ * 'ignore_rel' is either zero or the RT index of a target relation.  In the
+ * latter case the function constructs FROM clause of UPDATE or USING clause
+ * of DELETE; it deparses the join relation as if the relation never contained
+ * the target relation, and creates a List of conditions to be deparsed into
+ * the top-level WHERE clause, which is returned to *ignore_conds.
  */
 static void
 deparseFromExprForRel(StringInfo buf, PlannerInfo *root, RelOptInfo *foreignrel,
-					  bool use_alias, List **params_list)
+					  bool use_alias, Index ignore_rel, List **ignore_conds,
+					  List **params_list)
 {
 	PgFdwRelationInfo *fpinfo = (PgFdwRelationInfo *) foreignrel->fdw_private;
 
@@ -1417,16 +1438,89 @@ deparseFromExprForRel(StringInfo buf, PlannerInfo *root, RelOptInfo *foreignrel,
 	{
 		StringInfoData join_sql_o;
 		StringInfoData join_sql_i;
+		RelOptInfo *outerrel = fpinfo->outerrel;
+		RelOptInfo *innerrel = fpinfo->innerrel;
+		bool		outerrel_is_target = false;
+		bool		innerrel_is_target = false;
 
-		/* Deparse outer relation */
-		initStringInfo(&join_sql_o);
-		deparseRangeTblRef(&join_sql_o, root, fpinfo->outerrel,
-						   fpinfo->make_outerrel_subquery, params_list);
+		if (ignore_rel > 0 && bms_is_member(ignore_rel, foreignrel->relids))
+		{
+			/*
+			 * If this is an inner join, add joinclauses to *ignore_conds and
+			 * set it to empty so that those can be deparsed into the WHERE
+			 * clause.  Note that since the target relation can never be
+			 * within the nullable side of an outer join, those could safely
+			 * be pulled up into the WHERE clause (see foreign_join_ok()).
+			 * Note also that since the target relation is only inner-joined
+			 * to any other relation in the query, all conditions in the join
+			 * tree mentioning the target relation could be deparsed into the
+			 * WHERE clause by doing this recursively.
+			 */
+			if (fpinfo->jointype == JOIN_INNER)
+			{
+				*ignore_conds = list_concat(*ignore_conds,
+											list_copy(fpinfo->joinclauses));
+				fpinfo->joinclauses = NIL;
+			}
 
-		/* Deparse inner relation */
-		initStringInfo(&join_sql_i);
-		deparseRangeTblRef(&join_sql_i, root, fpinfo->innerrel,
-						   fpinfo->make_innerrel_subquery, params_list);
+			/*
+			 * Check if either of the input relations is the target relation.
+			 */
+			if (outerrel->relid == ignore_rel)
+				outerrel_is_target = true;
+			else if (innerrel->relid == ignore_rel)
+				innerrel_is_target = true;
+		}
+
+		/* Deparse outer relation if not the target relation. */
+		if (!outerrel_is_target)
+		{
+			initStringInfo(&join_sql_o);
+			deparseRangeTblRef(&join_sql_o, root, outerrel,
+							   fpinfo->make_outerrel_subquery,
+							   ignore_rel, ignore_conds, params_list);
+
+			/*
+			 * If inner relation is the target relation, skip deparsing it.
+			 * Note that since the join of the target relation with any other
+			 * relation in the query is an inner join and can never be within
+			 * the nullable side of an outer join, the join could be
+			 * interchanged with higher-level joins (cf. identity 1 on outer
+			 * join reordering shown in src/backend/optimizer/README), which
+			 * means it's safe to skip the target-relation deparsing here.
+			 */
+			if (innerrel_is_target)
+			{
+				Assert(fpinfo->jointype == JOIN_INNER);
+				Assert(fpinfo->joinclauses == NIL);
+				appendStringInfo(buf, "%s", join_sql_o.data);
+				return;
+			}
+		}
+
+		/* Deparse inner relation if not the target relation. */
+		if (!innerrel_is_target)
+		{
+			initStringInfo(&join_sql_i);
+			deparseRangeTblRef(&join_sql_i, root, innerrel,
+							   fpinfo->make_innerrel_subquery,
+							   ignore_rel, ignore_conds, params_list);
+
+			/*
+			 * If outer relation is the target relation, skip deparsing it.
+			 * See the above note about safety.
+			 */
+			if (outerrel_is_target)
+			{
+				Assert(fpinfo->jointype == JOIN_INNER);
+				Assert(fpinfo->joinclauses == NIL);
+				appendStringInfo(buf, "%s", join_sql_i.data);
+				return;
+			}
+		}
+
+		/* Neither of the relations is the target relation. */
+		Assert(!outerrel_is_target && !innerrel_is_target);
 
 		/*
 		 * For a join relation FROM clause entry is deparsed as
@@ -1447,15 +1541,15 @@ deparseFromExprForRel(StringInfo buf, PlannerInfo *root, RelOptInfo *foreignrel,
 			context.root = root;
 			context.params_list = params_list;
 
-			appendStringInfo(buf, "(");
+			appendStringInfoChar(buf, '(');
 			appendConditions(fpinfo->joinclauses, &context);
-			appendStringInfo(buf, ")");
+			appendStringInfoChar(buf, ')');
 		}
 		else
 			appendStringInfoString(buf, "(TRUE)");
 
 		/* End the FROM clause entry. */
-		appendStringInfo(buf, ")");
+		appendStringInfoChar(buf, ')');
 	}
 	else
 	{
@@ -1486,7 +1580,8 @@ deparseFromExprForRel(StringInfo buf, PlannerInfo *root, RelOptInfo *foreignrel,
  */
 static void
 deparseRangeTblRef(StringInfo buf, PlannerInfo *root, RelOptInfo *foreignrel,
-				   bool make_subquery, List **params_list)
+				   bool make_subquery, Index ignore_rel, List **ignore_conds,
+				   List **params_list)
 {
 	PgFdwRelationInfo *fpinfo = (PgFdwRelationInfo *) foreignrel->fdw_private;
 
@@ -1500,6 +1595,14 @@ deparseRangeTblRef(StringInfo buf, PlannerInfo *root, RelOptInfo *foreignrel,
 	{
 		List	   *retrieved_attrs;
 		int			ncols;
+
+		/*
+		 * The given relation shouldn't contain the target relation, because
+		 * this should only happen for input relations for a full join, and
+		 * such relations can never contain an UPDATE/DELETE target.
+		 */
+		Assert(ignore_rel == 0 ||
+			   !bms_is_member(ignore_rel, foreignrel->relids));
 
 		/* Deparse the subquery representing the relation. */
 		appendStringInfoChar(buf, '(');
@@ -1534,7 +1637,8 @@ deparseRangeTblRef(StringInfo buf, PlannerInfo *root, RelOptInfo *foreignrel,
 		}
 	}
 	else
-		deparseFromExprForRel(buf, root, foreignrel, true, params_list);
+		deparseFromExprForRel(buf, root, foreignrel, true, ignore_rel,
+							  ignore_conds, params_list);
 }
 
 /*
@@ -1545,7 +1649,7 @@ deparseRangeTblRef(StringInfo buf, PlannerInfo *root, RelOptInfo *foreignrel,
  * to *retrieved_attrs.
  */
 void
-deparseInsertSql(StringInfo buf, PlannerInfo *root,
+deparseInsertSql(StringInfo buf, RangeTblEntry *rte,
 				 Index rtindex, Relation rel,
 				 List *targetAttrs, bool doNothing,
 				 List *returningList, List **retrieved_attrs)
@@ -1570,7 +1674,7 @@ deparseInsertSql(StringInfo buf, PlannerInfo *root,
 				appendStringInfoString(buf, ", ");
 			first = false;
 
-			deparseColumnRef(buf, rtindex, attnum, root, false);
+			deparseColumnRef(buf, rtindex, attnum, rte, false);
 		}
 
 		appendStringInfoString(buf, ") VALUES (");
@@ -1595,7 +1699,7 @@ deparseInsertSql(StringInfo buf, PlannerInfo *root,
 	if (doNothing)
 		appendStringInfoString(buf, " ON CONFLICT DO NOTHING");
 
-	deparseReturningList(buf, root, rtindex, rel,
+	deparseReturningList(buf, rte, rtindex, rel,
 						 rel->trigdesc && rel->trigdesc->trig_insert_after_row,
 						 returningList, retrieved_attrs);
 }
@@ -1608,7 +1712,7 @@ deparseInsertSql(StringInfo buf, PlannerInfo *root,
  * to *retrieved_attrs.
  */
 void
-deparseUpdateSql(StringInfo buf, PlannerInfo *root,
+deparseUpdateSql(StringInfo buf, RangeTblEntry *rte,
 				 Index rtindex, Relation rel,
 				 List *targetAttrs, List *returningList,
 				 List **retrieved_attrs)
@@ -1631,13 +1735,13 @@ deparseUpdateSql(StringInfo buf, PlannerInfo *root,
 			appendStringInfoString(buf, ", ");
 		first = false;
 
-		deparseColumnRef(buf, rtindex, attnum, root, false);
+		deparseColumnRef(buf, rtindex, attnum, rte, false);
 		appendStringInfo(buf, " = $%d", pindex);
 		pindex++;
 	}
 	appendStringInfoString(buf, " WHERE ctid = $1");
 
-	deparseReturningList(buf, root, rtindex, rel,
+	deparseReturningList(buf, rte, rtindex, rel,
 						 rel->trigdesc && rel->trigdesc->trig_update_after_row,
 						 returningList, retrieved_attrs);
 }
@@ -1645,13 +1749,23 @@ deparseUpdateSql(StringInfo buf, PlannerInfo *root,
 /*
  * deparse remote UPDATE statement
  *
- * The statement text is appended to buf, and we also create an integer List
- * of the columns being retrieved by RETURNING (if any), which is returned
- * to *retrieved_attrs.
+ * 'buf' is the output buffer to append the statement to
+ * 'rtindex' is the RT index of the associated target relation
+ * 'rel' is the relation descriptor for the target relation
+ * 'foreignrel' is the RelOptInfo for the target relation or the join relation
+ *		containing all base relations in the query
+ * 'targetlist' is the tlist of the underlying foreign-scan plan node
+ * 'targetAttrs' is the target columns of the UPDATE
+ * 'remote_conds' is the qual clauses that must be evaluated remotely
+ * '*params_list' is an output list of exprs that will become remote Params
+ * 'returningList' is the RETURNING targetlist
+ * '*retrieved_attrs' is an output list of integers of columns being retrieved
+ *		by RETURNING (if any)
  */
 void
 deparseDirectUpdateSql(StringInfo buf, PlannerInfo *root,
 					   Index rtindex, Relation rel,
+					   RelOptInfo *foreignrel,
 					   List *targetlist,
 					   List *targetAttrs,
 					   List *remote_conds,
@@ -1659,21 +1773,23 @@ deparseDirectUpdateSql(StringInfo buf, PlannerInfo *root,
 					   List *returningList,
 					   List **retrieved_attrs)
 {
-	RelOptInfo *baserel = root->simple_rel_array[rtindex];
 	deparse_expr_cxt context;
 	int			nestlevel;
 	bool		first;
 	ListCell   *lc;
+	RangeTblEntry *rte = planner_rt_fetch(rtindex, root);
 
 	/* Set up context struct for recursion */
 	context.root = root;
-	context.foreignrel = baserel;
-	context.scanrel = baserel;
+	context.foreignrel = foreignrel;
+	context.scanrel = foreignrel;
 	context.buf = buf;
 	context.params_list = params_list;
 
 	appendStringInfoString(buf, "UPDATE ");
 	deparseRelation(buf, rel);
+	if (foreignrel->reloptkind == RELOPT_JOINREL)
+		appendStringInfo(buf, " %s%d", REL_ALIAS_PREFIX, rtindex);
 	appendStringInfoString(buf, " SET ");
 
 	/* Make sure any constants in the exprs are printed portably */
@@ -1693,21 +1809,35 @@ deparseDirectUpdateSql(StringInfo buf, PlannerInfo *root,
 			appendStringInfoString(buf, ", ");
 		first = false;
 
-		deparseColumnRef(buf, rtindex, attnum, root, false);
+		deparseColumnRef(buf, rtindex, attnum, rte, false);
 		appendStringInfoString(buf, " = ");
 		deparseExpr((Expr *) tle->expr, &context);
 	}
 
 	reset_transmission_modes(nestlevel);
 
+	if (foreignrel->reloptkind == RELOPT_JOINREL)
+	{
+		List	   *ignore_conds = NIL;
+
+		appendStringInfo(buf, " FROM ");
+		deparseFromExprForRel(buf, root, foreignrel, true, rtindex,
+							  &ignore_conds, params_list);
+		remote_conds = list_concat(remote_conds, ignore_conds);
+	}
+
 	if (remote_conds)
 	{
-		appendStringInfo(buf, " WHERE ");
+		appendStringInfoString(buf, " WHERE ");
 		appendConditions(remote_conds, &context);
 	}
 
-	deparseReturningList(buf, root, rtindex, rel, false,
-						 returningList, retrieved_attrs);
+	if (foreignrel->reloptkind == RELOPT_JOINREL)
+		deparseExplicitTargetList(returningList, true, retrieved_attrs,
+								  &context);
+	else
+		deparseReturningList(buf, rte, rtindex, rel, false,
+							 returningList, retrieved_attrs);
 }
 
 /*
@@ -1718,7 +1848,7 @@ deparseDirectUpdateSql(StringInfo buf, PlannerInfo *root,
  * to *retrieved_attrs.
  */
 void
-deparseDeleteSql(StringInfo buf, PlannerInfo *root,
+deparseDeleteSql(StringInfo buf, RangeTblEntry *rte,
 				 Index rtindex, Relation rel,
 				 List *returningList,
 				 List **retrieved_attrs)
@@ -1727,7 +1857,7 @@ deparseDeleteSql(StringInfo buf, PlannerInfo *root,
 	deparseRelation(buf, rel);
 	appendStringInfoString(buf, " WHERE ctid = $1");
 
-	deparseReturningList(buf, root, rtindex, rel,
+	deparseReturningList(buf, rte, rtindex, rel,
 						 rel->trigdesc && rel->trigdesc->trig_delete_after_row,
 						 returningList, retrieved_attrs);
 }
@@ -1735,46 +1865,70 @@ deparseDeleteSql(StringInfo buf, PlannerInfo *root,
 /*
  * deparse remote DELETE statement
  *
- * The statement text is appended to buf, and we also create an integer List
- * of the columns being retrieved by RETURNING (if any), which is returned
- * to *retrieved_attrs.
+ * 'buf' is the output buffer to append the statement to
+ * 'rtindex' is the RT index of the associated target relation
+ * 'rel' is the relation descriptor for the target relation
+ * 'foreignrel' is the RelOptInfo for the target relation or the join relation
+ *		containing all base relations in the query
+ * 'remote_conds' is the qual clauses that must be evaluated remotely
+ * '*params_list' is an output list of exprs that will become remote Params
+ * 'returningList' is the RETURNING targetlist
+ * '*retrieved_attrs' is an output list of integers of columns being retrieved
+ *		by RETURNING (if any)
  */
 void
 deparseDirectDeleteSql(StringInfo buf, PlannerInfo *root,
 					   Index rtindex, Relation rel,
+					   RelOptInfo *foreignrel,
 					   List *remote_conds,
 					   List **params_list,
 					   List *returningList,
 					   List **retrieved_attrs)
 {
-	RelOptInfo *baserel = root->simple_rel_array[rtindex];
 	deparse_expr_cxt context;
 
 	/* Set up context struct for recursion */
 	context.root = root;
-	context.foreignrel = baserel;
-	context.scanrel = baserel;
+	context.foreignrel = foreignrel;
+	context.scanrel = foreignrel;
 	context.buf = buf;
 	context.params_list = params_list;
 
 	appendStringInfoString(buf, "DELETE FROM ");
 	deparseRelation(buf, rel);
+	if (foreignrel->reloptkind == RELOPT_JOINREL)
+		appendStringInfo(buf, " %s%d", REL_ALIAS_PREFIX, rtindex);
+
+	if (foreignrel->reloptkind == RELOPT_JOINREL)
+	{
+		List	   *ignore_conds = NIL;
+
+		appendStringInfo(buf, " USING ");
+		deparseFromExprForRel(buf, root, foreignrel, true, rtindex,
+							  &ignore_conds, params_list);
+		remote_conds = list_concat(remote_conds, ignore_conds);
+	}
 
 	if (remote_conds)
 	{
-		appendStringInfo(buf, " WHERE ");
+		appendStringInfoString(buf, " WHERE ");
 		appendConditions(remote_conds, &context);
 	}
 
-	deparseReturningList(buf, root, rtindex, rel, false,
-						 returningList, retrieved_attrs);
+	if (foreignrel->reloptkind == RELOPT_JOINREL)
+		deparseExplicitTargetList(returningList, true, retrieved_attrs,
+								  &context);
+	else
+		deparseReturningList(buf, planner_rt_fetch(rtindex, root),
+							 rtindex, rel, false,
+							 returningList, retrieved_attrs);
 }
 
 /*
  * Add a RETURNING clause, if needed, to an INSERT/UPDATE/DELETE.
  */
 static void
-deparseReturningList(StringInfo buf, PlannerInfo *root,
+deparseReturningList(StringInfo buf, RangeTblEntry *rte,
 					 Index rtindex, Relation rel,
 					 bool trig_after_row,
 					 List *returningList,
@@ -1800,7 +1954,7 @@ deparseReturningList(StringInfo buf, PlannerInfo *root,
 	}
 
 	if (attrs_used != NULL)
-		deparseTargetList(buf, root, rtindex, rel, true, attrs_used, false,
+		deparseTargetList(buf, rte, rtindex, rel, true, attrs_used, false,
 						  retrieved_attrs);
 	else
 		*retrieved_attrs = NIL;
@@ -1851,7 +2005,7 @@ deparseAnalyzeSql(StringInfo buf, Relation rel, List **retrieved_attrs)
 	for (i = 0; i < tupdesc->natts; i++)
 	{
 		/* Ignore dropped columns. */
-		if (tupdesc->attrs[i]->attisdropped)
+		if (TupleDescAttr(tupdesc, i)->attisdropped)
 			continue;
 
 		if (!first)
@@ -1859,7 +2013,7 @@ deparseAnalyzeSql(StringInfo buf, Relation rel, List **retrieved_attrs)
 		first = false;
 
 		/* Use attribute name or column_name option. */
-		colname = NameStr(tupdesc->attrs[i]->attname);
+		colname = NameStr(TupleDescAttr(tupdesc, i)->attname);
 		options = GetForeignColumnOptions(relid, i + 1);
 
 		foreach(lc, options)
@@ -1896,11 +2050,9 @@ deparseAnalyzeSql(StringInfo buf, Relation rel, List **retrieved_attrs)
  * If qualify_col is true, qualify column name with the alias of relation.
  */
 static void
-deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root,
+deparseColumnRef(StringInfo buf, int varno, int varattno, RangeTblEntry *rte,
 				 bool qualify_col)
 {
-	RangeTblEntry *rte;
-
 	/* We support fetching the remote side's CTID and OID. */
 	if (varattno == SelfItemPointerAttributeNumber)
 	{
@@ -1925,10 +2077,7 @@ deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root,
 		Oid			fetchval = 0;
 
 		if (varattno == TableOidAttributeNumber)
-		{
-			rte = planner_rt_fetch(varno, root);
 			fetchval = rte->relid;
-		}
 
 		if (qualify_col)
 		{
@@ -1947,9 +2096,6 @@ deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root,
 
 		/* Required only to be passed down to deparseTargetList(). */
 		List	   *retrieved_attrs;
-
-		/* Get RangeTblEntry from array in PlannerInfo. */
-		rte = planner_rt_fetch(varno, root);
 
 		/*
 		 * The lock on the relation will be held by upper callers, so it's
@@ -1978,17 +2124,17 @@ deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root,
 		{
 			appendStringInfoString(buf, "CASE WHEN (");
 			ADD_REL_QUALIFIER(buf, varno);
-			appendStringInfo(buf, "*)::text IS NOT NULL THEN ");
+			appendStringInfoString(buf, "*)::text IS NOT NULL THEN ");
 		}
 
 		appendStringInfoString(buf, "ROW(");
-		deparseTargetList(buf, root, varno, rel, false, attrs_used, qualify_col,
+		deparseTargetList(buf, rte, varno, rel, false, attrs_used, qualify_col,
 						  &retrieved_attrs);
-		appendStringInfoString(buf, ")");
+		appendStringInfoChar(buf, ')');
 
 		/* Complete the CASE WHEN statement started above. */
 		if (qualify_col)
-			appendStringInfo(buf, " END");
+			appendStringInfoString(buf, " END");
 
 		heap_close(rel, NoLock);
 		bms_free(attrs_used);
@@ -2001,9 +2147,6 @@ deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root,
 
 		/* varno must not be any of OUTER_VAR, INNER_VAR and INDEX_VAR. */
 		Assert(!IS_SPECIAL_VARNO(varno));
-
-		/* Get RangeTblEntry from array in PlannerInfo. */
-		rte = planner_rt_fetch(varno, root);
 
 		/*
 		 * If it's a column of a foreign table, and it has the column_name FDW
@@ -2026,7 +2169,7 @@ deparseColumnRef(StringInfo buf, int varno, int varattno, PlannerInfo *root,
 		 * FDW option, use attribute name.
 		 */
 		if (colname == NULL)
-			colname = get_relid_attribute_name(rte->relid, varattno);
+			colname = get_attname(rte->relid, varattno, false);
 
 		if (qualify_col)
 			ADD_REL_QUALIFIER(buf, varno);
@@ -2202,7 +2345,8 @@ deparseVar(Var *node, deparse_expr_cxt *context)
 
 	if (bms_is_member(node->varno, relids) && node->varlevelsup == 0)
 		deparseColumnRef(context->buf, node->varno, node->varattno,
-						 context->root, qualify_col);
+						 planner_rt_fetch(node->varno, context->root),
+						 qualify_col);
 	else
 	{
 		/* Treat like a Param */
@@ -2759,7 +2903,7 @@ deparseAggref(Aggref *node, deparse_expr_cxt *context)
 	appendStringInfoChar(buf, '(');
 
 	/* Add DISTINCT */
-	appendStringInfo(buf, "%s", (node->aggdistinct != NIL) ? "DISTINCT " : "");
+	appendStringInfoString(buf, (node->aggdistinct != NIL) ? "DISTINCT " : "");
 
 	if (AGGKIND_IS_ORDERED_SET(node->aggkind))
 	{
@@ -2944,7 +3088,7 @@ appendGroupByClause(List *tlist, deparse_expr_cxt *context)
 	if (!query->groupClause)
 		return;
 
-	appendStringInfo(buf, " GROUP BY ");
+	appendStringInfoString(buf, " GROUP BY ");
 
 	/*
 	 * Queries with grouping sets are not pushed down, so we don't expect
@@ -2981,7 +3125,7 @@ appendOrderByClause(List *pathkeys, deparse_expr_cxt *context)
 	/* Make sure any constants in the exprs are printed portably */
 	nestlevel = set_transmission_modes();
 
-	appendStringInfo(buf, " ORDER BY");
+	appendStringInfoString(buf, " ORDER BY");
 	foreach(lcell, pathkeys)
 	{
 		PathKey    *pathkey = lfirst(lcell);
@@ -3035,7 +3179,7 @@ appendFunctionName(Oid funcid, deparse_expr_cxt *context)
 
 	/* Always print the function name */
 	proname = NameStr(procform->proname);
-	appendStringInfo(buf, "%s", quote_identifier(proname));
+	appendStringInfoString(buf, quote_identifier(proname));
 
 	ReleaseSysCache(proctup);
 }
@@ -3077,9 +3221,9 @@ deparseSortGroupClause(Index ref, List *tlist, bool force_colno,
 	else
 	{
 		/* Always parenthesize the expression. */
-		appendStringInfoString(buf, "(");
+		appendStringInfoChar(buf, '(');
 		deparseExpr(expr, context);
-		appendStringInfoString(buf, ")");
+		appendStringInfoChar(buf, ')');
 	}
 
 	return (Node *) expr;

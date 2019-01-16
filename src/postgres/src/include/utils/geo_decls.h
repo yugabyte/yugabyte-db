@@ -3,7 +3,7 @@
  * geo_decls.h - Declarations for various 2D constructs.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/geo_decls.h
@@ -178,9 +178,10 @@ typedef struct
  * in geo_ops.c
  */
 
-/* private point routines */
+/* private routines */
 extern double point_dt(Point *pt1, Point *pt2);
 extern double point_sl(Point *pt1, Point *pt2);
 extern double pg_hypot(double x, double y);
+extern BOX *box_copy(BOX *box);
 
 #endif							/* GEO_DECLS_H */

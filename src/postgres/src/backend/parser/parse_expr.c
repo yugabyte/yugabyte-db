@@ -3,7 +3,7 @@
  * parse_expr.c
  *	  handle expressions in parser
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -386,7 +386,7 @@ transformExprRecurse(ParseState *pstate, Node *expr)
  * selection from an arbitrary node needs it.)
  */
 static void
-unknown_attribute(ParseState *pstate, Node *relref, char *attname,
+unknown_attribute(ParseState *pstate, Node *relref, const char *attname,
 				  int location)
 {
 	RangeTblEntry *rte;
@@ -480,6 +480,7 @@ transformIndirection(ParseState *pstate, A_Indirection *ind)
 										  list_make1(result),
 										  last_srf,
 										  NULL,
+										  false,
 										  location);
 			if (newresult == NULL)
 				unknown_attribute(pstate, result, strVal(n), location);
@@ -527,7 +528,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 	 */
 	if (pstate->p_pre_columnref_hook != NULL)
 	{
-		node = (*pstate->p_pre_columnref_hook) (pstate, cref);
+		node = pstate->p_pre_columnref_hook(pstate, cref);
 		if (node != NULL)
 			return node;
 	}
@@ -629,6 +630,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 											 list_make1(node),
 											 pstate->p_last_srf,
 											 NULL,
+											 false,
 											 cref->location);
 				}
 				break;
@@ -676,6 +678,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 											 list_make1(node),
 											 pstate->p_last_srf,
 											 NULL,
+											 false,
 											 cref->location);
 				}
 				break;
@@ -736,6 +739,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 											 list_make1(node),
 											 pstate->p_last_srf,
 											 NULL,
+											 false,
 											 cref->location);
 				}
 				break;
@@ -758,7 +762,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 	{
 		Node	   *hookresult;
 
-		hookresult = (*pstate->p_post_columnref_hook) (pstate, cref, node);
+		hookresult = pstate->p_post_columnref_hook(pstate, cref, node);
 		if (node == NULL)
 			node = hookresult;
 		else if (hookresult != NULL)
@@ -813,7 +817,7 @@ transformParamRef(ParseState *pstate, ParamRef *pref)
 	 * call it.  If not, or if the hook returns NULL, throw a generic error.
 	 */
 	if (pstate->p_paramref_hook != NULL)
-		result = (*pstate->p_paramref_hook) (pstate, pref);
+		result = pstate->p_paramref_hook(pstate, pref);
 	else
 		result = NULL;
 
@@ -1477,6 +1481,7 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 							 targs,
 							 last_srf,
 							 fn,
+							 false,
 							 fn->location);
 }
 
@@ -1800,6 +1805,7 @@ transformSubLink(ParseState *pstate, SubLink *sublink)
 		case EXPR_KIND_WINDOW_ORDER:
 		case EXPR_KIND_WINDOW_FRAME_RANGE:
 		case EXPR_KIND_WINDOW_FRAME_ROWS:
+		case EXPR_KIND_WINDOW_FRAME_GROUPS:
 		case EXPR_KIND_SELECT_TARGET:
 		case EXPR_KIND_INSERT_TARGET:
 		case EXPR_KIND_UPDATE_SOURCE:
@@ -1839,6 +1845,9 @@ transformSubLink(ParseState *pstate, SubLink *sublink)
 			break;
 		case EXPR_KIND_PARTITION_EXPRESSION:
 			err = _("cannot use subquery in partition key expression");
+			break;
+		case EXPR_KIND_CALL_ARGUMENT:
+			err = _("cannot use subquery in CALL argument");
 			break;
 
 			/*
@@ -2585,9 +2594,9 @@ transformCurrentOfExpr(ParseState *pstate, CurrentOfExpr *cexpr)
 
 		/* See if there is a translation available from a parser hook */
 		if (pstate->p_pre_columnref_hook != NULL)
-			node = (*pstate->p_pre_columnref_hook) (pstate, cref);
+			node = pstate->p_pre_columnref_hook(pstate, cref);
 		if (node == NULL && pstate->p_post_columnref_hook != NULL)
-			node = (*pstate->p_post_columnref_hook) (pstate, cref, NULL);
+			node = pstate->p_post_columnref_hook(pstate, cref, NULL);
 
 		/*
 		 * XXX Should we throw an error if we get a translation that isn't a
@@ -3422,6 +3431,8 @@ ParseExprKindName(ParseExprKind exprKind)
 			return "window RANGE";
 		case EXPR_KIND_WINDOW_FRAME_ROWS:
 			return "window ROWS";
+		case EXPR_KIND_WINDOW_FRAME_GROUPS:
+			return "window GROUPS";
 		case EXPR_KIND_SELECT_TARGET:
 			return "SELECT";
 		case EXPR_KIND_INSERT_TARGET:
@@ -3462,6 +3473,8 @@ ParseExprKindName(ParseExprKind exprKind)
 			return "WHEN";
 		case EXPR_KIND_PARTITION_EXPRESSION:
 			return "PARTITION BY";
+		case EXPR_KIND_CALL_ARGUMENT:
+			return "CALL";
 
 			/*
 			 * There is intentionally no default: case here, so that the

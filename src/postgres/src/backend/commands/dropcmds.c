@@ -3,7 +3,7 @@
  * dropcmds.c
  *	  handle various "DROP" operations
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,6 +14,7 @@
  */
 #include "postgres.h"
 
+#include "access/xact.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
 #include "catalog/dependency.h"
@@ -26,6 +27,7 @@
 #include "nodes/makefuncs.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
 
@@ -91,21 +93,12 @@ RemoveObjects(DropStmt *stmt)
 		 */
 		if (stmt->removeType == OBJECT_FUNCTION)
 		{
-			Oid			funcOid = address.objectId;
-			HeapTuple	tup;
-
-			tup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcOid));
-			if (!HeapTupleIsValid(tup)) /* should not happen */
-				elog(ERROR, "cache lookup failed for function %u", funcOid);
-
-			if (((Form_pg_proc) GETSTRUCT(tup))->proisagg)
+			if (get_func_prokind(address.objectId) == PROKIND_AGGREGATE)
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("\"%s\" is an aggregate function",
 								NameListToString(castNode(ObjectWithArgs, object)->objname)),
 						 errhint("Use DROP AGGREGATE to drop aggregate functions.")));
-
-			ReleaseSysCache(tup);
 		}
 
 		/* Check permissions. */
@@ -114,6 +107,13 @@ RemoveObjects(DropStmt *stmt)
 			!pg_namespace_ownercheck(namespaceId, GetUserId()))
 			check_object_ownership(GetUserId(), stmt->removeType, address,
 								   object, relation);
+
+		/*
+		 * Make note if a temporary namespace has been accessed in this
+		 * transaction.
+		 */
+		if (OidIsValid(namespaceId) && isTempNamespace(namespaceId))
+			MyXactFlags |= XACT_FLAGS_ACCESSEDTEMPNAMESPACE;
 
 		/* Release any relcache reference count, but keep lock until commit. */
 		if (relation)
@@ -333,6 +333,32 @@ does_not_exist_skipping(ObjectType objtype, Node *object)
 					!type_in_list_does_not_exist_skipping(owa->objargs, &msg, &name))
 				{
 					msg = gettext_noop("function %s(%s) does not exist, skipping");
+					name = NameListToString(owa->objname);
+					args = TypeNameListToString(owa->objargs);
+				}
+				break;
+			}
+		case OBJECT_PROCEDURE:
+			{
+				ObjectWithArgs *owa = castNode(ObjectWithArgs, object);
+
+				if (!schema_does_not_exist_skipping(owa->objname, &msg, &name) &&
+					!type_in_list_does_not_exist_skipping(owa->objargs, &msg, &name))
+				{
+					msg = gettext_noop("procedure %s(%s) does not exist, skipping");
+					name = NameListToString(owa->objname);
+					args = TypeNameListToString(owa->objargs);
+				}
+				break;
+			}
+		case OBJECT_ROUTINE:
+			{
+				ObjectWithArgs *owa = castNode(ObjectWithArgs, object);
+
+				if (!schema_does_not_exist_skipping(owa->objname, &msg, &name) &&
+					!type_in_list_does_not_exist_skipping(owa->objargs, &msg, &name))
+				{
+					msg = gettext_noop("routine %s(%s) does not exist, skipping");
 					name = NameListToString(owa->objname);
 					args = TypeNameListToString(owa->objargs);
 				}

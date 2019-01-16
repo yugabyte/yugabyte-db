@@ -100,51 +100,51 @@ COMMIT;
 -- Subtransactions, basic tests
 -- create & drop tables
 SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE;
-CREATE TABLE foobar (a int);
+CREATE TABLE trans_foobar (a int);
 BEGIN;
-	CREATE TABLE foo (a int);
+	CREATE TABLE trans_foo (a int);
 	SAVEPOINT one;
-		DROP TABLE foo;
-		CREATE TABLE bar (a int);
+		DROP TABLE trans_foo;
+		CREATE TABLE trans_bar (a int);
 	ROLLBACK TO SAVEPOINT one;
 	RELEASE SAVEPOINT one;
 	SAVEPOINT two;
-		CREATE TABLE baz (a int);
+		CREATE TABLE trans_baz (a int);
 	RELEASE SAVEPOINT two;
-	drop TABLE foobar;
-	CREATE TABLE barbaz (a int);
+	drop TABLE trans_foobar;
+	CREATE TABLE trans_barbaz (a int);
 COMMIT;
--- should exist: barbaz, baz, foo
-SELECT * FROM foo;		-- should be empty
-SELECT * FROM bar;		-- shouldn't exist
-SELECT * FROM barbaz;	-- should be empty
-SELECT * FROM baz;		-- should be empty
+-- should exist: trans_barbaz, trans_baz, trans_foo
+SELECT * FROM trans_foo;		-- should be empty
+SELECT * FROM trans_bar;		-- shouldn't exist
+SELECT * FROM trans_barbaz;	-- should be empty
+SELECT * FROM trans_baz;		-- should be empty
 
 -- inserts
 BEGIN;
-	INSERT INTO foo VALUES (1);
+	INSERT INTO trans_foo VALUES (1);
 	SAVEPOINT one;
-		INSERT into bar VALUES (1);
+		INSERT into trans_bar VALUES (1);
 	ROLLBACK TO one;
 	RELEASE SAVEPOINT one;
 	SAVEPOINT two;
-		INSERT into barbaz VALUES (1);
+		INSERT into trans_barbaz VALUES (1);
 	RELEASE two;
 	SAVEPOINT three;
 		SAVEPOINT four;
-			INSERT INTO foo VALUES (2);
+			INSERT INTO trans_foo VALUES (2);
 		RELEASE SAVEPOINT four;
 	ROLLBACK TO SAVEPOINT three;
 	RELEASE SAVEPOINT three;
-	INSERT INTO foo VALUES (3);
+	INSERT INTO trans_foo VALUES (3);
 COMMIT;
-SELECT * FROM foo;		-- should have 1 and 3
-SELECT * FROM barbaz;	-- should have 1
+SELECT * FROM trans_foo;		-- should have 1 and 3
+SELECT * FROM trans_barbaz;	-- should have 1
 
 -- test whole-tree commit
 BEGIN;
 	SAVEPOINT one;
-		SELECT foo;
+		SELECT trans_foo;
 	ROLLBACK TO SAVEPOINT one;
 	RELEASE SAVEPOINT one;
 	SAVEPOINT two;
@@ -179,7 +179,7 @@ BEGIN;
 	INSERT INTO savepoints VALUES (4);
 	SAVEPOINT one;
 		INSERT INTO savepoints VALUES (5);
-		SELECT foo;
+		SELECT trans_foo;
 COMMIT;
 SELECT * FROM savepoints;
 
@@ -329,9 +329,9 @@ BEGIN;
 	INSERT INTO koju VALUES (1);
 ROLLBACK;
 
-DROP TABLE foo;
-DROP TABLE baz;
-DROP TABLE barbaz;
+DROP TABLE trans_foo;
+DROP TABLE trans_baz;
+DROP TABLE trans_barbaz;
 
 
 -- test case for problems with revalidating an open relation during abort
@@ -417,6 +417,60 @@ COMMIT;
 
 DROP FUNCTION create_temp_tab();
 DROP FUNCTION invert(x float8);
+
+
+-- Test assorted behaviors around the implicit transaction block created
+-- when multiple SQL commands are sent in a single Query message.  These
+-- tests rely on the fact that psql will not break SQL commands apart at a
+-- backslash-quoted semicolon, but will send them as one Query.
+
+create temp table i_table (f1 int);
+
+-- psql will show only the last result in a multi-statement Query
+SELECT 1\; SELECT 2\; SELECT 3;
+
+-- this implicitly commits:
+insert into i_table values(1)\; select * from i_table;
+-- 1/0 error will cause rolling back the whole implicit transaction
+insert into i_table values(2)\; select * from i_table\; select 1/0;
+select * from i_table;
+
+rollback;  -- we are not in a transaction at this point
+
+-- can use regular begin/commit/rollback within a single Query
+begin\; insert into i_table values(3)\; commit;
+rollback;  -- we are not in a transaction at this point
+begin\; insert into i_table values(4)\; rollback;
+rollback;  -- we are not in a transaction at this point
+
+-- begin converts implicit transaction into a regular one that
+-- can extend past the end of the Query
+select 1\; begin\; insert into i_table values(5);
+commit;
+select 1\; begin\; insert into i_table values(6);
+rollback;
+
+-- commit in implicit-transaction state commits but issues a warning.
+insert into i_table values(7)\; commit\; insert into i_table values(8)\; select 1/0;
+-- similarly, rollback aborts but issues a warning.
+insert into i_table values(9)\; rollback\; select 2;
+
+select * from i_table;
+
+rollback;  -- we are not in a transaction at this point
+
+-- implicit transaction block is still a transaction block, for e.g. VACUUM
+SELECT 1\; VACUUM;
+SELECT 1\; COMMIT\; VACUUM;
+
+-- we disallow savepoint-related commands in implicit-transaction state
+SELECT 1\; SAVEPOINT sp;
+SELECT 1\; COMMIT\; SAVEPOINT sp;
+ROLLBACK TO SAVEPOINT sp\; SELECT 2;
+SELECT 2\; RELEASE SAVEPOINT sp\; SELECT 3;
+
+-- but this is OK, because the BEGIN converts it to a regular xact
+SELECT 1\; BEGIN\; SAVEPOINT sp\; ROLLBACK TO SAVEPOINT sp\; COMMIT;
 
 
 -- Test for successful cleanup of an aborted transaction at session exit.

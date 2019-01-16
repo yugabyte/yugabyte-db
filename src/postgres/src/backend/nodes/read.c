@@ -4,7 +4,7 @@
  *	  routines to convert a string (legal ascii representation of node) back
  *	  to nodes
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -21,6 +21,7 @@
 
 #include <ctype.h>
 
+#include "common/string.h"
 #include "nodes/pg_list.h"
 #include "nodes/readfuncs.h"
 #include "nodes/value.h"
@@ -215,22 +216,15 @@ nodeTokenType(char *token, int length)
 	{
 		/*
 		 * Yes.  Figure out whether it is integral or float; this requires
-		 * both a syntax check and a range check. strtol() can do both for us.
-		 * We know the token will end at a character that strtol will stop at,
-		 * so we do not need to modify the string.
+		 * both a syntax check and a range check. strtoint() can do both for
+		 * us. We know the token will end at a character that strtoint will
+		 * stop at, so we do not need to modify the string.
 		 */
-		long		val;
 		char	   *endptr;
 
 		errno = 0;
-		val = strtol(token, &endptr, 10);
-		(void) val;				/* avoid compiler warning if unused */
-		if (endptr != token + length || errno == ERANGE
-#ifdef HAVE_LONG_INT_64
-		/* if long > 32 bits, check for overflow of int4 */
-			|| val != (long) ((int32) val)
-#endif
-			)
+		(void) strtoint(token, &endptr, 10);
+		if (endptr != token + length || errno == ERANGE)
 			return T_Float;
 		return T_Integer;
 	}
@@ -387,9 +381,9 @@ nodeRead(char *token, int tok_len)
 		case T_Integer:
 
 			/*
-			 * we know that the token terminates on a char atol will stop at
+			 * we know that the token terminates on a char atoi will stop at
 			 */
-			result = (Node *) makeInteger(atol(token));
+			result = (Node *) makeInteger(atoi(token));
 			break;
 		case T_Float:
 			{

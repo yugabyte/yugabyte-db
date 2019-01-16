@@ -41,7 +41,7 @@
  * function must be supplied; comparison defaults to memcmp() and key copying
  * to memcpy() when a user-defined hashing function is selected.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -341,7 +341,7 @@ hash_create(const char *tabname, long nelem, HASHCTL *info, int flags)
 		else
 			CurrentDynaHashCxt = TopMemoryContext;
 		CurrentDynaHashCxt = AllocSetContextCreate(CurrentDynaHashCxt,
-												   tabname,
+												   "dynahash",
 												   ALLOCSET_DEFAULT_SIZES);
 	}
 
@@ -351,6 +351,10 @@ hash_create(const char *tabname, long nelem, HASHCTL *info, int flags)
 
 	hashp->tabname = (char *) (hashp + 1);
 	strcpy(hashp->tabname, tabname);
+
+	/* If we have a private context, label it with hashtable's name */
+	if (!(flags & HASH_SHARED_MEM))
+		MemoryContextSetIdentifier(CurrentDynaHashCxt, hashp->tabname);
 
 	/*
 	 * Select the appropriate hash function (see comments at head of file).
@@ -891,8 +895,8 @@ calc_bucket(HASHHDR *hctl, uint32 hash_val)
  * HASH_ENTER_NULL cannot be used with the default palloc-based allocator,
  * since palloc internally ereports on out-of-memory.
  *
- * If foundPtr isn't NULL, then *foundPtr is set TRUE if we found an
- * existing entry in the table, FALSE otherwise.  This is needed in the
+ * If foundPtr isn't NULL, then *foundPtr is set true if we found an
+ * existing entry in the table, false otherwise.  This is needed in the
  * HASH_ENTER case, but is redundant with the return value otherwise.
  *
  * For hash_search_with_hash_value, the hashvalue parameter must have been
@@ -1096,12 +1100,12 @@ hash_search_with_hash_value(HTAB *hashp,
  * Therefore this cannot suffer an out-of-memory failure, even if there are
  * other processes operating in other partitions of the hashtable.
  *
- * Returns TRUE if successful, FALSE if the requested new hash key is already
+ * Returns true if successful, false if the requested new hash key is already
  * present.  Throws error if the specified entry pointer isn't actually a
  * table member.
  *
  * NB: currently, there is no special case for old and new hash keys being
- * identical, which means we'll report FALSE for that situation.  This is
+ * identical, which means we'll report false for that situation.  This is
  * preferable for existing uses.
  *
  * NB: for a partitioned hashtable, caller must hold lock on both relevant

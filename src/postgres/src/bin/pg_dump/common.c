@@ -4,7 +4,7 @@
  *	Catalog routines used by pg_dump; long ago these were shared
  *	by another dump tool, but not anymore.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -21,7 +21,7 @@
 
 #include <ctype.h>
 
-#include "catalog/pg_class.h"
+#include "catalog/pg_class_d.h"
 #include "fe_utils/string_utils.h"
 
 
@@ -66,8 +66,9 @@ static int	numExtensions;
 static ExtensionMemberId *extmembers;
 static int	numextmembers;
 
-static void flagInhTables(TableInfo *tbinfo, int numTables,
+static void flagInhTables(Archive *fout, TableInfo *tbinfo, int numTables,
 			  InhInfo *inhinfo, int numInherits);
+static void flagInhIndexes(Archive *fout, TableInfo *tblinfo, int numTables);
 static void flagInhAttrs(DumpOptions *dopt, TableInfo *tblinfo, int numTables);
 static DumpableObject **buildIndexArray(void *objArray, int numObjs,
 				Size objSize);
@@ -76,6 +77,8 @@ static int	ExtensionMemberIdCompare(const void *p1, const void *p2);
 static void findParentsByOid(TableInfo *self,
 				 InhInfo *inhinfo, int numInherits);
 static int	strInArray(const char *pattern, char **arr, int arr_size);
+static IndxInfo *findIndexByOid(Oid oid, DumpableObject **idxinfoindex,
+			   int numIndexes);
 
 
 /*
@@ -243,7 +246,7 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	/* Link tables to parents, mark parents of target tables interesting */
 	if (g_verbose)
 		write_msg(NULL, "finding inheritance relationships\n");
-	flagInhTables(tblinfo, numTables, inhinfo, numInherits);
+	flagInhTables(fout, tblinfo, numTables, inhinfo, numInherits);
 
 	if (g_verbose)
 		write_msg(NULL, "reading column info for interesting tables\n");
@@ -256,6 +259,10 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	if (g_verbose)
 		write_msg(NULL, "reading indexes\n");
 	getIndexes(fout, tblinfo, numTables);
+
+	if (g_verbose)
+		write_msg(NULL, "flagging indexes in partitioned tables\n");
+	flagInhIndexes(fout, tblinfo, numTables);
 
 	if (g_verbose)
 		write_msg(NULL, "reading extended statistics\n");
@@ -294,8 +301,8 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 }
 
 /* flagInhTables -
- *	 Fill in parent link fields of every target table, and mark
- *	 parents of target tables as interesting
+ *	 Fill in parent link fields of tables for which we need that information,
+ *	 and mark parents of target tables as interesting
  *
  * Note that only direct ancestors of targets are marked interesting.
  * This is sufficient; we don't much care whether they inherited their
@@ -304,35 +311,154 @@ getSchemaData(Archive *fout, int *numTablesPtr)
  * modifies tblinfo
  */
 static void
-flagInhTables(TableInfo *tblinfo, int numTables,
+flagInhTables(Archive *fout, TableInfo *tblinfo, int numTables,
 			  InhInfo *inhinfo, int numInherits)
 {
+	DumpOptions *dopt = fout->dopt;
 	int			i,
 				j;
-	int			numParents;
-	TableInfo **parents;
 
 	for (i = 0; i < numTables; i++)
 	{
+		bool		find_parents = true;
+		bool		mark_parents = true;
+
 		/* Some kinds never have parents */
 		if (tblinfo[i].relkind == RELKIND_SEQUENCE ||
 			tblinfo[i].relkind == RELKIND_VIEW ||
 			tblinfo[i].relkind == RELKIND_MATVIEW)
 			continue;
 
-		/* Don't bother computing anything for non-target tables, either */
+		/*
+		 * Normally, we don't bother computing anything for non-target tables,
+		 * but if load-via-partition-root is specified, we gather information
+		 * on every partition in the system so that getRootTableInfo can trace
+		 * from any given to leaf partition all the way up to the root.  (We
+		 * don't need to mark them as interesting for getTableAttrs, though.)
+		 */
 		if (!tblinfo[i].dobj.dump)
+		{
+			mark_parents = false;
+
+			if (!dopt->load_via_partition_root ||
+				!tblinfo[i].ispartition)
+				find_parents = false;
+		}
+
+		/* If needed, find all the immediate parent tables. */
+		if (find_parents)
+			findParentsByOid(&tblinfo[i], inhinfo, numInherits);
+
+		/*
+		 * If needed, mark the parents as interesting for getTableAttrs and
+		 * getIndexes.
+		 */
+		if (mark_parents)
+		{
+			int			numParents = tblinfo[i].numParents;
+			TableInfo **parents = tblinfo[i].parents;
+
+			for (j = 0; j < numParents; j++)
+				parents[j]->interesting = true;
+		}
+	}
+}
+
+/*
+ * flagInhIndexes -
+ *	 Create AttachIndexInfo objects for partitioned indexes, and add
+ *	 appropriate dependency links.
+ */
+static void
+flagInhIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
+{
+	int			i,
+				j,
+				k;
+	DumpableObject ***parentIndexArray;
+
+	parentIndexArray = (DumpableObject ***)
+		pg_malloc0(getMaxDumpId() * sizeof(DumpableObject **));
+
+	for (i = 0; i < numTables; i++)
+	{
+		TableInfo  *parenttbl;
+		IndexAttachInfo *attachinfo;
+
+		if (!tblinfo[i].ispartition || tblinfo[i].numParents == 0)
 			continue;
 
-		/* Find all the immediate parent tables */
-		findParentsByOid(&tblinfo[i], inhinfo, numInherits);
+		Assert(tblinfo[i].numParents == 1);
+		parenttbl = tblinfo[i].parents[0];
 
-		/* Mark the parents as interesting for getTableAttrs */
-		numParents = tblinfo[i].numParents;
-		parents = tblinfo[i].parents;
-		for (j = 0; j < numParents; j++)
-			parents[j]->interesting = true;
+		/*
+		 * We need access to each parent table's index list, but there is no
+		 * index to cover them outside of this function.  To avoid having to
+		 * sort every parent table's indexes each time we come across each of
+		 * its partitions, create an indexed array for each parent the first
+		 * time it is required.
+		 */
+		if (parentIndexArray[parenttbl->dobj.dumpId] == NULL)
+			parentIndexArray[parenttbl->dobj.dumpId] =
+				buildIndexArray(parenttbl->indexes,
+								parenttbl->numIndexes,
+								sizeof(IndxInfo));
+
+		attachinfo = (IndexAttachInfo *)
+			pg_malloc0(tblinfo[i].numIndexes * sizeof(IndexAttachInfo));
+		for (j = 0, k = 0; j < tblinfo[i].numIndexes; j++)
+		{
+			IndxInfo   *index = &(tblinfo[i].indexes[j]);
+			IndxInfo   *parentidx;
+
+			if (index->parentidx == 0)
+				continue;
+
+			parentidx = findIndexByOid(index->parentidx,
+									   parentIndexArray[parenttbl->dobj.dumpId],
+									   parenttbl->numIndexes);
+			if (parentidx == NULL)
+				continue;
+
+			attachinfo[k].dobj.objType = DO_INDEX_ATTACH;
+			attachinfo[k].dobj.catId.tableoid = 0;
+			attachinfo[k].dobj.catId.oid = 0;
+			AssignDumpId(&attachinfo[k].dobj);
+			attachinfo[k].dobj.name = pg_strdup(index->dobj.name);
+			attachinfo[k].dobj.namespace = index->indextable->dobj.namespace;
+			attachinfo[k].parentIdx = parentidx;
+			attachinfo[k].partitionIdx = index;
+
+			/*
+			 * We must state the DO_INDEX_ATTACH object's dependencies
+			 * explicitly, since it will not match anything in pg_depend.
+			 *
+			 * Give it dependencies on both the partition index and the parent
+			 * index, so that it will not be executed till both of those
+			 * exist.  (There's no need to care what order those are created
+			 * in.)
+			 *
+			 * In addition, give it dependencies on the indexes' underlying
+			 * tables.  This does nothing of great value so far as serial
+			 * restore ordering goes, but it ensures that a parallel restore
+			 * will not try to run the ATTACH concurrently with other
+			 * operations on those tables.
+			 */
+			addObjectDependency(&attachinfo[k].dobj, index->dobj.dumpId);
+			addObjectDependency(&attachinfo[k].dobj, parentidx->dobj.dumpId);
+			addObjectDependency(&attachinfo[k].dobj,
+								index->indextable->dobj.dumpId);
+			addObjectDependency(&attachinfo[k].dobj,
+								parentidx->indextable->dobj.dumpId);
+
+			k++;
+		}
 	}
+
+	for (i = 0; i < numTables; i++)
+		if (parentIndexArray[i])
+			pg_free(parentIndexArray[i]);
+	pg_free(parentIndexArray);
 }
 
 /* flagInhAttrs -
@@ -808,6 +934,18 @@ findExtensionByOid(Oid oid)
 	return (ExtensionInfo *) findObjectByOid(oid, extinfoindex, numExtensions);
 }
 
+/*
+ * findIndexByOid
+ *		find the entry of the index with the given oid
+ *
+ * This one's signature is different from the previous ones because we lack a
+ * global array of all indexes, so caller must pass their array as argument.
+ */
+static IndxInfo *
+findIndexByOid(Oid oid, DumpableObject **idxinfoindex, int numIndexes)
+{
+	return (IndxInfo *) findObjectByOid(oid, idxinfoindex, numIndexes);
+}
 
 /*
  * setExtensionMembership

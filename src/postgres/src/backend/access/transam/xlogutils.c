@@ -8,7 +8,7 @@
  * None of this code is used during normal system operation.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/xlogutils.c
@@ -23,7 +23,6 @@
 #include "access/xlog.h"
 #include "access/xlog_internal.h"
 #include "access/xlogutils.h"
-#include "catalog/catalog.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/smgr.h"
@@ -654,7 +653,8 @@ XLogTruncateRelation(RelFileNode rnode, ForkNumber forkNum,
  * frontend).  Probably these should be merged at some point.
  */
 static void
-XLogRead(char *buf, TimeLineID tli, XLogRecPtr startptr, Size count)
+XLogRead(char *buf, int segsize, TimeLineID tli, XLogRecPtr startptr,
+		 Size count)
 {
 	char	   *p;
 	XLogRecPtr	recptr;
@@ -666,6 +666,8 @@ XLogRead(char *buf, TimeLineID tli, XLogRecPtr startptr, Size count)
 	static TimeLineID sendTLI = 0;
 	static uint32 sendOff = 0;
 
+	Assert(segsize == wal_segment_size);
+
 	p = buf;
 	recptr = startptr;
 	nbytes = count;
@@ -676,10 +678,10 @@ XLogRead(char *buf, TimeLineID tli, XLogRecPtr startptr, Size count)
 		int			segbytes;
 		int			readbytes;
 
-		startoff = recptr % XLogSegSize;
+		startoff = XLogSegmentOffset(recptr, segsize);
 
 		/* Do we need to switch to a different xlog segment? */
-		if (sendFile < 0 || !XLByteInSeg(recptr, sendSegNo) ||
+		if (sendFile < 0 || !XLByteInSeg(recptr, sendSegNo, segsize) ||
 			sendTLI != tli)
 		{
 			char		path[MAXPGPATH];
@@ -687,11 +689,11 @@ XLogRead(char *buf, TimeLineID tli, XLogRecPtr startptr, Size count)
 			if (sendFile >= 0)
 				close(sendFile);
 
-			XLByteToSeg(recptr, sendSegNo);
+			XLByteToSeg(recptr, sendSegNo, segsize);
 
-			XLogFilePath(path, tli, sendSegNo);
+			XLogFilePath(path, tli, sendSegNo, segsize);
 
-			sendFile = BasicOpenFile(path, O_RDONLY | PG_BINARY, 0);
+			sendFile = BasicOpenFile(path, O_RDONLY | PG_BINARY);
 
 			if (sendFile < 0)
 			{
@@ -716,9 +718,10 @@ XLogRead(char *buf, TimeLineID tli, XLogRecPtr startptr, Size count)
 			if (lseek(sendFile, (off_t) startoff, SEEK_SET) < 0)
 			{
 				char		path[MAXPGPATH];
+				int			save_errno = errno;
 
-				XLogFilePath(path, tli, sendSegNo);
-
+				XLogFilePath(path, tli, sendSegNo, segsize);
+				errno = save_errno;
 				ereport(ERROR,
 						(errcode_for_file_access(),
 						 errmsg("could not seek in log segment %s to offset %u: %m",
@@ -728,8 +731,8 @@ XLogRead(char *buf, TimeLineID tli, XLogRecPtr startptr, Size count)
 		}
 
 		/* How many bytes are within this segment? */
-		if (nbytes > (XLogSegSize - startoff))
-			segbytes = XLogSegSize - startoff;
+		if (nbytes > (segsize - startoff))
+			segbytes = segsize - startoff;
 		else
 			segbytes = nbytes;
 
@@ -739,9 +742,10 @@ XLogRead(char *buf, TimeLineID tli, XLogRecPtr startptr, Size count)
 		if (readbytes <= 0)
 		{
 			char		path[MAXPGPATH];
+			int			save_errno = errno;
 
-			XLogFilePath(path, tli, sendSegNo);
-
+			XLogFilePath(path, tli, sendSegNo, segsize);
+			errno = save_errno;
 			ereport(ERROR,
 					(errcode_for_file_access(),
 					 errmsg("could not read from log segment %s, offset %u, length %lu: %m",
@@ -798,7 +802,8 @@ XLogRead(char *buf, TimeLineID tli, XLogRecPtr startptr, Size count)
 void
 XLogReadDetermineTimeline(XLogReaderState *state, XLogRecPtr wantPage, uint32 wantLength)
 {
-	const XLogRecPtr lastReadPage = state->readSegNo * XLogSegSize + state->readOff;
+	const XLogRecPtr lastReadPage = state->readSegNo *
+	state->wal_segment_size + state->readOff;
 
 	Assert(wantPage != InvalidXLogRecPtr && wantPage % XLOG_BLCKSZ == 0);
 	Assert(wantLength <= XLOG_BLCKSZ);
@@ -842,7 +847,8 @@ XLogReadDetermineTimeline(XLogReaderState *state, XLogRecPtr wantPage, uint32 wa
 	if (state->currTLIValidUntil != InvalidXLogRecPtr &&
 		state->currTLI != ThisTimeLineID &&
 		state->currTLI != 0 &&
-		(wantPage + wantLength) / XLogSegSize < state->currTLIValidUntil / XLogSegSize)
+		((wantPage + wantLength) / state->wal_segment_size) <
+		(state->currTLIValidUntil / state->wal_segment_size))
 		return;
 
 	/*
@@ -864,9 +870,11 @@ XLogReadDetermineTimeline(XLogReaderState *state, XLogRecPtr wantPage, uint32 wa
 		 */
 		List	   *timelineHistory = readTimeLineHistory(ThisTimeLineID);
 
-		XLogRecPtr	endOfSegment = (((wantPage / XLogSegSize) + 1) * XLogSegSize) - 1;
+		XLogRecPtr	endOfSegment = (((wantPage / state->wal_segment_size) + 1)
+									* state->wal_segment_size) - 1;
 
-		Assert(wantPage / XLogSegSize == endOfSegment / XLogSegSize);
+		Assert(wantPage / state->wal_segment_size ==
+			   endOfSegment / state->wal_segment_size);
 
 		/*
 		 * Find the timeline of the last LSN on the segment containing
@@ -1014,7 +1022,8 @@ read_local_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr,
 	 * as 'count', read the whole page anyway. It's guaranteed to be
 	 * zero-padded up to the page boundary if it's incomplete.
 	 */
-	XLogRead(cur_page, *pageTLI, targetPagePtr, XLOG_BLCKSZ);
+	XLogRead(cur_page, state->wal_segment_size, *pageTLI, targetPagePtr,
+			 XLOG_BLCKSZ);
 
 	/* number of valid bytes in the buffer */
 	return count;

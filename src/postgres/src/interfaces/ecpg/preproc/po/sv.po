@@ -1,14 +1,14 @@
 # SWEDISHE message translation file for ecpg
 # Copyright (C) 2017 PostgreSQL Global Development Group
 # This file is distributed under the same license as the PostgreSQL package.
-# Dennis Björklund <db@zigo.dhs.org>, 2017.
+# Dennis Björklund <db@zigo.dhs.org>, 2017, 2018.
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: ecpg (PostgreSQL) 10\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@postgresql.org\n"
-"POT-Creation-Date: 2018-01-15 21:08+0000\n"
-"PO-Revision-Date: 2018-01-15 22:28+0100\n"
+"POT-Creation-Date: 2018-04-28 22:08+0000\n"
+"PO-Revision-Date: 2018-04-29 12:28+0200\n"
 "Last-Translator: Dennis Björklund <db@zigo.dhs.org>\n"
 "Language-Team: Swedish <sv@li.org>\n"
 "Language: sv\n"
@@ -90,10 +90,10 @@ msgstr ""
 #, c-format
 msgid ""
 "  -C MODE        set compatibility mode; MODE can be one of\n"
-"                 \"INFORMIX\", \"INFORMIX_SE\"\n"
+"                 \"INFORMIX\", \"INFORMIX_SE\", \"ORACLE\"\n"
 msgstr ""
 "  -C LÄGE        sätt kompabilitetsläge; LÄGE kan vara en av\n"
-"                 \"INFORMIX\", \"INFORMIX_SE\"\n"
+"                 \"INFORMIX\", \"INFORMIX_SE\", \"ORACLE\"\n"
 
 #: ecpg.c:46
 #, c-format
@@ -179,147 +179,147 @@ msgstr ""
 msgid "%s: could not locate my own executable path\n"
 msgstr "%s: kunde inte hitta min egna körbara fils sökväg\n"
 
-#: ecpg.c:174 ecpg.c:327 ecpg.c:337
+#: ecpg.c:174 ecpg.c:331 ecpg.c:342
 #, c-format
 msgid "%s: could not open file \"%s\": %s\n"
 msgstr "%s: kunde inte öppna fil \"%s\": %s\n"
 
-#: ecpg.c:213 ecpg.c:226 ecpg.c:242 ecpg.c:268
+#: ecpg.c:217 ecpg.c:230 ecpg.c:246 ecpg.c:272
 #, c-format
 msgid "Try \"%s --help\" for more information.\n"
 msgstr "Försök med \"%s --help\" för mer information.\n"
 
-#: ecpg.c:237
+#: ecpg.c:241
 #, c-format
 msgid "%s: parser debug support (-d) not available\n"
 msgstr "%s: parser-debug-stöd (-d) är inte tillgängligt\n"
 
-#: ecpg.c:256
+#: ecpg.c:260
 #, c-format
 msgid "%s, the PostgreSQL embedded C preprocessor, version %s\n"
 msgstr "%s, PostgreSQLs inbäddade C-preprocessor, version %s\n"
 
-#: ecpg.c:258
+#: ecpg.c:262
 #, c-format
 msgid "EXEC SQL INCLUDE ... search starts here:\n"
 msgstr "EXEC SQL INCLUDE ... sökning startar här:\n"
 
-#: ecpg.c:261
+#: ecpg.c:265
 #, c-format
 msgid "end of search list\n"
 msgstr "slut på söklista\n"
 
-#: ecpg.c:267
+#: ecpg.c:271
 #, c-format
 msgid "%s: no input files specified\n"
 msgstr "%s: inga indatafiler angivna\n"
 
-#: ecpg.c:460
+#: ecpg.c:465
 #, c-format
 msgid "cursor \"%s\" has been declared but not opened"
 msgstr "markören \"%s\" har deklarerats men inte öppnats"
 
-#: ecpg.c:473 preproc.y:127
+#: ecpg.c:478 preproc.y:127
 #, c-format
 msgid "could not remove output file \"%s\"\n"
 msgstr "kunde inte ta bort utdatafil \"%s\"\n"
 
-#: pgc.l:431
+#: pgc.l:435
 #, c-format
 msgid "unterminated /* comment"
 msgstr "ej avslutad /*-kommentar"
 
-#: pgc.l:444
+#: pgc.l:448
 #, c-format
 msgid "invalid bit string literal"
 msgstr "ogiltig bit-sträng-literal"
 
-#: pgc.l:453
+#: pgc.l:457
 #, c-format
 msgid "unterminated bit string literal"
 msgstr "ej avslutad bitsträngslitteral"
 
-#: pgc.l:469
+#: pgc.l:473
 #, c-format
 msgid "unterminated hexadecimal string literal"
 msgstr "ej avslutad hexadecimal stränglitteral"
 
-#: pgc.l:547
+#: pgc.l:551
 #, c-format
 msgid "unterminated quoted string"
 msgstr "icketerminerad citerad sträng"
 
-#: pgc.l:605 pgc.l:618
+#: pgc.l:609 pgc.l:622
 #, c-format
 msgid "zero-length delimited identifier"
 msgstr "noll-längds avdelad identifierare"
 
-#: pgc.l:626
+#: pgc.l:630
 #, c-format
 msgid "unterminated quoted identifier"
 msgstr "ej avslutad citerad identifierare"
 
-#: pgc.l:881
+#: pgc.l:880
 #, c-format
 msgid "nested /* ... */ comments"
 msgstr "nästlade /* ... */-kommentarer"
 
-#: pgc.l:974
+#: pgc.l:973
 #, c-format
 msgid "missing identifier in EXEC SQL UNDEF command"
 msgstr "saknar identifierare i EXEC SQL UNDEF-kommando"
 
-#: pgc.l:1020 pgc.l:1034
+#: pgc.l:1019 pgc.l:1033
 #, c-format
 msgid "missing matching \"EXEC SQL IFDEF\" / \"EXEC SQL IFNDEF\""
 msgstr "saknar matchande \"EXEC SQL IFDEF\" / \"EXEC SQL IFNDEF\""
 
-#: pgc.l:1023 pgc.l:1036 pgc.l:1212
+#: pgc.l:1022 pgc.l:1035 pgc.l:1211
 #, c-format
 msgid "missing \"EXEC SQL ENDIF;\""
 msgstr "saknar \"EXEC SQL ENDIF;\""
 
-#: pgc.l:1052 pgc.l:1071
+#: pgc.l:1051 pgc.l:1070
 #, c-format
 msgid "more than one EXEC SQL ELSE"
 msgstr "mer än en EXEC SQL ELSE"
 
-#: pgc.l:1093 pgc.l:1107
+#: pgc.l:1092 pgc.l:1106
 #, c-format
 msgid "unmatched EXEC SQL ENDIF"
 msgstr "ej matchad EXEC SQL ENDIF"
 
-#: pgc.l:1127
+#: pgc.l:1126
 #, c-format
 msgid "too many nested EXEC SQL IFDEF conditions"
 msgstr "för många nästlade EXEC SQL IFDEF-villkor"
 
-#: pgc.l:1160
+#: pgc.l:1159
 #, c-format
 msgid "missing identifier in EXEC SQL IFDEF command"
 msgstr "saknar identifierare i EXEC SQL IFDEF-kommando"
 
-#: pgc.l:1169
+#: pgc.l:1168
 #, c-format
 msgid "missing identifier in EXEC SQL DEFINE command"
 msgstr "saknar identifierare i EXEC SQL DEFINE-kommando"
 
-#: pgc.l:1202
+#: pgc.l:1201
 #, c-format
 msgid "syntax error in EXEC SQL INCLUDE command"
 msgstr "syntaxfel i EXEC SQL INCLUDE-kommando"
 
-#: pgc.l:1251
+#: pgc.l:1250
 #, c-format
 msgid "internal error: unreachable state; please report this to <pgsql-bugs@postgresql.org>"
 msgstr "internt fel: state som ej skall kunna nås; vänligen rapportera detta till <pgsql-bugs@postgresql.org>"
 
-#: pgc.l:1376
+#: pgc.l:1379
 #, c-format
 msgid "Error: include path \"%s/%s\" is too long on line %d, skipping\n"
 msgstr "Fel: include-sökväg \"%s/%s\" är för lång på rad %d, hoppar över\n"
 
-#: pgc.l:1399
+#: pgc.l:1402
 #, c-format
 msgid "could not open include file \"%s\" on line %d"
 msgstr "kunde inte öppna inkludefil \"%s\" på rad %d"
@@ -353,185 +353,185 @@ msgstr "initialiserare tillåts inte i typdefinition"
 msgid "type name \"string\" is reserved in Informix mode"
 msgstr "typnamn \"string\" är reserverat i Informix-läge"
 
-#: preproc.y:546 preproc.y:15393
+#: preproc.y:546 preproc.y:15722
 #, c-format
 msgid "type \"%s\" is already defined"
 msgstr "typen \"%s\" är redan definierad"
 
-#: preproc.y:570 preproc.y:16051 preproc.y:16371 variable.c:620
+#: preproc.y:570 preproc.y:16380 preproc.y:16705 variable.c:620
 #, c-format
 msgid "multidimensional arrays for simple data types are not supported"
 msgstr "multidimensionella array:er för enkla datatyper stöds inte"
 
-#: preproc.y:1674
+#: preproc.y:1693
 #, c-format
 msgid "AT option not allowed in CLOSE DATABASE statement"
 msgstr "AT-flaggan tillåts inte i CLOSE DATABASE-sats"
 
-#: preproc.y:1883
+#: preproc.y:1902
 #, c-format
 msgid "AT option not allowed in CONNECT statement"
 msgstr "AT-flaggan tillåts inte i CONNECT-sats"
 
-#: preproc.y:1917
+#: preproc.y:1936
 #, c-format
 msgid "AT option not allowed in DISCONNECT statement"
 msgstr "AT-flaggan tillåts inte i DISCONNECT-sats"
 
-#: preproc.y:1972
+#: preproc.y:1991
 #, c-format
 msgid "AT option not allowed in SET CONNECTION statement"
 msgstr "AT-flaggan tillåts inte i SET CONNECTION-sats"
 
-#: preproc.y:1994
+#: preproc.y:2013
 #, c-format
 msgid "AT option not allowed in TYPE statement"
 msgstr "AT-flaggan tillåts inte i TYPE-sats"
 
-#: preproc.y:2003
+#: preproc.y:2022
 #, c-format
 msgid "AT option not allowed in VAR statement"
 msgstr "AT-flaggan tillåts inte i VAR-sats"
 
-#: preproc.y:2010
+#: preproc.y:2029
 #, c-format
 msgid "AT option not allowed in WHENEVER statement"
 msgstr "AT-flaggan tillåts inte i WHENEVER-sats"
 
-#: preproc.y:2079 preproc.y:2251 preproc.y:2256 preproc.y:2372 preproc.y:3950
-#: preproc.y:5500 preproc.y:5509 preproc.y:5809 preproc.y:7345 preproc.y:8782
-#: preproc.y:8787 preproc.y:11519 preproc.y:12140
+#: preproc.y:2106 preproc.y:2278 preproc.y:2283 preproc.y:2399 preproc.y:4044
+#: preproc.y:5602 preproc.y:5611 preproc.y:5911 preproc.y:7510 preproc.y:9003
+#: preproc.y:9008 preproc.y:11790
 #, c-format
 msgid "unsupported feature will be passed to server"
 msgstr "ej stödd funktion skickass till servern"
 
-#: preproc.y:2630
+#: preproc.y:2657
 #, c-format
 msgid "SHOW ALL is not implemented"
 msgstr "SHOW ALL är inte implementerad"
 
-#: preproc.y:3306
+#: preproc.y:3385
 #, c-format
 msgid "COPY FROM STDIN is not implemented"
 msgstr "COPY FROM STDIN är inte implementerad"
 
-#: preproc.y:9685 preproc.y:14982
+#: preproc.y:9956 preproc.y:15311
 #, c-format
 msgid "using variable \"%s\" in different declare statements is not supported"
 msgstr "använda variabel \"%s\" i olika deklarationssatser stöds inte"
 
-#: preproc.y:9687 preproc.y:14984
+#: preproc.y:9958 preproc.y:15313
 #, c-format
 msgid "cursor \"%s\" is already defined"
 msgstr "markören \"%s\" är redan definierad"
 
-#: preproc.y:10117
+#: preproc.y:10388
 #, c-format
 msgid "no longer supported LIMIT #,# syntax passed to server"
 msgstr "ej längre stödd syntax LIMIT #,# har skickats till servern"
 
-#: preproc.y:10433 preproc.y:10440
+#: preproc.y:10704 preproc.y:10711
 #, c-format
 msgid "subquery in FROM must have an alias"
 msgstr "subfråga i FROM måste ha ett alias"
 
-#: preproc.y:14712
+#: preproc.y:15041
 #, c-format
 msgid "CREATE TABLE AS cannot specify INTO"
 msgstr "CREATE TABLE AS kan inte ange INTO"
 
-#: preproc.y:14748
+#: preproc.y:15077
 #, c-format
 msgid "expected \"@\", found \"%s\""
 msgstr "förväntade \"@\", hittade \"%s\""
 
-#: preproc.y:14760
+#: preproc.y:15089
 #, c-format
 msgid "only protocols \"tcp\" and \"unix\" and database type \"postgresql\" are supported"
 msgstr "bara protokoll \"tcp\" och \"unix\" samt databastyp \"postgresql\" stöds"
 
-#: preproc.y:14763
+#: preproc.y:15092
 #, c-format
 msgid "expected \"://\", found \"%s\""
 msgstr "förväntade \"://\", hittade \"%s\""
 
-#: preproc.y:14768
+#: preproc.y:15097
 #, c-format
 msgid "Unix-domain sockets only work on \"localhost\" but not on \"%s\""
 msgstr "Unix-domän-socket fungerart bara på \"localhost\" men inte på \"%s\""
 
-#: preproc.y:14794
+#: preproc.y:15123
 #, c-format
 msgid "expected \"postgresql\", found \"%s\""
 msgstr "förväntade \"postgresql\", hittade \"%s\""
 
-#: preproc.y:14797
+#: preproc.y:15126
 #, c-format
 msgid "invalid connection type: %s"
 msgstr "ogiltig anslutningstyp: %s"
 
-#: preproc.y:14806
+#: preproc.y:15135
 #, c-format
 msgid "expected \"@\" or \"://\", found \"%s\""
 msgstr "förväntade \"@\" eller \"://\", hittade \"%s\""
 
-#: preproc.y:14881 preproc.y:14899
+#: preproc.y:15210 preproc.y:15228
 #, c-format
 msgid "invalid data type"
 msgstr "ogiltig datatyp"
 
-#: preproc.y:14910 preproc.y:14927
+#: preproc.y:15239 preproc.y:15256
 #, c-format
 msgid "incomplete statement"
 msgstr "ofullständig sats"
 
-#: preproc.y:14913 preproc.y:14930
+#: preproc.y:15242 preproc.y:15259
 #, c-format
 msgid "unrecognized token \"%s\""
 msgstr "okänd symbol \"%s\""
 
-#: preproc.y:15204
+#: preproc.y:15533
 #, c-format
 msgid "only data types numeric and decimal have precision/scale argument"
 msgstr "bara datatyperna numeric och decimal har precision/skala-argument"
 
-#: preproc.y:15216
+#: preproc.y:15545
 #, c-format
 msgid "interval specification not allowed here"
 msgstr "intervallspecifikation tillåts inte här"
 
-#: preproc.y:15368 preproc.y:15420
+#: preproc.y:15697 preproc.y:15749
 #, c-format
 msgid "too many levels in nested structure/union definition"
 msgstr "för många nästlade nivåer i struktur/union-definition"
 
-#: preproc.y:15559
+#: preproc.y:15888
 #, c-format
 msgid "pointers to varchar are not implemented"
 msgstr "pekare till varchar är inte implementerat"
 
-#: preproc.y:15746 preproc.y:15771
+#: preproc.y:16075 preproc.y:16100
 #, c-format
 msgid "using unsupported DESCRIBE statement"
 msgstr "använder ej stödd DESCRIBE-sats"
 
-#: preproc.y:16018
+#: preproc.y:16347
 #, c-format
 msgid "initializer not allowed in EXEC SQL VAR command"
 msgstr "initialiserare tillåts inte i EXEC SQL VAR-kommando"
 
-#: preproc.y:16329
+#: preproc.y:16663
 #, c-format
 msgid "arrays of indicators are not allowed on input"
 msgstr "array:er av indikatorer tillåts inte vid indata"
 
-#: preproc.y:16550
+#: preproc.y:16884
 #, c-format
 msgid "operator not allowed in variable definition"
 msgstr "operator tillåts inte i variabeldefinition"
 
 #. translator: %s is typically the translation of "syntax error"
-#: preproc.y:16591
+#: preproc.y:16925
 #, c-format
 msgid "%s at or near \"%s\""
 msgstr "%s vid eller nära \"%s\""
@@ -541,7 +541,7 @@ msgstr "%s vid eller nära \"%s\""
 msgid "out of memory"
 msgstr "slut på minne"
 
-#: type.c:212 type.c:674
+#: type.c:212 type.c:676
 #, c-format
 msgid "unrecognized variable type code %d"
 msgstr "okänd variabeltypkod %d"
@@ -586,17 +586,17 @@ msgstr "indikator för en struktur måste vara en struktur"
 msgid "indicator for simple data type has to be simple"
 msgstr "indikator för enkla datatyper måste vara enkel"
 
-#: type.c:615
+#: type.c:616
 #, c-format
 msgid "indicator struct \"%s\" has too few members"
 msgstr "indikatorstruktur \"%s\" har för få medlemmar"
 
-#: type.c:622
+#: type.c:624
 #, c-format
 msgid "indicator struct \"%s\" has too many members"
 msgstr "indikatorstruktur \"%s\" har för många medlemmar"
 
-#: type.c:733
+#: type.c:735
 #, c-format
 msgid "unrecognized descriptor item code %d"
 msgstr "okänd deskriptor-post-kod %d"

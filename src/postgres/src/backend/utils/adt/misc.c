@@ -3,7 +3,7 @@
  * misc.c
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -26,6 +26,7 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
+#include "commands/tablespace.h"
 #include "common/keywords.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -47,7 +48,7 @@
 
 /*
  * Common subroutine for num_nulls() and num_nonnulls().
- * Returns TRUE if successful, FALSE if function should return NULL.
+ * Returns true if successful, false if function should return NULL.
  * If successful, total argument count and number of nulls are
  * returned into *nargs and *nulls.
  */
@@ -343,11 +344,36 @@ pg_reload_conf(PG_FUNCTION_ARGS)
 /*
  * Rotate log file
  *
+ * This function is kept to support adminpack 1.0.
+ */
+Datum
+pg_rotate_logfile(PG_FUNCTION_ARGS)
+{
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 (errmsg("must be superuser to rotate log files with adminpack 1.0"),
+				  errhint("Consider using pg_logfile_rotate(), which is part of core, instead."))));
+
+	if (!Logging_collector)
+	{
+		ereport(WARNING,
+				(errmsg("rotation not possible because log collection not active")));
+		PG_RETURN_BOOL(false);
+	}
+
+	SendPostmasterSignal(PMSIGNAL_ROTATE_LOGFILE);
+	PG_RETURN_BOOL(true);
+}
+
+/*
+ * Rotate log file
+ *
  * Permission checking for this function is managed through the normal
  * GRANT system.
  */
 Datum
-pg_rotate_logfile(PG_FUNCTION_ARGS)
+pg_rotate_logfile_v2(PG_FUNCTION_ARGS)
 {
 	if (!Logging_collector)
 	{
@@ -425,9 +451,9 @@ pg_tablespace_databases(PG_FUNCTION_ARGS)
 
 	while ((de = ReadDir(fctx->dirdesc, fctx->location)) != NULL)
 	{
-		char	   *subdir;
-		DIR		   *dirdesc;
 		Oid			datOid = atooid(de->d_name);
+		char	   *subdir;
+		bool		isempty;
 
 		/* this test skips . and .., but is awfully weak */
 		if (!datOid)
@@ -436,16 +462,10 @@ pg_tablespace_databases(PG_FUNCTION_ARGS)
 		/* if database subdir is empty, don't report tablespace as used */
 
 		subdir = psprintf("%s/%s", fctx->location, de->d_name);
-		dirdesc = AllocateDir(subdir);
-		while ((de = ReadDir(dirdesc, subdir)) != NULL)
-		{
-			if (strcmp(de->d_name, ".") != 0 && strcmp(de->d_name, "..") != 0)
-				break;
-		}
-		FreeDir(dirdesc);
+		isempty = directory_is_empty(subdir);
 		pfree(subdir);
 
-		if (!de)
+		if (isempty)
 			continue;			/* indeed, nothing in it */
 
 		SRF_RETURN_NEXT(funcctx, ObjectIdGetDatum(datOid));

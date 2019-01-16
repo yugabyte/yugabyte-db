@@ -2,7 +2,7 @@
  *
  * vacuumdb
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/scripts/vacuumdb.c
@@ -16,7 +16,7 @@
 #include <sys/select.h>
 #endif
 
-#include "catalog/pg_class.h"
+#include "catalog/pg_class_d.h"
 
 #include "common.h"
 #include "fe_utils/simple_list.h"
@@ -371,7 +371,7 @@ vacuum_one_database(const char *dbname, vacuumingOptions *vacopts,
 	{
 		if (stage != ANALYZE_NO_STAGE)
 			printf(_("%s: processing database \"%s\": %s\n"),
-				   progname, PQdb(conn), stage_messages[stage]);
+				   progname, PQdb(conn), _(stage_messages[stage]));
 		else
 			printf(_("%s: vacuuming database \"%s\"\n"),
 				   progname, PQdb(conn));
@@ -406,8 +406,7 @@ vacuum_one_database(const char *dbname, vacuumingOptions *vacopts,
 		for (i = 0; i < ntups; i++)
 		{
 			appendPQExpBufferStr(&buf,
-								 fmtQualifiedId(PQserverVersion(conn),
-												PQgetvalue(res, i, 1),
+								 fmtQualifiedId(PQgetvalue(res, i, 1),
 												PQgetvalue(res, i, 0)));
 
 			simple_string_list_append(&dbtables, buf.data);

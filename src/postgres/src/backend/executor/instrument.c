@@ -4,7 +4,7 @@
  *	 functions for instrumentation of plan execution
  *
  *
- * Copyright (c) 2001-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/executor/instrument.c
@@ -49,7 +49,7 @@ InstrAlloc(int n, int instrument_options)
 	return instr;
 }
 
-/* Initialize an pre-allocated instrumentation structure. */
+/* Initialize a pre-allocated instrumentation structure. */
 void
 InstrInit(Instrumentation *instr, int instrument_options)
 {
@@ -156,6 +156,7 @@ InstrAggNode(Instrumentation *dst, Instrumentation *add)
 	dst->startup += add->startup;
 	dst->total += add->total;
 	dst->ntuples += add->ntuples;
+	dst->ntuples2 += add->ntuples2;
 	dst->nloops += add->nloops;
 	dst->nfiltered1 += add->nfiltered1;
 	dst->nfiltered2 += add->nfiltered2;

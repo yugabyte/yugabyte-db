@@ -3,7 +3,7 @@
  * pg_wchar.h
  *	  multibyte-character support
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/mb/pg_wchar.h
@@ -305,6 +305,17 @@ typedef enum pg_enc
 #define PG_VALID_FE_ENCODING(_enc)	PG_VALID_ENCODING(_enc)
 
 /*
+ * When converting strings between different encodings, we assume that space
+ * for converted result is 4-to-1 growth in the worst case. The rate for
+ * currently supported encoding pairs are within 3 (SJIS JIS X0201 half width
+ * kanna -> UTF8 is the worst case).  So "4" should be enough for the moment.
+ *
+ * Note that this is not the same as the maximum character width in any
+ * particular encoding.
+ */
+#define MAX_CONVERSION_GROWTH  4
+
+/*
  * Table for mapping an encoding number to official encoding name and
  * possibly other subsidiary data.  Be careful to check encoding number
  * before accessing a table entry!
@@ -399,7 +410,7 @@ extern const pg_wchar_tbl pg_wchar_table[];
  * points to a lookup table for the second byte. And so on.
  *
  * Physically, all the trees are stored in one big array, in 'chars16' or
- * 'chars32', depending on the maximum value that needs to be reprented. For
+ * 'chars32', depending on the maximum value that needs to be represented. For
  * each level in each tree, we also store lower and upper bound of allowed
  * values - values outside those bounds are considered invalid, and are left
  * out of the tables.

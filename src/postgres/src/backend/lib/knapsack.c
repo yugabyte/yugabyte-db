@@ -15,7 +15,7 @@
  * allows approximate solutions in polynomial time (the general case of the
  * exact problem is NP-hard).
  *
- * Copyright (c) 2017, PostgreSQL Global Development Group
+ * Copyright (c) 2017-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/lib/knapsack.c
@@ -32,7 +32,6 @@
 #include "nodes/bitmapset.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
-#include "utils/palloc.h"
 
 /*
  * DiscreteKnapsack
@@ -57,9 +56,7 @@ DiscreteKnapsack(int max_weight, int num_items,
 {
 	MemoryContext local_ctx = AllocSetContextCreate(CurrentMemoryContext,
 													"Knapsack",
-													ALLOCSET_SMALL_MINSIZE,
-													ALLOCSET_SMALL_INITSIZE,
-													ALLOCSET_SMALL_MAXSIZE);
+													ALLOCSET_SMALL_SIZES);
 	MemoryContext oldctx = MemoryContextSwitchTo(local_ctx);
 	double	   *values;
 	Bitmapset **sets;

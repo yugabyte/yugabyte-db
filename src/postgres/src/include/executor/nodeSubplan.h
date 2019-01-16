@@ -4,7 +4,7 @@
  *
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/nodeSubplan.h
@@ -27,5 +27,7 @@ extern Datum ExecAlternativeSubPlan(AlternativeSubPlanState *node, ExprContext *
 extern void ExecReScanSetParamPlan(SubPlanState *node, PlanState *parent);
 
 extern void ExecSetParamPlan(SubPlanState *node, ExprContext *econtext);
+
+extern void ExecSetParamPlanMulti(const Bitmapset *params, ExprContext *econtext);
 
 #endif							/* NODESUBPLAN_H */

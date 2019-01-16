@@ -375,6 +375,25 @@ positives, so long as it never gives a false negative.  This makes it
 possible to implement the test with a small counter value stored on each
 index page.
 
+Fastpath For Index Insertion
+----------------------------
+
+We optimize for a common case of insertion of increasing index key
+values by caching the last page to which this backend inserted the last
+value, if this page was the rightmost leaf page. For the next insert, we
+can then quickly check if the cached page is still the rightmost leaf
+page and also the correct place to hold the current value. We can avoid
+the cost of walking down the tree in such common cases.
+
+The optimization works on the assumption that there can only be one
+non-ignorable leaf rightmost page, and so even a RecentGlobalXmin style
+interlock isn't required.  We cannot fail to detect that our hint was
+invalidated, because there can only be one such page in the B-Tree at
+any time. It's possible that the page will be deleted and recycled
+without a backend's cached page also being detected as invalidated, but
+only when we happen to recycle a block that once again gets recycled as the
+rightmost leaf page.
+
 On-the-Fly Deletion Of Index Tuples
 -----------------------------------
 
@@ -590,6 +609,23 @@ original search scankey is consulted as each index entry is sequentially
 scanned to decide whether to return the entry and whether the scan can
 stop (see _bt_checkkeys()).
 
+We use term "pivot" index tuples to distinguish tuples which don't point
+to heap tuples, but rather used for tree navigation.  Pivot tuples includes
+all tuples on non-leaf pages and high keys on leaf pages.  Note that pivot
+index tuples are only used to represent which part of the key space belongs
+on each page, and can have attribute values copied from non-pivot tuples
+that were deleted and killed by VACUUM some time ago.  In principle, we could
+truncate away attributes that are not needed for a page high key during a leaf
+page split, provided that the remaining attributes distinguish the last index
+tuple on the post-split left page as belonging on the left page, and the first
+index tuple on the post-split right page as belonging on the right page.  This
+optimization is sometimes called suffix truncation, and may appear in a future
+release. Since the high key is subsequently reused as the downlink in the
+parent page for the new right page, suffix truncation can increase index
+fan-out considerably by keeping pivot tuples short.  INCLUDE indexes similarly
+truncate away non-key attributes at the time of a leaf page split,
+increasing fan-out.
+
 Notes About Data Representation
 -------------------------------
 
@@ -623,56 +659,3 @@ routines must treat it accordingly.  The actual key stored in the
 item is irrelevant, and need not be stored at all.  This arrangement
 corresponds to the fact that an L&Y non-leaf page has one more pointer
 than key.
-
-Notes to Operator Class Implementors
-------------------------------------
-
-With this implementation, we require each supported combination of
-datatypes to supply us with a comparison procedure via pg_amproc.
-This procedure must take two nonnull values A and B and return an int32 < 0,
-0, or > 0 if A < B, A = B, or A > B, respectively.  The procedure must
-not return INT_MIN for "A < B", since the value may be negated before
-being tested for sign.  A null result is disallowed, too.  See nbtcompare.c
-for examples.
-
-There are some basic assumptions that a btree operator family must satisfy:
-
-An = operator must be an equivalence relation; that is, for all non-null
-values A,B,C of the datatype:
-
-	A = A is true						reflexive law
-	if A = B, then B = A					symmetric law
-	if A = B and B = C, then A = C				transitive law
-
-A < operator must be a strong ordering relation; that is, for all non-null
-values A,B,C:
-
-	A < A is false						irreflexive law
-	if A < B and B < C, then A < C				transitive law
-
-Furthermore, the ordering is total; that is, for all non-null values A,B:
-
-	exactly one of A < B, A = B, and B < A is true		trichotomy law
-
-(The trichotomy law justifies the definition of the comparison support
-procedure, of course.)
-
-The other three operators are defined in terms of these two in the obvious way,
-and must act consistently with them.
-
-For an operator family supporting multiple datatypes, the above laws must hold
-when A,B,C are taken from any datatypes in the family.  The transitive laws
-are the trickiest to ensure, as in cross-type situations they represent
-statements that the behaviors of two or three different operators are
-consistent.  As an example, it would not work to put float8 and numeric into
-an opfamily, at least not with the current semantics that numerics are
-converted to float8 for comparison to a float8.  Because of the limited
-accuracy of float8, this means there are distinct numeric values that will
-compare equal to the same float8 value, and thus the transitive law fails.
-
-It should be fairly clear why a btree index requires these laws to hold within
-a single datatype: without them there is no ordering to arrange the keys with.
-Also, index searches using a key of a different datatype require comparisons
-to behave sanely across two datatypes.  The extensions to three or more
-datatypes within a family are not strictly required by the btree index
-mechanism itself, but the planner relies on them for optimization purposes.

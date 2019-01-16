@@ -2,7 +2,7 @@
 #
 # Makefile for src/interfaces/libpq library
 #
-# Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/interfaces/libpq/Makefile
@@ -38,7 +38,7 @@ OBJS=	fe-auth.o fe-auth-scram.o fe-connect.o fe-exec.o fe-misc.o fe-print.o fe-l
 OBJS += chklocale.o inet_net_ntop.o noblock.o pgstrcasecmp.o pqsignal.o \
 	thread.o
 # libpgport C files that are needed if identified by configure
-OBJS += $(filter crypt.o getaddrinfo.o getpeereid.o inet_aton.o open.o system.o snprintf.o strerror.o strlcpy.o win32error.o win32setlocale.o, $(LIBOBJS))
+OBJS += $(filter crypt.o getaddrinfo.o getpeereid.o inet_aton.o open.o system.o snprintf.o strerror.o strlcpy.o strnlen.o win32error.o win32setlocale.o, $(LIBOBJS))
 
 ifeq ($(enable_strong_random), yes)
 OBJS += pg_strong_random.o
@@ -52,7 +52,7 @@ OBJS += encnames.o wchar.o
 OBJS += base64.o ip.o md5.o scram-common.o saslprep.o unicode_norm.o
 
 ifeq ($(with_openssl),yes)
-OBJS += fe-secure-openssl.o sha2_openssl.o
+OBJS += fe-secure-openssl.o fe-secure-common.o sha2_openssl.o
 else
 OBJS += sha2.o
 endif
@@ -103,7 +103,7 @@ backend_src = $(top_srcdir)/src/backend
 # the module is needed (see filter hack in OBJS, above).
 # When you add a file here, remember to add it in the "clean" target below.
 
-chklocale.c crypt.c erand48.c getaddrinfo.c getpeereid.c inet_aton.c inet_net_ntop.c noblock.c open.c system.c pgsleep.c pg_strong_random.c pgstrcasecmp.c pqsignal.c snprintf.c strerror.c strlcpy.c thread.c win32error.c win32setlocale.c: % : $(top_srcdir)/src/port/%
+chklocale.c crypt.c erand48.c getaddrinfo.c getpeereid.c inet_aton.c inet_net_ntop.c noblock.c open.c system.c pgsleep.c pg_strong_random.c pgstrcasecmp.c pqsignal.c snprintf.c strerror.c strlcpy.c strnlen.c thread.c win32error.c win32setlocale.c: % : $(top_srcdir)/src/port/%
 	rm -f $@ && $(LN_S) $< .
 
 ip.c md5.c base64.c scram-common.c sha2.c sha2_openssl.c saslprep.c unicode_norm.c: % : $(top_srcdir)/src/common/%
@@ -155,7 +155,7 @@ clean distclean: clean-lib
 # Might be left over from a Win32 client-only build
 	rm -f pg_config_paths.h
 # Remove files we (may have) symlinked in from src/port and other places
-	rm -f chklocale.c crypt.c erand48.c getaddrinfo.c getpeereid.c inet_aton.c inet_net_ntop.c noblock.c open.c system.c pgsleep.c pg_strong_random.c pgstrcasecmp.c pqsignal.c snprintf.c strerror.c strlcpy.c thread.c win32error.c win32setlocale.c
+	rm -f chklocale.c crypt.c erand48.c getaddrinfo.c getpeereid.c inet_aton.c inet_net_ntop.c noblock.c open.c system.c pgsleep.c pg_strong_random.c pgstrcasecmp.c pqsignal.c snprintf.c strerror.c strlcpy.c strnlen.c thread.c win32error.c win32setlocale.c
 	rm -f ip.c md5.c base64.c scram-common.c sha2.c sha2_openssl.c saslprep.c unicode_norm.c
 	rm -f encnames.c wchar.c
 

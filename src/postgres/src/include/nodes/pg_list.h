@@ -27,7 +27,7 @@
  * always be so; try to be careful to maintain the distinction.)
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/pg_list.h
@@ -268,6 +268,9 @@ extern void list_free_deep(List *list);
 
 extern List *list_copy(const List *list);
 extern List *list_copy_tail(const List *list, int nskip);
+
+typedef int (*list_qsort_comparator) (const void *a, const void *b);
+extern List *list_qsort(const List *list, list_qsort_comparator cmp);
 
 /*
  * To ease migration to the new list API, a set of compatibility

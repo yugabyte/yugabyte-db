@@ -700,34 +700,34 @@ SELECT count(*) FROM shoe;
 --
 -- Simple test of qualified ON INSERT ... this did not work in 7.0 ...
 --
-create table foo (f1 int);
-create table foo2 (f1 int);
+create table rules_foo (f1 int);
+create table rules_foo2 (f1 int);
 
-create rule foorule as on insert to foo where f1 < 100
+create rule rules_foorule as on insert to rules_foo where f1 < 100
 do instead nothing;
 
-insert into foo values(1);
-insert into foo values(1001);
-select * from foo;
+insert into rules_foo values(1);
+insert into rules_foo values(1001);
+select * from rules_foo;
 
-drop rule foorule on foo;
+drop rule rules_foorule on rules_foo;
 
 -- this should fail because f1 is not exposed for unqualified reference:
-create rule foorule as on insert to foo where f1 < 100
-do instead insert into foo2 values (f1);
+create rule rules_foorule as on insert to rules_foo where f1 < 100
+do instead insert into rules_foo2 values (f1);
 -- this is the correct way:
-create rule foorule as on insert to foo where f1 < 100
-do instead insert into foo2 values (new.f1);
+create rule rules_foorule as on insert to rules_foo where f1 < 100
+do instead insert into rules_foo2 values (new.f1);
 
-insert into foo values(2);
-insert into foo values(100);
+insert into rules_foo values(2);
+insert into rules_foo values(100);
 
-select * from foo;
-select * from foo2;
+select * from rules_foo;
+select * from rules_foo2;
 
-drop rule foorule on foo;
-drop table foo;
-drop table foo2;
+drop rule rules_foorule on rules_foo;
+drop table rules_foo;
+drop table rules_foo2;
 
 
 --
@@ -876,36 +876,36 @@ insert into rule_and_refint_t3 values (1, 13, 11, 'row8');
 -- disallow dropping a view's rule (bug #5072)
 --
 
-create view fooview as select 'foo'::text;
-drop rule "_RETURN" on fooview;
-drop view fooview;
+create view rules_fooview as select 'rules_foo'::text;
+drop rule "_RETURN" on rules_fooview;
+drop view rules_fooview;
 
 --
 -- test conversion of table to view (needed to load some pg_dump files)
 --
 
-create table fooview (x int, y text);
-select xmin, * from fooview;
+create table rules_fooview (x int, y text);
+select xmin, * from rules_fooview;
 
-create rule "_RETURN" as on select to fooview do instead
+create rule "_RETURN" as on select to rules_fooview do instead
   select 1 as x, 'aaa'::text as y;
 
-select * from fooview;
-select xmin, * from fooview;  -- fail, views don't have such a column
+select * from rules_fooview;
+select xmin, * from rules_fooview;  -- fail, views don't have such a column
 
 select reltoastrelid, relkind, relfrozenxid
-  from pg_class where oid = 'fooview'::regclass;
+  from pg_class where oid = 'rules_fooview'::regclass;
 
-drop view fooview;
+drop view rules_fooview;
 
 -- trying to convert a partitioned table to view is not allowed
-create table fooview (x int, y text) partition by list (x);
-create rule "_RETURN" as on select to fooview do instead
+create table rules_fooview (x int, y text) partition by list (x);
+create rule "_RETURN" as on select to rules_fooview do instead
   select 1 as x, 'aaa'::text as y;
 
 -- nor can one convert a partition to view
-create table fooview_part partition of fooview for values in (1);
-create rule "_RETURN" as on select to fooview_part do instead
+create table rules_fooview_part partition of rules_fooview for values in (1);
+create rule "_RETURN" as on select to rules_fooview_part do instead
   select 1 as x, 'aaa'::text as y;
 
 --
@@ -1007,7 +1007,7 @@ create rule r3 as on delete to rules_src do notify rules_src_deletion;
 \d+ rules_src
 
 --
--- Ensure a aliased target relation for insert is correctly deparsed.
+-- Ensure an aliased target relation for insert is correctly deparsed.
 --
 create rule r4 as on insert to rules_src do instead insert into rules_log AS trgt SELECT NEW.* RETURNING trgt.f1, trgt.f2;
 create rule r5 as on update to rules_src do instead UPDATE rules_log AS trgt SET tag = 'updated' WHERE trgt.f1 = new.f1;
@@ -1164,7 +1164,7 @@ CREATE FUNCTION func_with_set_params() RETURNS integer
     SET extra_float_digits TO 2
     SET work_mem TO '4MB'
     SET datestyle to iso, mdy
-    SET local_preload_libraries TO "Mixed/Case", 'c:/"a"/path'
+    SET local_preload_libraries TO "Mixed/Case", 'c:/''a"/path', '', '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'
     IMMUTABLE STRICT;
 SELECT pg_get_functiondef('func_with_set_params()'::regprocedure);
 
@@ -1184,9 +1184,35 @@ SELECT pg_get_function_arg_default('pg_class'::regclass, 0);
 SELECT pg_get_partkeydef(0);
 
 -- test rename for a rule defined on a partitioned table
-CREATE TABLE parted_table (a int) PARTITION BY LIST (a);
-CREATE TABLE parted_table_1 PARTITION OF parted_table FOR VALUES IN (1);
-CREATE RULE parted_table_insert AS ON INSERT to parted_table
-    DO INSTEAD INSERT INTO parted_table_1 VALUES (NEW.*);
-ALTER RULE parted_table_insert ON parted_table RENAME TO parted_table_insert_redirect;
-DROP TABLE parted_table;
+CREATE TABLE rules_parted_table (a int) PARTITION BY LIST (a);
+CREATE TABLE rules_parted_table_1 PARTITION OF rules_parted_table FOR VALUES IN (1);
+CREATE RULE rules_parted_table_insert AS ON INSERT to rules_parted_table
+    DO INSTEAD INSERT INTO rules_parted_table_1 VALUES (NEW.*);
+ALTER RULE rules_parted_table_insert ON rules_parted_table RENAME TO rules_parted_table_insert_redirect;
+DROP TABLE rules_parted_table;
+
+--
+-- Test enabling/disabling
+--
+CREATE TABLE ruletest1 (a int);
+CREATE TABLE ruletest2 (b int);
+
+CREATE RULE rule1 AS ON INSERT TO ruletest1
+    DO INSTEAD INSERT INTO ruletest2 VALUES (NEW.*);
+
+INSERT INTO ruletest1 VALUES (1);
+ALTER TABLE ruletest1 DISABLE RULE rule1;
+INSERT INTO ruletest1 VALUES (2);
+ALTER TABLE ruletest1 ENABLE RULE rule1;
+SET session_replication_role = replica;
+INSERT INTO ruletest1 VALUES (3);
+ALTER TABLE ruletest1 ENABLE REPLICA RULE rule1;
+INSERT INTO ruletest1 VALUES (4);
+RESET session_replication_role;
+INSERT INTO ruletest1 VALUES (5);
+
+SELECT * FROM ruletest1;
+SELECT * FROM ruletest2;
+
+DROP TABLE ruletest1;
+DROP TABLE ruletest2;

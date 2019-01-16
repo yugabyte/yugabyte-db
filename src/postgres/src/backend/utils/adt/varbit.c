@@ -5,7 +5,7 @@
  *
  * Code originally contributed by Adriaan Joubert.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -17,6 +17,7 @@
 #include "postgres.h"
 
 #include "access/htup_details.h"
+#include "common/int.h"
 #include "libpq/pqformat.h"
 #include "nodes/nodeFuncs.h"
 #include "utils/array.h"
@@ -665,7 +666,7 @@ varbit_send(PG_FUNCTION_ARGS)
 	StringInfoData buf;
 
 	pq_begintypsend(&buf);
-	pq_sendint(&buf, VARBITLEN(s), sizeof(int32));
+	pq_sendint32(&buf, VARBITLEN(s));
 	pq_sendbytes(&buf, (char *) VARBITS(s), VARBITBYTES(s));
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }
@@ -1166,8 +1167,7 @@ bit_overlay(VarBit *t1, VarBit *t2, int sp, int sl)
 		ereport(ERROR,
 				(errcode(ERRCODE_SUBSTRING_ERROR),
 				 errmsg("negative substring length not allowed")));
-	sp_pl_sl = sp + sl;
-	if (sp_pl_sl <= sl)
+	if (pg_add_s32_overflow(sp, sl, &sp_pl_sl))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
@@ -1539,11 +1539,11 @@ bitfromint4(PG_FUNCTION_ARGS)
 	/* store first fractional byte */
 	if (destbitsleft > srcbitsleft)
 	{
-		int			val = (int) (a >> (destbitsleft - 8));
+		unsigned int val = (unsigned int) (a >> (destbitsleft - 8));
 
 		/* Force sign-fill in case the compiler implements >> as zero-fill */
 		if (a < 0)
-			val |= (-1) << (srcbitsleft + 8 - destbitsleft);
+			val |= ((unsigned int) -1) << (srcbitsleft + 8 - destbitsleft);
 		*r++ = (bits8) (val & BITMASK);
 		destbitsleft -= 8;
 	}
@@ -1619,11 +1619,11 @@ bitfromint8(PG_FUNCTION_ARGS)
 	/* store first fractional byte */
 	if (destbitsleft > srcbitsleft)
 	{
-		int			val = (int) (a >> (destbitsleft - 8));
+		unsigned int val = (unsigned int) (a >> (destbitsleft - 8));
 
 		/* Force sign-fill in case the compiler implements >> as zero-fill */
 		if (a < 0)
-			val |= (-1) << (srcbitsleft + 8 - destbitsleft);
+			val |= ((unsigned int) -1) << (srcbitsleft + 8 - destbitsleft);
 		*r++ = (bits8) (val & BITMASK);
 		destbitsleft -= 8;
 	}

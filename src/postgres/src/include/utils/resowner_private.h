@@ -6,7 +6,7 @@
  * See utils/resowner/README for more info.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/resowner_private.h
@@ -88,6 +88,13 @@ extern void ResourceOwnerRememberDSM(ResourceOwner owner,
 						 dsm_segment *);
 extern void ResourceOwnerForgetDSM(ResourceOwner owner,
 					   dsm_segment *);
+
+/* support for JITContext management */
+extern void ResourceOwnerEnlargeJIT(ResourceOwner owner);
+extern void ResourceOwnerRememberJIT(ResourceOwner owner,
+						 Datum handle);
+extern void ResourceOwnerForgetJIT(ResourceOwner owner,
+					   Datum handle);
 
 /* support for YugaByte statement refcount management */
 extern void ResourceOwnerEnlargeYugaByteStmts(ResourceOwner owner);

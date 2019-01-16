@@ -3,7 +3,7 @@
  * mac.c
  *	  PostgreSQL type definitions for 6 byte, EUI-48, MAC addresses.
  *
- * Portions Copyright (c) 1998-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1998-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/backend/utils/adt/mac.c
@@ -269,6 +269,15 @@ hashmacaddr(PG_FUNCTION_ARGS)
 	macaddr    *key = PG_GETARG_MACADDR_P(0);
 
 	return hash_any((unsigned char *) key, sizeof(macaddr));
+}
+
+Datum
+hashmacaddrextended(PG_FUNCTION_ARGS)
+{
+	macaddr    *key = PG_GETARG_MACADDR_P(0);
+
+	return hash_any_extended((unsigned char *) key, sizeof(macaddr),
+							 PG_GETARG_INT64(1));
 }
 
 /*

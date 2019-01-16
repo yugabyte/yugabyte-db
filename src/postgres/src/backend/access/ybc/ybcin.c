@@ -62,7 +62,7 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 	/* Do the heap scan */
 	buildstate.index_tuples = 0;
 	heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true, ybcinbuildCallback,
-									 &buildstate);
+									 &buildstate, NULL);
 
 	/*
 	 * Return statistics
@@ -173,6 +173,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 {
 	HeapTuple tuple = ybc_index_getnext(scan);
 	scan->xs_ctup.t_ybctid = (tuple != NULL) ? tuple->t_ybctid : 0;
+	scan->xs_recheck = false; /* no need to recheck because the scan key is exact match */
 	return scan->xs_ctup.t_ybctid != 0;
 }
 

@@ -12,15 +12,19 @@
 #ifndef CHAR_BIT
 #include <limits.h>
 #endif
+#ifdef LOCALE_T_IN_XLOCALE
+#include <xlocale.h>
+#endif
 
 enum COMPAT_MODE
 {
-	ECPG_COMPAT_PGSQL = 0, ECPG_COMPAT_INFORMIX, ECPG_COMPAT_INFORMIX_SE
+	ECPG_COMPAT_PGSQL = 0, ECPG_COMPAT_INFORMIX, ECPG_COMPAT_INFORMIX_SE, ECPG_COMPAT_ORACLE
 };
 
 extern bool ecpg_internal_regression_mode;
 
 #define INFORMIX_MODE(X) ((X) == ECPG_COMPAT_INFORMIX || (X) == ECPG_COMPAT_INFORMIX_SE)
+#define ORACLE_MODE(X) ((X) == ECPG_COMPAT_ORACLE)
 
 enum ARRAY_TYPE
 {
@@ -60,7 +64,15 @@ struct statement
 	bool		questionmarks;
 	struct variable *inlist;
 	struct variable *outlist;
+#ifdef HAVE_USELOCALE
+	locale_t	clocale;
+	locale_t	oldlocale;
+#else
 	char	   *oldlocale;
+#ifdef HAVE__CONFIGTHREADLOCALE
+	int			oldthreadlocale;
+#endif
+#endif
 	int			nparams;
 	char	  **paramvalues;
 	PGresult   *results;

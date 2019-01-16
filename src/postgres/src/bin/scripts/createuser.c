@@ -2,7 +2,7 @@
  *
  * createuser
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/scripts/createuser.c
@@ -313,7 +313,7 @@ main(int argc, char *argv[])
 			if (cell->next)
 				appendPQExpBuffer(&sql, "%s,", fmtId(cell->val));
 			else
-				appendPQExpBuffer(&sql, "%s", fmtId(cell->val));
+				appendPQExpBufferStr(&sql, fmtId(cell->val));
 		}
 	}
 	appendPQExpBufferChar(&sql, ';');

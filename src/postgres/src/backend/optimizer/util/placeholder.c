@@ -4,7 +4,7 @@
  *	  PlaceHolderVar and PlaceHolderInfo manipulation routines
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -62,7 +62,7 @@ make_placeholder_expr(PlannerInfo *root, Expr *expr, Relids phrels)
  * simplified query passed to query_planner().
  *
  * Note: this should only be called after query_planner() has started.  Also,
- * create_new_ph must not be TRUE after deconstruct_jointree begins, because
+ * create_new_ph must not be true after deconstruct_jointree begins, because
  * make_outerjoininfo assumes that we already know about all placeholders.
  */
 PlaceHolderInfo *

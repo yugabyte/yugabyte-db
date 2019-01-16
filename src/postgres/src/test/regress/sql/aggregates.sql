@@ -741,12 +741,18 @@ select my_avg(one) filter (where one > 1),my_sum(one) from (values(1),(3)) t(one
 -- this should not share the state due to different input columns.
 select my_avg(one),my_sum(two) from (values(1,2),(3,4)) t(one,two);
 
--- ideally these would share state, but we have to fix the OSAs first.
+-- exercise cases where OSAs share state
 select
   percentile_cont(0.5) within group (order by a),
   percentile_disc(0.5) within group (order by a)
 from (values(1::float8),(3),(5),(7)) t(a);
 
+select
+  percentile_cont(0.25) within group (order by a),
+  percentile_disc(0.5) within group (order by a)
+from (values(1::float8),(3),(5),(7)) t(a);
+
+-- these can't share state currently
 select
   rank(4) within group (order by a),
   dense_rank(4) within group (order by a)
@@ -855,12 +861,13 @@ BEGIN
     RETURN NULL;
 END$$;
 
-CREATE AGGREGATE balk(
-    BASETYPE = int4,
+CREATE AGGREGATE balk(int4)
+(
     SFUNC = balkifnull(int8, int4),
     STYPE = int8,
-    "PARALLEL" = SAFE,
-    INITCOND = '0');
+    PARALLEL = SAFE,
+    INITCOND = '0'
+);
 
 SELECT balk(hundred) FROM tenk1;
 
@@ -882,12 +889,12 @@ BEGIN
     RETURN NULL;
 END$$;
 
-CREATE AGGREGATE balk(
-    BASETYPE = int4,
+CREATE AGGREGATE balk(int4)
+(
     SFUNC = int4_sum(int8, int4),
     STYPE = int8,
     COMBINEFUNC = balkifnull(int8, int8),
-    "PARALLEL" = SAFE,
+    PARALLEL = SAFE,
     INITCOND = '0'
 );
 
@@ -900,3 +907,39 @@ EXPLAIN (COSTS OFF) SELECT balk(hundred) FROM tenk1;
 SELECT balk(hundred) FROM tenk1;
 
 ROLLBACK;
+
+-- test coverage for aggregate combine/serial/deserial functions
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+
+SET parallel_setup_cost = 0;
+SET parallel_tuple_cost = 0;
+SET min_parallel_table_scan_size = 0;
+SET max_parallel_workers_per_gather = 4;
+SET enable_indexonlyscan = off;
+
+-- variance(int4) covers numeric_poly_combine
+-- sum(int8) covers int8_avg_combine
+EXPLAIN (COSTS OFF)
+  SELECT variance(unique1::int4), sum(unique1::int8) FROM tenk1;
+
+SELECT variance(unique1::int4), sum(unique1::int8) FROM tenk1;
+
+ROLLBACK;
+
+-- test coverage for dense_rank
+SELECT dense_rank(x) WITHIN GROUP (ORDER BY x) FROM (VALUES (1),(1),(2),(2),(3),(3)) v(x) GROUP BY (x) ORDER BY 1;
+
+
+-- Ensure that the STRICT checks for aggregates does not take NULLness
+-- of ORDER BY columns into account. See bug report around
+-- 2a505161-2727-2473-7c46-591ed108ac52@email.cz
+SELECT min(x ORDER BY y) FROM (VALUES(1, NULL)) AS d(x,y);
+SELECT min(x ORDER BY y) FROM (VALUES(1, 2)) AS d(x,y);
+
+-- check collation-sensitive matching between grouping expressions
+select v||'a', case v||'a' when 'aa' then 1 else 0 end, count(*)
+  from unnest(array['a','b']) u(v)
+ group by v||'a' order by 1;
+select v||'a', case when v||'a' = 'aa' then 1 else 0 end, count(*)
+  from unnest(array['a','b']) u(v)
+ group by v||'a' order by 1;

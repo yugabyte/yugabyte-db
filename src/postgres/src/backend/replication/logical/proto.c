@@ -3,7 +3,7 @@
  * proto.c
  *		logical replication protocol functions
  *
- * Copyright (c) 2015-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2015-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/backend/replication/logical/proto.c
@@ -26,6 +26,9 @@
  */
 #define LOGICALREP_IS_REPLICA_IDENTITY 1
 
+#define TRUNCATE_CASCADE		(1<<0)
+#define TRUNCATE_RESTART_SEQS	(1<<1)
+
 static void logicalrep_write_attrs(StringInfo out, Relation rel);
 static void logicalrep_write_tuple(StringInfo out, Relation rel,
 					   HeapTuple tuple);
@@ -47,7 +50,7 @@ logicalrep_write_begin(StringInfo out, ReorderBufferTXN *txn)
 	/* fixed fields */
 	pq_sendint64(out, txn->final_lsn);
 	pq_sendint64(out, txn->commit_time);
-	pq_sendint(out, txn->xid, 4);
+	pq_sendint32(out, txn->xid);
 }
 
 /*
@@ -145,7 +148,7 @@ logicalrep_write_insert(StringInfo out, Relation rel, HeapTuple newtuple)
 		   rel->rd_rel->relreplident == REPLICA_IDENTITY_INDEX);
 
 	/* use Oid as relation identifier */
-	pq_sendint(out, RelationGetRelid(rel), 4);
+	pq_sendint32(out, RelationGetRelid(rel));
 
 	pq_sendbyte(out, 'N');		/* new tuple follows */
 	logicalrep_write_tuple(out, rel, newtuple);
@@ -189,7 +192,7 @@ logicalrep_write_update(StringInfo out, Relation rel, HeapTuple oldtuple,
 		   rel->rd_rel->relreplident == REPLICA_IDENTITY_INDEX);
 
 	/* use Oid as relation identifier */
-	pq_sendint(out, RelationGetRelid(rel), 4);
+	pq_sendint32(out, RelationGetRelid(rel));
 
 	if (oldtuple != NULL)
 	{
@@ -258,7 +261,7 @@ logicalrep_write_delete(StringInfo out, Relation rel, HeapTuple oldtuple)
 	pq_sendbyte(out, 'D');		/* action DELETE */
 
 	/* use Oid as relation identifier */
-	pq_sendint(out, RelationGetRelid(rel), 4);
+	pq_sendint32(out, RelationGetRelid(rel));
 
 	if (rel->rd_rel->relreplident == REPLICA_IDENTITY_FULL)
 		pq_sendbyte(out, 'O');	/* old tuple follows */
@@ -293,6 +296,58 @@ logicalrep_read_delete(StringInfo in, LogicalRepTupleData *oldtup)
 }
 
 /*
+ * Write TRUNCATE to the output stream.
+ */
+void
+logicalrep_write_truncate(StringInfo out,
+						  int nrelids,
+						  Oid relids[],
+						  bool cascade, bool restart_seqs)
+{
+	int			i;
+	uint8		flags = 0;
+
+	pq_sendbyte(out, 'T');		/* action TRUNCATE */
+
+	pq_sendint32(out, nrelids);
+
+	/* encode and send truncate flags */
+	if (cascade)
+		flags |= TRUNCATE_CASCADE;
+	if (restart_seqs)
+		flags |= TRUNCATE_RESTART_SEQS;
+	pq_sendint8(out, flags);
+
+	for (i = 0; i < nrelids; i++)
+		pq_sendint32(out, relids[i]);
+}
+
+/*
+ * Read TRUNCATE from stream.
+ */
+List *
+logicalrep_read_truncate(StringInfo in,
+						 bool *cascade, bool *restart_seqs)
+{
+	int			i;
+	int			nrelids;
+	List	   *relids = NIL;
+	uint8		flags;
+
+	nrelids = pq_getmsgint(in, 4);
+
+	/* read and decode truncate flags */
+	flags = pq_getmsgint(in, 1);
+	*cascade = (flags & TRUNCATE_CASCADE) > 0;
+	*restart_seqs = (flags & TRUNCATE_RESTART_SEQS) > 0;
+
+	for (i = 0; i < nrelids; i++)
+		relids = lappend_oid(relids, pq_getmsgint(in, 4));
+
+	return relids;
+}
+
+/*
  * Write relation description to the output stream.
  */
 void
@@ -303,7 +358,7 @@ logicalrep_write_rel(StringInfo out, Relation rel)
 	pq_sendbyte(out, 'R');		/* sending RELATION */
 
 	/* use Oid as relation identifier */
-	pq_sendint(out, RelationGetRelid(rel), 4);
+	pq_sendint32(out, RelationGetRelid(rel));
 
 	/* send qualified relation name */
 	logicalrep_write_namespace(out, RelationGetNamespace(rel));
@@ -360,7 +415,7 @@ logicalrep_write_typ(StringInfo out, Oid typoid)
 	typtup = (Form_pg_type) GETSTRUCT(tup);
 
 	/* use Oid as relation identifier */
-	pq_sendint(out, typoid, 4);
+	pq_sendint32(out, typoid);
 
 	/* send qualified type name */
 	logicalrep_write_namespace(out, typtup->typnamespace);
@@ -398,11 +453,11 @@ logicalrep_write_tuple(StringInfo out, Relation rel, HeapTuple tuple)
 
 	for (i = 0; i < desc->natts; i++)
 	{
-		if (desc->attrs[i]->attisdropped)
+		if (TupleDescAttr(desc, i)->attisdropped)
 			continue;
 		nliveatts++;
 	}
-	pq_sendint(out, nliveatts, 2);
+	pq_sendint16(out, nliveatts);
 
 	/* try to allocate enough memory from the get-go */
 	enlargeStringInfo(out, tuple->t_len +
@@ -415,7 +470,7 @@ logicalrep_write_tuple(StringInfo out, Relation rel, HeapTuple tuple)
 	{
 		HeapTuple	typtup;
 		Form_pg_type typclass;
-		Form_pg_attribute att = desc->attrs[i];
+		Form_pg_attribute att = TupleDescAttr(desc, i);
 		char	   *outputstr;
 
 		/* skip dropped columns */
@@ -518,11 +573,11 @@ logicalrep_write_attrs(StringInfo out, Relation rel)
 	/* send number of live attributes */
 	for (i = 0; i < desc->natts; i++)
 	{
-		if (desc->attrs[i]->attisdropped)
+		if (TupleDescAttr(desc, i)->attisdropped)
 			continue;
 		nliveatts++;
 	}
-	pq_sendint(out, nliveatts, 2);
+	pq_sendint16(out, nliveatts);
 
 	/* fetch bitmap of REPLICATION IDENTITY attributes */
 	replidentfull = (rel->rd_rel->relreplident == REPLICA_IDENTITY_FULL);
@@ -533,7 +588,7 @@ logicalrep_write_attrs(StringInfo out, Relation rel)
 	/* send the attributes */
 	for (i = 0; i < desc->natts; i++)
 	{
-		Form_pg_attribute att = desc->attrs[i];
+		Form_pg_attribute att = TupleDescAttr(desc, i);
 		uint8		flags = 0;
 
 		if (att->attisdropped)
@@ -551,10 +606,10 @@ logicalrep_write_attrs(StringInfo out, Relation rel)
 		pq_sendstring(out, NameStr(att->attname));
 
 		/* attribute type id */
-		pq_sendint(out, (int) att->atttypid, sizeof(att->atttypid));
+		pq_sendint32(out, (int) att->atttypid);
 
 		/* attribute mode */
-		pq_sendint(out, att->atttypmod, sizeof(att->atttypmod));
+		pq_sendint32(out, att->atttypmod);
 	}
 
 	bms_free(idattrs);

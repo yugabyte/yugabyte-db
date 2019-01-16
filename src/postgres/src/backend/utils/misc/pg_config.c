@@ -3,7 +3,7 @@
  * pg_config.c
  *		Expose same output as pg_config except as an SRF
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -19,7 +19,6 @@
 #include "catalog/pg_type.h"
 #include "common/config_info.h"
 #include "utils/builtins.h"
-#include "utils/elog.h"
 #include "port.h"
 
 Datum
@@ -54,8 +53,8 @@ pg_config(PG_FUNCTION_ARGS)
 	 * Check to make sure we have a reasonable tuple descriptor
 	 */
 	if (tupdesc->natts != 2 ||
-		tupdesc->attrs[0]->atttypid != TEXTOID ||
-		tupdesc->attrs[1]->atttypid != TEXTOID)
+		TupleDescAttr(tupdesc, 0)->atttypid != TEXTOID ||
+		TupleDescAttr(tupdesc, 1)->atttypid != TEXTOID)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("query-specified return tuple and "

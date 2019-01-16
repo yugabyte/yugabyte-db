@@ -77,13 +77,9 @@ _check_database_version(ArchiveHandle *AH)
 /*
  * Reconnect to the server.  If dbname is not NULL, use that database,
  * else the one associated with the archive handle.  If username is
- * not NULL, use that user name, else the one from the handle.  If
- * both the database and the user match the existing connection already,
- * nothing will be done.
- *
- * Returns 1 in any case.
+ * not NULL, use that user name, else the one from the handle.
  */
-int
+void
 ReconnectToServer(ArchiveHandle *AH, const char *dbname, const char *username)
 {
 	PGconn	   *newConn;
@@ -100,11 +96,6 @@ ReconnectToServer(ArchiveHandle *AH, const char *dbname, const char *username)
 	else
 		newusername = username;
 
-	/* Let's see if the request is already satisfied */
-	if (strcmp(newdbname, PQdb(AH->connection)) == 0 &&
-		strcmp(newusername, PQuser(AH->connection)) == 0)
-		return 1;
-
 	newConn = _connectDB(AH, newdbname, newusername);
 
 	/* Update ArchiveHandle's connCancel before closing old connection */
@@ -116,8 +107,6 @@ ReconnectToServer(ArchiveHandle *AH, const char *dbname, const char *username)
 	/* Start strict; later phases may override this. */
 	PQclear(ExecuteSqlQueryForSingleRow((Archive *) AH,
 										ALWAYS_SECURE_SEARCH_PATH_SQL));
-
-	return 1;
 }
 
 /*
@@ -428,7 +417,7 @@ ExecuteSqlQuery(Archive *AHX, const char *query, ExecStatusType status)
  * Execute an SQL query and verify that we got exactly one row back.
  */
 PGresult *
-ExecuteSqlQueryForSingleRow(Archive *fout, char *query)
+ExecuteSqlQueryForSingleRow(Archive *fout, const char *query)
 {
 	PGresult   *res;
 	int			ntups;

@@ -1,6 +1,6 @@
 #! /usr/bin/perl
 #
-# Copyright (c) 2007-2017, PostgreSQL Global Development Group
+# Copyright (c) 2007-2018, PostgreSQL Global Development Group
 #
 # src/backend/utils/mb/Unicode/UCS_to_SHIFT_JIS_2004.pl
 #
@@ -12,7 +12,7 @@ use convutils;
 
 # first generate UTF-8 --> SHIFT_JIS_2004 table
 
-my $this_script = $0;
+my $this_script = 'src/backend/utils/mb/Unicode/UCS_to_SHIFT_JIS_2004.pl';
 
 my $in_file = "sjis-0213-2004-std.txt";
 
@@ -33,13 +33,15 @@ while (my $line = <$in>)
 		my $ucs2 = hex($u2);
 
 		push @mapping,
-		  { code       => $code,
+		  {
+			code       => $code,
 			ucs        => $ucs1,
 			ucs_second => $ucs2,
 			comment    => $rest,
 			direction  => BOTH,
 			f          => $in_file,
-			l          => $. };
+			l          => $.
+		  };
 	}
 	elsif ($line =~ /^0x(.*)[ \t]*U\+(.*)[ \t]*#(.*)$/)
 	{
@@ -68,12 +70,14 @@ while (my $line = <$in>)
 		}
 
 		push @mapping,
-		  { code      => $code,
+		  {
+			code      => $code,
 			ucs       => $ucs,
 			comment   => $rest,
 			direction => $direction,
 			f         => $in_file,
-			l         => $. };
+			l         => $.
+		  };
 	}
 }
 close($in);

@@ -1,7 +1,7 @@
 /* src/interfaces/ecpg/preproc/ecpg.c */
 
 /* Main for ecpg, the PostgreSQL embedded SQL precompiler. */
-/* Copyright (c) 1996-2017, PostgreSQL Global Development Group */
+/* Copyright (c) 1996-2018, PostgreSQL Global Development Group */
 
 #include "postgres_fe.h"
 
@@ -41,7 +41,7 @@ help(const char *progname)
 	printf(_("  -c             automatically generate C code from embedded SQL code;\n"
 			 "                 this affects EXEC SQL TYPE\n"));
 	printf(_("  -C MODE        set compatibility mode; MODE can be one of\n"
-			 "                 \"INFORMIX\", \"INFORMIX_SE\"\n"));
+			 "                 \"INFORMIX\", \"INFORMIX_SE\", \"ORACLE\"\n"));
 #ifdef YYDEBUG
 	printf(_("  -d             generate parser debug output\n"));
 #endif
@@ -137,7 +137,7 @@ main(int argc, char *const argv[])
 	if (find_my_exec(argv[0], my_exec_path) < 0)
 	{
 		fprintf(stderr, _("%s: could not locate my own executable path\n"), argv[0]);
-		return (ILLEGAL_OPTION);
+		return ILLEGAL_OPTION;
 	}
 
 	if (argc > 1)
@@ -149,7 +149,7 @@ main(int argc, char *const argv[])
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			printf("ecpg %s\n", PG_VERSION);
+			printf("ecpg (PostgreSQL) %s\n", PG_VERSION);
 			exit(0);
 		}
 	}
@@ -189,8 +189,8 @@ main(int argc, char *const argv[])
 				break;
 			case 'h':
 				header_mode = true;
-				/* this must include "-c" to make sense */
-				/* so do not place a "break;" here */
+				/* this must include "-c" to make sense, so fall through */
+				/* FALLTHROUGH */
 			case 'c':
 				auto_create_c = true;
 				break;
@@ -198,15 +198,19 @@ main(int argc, char *const argv[])
 				system_includes = true;
 				break;
 			case 'C':
-				if (strncmp(optarg, "INFORMIX", strlen("INFORMIX")) == 0)
+				if (pg_strcasecmp(optarg, "INFORMIX") == 0 || pg_strcasecmp(optarg, "INFORMIX_SE") == 0)
 				{
 					char		pkginclude_path[MAXPGPATH];
 					char		informix_path[MAXPGPATH];
 
-					compat = (strcmp(optarg, "INFORMIX") == 0) ? ECPG_COMPAT_INFORMIX : ECPG_COMPAT_INFORMIX_SE;
+					compat = (pg_strcasecmp(optarg, "INFORMIX") == 0) ? ECPG_COMPAT_INFORMIX : ECPG_COMPAT_INFORMIX_SE;
 					get_pkginclude_path(my_exec_path, pkginclude_path);
 					snprintf(informix_path, MAXPGPATH, "%s/informix/esql", pkginclude_path);
 					add_include_path(informix_path);
+				}
+				else if (strncmp(optarg, "ORACLE", strlen("ORACLE")) == 0)
+				{
+					compat = ECPG_COMPAT_ORACLE;
 				}
 				else
 				{
@@ -266,7 +270,7 @@ main(int argc, char *const argv[])
 	{
 		fprintf(stderr, _("%s: no input files specified\n"), progname);
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), argv[0]);
-		return (ILLEGAL_OPTION);
+		return ILLEGAL_OPTION;
 	}
 	else
 	{
@@ -475,7 +479,8 @@ main(int argc, char *const argv[])
 				}
 			}
 
-			if (output_filename && out_option == 0) {
+			if (output_filename && out_option == 0)
+			{
 				free(output_filename);
 				output_filename = NULL;
 			}

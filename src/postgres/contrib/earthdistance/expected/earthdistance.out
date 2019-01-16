@@ -882,11 +882,12 @@ SELECT earth_box(ll_to_earth(90,180),
 --
 -- Test the recommended constraints.
 --
-SELECT is_point(ll_to_earth(0,0));
-ERROR:  function is_point(earth) does not exist
-LINE 1: SELECT is_point(ll_to_earth(0,0));
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT cube_is_point(ll_to_earth(0,0));
+ cube_is_point 
+---------------
+ t
+(1 row)
+
 SELECT cube_dim(ll_to_earth(0,0)) <= 3;
  ?column? 
 ----------
@@ -900,11 +901,12 @@ SELECT abs(cube_distance(ll_to_earth(0,0), '(0)'::cube) / earth() - 1) <
  t
 (1 row)
 
-SELECT is_point(ll_to_earth(30,60));
-ERROR:  function is_point(earth) does not exist
-LINE 1: SELECT is_point(ll_to_earth(30,60));
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT cube_is_point(ll_to_earth(30,60));
+ cube_is_point 
+---------------
+ t
+(1 row)
+
 SELECT cube_dim(ll_to_earth(30,60)) <= 3;
  ?column? 
 ----------
@@ -918,11 +920,12 @@ SELECT abs(cube_distance(ll_to_earth(30,60), '(0)'::cube) / earth() - 1) <
  t
 (1 row)
 
-SELECT is_point(ll_to_earth(60,90));
-ERROR:  function is_point(earth) does not exist
-LINE 1: SELECT is_point(ll_to_earth(60,90));
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT cube_is_point(ll_to_earth(60,90));
+ cube_is_point 
+---------------
+ t
+(1 row)
+
 SELECT cube_dim(ll_to_earth(60,90)) <= 3;
  ?column? 
 ----------
@@ -936,11 +939,12 @@ SELECT abs(cube_distance(ll_to_earth(60,90), '(0)'::cube) / earth() - 1) <
  t
 (1 row)
 
-SELECT is_point(ll_to_earth(-30,-90));
-ERROR:  function is_point(earth) does not exist
-LINE 1: SELECT is_point(ll_to_earth(-30,-90));
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT cube_is_point(ll_to_earth(-30,-90));
+ cube_is_point 
+---------------
+ t
+(1 row)
+
 SELECT cube_dim(ll_to_earth(-30,-90)) <= 3;
  ?column? 
 ----------
@@ -985,7 +989,7 @@ HINT:  You can drop extension cube instead.
 create table foo (f1 cube, f2 int);
 drop extension cube;  -- fail, foo.f1 requires it
 ERROR:  cannot drop extension cube because other objects depend on it
-DETAIL:  table foo column f1 depends on type cube
+DETAIL:  column f1 of table foo depends on type cube
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 drop table foo;
 drop extension cube;
@@ -1039,15 +1043,15 @@ create extension cube with schema c;
 create table foo (f1 c.cube, f2 int);
 drop extension cube;  -- fail, foo.f1 requires it
 ERROR:  cannot drop extension cube because other objects depend on it
-DETAIL:  table foo column f1 depends on type c.cube
+DETAIL:  column f1 of table foo depends on type c.cube
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 drop schema c;  -- fail, cube requires it
 ERROR:  cannot drop schema c because other objects depend on it
 DETAIL:  extension cube depends on schema c
-table foo column f1 depends on type c.cube
+column f1 of table foo depends on type c.cube
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 drop extension cube cascade;
-NOTICE:  drop cascades to table foo column f1
+NOTICE:  drop cascades to column f1 of table foo
 \d foo
                 Table "public.foo"
  Column |  Type   | Collation | Nullable | Default 

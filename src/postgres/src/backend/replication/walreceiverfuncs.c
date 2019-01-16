@@ -6,7 +6,7 @@
  * with the walreceiver process. Functions implementing walreceiver itself
  * are in walreceiver.c.
  *
- * Portions Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -234,8 +234,8 @@ RequestXLogStreaming(TimeLineID tli, XLogRecPtr recptr, const char *conninfo,
 	 * being created by XLOG streaming, which might cause trouble later on if
 	 * the segment is e.g archived.
 	 */
-	if (recptr % XLogSegSize != 0)
-		recptr -= recptr % XLogSegSize;
+	if (XLogSegmentOffset(recptr, wal_segment_size) != 0)
+		recptr -= XLogSegmentOffset(recptr, wal_segment_size);
 
 	SpinLockAcquire(&walrcv->mutex);
 

@@ -4,7 +4,7 @@
  *	  POSTGRES heap access XLOG definitions.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/heapam_xlog.h
@@ -32,7 +32,7 @@
 #define XLOG_HEAP_INSERT		0x00
 #define XLOG_HEAP_DELETE		0x10
 #define XLOG_HEAP_UPDATE		0x20
-/* 0x030 is free, was XLOG_HEAP_MOVE */
+#define XLOG_HEAP_TRUNCATE		0x30
 #define XLOG_HEAP_HOT_UPDATE	0x40
 #define XLOG_HEAP_CONFIRM		0x50
 #define XLOG_HEAP_LOCK			0x60
@@ -93,6 +93,7 @@
 #define XLH_DELETE_CONTAINS_OLD_TUPLE			(1<<1)
 #define XLH_DELETE_CONTAINS_OLD_KEY				(1<<2)
 #define XLH_DELETE_IS_SUPER						(1<<3)
+#define XLH_DELETE_IS_PARTITION_MOVE			(1<<4)
 
 /* convenience macro for checking whether any form of old tuple was logged */
 #define XLH_DELETE_CONTAINS_OLD						\
@@ -108,6 +109,27 @@ typedef struct xl_heap_delete
 } xl_heap_delete;
 
 #define SizeOfHeapDelete	(offsetof(xl_heap_delete, flags) + sizeof(uint8))
+
+/*
+ * xl_heap_delete flag values, 8 bits are available.
+ */
+#define XLH_TRUNCATE_CASCADE					(1<<0)
+#define XLH_TRUNCATE_RESTART_SEQS				(1<<1)
+
+/*
+ * For truncate we list all truncated relids in an array, followed by all
+ * sequence relids that need to be restarted, if any.
+ * All rels are always within the same database, so we just list dbid once.
+ */
+typedef struct xl_heap_truncate
+{
+	Oid			dbId;
+	uint32		nrelids;
+	uint8		flags;
+	Oid			relids[FLEXIBLE_ARRAY_MEMBER];
+} xl_heap_truncate;
+
+#define SizeOfHeapTruncate	(offsetof(xl_heap_truncate, relids))
 
 /*
  * We don't store the whole fixed part (HeapTupleHeaderData) of an inserted

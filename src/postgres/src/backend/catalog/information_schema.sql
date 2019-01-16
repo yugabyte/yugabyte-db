@@ -2,7 +2,7 @@
  * SQL Information Schema
  * as defined in ISO/IEC 9075-11:2011
  *
- * Copyright (c) 2003-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2018, PostgreSQL Global Development Group
  *
  * src/backend/catalog/information_schema.sql
  *
@@ -1413,7 +1413,8 @@ CREATE VIEW routines AS
            CAST(current_database() AS sql_identifier) AS routine_catalog,
            CAST(n.nspname AS sql_identifier) AS routine_schema,
            CAST(p.proname AS sql_identifier) AS routine_name,
-           CAST('FUNCTION' AS character_data) AS routine_type,
+           CAST(CASE p.prokind WHEN 'f' THEN 'FUNCTION' WHEN 'p' THEN 'PROCEDURE' END
+             AS character_data) AS routine_type,
            CAST(null AS sql_identifier) AS module_catalog,
            CAST(null AS sql_identifier) AS module_schema,
            CAST(null AS sql_identifier) AS module_name,
@@ -1422,7 +1423,8 @@ CREATE VIEW routines AS
            CAST(null AS sql_identifier) AS udt_name,
 
            CAST(
-             CASE WHEN t.typelem <> 0 AND t.typlen = -1 THEN 'ARRAY'
+             CASE WHEN p.prokind = 'p' THEN NULL
+                  WHEN t.typelem <> 0 AND t.typlen = -1 THEN 'ARRAY'
                   WHEN nt.nspname = 'pg_catalog' THEN format_type(t.oid, null)
                   ELSE 'USER-DEFINED' END AS character_data)
              AS data_type,
@@ -1440,14 +1442,14 @@ CREATE VIEW routines AS
            CAST(null AS cardinal_number) AS datetime_precision,
            CAST(null AS character_data) AS interval_type,
            CAST(null AS cardinal_number) AS interval_precision,
-           CAST(current_database() AS sql_identifier) AS type_udt_catalog,
+           CAST(CASE WHEN nt.nspname IS NOT NULL THEN current_database() END AS sql_identifier) AS type_udt_catalog,
            CAST(nt.nspname AS sql_identifier) AS type_udt_schema,
            CAST(t.typname AS sql_identifier) AS type_udt_name,
            CAST(null AS sql_identifier) AS scope_catalog,
            CAST(null AS sql_identifier) AS scope_schema,
            CAST(null AS sql_identifier) AS scope_name,
            CAST(null AS cardinal_number) AS maximum_cardinality,
-           CAST(0 AS sql_identifier) AS dtd_identifier,
+           CAST(CASE WHEN p.prokind <> 'p' THEN 0 END AS sql_identifier) AS dtd_identifier,
 
            CAST(CASE WHEN l.lanname = 'sql' THEN 'SQL' ELSE 'EXTERNAL' END AS character_data)
              AS routine_body,
@@ -1462,7 +1464,8 @@ CREATE VIEW routines AS
            CAST('GENERAL' AS character_data) AS parameter_style,
            CAST(CASE WHEN p.provolatile = 'i' THEN 'YES' ELSE 'NO' END AS yes_or_no) AS is_deterministic,
            CAST('MODIFIES' AS character_data) AS sql_data_access,
-           CAST(CASE WHEN p.proisstrict THEN 'YES' ELSE 'NO' END AS yes_or_no) AS is_null_call,
+           CAST(CASE WHEN p.prokind <> 'p' THEN
+             CASE WHEN p.proisstrict THEN 'YES' ELSE 'NO' END END AS yes_or_no) AS is_null_call,
            CAST(null AS character_data) AS sql_path,
            CAST('YES' AS yes_or_no) AS schema_level_routine,
            CAST(0 AS cardinal_number) AS max_dynamic_result_sets,
@@ -1503,13 +1506,15 @@ CREATE VIEW routines AS
            CAST(null AS cardinal_number) AS result_cast_maximum_cardinality,
            CAST(null AS sql_identifier) AS result_cast_dtd_identifier
 
-    FROM pg_namespace n, pg_proc p, pg_language l,
-         pg_type t, pg_namespace nt
+    FROM (pg_namespace n
+          JOIN pg_proc p ON n.oid = p.pronamespace
+          JOIN pg_language l ON p.prolang = l.oid)
+         LEFT JOIN
+         (pg_type t JOIN pg_namespace nt ON t.typnamespace = nt.oid)
+         ON p.prorettype = t.oid AND p.prokind <> 'p'
 
-    WHERE n.oid = p.pronamespace AND p.prolang = l.oid
-          AND p.prorettype = t.oid AND t.typnamespace = nt.oid
-          AND (pg_has_role(p.proowner, 'USAGE')
-               OR has_function_privilege(p.oid, 'EXECUTE'));
+    WHERE (pg_has_role(p.proowner, 'USAGE')
+           OR has_function_privilege(p.oid, 'EXECUTE'));
 
 GRANT SELECT ON routines TO PUBLIC;
 
@@ -1778,7 +1783,8 @@ CREATE VIEW table_constraints AS
            CAST(CASE WHEN c.condeferrable THEN 'YES' ELSE 'NO' END AS yes_or_no)
              AS is_deferrable,
            CAST(CASE WHEN c.condeferred THEN 'YES' ELSE 'NO' END AS yes_or_no)
-             AS initially_deferred
+             AS initially_deferred,
+           CAST('YES' AS yes_or_no) AS enforced
 
     FROM pg_namespace nc,
          pg_namespace nr,
@@ -1807,7 +1813,8 @@ CREATE VIEW table_constraints AS
            CAST(r.relname AS sql_identifier) AS table_name,
            CAST('CHECK' AS character_data) AS constraint_type,
            CAST('NO' AS yes_or_no) AS is_deferrable,
-           CAST('NO' AS yes_or_no) AS initially_deferred
+           CAST('NO' AS yes_or_no) AS initially_deferred,
+           CAST('YES' AS yes_or_no) AS enforced
 
     FROM pg_namespace nr,
          pg_class r,
@@ -1914,7 +1921,7 @@ CREATE VIEW tables AS
              CASE WHEN nc.oid = pg_my_temp_schema() THEN 'LOCAL TEMPORARY'
                   WHEN c.relkind IN ('r', 'p') THEN 'BASE TABLE'
                   WHEN c.relkind = 'v' THEN 'VIEW'
-                  WHEN c.relkind = 'f' THEN 'FOREIGN TABLE'
+                  WHEN c.relkind = 'f' THEN 'FOREIGN'
                   ELSE null END
              AS character_data) AS table_type,
 
@@ -2079,8 +2086,12 @@ CREATE VIEW triggers AS
            CAST(current_database() AS sql_identifier) AS event_object_catalog,
            CAST(n.nspname AS sql_identifier) AS event_object_schema,
            CAST(c.relname AS sql_identifier) AS event_object_table,
-           CAST(null AS cardinal_number) AS action_order,
-           -- XXX strange hacks follow
+           CAST(
+             -- To determine action order, partition by schema, table,
+             -- event_manipulation (INSERT/DELETE/UPDATE), ROW/STATEMENT (1),
+             -- BEFORE/AFTER (66), then order by trigger name
+             rank() OVER (PARTITION BY n.oid, c.oid, em.num, t.tgtype & 1, t.tgtype & 66 ORDER BY t.tgname)
+             AS cardinal_number) AS action_order,
            CAST(
              CASE WHEN pg_has_role(c.relowner, 'USAGE')
                THEN (regexp_match(pg_get_triggerdef(t.oid), E'.{35,} WHEN \\((.+)\\) EXECUTE PROCEDURE'))[1]
@@ -2098,8 +2109,8 @@ CREATE VIEW triggers AS
              -- hard-wired refs to TRIGGER_TYPE_BEFORE, TRIGGER_TYPE_INSTEAD
              CASE t.tgtype & 66 WHEN 2 THEN 'BEFORE' WHEN 64 THEN 'INSTEAD OF' ELSE 'AFTER' END
              AS character_data) AS action_timing,
-           CAST(null AS sql_identifier) AS action_reference_old_table,
-           CAST(null AS sql_identifier) AS action_reference_new_table,
+           CAST(tgoldtable AS sql_identifier) AS action_reference_old_table,
+           CAST(tgnewtable AS sql_identifier) AS action_reference_new_table,
            CAST(null AS sql_identifier) AS action_reference_old_row,
            CAST(null AS sql_identifier) AS action_reference_new_row,
            CAST(null AS time_stamp) AS created

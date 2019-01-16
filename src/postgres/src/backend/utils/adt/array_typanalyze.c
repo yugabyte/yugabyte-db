@@ -3,7 +3,7 @@
  * array_typanalyze.c
  *	  Functions for gathering statistics from array columns
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -247,7 +247,7 @@ compute_array_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 	 * temporarily install that.
 	 */
 	stats->extra_data = extra_data->std_extra_data;
-	(*extra_data->std_compute_stats) (stats, fetchfunc, samplerows, totalrows);
+	extra_data->std_compute_stats(stats, fetchfunc, samplerows, totalrows);
 	stats->extra_data = extra_data;
 
 	/*

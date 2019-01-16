@@ -7,7 +7,7 @@
  * This is a modified version of src/backend/parser/scan.l
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -20,6 +20,8 @@
 
 #include <ctype.h>
 #include <limits.h>
+
+#include "common/string.h"
 
 #include "extern.h"
 #include "preproc.h"
@@ -78,6 +80,8 @@ static struct _if_value
 	short condition;
 	short else_branch;
 } stacked_if_value[MAX_NESTED_IF];
+
+/* LCOV_EXCL_START */
 
 %}
 
@@ -241,6 +245,15 @@ array			({ident_cont}|{whitespace}|[\[\]\+\-\*\%\/\(\)\>\.])*
 typecast		"::"
 dot_dot			\.\.
 colon_equals	":="
+
+/*
+ * These operator-like tokens (unlike the above ones) also match the {operator}
+ * rule, which means that they might be overridden by a longer match if they
+ * are followed by a comment start or a + or - character. Accordingly, if you
+ * add to this list, you must also add corresponding code to the {operator}
+ * block to return the correct token in such cases. (This is not needed in
+ * psqlscan.l since the token value is ignored there.)
+ */
 equals_greater	"=>"
 less_equals		"<="
 greater_equals	">="
@@ -686,20 +699,33 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 						 * to forbid operator names like '?-' that could not be
 						 * sequences of SQL operators.
 						 */
-						while (nchars > 1 &&
-							   (yytext[nchars-1] == '+' ||
-								yytext[nchars-1] == '-'))
+						if (nchars > 1 &&
+							(yytext[nchars - 1] == '+' ||
+							 yytext[nchars - 1] == '-'))
 						{
 							int		ic;
 
-							for (ic = nchars-2; ic >= 0; ic--)
+							for (ic = nchars - 2; ic >= 0; ic--)
 							{
-								if (strchr("~!@#^&|`?%", yytext[ic]))
+								char c = yytext[ic];
+								if (c == '~' || c == '!' || c == '@' ||
+									c == '#' || c == '^' || c == '&' ||
+									c == '|' || c == '`' || c == '?' ||
+									c == '%')
 									break;
 							}
-							if (ic >= 0)
-								break; /* found a char that makes it OK */
-							nchars--; /* else remove the +/-, and check again */
+							if (ic < 0)
+							{
+								/*
+								 * didn't find a qualifying character, so remove
+								 * all trailing [+-]
+								 */
+								do {
+									nchars--;
+								} while (nchars > 1 &&
+									 (yytext[nchars - 1] == '+' ||
+									  yytext[nchars - 1] == '-'));
+							}
 						}
 
 						if (nchars < yyleng)
@@ -715,6 +741,25 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 							if (nchars == 1 &&
 								strchr(",()[].;:+-*/%^<>=", yytext[0]))
 								return yytext[0];
+							/*
+							 * Likewise, if what we have left is two chars, and
+							 * those match the tokens ">=", "<=", "=>", "<>" or
+							 * "!=", then we must return the appropriate token
+							 * rather than the generic Op.
+							 */
+							if (nchars == 2)
+							{
+								if (yytext[0] == '=' && yytext[1] == '>')
+									return EQUALS_GREATER;
+								if (yytext[0] == '>' && yytext[1] == '=')
+									return GREATER_EQUALS;
+								if (yytext[0] == '<' && yytext[1] == '=')
+									return LESS_EQUALS;
+								if (yytext[0] == '<' && yytext[1] == '>')
+									return NOT_EQUALS;
+								if (yytext[0] == '!' && yytext[1] == '=')
+									return NOT_EQUALS;
+							}
 						}
 
 						base_yylval.str = mm_strdup(yytext);
@@ -725,17 +770,12 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 						return PARAM;
 					}
 <C,SQL>{integer}	{
-						long val;
+						int val;
 						char* endptr;
 
 						errno = 0;
-						val = strtol((char *)yytext, &endptr,10);
-						if (*endptr != '\0' || errno == ERANGE
-#ifdef HAVE_LONG_INT_64
-							/* if long > 32 bits, check for overflow of int4 */
-							|| val != (long) ((int32) val)
-#endif
-							)
+						val = strtoint(yytext, &endptr, 10);
+						if (*endptr != '\0' || errno == ERANGE)
 						{
 							errno = 0;
 							base_yylval.str = mm_strdup(yytext);
@@ -768,7 +808,7 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 					}
 <SQL>:{identifier}((("->"|\.){identifier})|(\[{array}\]))*	{
 						base_yylval.str = mm_strdup(yytext+1);
-						return(CVARIABLE);
+						return CVARIABLE;
 					}
 <SQL>{identifier}	{
 						const ScanKeyword  *keyword;
@@ -832,7 +872,7 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 						else
 						{
 							base_yylval.str = mm_strdup(yytext);
-							return(CPP_LINE);
+							return CPP_LINE;
 						}
 					}
 <C>{cppinclude_next}		{
@@ -844,12 +884,12 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 						else
 						{
 							base_yylval.str = mm_strdup(yytext);
-							return(CPP_LINE);
+							return CPP_LINE;
 						}
 					}
 <C,SQL>{cppline}	{
 						base_yylval.str = mm_strdup(yytext);
-						return(CPP_LINE);
+						return CPP_LINE;
 					}
 <C>{identifier}		{
 						const ScanKeyword		*keyword;
@@ -879,38 +919,38 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 						}
 					}
 <C>{xcstop}			{ mmerror(PARSE_ERROR, ET_ERROR, "nested /* ... */ comments"); }
-<C>":"				{ return(':'); }
-<C>";"				{ return(';'); }
-<C>","				{ return(','); }
-<C>"*"				{ return('*'); }
-<C>"%"				{ return('%'); }
-<C>"/"				{ return('/'); }
-<C>"+"				{ return('+'); }
-<C>"-"				{ return('-'); }
-<C>"("				{ parenths_open++; return('('); }
-<C>")"				{ parenths_open--; return(')'); }
+<C>":"				{ return ':'; }
+<C>";"				{ return ';'; }
+<C>","				{ return ','; }
+<C>"*"				{ return '*'; }
+<C>"%"				{ return '%'; }
+<C>"/"				{ return '/'; }
+<C>"+"				{ return '+'; }
+<C>"-"				{ return '-'; }
+<C>"("				{ parenths_open++; return '('; }
+<C>")"				{ parenths_open--; return ')'; }
 <C,xskip>{space}		{ ECHO; }
-<C>\{				{ return('{'); }
-<C>\}				{ return('}'); }
-<C>\[				{ return('['); }
-<C>\]				{ return(']'); }
-<C>\=				{ return('='); }
-<C>"->"				{ return(S_MEMBER); }
-<C>">>"				{ return(S_RSHIFT); }
-<C>"<<"				{ return(S_LSHIFT); }
-<C>"||"				{ return(S_OR); }
-<C>"&&"				{ return(S_AND); }
-<C>"++"				{ return(S_INC); }
-<C>"--"				{ return(S_DEC); }
-<C>"=="				{ return(S_EQUAL); }
-<C>"!="				{ return(S_NEQUAL); }
-<C>"+="				{ return(S_ADD); }
-<C>"-="				{ return(S_SUB); }
-<C>"*="				{ return(S_MUL); }
-<C>"/="				{ return(S_DIV); }
-<C>"%="				{ return(S_MOD); }
-<C>"->*"			{ return(S_MEMPOINT); }
-<C>".*"				{ return(S_DOTPOINT); }
+<C>\{				{ return '{'; }
+<C>\}				{ return '}'; }
+<C>\[				{ return '['; }
+<C>\]				{ return ']'; }
+<C>\=				{ return '='; }
+<C>"->"				{ return S_MEMBER; }
+<C>">>"				{ return S_RSHIFT; }
+<C>"<<"				{ return S_LSHIFT; }
+<C>"||"				{ return S_OR; }
+<C>"&&"				{ return S_AND; }
+<C>"++"				{ return S_INC; }
+<C>"--"				{ return S_DEC; }
+<C>"=="				{ return S_EQUAL; }
+<C>"!="				{ return S_NEQUAL; }
+<C>"+="				{ return S_ADD; }
+<C>"-="				{ return S_SUB; }
+<C>"*="				{ return S_MUL; }
+<C>"/="				{ return S_DIV; }
+<C>"%="				{ return S_MOD; }
+<C>"->*"			{ return S_MEMPOINT; }
+<C>".*"				{ return S_DOTPOINT; }
 <C>{other}			{ return S_ANYTHING; }
 <C>{exec_sql}{define}{space}*	{ BEGIN(def_ident); }
 <C>{informix_special}{define}{space}*	{
@@ -922,7 +962,7 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 						else
 						{
 							yyless(1);
-							return (S_ANYTHING);
+							return S_ANYTHING;
 						}
 					}
 <C>{exec_sql}{undef}{space}*		{ BEGIN(undef); }
@@ -935,7 +975,7 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 						else
 						{
 							yyless(1);
-							return (S_ANYTHING);
+							return S_ANYTHING;
 						}
 					}
 <undef>{identifier}{space}*";" {
@@ -984,35 +1024,35 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 					  else
 					  {
 						  yyless(1);
-						  return (S_ANYTHING);
+						  return S_ANYTHING;
 					  }
 					}
-<C,xskip>{exec_sql}{ifdef}{space}*	{ ifcond = TRUE; BEGIN(xcond); }
+<C,xskip>{exec_sql}{ifdef}{space}*	{ ifcond = true; BEGIN(xcond); }
 <C,xskip>{informix_special}{ifdef}{space}* {
 					  /* are we simulating Informix? */
 					  if (INFORMIX_MODE)
 					  {
-						  ifcond = TRUE;
+						  ifcond = true;
 						  BEGIN(xcond);
 					  }
 					  else
 					  {
 						  yyless(1);
-						  return (S_ANYTHING);
+						  return S_ANYTHING;
 					  }
 					}
-<C,xskip>{exec_sql}{ifndef}{space}* { ifcond = FALSE; BEGIN(xcond); }
+<C,xskip>{exec_sql}{ifndef}{space}* { ifcond = false; BEGIN(xcond); }
 <C,xskip>{informix_special}{ifndef}{space}* {
 					  /* are we simulating Informix? */
 					  if (INFORMIX_MODE)
 					  {
-						  ifcond = FALSE;
+						  ifcond = false;
 						  BEGIN(xcond);
 					  }
 					  else
 					  {
 						  yyless(1);
-						  return (S_ANYTHING);
+						  return S_ANYTHING;
 					  }
 					}
 <C,xskip>{exec_sql}{elif}{space}*	{	/* pop stack */
@@ -1024,7 +1064,7 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 						else
 							preproc_tos--;
 
-						ifcond = TRUE; BEGIN(xcond);
+						ifcond = true; BEGIN(xcond);
 					}
 <C,xskip>{informix_special}{elif}{space}* {
 					/* are we simulating Informix? */
@@ -1037,13 +1077,13 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 						else
 							preproc_tos--;
 
-						ifcond = TRUE;
+						ifcond = true;
 						BEGIN(xcond);
 					}
 					else
 					{
 						yyless(1);
-						return (S_ANYTHING);
+						return S_ANYTHING;
 					}
 				}
 
@@ -1052,7 +1092,7 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 						mmfatal(PARSE_ERROR, "more than one EXEC SQL ELSE");
 					else
 					{
-						stacked_if_value[preproc_tos].else_branch = TRUE;
+						stacked_if_value[preproc_tos].else_branch = true;
 						stacked_if_value[preproc_tos].condition =
 							(stacked_if_value[preproc_tos-1].condition &&
 							 !stacked_if_value[preproc_tos].condition);
@@ -1071,7 +1111,7 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 							mmfatal(PARSE_ERROR, "more than one EXEC SQL ELSE");
 						else
 						{
-							stacked_if_value[preproc_tos].else_branch = TRUE;
+							stacked_if_value[preproc_tos].else_branch = true;
 							stacked_if_value[preproc_tos].condition =
 							(stacked_if_value[preproc_tos-1].condition &&
 							 !stacked_if_value[preproc_tos].condition);
@@ -1085,7 +1125,7 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 					else
 					{
 						yyless(1);
-						return (S_ANYTHING);
+						return S_ANYTHING;
 					}
 				}
 <C,xskip>{exec_sql}{endif}{space}*";" {
@@ -1116,7 +1156,7 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 					else
 					{
 						yyless(1);
-						return (S_ANYTHING);
+						return S_ANYTHING;
 					}
 				}
 
@@ -1145,7 +1185,7 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 							 defptr = defptr->next);
 
 						preproc_tos++;
-						stacked_if_value[preproc_tos].else_branch = FALSE;
+						stacked_if_value[preproc_tos].else_branch = false;
 						stacked_if_value[preproc_tos].condition =
 						(defptr ? ifcond : !ifcond) && stacked_if_value[preproc_tos-1].condition;
 					}
@@ -1249,7 +1289,11 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 					}
 				}
 <INITIAL>{other}|\n	{ mmfatal(PARSE_ERROR, "internal error: unreachable state; please report this to <pgsql-bugs@postgresql.org>"); }
+
 %%
+
+/* LCOV_EXCL_STOP */
+
 void
 lex_init(void)
 {
@@ -1259,9 +1303,9 @@ lex_init(void)
 
 	preproc_tos = 0;
 	yylineno = 1;
-	ifcond = TRUE;
+	ifcond = true;
 	stacked_if_value[preproc_tos].condition = ifcond;
-	stacked_if_value[preproc_tos].else_branch = FALSE;
+	stacked_if_value[preproc_tos].else_branch = false;
 
 	/* initialize literal buffer to a reasonable but expansible size */
 	if (literalbuf == NULL)
@@ -1406,7 +1450,7 @@ parse_include(void)
 }
 
 /*
- * ecpg_isspace() --- return TRUE if flex scanner considers char whitespace
+ * ecpg_isspace() --- return true if flex scanner considers char whitespace
  */
 static bool
 ecpg_isspace(char ch)

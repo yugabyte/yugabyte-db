@@ -3,7 +3,7 @@
  * fe-auth.c
  *	   The front-end (client) authorization routines
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -39,8 +39,8 @@
 #endif
 
 #include "common/md5.h"
+#include "common/scram-common.h"
 #include "libpq-fe.h"
-#include "libpq/scram.h"
 #include "fe-auth.h"
 
 
@@ -199,7 +199,7 @@ pg_GSS_startup(PGconn *conn, int payloadlen)
 				min_stat;
 	int			maxlen;
 	gss_buffer_desc temp_gbuf;
-	char	   *host = PQhost(conn);
+	char	   *host = conn->connhost[conn->whichhost].host;
 
 	if (!(host && host[0] != '\0'))
 	{
@@ -414,7 +414,7 @@ pg_SSPI_startup(PGconn *conn, int use_negotiate, int payloadlen)
 {
 	SECURITY_STATUS r;
 	TimeStamp	expire;
-	char	   *host = PQhost(conn);
+	char	   *host = conn->connhost[conn->whichhost].host;
 
 	if (conn->sspictx)
 	{
@@ -491,6 +491,7 @@ pg_SASL_init(PGconn *conn, int payloadlen)
 	bool		success;
 	const char *selected_mechanism;
 	PQExpBufferData mechanism_buf;
+	char	   *password;
 
 	initPQExpBuffer(&mechanism_buf);
 
@@ -504,7 +505,8 @@ pg_SASL_init(PGconn *conn, int payloadlen)
 	/*
 	 * Parse the list of SASL authentication mechanisms in the
 	 * AuthenticationSASL message, and select the best mechanism that we
-	 * support.  (Only SCRAM-SHA-256 is supported at the moment.)
+	 * support.  SCRAM-SHA-256-PLUS and SCRAM-SHA-256 are the only ones
+	 * supported at the moment, listed by order of decreasing importance.
 	 */
 	selected_mechanism = NULL;
 	for (;;)
@@ -523,35 +525,34 @@ pg_SASL_init(PGconn *conn, int payloadlen)
 			break;
 
 		/*
-		 * If we have already selected a mechanism, just skip through the rest
-		 * of the list.
+		 * Select the mechanism to use.  Pick SCRAM-SHA-256-PLUS over anything
+		 * else if a channel binding type is set.  Pick SCRAM-SHA-256 if
+		 * nothing else has already been picked.  If we add more mechanisms, a
+		 * more refined priority mechanism might become necessary.
 		 */
-		if (selected_mechanism)
-			continue;
-
-		/*
-		 * Do we support this mechanism?
-		 */
-		if (strcmp(mechanism_buf.data, SCRAM_SHA_256_NAME) == 0)
+		if (strcmp(mechanism_buf.data, SCRAM_SHA_256_PLUS_NAME) == 0)
 		{
-			char	   *password;
-
-			conn->password_needed = true;
-			password = conn->connhost[conn->whichhost].password;
-			if (password == NULL)
-				password = conn->pgpass;
-			if (password == NULL || password[0] == '\0')
+			if (conn->ssl_in_use)
+				selected_mechanism = SCRAM_SHA_256_PLUS_NAME;
+			else
 			{
+				/*
+				 * The server offered SCRAM-SHA-256-PLUS, but the connection
+				 * is not SSL-encrypted. That's not sane. Perhaps SSL was
+				 * stripped by a proxy? There's no point in continuing,
+				 * because the server will reject the connection anyway if we
+				 * try authenticate without channel binding even though both
+				 * the client and server supported it. The SCRAM exchange
+				 * checks for that, to prevent downgrade attacks.
+				 */
 				printfPQExpBuffer(&conn->errorMessage,
-								  PQnoPasswordSupplied);
+								  libpq_gettext("server offered SCRAM-SHA-256-PLUS authentication over a non-SSL connection\n"));
 				goto error;
 			}
-
-			conn->sasl_state = pg_fe_scram_init(conn->pguser, password);
-			if (!conn->sasl_state)
-				goto oom_error;
-			selected_mechanism = SCRAM_SHA_256_NAME;
 		}
+		else if (strcmp(mechanism_buf.data, SCRAM_SHA_256_NAME) == 0 &&
+				 !selected_mechanism)
+			selected_mechanism = SCRAM_SHA_256_NAME;
 	}
 
 	if (!selected_mechanism)
@@ -561,11 +562,44 @@ pg_SASL_init(PGconn *conn, int payloadlen)
 		goto error;
 	}
 
+	/*
+	 * Now that the SASL mechanism has been chosen for the exchange,
+	 * initialize its state information.
+	 */
+
+	/*
+	 * First, select the password to use for the exchange, complaining if
+	 * there isn't one.  Currently, all supported SASL mechanisms require a
+	 * password, so we can just go ahead here without further distinction.
+	 */
+	conn->password_needed = true;
+	password = conn->connhost[conn->whichhost].password;
+	if (password == NULL)
+		password = conn->pgpass;
+	if (password == NULL || password[0] == '\0')
+	{
+		printfPQExpBuffer(&conn->errorMessage,
+						  PQnoPasswordSupplied);
+		goto error;
+	}
+
+	/*
+	 * Initialize the SASL state information with all the information gathered
+	 * during the initial exchange.
+	 *
+	 * Note: Only tls-unique is supported for the moment.
+	 */
+	conn->sasl_state = pg_fe_scram_init(conn,
+										password,
+										selected_mechanism);
+	if (!conn->sasl_state)
+		goto oom_error;
+
 	/* Get the mechanism-specific Initial Client Response, if any */
 	pg_fe_scram_exchange(conn->sasl_state,
 						 NULL, -1,
 						 &initialresponse, &initialresponselen,
-						 &done, &success, &conn->errorMessage);
+						 &done, &success);
 
 	if (done && !success)
 		goto error;
@@ -646,7 +680,7 @@ pg_SASL_continue(PGconn *conn, int payloadlen, bool final)
 	pg_fe_scram_exchange(conn->sasl_state,
 						 challenge, payloadlen,
 						 &output, &outputlen,
-						 &done, &success, &conn->errorMessage);
+						 &done, &success);
 	free(challenge);			/* don't need the input anymore */
 
 	if (final && !done)

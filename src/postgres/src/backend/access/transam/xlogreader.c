@@ -3,7 +3,7 @@
  * xlogreader.c
  *		Generic XLog reading facility
  *
- * Portions Copyright (c) 2013-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2013-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/backend/access/transam/xlogreader.c
@@ -24,6 +24,10 @@
 #include "catalog/pg_control.h"
 #include "common/pg_lzcompress.h"
 #include "replication/origin.h"
+
+#ifndef FRONTEND
+#include "utils/memutils.h"
+#endif
 
 static bool allocate_recordbuf(XLogReaderState *state, uint32 reclength);
 
@@ -62,7 +66,8 @@ report_invalid_record(XLogReaderState *state, const char *fmt,...)
  * Returns NULL if the xlogreader couldn't be allocated.
  */
 XLogReaderState *
-XLogReaderAllocate(XLogPageReadCB pagereadfunc, void *private_data)
+XLogReaderAllocate(int wal_segment_size, XLogPageReadCB pagereadfunc,
+				   void *private_data)
 {
 	XLogReaderState *state;
 
@@ -89,6 +94,7 @@ XLogReaderAllocate(XLogPageReadCB pagereadfunc, void *private_data)
 		return NULL;
 	}
 
+	state->wal_segment_size = wal_segment_size;
 	state->read_page = pagereadfunc;
 	/* system_identifier initialized to zeroes above */
 	state->private_data = private_data;
@@ -157,6 +163,25 @@ allocate_recordbuf(XLogReaderState *state, uint32 reclength)
 
 	newSize += XLOG_BLCKSZ - (newSize % XLOG_BLCKSZ);
 	newSize = Max(newSize, 5 * Max(BLCKSZ, XLOG_BLCKSZ));
+
+#ifndef FRONTEND
+
+	/*
+	 * Note that in much unlucky circumstances, the random data read from a
+	 * recycled segment can cause this routine to be called with a size
+	 * causing a hard failure at allocation.  For a standby, this would cause
+	 * the instance to stop suddenly with a hard failure, preventing it to
+	 * retry fetching WAL from one of its sources which could allow it to move
+	 * on with replay without a manual restart. If the data comes from a past
+	 * recycled segment and is still valid, then the allocation may succeed
+	 * but record checks are going to fail so this would be short-lived.  If
+	 * the allocation fails because of a memory shortage, then this is not a
+	 * hard failure either per the guarantee given by MCXT_ALLOC_NO_OOM.
+	 */
+	if (!AllocSizeIsValid(newSize))
+		return false;
+
+#endif
 
 	if (state->readRecordBuf)
 		pfree(state->readRecordBuf);
@@ -464,8 +489,8 @@ XLogReadRecord(XLogReaderState *state, XLogRecPtr RecPtr, char **errormsg)
 		(record->xl_info & ~XLR_INFO_MASK) == XLOG_SWITCH)
 	{
 		/* Pretend it extends to end of segment */
-		state->EndRecPtr += XLogSegSize - 1;
-		state->EndRecPtr -= state->EndRecPtr % XLogSegSize;
+		state->EndRecPtr += state->wal_segment_size - 1;
+		state->EndRecPtr -= XLogSegmentOffset(state->EndRecPtr, state->wal_segment_size);
 	}
 
 	if (DecodeXLogRecord(state, record, errormsg))
@@ -507,8 +532,8 @@ ReadPageInternal(XLogReaderState *state, XLogRecPtr pageptr, int reqLen)
 
 	Assert((pageptr % XLOG_BLCKSZ) == 0);
 
-	XLByteToSeg(pageptr, targetSegNo);
-	targetPageOff = (pageptr % XLogSegSize);
+	XLByteToSeg(pageptr, targetSegNo, state->wal_segment_size);
+	targetPageOff = XLogSegmentOffset(pageptr, state->wal_segment_size);
 
 	/* check whether we have all the requested data already */
 	if (targetSegNo == state->readSegNo && targetPageOff == state->readOff &&
@@ -719,16 +744,16 @@ XLogReaderValidatePageHeader(XLogReaderState *state, XLogRecPtr recptr,
 
 	Assert((recptr % XLOG_BLCKSZ) == 0);
 
-	XLByteToSeg(recptr, segno);
-	offset = recptr % XLogSegSize;
+	XLByteToSeg(recptr, segno, state->wal_segment_size);
+	offset = XLogSegmentOffset(recptr, state->wal_segment_size);
 
-	XLogSegNoOffsetToRecPtr(segno, offset, recaddr);
+	XLogSegNoOffsetToRecPtr(segno, offset, state->wal_segment_size, recaddr);
 
 	if (hdr->xlp_magic != XLOG_PAGE_MAGIC)
 	{
 		char		fname[MAXFNAMELEN];
 
-		XLogFileName(fname, state->readPageTLI, segno);
+		XLogFileName(fname, state->readPageTLI, segno, state->wal_segment_size);
 
 		report_invalid_record(state,
 							  "invalid magic number %04X in log segment %s, offset %u",
@@ -742,7 +767,7 @@ XLogReaderValidatePageHeader(XLogReaderState *state, XLogRecPtr recptr,
 	{
 		char		fname[MAXFNAMELEN];
 
-		XLogFileName(fname, state->readPageTLI, segno);
+		XLogFileName(fname, state->readPageTLI, segno, state->wal_segment_size);
 
 		report_invalid_record(state,
 							  "invalid info bits %04X in log segment %s, offset %u",
@@ -775,10 +800,10 @@ XLogReaderValidatePageHeader(XLogReaderState *state, XLogRecPtr recptr,
 								  fhdrident_str, sysident_str);
 			return false;
 		}
-		else if (longhdr->xlp_seg_size != XLogSegSize)
+		else if (longhdr->xlp_seg_size != state->wal_segment_size)
 		{
 			report_invalid_record(state,
-								  "WAL file is from different database system: incorrect XLOG_SEG_SIZE in page header");
+								  "WAL file is from different database system: incorrect segment size in page header");
 			return false;
 		}
 		else if (longhdr->xlp_xlog_blcksz != XLOG_BLCKSZ)
@@ -792,7 +817,7 @@ XLogReaderValidatePageHeader(XLogReaderState *state, XLogRecPtr recptr,
 	{
 		char		fname[MAXFNAMELEN];
 
-		XLogFileName(fname, state->readPageTLI, segno);
+		XLogFileName(fname, state->readPageTLI, segno, state->wal_segment_size);
 
 		/* hmm, first page of file doesn't have a long header? */
 		report_invalid_record(state,
@@ -804,15 +829,15 @@ XLogReaderValidatePageHeader(XLogReaderState *state, XLogRecPtr recptr,
 	}
 
 	/*
-	 * Check that the address on the page agrees with what we expected.
-	 * This check typically fails when an old WAL segment is recycled,
-	 * and hasn't yet been overwritten with new data yet.
+	 * Check that the address on the page agrees with what we expected. This
+	 * check typically fails when an old WAL segment is recycled, and hasn't
+	 * yet been overwritten with new data yet.
 	 */
 	if (hdr->xlp_pageaddr != recaddr)
 	{
 		char		fname[MAXFNAMELEN];
 
-		XLogFileName(fname, state->readPageTLI, segno);
+		XLogFileName(fname, state->readPageTLI, segno, state->wal_segment_size);
 
 		report_invalid_record(state,
 							  "unexpected pageaddr %X/%X in log segment %s, offset %u",
@@ -837,7 +862,7 @@ XLogReaderValidatePageHeader(XLogReaderState *state, XLogRecPtr recptr,
 		{
 			char		fname[MAXFNAMELEN];
 
-			XLogFileName(fname, state->readPageTLI, segno);
+			XLogFileName(fname, state->readPageTLI, segno, state->wal_segment_size);
 
 			report_invalid_record(state,
 								  "out-of-sequence timeline ID %u (after %u) in log segment %s, offset %u",
@@ -1267,7 +1292,13 @@ DecodeXLogRecord(XLogReaderState *state, XLogRecord *record, char **errormsg)
 			{
 				if (blk->data)
 					pfree(blk->data);
-				blk->data_bufsz = blk->data_len;
+
+				/*
+				 * Force the initial request to be BLCKSZ so that we don't
+				 * waste time with lots of trips through this stanza as a
+				 * result of WAL compression.
+				 */
+				blk->data_bufsz = MAXALIGN(Max(blk->data_len, BLCKSZ));
 				blk->data = palloc(blk->data_bufsz);
 			}
 			memcpy(blk->data, ptr, blk->data_len);
@@ -1320,8 +1351,8 @@ err:
  * Returns information about the block that a block reference refers to.
  *
  * If the WAL record contains a block reference with the given ID, *rnode,
- * *forknum, and *blknum are filled in (if not NULL), and returns TRUE.
- * Otherwise returns FALSE.
+ * *forknum, and *blknum are filled in (if not NULL), and returns true.
+ * Otherwise returns false.
  */
 bool
 XLogRecGetBlockTag(XLogReaderState *record, uint8 block_id,
@@ -1381,7 +1412,7 @@ RestoreBlockImage(XLogReaderState *record, uint8 block_id, char *page)
 {
 	DecodedBkpBlock *bkpb;
 	char	   *ptr;
-	char		tmp[BLCKSZ];
+	PGAlignedBlock tmp;
 
 	if (!record->blocks[block_id].in_use)
 		return false;
@@ -1394,7 +1425,7 @@ RestoreBlockImage(XLogReaderState *record, uint8 block_id, char *page)
 	if (bkpb->bimg_info & BKPIMAGE_IS_COMPRESSED)
 	{
 		/* If a backup block image is compressed, decompress it */
-		if (pglz_decompress(ptr, bkpb->bimg_len, tmp,
+		if (pglz_decompress(ptr, bkpb->bimg_len, tmp.data,
 							BLCKSZ - bkpb->hole_length) < 0)
 		{
 			report_invalid_record(record, "invalid compressed image at %X/%X, block %d",
@@ -1403,7 +1434,7 @@ RestoreBlockImage(XLogReaderState *record, uint8 block_id, char *page)
 								  block_id);
 			return false;
 		}
-		ptr = tmp;
+		ptr = tmp.data;
 	}
 
 	/* generate page, taking into account hole if necessary */

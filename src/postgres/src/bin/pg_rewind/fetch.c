@@ -10,7 +10,7 @@
  * connection (libpq_fetch.c)
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -51,7 +51,7 @@ executeFileMap(void)
  * handy for text files.
  */
 char *
-fetchFile(char *filename, size_t *filesize)
+fetchFile(const char *filename, size_t *filesize)
 {
 	if (datadir_source)
 		return slurpFile(datadir_source, filename, filesize);

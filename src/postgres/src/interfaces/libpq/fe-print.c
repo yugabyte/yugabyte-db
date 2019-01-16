@@ -3,7 +3,7 @@
  * fe-print.c
  *	  functions for pretty-printing query results
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * These functions were formerly part of fe-exec.c, but they
@@ -165,6 +165,13 @@ PQprint(FILE *fout, const PGresult *res, const PQprintOpt *po)
 			screen_size.ws_row = 24;
 			screen_size.ws_col = 80;
 #endif
+
+			/*
+			 * Since this function is no longer used by psql, we don't examine
+			 * PSQL_PAGER.  It's possible that the hypothetical external users
+			 * of the function would like that to happen, but in the name of
+			 * backwards compatibility, we'll stick to just examining PAGER.
+			 */
 			pagerenv = getenv("PAGER");
 			/* if PAGER is unset, empty or all-white-space, don't use pager */
 			if (pagerenv != NULL &&
