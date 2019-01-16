@@ -168,11 +168,13 @@ class ReplicaState {
   // Returns OK if leader, IllegalState otherwise.
   CHECKED_STATUS CheckActiveLeaderUnlocked(LeaderLeaseCheckMode lease_check_mode) const;
 
-  LeaderState GetLeaderState(
-      LeaderLeaseCheckMode lease_check_mode = LeaderLeaseCheckMode::NEED_LEASE) const;
+  LeaderState GetLeaderState() const;
 
+  // now is used as a cache for current time. It is in/out parameter and could contain or receive
+  // current time if it was used during leader state calculation.
   LeaderState GetLeaderStateUnlocked(
-      LeaderLeaseCheckMode lease_check_mode = LeaderLeaseCheckMode::NEED_LEASE) const;
+      LeaderLeaseCheckMode lease_check_mode = LeaderLeaseCheckMode::NEED_LEASE,
+      CoarseTimePoint* now = nullptr) const;
 
   // Completes the Shutdown() of this replica. No more operations, local
   // or otherwise can happen after this point.
@@ -358,7 +360,7 @@ class ReplicaState {
   void UpdateOldLeaderLeaseExpirationUnlocked(
       MonoDelta lease_duration, MicrosTime ht_lease_expiration);
   void UpdateOldLeaderLeaseExpirationUnlocked(
-      MonoTime lease_expiration, MicrosTime ht_lease_expiration);
+      CoarseTimePoint lease_expiration, MicrosTime ht_lease_expiration);
 
   void SetMajorityReplicatedLeaseExpirationUnlocked(
       const MajorityReplicatedData& majority_replicated_data);
@@ -367,14 +369,14 @@ class ReplicaState {
   // - That the old leader definitely does not have a lease.
   // - That this leader has a committed lease.
   LeaderLeaseStatus GetLeaderLeaseStatusUnlocked(
-      MonoDelta* remaining_old_leader_lease = nullptr) const;
+      MonoDelta* remaining_old_leader_lease = nullptr, CoarseTimePoint* now = nullptr) const;
 
   LeaderLeaseStatus GetHybridTimeLeaseStatusAtUnlocked(MicrosTime micros_time) const;
 
   // Get the remaining duration of the old leader's lease. Optionally, return the current time in
   // the "now" output parameter. In case the old leader's lease has already expired or is not known,
   // returns an uninitialized MonoDelta value.
-  MonoDelta RemainingOldLeaderLeaseDuration(MonoTime* now = nullptr) const;
+  MonoDelta RemainingOldLeaderLeaseDuration(CoarseTimePoint* now = nullptr) const;
 
   MicrosTime old_leader_ht_lease_expiration() const {
     return old_leader_ht_lease_expiration_;
@@ -383,7 +385,7 @@ class ReplicaState {
   // A lock-free way to read role and term atomically.
   std::pair<RaftPeerPB::Role, int64_t> GetRoleAndTerm() const;
 
-  bool MajorityReplicatedLeaderLeaseExpired(MonoTime* now = nullptr) const;
+  bool MajorityReplicatedLeaderLeaseExpired(CoarseTimePoint* now = nullptr) const;
 
   bool MajorityReplicatedHybridTimeLeaseExpiredAt(MicrosTime hybrid_time) const;
 
@@ -404,9 +406,7 @@ class ReplicaState {
 
   RetryableRequestsCounts TEST_CountRetryableRequests();
 
-  void SetLeaderNoOpCommittedUnlocked(bool value) {
-    leader_no_op_committed_ = value;
-  }
+  void SetLeaderNoOpCommittedUnlocked(bool value);
 
  private:
   template <class Policy>
@@ -435,6 +435,9 @@ class ReplicaState {
 
   void NotifyReplicationFinishedUnlocked(
       const ConsensusRoundPtr& round, const Status& status, int64_t leader_term);
+
+  consensus::LeaderState RefreshLeaderStateCacheUnlocked(
+      CoarseTimePoint* now) const ATTRIBUTE_NONNULL(2);
 
   const ConsensusOptions options_;
 
@@ -499,7 +502,7 @@ class ReplicaState {
   //
   // This is marked mutable because it can be reset on to MonoTime::kMin on the read path after the
   // deadline has passed, so that we avoid querying the clock unnecessarily from that point on.
-  mutable MonoTime old_leader_lease_expiration_;
+  mutable CoarseTimePoint old_leader_lease_expiration_;
 
   mutable MicrosTime old_leader_ht_lease_expiration_ = HybridTime::kMin.GetPhysicalValueMicros();
 
@@ -507,7 +510,7 @@ class ReplicaState {
   // is allowed to serve up-to-date reads and accept writes only while the current time is less than
   // this. However, the leader might manage to replicate a lease extension without losing its
   // leadership.
-  MonoTime majority_replicated_lease_expiration_;
+  CoarseTimePoint majority_replicated_lease_expiration_;
 
   // LEADER only: the latest committed hybrid time lease expiration deadline for the current leader.
   // The leader is allowed to add new log entries only when lease of old leader is expired.
@@ -519,6 +522,39 @@ class ReplicaState {
   // This leader is ready to serve only if NoOp was successfully committed
   // after the new leader successful election.
   bool leader_no_op_committed_ = false;
+
+  struct LeaderStateCache {
+    static constexpr size_t kStatusBits = 3;
+    static_assert(kLeaderStatusMapSize <= (1 << kStatusBits),
+                  "Leader status does not fit into kStatusBits");
+
+    static constexpr uint64_t kStatusMask = (1 << kStatusBits) -1;
+
+    // Packed status consists on LeaderStatus and an extra value.
+    // Extra value meaning depends on actual status:
+    // LEADER_AND_READY: leader term.
+    // LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE: number of microseconds in remaining_old_leader_lease.
+    uint64_t packed_status;
+    CoarseTimePoint expire_at;
+
+    LeaderStateCache() noexcept {}
+
+    LeaderStatus status() const {
+      return static_cast<LeaderStatus>(packed_status & kStatusMask);
+    }
+
+    uint64_t extra_value() const {
+      return packed_status >> kStatusBits;
+    }
+
+    void Set(LeaderStatus status, uint64_t extra_value, CoarseTimePoint expire_at_) {
+      DCHECK_EQ(extra_value << kStatusBits >> kStatusBits, extra_value);
+      packed_status = static_cast<uint64_t>(status) | (extra_value << kStatusBits);
+      expire_at = expire_at_;
+    }
+  };
+
+  mutable std::atomic<LeaderStateCache> leader_state_cache_;
 };
 
 }  // namespace consensus
