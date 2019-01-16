@@ -68,7 +68,8 @@
 #include "yb/util/enums.h"
 #include "yb/util/tostring.h"
 
-using yb::operator"" _MB;
+using namespace std::literals;
+using namespace yb::size_literals;
 
 DECLARE_int32(rpc_max_message_size);
 
@@ -352,13 +353,25 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       auto leader_lease_duration_ms = GetAtomicFlag(&FLAGS_leader_lease_duration_ms);
       request->set_leader_lease_duration_ms(leader_lease_duration_ms);
       request->set_ht_lease_expiration(ht_lease_expiration_micros);
+
+      // As noted here:
+      // https://red.ht/2sCSErb
+      //
+      // The _COARSE variants are faster to read and have a precision (also known as resolution) of
+      // one millisecond (ms).
+      //
+      // Coarse clock precision is 1 millisecond.
+      const auto kCoarseClockPrecision = 1ms;
+
+      // Because of coarse clocks we subtract 2ms, to be sure that our local version of lease
+      // does not expire after it expires at follower.
       peer->last_leader_lease_expiration_sent_to_follower =
-          MonoTime::Now() + MonoDelta::FromMilliseconds(leader_lease_duration_ms);
+          CoarseMonoClock::Now() + leader_lease_duration_ms * 1ms - kCoarseClockPrecision * 2;
       peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
     } else {
       request->clear_leader_lease_duration_ms();
       request->clear_ht_lease_expiration();
-      peer->last_leader_lease_expiration_received_by_follower = MonoTime();
+      peer->last_leader_lease_expiration_received_by_follower = CoarseTimePoint();
       peer->last_ht_lease_expiration_sent_to_follower = 0;
     }
 
@@ -619,23 +632,23 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
   return *nth;
 }
 
-MonoTime PeerMessageQueue::LeaderLeaseExpirationWatermark() {
+CoarseTimePoint PeerMessageQueue::LeaderLeaseExpirationWatermark() {
   struct Policy {
-    typedef MonoTime result_type;
+    typedef CoarseTimePoint result_type;
     // Workaround for a gcc bug. That does not understand that Comparator is actually being used.
     __attribute__((unused)) typedef std::less<result_type> Comparator;
 
     static result_type Min() {
-      return result_type::kMin;
+      return result_type::min();
     }
 
     static result_type Max() {
-      return result_type::kMax;
+      return result_type::max();
     }
 
     static result_type ExtractValue(const TrackedPeer& peer) {
-      MonoTime lease_exp = peer.last_leader_lease_expiration_received_by_follower;
-      return lease_exp.Initialized() ? lease_exp : MonoTime::kMin;
+      auto lease_exp = peer.last_leader_lease_expiration_received_by_follower;
+      return lease_exp != CoarseTimePoint() ? lease_exp : CoarseTimePoint::min();
     }
 
     static const char* Name() {
