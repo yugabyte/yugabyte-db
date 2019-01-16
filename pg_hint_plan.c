@@ -10,6 +10,8 @@
 #include <string.h>
 
 #include "postgres.h"
+#include "access/genam.h"
+#include "access/heapam.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_index.h"
 #include "commands/prepare.h"
@@ -18,6 +20,7 @@
 #include "nodes/nodeFuncs.h"
 #include "nodes/params.h"
 #include "nodes/relation.h"
+#include "optimizer/appendinfo.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/geqo.h"
