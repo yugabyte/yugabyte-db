@@ -75,6 +75,10 @@ public class StartNodeInUniverse extends UniverseTaskBase {
         createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, true)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
+        // Wait for the master to be responsive.
+        createWaitForServersTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.MASTER)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
         // Add stopped master to the quorum.
         createChangeConfigTask(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
       }
