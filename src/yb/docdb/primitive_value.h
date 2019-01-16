@@ -265,6 +265,10 @@ class PrimitiveValue {
     return IsPrimitiveValueType(type_) || type_ == ValueType::kTombstone;
   }
 
+  bool IsInfinity() const {
+    return type_ == ValueType::kHighest || type_ == ValueType::kLowest;
+  }
+
   int CompareTo(const PrimitiveValue& other) const;
 
   // Assuming this PrimitiveValue represents a string, return a Slice pointing to it.

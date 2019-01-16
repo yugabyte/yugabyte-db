@@ -67,6 +67,10 @@ class DocQLScanSpec : public common::QLScanSpec {
     return include_static_columns_;
   }
 
+  const common::QLScanRange* range_bounds() const {
+    return range_bounds_.get();
+  }
+
  private:
 
   // Return inclusive lower/upper range doc key considering the start_doc_key.

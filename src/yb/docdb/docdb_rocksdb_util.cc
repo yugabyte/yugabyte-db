@@ -264,8 +264,10 @@ void PerformRocksDBSeek(
   int seek_count = 0;
   if (seek_key.size() == 0) {
     iter->SeekToFirst();
+    ++seek_count;
   } else if (!iter->Valid() || iter->key().compare(seek_key) > 0) {
     iter->Seek(seek_key);
+    ++seek_count;
   } else {
     for (int nexts = 0; nexts <= FLAGS_max_nexts_to_avoid_seek; nexts++) {
       if (!iter->Valid() || iter->key().compare(seek_key) >= 0) {
