@@ -4,7 +4,7 @@
  *	  prototypes for various files in optimizer/path
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/paths.h
@@ -21,9 +21,9 @@
  * allpaths.c
  */
 extern PGDLLIMPORT bool enable_geqo;
-extern PGDLLIMPORT int	geqo_threshold;
-extern PGDLLIMPORT int	min_parallel_table_scan_size;
-extern PGDLLIMPORT int	min_parallel_index_scan_size;
+extern PGDLLIMPORT int geqo_threshold;
+extern PGDLLIMPORT int min_parallel_table_scan_size;
+extern PGDLLIMPORT int min_parallel_index_scan_size;
 
 /* Hook for plugins to get control in set_rel_pathlist() */
 typedef void (*set_rel_pathlist_hook_type) (PlannerInfo *root,
@@ -53,11 +53,14 @@ extern void set_dummy_rel_pathlist(RelOptInfo *rel);
 extern RelOptInfo *standard_join_search(PlannerInfo *root, int levels_needed,
 					 List *initial_rels);
 
-extern void generate_gather_paths(PlannerInfo *root, RelOptInfo *rel);
+extern void generate_gather_paths(PlannerInfo *root, RelOptInfo *rel,
+					  bool override_rows);
 extern int compute_parallel_worker(RelOptInfo *rel, double heap_pages,
-						double index_pages);
+						double index_pages, int max_workers);
 extern void create_partial_bitmap_paths(PlannerInfo *root, RelOptInfo *rel,
 							Path *bitmapqual);
+extern void generate_partitionwise_join_paths(PlannerInfo *root,
+								  RelOptInfo *rel);
 
 #ifdef OPTIMIZER_DEBUG
 extern void debug_print_rel(PlannerInfo *root, RelOptInfo *rel);
@@ -111,6 +114,10 @@ extern bool have_join_order_restriction(PlannerInfo *root,
 							RelOptInfo *rel1, RelOptInfo *rel2);
 extern bool have_dangerous_phv(PlannerInfo *root,
 				   Relids outer_relids, Relids inner_params);
+extern void mark_dummy_rel(RelOptInfo *rel);
+extern bool have_partkey_equi_join(RelOptInfo *joinrel,
+					   RelOptInfo *rel1, RelOptInfo *rel2,
+					   JoinType jointype, List *restrictlist);
 
 /*
  * equivclass.c
@@ -122,7 +129,8 @@ typedef bool (*ec_matches_callback_type) (PlannerInfo *root,
 										  EquivalenceMember *em,
 										  void *arg);
 
-extern bool process_equivalence(PlannerInfo *root, RestrictInfo *restrictinfo,
+extern bool process_equivalence(PlannerInfo *root,
+					RestrictInfo **p_restrictinfo,
 					bool below_outer_join);
 extern Expr *canonicalize_ec_expression(Expr *expr,
 						   Oid req_type, Oid req_collation);
@@ -229,5 +237,7 @@ extern bool has_useful_pathkeys(PlannerInfo *root, RelOptInfo *rel);
 extern PathKey *make_canonical_pathkey(PlannerInfo *root,
 					   EquivalenceClass *eclass, Oid opfamily,
 					   int strategy, bool nulls_first);
+extern void add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
+						List *live_childrels);
 
 #endif							/* PATHS_H */

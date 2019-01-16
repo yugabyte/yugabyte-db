@@ -2,7 +2,7 @@
  * oracle_compat.c
  *	Oracle compatible functions.
  *
- * Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
  *	Author: Edmund Mergl <E.Mergl@bawue.de>
  *	Multibyte enhancement: Tatsuo Ishii <ishii@postgresql.org>
@@ -15,6 +15,7 @@
  */
 #include "postgres.h"
 
+#include "common/int.h"
 #include "utils/builtins.h"
 #include "utils/formatting.h"
 #include "mb/pg_wchar.h"
@@ -911,7 +912,7 @@ ascii(PG_FUNCTION_ARGS)
  *
  *	Returns the character having the binary equivalent to val.
  *
- * For UTF8 we treat the argumwent as a Unicode code point.
+ * For UTF8 we treat the argument as a Unicode code point.
  * For other multi-byte encodings we raise an error for arguments
  * outside the strict ASCII range (1..127).
  *
@@ -1045,19 +1046,12 @@ repeat(PG_FUNCTION_ARGS)
 		count = 0;
 
 	slen = VARSIZE_ANY_EXHDR(string);
-	tlen = VARHDRSZ + (count * slen);
 
-	/* Check for integer overflow */
-	if (slen != 0 && count != 0)
-	{
-		int			check = count * slen;
-		int			check2 = check + VARHDRSZ;
-
-		if ((check / slen) != count || check2 <= check)
-			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("requested length too large")));
-	}
+	if (unlikely(pg_mul_s32_overflow(count, slen, &tlen)) ||
+		unlikely(pg_add_s32_overflow(tlen, VARHDRSZ, &tlen)))
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("requested length too large")));
 
 	result = (text *) palloc(tlen);
 

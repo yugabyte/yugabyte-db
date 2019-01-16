@@ -4,7 +4,7 @@
  *
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/nodeIndexonlyscan.h
@@ -31,6 +31,6 @@ extern void ExecIndexOnlyScanInitializeDSM(IndexOnlyScanState *node,
 extern void ExecIndexOnlyScanReInitializeDSM(IndexOnlyScanState *node,
 								 ParallelContext *pcxt);
 extern void ExecIndexOnlyScanInitializeWorker(IndexOnlyScanState *node,
-								  shm_toc *toc);
+								  ParallelWorkerContext *pwcxt);
 
 #endif							/* NODEINDEXONLYSCAN_H */

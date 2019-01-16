@@ -14,7 +14,7 @@
  * plenty of locality of access.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -82,6 +82,7 @@ _h_spoolinit(Relation heap, Relation index, uint32 num_buckets)
 												   hspool->low_mask,
 												   hspool->max_buckets,
 												   maintenance_work_mem,
+												   NULL,
 												   false);
 
 	return hspool;

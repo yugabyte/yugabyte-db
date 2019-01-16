@@ -1,5 +1,6 @@
 ABITVEC
 ACCESS_ALLOWED_ACE
+ACL
 ACL_SIZE_INFORMATION
 AFFIX
 ASN1_INTEGER
@@ -20,7 +21,6 @@ Acl
 AclItem
 AclMaskHow
 AclMode
-AclObjectKind
 AclResult
 AcquireSampleRowsFunc
 ActiveSnapshotElt
@@ -34,6 +34,9 @@ AfterTriggerEventList
 AfterTriggerShared
 AfterTriggerSharedData
 AfterTriggersData
+AfterTriggersQueryData
+AfterTriggersTableData
+AfterTriggersTransData
 Agg
 AggClauseCosts
 AggInfo
@@ -55,6 +58,7 @@ AllocChunk
 AllocPointer
 AllocSet
 AllocSetContext
+AllocSetFreeList
 AllocateDesc
 AllocateDescKind
 AlterCollationStmt
@@ -125,7 +129,6 @@ ArrayMetaState
 ArrayParseState
 ArrayRef
 ArrayRefState
-ArrayRemapInfo
 ArrayType
 AsyncQueueControl
 AsyncQueueEntry
@@ -135,14 +138,15 @@ AttoptCacheEntry
 AttoptCacheKey
 AttrDefInfo
 AttrDefault
+AttrMissing
 AttrNumber
 AttributeOpts
 AuthRequest
+AutoPrewarmSharedState
 AutoVacOpts
 AutoVacuumShmemStruct
 AutoVacuumWorkItem
 AutoVacuumWorkItemType
-AutovacWorkItems
 AuxProcType
 BF_ctx
 BF_key
@@ -163,6 +167,7 @@ BTArrayKeyInfo
 BTBuildState
 BTCycleId
 BTIndexStat
+BTLeader
 BTMetaPageData
 BTOneVacInfo
 BTPS_State
@@ -176,6 +181,7 @@ BTScanOpaqueData
 BTScanPos
 BTScanPosData
 BTScanPosItem
+BTShared
 BTSortArrayContext
 BTSpool
 BTStack
@@ -193,8 +199,10 @@ BackgroundWorker
 BackgroundWorkerArray
 BackgroundWorkerHandle
 BackgroundWorkerSlot
+Barrier
 BaseBackupCmd
 BeginDirectModify_function
+BeginForeignInsert_function
 BeginForeignModify_function
 BeginForeignScan_function
 BeginSampleScan_function
@@ -218,6 +226,7 @@ BlobInfo
 Block
 BlockId
 BlockIdData
+BlockInfoRecord
 BlockNumber
 BlockSampler
 BlockSamplerData
@@ -272,6 +281,8 @@ BuiltinScript
 BulkInsertState
 CACHESIGN
 CAC_state
+CCFastEqualFN
+CCHashFN
 CEOUC_WAIT_MODE
 CFuncHashTabEntry
 CHAR
@@ -288,6 +299,8 @@ CV
 C_block
 CachedPlan
 CachedPlanSource
+CallContext
+CallStmt
 CancelRequestPacket
 CaseExpr
 CaseTestExpr
@@ -312,6 +325,7 @@ CkptTsStatus
 ClientAuthentication_hook_type
 ClientData
 ClonePtrType
+ClonedConstraint
 ClosePortalStmt
 ClosePtrType
 Clump
@@ -340,6 +354,7 @@ ColumnCompareData
 ColumnDef
 ColumnIOData
 ColumnRef
+ColumnsHashData
 CombinationGenerator
 ComboCidEntry
 ComboCidEntryData
@@ -355,6 +370,7 @@ CommitTimestampShared
 CommonEntry
 CommonTableExpr
 CompareScalarsContext
+CompiledExprState
 CompositeIOData
 CompositeTypeStmt
 CompoundAffixFlag
@@ -537,6 +553,7 @@ EndBlobPtrType
 EndBlobsPtrType
 EndDataPtrType
 EndDirectModify_function
+EndForeignInsert_function
 EndForeignModify_function
 EndForeignScan_function
 EndSampleScan_function
@@ -563,6 +580,7 @@ ExceptionLabelMap
 ExceptionMap
 ExclusiveBackupState
 ExecAuxRowMark
+ExecEvalSubroutine
 ExecForeignDelete_function
 ExecForeignInsert_function
 ExecForeignUpdate_function
@@ -584,6 +602,8 @@ ExecutorStart_hook_type
 ExpandedArrayHeader
 ExpandedObjectHeader
 ExpandedObjectMethods
+ExpandedRecordFieldInfo
+ExpandedRecordHeader
 ExplainDirectModify_function
 ExplainForeignModify_function
 ExplainForeignScan_function
@@ -598,6 +618,7 @@ ExprContextCallbackFunction
 ExprContext_CB
 ExprDoneCond
 ExprEvalOp
+ExprEvalOpLookup
 ExprEvalStep
 ExprState
 ExprStateEvalFunc
@@ -628,9 +649,9 @@ FieldStore
 File
 FileFdwExecutionState
 FileFdwPlanState
-FileName
 FileNameMap
 FindSplitData
+FixedParallelExecutorState
 FixedParallelState
 FixedParamState
 FlagMode
@@ -820,7 +841,13 @@ GatherMergeState
 GatherPath
 GatherState
 Gene
+GeneratePruningStepsContext
+GenerationBlock
+GenerationChunk
+GenerationContext
+GenerationPointer
 GenericCosts
+GenericIndexOpts
 GenericXLogState
 GeqoPrivateData
 GetForeignJoinPaths_function
@@ -865,12 +892,12 @@ GistNSN
 GistSplitUnion
 GistSplitVector
 GlobalTransaction
-GrantObjectType
 GrantRoleStmt
 GrantStmt
 GrantTargetType
 Group
 GroupPath
+GroupPathExtraData
 GroupState
 GroupVarInfo
 GroupingFunc
@@ -924,6 +951,7 @@ HashBuildState
 HashCompareFunc
 HashCopyFunc
 HashIndexStat
+HashInstrumentation
 HashJoin
 HashJoinState
 HashJoinTable
@@ -937,6 +965,7 @@ HashPageStat
 HashPath
 HashScanOpaque
 HashScanOpaqueData
+HashScanPosData
 HashScanPosItem
 HashSkewBucket
 HashState
@@ -957,6 +986,7 @@ HistControl
 HotStandbyState
 I32
 ICU_Convert_Func
+ID
 INFIX
 INT128
 INTERFACE_INFO
@@ -979,6 +1009,7 @@ Index
 IndexAMProperty
 IndexAmRoutine
 IndexArrayKeyInfo
+IndexAttachInfo
 IndexAttrBitmapKind
 IndexBuildCallback
 IndexBuildResult
@@ -1009,6 +1040,7 @@ InferenceElem
 InfoItem
 InhInfo
 InheritableSocket
+InheritanceKind
 InitSampleScan_function
 InitializeDSMForeignScan_function
 InitializeWorkerForeignScan_function
@@ -1017,13 +1049,13 @@ InsertStmt
 Instrumentation
 Int128AggState
 Int8TransTypeData
+IntRBTreeNode
 InternalDefaultACL
 InternalGrant
 Interval
 IntoClause
 InvalidationChunk
 InvalidationListHeader
-InvertedWalkNextStep
 IpcMemoryId
 IpcMemoryKey
 IpcSemaphoreId
@@ -1045,6 +1077,12 @@ JOBOBJECTINFOCLASS
 JOBOBJECT_BASIC_LIMIT_INFORMATION
 JOBOBJECT_BASIC_UI_RESTRICTIONS
 JOBOBJECT_SECURITY_LIMIT_INFORMATION
+JitContext
+JitProviderCallbacks
+JitProviderCompileExprCB
+JitProviderInit
+JitProviderReleaseContextCB
+JitProviderResetAfterErrorCB
 Join
 JoinCostWorkspace
 JoinExpr
@@ -1085,6 +1123,24 @@ LDAPMessage
 LDAPURLDesc
 LDAP_TIMEVAL
 LINE
+LLVMAttributeRef
+LLVMBasicBlockRef
+LLVMBuilderRef
+LLVMIntPredicate
+LLVMJitContext
+LLVMJitHandle
+LLVMMemoryBufferRef
+LLVMModuleRef
+LLVMOrcJITStackRef
+LLVMOrcModuleHandle
+LLVMOrcTargetAddress
+LLVMPassManagerBuilderRef
+LLVMPassManagerRef
+LLVMSharedModuleRef
+LLVMTargetMachineRef
+LLVMTargetRef
+LLVMTypeRef
+LLVMValueRef
 LOCALLOCK
 LOCALLOCKOWNER
 LOCALLOCKTAG
@@ -1095,6 +1151,7 @@ LOCKMETHODID
 LOCKMODE
 LOCKTAG
 LONG
+LONG_PTR
 LOOP
 LPBYTE
 LPCTSTR
@@ -1108,6 +1165,7 @@ LPTSTR
 LPVOID
 LPWSTR
 LSEG
+LUID
 LVRelStats
 LWLock
 LWLockHandle
@@ -1155,6 +1213,7 @@ LockRowsState
 LockStmt
 LockTagType
 LockTupleMode
+LockViewRecurse_context
 LockWaitPolicy
 LockingClause
 LogOpts
@@ -1166,6 +1225,7 @@ LogicalDecodeFilterByOriginCB
 LogicalDecodeMessageCB
 LogicalDecodeShutdownCB
 LogicalDecodeStartupCB
+LogicalDecodeTruncateCB
 LogicalDecodingContext
 LogicalErrorCallbackState
 LogicalOutputPluginInit
@@ -1205,6 +1265,7 @@ MemoryContextCallbackFunction
 MemoryContextCounters
 MemoryContextData
 MemoryContextMethods
+MemoryStatsPrintFunc
 MergeAppend
 MergeAppendPath
 MergeAppendState
@@ -1213,6 +1274,7 @@ MergeJoinClause
 MergeJoinState
 MergePath
 MergeScanSelCache
+MetaCommand
 MinMaxAggInfo
 MinMaxAggPath
 MinMaxExpr
@@ -1220,6 +1282,7 @@ MinMaxOp
 MinimalTuple
 MinimalTupleData
 MinmaxOpaque
+MissingPtr
 ModifyTable
 ModifyTablePath
 ModifyTableState
@@ -1311,6 +1374,7 @@ OnCommitItem
 OnConflictAction
 OnConflictClause
 OnConflictExpr
+OnConflictSetState
 OpBtreeInterpretation
 OpClassCacheEnt
 OpExpr
@@ -1410,6 +1474,7 @@ PLpgSQL_label_type
 PLpgSQL_nsitem
 PLpgSQL_nsitem_type
 PLpgSQL_plugin
+PLpgSQL_promise_type
 PLpgSQL_raise_option
 PLpgSQL_raise_option_type
 PLpgSQL_rec
@@ -1420,8 +1485,10 @@ PLpgSQL_stmt
 PLpgSQL_stmt_assert
 PLpgSQL_stmt_assign
 PLpgSQL_stmt_block
+PLpgSQL_stmt_call
 PLpgSQL_stmt_case
 PLpgSQL_stmt_close
+PLpgSQL_stmt_commit
 PLpgSQL_stmt_dynexecute
 PLpgSQL_stmt_dynfors
 PLpgSQL_stmt_execsql
@@ -1441,6 +1508,8 @@ PLpgSQL_stmt_raise
 PLpgSQL_stmt_return
 PLpgSQL_stmt_return_next
 PLpgSQL_stmt_return_query
+PLpgSQL_stmt_rollback
+PLpgSQL_stmt_set
 PLpgSQL_stmt_type
 PLpgSQL_stmt_while
 PLpgSQL_trigtype
@@ -1450,13 +1519,18 @@ PLpgSQL_var
 PLpgSQL_variable
 PLwdatum
 PLword
+PLyArrayToOb
 PLyCursorObject
 PLyDatumToOb
 PLyDatumToObFunc
 PLyExceptionEntry
 PLyExecutionContext
+PLyObToArray
 PLyObToDatum
 PLyObToDatumFunc
+PLyObToDomain
+PLyObToScalar
+PLyObToTransform
 PLyObToTuple
 PLyObject_AsString_t
 PLyPlanObject
@@ -1466,13 +1540,13 @@ PLyProcedureKey
 PLyResultObject
 PLySRFState
 PLySavedArgs
+PLyScalarToOb
 PLySubtransactionData
 PLySubtransactionObject
+PLyTransformToOb
 PLyTupleToOb
-PLyTypeInfo
-PLyTypeInput
-PLyTypeOutput
 PLyUnicode_FromStringAndSize_t
+PLy_elog_impl_t
 PMINIDUMP_CALLBACK_INFORMATION
 PMINIDUMP_EXCEPTION_INFORMATION
 PMINIDUMP_USER_STREAM_INFORMATION
@@ -1506,7 +1580,9 @@ PSQL_ECHO_HIDDEN
 PSQL_ERROR_ROLLBACK
 PTEntryArray
 PTIterationArray
+PTOKEN_PRIVILEGES
 PTOKEN_USER
+PULONG
 PUTENVPROC
 PVOID
 PX_Alias
@@ -1522,16 +1598,24 @@ PageHeaderData
 PageXLogRecPtr
 PagetableEntry
 Pairs
+ParallelAppendState
 ParallelBitmapHeapState
 ParallelCompletionPtr
 ParallelContext
 ParallelExecutorInfo
+ParallelHashGrowth
+ParallelHashJoinBatch
+ParallelHashJoinBatchAccessor
+ParallelHashJoinState
 ParallelHeapScanDesc
+ParallelHeapScanDescData
 ParallelIndexScanDesc
 ParallelSlot
 ParallelState
+ParallelWorkerContext
 ParallelWorkerInfo
 Param
+ParamCompileHook
 ParamExecData
 ParamExternData
 ParamFetchHook
@@ -1551,6 +1635,8 @@ ParsedText
 ParsedWord
 ParserSetupHook
 ParserState
+PartClauseInfo
+PartClauseMatchStatus
 PartitionBoundInfo
 PartitionBoundInfoData
 PartitionBoundSpec
@@ -1560,13 +1646,24 @@ PartitionDescData
 PartitionDispatch
 PartitionDispatchData
 PartitionElem
+PartitionHashBound
 PartitionKey
 PartitionListValue
+PartitionPruneCombineOp
+PartitionPruneContext
+PartitionPruneInfo
+PartitionPruneState
+PartitionPruneStep
+PartitionPruneStepCombine
+PartitionPruneStepOp
+PartitionPruningData
 PartitionRangeBound
 PartitionRangeDatum
 PartitionRangeDatumKind
+PartitionScheme
 PartitionSpec
-PartitionedChildRelInfo
+PartitionTupleRouting
+PartitionwiseAggregateType
 PasswordType
 Path
 PathClauseUsage
@@ -1664,6 +1761,7 @@ Pool
 PopulateArrayContext
 PopulateArrayState
 PopulateRecordCache
+PopulateRecordsetCache
 PopulateRecordsetState
 Port
 Portal
@@ -1711,6 +1809,7 @@ ProjectionPath
 ProtocolVersion
 PrsStorage
 PruneState
+PruneStepResult
 PsqlScanCallbacks
 PsqlScanQuoteType
 PsqlScanResult
@@ -1775,7 +1874,6 @@ RangeBox
 RangeFunction
 RangeIOData
 RangeQueryClause
-RangeRemapInfo
 RangeSubselect
 RangeTableFunc
 RangeTableFuncCol
@@ -1788,6 +1886,7 @@ RangeVar
 RangeVarGetRelidCallback
 RawColumnDefault
 RawStmt
+ReInitializeDSMForeignScan_function
 ReScanForeignScan_function
 ReadBufPtrType
 ReadBufferMode
@@ -1799,8 +1898,7 @@ RecheckForeignScan_function
 RecordCacheEntry
 RecordCompareData
 RecordIOData
-RecordRemapInfo
-RecordTypmodMap
+RecoveryLockListsEntry
 RecoveryTargetAction
 RecoveryTargetType
 RectBox
@@ -1845,6 +1943,7 @@ RenameStmt
 ReopenPtrType
 ReorderBuffer
 ReorderBufferApplyChangeCB
+ReorderBufferApplyTruncateCB
 ReorderBufferBeginCB
 ReorderBufferChange
 ReorderBufferCommitCB
@@ -1860,6 +1959,7 @@ ReorderBufferTupleCidEnt
 ReorderBufferTupleCidKey
 ReorderTuple
 RepOriginId
+ReparameterizeForeignPathByChild_function
 ReplaceVarsFromTargetList_context
 ReplaceVarsNoMatchOption
 ReplicaIdentityStmt
@@ -1931,6 +2031,7 @@ SID_AND_ATTRIBUTES
 SID_IDENTIFIER_AUTHORITY
 SID_NAME_USE
 SISeg
+SIZE_T
 SMgrRelation
 SMgrRelationData
 SOCKADDR
@@ -1985,6 +2086,7 @@ SeqScanState
 SeqTable
 SeqTableData
 SerCommitSeqNo
+SerializedReindexState
 SerializedSnapshotData
 Session
 SessionBackupState
@@ -2007,6 +2109,8 @@ SharedBitmapState
 SharedDependencyObjectType
 SharedDependencyType
 SharedExecutorInstrumentation
+SharedFileSet
+SharedHashInfo
 SharedInvalCatalogMsg
 SharedInvalCatcacheMsg
 SharedInvalRelcacheMsg
@@ -2014,6 +2118,16 @@ SharedInvalRelmapMsg
 SharedInvalSmgrMsg
 SharedInvalSnapshotMsg
 SharedInvalidationMessage
+SharedRecordTableEntry
+SharedRecordTableKey
+SharedRecordTypmodRegistry
+SharedSortInfo
+SharedTuplestore
+SharedTuplestoreAccessor
+SharedTuplestoreChunk
+SharedTuplestoreParticipant
+SharedTypmodTableEntry
+Sharedsort
 ShellTypeInfo
 ShippableCacheEntry
 ShippableCacheKey
@@ -2058,6 +2172,7 @@ Sort
 SortBy
 SortByDir
 SortByNulls
+SortCoordinate
 SortGroupClause
 SortItem
 SortPath
@@ -2112,6 +2227,7 @@ StdAnalyzeData
 StdRdOptions
 Step
 StopList
+StopWorkersData
 StrategyNumber
 StreamCtl
 StringInfo
@@ -2149,6 +2265,7 @@ TBlockState
 TIDBitmap
 TOKEN_DEFAULT_DACL
 TOKEN_INFORMATION_CLASS
+TOKEN_PRIVILEGES
 TOKEN_USER
 TParser
 TParserCharTest
@@ -2201,6 +2318,7 @@ TableSpaceOpts
 TablespaceList
 TablespaceListCell
 TapeBlockTrailer
+TapeShare
 TarMethodData
 TarMethodFile
 TargetEntry
@@ -2256,6 +2374,7 @@ TransformJsonStringValuesState
 TransitionCaptureState
 TrgmArc
 TrgmArcInfo
+TrgmBound
 TrgmColor
 TrgmColorInfo
 TrgmNFA
@@ -2287,9 +2406,10 @@ TupleHashEntryData
 TupleHashIterator
 TupleHashTable
 TupleQueueReader
-TupleRemapClass
-TupleRemapInfo
 TupleTableSlot
+TuplesortInstrumentation
+TuplesortMethod
+TuplesortSpaceType
 Tuplesortstate
 Tuplestorestate
 TwoPhaseCallback
@@ -2313,13 +2433,13 @@ TypeCat
 TypeFuncClass
 TypeInfo
 TypeName
+U
 U32
 U8
 UChar
 UCharIterator
 UCollator
 UConverter
-UEnumeration
 UErrorCode
 UINT
 ULARGE_INTEGER
@@ -2343,6 +2463,7 @@ UserOpts
 VacAttrStats
 VacAttrStatsP
 VacuumParams
+VacuumRelation
 VacuumStmt
 Value
 ValuesScan
@@ -2363,6 +2484,7 @@ VariableShowStmt
 VariableSpace
 VariableStatData
 VariableSubstituteHook
+VersionedQuery
 Vfd
 ViewCheckOption
 ViewOptions
@@ -2487,6 +2609,8 @@ XmlTableBuilderData
 YYLTYPE
 YYSTYPE
 YY_BUFFER_STATE
+ZipfCache
+ZipfCell
 _SPI_connection
 _SPI_plan
 __AssignProcessToJobObject
@@ -2498,6 +2622,7 @@ __RegisterWaitForSingleObject
 __SetInformationJobObject
 _resultmap
 _stringlist
+abs
 acquireLocksOnSubLinks_context
 adjust_appendrel_attrs_context
 allocfunc
@@ -2537,9 +2662,11 @@ bgworker_main_type
 binaryheap
 binaryheap_comparator
 bitmapword
+bits16
 bits32
 bits8
-bool
+bloom_filter
+boolean
 brin_column_state
 bytea
 cached_re_str
@@ -2551,7 +2678,6 @@ check_network_data
 check_object_relabel_type
 check_password_hook_type
 check_ungrouped_columns_context
-chkpass
 chr
 clock_t
 cmpEntriesArg
@@ -2586,6 +2712,7 @@ deparse_expr_cxt
 deparse_namespace
 destructor
 dev_t
+digit
 directory_fctx
 disassembledLeaf
 dlist_head
@@ -2599,9 +2726,19 @@ dsa_area_pool
 dsa_area_span
 dsa_handle
 dsa_pointer
+dsa_pointer_atomic
 dsa_segment_header
 dsa_segment_index
 dsa_segment_map
+dshash_compare_function
+dshash_hash
+dshash_hash_function
+dshash_parameters
+dshash_partition
+dshash_table
+dshash_table_control
+dshash_table_handle
+dshash_table_item
 dsm_control_header
 dsm_control_item
 dsm_handle
@@ -2702,6 +2839,7 @@ hstoreUniquePairs_t
 hstoreUpgrade_t
 hyperLogLogState
 ifState
+ilist
 import_error_callback_arg
 indexed_tlist
 inet
@@ -2727,6 +2865,7 @@ intptr_t
 intvKEY
 itemIdSort
 itemIdSortData
+iterator
 jmp_buf
 join_search_hook_type
 json_aelem_action
@@ -2740,6 +2879,7 @@ lclTocEntry
 leafSegmentInfo
 line_t
 lineno_t
+list_qsort_comparator
 locale_t
 locate_agg_of_level_context
 locate_var_of_level_context
@@ -2792,6 +2932,7 @@ oidvector
 on_dsm_detach_callback
 on_exit_nicely_callback
 ossl_EVP_cipher_func
+other
 output_type
 pagetable_hash
 pagetable_iterator
@@ -2871,6 +3012,7 @@ pltcl_proc_desc
 pltcl_proc_key
 pltcl_proc_ptr
 pltcl_query_desc
+pointer
 pos_trgm
 post_parse_analyze_hook_type
 pqbool
@@ -2883,6 +3025,7 @@ printTextFormat
 printTextLineFormat
 printTextLineWrap
 printTextRule
+printfunc
 priv_map
 process_file_callback_t
 process_sublinks_context
@@ -2913,6 +3056,7 @@ rb_combiner
 rb_comparator
 rb_freefunc
 reduce_outer_joins_state
+reference
 regex_arc_t
 regex_t
 regexp
@@ -2992,6 +3136,7 @@ spgxlogVacuumLeaf
 spgxlogVacuumRedirect
 spgxlogVacuumRoot
 split_pathtarget_context
+split_pathtarget_item
 sql_error_callback_arg
 sqlparseInfo
 sqlparseState
@@ -3005,6 +3150,7 @@ stmtCacheEntry
 storeInfo
 storeRes_func
 stream_stop_callback
+string
 substitute_actual_parameters_context
 substitute_actual_srf_parameters_context
 substitute_multiple_relids_context
@@ -3031,11 +3177,14 @@ trgm_mb_char
 trivalue
 tsKEY
 ts_db_fctx
+ts_parserstate
+ts_tokenizer
 ts_tokentype
 tsearch_readline_state
 tuplehash_hash
 tuplehash_iterator
 txid
+type
 tzEntry
 u1byte
 u4byte
@@ -3049,6 +3198,7 @@ uint16_t
 uint32
 uint32_t
 uint64
+uint64_t
 uint8
 uint8_t
 uintptr_t
@@ -3080,6 +3230,7 @@ walrcv_disconnect_fn
 walrcv_endstreaming_fn
 walrcv_exec_fn
 walrcv_get_conninfo_fn
+walrcv_get_senderinfo_fn
 walrcv_identify_system_fn
 walrcv_readtimelinehistoryfile_fn
 walrcv_receive_fn
@@ -3092,6 +3243,7 @@ win32_pthread
 wint_t
 worker_state
 worktable
+wrap
 xl_brin_createidx
 xl_brin_desummarize
 xl_brin_insert
@@ -3138,6 +3290,7 @@ xl_heap_lock_updated
 xl_heap_multi_insert
 xl_heap_new_cid
 xl_heap_rewrite_mapping
+xl_heap_truncate
 xl_heap_update
 xl_heap_visible
 xl_invalid_page
@@ -3168,6 +3321,7 @@ xl_xact_invals
 xl_xact_origin
 xl_xact_parsed_abort
 xl_xact_parsed_commit
+xl_xact_parsed_prepare
 xl_xact_relfilenodes
 xl_xact_subxacts
 xl_xact_twophase

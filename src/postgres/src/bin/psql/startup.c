@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2018, PostgreSQL Global Development Group
  *
  * src/bin/psql/startup.c
  */
@@ -101,7 +101,6 @@ main(int argc, char *argv[])
 	int			successResult;
 	bool		have_password = false;
 	char		password[100];
-	char	   *password_prompt = NULL;
 	bool		new_pass;
 
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("psql"));
@@ -165,6 +164,10 @@ main(int argc, char *argv[])
 	SetVariable(pset.vars, "VERSION_NAME", PG_VERSION);
 	SetVariable(pset.vars, "VERSION_NUM", CppAsString2(PG_VERSION_NUM));
 
+	/* Initialize variables for last error */
+	SetVariable(pset.vars, "LAST_ERROR_MESSAGE", "");
+	SetVariable(pset.vars, "LAST_ERROR_SQLSTATE", "00000");
+
 	/* Default values for variables (that don't match the result of \unset) */
 	SetVariableBool(pset.vars, "AUTOCOMMIT");
 	SetVariable(pset.vars, "PROMPT1", DEFAULT_PROMPT1);
@@ -201,15 +204,14 @@ main(int argc, char *argv[])
 		pset.popt.topt.recordSep.separator_zero = false;
 	}
 
-	if (options.username == NULL)
-		password_prompt = pg_strdup(_("Password: "));
-	else
-		password_prompt = psprintf(_("Password for user %s: "),
-								   options.username);
-
 	if (pset.getPassword == TRI_YES)
 	{
-		simple_prompt(password_prompt, password, sizeof(password), false);
+		/*
+		 * We can't be sure yet of the username that will be used, so don't
+		 * offer a potentially wrong one.  Typical uses of this option are
+		 * noninteractive anyway.
+		 */
+		simple_prompt("Password: ", password, sizeof(password), false);
 		have_password = true;
 	}
 
@@ -248,14 +250,27 @@ main(int argc, char *argv[])
 			!have_password &&
 			pset.getPassword != TRI_NO)
 		{
+			/*
+			 * Before closing the old PGconn, extract the user name that was
+			 * actually connected with --- it might've come out of a URI or
+			 * connstring "database name" rather than options.username.
+			 */
+			const char *realusername = PQuser(pset.db);
+			char	   *password_prompt;
+
+			if (realusername && realusername[0])
+				password_prompt = psprintf(_("Password for user %s: "),
+										   realusername);
+			else
+				password_prompt = pg_strdup(_("Password: "));
 			PQfinish(pset.db);
+
 			simple_prompt(password_prompt, password, sizeof(password), false);
+			free(password_prompt);
 			have_password = true;
 			new_pass = true;
 		}
 	} while (new_pass);
-
-	free(password_prompt);
 
 	if (PQstatus(pset.db) == CONNECTION_BAD)
 	{

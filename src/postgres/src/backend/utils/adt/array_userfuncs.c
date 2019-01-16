@@ -3,7 +3,7 @@
  * array_userfuncs.c
  *	  Misc user-visible array support functions
  *
- * Copyright (c) 2003-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/adt/array_userfuncs.c
@@ -13,6 +13,7 @@
 #include "postgres.h"
 
 #include "catalog/pg_type.h"
+#include "common/int.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -118,15 +119,11 @@ array_append(PG_FUNCTION_ARGS)
 	if (eah->ndims == 1)
 	{
 		/* append newelem */
-		int			ub;
-
 		lb = eah->lbound;
 		dimv = eah->dims;
-		ub = dimv[0] + lb[0] - 1;
-		indx = ub + 1;
 
-		/* overflow? */
-		if (indx < ub)
+		/* index of added elem is at lb[0] + (dimv[0] - 1) + 1 */
+		if (pg_add_s32_overflow(lb[0], dimv[0], &indx))
 			ereport(ERROR,
 					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 					 errmsg("integer out of range")));
@@ -176,11 +173,9 @@ array_prepend(PG_FUNCTION_ARGS)
 	{
 		/* prepend newelem */
 		lb = eah->lbound;
-		indx = lb[0] - 1;
 		lb0 = lb[0];
 
-		/* overflow? */
-		if (indx > lb[0])
+		if (pg_sub_s32_overflow(lb0, 1, &indx))
 			ereport(ERROR,
 					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 					 errmsg("integer out of range")));

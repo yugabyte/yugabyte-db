@@ -8,7 +8,7 @@
  *	  Structs that need to be client-visible are in pqcomm.h.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/libpq/libpq-be.h
@@ -194,22 +194,88 @@ typedef struct Port
 
 #ifdef USE_SSL
 /*
+ *	Hardcoded DH parameters, used in ephemeral DH keying.  (See also
+ *	README.SSL for more details on EDH.)
+ *
+ *	If you want to create your own hardcoded DH parameters
+ *	for fun and profit, review "Assigned Number for SKIP
+ *	Protocols" (http://www.skip-vpn.org/spec/numbers.html)
+ *	for suggestions.
+ */
+#define FILE_DH2048 \
+"-----BEGIN DH PARAMETERS-----\n\
+MIIBCAKCAQEA9kJXtwh/CBdyorrWqULzBej5UxE5T7bxbrlLOCDaAadWoxTpj0BV\n\
+89AHxstDqZSt90xkhkn4DIO9ZekX1KHTUPj1WV/cdlJPPT2N286Z4VeSWc39uK50\n\
+T8X8dryDxUcwYc58yWb/Ffm7/ZFexwGq01uejaClcjrUGvC/RgBYK+X0iP1YTknb\n\
+zSC0neSRBzZrM2w4DUUdD3yIsxx8Wy2O9vPJI8BD8KVbGI2Ou1WMuF040zT9fBdX\n\
+Q6MdGGzeMyEstSr/POGxKUAYEY18hKcKctaGxAMZyAcpesqVDNmWn6vQClCbAkbT\n\
+CD1mpF1Bn5x8vYlLIhkmuquiXsNV6TILOwIBAg==\n\
+-----END DH PARAMETERS-----\n"
+
+/*
  * These functions are implemented by the glue code specific to each
  * SSL implementation (e.g. be-secure-openssl.c)
  */
+
+/*
+ * Initialize global SSL context.
+ *
+ * If isServerStart is true, report any errors as FATAL (so we don't return).
+ * Otherwise, log errors at LOG level and return -1 to indicate trouble,
+ * preserving the old SSL state if any.  Returns 0 if OK.
+ */
 extern int	be_tls_init(bool isServerStart);
+
+/*
+ * Destroy global SSL context, if any.
+ */
 extern void be_tls_destroy(void);
+
+/*
+ * Attempt to negotiate SSL connection.
+ */
 extern int	be_tls_open_server(Port *port);
+
+/*
+ * Close SSL connection.
+ */
 extern void be_tls_close(Port *port);
+
+/*
+ * Read data from a secure connection.
+ */
 extern ssize_t be_tls_read(Port *port, void *ptr, size_t len, int *waitfor);
+
+/*
+ * Write data to a secure connection.
+ */
 extern ssize_t be_tls_write(Port *port, void *ptr, size_t len, int *waitfor);
 
+/*
+ * Return information about the SSL connection.
+ */
 extern int	be_tls_get_cipher_bits(Port *port);
 extern bool be_tls_get_compression(Port *port);
-extern void be_tls_get_version(Port *port, char *ptr, size_t len);
-extern void be_tls_get_cipher(Port *port, char *ptr, size_t len);
+extern const char *be_tls_get_version(Port *port);
+extern const char *be_tls_get_cipher(Port *port);
 extern void be_tls_get_peerdn_name(Port *port, char *ptr, size_t len);
+
+/*
+ * Get the server certificate hash for SCRAM channel binding type
+ * tls-server-end-point.
+ *
+ * The result is a palloc'd hash of the server certificate with its
+ * size, and NULL if there is no certificate available.
+ *
+ * This is not supported with old versions of OpenSSL that don't have
+ * the X509_get_signature_nid() function.
+ */
+#if defined(USE_OPENSSL) && defined(HAVE_X509_GET_SIGNATURE_NID)
+#define HAVE_BE_TLS_GET_CERTIFICATE_HASH
+extern char *be_tls_get_certificate_hash(Port *port, size_t *len);
 #endif
+
+#endif	/* USE_SSL */
 
 extern ProtocolVersion FrontendProtocol;
 

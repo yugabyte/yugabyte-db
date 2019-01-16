@@ -3,6 +3,7 @@
 #include "postgres_fe.h"
 
 #include "extern.h"
+#include "pgtypes.h"
 
 /* Return value is zero-filled. */
 char *
@@ -12,7 +13,7 @@ pgtypes_alloc(long size)
 
 	if (!new)
 		errno = ENOMEM;
-	return (new);
+	return new;
 }
 
 char *
@@ -22,7 +23,7 @@ pgtypes_strdup(const char *str)
 
 	if (!new)
 		errno = ENOMEM;
-	return (new);
+	return new;
 }
 
 int
@@ -42,10 +43,8 @@ pgtypes_fmt_replace(union un_fmt_comb replace_val, int replace_type, char **outp
 			i = strlen(replace_val.str_val);
 			if (i + 1 <= *pstr_len)
 			{
-				/*
-				 * copy over i + 1 bytes, that includes the tailing terminator
-				 */
-				strncpy(*output, replace_val.str_val, i + 1);
+				/* include trailing terminator in what we copy */
+				memcpy(*output, replace_val.str_val, i + 1);
 				*pstr_len -= i;
 				*output += i;
 				if (replace_type == PGTYPES_TYPE_STRING_MALLOCED)
@@ -111,7 +110,7 @@ pgtypes_fmt_replace(union un_fmt_comb replace_val, int replace_type, char **outp
 						break;
 				}
 
-				if (i < 0)
+				if (i < 0 || i >= PGTYPES_FMT_NUM_MAX_DIGITS)
 				{
 					free(t);
 					return -1;
@@ -137,4 +136,13 @@ pgtypes_fmt_replace(union un_fmt_comb replace_val, int replace_type, char **outp
 			break;
 	}
 	return 0;
+}
+
+/* Functions declared in pgtypes.h. */
+
+/* Just frees memory (mostly needed for Windows) */
+void
+PGTYPESchar_free(char *ptr)
+{
+	free(ptr);
 }

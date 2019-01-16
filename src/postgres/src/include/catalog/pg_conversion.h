@@ -1,18 +1,17 @@
 /*-------------------------------------------------------------------------
  *
  * pg_conversion.h
- *	  definition of the system "conversion" relation (pg_conversion)
- *	  along with the relation's initial contents.
+ *	  definition of the "conversion" system catalog (pg_conversion)
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_conversion.h
  *
  * NOTES
- *	  the genbki.pl script reads this file and generates .bki
- *	  information from the DATA() statements.
+ *	  The Catalog.pm module reads this file and derives schema
+ *	  information.
  *
  *-------------------------------------------------------------------------
  */
@@ -20,6 +19,9 @@
 #define PG_CONVERSION_H
 
 #include "catalog/genbki.h"
+#include "catalog/pg_conversion_d.h"
+
+#include "catalog/objectaddress.h"
 
 /* ----------------------------------------------------------------
  *		pg_conversion definition.
@@ -32,12 +34,10 @@
  *	conforencoding		FOR encoding id
  *	contoencoding		TO encoding id
  *	conproc				OID of the conversion proc
- *	condefault			TRUE if this is a default conversion
+ *	condefault			true if this is a default conversion
  * ----------------------------------------------------------------
  */
-#define ConversionRelationId  2607
-
-CATALOG(pg_conversion,2607)
+CATALOG(pg_conversion,2607,ConversionRelationId)
 {
 	NameData	conname;
 	Oid			connamespace;
@@ -55,23 +55,13 @@ CATALOG(pg_conversion,2607)
  */
 typedef FormData_pg_conversion *Form_pg_conversion;
 
-/* ----------------
- *		compiler constants for pg_conversion
- * ----------------
- */
 
-#define Natts_pg_conversion				7
-#define Anum_pg_conversion_conname		1
-#define Anum_pg_conversion_connamespace 2
-#define Anum_pg_conversion_conowner		3
-#define Anum_pg_conversion_conforencoding		4
-#define Anum_pg_conversion_contoencoding		5
-#define Anum_pg_conversion_conproc		6
-#define Anum_pg_conversion_condefault	7
-
-/* ----------------
- * initial contents of pg_conversion
- * ---------------
- */
+extern ObjectAddress ConversionCreate(const char *conname, Oid connamespace,
+				 Oid conowner,
+				 int32 conforencoding, int32 contoencoding,
+				 Oid conproc, bool def);
+extern void RemoveConversionById(Oid conversionOid);
+extern Oid FindDefaultConversion(Oid connamespace, int32 for_encoding,
+					  int32 to_encoding);
 
 #endif							/* PG_CONVERSION_H */

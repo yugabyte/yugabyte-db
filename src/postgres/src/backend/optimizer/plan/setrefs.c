@@ -4,7 +4,7 @@
  *	  Post-processing of a completed plan tree: fix references to subplan
  *	  vars, compute regproc values for operators, etc
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -104,6 +104,7 @@ static Node *fix_scan_expr_mutator(Node *node, fix_scan_expr_context *context);
 static bool fix_scan_expr_walker(Node *node, fix_scan_expr_context *context);
 static void set_join_references(PlannerInfo *root, Join *join, int rtoffset);
 static void set_upper_references(PlannerInfo *root, Plan *plan, int rtoffset);
+static void set_param_references(PlannerInfo *root, Plan *plan);
 static Node *convert_combining_aggrefs(Node *node, void *context);
 static void set_dummy_tlist_references(Plan *plan, int rtoffset);
 static indexed_tlist *build_tlist_index(List *tlist);
@@ -628,7 +629,10 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 
 		case T_Gather:
 		case T_GatherMerge:
-			set_upper_references(root, plan, rtoffset);
+			{
+				set_upper_references(root, plan, rtoffset);
+				set_param_references(root, plan);
+			}
 			break;
 
 		case T_Hash:
@@ -1395,12 +1399,6 @@ fix_expr_common(PlannerInfo *root, Node *node)
 		record_plan_function_dependency(root,
 										((ScalarArrayOpExpr *) node)->opfuncid);
 	}
-	else if (IsA(node, ArrayCoerceExpr))
-	{
-		if (OidIsValid(((ArrayCoerceExpr *) node)->elemfuncid))
-			record_plan_function_dependency(root,
-											((ArrayCoerceExpr *) node)->elemfuncid);
-	}
 	else if (IsA(node, Const))
 	{
 		Const	   *con = (Const *) node;
@@ -1781,6 +1779,51 @@ set_upper_references(PlannerInfo *root, Plan *plan, int rtoffset)
 					   rtoffset);
 
 	pfree(subplan_itlist);
+}
+
+/*
+ * set_param_references
+ *	  Initialize the initParam list in Gather or Gather merge node such that
+ *	  it contains reference of all the params that needs to be evaluated
+ *	  before execution of the node.  It contains the initplan params that are
+ *	  being passed to the plan nodes below it.
+ */
+static void
+set_param_references(PlannerInfo *root, Plan *plan)
+{
+	Assert(IsA(plan, Gather) ||IsA(plan, GatherMerge));
+
+	if (plan->lefttree->extParam)
+	{
+		PlannerInfo *proot;
+		Bitmapset  *initSetParam = NULL;
+		ListCell   *l;
+
+		for (proot = root; proot != NULL; proot = proot->parent_root)
+		{
+			foreach(l, proot->init_plans)
+			{
+				SubPlan    *initsubplan = (SubPlan *) lfirst(l);
+				ListCell   *l2;
+
+				foreach(l2, initsubplan->setParam)
+				{
+					initSetParam = bms_add_member(initSetParam, lfirst_int(l2));
+				}
+			}
+		}
+
+		/*
+		 * Remember the list of all external initplan params that are used by
+		 * the children of Gather or Gather merge node.
+		 */
+		if (IsA(plan, Gather))
+			((Gather *) plan)->initParam =
+				bms_intersect(plan->lefttree->extParam, initSetParam);
+		else
+			((GatherMerge *) plan)->initParam =
+				bms_intersect(plan->lefttree->extParam, initSetParam);
+	}
 }
 
 /*
@@ -2269,8 +2312,6 @@ fix_join_expr_mutator(Node *node, fix_join_expr_context *context)
 		/* If not supplied by input plans, evaluate the contained expr */
 		return fix_join_expr_mutator((Node *) phv->phexpr, context);
 	}
-	if (IsA(node, Param))
-		return fix_param_node(context->root, (Param *) node);
 	/* Try matching more complex expressions too, if tlists have any */
 	if (context->outer_itlist && context->outer_itlist->has_non_vars)
 	{
@@ -2288,6 +2329,9 @@ fix_join_expr_mutator(Node *node, fix_join_expr_context *context)
 		if (newvar)
 			return (Node *) newvar;
 	}
+	/* Special cases (apply only AFTER failing to match to lower tlist) */
+	if (IsA(node, Param))
+		return fix_param_node(context->root, (Param *) node);
 	fix_expr_common(context->root, node);
 	return expression_tree_mutator(node,
 								   fix_join_expr_mutator,
@@ -2375,6 +2419,16 @@ fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
 		/* If not supplied by input plan, evaluate the contained expr */
 		return fix_upper_expr_mutator((Node *) phv->phexpr, context);
 	}
+	/* Try matching more complex expressions too, if tlist has any */
+	if (context->subplan_itlist->has_non_vars)
+	{
+		newvar = search_indexed_tlist_for_non_var((Expr *) node,
+												  context->subplan_itlist,
+												  context->newvarno);
+		if (newvar)
+			return (Node *) newvar;
+	}
+	/* Special cases (apply only AFTER failing to match to lower tlist) */
 	if (IsA(node, Param))
 		return fix_param_node(context->root, (Param *) node);
 	if (IsA(node, Aggref))
@@ -2398,15 +2452,6 @@ fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
 			}
 		}
 		/* If no match, just fall through to process it normally */
-	}
-	/* Try matching more complex expressions too, if tlist has any */
-	if (context->subplan_itlist->has_non_vars)
-	{
-		newvar = search_indexed_tlist_for_non_var((Expr *) node,
-												  context->subplan_itlist,
-												  context->newvarno);
-		if (newvar)
-			return (Node *) newvar;
 	}
 	fix_expr_common(context->root, node);
 	return expression_tree_mutator(node,

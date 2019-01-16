@@ -3,7 +3,7 @@
  * amapi.h
  *	  API for Postgres index access methods.
  *
- * Copyright (c) 2015-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2015-2018, PostgreSQL Global Development Group
  *
  * src/include/access/amapi.h
  *
@@ -50,7 +50,8 @@ typedef enum IndexAMProperty
 	AMPROP_CAN_ORDER,			/* AM properties */
 	AMPROP_CAN_UNIQUE,
 	AMPROP_CAN_MULTI_COL,
-	AMPROP_CAN_EXCLUDE
+	AMPROP_CAN_EXCLUDE,
+	AMPROP_CAN_INCLUDE
 } IndexAMProperty;
 
 
@@ -208,8 +209,16 @@ typedef struct IndexAmRoutine
 	bool		ampredlocks;
 	/* does AM support parallel scan? */
 	bool		amcanparallel;
+	/* does AM support columns included with clause INCLUDE? */
+	bool		amcaninclude;
 	/* type of data stored in index, or InvalidOid if variable */
 	Oid			amkeytype;
+
+	/*
+	 * If you add new properties to either the above or the below lists, then
+	 * they should also (usually) be exposed via the property API (see
+	 * IndexAMProperty at the top of the file, and utils/adt/amutils.c).
+	 */
 
 	/* interface functions */
 	ambuild_function ambuild;

@@ -4,7 +4,7 @@
  *	  POSTGRES disk block definitions.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/block.h
@@ -22,7 +22,7 @@
  * contains exactly one disk block).  the blocks are numbered
  * sequentially, 0 to 0xFFFFFFFE.
  *
- * InvalidBlockNumber is the same thing as P_NEW in buf.h.
+ * InvalidBlockNumber is the same thing as P_NEW in bufmgr.h.
  *
  * the access methods, the buffer manager and the storage manager are
  * more or less the only pieces of code that should be accessing disk

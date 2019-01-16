@@ -620,7 +620,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 		if (target->resno > 0)
 		{
 			Form_pg_attribute attr;
-			attr = tupdesc->attrs[target->resno - 1];
+			attr = TupleDescAttr(tupdesc, target->resno - 1);
 			/* Ignore dropped attributes */
 			if (attr->attisdropped)
 			{
@@ -652,15 +652,15 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 		for (int16_t i = 0; i < tupdesc->natts; i++)
 		{
 			/* Ignore dropped attributes */
-			if (tupdesc->attrs[i]->attisdropped)
+			if (TupleDescAttr(tupdesc, i)->attisdropped)
 			{
 				continue;
 			}
 
-			YBCPgTypeAttrs type_attrs = {tupdesc->attrs[i]->atttypmod};
+			YBCPgTypeAttrs type_attrs = { TupleDescAttr(tupdesc, i)->atttypmod };
 			YBCPgExpr      expr       = YBCNewColumnRef(ybc_state->handle,
 			                                            i + 1,
-			                                            tupdesc->attrs[i]->atttypid,
+														TupleDescAttr(tupdesc, i)->atttypid,
 			                                            &type_attrs);
 			HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
 			                                                 expr),

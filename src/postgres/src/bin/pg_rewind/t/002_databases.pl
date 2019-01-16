@@ -1,7 +1,10 @@
 use strict;
 use warnings;
 use TestLib;
-use Test::More tests => 4;
+use Test::More tests => 6;
+
+use FindBin;
+use lib $FindBin::RealBin;
 
 use RewindTest;
 
@@ -9,13 +12,13 @@ sub run_test
 {
 	my $test_mode = shift;
 
-	RewindTest::setup_cluster();
+	RewindTest::setup_cluster($test_mode, ['-g']);
 	RewindTest::start_master();
 
 	# Create a database in master.
 	master_psql('CREATE DATABASE inmaster');
 
-	RewindTest::create_standby();
+	RewindTest::create_standby($test_mode);
 
 	# Create another database, the creation is replicated to the standby
 	master_psql('CREATE DATABASE beforepromotion');
@@ -42,7 +45,18 @@ template1
 ),
 		'database names');
 
+	# Permissions on PGDATA should have group permissions
+  SKIP:
+	{
+		skip "unix-style permissions not supported on Windows", 1
+		  if ($windows_os);
+
+		ok(check_mode_recursive($node_master->data_dir(), 0750, 0640),
+			'check PGDATA permissions');
+	}
+
 	RewindTest::clean_rewind_test();
+	return;
 }
 
 # Run the test in both modes.

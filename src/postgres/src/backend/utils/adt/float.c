@@ -3,7 +3,7 @@
  * float.c
  *	  Functions for the built-in floating-point types.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -20,6 +20,7 @@
 #include <limits.h>
 
 #include "catalog/pg_type.h"
+#include "common/int.h"
 #include "libpq/pqformat.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -42,10 +43,6 @@ static const uint32 nan[2] = {0xffffffff, 0x7fffffff};
 
 #define NAN (*(const double *) nan)
 #endif
-
-/* not sure what the following should be, but better to make it over-sufficient */
-#define MAXFLOATWIDTH	64
-#define MAXDOUBLEWIDTH	128
 
 /*
  * check to see if a float4/8 val has underflowed or overflowed
@@ -359,18 +356,18 @@ Datum
 float4out(PG_FUNCTION_ARGS)
 {
 	float4		num = PG_GETARG_FLOAT4(0);
-	char	   *ascii = (char *) palloc(MAXFLOATWIDTH + 1);
+	char	   *ascii;
 
 	if (isnan(num))
-		PG_RETURN_CSTRING(strcpy(ascii, "NaN"));
+		PG_RETURN_CSTRING(pstrdup("NaN"));
 
 	switch (is_infinite(num))
 	{
 		case 1:
-			strcpy(ascii, "Infinity");
+			ascii = pstrdup("Infinity");
 			break;
 		case -1:
-			strcpy(ascii, "-Infinity");
+			ascii = pstrdup("-Infinity");
 			break;
 		default:
 			{
@@ -379,7 +376,7 @@ float4out(PG_FUNCTION_ARGS)
 				if (ndig < 1)
 					ndig = 1;
 
-				snprintf(ascii, MAXFLOATWIDTH + 1, "%.*g", ndig, num);
+				ascii = psprintf("%.*g", ndig, num);
 			}
 	}
 
@@ -595,18 +592,18 @@ float8out(PG_FUNCTION_ARGS)
 char *
 float8out_internal(double num)
 {
-	char	   *ascii = (char *) palloc(MAXDOUBLEWIDTH + 1);
+	char	   *ascii;
 
 	if (isnan(num))
-		return strcpy(ascii, "NaN");
+		return pstrdup("NaN");
 
 	switch (is_infinite(num))
 	{
 		case 1:
-			strcpy(ascii, "Infinity");
+			ascii = pstrdup("Infinity");
 			break;
 		case -1:
-			strcpy(ascii, "-Infinity");
+			ascii = pstrdup("-Infinity");
 			break;
 		default:
 			{
@@ -615,7 +612,7 @@ float8out_internal(double num)
 				if (ndig < 1)
 					ndig = 1;
 
-				snprintf(ascii, MAXDOUBLEWIDTH + 1, "%.*g", ndig, num);
+				ascii = psprintf("%.*g", ndig, num);
 			}
 	}
 
@@ -1179,6 +1176,144 @@ btfloat84cmp(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(float8_cmp_internal(arg1, arg2));
 }
 
+/*
+ * in_range support function for float8.
+ *
+ * Note: we needn't supply a float8_float4 variant, as implicit coercion
+ * of the offset value takes care of that scenario just as well.
+ */
+Datum
+in_range_float8_float8(PG_FUNCTION_ARGS)
+{
+	float8		val = PG_GETARG_FLOAT8(0);
+	float8		base = PG_GETARG_FLOAT8(1);
+	float8		offset = PG_GETARG_FLOAT8(2);
+	bool		sub = PG_GETARG_BOOL(3);
+	bool		less = PG_GETARG_BOOL(4);
+	float8		sum;
+
+	/*
+	 * Reject negative or NaN offset.  Negative is per spec, and NaN is
+	 * because appropriate semantics for that seem non-obvious.
+	 */
+	if (isnan(offset) || offset < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
+				 errmsg("invalid preceding or following size in window function")));
+
+	/*
+	 * Deal with cases where val and/or base is NaN, following the rule that
+	 * NaN sorts after non-NaN (cf float8_cmp_internal).  The offset cannot
+	 * affect the conclusion.
+	 */
+	if (isnan(val))
+	{
+		if (isnan(base))
+			PG_RETURN_BOOL(true);	/* NAN = NAN */
+		else
+			PG_RETURN_BOOL(!less);	/* NAN > non-NAN */
+	}
+	else if (isnan(base))
+	{
+		PG_RETURN_BOOL(less);	/* non-NAN < NAN */
+	}
+
+	/*
+	 * Deal with infinite offset (necessarily +inf, at this point).  We must
+	 * special-case this because if base happens to be -inf, their sum would
+	 * be NaN, which is an overflow-ish condition we should avoid.
+	 */
+	if (isinf(offset))
+	{
+		PG_RETURN_BOOL(sub ? !less : less);
+	}
+
+	/*
+	 * Otherwise it should be safe to compute base +/- offset.  We trust the
+	 * FPU to cope if base is +/-inf or the true sum would overflow, and
+	 * produce a suitably signed infinity, which will compare properly against
+	 * val whether or not that's infinity.
+	 */
+	if (sub)
+		sum = base - offset;
+	else
+		sum = base + offset;
+
+	if (less)
+		PG_RETURN_BOOL(val <= sum);
+	else
+		PG_RETURN_BOOL(val >= sum);
+}
+
+/*
+ * in_range support function for float4.
+ *
+ * We would need a float4_float8 variant in any case, so we supply that and
+ * let implicit coercion take care of the float4_float4 case.
+ */
+Datum
+in_range_float4_float8(PG_FUNCTION_ARGS)
+{
+	float4		val = PG_GETARG_FLOAT4(0);
+	float4		base = PG_GETARG_FLOAT4(1);
+	float8		offset = PG_GETARG_FLOAT8(2);
+	bool		sub = PG_GETARG_BOOL(3);
+	bool		less = PG_GETARG_BOOL(4);
+	float8		sum;
+
+	/*
+	 * Reject negative or NaN offset.  Negative is per spec, and NaN is
+	 * because appropriate semantics for that seem non-obvious.
+	 */
+	if (isnan(offset) || offset < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
+				 errmsg("invalid preceding or following size in window function")));
+
+	/*
+	 * Deal with cases where val and/or base is NaN, following the rule that
+	 * NaN sorts after non-NaN (cf float8_cmp_internal).  The offset cannot
+	 * affect the conclusion.
+	 */
+	if (isnan(val))
+	{
+		if (isnan(base))
+			PG_RETURN_BOOL(true);	/* NAN = NAN */
+		else
+			PG_RETURN_BOOL(!less);	/* NAN > non-NAN */
+	}
+	else if (isnan(base))
+	{
+		PG_RETURN_BOOL(less);	/* non-NAN < NAN */
+	}
+
+	/*
+	 * Deal with infinite offset (necessarily +inf, at this point).  We must
+	 * special-case this because if base happens to be -inf, their sum would
+	 * be NaN, which is an overflow-ish condition we should avoid.
+	 */
+	if (isinf(offset))
+	{
+		PG_RETURN_BOOL(sub ? !less : less);
+	}
+
+	/*
+	 * Otherwise it should be safe to compute base +/- offset.  We trust the
+	 * FPU to cope if base is +/-inf or the true sum would overflow, and
+	 * produce a suitably signed infinity, which will compare properly against
+	 * val whether or not that's infinity.
+	 */
+	if (sub)
+		sum = base - offset;
+	else
+		sum = base + offset;
+
+	if (less)
+		PG_RETURN_BOOL(val <= sum);
+	else
+		PG_RETURN_BOOL(val >= sum);
+}
+
 
 /*
  *		===================
@@ -1219,16 +1354,28 @@ Datum
 dtoi4(PG_FUNCTION_ARGS)
 {
 	float8		num = PG_GETARG_FLOAT8(0);
-	int32		result;
 
-	/* 'Inf' is handled by INT_MAX */
-	if (num < INT_MIN || num > INT_MAX || isnan(num))
+	/*
+	 * Get rid of any fractional part in the input.  This is so we don't fail
+	 * on just-out-of-range values that would round into range.  Note
+	 * assumption that rint() will pass through a NaN or Inf unchanged.
+	 */
+	num = rint(num);
+
+	/*
+	 * Range check.  We must be careful here that the boundary values are
+	 * expressed exactly in the float domain.  We expect PG_INT32_MIN to be an
+	 * exact power of 2, so it will be represented exactly; but PG_INT32_MAX
+	 * isn't, and might get rounded off, so avoid using it.
+	 */
+	if (unlikely(num < (float8) PG_INT32_MIN ||
+				 num >= -((float8) PG_INT32_MIN) ||
+				 isnan(num)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
 
-	result = (int32) rint(num);
-	PG_RETURN_INT32(result);
+	PG_RETURN_INT32((int32) num);
 }
 
 
@@ -1240,12 +1387,27 @@ dtoi2(PG_FUNCTION_ARGS)
 {
 	float8		num = PG_GETARG_FLOAT8(0);
 
-	if (num < SHRT_MIN || num > SHRT_MAX || isnan(num))
+	/*
+	 * Get rid of any fractional part in the input.  This is so we don't fail
+	 * on just-out-of-range values that would round into range.  Note
+	 * assumption that rint() will pass through a NaN or Inf unchanged.
+	 */
+	num = rint(num);
+
+	/*
+	 * Range check.  We must be careful here that the boundary values are
+	 * expressed exactly in the float domain.  We expect PG_INT16_MIN to be an
+	 * exact power of 2, so it will be represented exactly; but PG_INT16_MAX
+	 * isn't, and might get rounded off, so avoid using it.
+	 */
+	if (unlikely(num < (float8) PG_INT16_MIN ||
+				 num >= -((float8) PG_INT16_MIN) ||
+				 isnan(num)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("smallint out of range")));
 
-	PG_RETURN_INT16((int16) rint(num));
+	PG_RETURN_INT16((int16) num);
 }
 
 
@@ -1281,12 +1443,27 @@ ftoi4(PG_FUNCTION_ARGS)
 {
 	float4		num = PG_GETARG_FLOAT4(0);
 
-	if (num < INT_MIN || num > INT_MAX || isnan(num))
+	/*
+	 * Get rid of any fractional part in the input.  This is so we don't fail
+	 * on just-out-of-range values that would round into range.  Note
+	 * assumption that rint() will pass through a NaN or Inf unchanged.
+	 */
+	num = rint(num);
+
+	/*
+	 * Range check.  We must be careful here that the boundary values are
+	 * expressed exactly in the float domain.  We expect PG_INT32_MIN to be an
+	 * exact power of 2, so it will be represented exactly; but PG_INT32_MAX
+	 * isn't, and might get rounded off, so avoid using it.
+	 */
+	if (unlikely(num < (float4) PG_INT32_MIN ||
+				 num >= -((float4) PG_INT32_MIN) ||
+				 isnan(num)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
 
-	PG_RETURN_INT32((int32) rint(num));
+	PG_RETURN_INT32((int32) num);
 }
 
 
@@ -1298,12 +1475,27 @@ ftoi2(PG_FUNCTION_ARGS)
 {
 	float4		num = PG_GETARG_FLOAT4(0);
 
-	if (num < SHRT_MIN || num > SHRT_MAX || isnan(num))
+	/*
+	 * Get rid of any fractional part in the input.  This is so we don't fail
+	 * on just-out-of-range values that would round into range.  Note
+	 * assumption that rint() will pass through a NaN or Inf unchanged.
+	 */
+	num = rint(num);
+
+	/*
+	 * Range check.  We must be careful here that the boundary values are
+	 * expressed exactly in the float domain.  We expect PG_INT16_MIN to be an
+	 * exact power of 2, so it will be represented exactly; but PG_INT16_MAX
+	 * isn't, and might get rounded off, so avoid using it.
+	 */
+	if (unlikely(num < (float4) PG_INT16_MIN ||
+				 num >= -((float4) PG_INT16_MIN) ||
+				 isnan(num)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("smallint out of range")));
 
-	PG_RETURN_INT16((int16) rint(num));
+	PG_RETURN_INT16((int16) num);
 }
 
 
@@ -1462,6 +1654,25 @@ dpow(PG_FUNCTION_ARGS)
 	float8		result;
 
 	/*
+	 * The POSIX spec says that NaN ^ 0 = 1, and 1 ^ NaN = 1, while all other
+	 * cases with NaN inputs yield NaN (with no error).  Many older platforms
+	 * get one or more of these cases wrong, so deal with them via explicit
+	 * logic rather than trusting pow(3).
+	 */
+	if (isnan(arg1))
+	{
+		if (isnan(arg2) || arg2 != 0.0)
+			PG_RETURN_FLOAT8(get_float8_nan());
+		PG_RETURN_FLOAT8(1.0);
+	}
+	if (isnan(arg2))
+	{
+		if (arg1 != 1.0)
+			PG_RETURN_FLOAT8(get_float8_nan());
+		PG_RETURN_FLOAT8(1.0);
+	}
+
+	/*
 	 * The SQL spec requires that we emit a particular SQLSTATE error code for
 	 * certain error conditions.  Specifically, we don't return a
 	 * divide-by-zero error code for 0 ^ -1.
@@ -1479,7 +1690,7 @@ dpow(PG_FUNCTION_ARGS)
 	 * pow() sets errno only on some platforms, depending on whether it
 	 * follows _IEEE_, _POSIX_, _XOPEN_, or _SVID_, so we try to avoid using
 	 * errno.  However, some platform/CPU combinations return errno == EDOM
-	 * and result == Nan for negative arg1 and very large arg2 (they must be
+	 * and result == NaN for negative arg1 and very large arg2 (they must be
 	 * using something different from our floor() test to decide it's
 	 * invalid).  Other platforms (HPPA) return errno == ERANGE and a large
 	 * (HUGE_VAL) but finite result to signal overflow.
@@ -3548,9 +3759,7 @@ width_bucket_float8(PG_FUNCTION_ARGS)
 			result = 0;
 		else if (operand >= bound2)
 		{
-			result = count + 1;
-			/* check for overflow */
-			if (result < count)
+			if (pg_add_s32_overflow(count, 1, &result))
 				ereport(ERROR,
 						(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 						 errmsg("integer out of range")));
@@ -3564,9 +3773,7 @@ width_bucket_float8(PG_FUNCTION_ARGS)
 			result = 0;
 		else if (operand <= bound2)
 		{
-			result = count + 1;
-			/* check for overflow */
-			if (result < count)
+			if (pg_add_s32_overflow(count, 1, &result))
 				ereport(ERROR,
 						(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 						 errmsg("integer out of range")));

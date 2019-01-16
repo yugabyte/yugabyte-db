@@ -5,7 +5,8 @@
 
 #define POSTGRES_ECPG_INTERNAL
 #include "postgres_fe.h"
-#include "pg_type.h"
+
+#include "catalog/pg_type_d.h"
 
 #include "ecpg-pthread-win32.h"
 #include "ecpgtype.h"
@@ -150,10 +151,10 @@ get_int_item(int lineno, void *var, enum ECPGttype vartype, int value)
 			break;
 		default:
 			ecpg_raise(lineno, ECPG_VAR_NOT_NUMERIC, ECPG_SQLSTATE_RESTRICTED_DATA_TYPE_ATTRIBUTE_VIOLATION, NULL);
-			return (false);
+			return false;
 	}
 
-	return (true);
+	return true;
 }
 
 static bool
@@ -195,7 +196,7 @@ set_int_item(int lineno, int *target, const void *var, enum ECPGttype vartype)
 			break;
 		default:
 			ecpg_raise(lineno, ECPG_VAR_NOT_NUMERIC, ECPG_SQLSTATE_RESTRICTED_DATA_TYPE_ATTRIBUTE_VIOLATION, NULL);
-			return (false);
+			return false;
 	}
 
 	return true;
@@ -217,7 +218,7 @@ get_char_item(int lineno, void *var, enum ECPGttype vartype, char *value, int va
 				(struct ECPGgeneric_varchar *) var;
 
 				if (varcharsize == 0)
-					strncpy(variable->arr, value, strlen(value));
+					memcpy(variable->arr, value, strlen(value));
 				else
 					strncpy(variable->arr, value, varcharsize);
 
@@ -228,17 +229,17 @@ get_char_item(int lineno, void *var, enum ECPGttype vartype, char *value, int va
 			break;
 		default:
 			ecpg_raise(lineno, ECPG_VAR_NOT_CHAR, ECPG_SQLSTATE_RESTRICTED_DATA_TYPE_ATTRIBUTE_VIOLATION, NULL);
-			return (false);
+			return false;
 	}
 
-	return (true);
+	return true;
 }
 
 #define RETURN_IF_NO_DATA	if (ntuples < 1) \
 				{ \
 					va_end(args); \
 					ecpg_raise(lineno, ECPG_NOT_FOUND, ECPG_SQLSTATE_NO_DATA, NULL); \
-					return (false); \
+					return false; \
 				}
 
 bool
@@ -265,7 +266,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 	if (!ECPGresult)
 	{
 		va_end(args);
-		return (false);
+		return false;
 	}
 
 	ntuples = PQntuples(ECPGresult);
@@ -274,7 +275,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 	{
 		ecpg_raise(lineno, ECPG_INVALID_DESCRIPTOR_INDEX, ECPG_SQLSTATE_INVALID_DESCRIPTOR_INDEX, NULL);
 		va_end(args);
-		return (false);
+		return false;
 	}
 
 	ecpg_log("ECPGget_desc: reading items for tuple %d\n", index);
@@ -333,7 +334,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 				if (!get_char_item(lineno, var, vartype, PQfname(ECPGresult, index), varcharsize))
 				{
 					va_end(args);
-					return (false);
+					return false;
 				}
 
 				ecpg_log("ECPGget_desc: NAME = %s\n", PQfname(ECPGresult, index));
@@ -343,7 +344,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 				if (!get_int_item(lineno, var, vartype, 1))
 				{
 					va_end(args);
-					return (false);
+					return false;
 				}
 
 				break;
@@ -352,7 +353,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 				if (!get_int_item(lineno, var, vartype, 0))
 				{
 					va_end(args);
-					return (false);
+					return false;
 				}
 
 				break;
@@ -361,7 +362,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 				if (!get_int_item(lineno, var, vartype, (PQfmod(ECPGresult, index) - VARHDRSZ) & 0xffff))
 				{
 					va_end(args);
-					return (false);
+					return false;
 				}
 
 				ecpg_log("ECPGget_desc: SCALE = %d\n", (PQfmod(ECPGresult, index) - VARHDRSZ) & 0xffff);
@@ -371,7 +372,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 				if (!get_int_item(lineno, var, vartype, PQfmod(ECPGresult, index) >> 16))
 				{
 					va_end(args);
-					return (false);
+					return false;
 				}
 
 				ecpg_log("ECPGget_desc: PRECISION = %d\n", PQfmod(ECPGresult, index) >> 16);
@@ -381,7 +382,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 				if (!get_int_item(lineno, var, vartype, PQfsize(ECPGresult, index)))
 				{
 					va_end(args);
-					return (false);
+					return false;
 				}
 
 				ecpg_log("ECPGget_desc: OCTET_LENGTH = %d\n", PQfsize(ECPGresult, index));
@@ -391,7 +392,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 				if (!get_int_item(lineno, var, vartype, PQfmod(ECPGresult, index) - VARHDRSZ))
 				{
 					va_end(args);
-					return (false);
+					return false;
 				}
 
 				ecpg_log("ECPGget_desc: LENGTH = %d\n", PQfmod(ECPGresult, index) - VARHDRSZ);
@@ -401,7 +402,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 				if (!get_int_item(lineno, var, vartype, ecpg_dynamic_type(PQftype(ECPGresult, index))))
 				{
 					va_end(args);
-					return (false);
+					return false;
 				}
 
 				ecpg_log("ECPGget_desc: TYPE = %d\n", ecpg_dynamic_type(PQftype(ECPGresult, index)));
@@ -411,7 +412,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 				if (!get_int_item(lineno, var, vartype, ecpg_dynamic_type_DDT(PQftype(ECPGresult, index))))
 				{
 					va_end(args);
-					return (false);
+					return false;
 				}
 
 				ecpg_log("ECPGget_desc: TYPE = %d\n", ecpg_dynamic_type_DDT(PQftype(ECPGresult, index)));
@@ -421,7 +422,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 				if (!get_int_item(lineno, var, vartype, PQntuples(ECPGresult)))
 				{
 					va_end(args);
-					return (false);
+					return false;
 				}
 
 				ecpg_log("ECPGget_desc: CARDINALITY = %d\n", PQntuples(ECPGresult));
@@ -462,7 +463,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 					if (!get_int_item(lineno, var, vartype, PQgetlength(ECPGresult, act_tuple, index)))
 					{
 						va_end(args);
-						return (false);
+						return false;
 					}
 					var = (char *) var + offset;
 					ecpg_log("ECPGget_desc: RETURNED[%d] = %d\n", act_tuple, PQgetlength(ECPGresult, act_tuple, index));
@@ -473,7 +474,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 				snprintf(type_str, sizeof(type_str), "%d", type);
 				ecpg_raise(lineno, ECPG_UNKNOWN_DESCRIPTOR_ITEM, ECPG_SQLSTATE_ECPG_INTERNAL_ERROR, type_str);
 				va_end(args);
-				return (false);
+				return false;
 		}
 
 		type = va_arg(args, enum ECPGdtype);
@@ -482,22 +483,45 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 	if (data_var.type != ECPGt_EORT)
 	{
 		struct statement stmt;
-		char	   *oldlocale;
-
-		/* Make sure we do NOT honor the locale for numeric input */
-		/* since the database gives the standard decimal point */
-		oldlocale = ecpg_strdup(setlocale(LC_NUMERIC, NULL), lineno);
-		setlocale(LC_NUMERIC, "C");
 
 		memset(&stmt, 0, sizeof stmt);
 		stmt.lineno = lineno;
+
+		/* Make sure we do NOT honor the locale for numeric input */
+		/* since the database gives the standard decimal point */
+		/* (see comments in execute.c) */
+#ifdef HAVE_USELOCALE
+		stmt.clocale = newlocale(LC_NUMERIC_MASK, "C", (locale_t) 0);
+		if (stmt.clocale != (locale_t) 0)
+			stmt.oldlocale = uselocale(stmt.clocale);
+#else
+#ifdef HAVE__CONFIGTHREADLOCALE
+		stmt.oldthreadlocale = _configthreadlocale(_ENABLE_PER_THREAD_LOCALE);
+#endif
+		stmt.oldlocale = ecpg_strdup(setlocale(LC_NUMERIC, NULL), lineno);
+		setlocale(LC_NUMERIC, "C");
+#endif
 
 		/* desperate try to guess something sensible */
 		stmt.connection = ecpg_get_connection(NULL);
 		ecpg_store_result(ECPGresult, index, &stmt, &data_var);
 
-		setlocale(LC_NUMERIC, oldlocale);
-		ecpg_free(oldlocale);
+#ifdef HAVE_USELOCALE
+		if (stmt.oldlocale != (locale_t) 0)
+			uselocale(stmt.oldlocale);
+		if (stmt.clocale)
+			freelocale(stmt.clocale);
+#else
+		if (stmt.oldlocale)
+		{
+			setlocale(LC_NUMERIC, stmt.oldlocale);
+			ecpg_free(stmt.oldlocale);
+		}
+#ifdef HAVE__CONFIGTHREADLOCALE
+		if (stmt.oldthreadlocale != -1)
+			(void) _configthreadlocale(stmt.oldthreadlocale);
+#endif
+#endif
 	}
 	else if (data_var.ind_type != ECPGt_NO_INDICATOR && data_var.ind_pointer != NULL)
 
@@ -539,7 +563,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 			if (!get_int_item(lineno, data_var.ind_value, data_var.ind_type, -PQgetisnull(ECPGresult, act_tuple, index)))
 			{
 				va_end(args);
-				return (false);
+				return false;
 			}
 			data_var.ind_value = (char *) data_var.ind_value + data_var.ind_offset;
 			ecpg_log("ECPGget_desc: INDICATOR[%d] = %d\n", act_tuple, -PQgetisnull(ECPGresult, act_tuple, index));
@@ -547,7 +571,7 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 	}
 	sqlca->sqlerrd[2] = ntuples;
 	va_end(args);
-	return (true);
+	return true;
 }
 
 #undef RETURN_IF_NO_DATA

@@ -3,7 +3,7 @@
  * restrictinfo.c
  *	  RestrictInfo node manipulation routines.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -199,6 +199,8 @@ make_restrictinfo_internal(Expr *clause,
 
 	restrictinfo->left_bucketsize = -1;
 	restrictinfo->right_bucketsize = -1;
+	restrictinfo->left_mcvfreq = -1;
+	restrictinfo->right_mcvfreq = -1;
 
 	return restrictinfo;
 }

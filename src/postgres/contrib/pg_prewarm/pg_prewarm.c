@@ -3,7 +3,7 @@
  * pg_prewarm.c
  *		  prewarming utilities
  *
- * Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/pg_prewarm/pg_prewarm.c
@@ -16,7 +16,6 @@
 #include <unistd.h>
 
 #include "access/heapam.h"
-#include "catalog/catalog.h"
 #include "fmgr.h"
 #include "miscadmin.h"
 #include "storage/bufmgr.h"
@@ -37,7 +36,7 @@ typedef enum
 	PREWARM_BUFFER
 } PrewarmType;
 
-static char blockbuffer[BLCKSZ];
+static PGAlignedBlock blockbuffer;
 
 /*
  * pg_prewarm(regclass, mode text, fork text,
@@ -107,7 +106,7 @@ pg_prewarm(PG_FUNCTION_ARGS)
 	rel = relation_open(relOid, AccessShareLock);
 	aclresult = pg_class_aclcheck(relOid, GetUserId(), ACL_SELECT);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_CLASS, get_rel_name(relOid));
+		aclcheck_error(aclresult, get_relkind_objtype(rel->rd_rel->relkind), get_rel_name(relOid));
 
 	/* Check that the fork exists. */
 	RelationOpenSmgr(rel);
@@ -179,7 +178,7 @@ pg_prewarm(PG_FUNCTION_ARGS)
 		for (block = first_block; block <= last_block; ++block)
 		{
 			CHECK_FOR_INTERRUPTS();
-			smgrread(rel->rd_smgr, forkNumber, block, blockbuffer);
+			smgrread(rel->rd_smgr, forkNumber, block, blockbuffer.data);
 			++blocks_done;
 		}
 	}

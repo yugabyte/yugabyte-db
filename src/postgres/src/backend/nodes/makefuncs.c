@@ -4,7 +4,7 @@
  *	  creator functions for primitive nodes. The functions here are for
  *	  the most frequently created nodes.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -120,8 +120,10 @@ makeVarFromTargetEntry(Index varno,
  * table entry, and varattno == 0 to signal that it references the whole
  * tuple.  (Use of zero here is unclean, since it could easily be confused
  * with error cases, but it's not worth changing now.)  The vartype indicates
- * a rowtype; either a named composite type, or RECORD.  This function
- * encapsulates the logic for determining the correct rowtype OID to use.
+ * a rowtype; either a named composite type, or a domain over a named
+ * composite type (only possible if the RTE is a function returning that),
+ * or RECORD.  This function encapsulates the logic for determining the
+ * correct rowtype OID to use.
  *
  * If allowScalar is true, then for the case where the RTE is a single function
  * returning a non-composite result type, we produce a normal Var referencing
@@ -494,7 +496,6 @@ makeColumnDef(const char *colname, Oid typeOid, int32 typmod, Oid collOid)
 	n->is_local = true;
 	n->is_not_null = false;
 	n->is_from_type = false;
-	n->is_from_parent = false;
 	n->storage = 0;
 	n->raw_default = NULL;
 	n->cooked_default = NULL;
@@ -610,4 +611,19 @@ makeGroupingSet(GroupingSetKind kind, List *content, int location)
 	n->content = content;
 	n->location = location;
 	return n;
+}
+
+/*
+ * makeVacuumRelation -
+ *	  create a VacuumRelation node
+ */
+VacuumRelation *
+makeVacuumRelation(RangeVar *relation, Oid oid, List *va_cols)
+{
+	VacuumRelation *v = makeNode(VacuumRelation);
+
+	v->relation = relation;
+	v->oid = oid;
+	v->va_cols = va_cols;
+	return v;
 }

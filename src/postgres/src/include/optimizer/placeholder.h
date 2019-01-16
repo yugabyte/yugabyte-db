@@ -4,7 +4,7 @@
  *	  prototypes for optimizer/util/placeholder.c.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/placeholder.h
@@ -28,5 +28,7 @@ extern void fix_placeholder_input_needed_levels(PlannerInfo *root);
 extern void add_placeholders_to_base_rels(PlannerInfo *root);
 extern void add_placeholders_to_joinrel(PlannerInfo *root, RelOptInfo *joinrel,
 							RelOptInfo *outer_rel, RelOptInfo *inner_rel);
+extern void add_placeholders_to_child_joinrel(PlannerInfo *root,
+								  RelOptInfo *childrel, RelOptInfo *parentrel);
 
 #endif							/* PLACEHOLDER_H */

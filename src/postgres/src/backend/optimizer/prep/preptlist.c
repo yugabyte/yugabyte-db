@@ -29,7 +29,7 @@
  * that because it's faster in typical non-inherited cases.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -280,7 +280,7 @@ expand_targetlist(List *tlist, int command_type,
 
 	for (attrno = 1; attrno <= numattrs; attrno++)
 	{
-		Form_pg_attribute att_tup = rel->rd_att->attrs[attrno - 1];
+		Form_pg_attribute att_tup = TupleDescAttr(rel->rd_att, attrno - 1);
 		TargetEntry *new_tle = NULL;
 
 		if (tlist_item != NULL)
@@ -338,9 +338,9 @@ expand_targetlist(List *tlist, int command_type,
 						new_expr = coerce_to_domain(new_expr,
 													InvalidOid, -1,
 													atttype,
+													COERCION_IMPLICIT,
 													COERCE_IMPLICIT_CAST,
 													-1,
-													false,
 													false);
 					}
 					else

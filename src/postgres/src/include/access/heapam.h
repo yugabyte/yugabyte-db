@@ -4,7 +4,7 @@
  *	  POSTGRES heap access method definitions.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/heapam.h
@@ -29,6 +29,7 @@
 #define HEAP_INSERT_SKIP_FSM	0x0002
 #define HEAP_INSERT_FROZEN		0x0004
 #define HEAP_INSERT_SPECULATIVE 0x0008
+#define HEAP_INSERT_NO_LOGICAL	0x0010
 
 typedef struct BulkInsertStateData *BulkInsertState;
 
@@ -156,7 +157,7 @@ extern void heap_multi_insert(Relation relation, HeapTuple *tuples, int ntuples,
 				  CommandId cid, int options, BulkInsertState bistate);
 extern HTSU_Result heap_delete(Relation relation, ItemPointer tid,
 			CommandId cid, Snapshot crosscheck, bool wait,
-			HeapUpdateFailureData *hufd);
+			HeapUpdateFailureData *hufd, bool changingPart);
 extern void heap_finish_speculative(Relation relation, HeapTuple tuple);
 extern void heap_abort_speculative(Relation relation, HeapTuple tuple);
 extern HTSU_Result heap_update(Relation relation, ItemPointer otid,

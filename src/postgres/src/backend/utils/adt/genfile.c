@@ -4,7 +4,7 @@
  *		Functions for direct access to files
  *
  *
- * Copyright (c) 2004-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2004-2018, PostgreSQL Global Development Group
  *
  * Author: Andreas Pflug <pgadmin@pse-consulting.de>
  *
@@ -22,6 +22,7 @@
 
 #include "access/htup_details.h"
 #include "access/xlog_internal.h"
+#include "catalog/pg_authid.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
@@ -45,6 +46,12 @@ typedef struct
  *
  * Filename may be absolute or relative to the DataDir, but we only allow
  * absolute paths that match DataDir or Log_directory.
+ *
+ * This does a privilege check against the 'pg_read_server_files' role, so
+ * this function is really only appropriate for callers who are only checking
+ * 'read' access.  Do not use this function if you are looking for a check
+ * for 'write' or 'program' access without updating it to access the type
+ * of check as an argument and checking the appropriate role membership.
  */
 static char *
 convert_and_check_filename(text *arg)
@@ -54,6 +61,15 @@ convert_and_check_filename(text *arg)
 	filename = text_to_cstring(arg);
 	canonicalize_path(filename);	/* filename can change length here */
 
+	/*
+	 * Members of the 'pg_read_server_files' role are allowed to access any
+	 * files on the server as the PG user, so no need to do any further checks
+	 * here.
+	 */
+	if (is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_SERVER_FILES))
+		return filename;
+
+	/* User isn't a member of the default role, so check if it's allowable */
 	if (is_absolute_path(filename))
 	{
 		/* Disallow '/a/b/data/..' */
@@ -184,6 +200,8 @@ read_text_file(const char *filename, int64 seek_offset, int64 bytes_to_read,
 
 /*
  * Read a section of a file, returning it as text
+ *
+ * This function is kept to support adminpack 1.0.
  */
 Datum
 pg_read_file(PG_FUNCTION_ARGS)
@@ -198,7 +216,47 @@ pg_read_file(PG_FUNCTION_ARGS)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to read files"))));
+				 (errmsg("must be superuser to read files with adminpack 1.0"),
+				  errhint("Consider using pg_file_read(), which is part of core, instead."))));
+
+	/* handle optional arguments */
+	if (PG_NARGS() >= 3)
+	{
+		seek_offset = PG_GETARG_INT64(1);
+		bytes_to_read = PG_GETARG_INT64(2);
+
+		if (bytes_to_read < 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("requested length cannot be negative")));
+	}
+	if (PG_NARGS() >= 4)
+		missing_ok = PG_GETARG_BOOL(3);
+
+	filename = convert_and_check_filename(filename_t);
+
+	result = read_text_file(filename, seek_offset, bytes_to_read, missing_ok);
+	if (result)
+		PG_RETURN_TEXT_P(result);
+	else
+		PG_RETURN_NULL();
+}
+
+/*
+ * Read a section of a file, returning it as text
+ *
+ * No superuser check done here- instead privileges are handled by the
+ * GRANT system.
+ */
+Datum
+pg_read_file_v2(PG_FUNCTION_ARGS)
+{
+	text	   *filename_t = PG_GETARG_TEXT_PP(0);
+	int64		seek_offset = 0;
+	int64		bytes_to_read = -1;
+	bool		missing_ok = false;
+	char	   *filename;
+	text	   *result;
 
 	/* handle optional arguments */
 	if (PG_NARGS() >= 3)
@@ -236,11 +294,6 @@ pg_read_binary_file(PG_FUNCTION_ARGS)
 	char	   *filename;
 	bytea	   *result;
 
-	if (!superuser())
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to read files"))));
-
 	/* handle optional arguments */
 	if (PG_NARGS() >= 3)
 	{
@@ -267,7 +320,7 @@ pg_read_binary_file(PG_FUNCTION_ARGS)
 
 
 /*
- * Wrapper functions for the 1 and 3 argument variants of pg_read_file()
+ * Wrapper functions for the 1 and 3 argument variants of pg_read_file_v2()
  * and pg_binary_read_file().
  *
  * These are necessary to pass the sanity check in opr_sanity, which checks
@@ -277,13 +330,13 @@ pg_read_binary_file(PG_FUNCTION_ARGS)
 Datum
 pg_read_file_off_len(PG_FUNCTION_ARGS)
 {
-	return pg_read_file(fcinfo);
+	return pg_read_file_v2(fcinfo);
 }
 
 Datum
 pg_read_file_all(PG_FUNCTION_ARGS)
 {
-	return pg_read_file(fcinfo);
+	return pg_read_file_v2(fcinfo);
 }
 
 Datum
@@ -312,11 +365,6 @@ pg_stat_file(PG_FUNCTION_ARGS)
 	HeapTuple	tuple;
 	TupleDesc	tupdesc;
 	bool		missing_ok = false;
-
-	if (!superuser())
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to get file information"))));
 
 	/* check the optional argument */
 	if (PG_NARGS() == 2)
@@ -399,11 +447,6 @@ pg_ls_dir(PG_FUNCTION_ARGS)
 	directory_fctx *fctx;
 	MemoryContext oldcontext;
 
-	if (!superuser())
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to get directory listings"))));
-
 	if (SRF_IS_FIRSTCALL())
 	{
 		bool		missing_ok = false;
@@ -477,7 +520,7 @@ pg_ls_dir_1arg(PG_FUNCTION_ARGS)
 
 /* Generic function to return a directory listing of files */
 static Datum
-pg_ls_dir_files(FunctionCallInfo fcinfo, char *dir)
+pg_ls_dir_files(FunctionCallInfo fcinfo, const char *dir)
 {
 	FuncCallContext *funcctx;
 	struct dirent *de;
@@ -508,7 +551,7 @@ pg_ls_dir_files(FunctionCallInfo fcinfo, char *dir)
 		if (!fctx->dirdesc)
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("could not read directory \"%s\": %m",
+					 errmsg("could not open directory \"%s\": %m",
 							fctx->location)));
 
 		funcctx->user_fctx = fctx;

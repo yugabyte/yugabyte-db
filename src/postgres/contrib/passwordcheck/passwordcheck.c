@@ -3,7 +3,7 @@
  * passwordcheck.c
  *
  *
- * Copyright (c) 2009-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2009-2018, PostgreSQL Global Development Group
  *
  * Author: Laurenz Albe <laurenz.albe@wien.gv.at>
  *
@@ -70,7 +70,7 @@ check_password(const char *username,
 		if (plain_crypt_verify(username, shadow_pass, username, &logdetail) == STATUS_OK)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("password must not contain user name")));
+					 errmsg("password must not equal user name")));
 	}
 	else
 	{

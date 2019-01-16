@@ -6,7 +6,7 @@
  * loaded as a dynamic module to avoid linking the main server binary with
  * libpq.
  *
- * Portions Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -53,6 +53,8 @@ static WalReceiverConn *libpqrcv_connect(const char *conninfo,
 				 char **err);
 static void libpqrcv_check_conninfo(const char *conninfo);
 static char *libpqrcv_get_conninfo(WalReceiverConn *conn);
+static void libpqrcv_get_senderinfo(WalReceiverConn *conn,
+						char **sender_host, int *sender_port);
 static char *libpqrcv_identify_system(WalReceiverConn *conn,
 						 TimeLineID *primary_tli,
 						 int *server_version);
@@ -82,6 +84,7 @@ static WalReceiverFunctionsType PQWalReceiverFunctions = {
 	libpqrcv_connect,
 	libpqrcv_check_conninfo,
 	libpqrcv_get_conninfo,
+	libpqrcv_get_senderinfo,
 	libpqrcv_identify_system,
 	libpqrcv_readtimelinehistoryfile,
 	libpqrcv_startstreaming,
@@ -125,10 +128,7 @@ libpqrcv_connect(const char *conninfo, bool logical, const char *appname,
 
 	/*
 	 * We use the expand_dbname parameter to process the connection string (or
-	 * URI), and pass some extra options. The deliberately undocumented
-	 * parameter "replication=true" makes it a replication connection. The
-	 * database name is ignored by the server in replication mode, but specify
-	 * "replication" for .pgpass lookup.
+	 * URI), and pass some extra options.
 	 */
 	keys[i] = "dbname";
 	vals[i] = conninfo;
@@ -136,6 +136,10 @@ libpqrcv_connect(const char *conninfo, bool logical, const char *appname,
 	vals[i] = logical ? "database" : "true";
 	if (!logical)
 	{
+		/*
+		 * The database name is ignored by the server in replication mode, but
+		 * specify "replication" for .pgpass lookup.
+		 */
 		keys[++i] = "dbname";
 		vals[i] = "replication";
 	}
@@ -283,6 +287,29 @@ libpqrcv_get_conninfo(WalReceiverConn *conn)
 }
 
 /*
+ * Provides information of sender this WAL receiver is connected to.
+ */
+static void
+libpqrcv_get_senderinfo(WalReceiverConn *conn, char **sender_host,
+						int *sender_port)
+{
+	char	   *ret = NULL;
+
+	*sender_host = NULL;
+	*sender_port = 0;
+
+	Assert(conn->streamConn != NULL);
+
+	ret = PQhost(conn->streamConn);
+	if (ret && strlen(ret) != 0)
+		*sender_host = pstrdup(ret);
+
+	ret = PQport(conn->streamConn);
+	if (ret && strlen(ret) != 0)
+		*sender_port = atoi(ret);
+}
+
+/*
  * Check that primary's system identifier matches ours, and fetch the current
  * timeline ID of the primary.
  */
@@ -355,7 +382,7 @@ libpqrcv_startstreaming(WalReceiverConn *conn,
 						 options->slotname);
 
 	if (options->logical)
-		appendStringInfo(&cmd, " LOGICAL");
+		appendStringInfoString(&cmd, " LOGICAL");
 
 	appendStringInfo(&cmd, " %X/%X",
 					 (uint32) (options->startpoint >> 32),
@@ -774,21 +801,21 @@ libpqrcv_create_slot(WalReceiverConn *conn, const char *slotname,
 	appendStringInfo(&cmd, "CREATE_REPLICATION_SLOT \"%s\"", slotname);
 
 	if (temporary)
-		appendStringInfo(&cmd, " TEMPORARY");
+		appendStringInfoString(&cmd, " TEMPORARY");
 
 	if (conn->logical)
 	{
-		appendStringInfo(&cmd, " LOGICAL pgoutput");
+		appendStringInfoString(&cmd, " LOGICAL pgoutput");
 		switch (snapshot_action)
 		{
 			case CRS_EXPORT_SNAPSHOT:
-				appendStringInfo(&cmd, " EXPORT_SNAPSHOT");
+				appendStringInfoString(&cmd, " EXPORT_SNAPSHOT");
 				break;
 			case CRS_NOEXPORT_SNAPSHOT:
-				appendStringInfo(&cmd, " NOEXPORT_SNAPSHOT");
+				appendStringInfoString(&cmd, " NOEXPORT_SNAPSHOT");
 				break;
 			case CRS_USE_SNAPSHOT:
-				appendStringInfo(&cmd, " USE_SNAPSHOT");
+				appendStringInfoString(&cmd, " USE_SNAPSHOT");
 				break;
 		}
 	}

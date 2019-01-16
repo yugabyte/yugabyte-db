@@ -7,7 +7,7 @@
  * It can be used to buffer either ordinary C strings (null-terminated text)
  * or arbitrary binary data.  All storage is allocated with palloc().
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/lib/stringinfo.h
@@ -142,6 +142,14 @@ extern void appendStringInfoSpaces(StringInfo str, int count);
  */
 extern void appendBinaryStringInfo(StringInfo str,
 					   const char *data, int datalen);
+
+/*------------------------
+ * appendBinaryStringInfoNT
+ * Append arbitrary binary data to a StringInfo, allocating more space
+ * if necessary. Does not ensure a trailing null-byte exists.
+ */
+extern void appendBinaryStringInfoNT(StringInfo str,
+						 const char *data, int datalen);
 
 /*------------------------
  * enlargeStringInfo

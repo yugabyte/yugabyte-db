@@ -2,7 +2,7 @@
 #
 # Makefile for ecpg library
 #
-# Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/interfaces/ecpg/ecpglib/Makefile
@@ -27,14 +27,16 @@ LIBS := $(filter-out -lpgport, $(LIBS))
 
 OBJS= execute.o typename.o descriptor.o sqlda.o data.o error.o prepare.o memory.o \
 	connect.o misc.o path.o pgstrcasecmp.o \
-	$(filter snprintf.o strlcpy.o win32setlocale.o isinf.o, $(LIBOBJS)) $(WIN32RES)
+	$(filter snprintf.o strlcpy.o strnlen.o win32setlocale.o isinf.o, $(LIBOBJS)) \
+	$(WIN32RES)
 
 # thread.c is needed only for non-WIN32 implementation of path.c
 ifneq ($(PORTNAME), win32)
 OBJS += thread.o
 endif
 
-SHLIB_LINK = -L../pgtypeslib -lpgtypes $(libpq) $(filter -lintl -lm, $(LIBS)) $(PTHREAD_LIBS)
+SHLIB_LINK_INTERNAL = -L../pgtypeslib -lpgtypes $(libpq)
+SHLIB_LINK = $(filter -lintl -lm, $(LIBS)) $(PTHREAD_LIBS)
 SHLIB_PREREQS = submake-libpq submake-pgtypeslib
 
 SHLIB_EXPORTS = exports.txt
@@ -55,7 +57,7 @@ include $(top_srcdir)/src/Makefile.shlib
 # necessarily use the same object files as the backend uses. Instead,
 # symlink the source files in here and build our own object file.
 
-path.c pgstrcasecmp.c snprintf.c strlcpy.c thread.c win32setlocale.c isinf.c: % : $(top_srcdir)/src/port/%
+path.c pgstrcasecmp.c snprintf.c strlcpy.c strnlen.c thread.c win32setlocale.c isinf.c: % : $(top_srcdir)/src/port/%
 	rm -f $@ && $(LN_S) $< .
 
 misc.o: misc.c $(top_builddir)/src/port/pg_config_paths.h
@@ -72,6 +74,6 @@ uninstall: uninstall-lib
 
 clean distclean: clean-lib
 	rm -f $(OBJS)
-	rm -f path.c pgstrcasecmp.c snprintf.c strlcpy.c thread.c win32setlocale.c isinf.c
+	rm -f path.c pgstrcasecmp.c snprintf.c strlcpy.c strnlen.c thread.c win32setlocale.c isinf.c
 
 maintainer-clean: distclean maintainer-clean-lib

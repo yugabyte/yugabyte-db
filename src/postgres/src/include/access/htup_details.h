@@ -4,7 +4,7 @@
  *	  POSTGRES heap tuple header definitions.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/htup_details.h
@@ -83,11 +83,15 @@
  *
  * A word about t_ctid: whenever a new tuple is stored on disk, its t_ctid
  * is initialized with its own TID (location).  If the tuple is ever updated,
- * its t_ctid is changed to point to the replacement version of the tuple.
- * Thus, a tuple is the latest version of its row iff XMAX is invalid or
+ * its t_ctid is changed to point to the replacement version of the tuple.  Or
+ * if the tuple is moved from one partition to another, due to an update of
+ * the partition key, t_ctid is set to a special value to indicate that
+ * (see ItemPointerSetMovedPartitions).  Thus, a tuple is the latest version
+ * of its row iff XMAX is invalid or
  * t_ctid points to itself (in which case, if XMAX is valid, the tuple is
  * either locked or deleted).  One can follow the chain of t_ctid links
- * to find the newest version of the row.  Beware however that VACUUM might
+ * to find the newest version of the row, unless it was moved to a different
+ * partition.  Beware however that VACUUM might
  * erase the pointed-to (newer) tuple before erasing the pointing (older)
  * tuple.  Hence, when following a t_ctid link, it is necessary to check
  * to see if the referenced slot is empty or contains an unrelated tuple.
@@ -134,6 +138,11 @@ typedef struct DatumTupleFields
 	Oid			datum_typeid;	/* composite type OID, or RECORDOID */
 
 	/*
+	 * datum_typeid cannot be a domain over composite, only plain composite,
+	 * even if the datum is meant as a value of a domain-over-composite type.
+	 * This is in line with the general principle that CoerceToDomain does not
+	 * change the physical representation of the base type value.
+	 *
 	 * Note: field ordering is chosen with thought that Oid might someday
 	 * widen to 64 bits.
 	 */
@@ -152,14 +161,18 @@ struct HeapTupleHeaderData
 
 	/* Fields below here must match MinimalTupleData! */
 
+#define FIELDNO_HEAPTUPLEHEADERDATA_INFOMASK2 2
 	uint16		t_infomask2;	/* number of attributes + various flags */
 
+#define FIELDNO_HEAPTUPLEHEADERDATA_INFOMASK 3
 	uint16		t_infomask;		/* various flag bits, see below */
 
+#define FIELDNO_HEAPTUPLEHEADERDATA_HOFF 4
 	uint8		t_hoff;			/* sizeof header incl. bitmap, padding */
 
 	/* ^ - 23 bytes - ^ */
 
+#define FIELDNO_HEAPTUPLEHEADERDATA_BITS 5
 	bits8		t_bits[FLEXIBLE_ARRAY_MEMBER];	/* bitmap of NULLs */
 
 	/* MORE DATA FOLLOWS AT END OF STRUCT */
@@ -275,14 +288,6 @@ struct HeapTupleHeaderData
  * instead of using up a dedicated bit.
  */
 #define HEAP_TUPLE_HAS_MATCH	HEAP_ONLY_TUPLE /* tuple has a join match */
-
-/*
- * Special value used in t_ctid.ip_posid, to indicate that it holds a
- * speculative insertion token rather than a real TID.  This must be higher
- * than MaxOffsetNumber, so that it can be distinguished from a valid
- * offset number in a regular item pointer.
- */
-#define SpecTokenOffsetNumber		0xfffe
 
 /*
  * HeapTupleHeader accessor macros
@@ -435,6 +440,13 @@ do { \
 ( \
 	ItemPointerSet(&(tup)->t_ctid, token, SpecTokenOffsetNumber) \
 )
+
+#define HeapTupleHeaderIndicatesMovedPartitions(tup) \
+	(ItemPointerGetOffsetNumber(&(tup)->t_ctid) == MovedPartitionsOffsetNumber && \
+	 ItemPointerGetBlockNumberNoCheck(&(tup)->t_ctid) == MovedPartitionsBlockNumber)
+
+#define HeapTupleHeaderSetMovedPartitions(tup) \
+	ItemPointerSet(&(tup)->t_ctid, MovedPartitionsBlockNumber, MovedPartitionsOffsetNumber)
 
 #define HeapTupleHeaderGetDatumLength(tup) \
 	VARSIZE(tup)
@@ -722,11 +734,11 @@ struct MinimalTupleData
 	(*(isnull) = false),											\
 	HeapTupleNoNulls(tup) ?											\
 	(																\
-		(tupleDesc)->attrs[(attnum)-1]->attcacheoff >= 0 ?			\
+		TupleDescAttr((tupleDesc), (attnum)-1)->attcacheoff >= 0 ?	\
 		(															\
-			fetchatt((tupleDesc)->attrs[(attnum)-1],				\
+			fetchatt(TupleDescAttr((tupleDesc), (attnum)-1),		\
 				(char *) (tup)->t_data + (tup)->t_data->t_hoff +	\
-					(tupleDesc)->attrs[(attnum)-1]->attcacheoff)	\
+				TupleDescAttr((tupleDesc), (attnum)-1)->attcacheoff)\
 		)															\
 		:															\
 			nocachegetattr((tup), (attnum), (tupleDesc))			\
@@ -771,10 +783,7 @@ extern Datum fastgetattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
 		((attnum) > 0) ? \
 		( \
 			((attnum) > (int) HeapTupleHeaderGetNatts((tup)->t_data)) ? \
-			( \
-				(*(isnull) = true), \
-				(Datum)NULL \
-			) \
+				getmissingattr((tupleDesc), (attnum), (isnull)) \
 			: \
 				fastgetattr((tup), (attnum), (tupleDesc), (isnull)) \
 		) \
@@ -790,11 +799,13 @@ extern void heap_fill_tuple(TupleDesc tupleDesc,
 				Datum *values, bool *isnull,
 				char *data, Size data_size,
 				uint16 *infomask, bits8 *bit);
-extern bool heap_attisnull(HeapTuple tup, int attnum);
+extern bool heap_attisnull(HeapTuple tup, int attnum, TupleDesc tupleDesc);
 extern Datum nocachegetattr(HeapTuple tup, int attnum,
 			   TupleDesc att);
 extern Datum heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
 				bool *isnull);
+extern Datum getmissingattr(TupleDesc tupleDesc,
+			   int attnum, bool *isnull);
 extern HeapTuple heap_copytuple(HeapTuple tuple);
 extern void heap_copytuple_with_tuple(HeapTuple src, HeapTuple dest);
 extern Datum heap_copy_tuple_as_datum(HeapTuple tuple, TupleDesc tupleDesc);
@@ -820,5 +831,8 @@ extern void heap_free_minimal_tuple(MinimalTuple mtup);
 extern MinimalTuple heap_copy_minimal_tuple(MinimalTuple mtup);
 extern HeapTuple heap_tuple_from_minimal_tuple(MinimalTuple mtup);
 extern MinimalTuple minimal_tuple_from_heap_tuple(HeapTuple htup);
+extern size_t varsize_any(void *p);
+extern HeapTuple heap_expand_tuple(HeapTuple sourceTuple, TupleDesc tupleDesc);
+extern MinimalTuple minimal_expand_tuple(HeapTuple sourceTuple, TupleDesc tupleDesc);
 
 #endif							/* HTUP_DETAILS_H */

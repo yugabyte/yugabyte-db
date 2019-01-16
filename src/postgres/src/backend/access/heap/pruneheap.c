@@ -3,7 +3,7 @@
  * pruneheap.c
  *	  heap page pruning and HOT-chain management code
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -39,7 +39,7 @@ typedef struct
 	OffsetNumber redirected[MaxHeapTuplesPerPage * 2];
 	OffsetNumber nowdead[MaxHeapTuplesPerPage];
 	OffsetNumber nowunused[MaxHeapTuplesPerPage];
-	/* marked[i] is TRUE if item i is entered in one of the above arrays */
+	/* marked[i] is true if item i is entered in one of the above arrays */
 	bool		marked[MaxHeapTuplesPerPage + 1];
 } PruneState;
 
@@ -170,7 +170,7 @@ heap_page_prune_opt(Relation relation, Buffer buffer)
  * or RECENTLY_DEAD (see HeapTupleSatisfiesVacuum).
  *
  * If report_stats is true then we send the number of reclaimed heap-only
- * tuples to pgstats.  (This must be FALSE during vacuum, since vacuum will
+ * tuples to pgstats.  (This must be false during vacuum, since vacuum will
  * send its own new total to pgstats, and we don't want this delta applied
  * on top of that.)
  *
@@ -552,6 +552,9 @@ heap_prune_chain(Relation relation, Buffer buffer, OffsetNumber rootoffnum,
 		if (!HeapTupleHeaderIsHotUpdated(htup))
 			break;
 
+		/* HOT implies it can't have moved to different partition */
+		Assert(!HeapTupleHeaderIndicatesMovedPartitions(htup));
+
 		/*
 		 * Advance to next chain member.
 		 */
@@ -822,6 +825,9 @@ heap_get_root_tuples(Page page, OffsetNumber *root_offsets)
 			/* Advance to next chain member, if any */
 			if (!HeapTupleHeaderIsHotUpdated(htup))
 				break;
+
+			/* HOT implies it can't have moved to different partition */
+			Assert(!HeapTupleHeaderIndicatesMovedPartitions(htup));
 
 			nextoffnum = ItemPointerGetOffsetNumber(&htup->t_ctid);
 			priorXmax = HeapTupleHeaderGetUpdateXid(htup);

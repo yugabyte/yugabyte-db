@@ -4,7 +4,7 @@
  * syncrep_scanner.l
  *	  a lexical scanner for synchronous_standby_names
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -31,6 +31,8 @@ fprintf_to_ereport(const char *fmt, const char *msg)
 static YY_BUFFER_STATE scanbufhandle;
 
 static StringInfoData xdbuf;
+
+/* LCOV_EXCL_START */
 
 %}
 
@@ -112,6 +114,7 @@ xdinside		[^"]+
 .			{ return JUNK; }
 %%
 
+/* LCOV_EXCL_STOP */
 
 /* Needs to be here for access to yytext */
 void

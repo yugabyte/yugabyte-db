@@ -3,7 +3,7 @@
  * nodeNamedtuplestorescan.c
  *	  routines to handle NamedTuplestoreScan nodes.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -135,26 +135,21 @@ ExecInitNamedTuplestoreScan(NamedTuplestoreScan *node, EState *estate, int eflag
 	ExecAssignExprContext(estate, &scanstate->ss.ps);
 
 	/*
+	 * Tuple table and result type initialization. The scan tuple type is
+	 * specified for the tuplestore.
+	 */
+	ExecInitResultTupleSlotTL(estate, &scanstate->ss.ps);
+	ExecInitScanTupleSlot(estate, &scanstate->ss, scanstate->tupdesc);
+
+	/*
 	 * initialize child expressions
 	 */
 	scanstate->ss.ps.qual =
 		ExecInitQual(node->scan.plan.qual, (PlanState *) scanstate);
 
 	/*
-	 * tuple table initialization
+	 * Initialize projection.
 	 */
-	ExecInitResultTupleSlot(estate, &scanstate->ss.ps);
-	ExecInitScanTupleSlot(estate, &scanstate->ss);
-
-	/*
-	 * The scan tuple type is specified for the tuplestore.
-	 */
-	ExecAssignScanType(&scanstate->ss, scanstate->tupdesc);
-
-	/*
-	 * Initialize result tuple type and projection info.
-	 */
-	ExecAssignResultTypeFromTL(&scanstate->ss.ps);
 	ExecAssignScanProjectionInfo(&scanstate->ss);
 
 	return scanstate;

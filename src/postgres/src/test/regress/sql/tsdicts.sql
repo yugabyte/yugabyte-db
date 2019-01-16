@@ -66,11 +66,14 @@ SELECT ts_lexize('hunspell_long', 'rebook');
 SELECT ts_lexize('hunspell_long', 'unbookings');
 SELECT ts_lexize('hunspell_long', 'unbooking');
 SELECT ts_lexize('hunspell_long', 'unbook');
+SELECT ts_lexize('hunspell_long', 'booked');
 
 SELECT ts_lexize('hunspell_long', 'footklubber');
 SELECT ts_lexize('hunspell_long', 'footballklubber');
 SELECT ts_lexize('hunspell_long', 'ballyklubber');
+SELECT ts_lexize('hunspell_long', 'ballsklubber');
 SELECT ts_lexize('hunspell_long', 'footballyklubber');
+SELECT ts_lexize('hunspell_long', 'ex-machina');
 
 -- Test ISpell dictionary with hunspell affix file with FLAG num parameter
 CREATE TEXT SEARCH DICTIONARY hunspell_num (
@@ -80,6 +83,7 @@ CREATE TEXT SEARCH DICTIONARY hunspell_num (
 );
 
 SELECT ts_lexize('hunspell_num', 'skies');
+SELECT ts_lexize('hunspell_num', 'sk');
 SELECT ts_lexize('hunspell_num', 'bookings');
 SELECT ts_lexize('hunspell_num', 'booking');
 SELECT ts_lexize('hunspell_num', 'foot');
@@ -90,6 +94,7 @@ SELECT ts_lexize('hunspell_num', 'rebook');
 SELECT ts_lexize('hunspell_num', 'unbookings');
 SELECT ts_lexize('hunspell_num', 'unbooking');
 SELECT ts_lexize('hunspell_num', 'unbook');
+SELECT ts_lexize('hunspell_num', 'booked');
 
 SELECT ts_lexize('hunspell_num', 'footklubber');
 SELECT ts_lexize('hunspell_num', 'footballklubber');
@@ -188,3 +193,11 @@ ALTER TEXT SEARCH CONFIGURATION thesaurus_tst ALTER MAPPING FOR
 SELECT to_tsvector('thesaurus_tst', 'one postgres one two one two three one');
 SELECT to_tsvector('thesaurus_tst', 'Supernovae star is very new star and usually called supernovae (abbreviation SN)');
 SELECT to_tsvector('thesaurus_tst', 'Booking tickets is looking like a booking a tickets');
+
+-- invalid: non-lowercase quoted identifiers
+CREATE TEXT SEARCH DICTIONARY tsdict_case
+(
+	Template = ispell,
+	"DictFile" = ispell_sample,
+	"AffFile" = ispell_sample
+);

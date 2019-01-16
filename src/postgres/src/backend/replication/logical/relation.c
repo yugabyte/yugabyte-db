@@ -2,7 +2,7 @@
  * relation.c
  *	   PostgreSQL logical replication
  *
- * Copyright (c) 2016-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/relation.c
@@ -274,15 +274,16 @@ logicalrep_rel_open(LogicalRepRelId remoteid, LOCKMODE lockmode)
 		for (i = 0; i < desc->natts; i++)
 		{
 			int			attnum;
+			Form_pg_attribute attr = TupleDescAttr(desc, i);
 
-			if (desc->attrs[i]->attisdropped)
+			if (attr->attisdropped)
 			{
 				entry->attrmap[i] = -1;
 				continue;
 			}
 
 			attnum = logicalrep_rel_att_by_name(remoterel,
-												NameStr(desc->attrs[i]->attname));
+												NameStr(attr->attname));
 
 			entry->attrmap[i] = attnum;
 			if (attnum >= 0)

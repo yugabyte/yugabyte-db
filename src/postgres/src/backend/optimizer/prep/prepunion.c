@@ -17,7 +17,7 @@
  * append relations, and thenceforth share code with the UNION ALL case.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -33,7 +33,8 @@
 #include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/sysattr.h"
-#include "catalog/pg_inherits_fn.h"
+#include "catalog/partition.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -55,33 +56,33 @@
 typedef struct
 {
 	PlannerInfo *root;
-	AppendRelInfo *appinfo;
+	int			nappinfos;
+	AppendRelInfo **appinfos;
 } adjust_appendrel_attrs_context;
 
-static Path *recurse_set_operations(Node *setOp, PlannerInfo *root,
+static RelOptInfo *recurse_set_operations(Node *setOp, PlannerInfo *root,
 					   List *colTypes, List *colCollations,
 					   bool junkOK,
 					   int flag, List *refnames_tlist,
 					   List **pTargetList,
 					   double *pNumGroups);
-static Path *generate_recursion_path(SetOperationStmt *setOp,
+static RelOptInfo *generate_recursion_path(SetOperationStmt *setOp,
 						PlannerInfo *root,
 						List *refnames_tlist,
 						List **pTargetList);
-static Path *generate_union_path(SetOperationStmt *op, PlannerInfo *root,
+static RelOptInfo *generate_union_paths(SetOperationStmt *op, PlannerInfo *root,
+					 List *refnames_tlist,
+					 List **pTargetList);
+static RelOptInfo *generate_nonunion_paths(SetOperationStmt *op, PlannerInfo *root,
+						List *refnames_tlist,
+						List **pTargetList);
+static List *plan_union_children(PlannerInfo *root,
+					SetOperationStmt *top_union,
 					List *refnames_tlist,
-					List **pTargetList,
-					double *pNumGroups);
-static Path *generate_nonunion_path(SetOperationStmt *op, PlannerInfo *root,
-					   List *refnames_tlist,
-					   List **pTargetList,
-					   double *pNumGroups);
-static List *recurse_union_children(Node *setOp, PlannerInfo *root,
-					   SetOperationStmt *top_union,
-					   List *refnames_tlist,
-					   List **tlist_list);
+					List **tlist_list);
 static Path *make_union_unique(SetOperationStmt *op, Path *path, List *tlist,
 				  PlannerInfo *root);
+static void postprocess_setop_rel(PlannerInfo *root, RelOptInfo *rel);
 static bool choose_hashed_setop(PlannerInfo *root, List *groupClauses,
 					Path *input_path,
 					double dNumGroups, double dNumOutputRows,
@@ -99,6 +100,17 @@ static List *generate_append_tlist(List *colTypes, List *colCollations,
 static List *generate_setop_grouplist(SetOperationStmt *op, List *targetlist);
 static void expand_inherited_rtentry(PlannerInfo *root, RangeTblEntry *rte,
 						 Index rti);
+static void expand_partitioned_rtentry(PlannerInfo *root,
+						   RangeTblEntry *parentrte,
+						   Index parentRTindex, Relation parentrel,
+						   PlanRowMark *top_parentrc, LOCKMODE lockmode,
+						   List **appinfos);
+static void expand_single_inheritance_child(PlannerInfo *root,
+								RangeTblEntry *parentrte,
+								Index parentRTindex, Relation parentrel,
+								PlanRowMark *top_parentrc, Relation childrel,
+								List **appinfos, RangeTblEntry **childrte_p,
+								Index *childRTindex_p);
 static void make_inh_translation_list(Relation oldrelation,
 						  Relation newrelation,
 						  Index newvarno,
@@ -107,7 +119,8 @@ static Bitmapset *translate_col_privs(const Bitmapset *parent_privs,
 					List *translated_vars);
 static Node *adjust_appendrel_attrs_mutator(Node *node,
 							   adjust_appendrel_attrs_context *context);
-static Relids adjust_relid_set(Relids relids, Index oldrelid, Index newrelid);
+static Relids adjust_child_relids(Relids relids, int nappinfos,
+					AppendRelInfo **appinfos);
 static List *adjust_inherited_tlist(List *tlist,
 					   AppendRelInfo *context);
 
@@ -134,7 +147,6 @@ plan_set_operations(PlannerInfo *root)
 	RangeTblEntry *leftmostRTE;
 	Query	   *leftmostQuery;
 	RelOptInfo *setop_rel;
-	Path	   *path;
 	List	   *top_tlist;
 
 	Assert(topop);
@@ -155,6 +167,12 @@ plan_set_operations(PlannerInfo *root)
 	setup_simple_rel_arrays(root);
 
 	/*
+	 * Populate append_rel_array with each AppendRelInfo to allow direct
+	 * lookups by child relid.
+	 */
+	setup_append_rel_array(root);
+
+	/*
 	 * Find the leftmost component Query.  We need to use its column names for
 	 * all generated tlists (else SELECT INTO won't work right).
 	 */
@@ -167,55 +185,32 @@ plan_set_operations(PlannerInfo *root)
 	Assert(leftmostQuery != NULL);
 
 	/*
-	 * We return our results in the (SETOP, NULL) upperrel.  For the moment,
-	 * this is also the parent rel of all Paths in the setop tree; we may well
-	 * change that in future.
-	 */
-	setop_rel = fetch_upper_rel(root, UPPERREL_SETOP, NULL);
-
-	/*
-	 * We don't currently worry about setting setop_rel's consider_parallel
-	 * flag, nor about allowing FDWs to contribute paths to it.
-	 */
-
-	/*
 	 * If the topmost node is a recursive union, it needs special processing.
 	 */
 	if (root->hasRecursion)
 	{
-		path = generate_recursion_path(topop, root,
-									   leftmostQuery->targetList,
-									   &top_tlist);
+		setop_rel = generate_recursion_path(topop, root,
+											leftmostQuery->targetList,
+											&top_tlist);
 	}
 	else
 	{
 		/*
 		 * Recurse on setOperations tree to generate paths for set ops. The
-		 * final output path should have just the column types shown as the
+		 * final output paths should have just the column types shown as the
 		 * output from the top-level node, plus possibly resjunk working
 		 * columns (we can rely on upper-level nodes to deal with that).
 		 */
-		path = recurse_set_operations((Node *) topop, root,
-									  topop->colTypes, topop->colCollations,
-									  true, -1,
-									  leftmostQuery->targetList,
-									  &top_tlist,
-									  NULL);
+		setop_rel = recurse_set_operations((Node *) topop, root,
+										   topop->colTypes, topop->colCollations,
+										   true, -1,
+										   leftmostQuery->targetList,
+										   &top_tlist,
+										   NULL);
 	}
 
 	/* Must return the built tlist into root->processed_tlist. */
 	root->processed_tlist = top_tlist;
-
-	/* Add only the final path to the SETOP upperrel. */
-	add_path(setop_rel, path);
-
-	/* Let extensions possibly add some more paths */
-	if (create_upper_paths_hook)
-		(*create_upper_paths_hook) (root, UPPERREL_SETOP,
-									NULL, setop_rel);
-
-	/* Select cheapest path */
-	set_cheapest(setop_rel);
 
 	return setop_rel;
 }
@@ -230,21 +225,21 @@ plan_set_operations(PlannerInfo *root)
  * flag: if >= 0, add a resjunk output column indicating value of flag
  * refnames_tlist: targetlist to take column names from
  *
- * Returns a path for the subtree, as well as these output parameters:
+ * Returns a RelOptInfo for the subtree, as well as these output parameters:
  * *pTargetList: receives the fully-fledged tlist for the subtree's top plan
  * *pNumGroups: if not NULL, we estimate the number of distinct groups
  *		in the result, and store it there
  *
  * The pTargetList output parameter is mostly redundant with the pathtarget
- * of the returned path, but for the moment we need it because much of the
- * logic in this file depends on flag columns being marked resjunk.  Pending
- * a redesign of how that works, this is the easy way out.
+ * of the returned RelOptInfo, but for the moment we need it because much of
+ * the logic in this file depends on flag columns being marked resjunk.
+ * Pending a redesign of how that works, this is the easy way out.
  *
  * We don't have to care about typmods here: the only allowed difference
  * between set-op input and output typmods is input is a specific typmod
  * and output is -1, and that does not require a coercion.
  */
-static Path *
+static RelOptInfo *
 recurse_set_operations(Node *setOp, PlannerInfo *root,
 					   List *colTypes, List *colCollations,
 					   bool junkOK,
@@ -252,6 +247,8 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 					   List **pTargetList,
 					   double *pNumGroups)
 {
+	RelOptInfo *rel = NULL;		/* keep compiler quiet */
+
 	/* Guard against stack overflow due to overly complex setop nests */
 	check_stack_depth();
 
@@ -260,7 +257,6 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 		RangeTblRef *rtr = (RangeTblRef *) setOp;
 		RangeTblEntry *rte = root->simple_rte_array[rtr->rtindex];
 		Query	   *subquery = rte->subquery;
-		RelOptInfo *rel;
 		PlannerInfo *subroot;
 		RelOptInfo *final_rel;
 		Path	   *subpath;
@@ -269,11 +265,7 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 
 		Assert(subquery != NULL);
 
-		/*
-		 * We need to build a RelOptInfo for each leaf subquery.  This isn't
-		 * used for much here, but it carries the subroot data structures
-		 * forward to setrefs.c processing.
-		 */
+		/* Build a RelOptInfo for this leaf subquery. */
 		rel = build_simple_rel(root, rtr->rtindex, NULL);
 
 		/* plan_params should not be in use in current query level */
@@ -292,6 +284,18 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 		if (root->plan_params)
 			elog(ERROR, "unexpected outer reference in set operation subquery");
 
+		/* Figure out the appropriate target list for this subquery. */
+		tlist = generate_setop_tlist(colTypes, colCollations,
+									 flag,
+									 rtr->rtindex,
+									 true,
+									 subroot->processed_tlist,
+									 refnames_tlist);
+		rel->reltarget = create_pathtarget(root, tlist);
+
+		/* Return the fully-fledged tlist to caller, too */
+		*pTargetList = tlist;
+
 		/*
 		 * Mark rel with estimated output rows, width, etc.  Note that we have
 		 * to do this before generating outer-query paths, else
@@ -300,11 +304,17 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 		set_subquery_size_estimates(root, rel);
 
 		/*
+		 * Since we may want to add a partial path to this relation, we must
+		 * set its consider_parallel flag correctly.
+		 */
+		final_rel = fetch_upper_rel(subroot, UPPERREL_FINAL, NULL);
+		rel->consider_parallel = final_rel->consider_parallel;
+
+		/*
 		 * For the moment, we consider only a single Path for the subquery.
 		 * This should change soon (make it look more like
 		 * set_subquery_pathlist).
 		 */
-		final_rel = fetch_upper_rel(subroot, UPPERREL_FINAL, NULL);
 		subpath = get_cheapest_fractional_path(final_rel,
 											   root->tuple_fraction);
 
@@ -319,22 +329,25 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 		path = (Path *) create_subqueryscan_path(root, rel, subpath,
 												 NIL, NULL);
 
+		add_path(rel, path);
+
 		/*
-		 * Figure out the appropriate target list, and update the
-		 * SubqueryScanPath with the PathTarget form of that.
+		 * If we have a partial path for the child relation, we can use that
+		 * to build a partial path for this relation.  But there's no point in
+		 * considering any path but the cheapest.
 		 */
-		tlist = generate_setop_tlist(colTypes, colCollations,
-									 flag,
-									 rtr->rtindex,
-									 true,
-									 subroot->processed_tlist,
-									 refnames_tlist);
+		if (rel->consider_parallel && bms_is_empty(rel->lateral_relids) &&
+			final_rel->partial_pathlist != NIL)
+		{
+			Path	   *partial_subpath;
+			Path	   *partial_path;
 
-		path = apply_projection_to_path(root, rel, path,
-										create_pathtarget(root, tlist));
-
-		/* Return the fully-fledged tlist to caller, too */
-		*pTargetList = tlist;
+			partial_subpath = linitial(final_rel->partial_pathlist);
+			partial_path = (Path *)
+				create_subqueryscan_path(root, rel, partial_subpath,
+										 NIL, NULL);
+			add_partial_path(rel, partial_path);
+		}
 
 		/*
 		 * Estimate number of groups if caller wants it.  If the subquery used
@@ -363,25 +376,22 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 												  subpath->rows,
 												  NULL);
 		}
-
-		return (Path *) path;
 	}
 	else if (IsA(setOp, SetOperationStmt))
 	{
 		SetOperationStmt *op = (SetOperationStmt *) setOp;
-		Path	   *path;
 
 		/* UNIONs are much different from INTERSECT/EXCEPT */
 		if (op->op == SETOP_UNION)
-			path = generate_union_path(op, root,
+			rel = generate_union_paths(op, root,
 									   refnames_tlist,
-									   pTargetList,
-									   pNumGroups);
+									   pTargetList);
 		else
-			path = generate_nonunion_path(op, root,
+			rel = generate_nonunion_paths(op, root,
 										  refnames_tlist,
-										  pTargetList,
-										  pNumGroups);
+										  pTargetList);
+		if (pNumGroups)
+			*pNumGroups = rel->rows;
 
 		/*
 		 * If necessary, add a Result node to project the caller-requested
@@ -400,39 +410,70 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 			!tlist_same_datatypes(*pTargetList, colTypes, junkOK) ||
 			!tlist_same_collations(*pTargetList, colCollations, junkOK))
 		{
+			PathTarget *target;
+			ListCell   *lc;
+
 			*pTargetList = generate_setop_tlist(colTypes, colCollations,
 												flag,
 												0,
 												false,
 												*pTargetList,
 												refnames_tlist);
-			path = apply_projection_to_path(root,
-											path->parent,
-											path,
-											create_pathtarget(root,
-															  *pTargetList));
+			target = create_pathtarget(root, *pTargetList);
+
+			/* Apply projection to each path */
+			foreach(lc, rel->pathlist)
+			{
+				Path	   *subpath = (Path *) lfirst(lc);
+				Path	   *path;
+
+				Assert(subpath->param_info == NULL);
+				path = apply_projection_to_path(root, subpath->parent,
+												subpath, target);
+				/* If we had to add a Result, path is different from subpath */
+				if (path != subpath)
+					lfirst(lc) = path;
+			}
+
+			/* Apply projection to each partial path */
+			foreach(lc, rel->partial_pathlist)
+			{
+				Path	   *subpath = (Path *) lfirst(lc);
+				Path	   *path;
+
+				Assert(subpath->param_info == NULL);
+
+				/* avoid apply_projection_to_path, in case of multiple refs */
+				path = (Path *) create_projection_path(root, subpath->parent,
+													   subpath, target);
+				lfirst(lc) = path;
+			}
 		}
-		return path;
 	}
 	else
 	{
 		elog(ERROR, "unrecognized node type: %d",
 			 (int) nodeTag(setOp));
 		*pTargetList = NIL;
-		return NULL;			/* keep compiler quiet */
 	}
+
+	postprocess_setop_rel(root, rel);
+
+	return rel;
 }
 
 /*
- * Generate path for a recursive UNION node
+ * Generate paths for a recursive UNION node
  */
-static Path *
+static RelOptInfo *
 generate_recursion_path(SetOperationStmt *setOp, PlannerInfo *root,
 						List *refnames_tlist,
 						List **pTargetList)
 {
-	RelOptInfo *result_rel = fetch_upper_rel(root, UPPERREL_SETOP, NULL);
+	RelOptInfo *result_rel;
 	Path	   *path;
+	RelOptInfo *lrel,
+			   *rrel;
 	Path	   *lpath;
 	Path	   *rpath;
 	List	   *lpath_tlist;
@@ -451,20 +492,22 @@ generate_recursion_path(SetOperationStmt *setOp, PlannerInfo *root,
 	 * Unlike a regular UNION node, process the left and right inputs
 	 * separately without any intention of combining them into one Append.
 	 */
-	lpath = recurse_set_operations(setOp->larg, root,
-								   setOp->colTypes, setOp->colCollations,
-								   false, -1,
-								   refnames_tlist,
-								   &lpath_tlist,
-								   NULL);
+	lrel = recurse_set_operations(setOp->larg, root,
+								  setOp->colTypes, setOp->colCollations,
+								  false, -1,
+								  refnames_tlist,
+								  &lpath_tlist,
+								  NULL);
+	lpath = lrel->cheapest_total_path;
 	/* The right path will want to look at the left one ... */
 	root->non_recursive_path = lpath;
-	rpath = recurse_set_operations(setOp->rarg, root,
-								   setOp->colTypes, setOp->colCollations,
-								   false, -1,
-								   refnames_tlist,
-								   &rpath_tlist,
-								   NULL);
+	rrel = recurse_set_operations(setOp->rarg, root,
+								  setOp->colTypes, setOp->colCollations,
+								  false, -1,
+								  refnames_tlist,
+								  &rpath_tlist,
+								  NULL);
+	rpath = rrel->cheapest_total_path;
 	root->non_recursive_path = NULL;
 
 	/*
@@ -475,6 +518,11 @@ generate_recursion_path(SetOperationStmt *setOp, PlannerInfo *root,
 								  refnames_tlist);
 
 	*pTargetList = tlist;
+
+	/* Build result relation. */
+	result_rel = fetch_upper_rel(root, UPPERREL_SETOP,
+								 bms_union(lrel->relids, rrel->relids));
+	result_rel->reltarget = create_pathtarget(root, tlist);
 
 	/*
 	 * If UNION, identify the grouping operators
@@ -510,28 +558,33 @@ generate_recursion_path(SetOperationStmt *setOp, PlannerInfo *root,
 											   result_rel,
 											   lpath,
 											   rpath,
-											   create_pathtarget(root, tlist),
+											   result_rel->reltarget,
 											   groupList,
 											   root->wt_param_id,
 											   dNumGroups);
 
-	return path;
+	add_path(result_rel, path);
+	postprocess_setop_rel(root, result_rel);
+	return result_rel;
 }
 
 /*
- * Generate path for a UNION or UNION ALL node
+ * Generate paths for a UNION or UNION ALL node
  */
-static Path *
-generate_union_path(SetOperationStmt *op, PlannerInfo *root,
-					List *refnames_tlist,
-					List **pTargetList,
-					double *pNumGroups)
+static RelOptInfo *
+generate_union_paths(SetOperationStmt *op, PlannerInfo *root,
+					 List *refnames_tlist,
+					 List **pTargetList)
 {
-	RelOptInfo *result_rel = fetch_upper_rel(root, UPPERREL_SETOP, NULL);
+	Relids		relids = NULL;
+	RelOptInfo *result_rel;
 	double		save_fraction = root->tuple_fraction;
-	List	   *pathlist;
-	List	   *child_tlists1;
-	List	   *child_tlists2;
+	ListCell   *lc;
+	List	   *pathlist = NIL;
+	List	   *partial_pathlist = NIL;
+	bool		partial_paths_valid = true;
+	bool		consider_parallel = true;
+	List	   *rellist;
 	List	   *tlist_list;
 	List	   *tlist;
 	Path	   *path;
@@ -556,13 +609,7 @@ generate_union_path(SetOperationStmt *op, PlannerInfo *root,
 	 * only one Append and unique-ification for the lot.  Recurse to find such
 	 * nodes and compute their children's paths.
 	 */
-	pathlist = list_concat(recurse_union_children(op->larg, root,
-												  op, refnames_tlist,
-												  &child_tlists1),
-						   recurse_union_children(op->rarg, root,
-												  op, refnames_tlist,
-												  &child_tlists2));
-	tlist_list = list_concat(child_tlists1, child_tlists2);
+	rellist = plan_union_children(root, op, refnames_tlist, &tlist_list);
 
 	/*
 	 * Generate tlist for Append plan node.
@@ -576,13 +623,40 @@ generate_union_path(SetOperationStmt *op, PlannerInfo *root,
 
 	*pTargetList = tlist;
 
+	/* Build path lists and relid set. */
+	foreach(lc, rellist)
+	{
+		RelOptInfo *rel = lfirst(lc);
+
+		pathlist = lappend(pathlist, rel->cheapest_total_path);
+
+		if (consider_parallel)
+		{
+			if (!rel->consider_parallel)
+			{
+				consider_parallel = false;
+				partial_paths_valid = false;
+			}
+			else if (rel->partial_pathlist == NIL)
+				partial_paths_valid = false;
+			else
+				partial_pathlist = lappend(partial_pathlist,
+										   linitial(rel->partial_pathlist));
+		}
+
+		relids = bms_union(relids, rel->relids);
+	}
+
+	/* Build result relation. */
+	result_rel = fetch_upper_rel(root, UPPERREL_SETOP, relids);
+	result_rel->reltarget = create_pathtarget(root, tlist);
+	result_rel->consider_parallel = consider_parallel;
+
 	/*
 	 * Append the child results together.
 	 */
-	path = (Path *) create_append_path(result_rel, pathlist, NULL, 0, NIL);
-
-	/* We have to manually jam the right tlist into the path; ick */
-	path->pathtarget = create_pathtarget(root, tlist);
+	path = (Path *) create_append_path(root, result_rel, pathlist, NIL,
+									   NULL, 0, false, NIL, -1);
 
 	/*
 	 * For UNION ALL, we just need the Append path.  For UNION, need to add
@@ -591,30 +665,79 @@ generate_union_path(SetOperationStmt *op, PlannerInfo *root,
 	if (!op->all)
 		path = make_union_unique(op, path, tlist, root);
 
+	add_path(result_rel, path);
+
 	/*
-	 * Estimate number of groups if caller wants it.  For now we just assume
-	 * the output is unique --- this is certainly true for the UNION case, and
-	 * we want worst-case estimates anyway.
+	 * Estimate number of groups.  For now we just assume the output is unique
+	 * --- this is certainly true for the UNION case, and we want worst-case
+	 * estimates anyway.
 	 */
-	if (pNumGroups)
-		*pNumGroups = path->rows;
+	result_rel->rows = path->rows;
+
+	/*
+	 * Now consider doing the same thing using the partial paths plus Append
+	 * plus Gather.
+	 */
+	if (partial_paths_valid)
+	{
+		Path	   *ppath;
+		ListCell   *lc;
+		int			parallel_workers = 0;
+
+		/* Find the highest number of workers requested for any subpath. */
+		foreach(lc, partial_pathlist)
+		{
+			Path	   *path = lfirst(lc);
+
+			parallel_workers = Max(parallel_workers, path->parallel_workers);
+		}
+		Assert(parallel_workers > 0);
+
+		/*
+		 * If the use of parallel append is permitted, always request at least
+		 * log2(# of children) paths.  We assume it can be useful to have
+		 * extra workers in this case because they will be spread out across
+		 * the children.  The precise formula is just a guess; see
+		 * add_paths_to_append_rel.
+		 */
+		if (enable_parallel_append)
+		{
+			parallel_workers = Max(parallel_workers,
+								   fls(list_length(partial_pathlist)));
+			parallel_workers = Min(parallel_workers,
+								   max_parallel_workers_per_gather);
+		}
+		Assert(parallel_workers > 0);
+
+		ppath = (Path *)
+			create_append_path(root, result_rel, NIL, partial_pathlist,
+							   NULL, parallel_workers, enable_parallel_append,
+							   NIL, -1);
+		ppath = (Path *)
+			create_gather_path(root, result_rel, ppath,
+							   result_rel->reltarget, NULL, NULL);
+		if (!op->all)
+			ppath = make_union_unique(op, ppath, tlist, root);
+		add_path(result_rel, ppath);
+	}
 
 	/* Undo effects of possibly forcing tuple_fraction to 0 */
 	root->tuple_fraction = save_fraction;
 
-	return path;
+	return result_rel;
 }
 
 /*
- * Generate path for an INTERSECT, INTERSECT ALL, EXCEPT, or EXCEPT ALL node
+ * Generate paths for an INTERSECT, INTERSECT ALL, EXCEPT, or EXCEPT ALL node
  */
-static Path *
-generate_nonunion_path(SetOperationStmt *op, PlannerInfo *root,
-					   List *refnames_tlist,
-					   List **pTargetList,
-					   double *pNumGroups)
+static RelOptInfo *
+generate_nonunion_paths(SetOperationStmt *op, PlannerInfo *root,
+						List *refnames_tlist,
+						List **pTargetList)
 {
-	RelOptInfo *result_rel = fetch_upper_rel(root, UPPERREL_SETOP, NULL);
+	RelOptInfo *result_rel;
+	RelOptInfo *lrel,
+			   *rrel;
 	double		save_fraction = root->tuple_fraction;
 	Path	   *lpath,
 			   *rpath,
@@ -639,18 +762,20 @@ generate_nonunion_path(SetOperationStmt *op, PlannerInfo *root,
 	root->tuple_fraction = 0.0;
 
 	/* Recurse on children, ensuring their outputs are marked */
-	lpath = recurse_set_operations(op->larg, root,
-								   op->colTypes, op->colCollations,
-								   false, 0,
-								   refnames_tlist,
-								   &lpath_tlist,
-								   &dLeftGroups);
-	rpath = recurse_set_operations(op->rarg, root,
-								   op->colTypes, op->colCollations,
-								   false, 1,
-								   refnames_tlist,
-								   &rpath_tlist,
-								   &dRightGroups);
+	lrel = recurse_set_operations(op->larg, root,
+								  op->colTypes, op->colCollations,
+								  false, 0,
+								  refnames_tlist,
+								  &lpath_tlist,
+								  &dLeftGroups);
+	lpath = lrel->cheapest_total_path;
+	rrel = recurse_set_operations(op->rarg, root,
+								  op->colTypes, op->colCollations,
+								  false, 1,
+								  refnames_tlist,
+								  &rpath_tlist,
+								  &dRightGroups);
+	rpath = rrel->cheapest_total_path;
 
 	/* Undo effects of forcing tuple_fraction to 0 */
 	root->tuple_fraction = save_fraction;
@@ -688,13 +813,16 @@ generate_nonunion_path(SetOperationStmt *op, PlannerInfo *root,
 
 	*pTargetList = tlist;
 
+	/* Build result relation. */
+	result_rel = fetch_upper_rel(root, UPPERREL_SETOP,
+								 bms_union(lrel->relids, rrel->relids));
+	result_rel->reltarget = create_pathtarget(root, tlist);
+
 	/*
 	 * Append the child results together.
 	 */
-	path = (Path *) create_append_path(result_rel, pathlist, NULL, 0, NIL);
-
-	/* We have to manually jam the right tlist into the path; ick */
-	path->pathtarget = create_pathtarget(root, tlist);
+	path = (Path *) create_append_path(root, result_rel, pathlist, NIL,
+									   NULL, 0, false, NIL, -1);
 
 	/* Identify the grouping semantics */
 	groupList = generate_setop_grouplist(op, tlist);
@@ -761,10 +889,9 @@ generate_nonunion_path(SetOperationStmt *op, PlannerInfo *root,
 									  dNumGroups,
 									  dNumOutputRows);
 
-	if (pNumGroups)
-		*pNumGroups = dNumGroups;
-
-	return path;
+	result_rel->rows = path->rows;
+	add_path(result_rel, path);
+	return result_rel;
 }
 
 /*
@@ -778,59 +905,61 @@ generate_nonunion_path(SetOperationStmt *op, PlannerInfo *root,
  * collations have the same notion of equality.  It is valid from an
  * implementation standpoint because we don't care about the ordering of
  * a UNION child's result: UNION ALL results are always unordered, and
- * generate_union_path will force a fresh sort if the top level is a UNION.
+ * generate_union_paths will force a fresh sort if the top level is a UNION.
  */
 static List *
-recurse_union_children(Node *setOp, PlannerInfo *root,
-					   SetOperationStmt *top_union,
-					   List *refnames_tlist,
-					   List **tlist_list)
+plan_union_children(PlannerInfo *root,
+					SetOperationStmt *top_union,
+					List *refnames_tlist,
+					List **tlist_list)
 {
-	List	   *result;
+	List	   *pending_rels = list_make1(top_union);
+	List	   *result = NIL;
 	List	   *child_tlist;
 
-	if (IsA(setOp, SetOperationStmt))
+	*tlist_list = NIL;
+
+	while (pending_rels != NIL)
 	{
-		SetOperationStmt *op = (SetOperationStmt *) setOp;
+		Node	   *setOp = linitial(pending_rels);
 
-		if (op->op == top_union->op &&
-			(op->all == top_union->all || op->all) &&
-			equal(op->colTypes, top_union->colTypes))
+		pending_rels = list_delete_first(pending_rels);
+
+		if (IsA(setOp, SetOperationStmt))
 		{
-			/* Same UNION, so fold children into parent's subpath list */
-			List	   *child_tlists1;
-			List	   *child_tlists2;
+			SetOperationStmt *op = (SetOperationStmt *) setOp;
 
-			result = list_concat(recurse_union_children(op->larg, root,
-														top_union,
-														refnames_tlist,
-														&child_tlists1),
-								 recurse_union_children(op->rarg, root,
-														top_union,
-														refnames_tlist,
-														&child_tlists2));
-			*tlist_list = list_concat(child_tlists1, child_tlists2);
-			return result;
+			if (op->op == top_union->op &&
+				(op->all == top_union->all || op->all) &&
+				equal(op->colTypes, top_union->colTypes))
+			{
+				/* Same UNION, so fold children into parent */
+				pending_rels = lcons(op->rarg, pending_rels);
+				pending_rels = lcons(op->larg, pending_rels);
+				continue;
+			}
 		}
+
+		/*
+		 * Not same, so plan this child separately.
+		 *
+		 * Note we disallow any resjunk columns in child results.  This is
+		 * necessary since the Append node that implements the union won't do
+		 * any projection, and upper levels will get confused if some of our
+		 * output tuples have junk and some don't.  This case only arises when
+		 * we have an EXCEPT or INTERSECT as child, else there won't be
+		 * resjunk anyway.
+		 */
+		result = lappend(result, recurse_set_operations(setOp, root,
+														top_union->colTypes,
+														top_union->colCollations,
+														false, -1,
+														refnames_tlist,
+														&child_tlist,
+														NULL));
+		*tlist_list = lappend(*tlist_list, child_tlist);
 	}
 
-	/*
-	 * Not same, so plan this child separately.
-	 *
-	 * Note we disallow any resjunk columns in child results.  This is
-	 * necessary since the Append node that implements the union won't do any
-	 * projection, and upper levels will get confused if some of our output
-	 * tuples have junk and some don't.  This case only arises when we have an
-	 * EXCEPT or INTERSECT as child, else there won't be resjunk anyway.
-	 */
-	result = list_make1(recurse_set_operations(setOp, root,
-											   top_union->colTypes,
-											   top_union->colCollations,
-											   false, -1,
-											   refnames_tlist,
-											   &child_tlist,
-											   NULL));
-	*tlist_list = list_make1(child_tlist);
 	return result;
 }
 
@@ -887,8 +1016,6 @@ make_union_unique(SetOperationStmt *op, Path *path, List *tlist,
 															   groupList,
 															   tlist),
 								 -1.0);
-		/* We have to manually jam the right tlist into the path; ick */
-		path->pathtarget = create_pathtarget(root, tlist);
 		path = (Path *) create_upper_unique_path(root,
 												 result_rel,
 												 path,
@@ -897,6 +1024,24 @@ make_union_unique(SetOperationStmt *op, Path *path, List *tlist,
 	}
 
 	return path;
+}
+
+/*
+ * postprocess_setop_rel - perform steps required after adding paths
+ */
+static void
+postprocess_setop_rel(PlannerInfo *root, RelOptInfo *rel)
+{
+	/*
+	 * We don't currently worry about allowing FDWs to contribute paths to
+	 * this relation, but give extensions a chance.
+	 */
+	if (create_upper_paths_hook)
+		(*create_upper_paths_hook) (root, UPPERREL_SETOP,
+									NULL, rel, NULL);
+
+	/* Select cheapest path */
+	set_cheapest(rel);
 }
 
 /*
@@ -960,6 +1105,7 @@ choose_hashed_setop(PlannerInfo *root, List *groupClauses,
 	 */
 	cost_agg(&hashed_p, root, AGG_HASHED, NULL,
 			 numGroupCols, dNumGroups,
+			 NIL,
 			 input_path->startup_cost, input_path->total_cost,
 			 input_path->rows);
 
@@ -974,6 +1120,7 @@ choose_hashed_setop(PlannerInfo *root, List *groupClauses,
 			  input_path->rows, input_path->pathtarget->width,
 			  0.0, work_mem, -1.0);
 	cost_group(&sorted_p, root, numGroupCols, dNumGroups,
+			   NIL,
 			   sorted_p.startup_cost, sorted_p.total_cost,
 			   input_path->rows);
 
@@ -1329,9 +1476,9 @@ expand_inherited_tables(PlannerInfo *root)
 	ListCell   *rl;
 
 	/*
-	 * expand_inherited_rtentry may add RTEs to parse->rtable; there is no
-	 * need to scan them since they can't have inh=true.  So just scan as far
-	 * as the original end of the rtable list.
+	 * expand_inherited_rtentry may add RTEs to parse->rtable. The function is
+	 * expected to recursively handle any RTEs that it creates with inh=true.
+	 * So just scan as far as the original end of the rtable list.
 	 */
 	nrtes = list_length(root->parse->rtable);
 	rl = list_head(root->parse->rtable);
@@ -1373,11 +1520,7 @@ expand_inherited_rtentry(PlannerInfo *root, RangeTblEntry *rte, Index rti)
 	Relation	oldrelation;
 	LOCKMODE	lockmode;
 	List	   *inhOIDs;
-	List	   *appinfos;
 	ListCell   *l;
-	bool		has_child;
-	PartitionedChildRelInfo *pcinfo;
-	List	   *partitioned_child_rels = NIL;
 
 	/* Does RT entry allow inheritance? */
 	if (!rte->inh)
@@ -1448,171 +1591,293 @@ expand_inherited_rtentry(PlannerInfo *root, RangeTblEntry *rte, Index rti)
 	oldrelation = heap_open(parentOID, NoLock);
 
 	/* Scan the inheritance set and expand it */
-	appinfos = NIL;
-	has_child = false;
-	foreach(l, inhOIDs)
+	if (RelationGetPartitionDesc(oldrelation) != NULL)
 	{
-		Oid			childOID = lfirst_oid(l);
-		Relation	newrelation;
+		Assert(rte->relkind == RELKIND_PARTITIONED_TABLE);
+
+		/*
+		 * If this table has partitions, recursively expand them in the order
+		 * in which they appear in the PartitionDesc.  While at it, also
+		 * extract the partition key columns of all the partitioned tables.
+		 */
+		expand_partitioned_rtentry(root, rte, rti, oldrelation, oldrc,
+								   lockmode, &root->append_rel_list);
+	}
+	else
+	{
+		List	   *appinfos = NIL;
 		RangeTblEntry *childrte;
 		Index		childRTindex;
-		AppendRelInfo *appinfo;
-
-		/* Open rel if needed; we already have required locks */
-		if (childOID != parentOID)
-			newrelation = heap_open(childOID, NoLock);
-		else
-			newrelation = oldrelation;
 
 		/*
-		 * It is possible that the parent table has children that are temp
-		 * tables of other backends.  We cannot safely access such tables
-		 * (because of buffering issues), and the best thing to do seems to be
-		 * to silently ignore them.
+		 * This table has no partitions.  Expand any plain inheritance
+		 * children in the order the OIDs were returned by
+		 * find_all_inheritors.
 		 */
-		if (childOID != parentOID && RELATION_IS_OTHER_TEMP(newrelation))
+		foreach(l, inhOIDs)
 		{
-			heap_close(newrelation, lockmode);
-			continue;
-		}
+			Oid			childOID = lfirst_oid(l);
+			Relation	newrelation;
 
-		/*
-		 * Build an RTE for the child, and attach to query's rangetable list.
-		 * We copy most fields of the parent's RTE, but replace relation OID
-		 * and relkind, and set inh = false.  Also, set requiredPerms to zero
-		 * since all required permissions checks are done on the original RTE.
-		 * Likewise, set the child's securityQuals to empty, because we only
-		 * want to apply the parent's RLS conditions regardless of what RLS
-		 * properties individual children may have.  (This is an intentional
-		 * choice to make inherited RLS work like regular permissions checks.)
-		 * The parent securityQuals will be propagated to children along with
-		 * other base restriction clauses, so we don't need to do it here.
-		 */
-		childrte = copyObject(rte);
-		childrte->relid = childOID;
-		childrte->relkind = newrelation->rd_rel->relkind;
-		childrte->inh = false;
-		childrte->requiredPerms = 0;
-		childrte->securityQuals = NIL;
-		parse->rtable = lappend(parse->rtable, childrte);
-		childRTindex = list_length(parse->rtable);
-
-		/*
-		 * Build an AppendRelInfo for this parent and child, unless the child
-		 * is a partitioned table.
-		 */
-		if (childrte->relkind != RELKIND_PARTITIONED_TABLE)
-		{
-			/* Remember if we saw a real child. */
+			/* Open rel if needed; we already have required locks */
 			if (childOID != parentOID)
-				has_child = true;
-
-			appinfo = makeNode(AppendRelInfo);
-			appinfo->parent_relid = rti;
-			appinfo->child_relid = childRTindex;
-			appinfo->parent_reltype = oldrelation->rd_rel->reltype;
-			appinfo->child_reltype = newrelation->rd_rel->reltype;
-			make_inh_translation_list(oldrelation, newrelation, childRTindex,
-									  &appinfo->translated_vars);
-			appinfo->parent_reloid = parentOID;
-			appinfos = lappend(appinfos, appinfo);
+				newrelation = heap_open(childOID, NoLock);
+			else
+				newrelation = oldrelation;
 
 			/*
-			 * Translate the column permissions bitmaps to the child's attnums
-			 * (we have to build the translated_vars list before we can do
-			 * this). But if this is the parent table, leave copyObject's
-			 * result alone.
-			 *
-			 * Note: we need to do this even though the executor won't run any
-			 * permissions checks on the child RTE.  The
-			 * insertedCols/updatedCols bitmaps may be examined for
-			 * trigger-firing purposes.
+			 * It is possible that the parent table has children that are temp
+			 * tables of other backends.  We cannot safely access such tables
+			 * (because of buffering issues), and the best thing to do seems
+			 * to be to silently ignore them.
 			 */
-			if (childOID != parentOID)
+			if (childOID != parentOID && RELATION_IS_OTHER_TEMP(newrelation))
 			{
-				childrte->selectedCols = translate_col_privs(rte->selectedCols,
-															 appinfo->translated_vars);
-				childrte->insertedCols = translate_col_privs(rte->insertedCols,
-															 appinfo->translated_vars);
-				childrte->updatedCols = translate_col_privs(rte->updatedCols,
-															appinfo->translated_vars);
+				heap_close(newrelation, lockmode);
+				continue;
 			}
+
+			expand_single_inheritance_child(root, rte, rti, oldrelation, oldrc,
+											newrelation,
+											&appinfos, &childrte,
+											&childRTindex);
+
+			/* Close child relations, but keep locks */
+			if (childOID != parentOID)
+				heap_close(newrelation, NoLock);
 		}
-		else
-			partitioned_child_rels = lappend_int(partitioned_child_rels,
-												 childRTindex);
 
 		/*
-		 * Build a PlanRowMark if parent is marked FOR UPDATE/SHARE.
+		 * If all the children were temp tables, pretend it's a
+		 * non-inheritance situation; we don't need Append node in that case.
+		 * The duplicate RTE we added for the parent table is harmless, so we
+		 * don't bother to get rid of it; ditto for the useless PlanRowMark
+		 * node.
 		 */
-		if (oldrc)
-		{
-			PlanRowMark *newrc = makeNode(PlanRowMark);
+		if (list_length(appinfos) < 2)
+			rte->inh = false;
+		else
+			root->append_rel_list = list_concat(root->append_rel_list,
+												appinfos);
 
-			newrc->rti = childRTindex;
-			newrc->prti = rti;
-			newrc->rowmarkId = oldrc->rowmarkId;
-			/* Reselect rowmark type, because relkind might not match parent */
-			newrc->markType = select_rowmark_type(childrte, oldrc->strength);
-			newrc->allMarkTypes = (1 << newrc->markType);
-			newrc->strength = oldrc->strength;
-			newrc->waitPolicy = oldrc->waitPolicy;
-
-			/*
-			 * We mark RowMarks for partitioned child tables as parent
-			 * RowMarks so that the executor ignores them (except their
-			 * existence means that the child tables be locked using
-			 * appropriate mode).
-			 */
-			newrc->isParent = (childrte->relkind == RELKIND_PARTITIONED_TABLE);
-
-			/* Include child's rowmark type in parent's allMarkTypes */
-			oldrc->allMarkTypes |= newrc->allMarkTypes;
-
-			root->rowMarks = lappend(root->rowMarks, newrc);
-		}
-
-		/* Close child relations, but keep locks */
-		if (childOID != parentOID)
-			heap_close(newrelation, NoLock);
 	}
 
 	heap_close(oldrelation, NoLock);
+}
+
+/*
+ * expand_partitioned_rtentry
+ *		Recursively expand an RTE for a partitioned table.
+ *
+ * Note that RelationGetPartitionDispatchInfo will expand partitions in the
+ * same order as this code.
+ */
+static void
+expand_partitioned_rtentry(PlannerInfo *root, RangeTblEntry *parentrte,
+						   Index parentRTindex, Relation parentrel,
+						   PlanRowMark *top_parentrc, LOCKMODE lockmode,
+						   List **appinfos)
+{
+	int			i;
+	RangeTblEntry *childrte;
+	Index		childRTindex;
+	PartitionDesc partdesc = RelationGetPartitionDesc(parentrel);
+
+	check_stack_depth();
+
+	/* A partitioned table should always have a partition descriptor. */
+	Assert(partdesc);
+
+	Assert(parentrte->inh);
 
 	/*
-	 * If all the children were temp tables or a partitioned parent did not
-	 * have any leaf partitions, pretend it's a non-inheritance situation; we
-	 * don't need Append node in that case.  The duplicate RTE we added for
-	 * the parent table is harmless, so we don't bother to get rid of it;
-	 * ditto for the useless PlanRowMark node.
+	 * Note down whether any partition key cols are being updated. Though it's
+	 * the root partitioned table's updatedCols we are interested in, we
+	 * instead use parentrte to get the updatedCols. This is convenient
+	 * because parentrte already has the root partrel's updatedCols translated
+	 * to match the attribute ordering of parentrel.
 	 */
-	if (!has_child)
+	if (!root->partColsUpdated)
+		root->partColsUpdated =
+			has_partition_attrs(parentrel, parentrte->updatedCols, NULL);
+
+	/* First expand the partitioned table itself. */
+	expand_single_inheritance_child(root, parentrte, parentRTindex, parentrel,
+									top_parentrc, parentrel,
+									appinfos, &childrte, &childRTindex);
+
+	/*
+	 * If the partitioned table has no partitions, treat this as the
+	 * non-inheritance case.
+	 */
+	if (partdesc->nparts == 0)
 	{
-		/* Clear flag before returning */
-		rte->inh = false;
+		parentrte->inh = false;
 		return;
 	}
 
-	/*
-	 * We keep a list of objects in root, each of which maps a partitioned
-	 * parent RT index to the list of RT indexes of its partitioned child
-	 * tables.  When creating an Append or a ModifyTable path for the parent,
-	 * we copy the child RT index list verbatim to the path so that it could
-	 * be carried over to the executor so that the latter could identify the
-	 * partitioned child tables.
-	 */
-	if (partitioned_child_rels != NIL)
+	for (i = 0; i < partdesc->nparts; i++)
 	{
-		pcinfo = makeNode(PartitionedChildRelInfo);
+		Oid			childOID = partdesc->oids[i];
+		Relation	childrel;
 
-		Assert(rte->relkind == RELKIND_PARTITIONED_TABLE);
-		pcinfo->parent_relid = rti;
-		pcinfo->child_rels = partitioned_child_rels;
-		root->pcinfo_list = lappend(root->pcinfo_list, pcinfo);
+		/* Open rel; we already have required locks */
+		childrel = heap_open(childOID, NoLock);
+
+		/*
+		 * Temporary partitions belonging to other sessions should have been
+		 * disallowed at definition, but for paranoia's sake, let's double
+		 * check.
+		 */
+		if (RELATION_IS_OTHER_TEMP(childrel))
+			elog(ERROR, "temporary relation from another session found as partition");
+
+		expand_single_inheritance_child(root, parentrte, parentRTindex,
+										parentrel, top_parentrc, childrel,
+										appinfos, &childrte, &childRTindex);
+
+		/* If this child is itself partitioned, recurse */
+		if (childrel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+			expand_partitioned_rtentry(root, childrte, childRTindex,
+									   childrel, top_parentrc, lockmode,
+									   appinfos);
+
+		/* Close child relation, but keep locks */
+		heap_close(childrel, NoLock);
+	}
+}
+
+/*
+ * expand_single_inheritance_child
+ *		Build a RangeTblEntry and an AppendRelInfo, if appropriate, plus
+ *		maybe a PlanRowMark.
+ *
+ * We now expand the partition hierarchy level by level, creating a
+ * corresponding hierarchy of AppendRelInfos and RelOptInfos, where each
+ * partitioned descendant acts as a parent of its immediate partitions.
+ * (This is a difference from what older versions of PostgreSQL did and what
+ * is still done in the case of table inheritance for unpartitioned tables,
+ * where the hierarchy is flattened during RTE expansion.)
+ *
+ * PlanRowMarks still carry the top-parent's RTI, and the top-parent's
+ * allMarkTypes field still accumulates values from all descendents.
+ *
+ * "parentrte" and "parentRTindex" are immediate parent's RTE and
+ * RTI. "top_parentrc" is top parent's PlanRowMark.
+ *
+ * The child RangeTblEntry and its RTI are returned in "childrte_p" and
+ * "childRTindex_p" resp.
+ */
+static void
+expand_single_inheritance_child(PlannerInfo *root, RangeTblEntry *parentrte,
+								Index parentRTindex, Relation parentrel,
+								PlanRowMark *top_parentrc, Relation childrel,
+								List **appinfos, RangeTblEntry **childrte_p,
+								Index *childRTindex_p)
+{
+	Query	   *parse = root->parse;
+	Oid			parentOID = RelationGetRelid(parentrel);
+	Oid			childOID = RelationGetRelid(childrel);
+	RangeTblEntry *childrte;
+	Index		childRTindex;
+	AppendRelInfo *appinfo;
+
+	/*
+	 * Build an RTE for the child, and attach to query's rangetable list. We
+	 * copy most fields of the parent's RTE, but replace relation OID and
+	 * relkind, and set inh = false.  Also, set requiredPerms to zero since
+	 * all required permissions checks are done on the original RTE. Likewise,
+	 * set the child's securityQuals to empty, because we only want to apply
+	 * the parent's RLS conditions regardless of what RLS properties
+	 * individual children may have.  (This is an intentional choice to make
+	 * inherited RLS work like regular permissions checks.) The parent
+	 * securityQuals will be propagated to children along with other base
+	 * restriction clauses, so we don't need to do it here.
+	 */
+	childrte = copyObject(parentrte);
+	*childrte_p = childrte;
+	childrte->relid = childOID;
+	childrte->relkind = childrel->rd_rel->relkind;
+	/* A partitioned child will need to be expanded further. */
+	if (childOID != parentOID &&
+		childrte->relkind == RELKIND_PARTITIONED_TABLE)
+		childrte->inh = true;
+	else
+		childrte->inh = false;
+	childrte->requiredPerms = 0;
+	childrte->securityQuals = NIL;
+	parse->rtable = lappend(parse->rtable, childrte);
+	childRTindex = list_length(parse->rtable);
+	*childRTindex_p = childRTindex;
+
+	/*
+	 * We need an AppendRelInfo if paths will be built for the child RTE. If
+	 * childrte->inh is true, then we'll always need to generate append paths
+	 * for it.  If childrte->inh is false, we must scan it if it's not a
+	 * partitioned table; but if it is a partitioned table, then it never has
+	 * any data of its own and need not be scanned.
+	 */
+	if (childrte->relkind != RELKIND_PARTITIONED_TABLE || childrte->inh)
+	{
+		appinfo = makeNode(AppendRelInfo);
+		appinfo->parent_relid = parentRTindex;
+		appinfo->child_relid = childRTindex;
+		appinfo->parent_reltype = parentrel->rd_rel->reltype;
+		appinfo->child_reltype = childrel->rd_rel->reltype;
+		make_inh_translation_list(parentrel, childrel, childRTindex,
+								  &appinfo->translated_vars);
+		appinfo->parent_reloid = parentOID;
+		*appinfos = lappend(*appinfos, appinfo);
+
+		/*
+		 * Translate the column permissions bitmaps to the child's attnums (we
+		 * have to build the translated_vars list before we can do this). But
+		 * if this is the parent table, leave copyObject's result alone.
+		 *
+		 * Note: we need to do this even though the executor won't run any
+		 * permissions checks on the child RTE.  The insertedCols/updatedCols
+		 * bitmaps may be examined for trigger-firing purposes.
+		 */
+		if (childOID != parentOID)
+		{
+			childrte->selectedCols = translate_col_privs(parentrte->selectedCols,
+														 appinfo->translated_vars);
+			childrte->insertedCols = translate_col_privs(parentrte->insertedCols,
+														 appinfo->translated_vars);
+			childrte->updatedCols = translate_col_privs(parentrte->updatedCols,
+														appinfo->translated_vars);
+		}
 	}
 
-	/* Otherwise, OK to add to root->append_rel_list */
-	root->append_rel_list = list_concat(root->append_rel_list, appinfos);
+	/*
+	 * Build a PlanRowMark if parent is marked FOR UPDATE/SHARE.
+	 */
+	if (top_parentrc)
+	{
+		PlanRowMark *childrc = makeNode(PlanRowMark);
+
+		childrc->rti = childRTindex;
+		childrc->prti = top_parentrc->rti;
+		childrc->rowmarkId = top_parentrc->rowmarkId;
+		/* Reselect rowmark type, because relkind might not match parent */
+		childrc->markType = select_rowmark_type(childrte,
+												top_parentrc->strength);
+		childrc->allMarkTypes = (1 << childrc->markType);
+		childrc->strength = top_parentrc->strength;
+		childrc->waitPolicy = top_parentrc->waitPolicy;
+
+		/*
+		 * We mark RowMarks for partitioned child tables as parent RowMarks so
+		 * that the executor ignores them (except their existence means that
+		 * the child tables be locked using appropriate mode).
+		 */
+		childrc->isParent = (childrte->relkind == RELKIND_PARTITIONED_TABLE);
+
+		/* Include child's rowmark type in top parent's allMarkTypes */
+		top_parentrc->allMarkTypes |= childrc->allMarkTypes;
+
+		root->rowMarks = lappend(root->rowMarks, childrc);
+	}
 }
 
 /*
@@ -1643,7 +1908,7 @@ make_inh_translation_list(Relation oldrelation, Relation newrelation,
 		Oid			attcollation;
 		int			new_attno;
 
-		att = old_tupdesc->attrs[old_attno];
+		att = TupleDescAttr(old_tupdesc, old_attno);
 		if (att->attisdropped)
 		{
 			/* Just put NULL into this list entry */
@@ -1681,7 +1946,7 @@ make_inh_translation_list(Relation oldrelation, Relation newrelation,
 		 * notational device to include the assignment into the if-clause.
 		 */
 		if (old_attno < newnatts &&
-			(att = new_tupdesc->attrs[old_attno]) != NULL &&
+			(att = TupleDescAttr(new_tupdesc, old_attno)) != NULL &&
 			!att->attisdropped &&
 			strcmp(attname, NameStr(att->attname)) == 0)
 			new_attno = old_attno;
@@ -1689,7 +1954,7 @@ make_inh_translation_list(Relation oldrelation, Relation newrelation,
 		{
 			for (new_attno = 0; new_attno < newnatts; new_attno++)
 			{
-				att = new_tupdesc->attrs[new_attno];
+				att = TupleDescAttr(new_tupdesc, new_attno);
 				if (!att->attisdropped &&
 					strcmp(attname, NameStr(att->attname)) == 0)
 					break;
@@ -1772,10 +2037,10 @@ translate_col_privs(const Bitmapset *parent_privs,
 
 /*
  * adjust_appendrel_attrs
- *	  Copy the specified query or expression and translate Vars referring
- *	  to the parent rel of the specified AppendRelInfo to refer to the
- *	  child rel instead.  We also update rtindexes appearing outside Vars,
- *	  such as resultRelation and jointree relids.
+ *	  Copy the specified query or expression and translate Vars referring to a
+ *	  parent rel to refer to the corresponding child rel instead.  We also
+ *	  update rtindexes appearing outside Vars, such as resultRelation and
+ *	  jointree relids.
  *
  * Note: this is only applied after conversion of sublinks to subplans,
  * so we don't need to cope with recursion into sub-queries.
@@ -1784,13 +2049,18 @@ translate_col_privs(const Bitmapset *parent_privs,
  * maybe we should try to fold the two routines together.
  */
 Node *
-adjust_appendrel_attrs(PlannerInfo *root, Node *node, AppendRelInfo *appinfo)
+adjust_appendrel_attrs(PlannerInfo *root, Node *node, int nappinfos,
+					   AppendRelInfo **appinfos)
 {
 	Node	   *result;
 	adjust_appendrel_attrs_context context;
 
 	context.root = root;
-	context.appinfo = appinfo;
+	context.nappinfos = nappinfos;
+	context.appinfos = appinfos;
+
+	/* If there's nothing to adjust, don't call this function. */
+	Assert(nappinfos >= 1 && appinfos != NULL);
 
 	/*
 	 * Must be prepared to start with a Query or a bare expression tree.
@@ -1798,20 +2068,28 @@ adjust_appendrel_attrs(PlannerInfo *root, Node *node, AppendRelInfo *appinfo)
 	if (node && IsA(node, Query))
 	{
 		Query	   *newnode;
+		int			cnt;
 
 		newnode = query_tree_mutator((Query *) node,
 									 adjust_appendrel_attrs_mutator,
 									 (void *) &context,
 									 QTW_IGNORE_RC_SUBQUERIES);
-		if (newnode->resultRelation == appinfo->parent_relid)
+		for (cnt = 0; cnt < nappinfos; cnt++)
 		{
-			newnode->resultRelation = appinfo->child_relid;
-			/* Fix tlist resnos too, if it's inherited UPDATE */
-			if (newnode->commandType == CMD_UPDATE)
-				newnode->targetList =
-					adjust_inherited_tlist(newnode->targetList,
-										   appinfo);
+			AppendRelInfo *appinfo = appinfos[cnt];
+
+			if (newnode->resultRelation == appinfo->parent_relid)
+			{
+				newnode->resultRelation = appinfo->child_relid;
+				/* Fix tlist resnos too, if it's inherited UPDATE */
+				if (newnode->commandType == CMD_UPDATE)
+					newnode->targetList =
+						adjust_inherited_tlist(newnode->targetList,
+											   appinfo);
+				break;
+			}
 		}
+
 		result = (Node *) newnode;
 	}
 	else
@@ -1824,16 +2102,27 @@ static Node *
 adjust_appendrel_attrs_mutator(Node *node,
 							   adjust_appendrel_attrs_context *context)
 {
-	AppendRelInfo *appinfo = context->appinfo;
+	AppendRelInfo **appinfos = context->appinfos;
+	int			nappinfos = context->nappinfos;
+	int			cnt;
 
 	if (node == NULL)
 		return NULL;
 	if (IsA(node, Var))
 	{
 		Var		   *var = (Var *) copyObject(node);
+		AppendRelInfo *appinfo = NULL;
 
-		if (var->varlevelsup == 0 &&
-			var->varno == appinfo->parent_relid)
+		for (cnt = 0; cnt < nappinfos; cnt++)
+		{
+			if (var->varno == appinfos[cnt]->parent_relid)
+			{
+				appinfo = appinfos[cnt];
+				break;
+			}
+		}
+
+		if (var->varlevelsup == 0 && appinfo)
 		{
 			var->varno = appinfo->child_relid;
 			var->varnoold = appinfo->child_relid;
@@ -1913,29 +2202,54 @@ adjust_appendrel_attrs_mutator(Node *node,
 	{
 		CurrentOfExpr *cexpr = (CurrentOfExpr *) copyObject(node);
 
-		if (cexpr->cvarno == appinfo->parent_relid)
-			cexpr->cvarno = appinfo->child_relid;
+		for (cnt = 0; cnt < nappinfos; cnt++)
+		{
+			AppendRelInfo *appinfo = appinfos[cnt];
+
+			if (cexpr->cvarno == appinfo->parent_relid)
+			{
+				cexpr->cvarno = appinfo->child_relid;
+				break;
+			}
+		}
 		return (Node *) cexpr;
 	}
 	if (IsA(node, RangeTblRef))
 	{
 		RangeTblRef *rtr = (RangeTblRef *) copyObject(node);
 
-		if (rtr->rtindex == appinfo->parent_relid)
-			rtr->rtindex = appinfo->child_relid;
+		for (cnt = 0; cnt < nappinfos; cnt++)
+		{
+			AppendRelInfo *appinfo = appinfos[cnt];
+
+			if (rtr->rtindex == appinfo->parent_relid)
+			{
+				rtr->rtindex = appinfo->child_relid;
+				break;
+			}
+		}
 		return (Node *) rtr;
 	}
 	if (IsA(node, JoinExpr))
 	{
 		/* Copy the JoinExpr node with correct mutation of subnodes */
 		JoinExpr   *j;
+		AppendRelInfo *appinfo;
 
 		j = (JoinExpr *) expression_tree_mutator(node,
 												 adjust_appendrel_attrs_mutator,
 												 (void *) context);
 		/* now fix JoinExpr's rtindex (probably never happens) */
-		if (j->rtindex == appinfo->parent_relid)
-			j->rtindex = appinfo->child_relid;
+		for (cnt = 0; cnt < nappinfos; cnt++)
+		{
+			appinfo = appinfos[cnt];
+
+			if (j->rtindex == appinfo->parent_relid)
+			{
+				j->rtindex = appinfo->child_relid;
+				break;
+			}
+		}
 		return (Node *) j;
 	}
 	if (IsA(node, PlaceHolderVar))
@@ -1948,9 +2262,8 @@ adjust_appendrel_attrs_mutator(Node *node,
 														 (void *) context);
 		/* now fix PlaceHolderVar's relid sets */
 		if (phv->phlevelsup == 0)
-			phv->phrels = adjust_relid_set(phv->phrels,
-										   appinfo->parent_relid,
-										   appinfo->child_relid);
+			phv->phrels = adjust_child_relids(phv->phrels, context->nappinfos,
+											  context->appinfos);
 		return (Node *) phv;
 	}
 	/* Shouldn't need to handle planner auxiliary nodes here */
@@ -1981,24 +2294,24 @@ adjust_appendrel_attrs_mutator(Node *node,
 			adjust_appendrel_attrs_mutator((Node *) oldinfo->orclause, context);
 
 		/* adjust relid sets too */
-		newinfo->clause_relids = adjust_relid_set(oldinfo->clause_relids,
-												  appinfo->parent_relid,
-												  appinfo->child_relid);
-		newinfo->required_relids = adjust_relid_set(oldinfo->required_relids,
-													appinfo->parent_relid,
-													appinfo->child_relid);
-		newinfo->outer_relids = adjust_relid_set(oldinfo->outer_relids,
-												 appinfo->parent_relid,
-												 appinfo->child_relid);
-		newinfo->nullable_relids = adjust_relid_set(oldinfo->nullable_relids,
-													appinfo->parent_relid,
-													appinfo->child_relid);
-		newinfo->left_relids = adjust_relid_set(oldinfo->left_relids,
-												appinfo->parent_relid,
-												appinfo->child_relid);
-		newinfo->right_relids = adjust_relid_set(oldinfo->right_relids,
-												 appinfo->parent_relid,
-												 appinfo->child_relid);
+		newinfo->clause_relids = adjust_child_relids(oldinfo->clause_relids,
+													 context->nappinfos,
+													 context->appinfos);
+		newinfo->required_relids = adjust_child_relids(oldinfo->required_relids,
+													   context->nappinfos,
+													   context->appinfos);
+		newinfo->outer_relids = adjust_child_relids(oldinfo->outer_relids,
+													context->nappinfos,
+													context->appinfos);
+		newinfo->nullable_relids = adjust_child_relids(oldinfo->nullable_relids,
+													   context->nappinfos,
+													   context->appinfos);
+		newinfo->left_relids = adjust_child_relids(oldinfo->left_relids,
+												   context->nappinfos,
+												   context->appinfos);
+		newinfo->right_relids = adjust_child_relids(oldinfo->right_relids,
+													context->nappinfos,
+													context->appinfos);
 
 		/*
 		 * Reset cached derivative fields, since these might need to have
@@ -2014,6 +2327,8 @@ adjust_appendrel_attrs_mutator(Node *node,
 		newinfo->scansel_cache = NIL;
 		newinfo->left_bucketsize = -1;
 		newinfo->right_bucketsize = -1;
+		newinfo->left_mcvfreq = -1;
+		newinfo->right_mcvfreq = -1;
 
 		return (Node *) newinfo;
 	}
@@ -2030,20 +2345,90 @@ adjust_appendrel_attrs_mutator(Node *node,
 }
 
 /*
- * Substitute newrelid for oldrelid in a Relid set
+ * Substitute child relids for parent relids in a Relid set.  The array of
+ * appinfos specifies the substitutions to be performed.
  */
 static Relids
-adjust_relid_set(Relids relids, Index oldrelid, Index newrelid)
+adjust_child_relids(Relids relids, int nappinfos, AppendRelInfo **appinfos)
 {
-	if (bms_is_member(oldrelid, relids))
+	Bitmapset  *result = NULL;
+	int			cnt;
+
+	for (cnt = 0; cnt < nappinfos; cnt++)
 	{
-		/* Ensure we have a modifiable copy */
-		relids = bms_copy(relids);
-		/* Remove old, add new */
-		relids = bms_del_member(relids, oldrelid);
-		relids = bms_add_member(relids, newrelid);
+		AppendRelInfo *appinfo = appinfos[cnt];
+
+		/* Remove parent, add child */
+		if (bms_is_member(appinfo->parent_relid, relids))
+		{
+			/* Make a copy if we are changing the set. */
+			if (!result)
+				result = bms_copy(relids);
+
+			result = bms_del_member(result, appinfo->parent_relid);
+			result = bms_add_member(result, appinfo->child_relid);
+		}
 	}
+
+	/* If we made any changes, return the modified copy. */
+	if (result)
+		return result;
+
+	/* Otherwise, return the original set without modification. */
 	return relids;
+}
+
+/*
+ * Replace any relid present in top_parent_relids with its child in
+ * child_relids. Members of child_relids can be multiple levels below top
+ * parent in the partition hierarchy.
+ */
+Relids
+adjust_child_relids_multilevel(PlannerInfo *root, Relids relids,
+							   Relids child_relids, Relids top_parent_relids)
+{
+	AppendRelInfo **appinfos;
+	int			nappinfos;
+	Relids		parent_relids = NULL;
+	Relids		result;
+	Relids		tmp_result = NULL;
+	int			cnt;
+
+	/*
+	 * If the given relids set doesn't contain any of the top parent relids,
+	 * it will remain unchanged.
+	 */
+	if (!bms_overlap(relids, top_parent_relids))
+		return relids;
+
+	appinfos = find_appinfos_by_relids(root, child_relids, &nappinfos);
+
+	/* Construct relids set for the immediate parent of the given child. */
+	for (cnt = 0; cnt < nappinfos; cnt++)
+	{
+		AppendRelInfo *appinfo = appinfos[cnt];
+
+		parent_relids = bms_add_member(parent_relids, appinfo->parent_relid);
+	}
+
+	/* Recurse if immediate parent is not the top parent. */
+	if (!bms_equal(parent_relids, top_parent_relids))
+	{
+		tmp_result = adjust_child_relids_multilevel(root, relids,
+													parent_relids,
+													top_parent_relids);
+		relids = tmp_result;
+	}
+
+	result = adjust_child_relids(relids, nappinfos, appinfos);
+
+	/* Free memory consumed by any intermediate result. */
+	if (tmp_result)
+		bms_free(tmp_result);
+	bms_free(parent_relids);
+	pfree(appinfos);
+
+	return result;
 }
 
 /*
@@ -2147,21 +2532,112 @@ adjust_inherited_tlist(List *tlist, AppendRelInfo *context)
  * adjust_appendrel_attrs_multilevel
  *	  Apply Var translations from a toplevel appendrel parent down to a child.
  *
- * In some cases we need to translate expressions referencing a baserel
+ * In some cases we need to translate expressions referencing a parent relation
  * to reference an appendrel child that's multiple levels removed from it.
  */
 Node *
 adjust_appendrel_attrs_multilevel(PlannerInfo *root, Node *node,
-								  RelOptInfo *child_rel)
+								  Relids child_relids,
+								  Relids top_parent_relids)
 {
-	AppendRelInfo *appinfo = find_childrel_appendrelinfo(root, child_rel);
-	RelOptInfo *parent_rel = find_base_rel(root, appinfo->parent_relid);
+	AppendRelInfo **appinfos;
+	Bitmapset  *parent_relids = NULL;
+	int			nappinfos;
+	int			cnt;
 
-	/* If parent is also a child, first recurse to apply its translations */
-	if (IS_OTHER_REL(parent_rel))
-		node = adjust_appendrel_attrs_multilevel(root, node, parent_rel);
-	else
-		Assert(parent_rel->reloptkind == RELOPT_BASEREL);
+	Assert(bms_num_members(child_relids) == bms_num_members(top_parent_relids));
+
+	appinfos = find_appinfos_by_relids(root, child_relids, &nappinfos);
+
+	/* Construct relids set for the immediate parent of given child. */
+	for (cnt = 0; cnt < nappinfos; cnt++)
+	{
+		AppendRelInfo *appinfo = appinfos[cnt];
+
+		parent_relids = bms_add_member(parent_relids, appinfo->parent_relid);
+	}
+
+	/* Recurse if immediate parent is not the top parent. */
+	if (!bms_equal(parent_relids, top_parent_relids))
+		node = adjust_appendrel_attrs_multilevel(root, node, parent_relids,
+												 top_parent_relids);
+
 	/* Now translate for this child */
-	return adjust_appendrel_attrs(root, node, appinfo);
+	node = adjust_appendrel_attrs(root, node, nappinfos, appinfos);
+
+	pfree(appinfos);
+
+	return node;
+}
+
+/*
+ * Construct the SpecialJoinInfo for a child-join by translating
+ * SpecialJoinInfo for the join between parents. left_relids and right_relids
+ * are the relids of left and right side of the join respectively.
+ */
+SpecialJoinInfo *
+build_child_join_sjinfo(PlannerInfo *root, SpecialJoinInfo *parent_sjinfo,
+						Relids left_relids, Relids right_relids)
+{
+	SpecialJoinInfo *sjinfo = makeNode(SpecialJoinInfo);
+	AppendRelInfo **left_appinfos;
+	int			left_nappinfos;
+	AppendRelInfo **right_appinfos;
+	int			right_nappinfos;
+
+	memcpy(sjinfo, parent_sjinfo, sizeof(SpecialJoinInfo));
+	left_appinfos = find_appinfos_by_relids(root, left_relids,
+											&left_nappinfos);
+	right_appinfos = find_appinfos_by_relids(root, right_relids,
+											 &right_nappinfos);
+
+	sjinfo->min_lefthand = adjust_child_relids(sjinfo->min_lefthand,
+											   left_nappinfos, left_appinfos);
+	sjinfo->min_righthand = adjust_child_relids(sjinfo->min_righthand,
+												right_nappinfos,
+												right_appinfos);
+	sjinfo->syn_lefthand = adjust_child_relids(sjinfo->syn_lefthand,
+											   left_nappinfos, left_appinfos);
+	sjinfo->syn_righthand = adjust_child_relids(sjinfo->syn_righthand,
+												right_nappinfos,
+												right_appinfos);
+	sjinfo->semi_rhs_exprs = (List *) adjust_appendrel_attrs(root,
+															 (Node *) sjinfo->semi_rhs_exprs,
+															 right_nappinfos,
+															 right_appinfos);
+
+	pfree(left_appinfos);
+	pfree(right_appinfos);
+
+	return sjinfo;
+}
+
+/*
+ * find_appinfos_by_relids
+ * 		Find AppendRelInfo structures for all relations specified by relids.
+ *
+ * The AppendRelInfos are returned in an array, which can be pfree'd by the
+ * caller. *nappinfos is set to the number of entries in the array.
+ */
+AppendRelInfo **
+find_appinfos_by_relids(PlannerInfo *root, Relids relids, int *nappinfos)
+{
+	AppendRelInfo **appinfos;
+	int			cnt = 0;
+	int			i;
+
+	*nappinfos = bms_num_members(relids);
+	appinfos = (AppendRelInfo **) palloc(sizeof(AppendRelInfo *) * *nappinfos);
+
+	i = -1;
+	while ((i = bms_next_member(relids, i)) >= 0)
+	{
+		AppendRelInfo *appinfo = root->append_rel_array[i];
+
+		if (!appinfo)
+			elog(ERROR, "child rel %d not found in append_rel_array", i);
+
+		appinfos[cnt++] = appinfo;
+	}
+	return appinfos;
 }

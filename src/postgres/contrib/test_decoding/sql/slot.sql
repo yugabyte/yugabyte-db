@@ -9,6 +9,8 @@ SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot_p', 'test
 
 SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot_t2', 'test_decoding', true);
 
+SELECT pg_create_logical_replication_slot('foo', 'nonexistent');
+
 -- here we want to start a new session and wait till old one is gone
 select pg_backend_pid() as oldpid \gset
 \c -
@@ -45,6 +47,21 @@ INSERT INTO replication_example(somedata, text) VALUES (1, 3);
 SELECT data FROM pg_logical_slot_get_changes('regression_slot1', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
 SELECT data FROM pg_logical_slot_get_changes('regression_slot2', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
 
+INSERT INTO replication_example(somedata, text) VALUES (1, 4);
+INSERT INTO replication_example(somedata, text) VALUES (1, 5);
+
+SELECT pg_current_wal_lsn() AS wal_lsn \gset
+
+INSERT INTO replication_example(somedata, text) VALUES (1, 6);
+
+SELECT end_lsn FROM pg_replication_slot_advance('regression_slot1', :'wal_lsn') \gset
+SELECT slot_name FROM pg_replication_slot_advance('regression_slot2', pg_current_wal_lsn());
+
+SELECT :'wal_lsn' = :'end_lsn';
+
+SELECT data FROM pg_logical_slot_get_changes('regression_slot1', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
+SELECT data FROM pg_logical_slot_get_changes('regression_slot2', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
+
 DROP TABLE replication_example;
 
 -- error
@@ -53,3 +70,9 @@ SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot1', 'test_
 -- both should error as they should be dropped on error
 SELECT pg_drop_replication_slot('regression_slot1');
 SELECT pg_drop_replication_slot('regression_slot2');
+
+-- slot advance with physical slot, error with non-reserved slot
+SELECT slot_name FROM pg_create_physical_replication_slot('regression_slot3');
+SELECT pg_replication_slot_advance('regression_slot3', '0/0'); -- invalid LSN
+SELECT pg_replication_slot_advance('regression_slot3', '0/1'); -- error
+SELECT pg_drop_replication_slot('regression_slot3');

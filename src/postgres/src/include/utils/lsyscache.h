@@ -3,7 +3,7 @@
  * lsyscache.h
  *	  Convenience routines for common queries in the system catalog cache.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/lsyscache.h
@@ -83,8 +83,7 @@ extern List *get_op_btree_interpretation(Oid opno);
 extern bool equality_ops_are_compatible(Oid opno1, Oid opno2);
 extern Oid get_opfamily_proc(Oid opfamily, Oid lefttype, Oid righttype,
 				  int16 procnum);
-extern char *get_attname(Oid relid, AttrNumber attnum);
-extern char *get_relid_attribute_name(Oid relid, AttrNumber attnum);
+extern char *get_attname(Oid relid, AttrNumber attnum, bool missing_ok);
 extern AttrNumber get_attnum(Oid relid, const char *attname);
 extern char get_attidentity(Oid relid, AttrNumber attnum);
 extern Oid	get_atttype(Oid relid, AttrNumber attnum);
@@ -118,6 +117,7 @@ extern bool get_func_retset(Oid funcid);
 extern bool func_strict(Oid funcid);
 extern char func_volatile(Oid funcid);
 extern char func_parallel(Oid funcid);
+extern char get_func_prokind(Oid funcid);
 extern bool get_func_leakproof(Oid funcid);
 extern float4 get_func_cost(Oid funcid);
 extern float4 get_func_rows(Oid funcid);
@@ -126,6 +126,7 @@ extern char *get_rel_name(Oid relid);
 extern Oid	get_rel_namespace(Oid relid);
 extern Oid	get_rel_type_id(Oid relid);
 extern char get_rel_relkind(Oid relid);
+extern bool get_rel_relispartition(Oid relid);
 extern Oid	get_rel_tablespace(Oid relid);
 extern char get_rel_persistence(Oid relid);
 extern Oid	get_transform_fromsql(Oid typid, Oid langid, List *trftypes);

@@ -4,7 +4,7 @@
  *
  * Routines to handle DML permission checks
  *
- * Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *
  * -------------------------------------------------------------------------
  */
@@ -18,7 +18,7 @@
 #include "catalog/dependency.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_class.h"
-#include "catalog/pg_inherits_fn.h"
+#include "catalog/pg_inherits.h"
 #include "commands/seclabel.h"
 #include "commands/tablecmds.h"
 #include "executor/executor.h"
@@ -118,10 +118,7 @@ fixup_inherited_columns(Oid parentId, Oid childId, Bitmapset *columns)
 			continue;
 		}
 
-		attname = get_attname(parentId, attno);
-		if (!attname)
-			elog(ERROR, "cache lookup failed for attribute %d of relation %u",
-				 attno, parentId);
+		attname = get_attname(parentId, attno, false);
 		attno = get_attnum(childId, attname);
 		if (attno == InvalidAttrNumber)
 			elog(ERROR, "cache lookup failed for attribute %s of relation %u",

@@ -4,7 +4,7 @@
  *	  This file contains routines to support creation of toast tables
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -235,9 +235,9 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	 * toast :-(.  This is essential for chunk_data because type bytea is
 	 * toastable; hit the other two just to be sure.
 	 */
-	tupdesc->attrs[0]->attstorage = 'p';
-	tupdesc->attrs[1]->attstorage = 'p';
-	tupdesc->attrs[2]->attstorage = 'p';
+	TupleDescAttr(tupdesc, 0)->attstorage = 'p';
+	TupleDescAttr(tupdesc, 1)->attstorage = 'p';
+	TupleDescAttr(tupdesc, 2)->attstorage = 'p';
 
 	/*
 	 * Toast tables for regular relations go in pg_toast; those for temp
@@ -279,6 +279,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 										   false,
 										   true,
 										   true,
+										   InvalidOid,
 										   NULL);
 	Assert(toast_relid != InvalidOid);
 
@@ -302,8 +303,9 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 
 	indexInfo = makeNode(IndexInfo);
 	indexInfo->ii_NumIndexAttrs = 2;
-	indexInfo->ii_KeyAttrNumbers[0] = 1;
-	indexInfo->ii_KeyAttrNumbers[1] = 2;
+	indexInfo->ii_NumIndexKeyAttrs = 2;
+	indexInfo->ii_IndexAttrNumbers[0] = 1;
+	indexInfo->ii_IndexAttrNumbers[1] = 2;
 	indexInfo->ii_Expressions = NIL;
 	indexInfo->ii_ExpressionsState = NIL;
 	indexInfo->ii_Predicate = NIL;
@@ -315,6 +317,8 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	indexInfo->ii_ReadyForInserts = true;
 	indexInfo->ii_Concurrent = false;
 	indexInfo->ii_BrokenHotChain = false;
+	indexInfo->ii_ParallelWorkers = 0;
+	indexInfo->ii_Am = BTREE_AM_OID;
 	indexInfo->ii_AmCache = NULL;
 	indexInfo->ii_Context = CurrentMemoryContext;
 
@@ -328,13 +332,13 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	coloptions[1] = 0;
 
 	index_create(toast_rel, toast_idxname, toastIndexOid, InvalidOid,
+				 InvalidOid, InvalidOid,
 				 indexInfo,
 				 list_make2("chunk_id", "chunk_seq"),
 				 BTREE_AM_OID,
 				 rel->rd_rel->reltablespace,
 				 collationObjectId, classObjectId, coloptions, (Datum) 0,
-				 true, false, false, false,
-				 true, false, false, true, false);
+				 INDEX_CREATE_IS_PRIMARY, 0, true, true, NULL);
 
 	heap_close(toast_rel, NoLock);
 
@@ -394,6 +398,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
  * (1) there are any toastable attributes, and (2) the maximum length
  * of a tuple could exceed TOAST_TUPLE_THRESHOLD.  (We don't want to
  * create a toast table for something like "f1 varchar(20)".)
+ * No need to create a TOAST table for partitioned tables.
  */
 static bool
 needs_toast_table(Relation rel)
@@ -402,33 +407,36 @@ needs_toast_table(Relation rel)
 	bool		maxlength_unknown = false;
 	bool		has_toastable_attrs = false;
 	TupleDesc	tupdesc;
-	Form_pg_attribute *att;
 	int32		tuple_length;
 	int			i;
 
+	if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+		return false;
+
 	tupdesc = rel->rd_att;
-	att = tupdesc->attrs;
 
 	for (i = 0; i < tupdesc->natts; i++)
 	{
-		if (att[i]->attisdropped)
+		Form_pg_attribute att = TupleDescAttr(tupdesc, i);
+
+		if (att->attisdropped)
 			continue;
-		data_length = att_align_nominal(data_length, att[i]->attalign);
-		if (att[i]->attlen > 0)
+		data_length = att_align_nominal(data_length, att->attalign);
+		if (att->attlen > 0)
 		{
 			/* Fixed-length types are never toastable */
-			data_length += att[i]->attlen;
+			data_length += att->attlen;
 		}
 		else
 		{
-			int32		maxlen = type_maximum_size(att[i]->atttypid,
-												   att[i]->atttypmod);
+			int32		maxlen = type_maximum_size(att->atttypid,
+												   att->atttypmod);
 
 			if (maxlen < 0)
 				maxlength_unknown = true;
 			else
 				data_length += maxlen;
-			if (att[i]->attstorage != 'p')
+			if (att->attstorage != 'p')
 				has_toastable_attrs = true;
 		}
 	}

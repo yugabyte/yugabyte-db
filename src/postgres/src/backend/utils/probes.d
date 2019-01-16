@@ -1,7 +1,7 @@
 /* ----------
  *	DTrace probes for PostgreSQL backend
  *
- *	Copyright (c) 2006-2017, PostgreSQL Global Development Group
+ *	Copyright (c) 2006-2018, PostgreSQL Global Development Group
  *
  *	src/backend/utils/probes.d
  * ----------
@@ -52,7 +52,7 @@ provider postgresql {
 	probe query__done(const char *);
 	probe statement__status(const char *);
 
-	probe sort__start(int, bool, int, int, bool);
+	probe sort__start(int, bool, int, int, bool, int);
 	probe sort__done(bool, long);
 
 	probe buffer__read__start(ForkNumber, BlockNumber, Oid, Oid, Oid, int, bool);

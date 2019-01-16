@@ -59,7 +59,7 @@
  * counter does not fall within the wraparound horizon considering the global
  * minimum value.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/multixact.c
@@ -1000,14 +1000,14 @@ GetNewMultiXactId(int nmembers, MultiXactOffset *offset)
 						 errmsg("database is not accepting commands that generate new MultiXactIds to avoid wraparound data loss in database \"%s\"",
 								oldest_datname),
 						 errhint("Execute a database-wide VACUUM in that database.\n"
-								 "You might also need to commit or roll back old prepared transactions.")));
+								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 						 errmsg("database is not accepting commands that generate new MultiXactIds to avoid wraparound data loss in database with OID %u",
 								oldest_datoid),
 						 errhint("Execute a database-wide VACUUM in that database.\n"
-								 "You might also need to commit or roll back old prepared transactions.")));
+								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 		}
 
 		/*
@@ -1031,7 +1031,7 @@ GetNewMultiXactId(int nmembers, MultiXactOffset *offset)
 									   oldest_datname,
 									   multiWrapLimit - result),
 						 errhint("Execute a database-wide VACUUM in that database.\n"
-								 "You might also need to commit or roll back old prepared transactions.")));
+								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 			else
 				ereport(WARNING,
 						(errmsg_plural("database with OID %u must be vacuumed before %u more MultiXactId is used",
@@ -1040,7 +1040,7 @@ GetNewMultiXactId(int nmembers, MultiXactOffset *offset)
 									   oldest_datoid,
 									   multiWrapLimit - result),
 						 errhint("Execute a database-wide VACUUM in that database.\n"
-								 "You might also need to commit or roll back old prepared transactions.")));
+								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 		}
 
 		/* Re-acquire lock and start over */
@@ -1892,7 +1892,7 @@ BootStrapMultiXact(void)
 
 /*
  * Initialize (or reinitialize) a page of MultiXactOffset to zeroes.
- * If writeXlog is TRUE, also emit an XLOG record saying we did this.
+ * If writeXlog is true, also emit an XLOG record saying we did this.
  *
  * The page is not actually written, just set up in shared memory.
  * The slot number of the new page is returned.
@@ -1932,7 +1932,7 @@ ZeroMultiXactMemberPage(int pageno, bool writeXlog)
  * MaybeExtendOffsetSlru
  *		Extend the offsets SLRU area, if necessary
  *
- * After a binary upgrade from <= 9.2, the pg_multixact/offset SLRU area might
+ * After a binary upgrade from <= 9.2, the pg_multixact/offsets SLRU area might
  * contain files that are shorter than necessary; this would occur if the old
  * installation had used multixacts beyond the first page (files cannot be
  * copied, because the on-disk representation is different).  pg_upgrade would
@@ -2321,7 +2321,7 @@ SetMultiXactIdLimit(MultiXactId oldest_datminmxid, Oid oldest_datoid,
 								   oldest_datname,
 								   multiWrapLimit - curMulti),
 					 errhint("To avoid a database shutdown, execute a database-wide VACUUM in that database.\n"
-							 "You might also need to commit or roll back old prepared transactions.")));
+							 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 		else
 			ereport(WARNING,
 					(errmsg_plural("database with OID %u must be vacuumed before %u more MultiXactId is used",
@@ -2330,7 +2330,7 @@ SetMultiXactIdLimit(MultiXactId oldest_datminmxid, Oid oldest_datoid,
 								   oldest_datoid,
 								   multiWrapLimit - curMulti),
 					 errhint("To avoid a database shutdown, execute a database-wide VACUUM in that database.\n"
-							 "You might also need to commit or roll back old prepared transactions.")));
+							 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 	}
 }
 
@@ -2555,7 +2555,7 @@ SetOffsetVacuumLimit(bool is_startup)
 
 	/*
 	 * NB: Have to prevent concurrent truncation, we might otherwise try to
-	 * lookup a oldestMulti that's concurrently getting truncated away.
+	 * lookup an oldestMulti that's concurrently getting truncated away.
 	 */
 	LWLockAcquire(MultiXactTruncationLock, LW_SHARED);
 
@@ -2732,7 +2732,7 @@ find_multixact_start(MultiXactId multi, MultiXactOffset *result)
 	/*
 	 * Flush out dirty data, so PhysicalPageExists can work correctly.
 	 * SimpleLruFlush() is a pretty big hammer for that.  Alternatively we
-	 * could add a in-memory version of page exists, but find_multixact_start
+	 * could add an in-memory version of page exists, but find_multixact_start
 	 * is called infrequently, and it doesn't seem bad to flush buffers to
 	 * disk before truncation.
 	 */

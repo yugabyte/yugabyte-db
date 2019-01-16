@@ -1,18 +1,17 @@
 /*-------------------------------------------------------------------------
  *
  * pg_class.h
- *	  definition of the system "relation" relation (pg_class)
- *	  along with the relation's initial contents.
+ *	  definition of the "relation" system catalog (pg_class)
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_class.h
  *
  * NOTES
- *	  the genbki.pl script reads this file and generates .bki
- *	  information from the DATA() statements.
+ *	  The Catalog.pm module reads this file and derives schema
+ *	  information.
  *
  *-------------------------------------------------------------------------
  */
@@ -20,16 +19,14 @@
 #define PG_CLASS_H
 
 #include "catalog/genbki.h"
+#include "catalog/pg_class_d.h"
 
 /* ----------------
  *		pg_class definition.  cpp turns this into
  *		typedef struct FormData_pg_class
  * ----------------
  */
-#define RelationRelationId	1259
-#define RelationRelation_Rowtype_Id  83
-
-CATALOG(pg_class,1259) BKI_BOOTSTRAP BKI_ROWTYPE_OID(83) BKI_SCHEMA_MACRO
+CATALOG(pg_class,1259,RelationRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(83,RelationRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	NameData	relname;		/* class name */
 	Oid			relnamespace;	/* OID of namespace containing this class */
@@ -61,7 +58,6 @@ CATALOG(pg_class,1259) BKI_BOOTSTRAP BKI_ROWTYPE_OID(83) BKI_SCHEMA_MACRO
 	 */
 	int16		relchecks;		/* # of CHECK constraints for class */
 	bool		relhasoids;		/* T if we generate OIDs for rows of rel */
-	bool		relhaspkey;		/* has (or has had) PRIMARY KEY index */
 	bool		relhasrules;	/* has (or has had) any rules */
 	bool		relhastriggers; /* has (or has had) any TRIGGERs */
 	bool		relhassubclass; /* has (or has had) derived classes */
@@ -71,6 +67,8 @@ CATALOG(pg_class,1259) BKI_BOOTSTRAP BKI_ROWTYPE_OID(83) BKI_SCHEMA_MACRO
 	bool		relispopulated; /* matview currently holds query results */
 	char		relreplident;	/* see REPLICA_IDENTITY_xxx constants  */
 	bool		relispartition; /* is relation a partition? */
+	Oid			relrewrite;		/* heap for rewrite during DDL, link to
+								 * original rel */
 	TransactionId relfrozenxid; /* all Xids < this are frozen in this rel */
 	TransactionId relminmxid;	/* all multixacts in this rel are >= this.
 								 * this is really a MultiXactId */
@@ -94,68 +92,7 @@ CATALOG(pg_class,1259) BKI_BOOTSTRAP BKI_ROWTYPE_OID(83) BKI_SCHEMA_MACRO
  */
 typedef FormData_pg_class *Form_pg_class;
 
-/* ----------------
- *		compiler constants for pg_class
- * ----------------
- */
-
-#define Natts_pg_class						33
-#define Anum_pg_class_relname				1
-#define Anum_pg_class_relnamespace			2
-#define Anum_pg_class_reltype				3
-#define Anum_pg_class_reloftype				4
-#define Anum_pg_class_relowner				5
-#define Anum_pg_class_relam					6
-#define Anum_pg_class_relfilenode			7
-#define Anum_pg_class_reltablespace			8
-#define Anum_pg_class_relpages				9
-#define Anum_pg_class_reltuples				10
-#define Anum_pg_class_relallvisible			11
-#define Anum_pg_class_reltoastrelid			12
-#define Anum_pg_class_relhasindex			13
-#define Anum_pg_class_relisshared			14
-#define Anum_pg_class_relpersistence		15
-#define Anum_pg_class_relkind				16
-#define Anum_pg_class_relnatts				17
-#define Anum_pg_class_relchecks				18
-#define Anum_pg_class_relhasoids			19
-#define Anum_pg_class_relhaspkey			20
-#define Anum_pg_class_relhasrules			21
-#define Anum_pg_class_relhastriggers		22
-#define Anum_pg_class_relhassubclass		23
-#define Anum_pg_class_relrowsecurity		24
-#define Anum_pg_class_relforcerowsecurity	25
-#define Anum_pg_class_relispopulated		26
-#define Anum_pg_class_relreplident			27
-#define Anum_pg_class_relispartition		28
-#define Anum_pg_class_relfrozenxid			29
-#define Anum_pg_class_relminmxid			30
-#define Anum_pg_class_relacl				31
-#define Anum_pg_class_reloptions			32
-#define Anum_pg_class_relpartbound			33
-
-/* ----------------
- *		initial contents of pg_class
- *
- * NOTE: only "bootstrapped" relations need to be declared here.  Be sure that
- * the OIDs listed here match those given in their CATALOG macros, and that
- * the relnatts values are correct.
- * ----------------
- */
-
-/*
- * Note: "3" in the relfrozenxid column stands for FirstNormalTransactionId;
- * similarly, "1" in relminmxid stands for FirstMultiXactId
- */
-DATA(insert OID = 1247 (  pg_type		PGNSP 71 0 PGUID 0 0 0 0 0 0 0 f f p r 30 0 t f f f f f f t n f 3 1 _null_ _null_ _null_));
-DESCR("");
-DATA(insert OID = 1249 (  pg_attribute	PGNSP 75 0 PGUID 0 0 0 0 0 0 0 f f p r 22 0 f f f f f f f t n f 3 1 _null_ _null_ _null_));
-DESCR("");
-DATA(insert OID = 1255 (  pg_proc		PGNSP 81 0 PGUID 0 0 0 0 0 0 0 f f p r 29 0 t f f f f f f t n f 3 1 _null_ _null_ _null_));
-DESCR("");
-DATA(insert OID = 1259 (  pg_class		PGNSP 83 0 PGUID 0 0 0 0 0 0 0 f f p r 33 0 t f f f f f f t n f 3 1 _null_ _null_ _null_));
-DESCR("");
-
+#ifdef EXPOSE_TO_CLIENT_CODE
 
 #define		  RELKIND_RELATION		  'r'	/* ordinary table */
 #define		  RELKIND_INDEX			  'i'	/* secondary index */
@@ -166,6 +103,7 @@ DESCR("");
 #define		  RELKIND_COMPOSITE_TYPE  'c'	/* composite type */
 #define		  RELKIND_FOREIGN_TABLE   'f'	/* foreign table */
 #define		  RELKIND_PARTITIONED_TABLE 'p' /* partitioned table */
+#define		  RELKIND_PARTITIONED_INDEX 'I' /* partitioned index */
 
 #define		  RELPERSISTENCE_PERMANENT	'p' /* regular table */
 #define		  RELPERSISTENCE_UNLOGGED	'u' /* unlogged permanent table */
@@ -183,5 +121,7 @@ DESCR("");
  * has the same meaning as 'd'.
  */
 #define		  REPLICA_IDENTITY_INDEX	'i'
+
+#endif							/* EXPOSE_TO_CLIENT_CODE */
 
 #endif							/* PG_CLASS_H */

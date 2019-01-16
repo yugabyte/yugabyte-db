@@ -5,7 +5,7 @@
  *		bits of hard-wired knowledge
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -121,7 +121,7 @@ IsCatalogClass(Oid relid, Form_pg_class reltuple)
 	 * this is noticeably cheaper and doesn't require catalog access.
 	 *
 	 * This test is safe since even an oid wraparound will preserve this
-	 * property (c.f. GetNewObjectId()) and it has the advantage that it works
+	 * property (cf. GetNewObjectId()) and it has the advantage that it works
 	 * correctly even if a user decides to create a relation in the pg_catalog
 	 * namespace.
 	 * ----
@@ -452,7 +452,7 @@ GetNewRelFileNode(Oid reltablespace, Relation pg_class, char relpersistence)
 
 		/* Check for existing file of same name */
 		rpath = relpath(rnode, MAIN_FORKNUM);
-		fd = BasicOpenFile(rpath, O_RDONLY | PG_BINARY, 0);
+		fd = BasicOpenFile(rpath, O_RDONLY | PG_BINARY);
 
 		if (fd >= 0)
 		{

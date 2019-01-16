@@ -3,13 +3,13 @@
  *
  *	server checks and output routines
  *
- *	Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/check.c
  */
 
 #include "postgres_fe.h"
 
-#include "catalog/pg_authid.h"
+#include "catalog/pg_authid_d.h"
 #include "fe_utils/string_utils.h"
 #include "mb/pg_wchar.h"
 #include "pg_upgrade.h"
@@ -915,18 +915,26 @@ check_for_reg_data_type_usage(ClusterInfo *cluster)
 								"SELECT n.nspname, c.relname, a.attname "
 								"FROM	pg_catalog.pg_class c, "
 								"		pg_catalog.pg_namespace n, "
-								"		pg_catalog.pg_attribute a "
+								"		pg_catalog.pg_attribute a, "
+								"		pg_catalog.pg_type t "
 								"WHERE	c.oid = a.attrelid AND "
 								"		NOT a.attisdropped AND "
-								"		a.atttypid IN ( "
-								"			'pg_catalog.regproc'::pg_catalog.regtype, "
-								"			'pg_catalog.regprocedure'::pg_catalog.regtype, "
-								"			'pg_catalog.regoper'::pg_catalog.regtype, "
-								"			'pg_catalog.regoperator'::pg_catalog.regtype, "
+								"       a.atttypid = t.oid AND "
+								"       t.typnamespace = "
+								"           (SELECT oid FROM pg_namespace "
+								"            WHERE nspname = 'pg_catalog') AND"
+								"		t.typname IN ( "
 		/* regclass.oid is preserved, so 'regclass' is OK */
+								"           'regconfig', "
+								"           'regdictionary', "
+								"           'regnamespace', "
+								"           'regoper', "
+								"           'regoperator', "
+								"           'regproc', "
+								"           'regprocedure' "
+		/* regrole.oid is preserved, so 'regrole' is OK */
 		/* regtype.oid is preserved, so 'regtype' is OK */
-								"			'pg_catalog.regconfig'::pg_catalog.regtype, "
-								"			'pg_catalog.regdictionary'::pg_catalog.regtype) AND "
+								"			) AND "
 								"		c.relnamespace = n.oid AND "
 								"		n.nspname NOT IN ('pg_catalog', 'information_schema')");
 

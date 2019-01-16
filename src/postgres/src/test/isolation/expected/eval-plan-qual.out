@@ -145,6 +145,26 @@ accountid      balance
 checking       1050           
 savings        600            
 
+starting permutation: wx2_ext partiallock_ext c2 c1 read_ext
+step wx2_ext: UPDATE accounts_ext SET balance = balance + 450;
+step partiallock_ext: 
+	SELECT * FROM accounts_ext a1, accounts_ext a2
+	  WHERE a1.accountid = a2.accountid
+	  FOR UPDATE OF a1;
+ <waiting ...>
+step c2: COMMIT;
+step partiallock_ext: <... completed>
+accountid      balance        other          newcol         newcol2        accountid      balance        other          newcol         newcol2        
+
+checking       1050           other          42                            checking       600            other          42                            
+savings        1150                          42                            savings        700                           42                            
+step c1: COMMIT;
+step read_ext: SELECT * FROM accounts_ext ORDER BY accountid;
+accountid      balance        other          newcol         newcol2        
+
+checking       1050           other          42                            
+savings        1150                          42                            
+
 starting permutation: updateforss readforss c1 c2
 step updateforss: 
 	UPDATE table_a SET value = 'newTableAValue' WHERE id = 1;
@@ -163,6 +183,37 @@ ta_id          ta_value       tb_row
 
 1              newTableAValue (1,tableBValue)
 step c2: COMMIT;
+
+starting permutation: updateforcip updateforcip2 c1 c2 read_a
+step updateforcip: 
+	UPDATE table_a SET value = NULL WHERE id = 1;
+
+step updateforcip2: 
+	UPDATE table_a SET value = COALESCE(value, (SELECT text 'newValue')) WHERE id = 1;
+ <waiting ...>
+step c1: COMMIT;
+step updateforcip2: <... completed>
+step c2: COMMIT;
+step read_a: SELECT * FROM table_a ORDER BY id;
+id             value          
+
+1              newValue       
+
+starting permutation: updateforcip updateforcip3 c1 c2 read_a
+step updateforcip: 
+	UPDATE table_a SET value = NULL WHERE id = 1;
+
+step updateforcip3: 
+	WITH d(val) AS (SELECT text 'newValue' FROM generate_series(1,1))
+	UPDATE table_a SET value = COALESCE(value, (SELECT val FROM d)) WHERE id = 1;
+ <waiting ...>
+step c1: COMMIT;
+step updateforcip3: <... completed>
+step c2: COMMIT;
+step read_a: SELECT * FROM table_a ORDER BY id;
+id             value          
+
+1              newValue       
 
 starting permutation: wrtwcte readwcte c1 c2
 step wrtwcte: UPDATE table_a SET value = 'tableAValue2' WHERE id = 1;

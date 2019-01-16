@@ -3,7 +3,7 @@
  * rewriteDefine.c
  *	  routines for defining a rewrite rule
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -56,7 +56,7 @@ static void setRuleCheckAsUser_Query(Query *qry, Oid userid);
  *	  relation "pg_rewrite"
  */
 static Oid
-InsertRule(char *rulname,
+InsertRule(const char *rulname,
 		   int evtype,
 		   Oid eventrel_oid,
 		   bool evinstead,
@@ -225,7 +225,7 @@ DefineRule(RuleStmt *stmt, const char *queryString)
  * action and qual have already been passed through parse analysis.
  */
 ObjectAddress
-DefineQueryRewrite(char *rulename,
+DefineQueryRewrite(const char *rulename,
 				   Oid event_relid,
 				   Node *event_qual,
 				   CmdType event_type,
@@ -276,7 +276,7 @@ DefineQueryRewrite(char *rulename,
 	 * Check user has permission to apply rules to this relation.
 	 */
 	if (!pg_class_ownercheck(event_relid, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
+		aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(event_relation->rd_rel->relkind),
 					   RelationGetRelationName(event_relation));
 
 	/*
@@ -531,7 +531,7 @@ DefineQueryRewrite(char *rulename,
 							replace);
 
 		/*
-		 * Set pg_class 'relhasrules' field TRUE for event relation.
+		 * Set pg_class 'relhasrules' field true for event relation.
 		 *
 		 * Important side effect: an SI notice is broadcast to force all
 		 * backends (including me!) to update relcache entries with the new
@@ -618,7 +618,6 @@ DefineQueryRewrite(char *rulename,
 		classForm->relhasindex = false;
 		classForm->relkind = RELKIND_VIEW;
 		classForm->relhasoids = false;
-		classForm->relhaspkey = false;
 		classForm->relfrozenxid = InvalidTransactionId;
 		classForm->relminmxid = InvalidMultiXactId;
 		classForm->relreplident = REPLICA_IDENTITY_NOTHING;
@@ -676,7 +675,7 @@ checkRuleResultList(List *targetList, TupleDesc resultDesc, bool isSelect,
 					 errmsg("SELECT rule's target list has too many entries") :
 					 errmsg("RETURNING list has too many entries")));
 
-		attr = resultDesc->attrs[i - 1];
+		attr = TupleDescAttr(resultDesc, i - 1);
 		attname = NameStr(attr->attname);
 
 		/*
@@ -864,7 +863,7 @@ EnableDisableRule(Relation rel, const char *rulename,
 	eventRelationOid = ((Form_pg_rewrite) GETSTRUCT(ruletup))->ev_class;
 	Assert(eventRelationOid == owningRel);
 	if (!pg_class_ownercheck(eventRelationOid, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
+		aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(get_rel_relkind(eventRelationOid)),
 					   get_rel_name(eventRelationOid));
 
 	/*
@@ -927,7 +926,7 @@ RangeVarCallbackForRenameRule(const RangeVar *rv, Oid relid, Oid oldrelid,
 
 	/* you must own the table to rename one of its rules */
 	if (!pg_class_ownercheck(relid, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS, rv->relname);
+		aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(get_rel_relkind(relid)), rv->relname);
 
 	ReleaseSysCache(tuple);
 }
@@ -952,7 +951,7 @@ RenameRewriteRule(RangeVar *relation, const char *oldName,
 	 * release until end of transaction).
 	 */
 	relid = RangeVarGetRelidExtended(relation, AccessExclusiveLock,
-									 false, false,
+									 0,
 									 RangeVarCallbackForRenameRule,
 									 NULL);
 

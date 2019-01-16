@@ -321,7 +321,7 @@ SELECT date '1991-02-03' - time with time zone '04:05:06 UTC' AS "Subtract Time 
 ERROR:  operator does not exist: date - time with time zone
 LINE 1: SELECT date '1991-02-03' - time with time zone '04:05:06 UTC...
                                  ^
-HINT:  No operator matches the given name and argument type(s). You might need to add explicit type casts.
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
 --
 -- timestamp, interval arithmetic
 --
@@ -2930,6 +2930,36 @@ SELECT to_timestamp('2011-12-18 11:38 PM', 'YYYY-MM-DD HH12:MI PM');
  Sun Dec 18 23:38:00 2011 PST
 (1 row)
 
+SELECT to_timestamp('2011-12-18 11:38 +05',    'YYYY-MM-DD HH12:MI TZH');
+         to_timestamp         
+------------------------------
+ Sat Dec 17 22:38:00 2011 PST
+(1 row)
+
+SELECT to_timestamp('2011-12-18 11:38 -05',    'YYYY-MM-DD HH12:MI TZH');
+         to_timestamp         
+------------------------------
+ Sun Dec 18 08:38:00 2011 PST
+(1 row)
+
+SELECT to_timestamp('2011-12-18 11:38 +05:20', 'YYYY-MM-DD HH12:MI TZH:TZM');
+         to_timestamp         
+------------------------------
+ Sat Dec 17 22:18:00 2011 PST
+(1 row)
+
+SELECT to_timestamp('2011-12-18 11:38 -05:20', 'YYYY-MM-DD HH12:MI TZH:TZM');
+         to_timestamp         
+------------------------------
+ Sun Dec 18 08:58:00 2011 PST
+(1 row)
+
+SELECT to_timestamp('2011-12-18 11:38 20',     'YYYY-MM-DD HH12:MI TZM');
+         to_timestamp         
+------------------------------
+ Sun Dec 18 03:18:00 2011 PST
+(1 row)
+
 --
 -- Check handling of multiple spaces in format and/or input
 --
@@ -3134,3 +3164,10 @@ SELECT to_char('2012-12-12 12:00'::timestamptz, 'YYYY-MM-DD HH:MI:SS TZ');
 (1 row)
 
 RESET TIME ZONE;
+--
+-- Drop tables that we don't want to keep because they interfere with
+-- testing pg_upgrade to v12 and up
+--
+DROP TABLE abstime_tbl;
+DROP TABLE reltime_tbl;
+DROP TABLE tinterval_tbl;

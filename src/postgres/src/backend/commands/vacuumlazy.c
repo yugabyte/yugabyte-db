@@ -23,7 +23,7 @@
  * the TID array, just enough to hold as many heap tuples as fit on one page.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -44,7 +44,6 @@
 #include "access/transam.h"
 #include "access/visibilitymap.h"
 #include "access/xlog.h"
-#include "catalog/catalog.h"
 #include "catalog/storage.h"
 #include "commands/dbcommands.h"
 #include "commands/progress.h"
@@ -85,6 +84,15 @@
 #define VACUUM_TRUNCATE_LOCK_TIMEOUT			5000	/* ms */
 
 /*
+ * When a table has no indexes, vacuum the FSM after every 8GB, approximately
+ * (it won't be exact because we only vacuum FSM after processing a heap page
+ * that has some removable tuples).  When there are indexes, this is ignored,
+ * and we vacuum FSM after each index/heap cleaning pass.
+ */
+#define VACUUM_FSM_EVERY_PAGES \
+	((BlockNumber) (((uint64) 8 * 1024 * 1024 * 1024) / BLCKSZ))
+
+/*
  * Guesstimation of number of dead tuples per page.  This is used to
  * provide an upper limit to memory allocated when vacuuming small
  * tables.
@@ -114,9 +122,9 @@ typedef struct LVRelStats
 	BlockNumber pinskipped_pages;	/* # of pages we skipped due to a pin */
 	BlockNumber frozenskipped_pages;	/* # of frozen pages we skipped */
 	BlockNumber tupcount_pages; /* pages whose tuples we counted */
-	double		scanned_tuples; /* counts only tuples on tupcount_pages */
-	double		old_rel_tuples; /* previous value of pg_class.reltuples */
+	double		old_live_tuples;	/* previous value of pg_class.reltuples */
 	double		new_rel_tuples; /* new estimated total # of tuples */
+	double		new_live_tuples;	/* new estimated total # of live tuples */
 	double		new_dead_tuples;	/* new estimated total # of dead tuples */
 	BlockNumber pages_removed;
 	double		tuples_deleted;
@@ -196,7 +204,6 @@ lazy_vacuum_rel(Relation onerel, int options, VacuumParams *params,
 	TransactionId xidFullScanLimit;
 	MultiXactId mxactFullScanLimit;
 	BlockNumber new_rel_pages;
-	double		new_rel_tuples;
 	BlockNumber new_rel_allvisible;
 	double		new_live_tuples;
 	TransactionId new_frozen_xid;
@@ -245,7 +252,7 @@ lazy_vacuum_rel(Relation onerel, int options, VacuumParams *params,
 	vacrelstats = (LVRelStats *) palloc0(sizeof(LVRelStats));
 
 	vacrelstats->old_rel_pages = onerel->rd_rel->relpages;
-	vacrelstats->old_rel_tuples = onerel->rd_rel->reltuples;
+	vacrelstats->old_live_tuples = onerel->rd_rel->reltuples;
 	vacrelstats->num_index_scans = 0;
 	vacrelstats->pages_removed = 0;
 	vacrelstats->lock_waiter_detected = false;
@@ -286,9 +293,6 @@ lazy_vacuum_rel(Relation onerel, int options, VacuumParams *params,
 	pgstat_progress_update_param(PROGRESS_VACUUM_PHASE,
 								 PROGRESS_VACUUM_PHASE_FINAL_CLEANUP);
 
-	/* Vacuum the Free Space Map */
-	FreeSpaceMapVacuum(onerel);
-
 	/*
 	 * Update statistics in pg_class.
 	 *
@@ -311,11 +315,11 @@ lazy_vacuum_rel(Relation onerel, int options, VacuumParams *params,
 	 * since then we don't know for certain that all tuples have a newer xmin.
 	 */
 	new_rel_pages = vacrelstats->rel_pages;
-	new_rel_tuples = vacrelstats->new_rel_tuples;
+	new_live_tuples = vacrelstats->new_live_tuples;
 	if (vacrelstats->tupcount_pages == 0 && new_rel_pages > 0)
 	{
 		new_rel_pages = vacrelstats->old_rel_pages;
-		new_rel_tuples = vacrelstats->old_rel_tuples;
+		new_live_tuples = vacrelstats->old_live_tuples;
 	}
 
 	visibilitymap_count(onerel, &new_rel_allvisible, NULL);
@@ -327,7 +331,7 @@ lazy_vacuum_rel(Relation onerel, int options, VacuumParams *params,
 
 	vac_update_relstats(onerel,
 						new_rel_pages,
-						new_rel_tuples,
+						new_live_tuples,
 						new_rel_allvisible,
 						vacrelstats->hasindex,
 						new_frozen_xid,
@@ -335,10 +339,6 @@ lazy_vacuum_rel(Relation onerel, int options, VacuumParams *params,
 						false);
 
 	/* report results to the stats collector, too */
-	new_live_tuples = new_rel_tuples - vacrelstats->new_dead_tuples;
-	if (new_live_tuples < 0)
-		new_live_tuples = 0;	/* just in case */
-
 	pgstat_report_vacuum(RelationGetRelid(onerel),
 						 onerel->rd_rel->relisshared,
 						 new_live_tuples,
@@ -355,6 +355,7 @@ lazy_vacuum_rel(Relation onerel, int options, VacuumParams *params,
 									   params->log_min_duration))
 		{
 			StringInfoData buf;
+			char	   *msgfmt;
 
 			TimestampDifference(starttime, endtime, &secs, &usecs);
 
@@ -373,7 +374,11 @@ lazy_vacuum_rel(Relation onerel, int options, VacuumParams *params,
 			 * emitting individual parts of the message when not applicable.
 			 */
 			initStringInfo(&buf);
-			appendStringInfo(&buf, _("automatic vacuum of table \"%s.%s.%s\": index scans: %d\n"),
+			if (aggressive)
+				msgfmt = _("automatic aggressive vacuum of table \"%s.%s.%s\": index scans: %d\n");
+			else
+				msgfmt = _("automatic vacuum of table \"%s.%s.%s\": index scans: %d\n");
+			appendStringInfo(&buf, msgfmt,
 							 get_database_name(MyDatabaseId),
 							 get_namespace_name(RelationGetNamespace(onerel)),
 							 RelationGetRelationName(onerel),
@@ -465,11 +470,13 @@ lazy_scan_heap(Relation onerel, int options, LVRelStats *vacrelstats,
 	TransactionId relfrozenxid = onerel->rd_rel->relfrozenxid;
 	TransactionId relminmxid = onerel->rd_rel->relminmxid;
 	BlockNumber empty_pages,
-				vacuumed_pages;
-	double		num_tuples,
-				tups_vacuumed,
-				nkeep,
-				nunused;
+				vacuumed_pages,
+				next_fsm_block_to_vacuum;
+	double		num_tuples,		/* total number of nonremovable tuples */
+				live_tuples,	/* live tuples (reltuples estimate) */
+				tups_vacuumed,	/* tuples cleaned up by vacuum */
+				nkeep,			/* dead-but-not-removable tuples */
+				nunused;		/* unused item pointers */
 	IndexBulkDeleteResult **indstats;
 	int			i;
 	PGRUsage	ru0;
@@ -488,13 +495,20 @@ lazy_scan_heap(Relation onerel, int options, LVRelStats *vacrelstats,
 	pg_rusage_init(&ru0);
 
 	relname = RelationGetRelationName(onerel);
-	ereport(elevel,
-			(errmsg("vacuuming \"%s.%s\"",
-					get_namespace_name(RelationGetNamespace(onerel)),
-					relname)));
+	if (aggressive)
+		ereport(elevel,
+				(errmsg("aggressively vacuuming \"%s.%s\"",
+						get_namespace_name(RelationGetNamespace(onerel)),
+						relname)));
+	else
+		ereport(elevel,
+				(errmsg("vacuuming \"%s.%s\"",
+						get_namespace_name(RelationGetNamespace(onerel)),
+						relname)));
 
 	empty_pages = vacuumed_pages = 0;
-	num_tuples = tups_vacuumed = nkeep = nunused = 0;
+	next_fsm_block_to_vacuum = (BlockNumber) 0;
+	num_tuples = live_tuples = tups_vacuumed = nkeep = nunused = 0;
 
 	indstats = (IndexBulkDeleteResult **)
 		palloc0(nindexes * sizeof(IndexBulkDeleteResult *));
@@ -745,6 +759,13 @@ lazy_scan_heap(Relation onerel, int options, LVRelStats *vacrelstats,
 			vacrelstats->num_dead_tuples = 0;
 			vacrelstats->num_index_scans++;
 
+			/*
+			 * Vacuum the Free Space Map to make newly-freed space visible on
+			 * upper-level FSM pages.  Note we have not yet processed blkno.
+			 */
+			FreeSpaceMapVacuumRange(onerel, next_fsm_block_to_vacuum, blkno);
+			next_fsm_block_to_vacuum = blkno;
+
 			/* Report that we are once again scanning the heap */
 			pgstat_progress_update_param(PROGRESS_VACUUM_PHASE,
 										 PROGRESS_VACUUM_PHASE_SCAN_HEAP);
@@ -977,6 +998,17 @@ lazy_scan_heap(Relation onerel, int options, LVRelStats *vacrelstats,
 
 			tupgone = false;
 
+			/*
+			 * The criteria for counting a tuple as live in this block need to
+			 * match what analyze.c's acquire_sample_rows() does, otherwise
+			 * VACUUM and ANALYZE may produce wildly different reltuples
+			 * values, e.g. when there are many recently-dead tuples.
+			 *
+			 * The logic here is a bit simpler than acquire_sample_rows(), as
+			 * VACUUM can't run inside a transaction block, which makes some
+			 * cases impossible (e.g. in-progress insert from the same
+			 * transaction).
+			 */
 			switch (HeapTupleSatisfiesVacuum(&tuple, OldestXmin, buf))
 			{
 				case HEAPTUPLE_DEAD:
@@ -1016,6 +1048,12 @@ lazy_scan_heap(Relation onerel, int options, LVRelStats *vacrelstats,
 						!OidIsValid(HeapTupleGetOid(&tuple)))
 						elog(WARNING, "relation \"%s\" TID %u/%u: OID is invalid",
 							 relname, blkno, offnum);
+
+					/*
+					 * Count it as live.  Not only is this natural, but it's
+					 * also what acquire_sample_rows() does.
+					 */
+					live_tuples += 1;
 
 					/*
 					 * Is the tuple definitely visible to all transactions?
@@ -1062,12 +1100,29 @@ lazy_scan_heap(Relation onerel, int options, LVRelStats *vacrelstats,
 					all_visible = false;
 					break;
 				case HEAPTUPLE_INSERT_IN_PROGRESS:
-					/* This is an expected case during concurrent vacuum */
+
+					/*
+					 * This is an expected case during concurrent vacuum.
+					 *
+					 * We do not count these rows as live, because we expect
+					 * the inserting transaction to update the counters at
+					 * commit, and we assume that will happen only after we
+					 * report our results.  This assumption is a bit shaky,
+					 * but it is what acquire_sample_rows() does, so be
+					 * consistent.
+					 */
 					all_visible = false;
 					break;
 				case HEAPTUPLE_DELETE_IN_PROGRESS:
 					/* This is an expected case during concurrent vacuum */
 					all_visible = false;
+
+					/*
+					 * Count such rows as live.  As above, we assume the
+					 * deleting transaction will commit and update the
+					 * counters after we report.
+					 */
+					live_tuples += 1;
 					break;
 				default:
 					elog(ERROR, "unexpected HeapTupleSatisfiesVacuum result");
@@ -1159,6 +1214,19 @@ lazy_scan_heap(Relation onerel, int options, LVRelStats *vacrelstats,
 			 */
 			vacrelstats->num_dead_tuples = 0;
 			vacuumed_pages++;
+
+			/*
+			 * Periodically do incremental FSM vacuuming to make newly-freed
+			 * space visible on upper FSM pages.  Note: although we've cleaned
+			 * the current block, we haven't yet updated its FSM entry (that
+			 * happens further down), so passing end == blkno is correct.
+			 */
+			if (blkno - next_fsm_block_to_vacuum >= VACUUM_FSM_EVERY_PAGES)
+			{
+				FreeSpaceMapVacuumRange(onerel, next_fsm_block_to_vacuum,
+										blkno);
+				next_fsm_block_to_vacuum = blkno;
+			}
 		}
 
 		freespace = PageGetHeapFreeSpace(page);
@@ -1270,15 +1338,18 @@ lazy_scan_heap(Relation onerel, int options, LVRelStats *vacrelstats,
 	pfree(frozen);
 
 	/* save stats for use later */
-	vacrelstats->scanned_tuples = num_tuples;
 	vacrelstats->tuples_deleted = tups_vacuumed;
 	vacrelstats->new_dead_tuples = nkeep;
 
 	/* now we can compute the new value for pg_class.reltuples */
-	vacrelstats->new_rel_tuples = vac_estimate_reltuples(onerel, false,
-														 nblocks,
-														 vacrelstats->tupcount_pages,
-														 num_tuples);
+	vacrelstats->new_live_tuples = vac_estimate_reltuples(onerel,
+														  nblocks,
+														  vacrelstats->tupcount_pages,
+														  live_tuples);
+
+	/* also compute total number of surviving heap entries */
+	vacrelstats->new_rel_tuples =
+		vacrelstats->new_live_tuples + vacrelstats->new_dead_tuples;
 
 	/*
 	 * Release any remaining pin on visibility map page.
@@ -1323,6 +1394,13 @@ lazy_scan_heap(Relation onerel, int options, LVRelStats *vacrelstats,
 		lazy_vacuum_heap(onerel, vacrelstats);
 		vacrelstats->num_index_scans++;
 	}
+
+	/*
+	 * Vacuum the remainder of the Free Space Map.  We must do this whether or
+	 * not there were indexes.
+	 */
+	if (blkno > next_fsm_block_to_vacuum)
+		FreeSpaceMapVacuumRange(onerel, next_fsm_block_to_vacuum, blkno);
 
 	/* report all blocks vacuumed; and that we're cleaning up */
 	pgstat_progress_update_param(PROGRESS_VACUUM_HEAP_BLKS_VACUUMED, blkno);
@@ -1614,7 +1692,8 @@ lazy_vacuum_index(Relation indrel,
 	ivinfo.analyze_only = false;
 	ivinfo.estimated_count = true;
 	ivinfo.message_level = elevel;
-	ivinfo.num_heap_tuples = vacrelstats->old_rel_tuples;
+	/* We can only provide an approximate value of num_heap_tuples here */
+	ivinfo.num_heap_tuples = vacrelstats->old_live_tuples;
 	ivinfo.strategy = vac_strategy;
 
 	/* Do bulk deletion */
@@ -1645,6 +1724,12 @@ lazy_cleanup_index(Relation indrel,
 	ivinfo.analyze_only = false;
 	ivinfo.estimated_count = (vacrelstats->tupcount_pages < vacrelstats->rel_pages);
 	ivinfo.message_level = elevel;
+
+	/*
+	 * Now we can provide a better estimate of total number of surviving
+	 * tuples (we assume indexes are more interested in that than in the
+	 * number of nominally live tuples).
+	 */
 	ivinfo.num_heap_tuples = vacrelstats->new_rel_tuples;
 	ivinfo.strategy = vac_strategy;
 

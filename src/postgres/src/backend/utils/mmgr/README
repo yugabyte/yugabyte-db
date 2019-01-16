@@ -177,8 +177,7 @@ every other context is a direct or indirect child of this one.  Allocating
 here is essentially the same as "malloc", because this context will never
 be reset or deleted.  This is for stuff that should live forever, or for
 stuff that the controlling module will take care of deleting at the
-appropriate time.  An example is fd.c's tables of open files, as well as
-the context management nodes for memory contexts themselves.  Avoid
+appropriate time.  An example is fd.c's tables of open files.  Avoid
 allocating stuff here unless really necessary, and especially avoid
 running with CurrentMemoryContext pointing here.
 
@@ -402,7 +401,7 @@ GetMemoryChunkContext())
 
 and then invoke the corresponding method for the context
 
-    (*context->methods->free_p) (p);
+    context->methods->free_p(pointer);
 
 
 More Control Over aset.c Behavior
@@ -420,14 +419,36 @@ a maximum block size.  Selecting smaller values can prevent wastage of
 space in contexts that aren't expected to hold very much (an example
 is the relcache's per-relation contexts).
 
-Also, it is possible to specify a minimum context size.  If this
-value is greater than zero then a block of that size will be grabbed
-immediately upon context creation, and cleared but not released during
-context resets.  This feature is needed for ErrorContext (see above),
-but will most likely not be used for other contexts.
+Also, it is possible to specify a minimum context size, in case for some
+reason that should be different from the initial size for additional
+blocks.  An aset.c context will always contain at least one block,
+of size minContextSize if that is specified, otherwise initBlockSize.
 
 We expect that per-tuple contexts will be reset frequently and typically
 will not allocate very much space per tuple cycle.  To make this usage
 pattern cheap, the first block allocated in a context is not given
 back to malloc() during reset, but just cleared.  This avoids malloc
 thrashing.
+
+
+Alternative Memory Context Implementations
+------------------------------------------
+
+aset.c is our default general-purpose implementation, working fine
+in most situations. We also have two implementations optimized for
+special use cases, providing either better performance or lower memory
+usage compared to aset.c (or both).
+
+* slab.c (SlabContext) is designed for allocations of fixed-length
+  chunks, and does not allow allocations of chunks with different size.
+
+* generation.c (GenerationContext) is designed for cases when chunks
+  are allocated in groups with similar lifespan (generations), or
+  roughly in FIFO order.
+
+Both memory contexts aim to free memory back to the operating system
+(unlike aset.c, which keeps the freed chunks in a freelist, and only
+returns the memory when reset/deleted).
+
+These memory contexts were initially developed for ReorderBuffer, but
+may be useful elsewhere as long as the allocation patterns match.

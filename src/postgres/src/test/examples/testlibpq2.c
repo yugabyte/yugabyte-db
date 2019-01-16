@@ -80,7 +80,7 @@ main(int argc, char **argv)
 	/* Set always-secure search path, so malicous users can't take control. */
 	res = PQexec(conn,
 				 "SELECT pg_catalog.set_config('search_path', '', false)");
-	if (PQresultStatus(res) != PGRES_COMMAND_OK)
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
 		fprintf(stderr, "SET failed: %s", PQerrorMessage(conn));
 		PQclear(res);
@@ -140,6 +140,7 @@ main(int argc, char **argv)
 					notify->relname, notify->be_pid);
 			PQfreemem(notify);
 			nnotifies++;
+			PQconsumeInput(conn);
 		}
 	}
 

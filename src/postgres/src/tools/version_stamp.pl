@@ -3,7 +3,7 @@
 #################################################################
 # version_stamp.pl -- update version stamps throughout the source tree
 #
-# Copyright (c) 2008-2017, PostgreSQL Global Development Group
+# Copyright (c) 2008-2018, PostgreSQL Global Development Group
 #
 # src/tools/version_stamp.pl
 #################################################################
@@ -24,7 +24,7 @@ use strict;
 
 # Major version is hard-wired into the script.  We update it when we branch
 # a new development version.
-my $majorversion = 10;
+my $majorversion = 11;
 
 # Validate argument and compute derived variables
 my $minor = shift;
@@ -83,8 +83,8 @@ my $aconfver = "";
 open(my $fh, '<', "configure.in") || die "could not read configure.in: $!\n";
 while (<$fh>)
 {
-	if (
-m/^m4_if\(m4_defn\(\[m4_PACKAGE_VERSION\]\), \[(.*)\], \[\], \[m4_fatal/)
+	if (m/^m4_if\(m4_defn\(\[m4_PACKAGE_VERSION\]\), \[(.*)\], \[\], \[m4_fatal/
+	  )
 	{
 		$aconfver = $1;
 		last;
@@ -99,29 +99,29 @@ $aconfver ne ""
 my $fixedfiles = "";
 
 sed_file("configure.in",
-"-e 's/AC_INIT(\\[PostgreSQL\\], \\[[0-9a-z.]*\\]/AC_INIT([PostgreSQL], [$fullversion]/'"
+	"-e 's/AC_INIT(\\[PostgreSQL\\], \\[[0-9a-z.]*\\]/AC_INIT([PostgreSQL], [$fullversion]/'"
 );
 
 sed_file("doc/bug.template",
-"-e 's/PostgreSQL version (example: PostgreSQL .*) *:  PostgreSQL .*/PostgreSQL version (example: PostgreSQL $fullversion):  PostgreSQL $fullversion/'"
+	"-e 's/PostgreSQL version (example: PostgreSQL .*) *:  PostgreSQL .*/PostgreSQL version (example: PostgreSQL $fullversion):  PostgreSQL $fullversion/'"
 );
 
 sed_file("src/include/pg_config.h.win32",
-"-e 's/#define PACKAGE_STRING \"PostgreSQL .*\"/#define PACKAGE_STRING \"PostgreSQL $fullversion\"/' "
+	"-e 's/#define PACKAGE_STRING \"PostgreSQL .*\"/#define PACKAGE_STRING \"PostgreSQL $fullversion\"/' "
 	  . "-e 's/#define PACKAGE_VERSION \".*\"/#define PACKAGE_VERSION \"$fullversion\"/' "
 	  . "-e 's/#define PG_VERSION \".*\"/#define PG_VERSION \"$fullversion\"/' "
 	  . "-e 's/#define PG_VERSION_NUM .*/#define PG_VERSION_NUM $padnumericversion/'"
 );
 
 sed_file("src/interfaces/libpq/libpq.rc.in",
-"-e 's/FILEVERSION [0-9]*,[0-9]*,[0-9]*,0/FILEVERSION $majorversion,0,$numericminor,0/' "
+	"-e 's/FILEVERSION [0-9]*,[0-9]*,[0-9]*,0/FILEVERSION $majorversion,0,$numericminor,0/' "
 	  . "-e 's/PRODUCTVERSION [0-9]*,[0-9]*,[0-9]*,0/PRODUCTVERSION $majorversion,0,$numericminor,0/' "
 	  . "-e 's/VALUE \"FileVersion\", \"[0-9.]*/VALUE \"FileVersion\", \"$numericversion/' "
 	  . "-e 's/VALUE \"ProductVersion\", \"[0-9.]*/VALUE \"ProductVersion\", \"$numericversion/'"
 );
 
 sed_file("src/port/win32ver.rc",
-"-e 's/FILEVERSION    [0-9]*,[0-9]*,[0-9]*,0/FILEVERSION    $majorversion,0,$numericminor,0/' "
+	"-e 's/FILEVERSION    [0-9]*,[0-9]*,[0-9]*,0/FILEVERSION    $majorversion,0,$numericminor,0/' "
 	  . "-e 's/PRODUCTVERSION [0-9]*,[0-9]*,[0-9]*,0/PRODUCTVERSION $majorversion,0,$numericminor,0/'"
 );
 
@@ -141,4 +141,5 @@ sub sed_file
 	  or die "mv failed: $?";
 
 	$fixedfiles .= "\t$filename\n";
+	return;
 }

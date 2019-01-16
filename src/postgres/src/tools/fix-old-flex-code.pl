@@ -8,7 +8,7 @@
 # let's suppress it by inserting a dummy reference to the variable.
 # (That's exactly what 2.5.36 and later do ...)
 #
-# Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/tools/fix-old-flex-code.pl
@@ -37,7 +37,7 @@ exit 0 if $1 >= 36;
 
 # Apply the desired patch.
 $ccode =~
-s|(struct yyguts_t \* yyg = \(struct yyguts_t\*\)yyscanner; /\* This var may be unused depending upon options. \*/
+  s|(struct yyguts_t \* yyg = \(struct yyguts_t\*\)yyscanner; /\* This var may be unused depending upon options. \*/
 .*?)
 	return yy_is_jam \? 0 : yy_current_state;
 |$1

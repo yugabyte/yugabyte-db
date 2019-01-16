@@ -11,7 +11,7 @@
  *		can't be inside more-complex expressions.  If that'd otherwise be
  *		the case, the planner adds additional ProjectSet nodes.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -53,6 +53,13 @@ ExecProjectSet(PlanState *pstate)
 	econtext = node->ps.ps_ExprContext;
 
 	/*
+	 * Reset per-tuple context to free expression-evaluation storage allocated
+	 * for a potentially previously returned tuple. Note that the SRF argument
+	 * context has a different lifetime and is reset below.
+	 */
+	ResetExprContext(econtext);
+
+	/*
 	 * Check to see if we're still projecting out tuples from a previous scan
 	 * tuple (because there is a function-returning-set in the projection
 	 * expressions).  If so, try to project another one.
@@ -66,11 +73,13 @@ ExecProjectSet(PlanState *pstate)
 	}
 
 	/*
-	 * Reset per-tuple memory context to free any expression evaluation
-	 * storage allocated in the previous tuple cycle.  Note this can't happen
-	 * until we're done projecting out tuples from a scan tuple.
+	 * Reset argument context to free any expression evaluation storage
+	 * allocated in the previous tuple cycle.  Note this can't happen until
+	 * we're done projecting out tuples from a scan tuple, as ValuePerCall
+	 * functions are allowed to reference the arguments for each returned
+	 * tuple.
 	 */
-	ResetExprContext(econtext);
+	MemoryContextReset(node->argcontext);
 
 	/*
 	 * Get another input tuple and project SRFs from it.
@@ -164,7 +173,8 @@ ExecProjectSRF(ProjectSetState *node, bool continuing)
 			 * Evaluate SRF - possibly continuing previously started output.
 			 */
 			*result = ExecMakeFunctionResultSet((SetExprState *) elem,
-												econtext, isnull, isdone);
+												econtext, node->argcontext,
+												isnull, isdone);
 
 			if (*isdone != ExprEndResult)
 				hasresult = true;
@@ -234,14 +244,6 @@ ExecInitProjectSet(ProjectSet *node, EState *estate, int eflags)
 	ExecAssignExprContext(estate, &state->ps);
 
 	/*
-	 * tuple table initialization
-	 */
-	ExecInitResultTupleSlot(estate, &state->ps);
-
-	/* We don't support any qual on ProjectSet nodes */
-	Assert(node->plan.qual == NIL);
-
-	/*
 	 * initialize child nodes
 	 */
 	outerPlanState(state) = ExecInitNode(outerPlan(node), estate, eflags);
@@ -252,9 +254,9 @@ ExecInitProjectSet(ProjectSet *node, EState *estate, int eflags)
 	Assert(innerPlan(node) == NULL);
 
 	/*
-	 * initialize tuple type and projection info
+	 * tuple table and result type initialization
 	 */
-	ExecAssignResultTypeFromTL(&state->ps);
+	ExecInitResultTupleSlotTL(estate, &state->ps);
 
 	/* Create workspace for per-tlist-entry expr state & SRF-is-done state */
 	state->nelems = list_length(node->plan.targetlist);
@@ -290,6 +292,20 @@ ExecInitProjectSet(ProjectSet *node, EState *estate, int eflags)
 
 		off++;
 	}
+
+	/* We don't support any qual on ProjectSet nodes */
+	Assert(node->plan.qual == NIL);
+
+	/*
+	 * Create a memory context that ExecMakeFunctionResult can use to evaluate
+	 * function arguments in.  We can't use the per-tuple context for this
+	 * because it gets reset too often; but we don't want to leak evaluation
+	 * results into the query-lifespan context either.  We use one context for
+	 * the arguments of all tSRFs, as they have roughly equivalent lifetimes.
+	 */
+	state->argcontext = AllocSetContextCreate(CurrentMemoryContext,
+											  "tSRF function arguments",
+											  ALLOCSET_DEFAULT_SIZES);
 
 	return state;
 }

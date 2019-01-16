@@ -3,7 +3,7 @@
  * nodeBitmapAnd.c
  *	  routines to handle BitmapAnd nodes.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -81,13 +81,6 @@ ExecInitBitmapAnd(BitmapAnd *node, EState *estate, int eflags)
 	bitmapandstate->nplans = nplans;
 
 	/*
-	 * Miscellaneous initialization
-	 *
-	 * BitmapAnd plans don't have expression contexts because they never call
-	 * ExecQual or ExecProject.  They don't need any tuple slots either.
-	 */
-
-	/*
 	 * call ExecInitNode on each of the plans to be executed and save the
 	 * results into the array "bitmapplanstates".
 	 */
@@ -98,6 +91,13 @@ ExecInitBitmapAnd(BitmapAnd *node, EState *estate, int eflags)
 		bitmapplanstates[i] = ExecInitNode(initNode, estate, eflags);
 		i++;
 	}
+
+	/*
+	 * Miscellaneous initialization
+	 *
+	 * BitmapAnd plans don't have expression contexts because they never call
+	 * ExecQual or ExecProject.  They don't need any tuple slots either.
+	 */
 
 	return bitmapandstate;
 }

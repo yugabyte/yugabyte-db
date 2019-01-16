@@ -3,7 +3,7 @@
  * ginvalidate.c
  *	  Opclass validator for GIN.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -90,7 +90,7 @@ ginvalidate(Oid opclassoid)
 		{
 			ereport(INFO,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					 errmsg("operator family \"%s\" of access method %s contains support procedure %s with different left and right input types",
+					 errmsg("operator family \"%s\" of access method %s contains support function %s with different left and right input types",
 							opfamilyname, "gin",
 							format_procedure(procform->amproc))));
 			result = false;

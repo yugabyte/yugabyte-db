@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 #
 # Generate the errcodes-table.sgml file from errcodes.txt
-# Copyright (c) 2000-2017, PostgreSQL Global Development Group
+# Copyright (c) 2000-2018, PostgreSQL Global Development Group
 
 use warnings;
 use strict;
@@ -30,12 +30,12 @@ while (<$errcodes>)
 		s/-/&mdash;/;
 
 		# Wrap PostgreSQL in <productname/>
-		s/PostgreSQL/<productname>PostgreSQL<\/>/g;
+		s/PostgreSQL/<productname>PostgreSQL<\/productname>/g;
 
 		print "\n\n";
 		print "<row>\n";
 		print "<entry spanname=\"span12\">";
-		print "<emphasis role=\"bold\">$_</></entry>\n";
+		print "<emphasis role=\"bold\">$_</emphasis></entry>\n";
 		print "</row>\n";
 
 		next;

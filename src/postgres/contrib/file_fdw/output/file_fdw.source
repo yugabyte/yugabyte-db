@@ -221,6 +221,9 @@ SELECT * FROM agg_csv FOR UPDATE;
   42 |  324.78
 (3 rows)
 
+-- copy from isn't supported either
+COPY agg_csv FROM STDIN;
+ERROR:  cannot insert into foreign table "agg_csv"
 -- constraint exclusion tests
 \t on
 EXPLAIN (VERBOSE, COSTS FALSE) SELECT * FROM agg_csv WHERE a < 0;
@@ -315,7 +318,7 @@ SELECT tableoid::regclass, * FROM p2;
 (0 rows)
 
 COPY pt FROM '@abs_srcdir@/data/list2.bad' with (format 'csv', delimiter ','); -- ERROR
-ERROR:  cannot route inserted tuples to a foreign table
+ERROR:  cannot insert into foreign table "p1"
 CONTEXT:  COPY pt, line 2: "1,qux"
 COPY pt FROM '@abs_srcdir@/data/list2.csv' with (format 'csv', delimiter ',');
 SELECT tableoid::regclass, * FROM pt;
@@ -342,8 +345,10 @@ SELECT tableoid::regclass, * FROM p2;
 (2 rows)
 
 INSERT INTO pt VALUES (1, 'xyzzy'); -- ERROR
-ERROR:  cannot route inserted tuples to a foreign table
+ERROR:  cannot insert into foreign table "p1"
 INSERT INTO pt VALUES (2, 'xyzzy');
+UPDATE pt set a = 1 where a = 2; -- ERROR
+ERROR:  cannot insert into foreign table "p1"
 SELECT tableoid::regclass, * FROM pt;
  tableoid | a |   b   
 ----------+---+-------
@@ -393,7 +398,7 @@ SELECT * FROM agg_text ORDER BY a;
 
 SET ROLE regress_no_priv_user;
 SELECT * FROM agg_text ORDER BY a;   -- ERROR
-ERROR:  permission denied for relation agg_text
+ERROR:  permission denied for foreign table agg_text
 SET ROLE regress_file_fdw_user;
 \t on
 EXPLAIN (VERBOSE, COSTS FALSE) SELECT * FROM agg_text WHERE a > 0;
@@ -420,7 +425,7 @@ ALTER FOREIGN TABLE agg_text OWNER TO regress_file_fdw_user;
 ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
 SET ROLE regress_file_fdw_user;
 ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
-ERROR:  only superuser can change options of a file_fdw foreign table
+ERROR:  only superuser or a member of the pg_read_server_files role may specify the filename option of a file_fdw foreign table
 SET ROLE regress_file_fdw_superuser;
 -- cleanup
 RESET ROLE;

@@ -3,7 +3,7 @@
  * regis.c
  *		Fast regex subset
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -178,7 +178,6 @@ RS_free(Regis *r)
 	r->node = NULL;
 }
 
-#ifdef USE_WIDE_UPPER_LOWER
 static bool
 mb_strchr(char *str, char *c)
 {
@@ -209,10 +208,6 @@ mb_strchr(char *str, char *c)
 
 	return res;
 }
-#else
-#define mb_strchr(s,c)	( (strchr((s),*(c)) == NULL) ? false : true )
-#endif
-
 
 bool
 RS_execute(Regis *r, char *str)

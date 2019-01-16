@@ -3,7 +3,7 @@
  * parse_clause.c
  *	  handle clauses in parser
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,12 +18,15 @@
 #include "miscadmin.h"
 
 #include "access/heapam.h"
+#include "access/htup_details.h"
+#include "access/nbtree.h"
 #include "access/tsmapi.h"
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_amproc.h"
 #include "catalog/pg_collation.h"
-#include "catalog/pg_constraint_fn.h"
+#include "catalog/pg_constraint.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "nodes/makefuncs.h"
@@ -43,8 +46,11 @@
 #include "parser/parse_target.h"
 #include "parser/parse_type.h"
 #include "rewrite/rewriteManip.h"
+#include "utils/builtins.h"
 #include "utils/guc.h"
+#include "utils/catcache.h"
 #include "utils/lsyscache.h"
+#include "utils/syscache.h"
 #include "utils/rel.h"
 
 
@@ -95,6 +101,7 @@ static List *addTargetToGroupList(ParseState *pstate, TargetEntry *tle,
 					 List *grouplist, List *targetlist, int location);
 static WindowClause *findWindowClause(List *wclist, const char *name);
 static Node *transformFrameOffset(ParseState *pstate, int frameOptions,
+					 Oid rangeopfamily, Oid rangeopcintype, Oid *inRangeFunc,
 					 Node *clause);
 
 
@@ -262,7 +269,7 @@ interpretOidsOption(List *defList, bool allowOids)
 		DefElem    *def = (DefElem *) lfirst(cell);
 
 		if (def->defnamespace == NULL &&
-			pg_strcasecmp(def->defname, "oids") == 0)
+			strcmp(def->defname, "oids") == 0)
 		{
 			if (!allowOids)
 				ereport(ERROR,
@@ -772,7 +779,7 @@ transformRangeTableFunc(ParseState *pstate, RangeTableFunc *rtf)
 	/* undef ordinality column number */
 	tf->ordinalitycol = -1;
 
-
+	/* Process column specs */
 	names = palloc(sizeof(char *) * list_length(rtf->columns));
 
 	colno = 0;
@@ -893,15 +900,15 @@ transformRangeTableFunc(ParseState *pstate, RangeTableFunc *rtf)
 			{
 				foreach(lc2, ns_names)
 				{
-					char	   *name = strVal(lfirst(lc2));
+					Value	   *ns_node = (Value *) lfirst(lc2);
 
-					if (name == NULL)
+					if (ns_node == NULL)
 						continue;
-					if (strcmp(name, r->name) == 0)
+					if (strcmp(strVal(ns_node), r->name) == 0)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("namespace name \"%s\" is not unique",
-										name),
+										r->name),
 								 parser_errposition(pstate, r->location)));
 				}
 			}
@@ -915,8 +922,9 @@ transformRangeTableFunc(ParseState *pstate, RangeTableFunc *rtf)
 				default_ns_seen = true;
 			}
 
-			/* Note the string may be NULL */
-			ns_names = lappend(ns_names, makeString(r->name));
+			/* We represent DEFAULT by a null pointer */
+			ns_names = lappend(ns_names,
+							   r->name ? makeString(r->name) : NULL);
 		}
 
 		tf->ns_uris = ns_uris;
@@ -2056,7 +2064,7 @@ findTargetlistEntrySQL99(ParseState *pstate, Node *node, List **tlist,
 
 	/*
 	 * If no matches, construct a new target entry which is appended to the
-	 * end of the target list.  This target is given resjunk = TRUE so that it
+	 * end of the target list.  This target is given resjunk = true so that it
 	 * will not be projected into the final tuple.
 	 */
 	target_result = transformTargetEntry(pstate, node, expr, exprKind,
@@ -2627,6 +2635,8 @@ transformWindowDefinitions(ParseState *pstate,
 		WindowClause *refwc = NULL;
 		List	   *partitionClause;
 		List	   *orderClause;
+		Oid			rangeopfamily = InvalidOid;
+		Oid			rangeopcintype = InvalidOid;
 		WindowClause *wc;
 
 		winref++;
@@ -2753,10 +2763,57 @@ transformWindowDefinitions(ParseState *pstate,
 					 parser_errposition(pstate, windef->location)));
 		}
 		wc->frameOptions = windef->frameOptions;
+
+		/*
+		 * RANGE offset PRECEDING/FOLLOWING requires exactly one ORDER BY
+		 * column; check that and get its sort opfamily info.
+		 */
+		if ((wc->frameOptions & FRAMEOPTION_RANGE) &&
+			(wc->frameOptions & (FRAMEOPTION_START_OFFSET |
+								 FRAMEOPTION_END_OFFSET)))
+		{
+			SortGroupClause *sortcl;
+			Node	   *sortkey;
+			int16		rangestrategy;
+
+			if (list_length(wc->orderClause) != 1)
+				ereport(ERROR,
+						(errcode(ERRCODE_WINDOWING_ERROR),
+						 errmsg("RANGE with offset PRECEDING/FOLLOWING requires exactly one ORDER BY column"),
+						 parser_errposition(pstate, windef->location)));
+			sortcl = castNode(SortGroupClause, linitial(wc->orderClause));
+			sortkey = get_sortgroupclause_expr(sortcl, *targetlist);
+			/* Find the sort operator in pg_amop */
+			if (!get_ordering_op_properties(sortcl->sortop,
+											&rangeopfamily,
+											&rangeopcintype,
+											&rangestrategy))
+				elog(ERROR, "operator %u is not a valid ordering operator",
+					 sortcl->sortop);
+			/* Record properties of sort ordering */
+			wc->inRangeColl = exprCollation(sortkey);
+			wc->inRangeAsc = (rangestrategy == BTLessStrategyNumber);
+			wc->inRangeNullsFirst = sortcl->nulls_first;
+		}
+
+		/* Per spec, GROUPS mode requires an ORDER BY clause */
+		if (wc->frameOptions & FRAMEOPTION_GROUPS)
+		{
+			if (wc->orderClause == NIL)
+				ereport(ERROR,
+						(errcode(ERRCODE_WINDOWING_ERROR),
+						 errmsg("GROUPS mode requires an ORDER BY clause"),
+						 parser_errposition(pstate, windef->location)));
+		}
+
 		/* Process frame offset expressions */
 		wc->startOffset = transformFrameOffset(pstate, wc->frameOptions,
+											   rangeopfamily, rangeopcintype,
+											   &wc->startInRangeFunc,
 											   windef->startOffset);
 		wc->endOffset = transformFrameOffset(pstate, wc->frameOptions,
+											 rangeopfamily, rangeopcintype,
+											 &wc->endInRangeFunc,
 											 windef->endOffset);
 		wc->winref = winref;
 
@@ -3060,12 +3117,11 @@ resolve_unique_index_expr(ParseState *pstate, InferClause *infer,
 		}
 
 		/*
-		 * transformExpr() should have already rejected subqueries,
-		 * aggregates, and window functions, based on the EXPR_KIND_ for an
-		 * index expression.  Expressions returning sets won't have been
-		 * rejected, but don't bother doing so here; there should be no
-		 * available expression unique index to match any such expression
-		 * against anyway.
+		 * transformExpr() will reject subqueries, aggregates, window
+		 * functions, and SRFs, based on being passed
+		 * EXPR_KIND_INDEX_EXPRESSION.  So we needn't worry about those
+		 * further ... not that they would match any available index
+		 * expression anyway.
 		 */
 		pInfer->expr = transformExpr(pstate, parse, EXPR_KIND_INDEX_EXPRESSION);
 
@@ -3489,12 +3545,23 @@ findWindowClause(List *wclist, const char *name)
 /*
  * transformFrameOffset
  *		Process a window frame offset expression
+ *
+ * In RANGE mode, rangeopfamily is the sort opfamily for the input ORDER BY
+ * column, and rangeopcintype is the input data type the sort operator is
+ * registered with.  We expect the in_range function to be registered with
+ * that same type.  (In binary-compatible cases, it might be different from
+ * the input column's actual type, so we can't use that for the lookups.)
+ * We'll return the OID of the in_range function to *inRangeFunc.
  */
 static Node *
-transformFrameOffset(ParseState *pstate, int frameOptions, Node *clause)
+transformFrameOffset(ParseState *pstate, int frameOptions,
+					 Oid rangeopfamily, Oid rangeopcintype, Oid *inRangeFunc,
+					 Node *clause)
 {
 	const char *constructName = NULL;
 	Node	   *node;
+
+	*inRangeFunc = InvalidOid;	/* default result */
 
 	/* Quick exit if no offset expression */
 	if (clause == NULL)
@@ -3513,16 +3580,105 @@ transformFrameOffset(ParseState *pstate, int frameOptions, Node *clause)
 	}
 	else if (frameOptions & FRAMEOPTION_RANGE)
 	{
+		/*
+		 * We must look up the in_range support function that's to be used,
+		 * possibly choosing one of several, and coerce the "offset" value to
+		 * the appropriate input type.
+		 */
+		Oid			nodeType;
+		Oid			preferredType;
+		int			nfuncs = 0;
+		int			nmatches = 0;
+		Oid			selectedType = InvalidOid;
+		Oid			selectedFunc = InvalidOid;
+		CatCList   *proclist;
+		int			i;
+
 		/* Transform the raw expression tree */
 		node = transformExpr(pstate, clause, EXPR_KIND_WINDOW_FRAME_RANGE);
+		nodeType = exprType(node);
 
 		/*
-		 * this needs a lot of thought to decide how to support in the context
-		 * of Postgres' extensible datatype framework
+		 * If there are multiple candidates, we'll prefer the one that exactly
+		 * matches nodeType; or if nodeType is as yet unknown, prefer the one
+		 * that exactly matches the sort column type.  (The second rule is
+		 * like what we do for "known_type operator unknown".)
 		 */
+		preferredType = (nodeType != UNKNOWNOID) ? nodeType : rangeopcintype;
+
+		/* Find the in_range support functions applicable to this case */
+		proclist = SearchSysCacheList2(AMPROCNUM,
+									   ObjectIdGetDatum(rangeopfamily),
+									   ObjectIdGetDatum(rangeopcintype));
+		for (i = 0; i < proclist->n_members; i++)
+		{
+			HeapTuple	proctup = &proclist->members[i]->tuple;
+			Form_pg_amproc procform = (Form_pg_amproc) GETSTRUCT(proctup);
+
+			/* The search will find all support proc types; ignore others */
+			if (procform->amprocnum != BTINRANGE_PROC)
+				continue;
+			nfuncs++;
+
+			/* Ignore function if given value can't be coerced to that type */
+			if (!can_coerce_type(1, &nodeType, &procform->amprocrighttype,
+								 COERCION_IMPLICIT))
+				continue;
+			nmatches++;
+
+			/* Remember preferred match, or any match if didn't find that */
+			if (selectedType != preferredType)
+			{
+				selectedType = procform->amprocrighttype;
+				selectedFunc = procform->amproc;
+			}
+		}
+		ReleaseCatCacheList(proclist);
+
+		/*
+		 * Throw error if needed.  It seems worth taking the trouble to
+		 * distinguish "no support at all" from "you didn't match any
+		 * available offset type".
+		 */
+		if (nfuncs == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("RANGE with offset PRECEDING/FOLLOWING is not supported for column type %s",
+							format_type_be(rangeopcintype)),
+					 parser_errposition(pstate, exprLocation(node))));
+		if (nmatches == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("RANGE with offset PRECEDING/FOLLOWING is not supported for column type %s and offset type %s",
+							format_type_be(rangeopcintype),
+							format_type_be(nodeType)),
+					 errhint("Cast the offset value to an appropriate type."),
+					 parser_errposition(pstate, exprLocation(node))));
+		if (nmatches != 1 && selectedType != preferredType)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("RANGE with offset PRECEDING/FOLLOWING has multiple interpretations for column type %s and offset type %s",
+							format_type_be(rangeopcintype),
+							format_type_be(nodeType)),
+					 errhint("Cast the offset value to the exact intended type."),
+					 parser_errposition(pstate, exprLocation(node))));
+
+		/* OK, coerce the offset to the right type */
 		constructName = "RANGE";
-		/* error was already thrown by gram.y, this is just a backstop */
-		elog(ERROR, "window frame with value offset is not implemented");
+		node = coerce_to_specific_type(pstate, node,
+									   selectedType, constructName);
+		*inRangeFunc = selectedFunc;
+	}
+	else if (frameOptions & FRAMEOPTION_GROUPS)
+	{
+		/* Transform the raw expression tree */
+		node = transformExpr(pstate, clause, EXPR_KIND_WINDOW_FRAME_GROUPS);
+
+		/*
+		 * Like LIMIT clause, simply coerce to int8
+		 */
+		constructName = "GROUPS";
+		node = coerce_to_specific_type(pstate, node, INT8OID, constructName);
 	}
 	else
 	{

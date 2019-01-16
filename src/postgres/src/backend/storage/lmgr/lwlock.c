@@ -20,7 +20,7 @@
  * appropriate value for a free lock.  The meaning of the variable is up to
  * the caller, the lightweight lock code just assigns and compares it.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -111,7 +111,7 @@ extern slock_t *ShmemLock;
  * This is indexed by tranche ID and stores the names of all tranches known
  * to the current backend.
  */
-static char **LWLockTrancheArray = NULL;
+static const char **LWLockTrancheArray = NULL;
 static int	LWLockTranchesAllocated = 0;
 
 #define T_NAME(lock) \
@@ -380,10 +380,10 @@ LWLockShmemSize(void)
 void
 CreateLWLocks(void)
 {
-	StaticAssertExpr(LW_VAL_EXCLUSIVE > (uint32) MAX_BACKENDS,
+	StaticAssertStmt(LW_VAL_EXCLUSIVE > (uint32) MAX_BACKENDS,
 					 "MAX_BACKENDS too big for lwlock.c");
 
-	StaticAssertExpr(sizeof(LWLock) <= LWLOCK_MINIMAL_SIZE &&
+	StaticAssertStmt(sizeof(LWLock) <= LWLOCK_MINIMAL_SIZE &&
 					 sizeof(LWLock) <= LWLOCK_PADDED_SIZE,
 					 "Miscalculated LWLock padding");
 
@@ -494,8 +494,8 @@ RegisterLWLockTranches(void)
 
 	if (LWLockTrancheArray == NULL)
 	{
-		LWLockTranchesAllocated = 64;
-		LWLockTrancheArray = (char **)
+		LWLockTranchesAllocated = 128;
+		LWLockTrancheArray = (const char **)
 			MemoryContextAllocZero(TopMemoryContext,
 								   LWLockTranchesAllocated * sizeof(char *));
 		Assert(LWLockTranchesAllocated >= LWTRANCHE_FIRST_USER_DEFINED);
@@ -510,7 +510,17 @@ RegisterLWLockTranches(void)
 						  "predicate_lock_manager");
 	LWLockRegisterTranche(LWTRANCHE_PARALLEL_QUERY_DSA,
 						  "parallel_query_dsa");
+	LWLockRegisterTranche(LWTRANCHE_SESSION_DSA,
+						  "session_dsa");
+	LWLockRegisterTranche(LWTRANCHE_SESSION_RECORD_TABLE,
+						  "session_record_table");
+	LWLockRegisterTranche(LWTRANCHE_SESSION_TYPMOD_TABLE,
+						  "session_typmod_table");
+	LWLockRegisterTranche(LWTRANCHE_SHARED_TUPLESTORE,
+						  "shared_tuplestore");
 	LWLockRegisterTranche(LWTRANCHE_TBM, "tbm");
+	LWLockRegisterTranche(LWTRANCHE_PARALLEL_APPEND, "parallel_append");
+	LWLockRegisterTranche(LWTRANCHE_PARALLEL_HASH_JOIN, "parallel_hash_join");
 
 	/* Register named tranches. */
 	for (i = 0; i < NamedLWLockTrancheRequests; i++)
@@ -589,7 +599,7 @@ LWLockNewTrancheId(void)
  * (TopMemoryContext, static variable, or similar).
  */
 void
-LWLockRegisterTranche(int tranche_id, char *tranche_name)
+LWLockRegisterTranche(int tranche_id, const char *tranche_name)
 {
 	Assert(LWLockTrancheArray != NULL);
 
@@ -601,7 +611,7 @@ LWLockRegisterTranche(int tranche_id, char *tranche_name)
 		while (i <= tranche_id)
 			i *= 2;
 
-		LWLockTrancheArray = (char **)
+		LWLockTrancheArray = (const char **)
 			repalloc(LWLockTrancheArray, i * sizeof(char *));
 		LWLockTranchesAllocated = i;
 		while (j < LWLockTranchesAllocated)
@@ -1275,7 +1285,7 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 /*
  * LWLockConditionalAcquire - acquire a lightweight lock in the specified mode
  *
- * If the lock is not available, return FALSE with no side-effects.
+ * If the lock is not available, return false with no side-effects.
  *
  * If successful, cancel/die interrupts are held off until lock release.
  */

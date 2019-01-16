@@ -1,16 +1,17 @@
 /*-------------------------------------------------------------------------
  *
  * pg_replication_origin.h
- *	  Persistent replication origin registry
+ *	  definition of the "replication origin" system catalog
+ *	  (pg_replication_origin)
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_replication_origin.h
  *
  * NOTES
- *	  the genbki.pl script reads this file and generates .bki
- *	  information from the DATA() statements.
+ *	  The Catalog.pm module reads this file and derives schema
+ *	  information.
  *
  *-------------------------------------------------------------------------
  */
@@ -18,6 +19,8 @@
 #define PG_REPLICATION_ORIGIN_H
 
 #include "catalog/genbki.h"
+#include "catalog/pg_replication_origin_d.h"
+
 #include "access/xlogdefs.h"
 
 /* ----------------
@@ -25,9 +28,7 @@
  *		typedef struct FormData_pg_replication_origin
  * ----------------
  */
-#define ReplicationOriginRelationId 6000
-
-CATALOG(pg_replication_origin,6000) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
+CATALOG(pg_replication_origin,6000,ReplicationOriginRelationId) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 {
 	/*
 	 * Locally known id that get included into WAL.
@@ -53,18 +54,5 @@ CATALOG(pg_replication_origin,6000) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 } FormData_pg_replication_origin;
 
 typedef FormData_pg_replication_origin *Form_pg_replication_origin;
-
-/* ----------------
- *		compiler constants for pg_replication_origin
- * ----------------
- */
-#define Natts_pg_replication_origin					2
-#define Anum_pg_replication_origin_roident			1
-#define Anum_pg_replication_origin_roname			2
-
-/* ----------------
- *		pg_replication_origin has no initial contents
- * ----------------
- */
 
 #endif							/* PG_REPLICATION_ORIGIN_H */

@@ -9,7 +9,7 @@
  * See utils/resowner/README for more info.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -21,6 +21,7 @@
 #include "postgres.h"
 
 #include "access/hash.h"
+#include "jit/jit.h"
 #include "storage/predicate.h"
 #include "storage/proc.h"
 #include "utils/memutils.h"
@@ -125,6 +126,7 @@ typedef struct ResourceOwnerData
 	ResourceArray snapshotarr;	/* snapshot references */
 	ResourceArray filearr;		/* open temporary files */
 	ResourceArray dsmarr;		/* dynamic shmem segments */
+	ResourceArray jitarr;		/* JIT contexts */
 
 	ResourceArray ybstmtarr;    /* YugaByte statement handles */
 
@@ -444,6 +446,7 @@ ResourceOwnerCreate(ResourceOwner parent, const char *name)
 	ResourceArrayInit(&(owner->snapshotarr), PointerGetDatum(NULL));
 	ResourceArrayInit(&(owner->filearr), FileGetDatum(-1));
 	ResourceArrayInit(&(owner->dsmarr), PointerGetDatum(NULL));
+	ResourceArrayInit(&(owner->jitarr), PointerGetDatum(NULL));
 
 	if (IsYugaByteEnabled())
 		ResourceArrayInit(&(owner->ybstmtarr), PointerGetDatum(NULL));
@@ -483,21 +486,8 @@ ResourceOwnerRelease(ResourceOwner owner,
 					 bool isCommit,
 					 bool isTopLevel)
 {
-	/* Rather than PG_TRY at every level of recursion, set it up once */
-	ResourceOwner save;
-
-	save = CurrentResourceOwner;
-	PG_TRY();
-	{
-		ResourceOwnerReleaseInternal(owner, phase, isCommit, isTopLevel);
-	}
-	PG_CATCH();
-	{
-		CurrentResourceOwner = save;
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-	CurrentResourceOwner = save;
+	/* There's not currently any setup needed before recursing */
+	ResourceOwnerReleaseInternal(owner, phase, isCommit, isTopLevel);
 }
 
 static void
@@ -517,8 +507,7 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 
 	/*
 	 * Make CurrentResourceOwner point to me, so that ReleaseBuffer etc don't
-	 * get confused.  We needn't PG_TRY here because the outermost level will
-	 * fix it on error abort.
+	 * get confused.
 	 */
 	save = CurrentResourceOwner;
 	CurrentResourceOwner = owner;
@@ -561,6 +550,14 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 			if (isCommit)
 				PrintDSMLeakWarning(res);
 			dsm_detach(res);
+		}
+
+		/* Ditto for JIT contexts */
+		while (ResourceArrayGetAny(&(owner->jitarr), &foundres))
+		{
+			JitContext *context = (JitContext *) PointerGetDatum(foundres);
+
+			jit_release_context(context);
 		}
 	}
 	else if (phase == RESOURCE_RELEASE_LOCKS)
@@ -698,7 +695,7 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 
 	/* Let add-on modules get a chance too */
 	for (item = ResourceRelease_callbacks; item; item = item->next)
-		(*item->callback) (phase, isCommit, isTopLevel, item->arg);
+		item->callback(phase, isCommit, isTopLevel, item->arg);
 
 	CurrentResourceOwner = save;
 }
@@ -725,6 +722,7 @@ ResourceOwnerDelete(ResourceOwner owner)
 	Assert(owner->snapshotarr.nitems == 0);
 	Assert(owner->filearr.nitems == 0);
 	Assert(owner->dsmarr.nitems == 0);
+	Assert(owner->jitarr.nitems == 0);
 	Assert(owner->nlocks == 0 || owner->nlocks == MAX_RESOWNER_LOCKS + 1);
 
 	/*
@@ -751,6 +749,7 @@ ResourceOwnerDelete(ResourceOwner owner)
 	ResourceArrayFree(&(owner->snapshotarr));
 	ResourceArrayFree(&(owner->filearr));
 	ResourceArrayFree(&(owner->dsmarr));
+	ResourceArrayFree(&(owner->jitarr));
 
 	pfree(owner);
 }
@@ -1292,6 +1291,41 @@ PrintDSMLeakWarning(dsm_segment *seg)
 {
 	elog(WARNING, "dynamic shared memory leak: segment %u still referenced",
 		 dsm_segment_handle(seg));
+}
+
+/*
+ * Make sure there is room for at least one more entry in a ResourceOwner's
+ * JIT context reference array.
+ *
+ * This is separate from actually inserting an entry because if we run out of
+ * memory, it's critical to do so *before* acquiring the resource.
+ */
+void
+ResourceOwnerEnlargeJIT(ResourceOwner owner)
+{
+	ResourceArrayEnlarge(&(owner->jitarr));
+}
+
+/*
+ * Remember that a JIT context is owned by a ResourceOwner
+ *
+ * Caller must have previously done ResourceOwnerEnlargeJIT()
+ */
+void
+ResourceOwnerRememberJIT(ResourceOwner owner, Datum handle)
+{
+	ResourceArrayAdd(&(owner->jitarr), handle);
+}
+
+/*
+ * Forget that a JIT context is owned by a ResourceOwner
+ */
+void
+ResourceOwnerForgetJIT(ResourceOwner owner, Datum handle)
+{
+	if (!ResourceArrayRemove(&(owner->jitarr), handle))
+		elog(ERROR, "JIT context %p is not owned by resource owner %s",
+			 DatumGetPointer(handle), owner->name);
 }
 
 /*

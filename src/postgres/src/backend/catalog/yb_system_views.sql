@@ -1,7 +1,7 @@
 /*
  * PostgreSQL System Views
  *
- * Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
  * src/backend/catalog/system_views.sql
  *
@@ -332,9 +332,11 @@ WHERE
 UNION ALL
 SELECT
 	l.objoid, l.classoid, l.objsubid,
-	CASE WHEN pro.proisagg = true THEN 'aggregate'::text
-	     WHEN pro.proisagg = false THEN 'function'::text
-	END AS objtype,
+	CASE pro.prokind
+            WHEN 'a' THEN 'aggregate'::text
+            WHEN 'f' THEN 'function'::text
+            WHEN 'p' THEN 'procedure'::text
+            WHEN 'w' THEN 'window'::text END AS objtype,
 	pro.pronamespace AS objnamespace,
 	CASE WHEN pg_function_is_visible(pro.oid)
 	     THEN quote_ident(pro.proname)
@@ -750,6 +752,8 @@ CREATE VIEW pg_stat_wal_receiver AS
             s.latest_end_lsn,
             s.latest_end_time,
             s.slot_name,
+            s.sender_host,
+            s.sender_port,
             s.conninfo
     FROM pg_stat_get_wal_receiver() s
     WHERE s.pid IS NOT NULL;

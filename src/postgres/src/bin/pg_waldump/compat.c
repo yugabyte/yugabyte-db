@@ -3,7 +3,7 @@
  * compat.c
  *		Reimplementations of various backend functions.
  *
- * Portions Copyright (c) 2013-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2013-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/bin/pg_waldump/compat.c
@@ -58,7 +58,8 @@ timestamptz_to_str(TimestampTz dt)
 	strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", ltime);
 	strftime(zone, sizeof(zone), "%Z", ltime);
 
-	sprintf(buf, "%s.%06d %s", ts, (int) (dt % USECS_PER_SEC), zone);
+	snprintf(buf, sizeof(buf), "%s.%06d %s",
+			 ts, (int) (dt % USECS_PER_SEC), zone);
 
 	return buf;
 }

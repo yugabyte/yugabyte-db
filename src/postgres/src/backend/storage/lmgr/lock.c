@@ -3,7 +3,7 @@
  * lock.c
  *	  POSTGRES primary lock mechanism
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -582,7 +582,7 @@ LockHasWaiters(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 
 	if (!YBIsPgLockingEnabled()) {
 		/* Locking is handled separately by YugaByte. */
-		return FALSE;
+		return false;
 	}
 
 	if (lockmethodid <= 0 || lockmethodid >= lengthof(LockMethods))
@@ -675,6 +675,7 @@ LockHasWaiters(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
  *		LOCKACQUIRE_NOT_AVAIL		lock not available, and dontWait=true
  *		LOCKACQUIRE_OK				lock successfully acquired
  *		LOCKACQUIRE_ALREADY_HELD	incremented count for lock already held
+ *		LOCKACQUIRE_ALREADY_CLEAR	incremented count for lock already clear
  *
  * In the normal case where dontWait=false and the caller doesn't need to
  * distinguish a freshly acquired lock from one already taken earlier in
@@ -696,24 +697,31 @@ LockAcquire(const LOCKTAG *locktag,
 		return LOCKACQUIRE_OK;
 	}
 
-	return LockAcquireExtended(locktag, lockmode, sessionLock, dontWait, true);
+	return LockAcquireExtended(locktag, lockmode, sessionLock, dontWait,
+							   true, NULL);
 }
 
 /*
  * LockAcquireExtended - allows us to specify additional options
  *
- * reportMemoryError specifies whether a lock request that fills the
- * lock table should generate an ERROR or not. This allows a priority
- * caller to note that the lock table is full and then begin taking
- * extreme action to reduce the number of other lock holders before
- * retrying the action.
+ * reportMemoryError specifies whether a lock request that fills the lock
+ * table should generate an ERROR or not.  Passing "false" allows the caller
+ * to attempt to recover from lock-table-full situations, perhaps by forcibly
+ * cancelling other lock holders and then retrying.  Note, however, that the
+ * return code for that is LOCKACQUIRE_NOT_AVAIL, so that it's unsafe to use
+ * in combination with dontWait = true, as the cause of failure couldn't be
+ * distinguished.
+ *
+ * If locallockp isn't NULL, *locallockp receives a pointer to the LOCALLOCK
+ * table entry if a lock is successfully acquired, or NULL if not.
  */
 LockAcquireResult
 LockAcquireExtended(const LOCKTAG *locktag,
 					LOCKMODE lockmode,
 					bool sessionLock,
 					bool dontWait,
-					bool reportMemoryError)
+					bool reportMemoryError,
+					LOCALLOCK **locallockp)
 {
 	LOCKMETHODID lockmethodid = locktag->locktag_lockmethodid;
 	LockMethod	lockMethodTable;
@@ -782,9 +790,10 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		locallock->proclock = NULL;
 		locallock->hashcode = LockTagHashCode(&(localtag.lock));
 		locallock->nLocks = 0;
+		locallock->holdsStrongLockCount = false;
+		locallock->lockCleared = false;
 		locallock->numLockOwners = 0;
 		locallock->maxLockOwners = 8;
-		locallock->holdsStrongLockCount = FALSE;
 		locallock->lockOwners = NULL;	/* in case next line fails */
 		locallock->lockOwners = (LOCALLOCKOWNER *)
 			MemoryContextAlloc(TopMemoryContext,
@@ -805,13 +814,22 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	}
 	hashcode = locallock->hashcode;
 
+	if (locallockp)
+		*locallockp = locallock;
+
 	/*
 	 * If we already hold the lock, we can just increase the count locally.
+	 *
+	 * If lockCleared is already set, caller need not worry about absorbing
+	 * sinval messages related to the lock's object.
 	 */
 	if (locallock->nLocks > 0)
 	{
 		GrantLockLocal(locallock, owner);
-		return LOCKACQUIRE_ALREADY_HELD;
+		if (locallock->lockCleared)
+			return LOCKACQUIRE_ALREADY_CLEAR;
+		else
+			return LOCKACQUIRE_ALREADY_HELD;
 	}
 
 	/*
@@ -893,6 +911,10 @@ LockAcquireExtended(const LOCKTAG *locktag,
 										   hashcode))
 		{
 			AbortStrongLockAcquire();
+			if (locallock->nLocks == 0)
+				RemoveLocalLock(locallock);
+			if (locallockp)
+				*locallockp = NULL;
 			if (reportMemoryError)
 				ereport(ERROR,
 						(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -927,6 +949,10 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	{
 		AbortStrongLockAcquire();
 		LWLockRelease(partitionLock);
+		if (locallock->nLocks == 0)
+			RemoveLocalLock(locallock);
+		if (locallockp)
+			*locallockp = NULL;
 		if (reportMemoryError)
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -992,6 +1018,8 @@ LockAcquireExtended(const LOCKTAG *locktag,
 			LWLockRelease(partitionLock);
 			if (locallock->nLocks == 0)
 				RemoveLocalLock(locallock);
+			if (locallockp)
+				*locallockp = NULL;
 			return LOCKACQUIRE_NOT_AVAIL;
 		}
 
@@ -1280,7 +1308,7 @@ RemoveLocalLock(LOCALLOCK *locallock)
 		SpinLockAcquire(&FastPathStrongRelationLocks->mutex);
 		Assert(FastPathStrongRelationLocks->count[fasthashcode] > 0);
 		FastPathStrongRelationLocks->count[fasthashcode]--;
-		locallock->holdsStrongLockCount = FALSE;
+		locallock->holdsStrongLockCount = false;
 		SpinLockRelease(&FastPathStrongRelationLocks->mutex);
 	}
 
@@ -1594,7 +1622,7 @@ static void
 BeginStrongLockAcquire(LOCALLOCK *locallock, uint32 fasthashcode)
 {
 	Assert(StrongLockInProgress == NULL);
-	Assert(locallock->holdsStrongLockCount == FALSE);
+	Assert(locallock->holdsStrongLockCount == false);
 
 	/*
 	 * Adding to a memory location is not atomic, so we take a spinlock to
@@ -1607,7 +1635,7 @@ BeginStrongLockAcquire(LOCALLOCK *locallock, uint32 fasthashcode)
 
 	SpinLockAcquire(&FastPathStrongRelationLocks->mutex);
 	FastPathStrongRelationLocks->count[fasthashcode]++;
-	locallock->holdsStrongLockCount = TRUE;
+	locallock->holdsStrongLockCount = true;
 	StrongLockInProgress = locallock;
 	SpinLockRelease(&FastPathStrongRelationLocks->mutex);
 }
@@ -1636,11 +1664,11 @@ AbortStrongLockAcquire(void)
 		return;
 
 	fasthashcode = FastPathStrongLockHashPartition(locallock->hashcode);
-	Assert(locallock->holdsStrongLockCount == TRUE);
+	Assert(locallock->holdsStrongLockCount == true);
 	SpinLockAcquire(&FastPathStrongRelationLocks->mutex);
 	Assert(FastPathStrongRelationLocks->count[fasthashcode] > 0);
 	FastPathStrongRelationLocks->count[fasthashcode]--;
-	locallock->holdsStrongLockCount = FALSE;
+	locallock->holdsStrongLockCount = false;
 	StrongLockInProgress = NULL;
 	SpinLockRelease(&FastPathStrongRelationLocks->mutex);
 }
@@ -1659,6 +1687,25 @@ void
 GrantAwaitedLock(void)
 {
 	GrantLockLocal(awaitedLock, awaitedOwner);
+}
+
+/*
+ * MarkLockClear -- mark an acquired lock as "clear"
+ *
+ * This means that we know we have absorbed all sinval messages that other
+ * sessions generated before we acquired this lock, and so we can confidently
+ * assume we know about any catalog changes protected by this lock.
+ */
+void
+MarkLockClear(LOCALLOCK *locallock)
+{
+	if (!YBIsPgLockingEnabled()) {
+		/* Locking is handled separately by YugaByte. */
+		return;
+	}
+
+	Assert(locallock->nLocks > 0);
+	locallock->lockCleared = true;
 }
 
 /*
@@ -1844,7 +1891,7 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 
 	if (!YBIsPgLockingEnabled()) {
 		/* Locking is handled separately by YugaByte. */
-		return TRUE;
+		return true;
 	}
 
 	if (lockmethodid <= 0 || lockmethodid >= lengthof(LockMethods))
@@ -1878,7 +1925,7 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 	{
 		elog(WARNING, "you don't own a lock of type %s",
 			 lockMethodTable->lockModeNames[lockmode]);
-		return FALSE;
+		return false;
 	}
 
 	/*
@@ -1917,7 +1964,7 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 			/* don't release a lock belonging to another owner */
 			elog(WARNING, "you don't own a lock of type %s",
 				 lockMethodTable->lockModeNames[lockmode]);
-			return FALSE;
+			return false;
 		}
 	}
 
@@ -1928,7 +1975,16 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 	locallock->nLocks--;
 
 	if (locallock->nLocks > 0)
-		return TRUE;
+		return true;
+
+	/*
+	 * At this point we can no longer suppose we are clear of invalidation
+	 * messages related to this lock.  Although we'll delete the LOCALLOCK
+	 * object before any intentional return from this routine, it seems worth
+	 * the trouble to explicitly reset lockCleared right now, just in case
+	 * some error prevents us from deleting the LOCALLOCK.
+	 */
+	locallock->lockCleared = false;
 
 	/* Attempt fast release of any lock eligible for the fast path. */
 	if (EligibleForRelationFastPath(locktag, lockmode) &&
@@ -1947,7 +2003,7 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 		if (released)
 		{
 			RemoveLocalLock(locallock);
-			return TRUE;
+			return true;
 		}
 	}
 
@@ -2005,7 +2061,7 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 		elog(WARNING, "you don't own a lock of type %s",
 			 lockMethodTable->lockModeNames[lockmode]);
 		RemoveLocalLock(locallock);
-		return FALSE;
+		return false;
 	}
 
 	/*
@@ -2020,7 +2076,7 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 	LWLockRelease(partitionLock);
 
 	RemoveLocalLock(locallock);
-	return TRUE;
+	return true;
 }
 
 /*
@@ -3193,7 +3249,7 @@ AtPrepare_Locks(void)
 		 * entry.  We must retain the count until the prepared transaction is
 		 * committed or rolled back.
 		 */
-		locallock->holdsStrongLockCount = FALSE;
+		locallock->holdsStrongLockCount = false;
 
 		/*
 		 * Create a 2PC record.
@@ -4360,7 +4416,7 @@ VirtualXactLock(VirtualTransactionId vxid, bool wait)
 
 	if (!YBIsPgLockingEnabled()) {
 		/* Locking is handled separately by YugaByte. */
-		return FALSE;
+		return false;
 	}
 	Assert(VirtualTransactionIdIsValid(vxid));
 

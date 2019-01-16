@@ -17,6 +17,9 @@ else
 	plan tests => 4;
 }
 
+use FindBin;
+use lib $FindBin::RealBin;
+
 use RewindTest;
 
 sub run_test
@@ -26,7 +29,7 @@ sub run_test
 	my $master_xlogdir = "${TestLib::tmp_check}/xlog_master";
 
 	rmtree($master_xlogdir);
-	RewindTest::setup_cluster();
+	RewindTest::setup_cluster($test_mode);
 
 	my $test_master_datadir = $node_master->data_dir;
 
@@ -43,7 +46,7 @@ sub run_test
 
 	master_psql("CHECKPOINT");
 
-	RewindTest::create_standby();
+	RewindTest::create_standby($test_mode);
 
 	# Insert additional data on master that will be replicated to standby
 	master_psql("INSERT INTO tbl1 values ('in master, before promotion')");
@@ -72,6 +75,7 @@ in standby, after promotion
 		'table content');
 
 	RewindTest::clean_rewind_test();
+	return;
 }
 
 # Run the test in both modes

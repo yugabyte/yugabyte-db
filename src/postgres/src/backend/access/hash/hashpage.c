@@ -3,7 +3,7 @@
  * hashpage.c
  *	  Hash table page management code for the Postgres hash access method
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -33,6 +33,7 @@
 #include "miscadmin.h"
 #include "storage/lmgr.h"
 #include "storage/smgr.h"
+#include "storage/predicate.h"
 
 
 static bool _hash_alloc_buckets(Relation rel, BlockNumber firstblock,
@@ -298,20 +299,20 @@ _hash_dropscanbuf(Relation rel, HashScanOpaque so)
 {
 	/* release pin we hold on primary bucket page */
 	if (BufferIsValid(so->hashso_bucket_buf) &&
-		so->hashso_bucket_buf != so->hashso_curbuf)
+		so->hashso_bucket_buf != so->currPos.buf)
 		_hash_dropbuf(rel, so->hashso_bucket_buf);
 	so->hashso_bucket_buf = InvalidBuffer;
 
 	/* release pin we hold on primary bucket page  of bucket being split */
 	if (BufferIsValid(so->hashso_split_bucket_buf) &&
-		so->hashso_split_bucket_buf != so->hashso_curbuf)
+		so->hashso_split_bucket_buf != so->currPos.buf)
 		_hash_dropbuf(rel, so->hashso_split_bucket_buf);
 	so->hashso_split_bucket_buf = InvalidBuffer;
 
 	/* release any pin we still hold */
-	if (BufferIsValid(so->hashso_curbuf))
-		_hash_dropbuf(rel, so->hashso_curbuf);
-	so->hashso_curbuf = InvalidBuffer;
+	if (BufferIsValid(so->currPos.buf))
+		_hash_dropbuf(rel, so->currPos.buf);
+	so->currPos.buf = InvalidBuffer;
 
 	/* reset split scan */
 	so->hashso_buc_populated = false;
@@ -373,7 +374,7 @@ _hash_init(Relation rel, double num_tuples, ForkNumber forkNum)
 	if (ffactor < 10)
 		ffactor = 10;
 
-	procid = index_getprocid(rel, 1, HASHPROC);
+	procid = index_getprocid(rel, 1, HASHSTANDARD_PROC);
 
 	/*
 	 * We initialize the metapage, the first N bucket pages, and the first
@@ -403,7 +404,7 @@ _hash_init(Relation rel, double num_tuples, ForkNumber forkNum)
 
 		XLogBeginInsert();
 		XLogRegisterData((char *) &xlrec, SizeOfHashInitMetaPage);
-		XLogRegisterBuffer(0, metabuf, REGBUF_WILL_INIT);
+		XLogRegisterBuffer(0, metabuf, REGBUF_WILL_INIT | REGBUF_STANDARD);
 
 		recptr = XLogInsert(RM_HASH_ID, XLOG_HASH_INIT_META_PAGE);
 
@@ -592,8 +593,9 @@ _hash_init_metabuffer(Buffer buf, double num_tuples, RegProcedure procid,
 	metap->hashm_firstfree = 0;
 
 	/*
-	 * Set pd_lower just past the end of the metadata.  This is to log full
-	 * page image of metapage in xloginsert.c.
+	 * Set pd_lower just past the end of the metadata.  This is essential,
+	 * because without doing so, metadata will be lost if xlog.c compresses
+	 * the page.
 	 */
 	((PageHeader) page)->pd_lower =
 		((char *) metap + sizeof(HashMetaPageData)) - (char *) page;
@@ -991,14 +993,14 @@ fail:
  * for the purpose.  OTOH, adding a splitpoint is a very infrequent operation,
  * so it may not be worth worrying about.
  *
- * Returns TRUE if successful, or FALSE if allocation failed due to
+ * Returns true if successful, or false if allocation failed due to
  * BlockNumber overflow.
  */
 static bool
 _hash_alloc_buckets(Relation rel, BlockNumber firstblock, uint32 nblocks)
 {
 	BlockNumber lastblock;
-	char		zerobuf[BLCKSZ];
+	PGAlignedBlock zerobuf;
 	Page		page;
 	HashPageOpaque ovflopaque;
 
@@ -1011,7 +1013,7 @@ _hash_alloc_buckets(Relation rel, BlockNumber firstblock, uint32 nblocks)
 	if (lastblock < firstblock || lastblock == InvalidBlockNumber)
 		return false;
 
-	page = (Page) zerobuf;
+	page = (Page) zerobuf.data;
 
 	/*
 	 * Initialize the page.  Just zeroing the page won't work; see
@@ -1032,11 +1034,12 @@ _hash_alloc_buckets(Relation rel, BlockNumber firstblock, uint32 nblocks)
 		log_newpage(&rel->rd_node,
 					MAIN_FORKNUM,
 					lastblock,
-					zerobuf,
+					zerobuf.data,
 					true);
 
 	RelationOpenSmgr(rel);
-	smgrextend(rel->rd_smgr, MAIN_FORKNUM, lastblock, zerobuf, false);
+	PageSetChecksumInplace(page, lastblock);
+	smgrextend(rel->rd_smgr, MAIN_FORKNUM, lastblock, zerobuf.data, false);
 
 	return true;
 }
@@ -1106,6 +1109,11 @@ _hash_splitbucket(Relation rel,
 	npage = BufferGetPage(nbuf);
 	nopaque = (HashPageOpaque) PageGetSpecialPointer(npage);
 
+	/* Copy the predicate locks from old bucket to new bucket. */
+	PredicateLockPageSplit(rel,
+						   BufferGetBlockNumber(bucket_obuf),
+						   BufferGetBlockNumber(bucket_nbuf));
+
 	/*
 	 * Partition the tuples in the old bucket between the old bucket and the
 	 * new bucket, advancing along the old bucket's overflow bucket chain and
@@ -1172,7 +1180,7 @@ _hash_splitbucket(Relation rel,
 				 * the current page in the new bucket, we must allocate a new
 				 * overflow page and place the tuple on that page instead.
 				 */
-				itemsz = IndexTupleDSize(*new_itup);
+				itemsz = IndexTupleSize(new_itup);
 				itemsz = MAXALIGN(itemsz);
 
 				if (PageGetFreeSpaceForMultipleTuples(npage, nitups + 1) < (all_tups_size + itemsz))

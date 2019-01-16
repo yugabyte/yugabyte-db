@@ -3,7 +3,7 @@
  * pg_aggregate.c
  *	  routines to support manipulation of the pg_aggregate relation
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -22,7 +22,6 @@
 #include "catalog/pg_language.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
-#include "catalog/pg_proc_fn.h"
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
 #include "parser/parse_coerce.h"
@@ -65,6 +64,8 @@ AggregateCreate(const char *aggName,
 				List *aggmfinalfnName,
 				bool finalfnExtraArgs,
 				bool mfinalfnExtraArgs,
+				char finalfnModify,
+				char mfinalfnModify,
 				List *aggsortopName,
 				Oid aggTransType,
 				int32 aggTransSpace,
@@ -409,16 +410,17 @@ AggregateCreate(const char *aggName,
 		Oid			combineType;
 
 		/*
-		 * Combine function must have 2 argument, each of which is the trans
-		 * type
+		 * Combine function must have 2 arguments, each of which is the trans
+		 * type.  VARIADIC doesn't affect it.
 		 */
 		fnArgs[0] = aggTransType;
 		fnArgs[1] = aggTransType;
 
-		combinefn = lookup_agg_function(aggcombinefnName, 2, fnArgs,
-										variadicArgType, &combineType);
+		combinefn = lookup_agg_function(aggcombinefnName, 2,
+										fnArgs, InvalidOid,
+										&combineType);
 
-		/* Ensure the return type matches the aggregates trans type */
+		/* Ensure the return type matches the aggregate's trans type */
 		if (combineType != aggTransType)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -428,14 +430,14 @@ AggregateCreate(const char *aggName,
 
 		/*
 		 * A combine function to combine INTERNAL states must accept nulls and
-		 * ensure that the returned state is in the correct memory context.
+		 * ensure that the returned state is in the correct memory context. We
+		 * cannot directly check the latter, but we can check the former.
 		 */
 		if (aggTransType == INTERNALOID && func_strict(combinefn))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					 errmsg("combine function with transition type %s must not be declared STRICT",
 							format_type_be(aggTransType))));
-
 	}
 
 	/*
@@ -443,10 +445,11 @@ AggregateCreate(const char *aggName,
 	 */
 	if (aggserialfnName)
 	{
+		/* signature is always serialize(internal) returns bytea */
 		fnArgs[0] = INTERNALOID;
 
 		serialfn = lookup_agg_function(aggserialfnName, 1,
-									   fnArgs, variadicArgType,
+									   fnArgs, InvalidOid,
 									   &rettype);
 
 		if (rettype != BYTEAOID)
@@ -462,11 +465,12 @@ AggregateCreate(const char *aggName,
 	 */
 	if (aggdeserialfnName)
 	{
+		/* signature is always deserialize(bytea, internal) returns internal */
 		fnArgs[0] = BYTEAOID;
 		fnArgs[1] = INTERNALOID;	/* dummy argument for type safety */
 
 		deserialfn = lookup_agg_function(aggdeserialfnName, 2,
-										 fnArgs, variadicArgType,
+										 fnArgs, InvalidOid,
 										 &rettype);
 
 		if (rettype != INTERNALOID)
@@ -613,8 +617,7 @@ AggregateCreate(const char *aggName,
 							 InvalidOid,	/* no validator */
 							 "aggregate_dummy", /* placeholder proc */
 							 NULL,	/* probin */
-							 true,	/* isAgg */
-							 false, /* isWindowFunc */
+							 PROKIND_AGGREGATE,
 							 false, /* security invoker (currently not
 									 * definable for agg) */
 							 false, /* isLeakProof */
@@ -656,6 +659,8 @@ AggregateCreate(const char *aggName,
 	values[Anum_pg_aggregate_aggmfinalfn - 1] = ObjectIdGetDatum(mfinalfn);
 	values[Anum_pg_aggregate_aggfinalextra - 1] = BoolGetDatum(finalfnExtraArgs);
 	values[Anum_pg_aggregate_aggmfinalextra - 1] = BoolGetDatum(mfinalfnExtraArgs);
+	values[Anum_pg_aggregate_aggfinalmodify - 1] = CharGetDatum(finalfnModify);
+	values[Anum_pg_aggregate_aggmfinalmodify - 1] = CharGetDatum(mfinalfnModify);
 	values[Anum_pg_aggregate_aggsortop - 1] = ObjectIdGetDatum(sortop);
 	values[Anum_pg_aggregate_aggtranstype - 1] = ObjectIdGetDatum(aggTransType);
 	values[Anum_pg_aggregate_aggtransspace - 1] = Int32GetDatum(aggTransSpace);
@@ -768,7 +773,11 @@ AggregateCreate(const char *aggName,
 
 /*
  * lookup_agg_function
- * common code for finding transfn, invtransfn, finalfn, and combinefn
+ * common code for finding aggregate support functions
+ *
+ * fnName: possibly-schema-qualified function name
+ * nargs, input_types: expected function argument types
+ * variadicArgType: type of variadic argument if any, else InvalidOid
  *
  * Returns OID of function, and stores its return type into *rettype
  *
@@ -860,7 +869,7 @@ lookup_agg_function(List *fnName,
 	/* Check aggregate creator has permission to call the function */
 	aclresult = pg_proc_aclcheck(fnOid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_PROC, get_func_name(fnOid));
+		aclcheck_error(aclresult, OBJECT_FUNCTION, get_func_name(fnOid));
 
 	return fnOid;
 }

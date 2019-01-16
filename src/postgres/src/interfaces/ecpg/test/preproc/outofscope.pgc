@@ -66,7 +66,7 @@ main (void)
 {
 	MYTYPE		*myvar;
 	MYNULLTYPE	*mynullvar;
-
+	int loopcount;
 	char msg[128];
 
 	ECPGdebug(1, stderr);
@@ -95,13 +95,13 @@ main (void)
 
 	exec sql whenever not found do break;
 
-	while (1)
+	for (loopcount = 0; loopcount < 100; loopcount++)
 	{
 		memset(myvar, 0, sizeof(MYTYPE));
 		get_record1();
 		if (sqlca.sqlcode == ECPG_NOT_FOUND)
 			break;
-		printf("id=%d%s t='%s'%s d1=%lf%s d2=%lf%s c = '%s'%s\n",
+		printf("id=%d%s t='%s'%s d1=%f%s d2=%f%s c = '%s'%s\n",
 			myvar->id, mynullvar->id ? " (NULL)" : "",
 			myvar->t, mynullvar->t ? " (NULL)" : "",
 			myvar->d1, mynullvar->d1 ? " (NULL)" : "",
@@ -123,5 +123,5 @@ main (void)
 	strcpy(msg, "disconnect");
 	exec sql disconnect;
 
-	return (0);
+	return 0;
 }

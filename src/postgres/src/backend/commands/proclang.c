@@ -3,7 +3,7 @@
  * proclang.c
  *	  PostgreSQL PROCEDURAL LANGUAGE support code.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -24,7 +24,6 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_pltemplate.h"
 #include "catalog/pg_proc.h"
-#include "catalog/pg_proc_fn.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
@@ -97,7 +96,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 						 errmsg("must be superuser to create procedural language \"%s\"",
 								stmt->plname)));
 			if (!pg_database_ownercheck(MyDatabaseId, GetUserId()))
-				aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
+				aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_DATABASE,
 							   get_database_name(MyDatabaseId));
 		}
 
@@ -129,8 +128,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 									  F_FMGR_C_VALIDATOR,
 									  pltemplate->tmplhandler,
 									  pltemplate->tmpllibrary,
-									  false,	/* isAgg */
-									  false,	/* isWindowFunc */
+									  PROKIND_FUNCTION,
 									  false,	/* security_definer */
 									  false,	/* isLeakProof */
 									  false,	/* isStrict */
@@ -169,8 +167,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 										  F_FMGR_C_VALIDATOR,
 										  pltemplate->tmplinline,
 										  pltemplate->tmpllibrary,
-										  false,	/* isAgg */
-										  false,	/* isWindowFunc */
+										  PROKIND_FUNCTION,
 										  false,	/* security_definer */
 										  false,	/* isLeakProof */
 										  true, /* isStrict */
@@ -212,8 +209,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 										  F_FMGR_C_VALIDATOR,
 										  pltemplate->tmplvalidator,
 										  pltemplate->tmpllibrary,
-										  false,	/* isAgg */
-										  false,	/* isWindowFunc */
+										  PROKIND_FUNCTION,
 										  false,	/* security_definer */
 										  false,	/* isLeakProof */
 										  true, /* isStrict */
@@ -366,7 +362,7 @@ create_proc_lang(const char *languageName, bool replace,
 					(errcode(ERRCODE_DUPLICATE_OBJECT),
 					 errmsg("language \"%s\" already exists", languageName)));
 		if (!pg_language_ownercheck(HeapTupleGetOid(oldtup), languageOwner))
-			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_LANGUAGE,
+			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_LANGUAGE,
 						   languageName);
 
 		/*
@@ -513,7 +509,7 @@ find_language_template(const char *languageName)
 
 
 /*
- * This just returns TRUE if we have a valid template for a given language
+ * This just returns true if we have a valid template for a given language
  */
 bool
 PLTemplateExists(const char *languageName)

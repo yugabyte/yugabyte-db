@@ -55,7 +55,7 @@
  */
 bool IsRealYBColumn(Relation rel, int attrNum)
 {
-	return (attrNum > 0 && !rel->rd_att->attrs[attrNum - 1]->attisdropped) ||
+	return (attrNum > 0 && !TupleDescAttr(rel->rd_att, attrNum - 1)->attisdropped) ||
 	       (rel->rd_rel->relhasoids && attrNum == ObjectIdAttributeNumber);
 }
 
@@ -83,7 +83,7 @@ static Oid GetTypeId(int attrNum, TupleDesc tupleDesc)
 			return OIDOID;
 		default:
 			if (attrNum > 0 && attrNum <= tupleDesc->natts)
-				return tupleDesc->attrs[attrNum - 1]->atttypid;
+				return TupleDescAttr(tupleDesc, attrNum - 1)->atttypid;
 			else
 				return InvalidOid;
 	}
@@ -440,7 +440,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 		Oid        typid = OIDOID; // default;
 
 		if (attno > 0)
-			typid = tupdesc->attrs[attno - 1]->atttypid;
+			typid = TupleDescAttr(tupdesc, attno - 1)->atttypid;
 		else if (attno == YBTupleIdAttributeNumber)
 			typid = BYTEAOID;
 		else if (attno == ObjectIdAttributeNumber)
@@ -498,14 +498,15 @@ void YBCExecuteUpdate(Relation rel,
 										  ybctid_expr), update_stmt);
 
 	/* Assign new values to columns for updating the current row. */
-	Form_pg_attribute *table_attrs = rel->rd_att->attrs;
-	for (int idx = 0; idx < rel->rd_att->natts; idx++)
+	tupleDesc = RelationGetDescr(rel);
+	for (int idx = 0; idx < tupleDesc->natts; idx++)
 	{
-		AttrNumber attnum = table_attrs[idx]->attnum;
+		AttrNumber attnum = TupleDescAttr(tupleDesc, idx)->attnum;
 
 		bool is_null = false;
 		Datum d = heap_getattr(tuple, attnum, tupleDesc, &is_null);
-		YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, table_attrs[idx]->atttypid, d, is_null);
+		YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, TupleDescAttr(tupleDesc, idx)->atttypid,
+											d, is_null);
 		HandleYBStmtStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr), update_stmt);
 	}
 
@@ -567,14 +568,13 @@ void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple tuple)
 
 	/* Assign new values to columns for updating the current row. */
 	int idx;
-	Form_pg_attribute *table_attrs = rel->rd_att->attrs;
-	for (idx = 0; idx < rel->rd_att->natts; idx++)
-	{
-		AttrNumber attnum = table_attrs[idx]->attnum;
+	for (idx = 0; idx < tupleDesc->natts; idx++) {
+		AttrNumber attnum = TupleDescAttr(tupleDesc, idx)->attnum;
 
 		bool is_null = false;
 		Datum d = heap_getattr(tuple, attnum, tupleDesc, &is_null);
-		YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, table_attrs[idx]->atttypid, d, is_null);
+		YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, TupleDescAttr(tupleDesc, idx)->atttypid,
+											d, is_null);
 		HandleYBStmtStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr), update_stmt);
 	}
 

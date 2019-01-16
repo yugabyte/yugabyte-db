@@ -3,7 +3,7 @@
  * dict_thesaurus.c
  *		Thesaurus dictionary: phrase to phrase substitution
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -165,7 +165,7 @@ addWrd(DictThesaurus *d, char *b, char *e, uint32 idsubst, uint16 nwrd, uint16 p
 #define TR_INSUBS	4
 
 static void
-thesaurusRead(char *filename, DictThesaurus *d)
+thesaurusRead(const char *filename, DictThesaurus *d)
 {
 	tsearch_readline_state trst;
 	uint32		idsubst = 0;
@@ -616,7 +616,7 @@ thesaurus_init(PG_FUNCTION_ARGS)
 	{
 		DefElem    *defel = (DefElem *) lfirst(l);
 
-		if (pg_strcasecmp("DictFile", defel->defname) == 0)
+		if (strcmp(defel->defname, "dictfile") == 0)
 		{
 			if (fileloaded)
 				ereport(ERROR,
@@ -625,7 +625,7 @@ thesaurus_init(PG_FUNCTION_ARGS)
 			thesaurusRead(defGetString(defel), d);
 			fileloaded = true;
 		}
-		else if (pg_strcasecmp("Dictionary", defel->defname) == 0)
+		else if (strcmp(defel->defname, "dictionary") == 0)
 		{
 			if (subdictname)
 				ereport(ERROR,

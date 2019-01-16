@@ -6,7 +6,7 @@
  * Generic code supporting statistics objects created via CREATE STATISTICS.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -74,7 +74,8 @@ BuildRelationExtStatistics(Relation onerel, double totalrows,
 	MemoryContext cxt;
 	MemoryContext oldcxt;
 
-	cxt = AllocSetContextCreate(CurrentMemoryContext, "stats ext",
+	cxt = AllocSetContextCreate(CurrentMemoryContext,
+								"BuildRelationExtStatistics",
 								ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(cxt);
 
@@ -158,7 +159,7 @@ statext_is_kind_built(HeapTuple htup, char type)
 			elog(ERROR, "unexpected statistics type requested: %d", type);
 	}
 
-	return !heap_attisnull(htup, attnum);
+	return !heap_attisnull(htup, attnum, NULL);
 }
 
 /*

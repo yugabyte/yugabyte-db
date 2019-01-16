@@ -6,7 +6,7 @@
  * See src/backend/utils/misc/README for more information.
  *
  *
- * Copyright (c) 2000-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2018, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * IDENTIFICATION
@@ -42,8 +42,8 @@
 #include "commands/variable.h"
 #include "commands/trigger.h"
 #include "funcapi.h"
+#include "jit/jit.h"
 #include "libpq/auth.h"
-#include "libpq/be-fsstubs.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
@@ -71,6 +71,7 @@
 #include "storage/dsm_impl.h"
 #include "storage/standby.h"
 #include "storage/fd.h"
+#include "storage/large_object.h"
 #include "storage/pg_shmem.h"
 #include "storage/proc.h"
 #include "storage/predicate.h"
@@ -163,6 +164,7 @@ static int	syslog_facility = 0;
 static void assign_syslog_facility(int newval, void *extra);
 static void assign_syslog_ident(const char *newval, void *extra);
 static void assign_session_replication_role(int newval, void *extra);
+static bool check_client_min_messages(int *newval, void **extra, GucSource source);
 static bool check_temp_buffers(int *newval, void **extra, GucSource source);
 static bool check_bonjour(bool *newval, void **extra, GucSource source);
 static bool check_ssl(bool *newval, void **extra, GucSource source);
@@ -191,6 +193,7 @@ static void assign_application_name(const char *newval, void *extra);
 static bool check_cluster_name(char **newval, void **extra, GucSource source);
 static const char *show_unix_socket_permissions(void);
 static const char *show_log_file_mode(void);
+static const char *show_data_directory_mode(void);
 
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
@@ -514,7 +517,6 @@ static int	block_size;
 static int	segment_size;
 static int	wal_block_size;
 static bool data_checksums;
-static int	wal_segment_size;
 static bool integer_datetimes;
 static bool assert_enabled;
 
@@ -574,8 +576,10 @@ const char *const config_group_names[] =
 	gettext_noop("Connections and Authentication"),
 	/* CONN_AUTH_SETTINGS */
 	gettext_noop("Connections and Authentication / Connection Settings"),
-	/* CONN_AUTH_SECURITY */
-	gettext_noop("Connections and Authentication / Security and Authentication"),
+	/* CONN_AUTH_AUTH */
+	gettext_noop("Connections and Authentication / Authentication"),
+	/* CONN_AUTH_SSL */
+	gettext_noop("Connections and Authentication / SSL"),
 	/* RESOURCES */
 	gettext_noop("Resource Usage"),
 	/* RESOURCES_MEM */
@@ -702,7 +706,7 @@ typedef struct
 	char		unit[MAX_UNIT_LEN + 1]; /* unit, as a string, like "kB" or
 										 * "min" */
 	int			base_unit;		/* GUC_UNIT_XXX */
-	int			multiplier;		/* If positive, multiply the value with this
+	int64		multiplier;		/* If positive, multiply the value with this
 								 * for unit -> base_unit conversion.  If
 								 * negative, divide (with the absolute value) */
 } unit_conversion;
@@ -714,33 +718,45 @@ typedef struct
 #if XLOG_BLCKSZ < 1024 || XLOG_BLCKSZ > (1024*1024)
 #error XLOG_BLCKSZ must be between 1KB and 1MB
 #endif
-#if XLOG_SEG_SIZE < (1024*1024) || XLOG_SEG_SIZE > (1024*1024*1024)
-#error XLOG_SEG_SIZE must be between 1MB and 1GB
-#endif
 
-static const char *memory_units_hint = gettext_noop("Valid units for this parameter are \"kB\", \"MB\", \"GB\", and \"TB\".");
+static const char *memory_units_hint = gettext_noop("Valid units for this parameter are \"B\", \"kB\", \"MB\", \"GB\", and \"TB\".");
 
 static const unit_conversion memory_unit_conversion_table[] =
 {
+	/*
+	 * TB -> bytes conversion always overflows 32-bit integer, so this always
+	 * produces an error.  Include it nevertheless for completeness, and so
+	 * that you get an "out of range" error, rather than "invalid unit".
+	 */
+	{"TB", GUC_UNIT_BYTE, INT64CONST(1024) * 1024 * 1024 * 1024},
+	{"GB", GUC_UNIT_BYTE, 1024 * 1024 * 1024},
+	{"MB", GUC_UNIT_BYTE, 1024 * 1024},
+	{"kB", GUC_UNIT_BYTE, 1024},
+	{"B", GUC_UNIT_BYTE, 1},
+
 	{"TB", GUC_UNIT_KB, 1024 * 1024 * 1024},
 	{"GB", GUC_UNIT_KB, 1024 * 1024},
 	{"MB", GUC_UNIT_KB, 1024},
 	{"kB", GUC_UNIT_KB, 1},
+	{"B", GUC_UNIT_KB, -1024},
 
 	{"TB", GUC_UNIT_MB, 1024 * 1024},
 	{"GB", GUC_UNIT_MB, 1024},
 	{"MB", GUC_UNIT_MB, 1},
 	{"kB", GUC_UNIT_MB, -1024},
+	{"B", GUC_UNIT_MB, -(1024 * 1024)},
 
 	{"TB", GUC_UNIT_BLOCKS, (1024 * 1024 * 1024) / (BLCKSZ / 1024)},
 	{"GB", GUC_UNIT_BLOCKS, (1024 * 1024) / (BLCKSZ / 1024)},
 	{"MB", GUC_UNIT_BLOCKS, 1024 / (BLCKSZ / 1024)},
 	{"kB", GUC_UNIT_BLOCKS, -(BLCKSZ / 1024)},
+	{"B", GUC_UNIT_BLOCKS, -BLCKSZ},
 
 	{"TB", GUC_UNIT_XBLOCKS, (1024 * 1024 * 1024) / (XLOG_BLCKSZ / 1024)},
 	{"GB", GUC_UNIT_XBLOCKS, (1024 * 1024) / (XLOG_BLCKSZ / 1024)},
 	{"MB", GUC_UNIT_XBLOCKS, 1024 / (XLOG_BLCKSZ / 1024)},
 	{"kB", GUC_UNIT_XBLOCKS, -(XLOG_BLCKSZ / 1024)},
+	{"B", GUC_UNIT_XBLOCKS, -XLOG_BLCKSZ},
 
 	{""}						/* end of table marker */
 };
@@ -910,7 +926,53 @@ static struct config_bool ConfigureNamesBool[] =
 		true,
 		NULL, NULL, NULL
 	},
-
+	{
+		{"enable_partitionwise_join", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables partitionwise join."),
+			NULL
+		},
+		&enable_partitionwise_join,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"enable_partitionwise_aggregate", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables partitionwise aggregation and grouping."),
+			NULL
+		},
+		&enable_partitionwise_aggregate,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"enable_parallel_append", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of parallel append plans."),
+			NULL
+		},
+		&enable_parallel_append,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"enable_parallel_hash", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of parallel hash plans."),
+			NULL
+		},
+		&enable_parallel_hash,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"enable_partition_pruning", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable plan-time and run-time partition pruning."),
+			gettext_noop("Allows the query planner and executor to compare partition "
+						 "bounds to conditions in the query to determine which "
+						 "partitions must be scanned.")
+		},
+		&enable_partition_pruning,
+		true,
+		NULL, NULL, NULL
+	},
 	{
 		{"geqo", PGC_USERSET, QUERY_TUNING_GEQO,
 			gettext_noop("Enables genetic query optimization."),
@@ -951,7 +1013,7 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
-		{"ssl", PGC_SIGHUP, CONN_AUTH_SECURITY,
+		{"ssl", PGC_SIGHUP, CONN_AUTH_SSL,
 			gettext_noop("Enables SSL connections."),
 			NULL
 		},
@@ -960,7 +1022,16 @@ static struct config_bool ConfigureNamesBool[] =
 		check_ssl, NULL, NULL
 	},
 	{
-		{"ssl_prefer_server_ciphers", PGC_SIGHUP, CONN_AUTH_SECURITY,
+		{"ssl_passphrase_command_supports_reload", PGC_SIGHUP, CONN_AUTH_SSL,
+			gettext_noop("Also use ssl_passphrase_command during server reload."),
+			NULL
+		},
+		&ssl_passphrase_command_supports_reload,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"ssl_prefer_server_ciphers", PGC_SIGHUP, CONN_AUTH_SSL,
 			gettext_noop("Give priority to server ciphersuite order."),
 			NULL
 		},
@@ -1351,7 +1422,7 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
-		{"db_user_namespace", PGC_SIGHUP, CONN_AUTH_SECURITY,
+		{"db_user_namespace", PGC_SIGHUP, CONN_AUTH_AUTH,
 			gettext_noop("Enables per-database user names."),
 			NULL
 		},
@@ -1398,7 +1469,7 @@ static struct config_bool ConfigureNamesBool[] =
 		check_transaction_deferrable, NULL, NULL
 	},
 	{
-		{"row_security", PGC_USERSET, CONN_AUTH_SECURITY,
+		{"row_security", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Enable row security."),
 			gettext_noop("When enabled, row security will be applied to all users.")
 		},
@@ -1521,7 +1592,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"krb_caseins_users", PGC_SIGHUP, CONN_AUTH_SECURITY,
+		{"krb_caseins_users", PGC_SIGHUP, CONN_AUTH_AUTH,
 			gettext_noop("Sets whether Kerberos and GSSAPI user names should be treated as case-insensitive."),
 			NULL
 		},
@@ -1663,6 +1734,102 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&syslog_split_messages,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"parallel_leader_participation", PGC_USERSET, RESOURCES_ASYNCHRONOUS,
+			gettext_noop("Controls whether Gather and Gather Merge also run subplans."),
+			gettext_noop("Should gather nodes also run subplans, or just gather tuples?")
+		},
+		&parallel_leader_participation,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"jit", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Allow JIT compilation."),
+			NULL
+		},
+		&jit_enabled,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"jit_debugging_support", PGC_SU_BACKEND, DEVELOPER_OPTIONS,
+			gettext_noop("Register JIT compiled function with debugger."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&jit_debugging_support,
+		false,
+
+		/*
+		 * This is not guaranteed to be available, but given it's a developer
+		 * oriented option, it doesn't seem worth adding code checking
+		 * availability.
+		 */
+		NULL, NULL, NULL
+	},
+
+	{
+		{"jit_dump_bitcode", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Write out LLVM bitcode to facilitate JIT debugging."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&jit_dump_bitcode,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"jit_expressions", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Allow JIT compilation of expressions."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&jit_expressions,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"jit_profiling_support", PGC_SU_BACKEND, DEVELOPER_OPTIONS,
+			gettext_noop("Register JIT compiled function with perf profiler."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&jit_profiling_support,
+		false,
+
+		/*
+		 * This is not guaranteed to be available, but given it's a developer
+		 * oriented option, it doesn't seem worth adding code checking
+		 * availability.
+		 */
+		NULL, NULL, NULL
+	},
+
+	{
+		{"jit_tuple_deforming", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Allow JIT compilation of tuple deforming."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&jit_tuple_deforming,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"data_sync_retry", PGC_POSTMASTER, ERROR_HANDLING_OPTIONS,
+			gettext_noop("Whether to continue running after a failure to sync data files."),
+		},
+		&data_sync_retry,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -1834,6 +2001,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		/* see max_connections and max_wal_senders */
 		{"superuser_reserved_connections", PGC_POSTMASTER, CONN_AUTH_SETTINGS,
 			gettext_noop("Sets the number of connection slots reserved for superusers."),
 			NULL
@@ -1908,6 +2076,21 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, show_log_file_mode
 	},
 
+
+	{
+		{"data_directory_mode", PGC_INTERNAL, PRESET_OPTIONS,
+			gettext_noop("Mode of the data directory."),
+			gettext_noop("The parameter value is a numeric mode specification "
+						 "in the form accepted by the chmod and umask system "
+						 "calls. (To use the customary octal format the number "
+						 "must start with a 0 (zero).)"),
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&data_directory_mode,
+		0700, 0000, 0777,
+		NULL, NULL, show_data_directory_mode
+	},
+
 	{
 		{"work_mem", PGC_USERSET, RESOURCES_MEM,
 			gettext_noop("Sets the maximum memory to be used for query workspaces."),
@@ -1929,16 +2112,6 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&maintenance_work_mem,
 		65536, 1024, MAX_KILOBYTES,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"replacement_sort_tuples", PGC_USERSET, RESOURCES_MEM,
-			gettext_noop("Sets the maximum number of tuples to be sorted using replacement selection."),
-			gettext_noop("When more tuples than this are present, quicksort will be used.")
-		},
-		&replacement_sort_tuples,
-		150000, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -2220,7 +2393,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"authentication_timeout", PGC_SIGHUP, CONN_AUTH_SECURITY,
+		{"authentication_timeout", PGC_SIGHUP, CONN_AUTH_AUTH,
 			gettext_noop("Sets the maximum allowed time to complete client authentication."),
 			NULL,
 			GUC_UNIT_S
@@ -2259,7 +2432,8 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_MB
 		},
 		&min_wal_size_mb,
-		5 * (XLOG_SEG_SIZE / (1024 * 1024)), 2, MAX_KILOBYTES,
+		DEFAULT_MIN_WAL_SEGS * (DEFAULT_XLOG_SEG_SIZE / (1024 * 1024)),
+		2, MAX_KILOBYTES,
 		NULL, NULL, NULL
 	},
 
@@ -2270,7 +2444,8 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_MB
 		},
 		&max_wal_size_mb,
-		64 * (XLOG_SEG_SIZE / (1024 * 1024)), 2, MAX_KILOBYTES,
+		DEFAULT_MAX_WAL_SEGS * (DEFAULT_XLOG_SEG_SIZE / (1024 * 1024)),
+		2, MAX_KILOBYTES,
 		NULL, assign_max_wal_size, NULL
 	},
 
@@ -2344,7 +2519,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		/* see max_connections */
+		/* see max_connections and superuser_reserved_connections */
 		{"max_wal_senders", PGC_POSTMASTER, REPLICATION_SENDING,
 			gettext_noop("Sets the maximum number of simultaneously running WAL sender processes."),
 			NULL
@@ -2355,7 +2530,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		/* see max_connections */
+		/* see max_wal_senders */
 		{"max_replication_slots", PGC_POSTMASTER, REPLICATION_SENDING,
 			gettext_noop("Sets the maximum number of simultaneously defined replication slots."),
 			NULL
@@ -2476,10 +2651,11 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&effective_io_concurrency,
 #ifdef USE_PREFETCH
-		1, 0, MAX_IO_CONCURRENCY,
+		1,
 #else
-		0, 0, 0,
+		0,
 #endif
+		0, MAX_IO_CONCURRENCY,
 		check_effective_io_concurrency, assign_effective_io_concurrency, NULL
 	},
 
@@ -2632,14 +2808,14 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"wal_segment_size", PGC_INTERNAL, PRESET_OPTIONS,
-			gettext_noop("Shows the number of pages per write ahead log segment."),
+			gettext_noop("Shows the size of write ahead log segments."),
 			NULL,
-			GUC_UNIT_XBLOCKS | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+			GUC_UNIT_BYTE | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
 		&wal_segment_size,
-		(XLOG_SEG_SIZE / XLOG_BLCKSZ),
-		(XLOG_SEG_SIZE / XLOG_BLCKSZ),
-		(XLOG_SEG_SIZE / XLOG_BLCKSZ),
+		DEFAULT_XLOG_SEG_SIZE,
+		WalSegMinSize,
+		WalSegMaxSize,
 		NULL, NULL, NULL
 	},
 
@@ -2701,6 +2877,16 @@ static struct config_int ConfigureNamesInt[] =
 		&autovacuum_max_workers,
 		3, 1, MAX_BACKENDS,
 		check_autovacuum_max_workers, NULL, NULL
+	},
+
+	{
+		{"max_parallel_maintenance_workers", PGC_USERSET, RESOURCES_ASYNCHRONOUS,
+			gettext_noop("Sets the maximum number of parallel processes per maintenance operation."),
+			NULL
+		},
+		&max_parallel_maintenance_workers,
+		2, 0, 1024,
+		NULL, NULL, NULL
 	},
 
 	{
@@ -2768,7 +2954,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"ssl_renegotiation_limit", PGC_USERSET, CONN_AUTH_SECURITY,
+		{"ssl_renegotiation_limit", PGC_USERSET, CONN_AUTH_SSL,
 			gettext_noop("SSL renegotiation is no longer supported; this can only be 0."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE,
@@ -2803,10 +2989,9 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"effective_cache_size", PGC_USERSET, QUERY_TUNING_COST,
-			gettext_noop("Sets the planner's assumption about the size of the disk cache."),
-			gettext_noop("That is, the portion of the kernel's disk cache that "
-						 "will be used for PostgreSQL data files. This is measured in disk "
-						 "pages, which are normally 8 kB each."),
+			gettext_noop("Sets the planner's assumption about the total size of the data caches."),
+			gettext_noop("That is, the total size of the caches (kernel cache and shared buffers) used for PostgreSQL data files. "
+						 "This is measured in disk pages, which are normally 8 kB each."),
 			GUC_UNIT_BLOCKS,
 		},
 		&effective_cache_size,
@@ -2863,11 +3048,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"track_activity_query_size", PGC_POSTMASTER, RESOURCES_MEM,
 			gettext_noop("Sets the size reserved for pg_stat_activity.query, in bytes."),
 			NULL,
-
-			/*
-			 * There is no _bytes_ unit, so the user can't supply units for
-			 * this.
-			 */
+			GUC_UNIT_BYTE
 		},
 		&pgstat_track_activity_query_size,
 		1024, 100, 102400,
@@ -2966,6 +3147,36 @@ static struct config_real ConfigureNamesReal[] =
 	},
 
 	{
+		{"jit_above_cost", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Perform JIT compilation if query is more expensive."),
+			gettext_noop("-1 disables JIT compilation.")
+		},
+		&jit_above_cost,
+		100000, -1, DBL_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"jit_optimize_above_cost", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Optimize JITed functions if query is more expensive."),
+			gettext_noop("-1 disables optimization.")
+		},
+		&jit_optimize_above_cost,
+		500000, -1, DBL_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"jit_inline_above_cost", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Perform JIT inlining if query is more expensive."),
+			gettext_noop("-1 disables inlining.")
+		},
+		&jit_inline_above_cost,
+		500000, -1, DBL_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"cursor_tuple_fraction", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Sets the planner's estimate of the fraction of "
 						 "a cursor's rows that will be retrieved."),
@@ -3043,6 +3254,16 @@ static struct config_real ConfigureNamesReal[] =
 		},
 		&CheckPointCompletionTarget,
 		0.5, 0.0, 1.0,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"vacuum_cleanup_index_scale_factor", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Number of tuple inserts prior to index cleanup as a fraction of reltuples."),
+			NULL
+		},
+		&vacuum_cleanup_index_scale_factor,
+		0.1, 0.0, 1e10,
 		NULL, NULL, NULL
 	},
 
@@ -3145,7 +3366,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"krb_server_keyfile", PGC_SIGHUP, CONN_AUTH_SECURITY,
+		{"krb_server_keyfile", PGC_SIGHUP, CONN_AUTH_AUTH,
 			gettext_noop("Sets the location of the Kerberos server key file."),
 			NULL,
 			GUC_SUPERUSER_ONLY
@@ -3505,7 +3726,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"ssl_cert_file", PGC_SIGHUP, CONN_AUTH_SECURITY,
+		{"ssl_cert_file", PGC_SIGHUP, CONN_AUTH_SSL,
 			gettext_noop("Location of the SSL server certificate file."),
 			NULL
 		},
@@ -3515,7 +3736,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"ssl_key_file", PGC_SIGHUP, CONN_AUTH_SECURITY,
+		{"ssl_key_file", PGC_SIGHUP, CONN_AUTH_SSL,
 			gettext_noop("Location of the SSL server private key file."),
 			NULL
 		},
@@ -3525,7 +3746,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"ssl_ca_file", PGC_SIGHUP, CONN_AUTH_SECURITY,
+		{"ssl_ca_file", PGC_SIGHUP, CONN_AUTH_SSL,
 			gettext_noop("Location of the SSL certificate authority file."),
 			NULL
 		},
@@ -3535,7 +3756,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"ssl_crl_file", PGC_SIGHUP, CONN_AUTH_SECURITY,
+		{"ssl_crl_file", PGC_SIGHUP, CONN_AUTH_SSL,
 			gettext_noop("Location of the SSL certificate revocation list file."),
 			NULL
 		},
@@ -3577,7 +3798,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"ssl_ciphers", PGC_SIGHUP, CONN_AUTH_SECURITY,
+		{"ssl_ciphers", PGC_SIGHUP, CONN_AUTH_SSL,
 			gettext_noop("Sets the list of allowed SSL ciphers."),
 			NULL,
 			GUC_SUPERUSER_ONLY
@@ -3592,7 +3813,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"ssl_ecdh_curve", PGC_SIGHUP, CONN_AUTH_SECURITY,
+		{"ssl_ecdh_curve", PGC_SIGHUP, CONN_AUTH_SSL,
 			gettext_noop("Sets the curve to use for ECDH."),
 			NULL,
 			GUC_SUPERUSER_ONLY
@@ -3607,12 +3828,22 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"ssl_dh_params_file", PGC_SIGHUP, CONN_AUTH_SECURITY,
+		{"ssl_dh_params_file", PGC_SIGHUP, CONN_AUTH_SSL,
 			gettext_noop("Location of the SSL DH parameters file."),
 			NULL,
 			GUC_SUPERUSER_ONLY
 		},
 		&ssl_dh_params_file,
+		"",
+		NULL, NULL, NULL
+	},
+
+	{
+		{"ssl_passphrase_command", PGC_SIGHUP, CONN_AUTH_SSL,
+			gettext_noop("Command to obtain passphrases for SSL."),
+			NULL
+		},
+		&ssl_passphrase_command,
 		"",
 		NULL, NULL, NULL
 	},
@@ -3650,6 +3881,17 @@ static struct config_string ConfigureNamesString[] =
 		check_wal_consistency_checking, assign_wal_consistency_checking, NULL
 	},
 
+	{
+		{"jit_provider", PGC_POSTMASTER, CLIENT_CONN_PRELOAD,
+			gettext_noop("JIT provider to use."),
+			NULL,
+			GUC_SUPERUSER_ONLY
+		},
+		&jit_provider,
+		"llvmjit",
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, NULL, NULL, NULL, NULL
@@ -3680,14 +3922,14 @@ static struct config_enum ConfigureNamesEnum[] =
 	},
 
 	{
-		{"client_min_messages", PGC_USERSET, LOGGING_WHEN,
+		{"client_min_messages", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the message levels that are sent to the client."),
 			gettext_noop("Each level includes all the levels that follow it. The later"
 						 " the level, the fewer messages are sent.")
 		},
 		&client_min_messages,
 		NOTICE, client_message_level_options,
-		NULL, NULL, NULL
+		check_client_min_messages, NULL, NULL
 	},
 
 	{
@@ -3888,7 +4130,7 @@ static struct config_enum ConfigureNamesEnum[] =
 
 	{
 		{"huge_pages", PGC_POSTMASTER, RESOURCES_MEM,
-			gettext_noop("Use of huge pages on Linux."),
+			gettext_noop("Use of huge pages on Linux or Windows."),
 			NULL
 		},
 		&huge_pages,
@@ -3907,7 +4149,7 @@ static struct config_enum ConfigureNamesEnum[] =
 	},
 
 	{
-		{"password_encryption", PGC_USERSET, CONN_AUTH_SECURITY,
+		{"password_encryption", PGC_USERSET, CONN_AUTH_AUTH,
 			gettext_noop("Encrypt passwords."),
 			gettext_noop("When a password is specified in CREATE USER or "
 						 "ALTER USER without writing either ENCRYPTED or UNENCRYPTED, "
@@ -3952,9 +4194,9 @@ static int	num_guc_variables;
 static int	size_guc_variables;
 
 
-static bool guc_dirty;			/* TRUE if need to do commit/abort work */
+static bool guc_dirty;			/* true if need to do commit/abort work */
 
-static bool reporting_enabled;	/* TRUE to enable GUC_REPORT */
+static bool reporting_enabled;	/* true to enable GUC_REPORT */
 
 static int	GUCNestLevel = 0;	/* 1 when in main transaction */
 
@@ -4376,7 +4618,7 @@ add_placeholder_variable(const char *name, int elevel)
 
 /*
  * Look up option NAME.  If it exists, return a pointer to its record,
- * else return NULL.  If create_placeholders is TRUE, we'll create a
+ * else return NULL.  If create_placeholders is true, we'll create a
  * placeholder record for a valid-looking custom variable name.
  */
 static struct config_generic *
@@ -4602,7 +4844,7 @@ InitializeOneGUCOption(struct config_generic *gconf)
 					elog(FATAL, "failed to initialize %s to %d",
 						 conf->gen.name, (int) newval);
 				if (conf->assign_hook)
-					(*conf->assign_hook) (newval, extra);
+					conf->assign_hook(newval, extra);
 				*conf->variable = conf->reset_val = newval;
 				conf->gen.extra = conf->reset_extra = extra;
 				break;
@@ -4620,7 +4862,7 @@ InitializeOneGUCOption(struct config_generic *gconf)
 					elog(FATAL, "failed to initialize %s to %d",
 						 conf->gen.name, newval);
 				if (conf->assign_hook)
-					(*conf->assign_hook) (newval, extra);
+					conf->assign_hook(newval, extra);
 				*conf->variable = conf->reset_val = newval;
 				conf->gen.extra = conf->reset_extra = extra;
 				break;
@@ -4638,7 +4880,7 @@ InitializeOneGUCOption(struct config_generic *gconf)
 					elog(FATAL, "failed to initialize %s to %g",
 						 conf->gen.name, newval);
 				if (conf->assign_hook)
-					(*conf->assign_hook) (newval, extra);
+					conf->assign_hook(newval, extra);
 				*conf->variable = conf->reset_val = newval;
 				conf->gen.extra = conf->reset_extra = extra;
 				break;
@@ -4660,7 +4902,7 @@ InitializeOneGUCOption(struct config_generic *gconf)
 					elog(FATAL, "failed to initialize %s to \"%s\"",
 						 conf->gen.name, newval ? newval : "");
 				if (conf->assign_hook)
-					(*conf->assign_hook) (newval, extra);
+					conf->assign_hook(newval, extra);
 				*conf->variable = conf->reset_val = newval;
 				conf->gen.extra = conf->reset_extra = extra;
 				break;
@@ -4676,7 +4918,7 @@ InitializeOneGUCOption(struct config_generic *gconf)
 					elog(FATAL, "failed to initialize %s to %d",
 						 conf->gen.name, newval);
 				if (conf->assign_hook)
-					(*conf->assign_hook) (newval, extra);
+					conf->assign_hook(newval, extra);
 				*conf->variable = conf->reset_val = newval;
 				conf->gen.extra = conf->reset_extra = extra;
 				break;
@@ -4901,8 +5143,8 @@ ResetAllOptions(void)
 					struct config_bool *conf = (struct config_bool *) gconf;
 
 					if (conf->assign_hook)
-						(*conf->assign_hook) (conf->reset_val,
-											  conf->reset_extra);
+						conf->assign_hook(conf->reset_val,
+										  conf->reset_extra);
 					*conf->variable = conf->reset_val;
 					set_extra_field(&conf->gen, &conf->gen.extra,
 									conf->reset_extra);
@@ -4913,8 +5155,8 @@ ResetAllOptions(void)
 					struct config_int *conf = (struct config_int *) gconf;
 
 					if (conf->assign_hook)
-						(*conf->assign_hook) (conf->reset_val,
-											  conf->reset_extra);
+						conf->assign_hook(conf->reset_val,
+										  conf->reset_extra);
 					*conf->variable = conf->reset_val;
 					set_extra_field(&conf->gen, &conf->gen.extra,
 									conf->reset_extra);
@@ -4925,8 +5167,8 @@ ResetAllOptions(void)
 					struct config_real *conf = (struct config_real *) gconf;
 
 					if (conf->assign_hook)
-						(*conf->assign_hook) (conf->reset_val,
-											  conf->reset_extra);
+						conf->assign_hook(conf->reset_val,
+										  conf->reset_extra);
 					*conf->variable = conf->reset_val;
 					set_extra_field(&conf->gen, &conf->gen.extra,
 									conf->reset_extra);
@@ -4937,8 +5179,8 @@ ResetAllOptions(void)
 					struct config_string *conf = (struct config_string *) gconf;
 
 					if (conf->assign_hook)
-						(*conf->assign_hook) (conf->reset_val,
-											  conf->reset_extra);
+						conf->assign_hook(conf->reset_val,
+										  conf->reset_extra);
 					set_string_field(conf, conf->variable, conf->reset_val);
 					set_extra_field(&conf->gen, &conf->gen.extra,
 									conf->reset_extra);
@@ -4949,8 +5191,8 @@ ResetAllOptions(void)
 					struct config_enum *conf = (struct config_enum *) gconf;
 
 					if (conf->assign_hook)
-						(*conf->assign_hook) (conf->reset_val,
-											  conf->reset_extra);
+						conf->assign_hook(conf->reset_val,
+										  conf->reset_extra);
 					*conf->variable = conf->reset_val;
 					set_extra_field(&conf->gen, &conf->gen.extra,
 									conf->reset_extra);
@@ -5169,6 +5411,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 				{
 					case GUC_SAVE:
 						Assert(false);	/* can't get here */
+						break;
 
 					case GUC_SET:
 						/* next level always becomes SET */
@@ -5240,7 +5483,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 								conf->gen.extra != newextra)
 							{
 								if (conf->assign_hook)
-									(*conf->assign_hook) (newval, newextra);
+									conf->assign_hook(newval, newextra);
 								*conf->variable = newval;
 								set_extra_field(&conf->gen, &conf->gen.extra,
 												newextra);
@@ -5258,7 +5501,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 								conf->gen.extra != newextra)
 							{
 								if (conf->assign_hook)
-									(*conf->assign_hook) (newval, newextra);
+									conf->assign_hook(newval, newextra);
 								*conf->variable = newval;
 								set_extra_field(&conf->gen, &conf->gen.extra,
 												newextra);
@@ -5276,7 +5519,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 								conf->gen.extra != newextra)
 							{
 								if (conf->assign_hook)
-									(*conf->assign_hook) (newval, newextra);
+									conf->assign_hook(newval, newextra);
 								*conf->variable = newval;
 								set_extra_field(&conf->gen, &conf->gen.extra,
 												newextra);
@@ -5294,7 +5537,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 								conf->gen.extra != newextra)
 							{
 								if (conf->assign_hook)
-									(*conf->assign_hook) (newval, newextra);
+									conf->assign_hook(newval, newextra);
 								set_string_field(conf, conf->variable, newval);
 								set_extra_field(&conf->gen, &conf->gen.extra,
 												newextra);
@@ -5321,7 +5564,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 								conf->gen.extra != newextra)
 							{
 								if (conf->assign_hook)
-									(*conf->assign_hook) (newval, newextra);
+									conf->assign_hook(newval, newextra);
 								*conf->variable = newval;
 								set_extra_field(&conf->gen, &conf->gen.extra,
 												newextra);
@@ -5645,7 +5888,7 @@ config_enum_lookup_by_value(struct config_enum *record, int val)
  * Lookup the value for an enum option with the selected name
  * (case-insensitive).
  * If the enum option is found, sets the retval value and returns
- * true. If it's not found, return FALSE and retval is set to 0.
+ * true. If it's not found, return false and retval is set to 0.
  */
 bool
 config_enum_lookup_by_name(struct config_enum *record, const char *value,
@@ -5658,12 +5901,12 @@ config_enum_lookup_by_name(struct config_enum *record, const char *value,
 		if (pg_strcasecmp(value, entry->name) == 0)
 		{
 			*retval = entry->val;
-			return TRUE;
+			return true;
 		}
 	}
 
 	*retval = 0;
-	return FALSE;
+	return false;
 }
 
 
@@ -6035,7 +6278,8 @@ set_config_option(const char *name, const char *value,
 								name)));
 				return 0;
 			}
-			/* FALL THRU to process the same as PGC_BACKEND */
+			/* fall through to process the same as PGC_BACKEND */
+			/* FALLTHROUGH */
 		case PGC_BACKEND:
 			if (context == PGC_SIGHUP)
 			{
@@ -6211,7 +6455,7 @@ set_config_option(const char *name, const char *value,
 						push_old_value(&conf->gen, action);
 
 					if (conf->assign_hook)
-						(*conf->assign_hook) (newval, newextra);
+						conf->assign_hook(newval, newextra);
 					*conf->variable = newval;
 					set_extra_field(&conf->gen, &conf->gen.extra,
 									newextra);
@@ -6301,7 +6545,7 @@ set_config_option(const char *name, const char *value,
 						push_old_value(&conf->gen, action);
 
 					if (conf->assign_hook)
-						(*conf->assign_hook) (newval, newextra);
+						conf->assign_hook(newval, newextra);
 					*conf->variable = newval;
 					set_extra_field(&conf->gen, &conf->gen.extra,
 									newextra);
@@ -6391,7 +6635,7 @@ set_config_option(const char *name, const char *value,
 						push_old_value(&conf->gen, action);
 
 					if (conf->assign_hook)
-						(*conf->assign_hook) (newval, newextra);
+						conf->assign_hook(newval, newextra);
 					*conf->variable = newval;
 					set_extra_field(&conf->gen, &conf->gen.extra,
 									newextra);
@@ -6499,7 +6743,7 @@ set_config_option(const char *name, const char *value,
 						push_old_value(&conf->gen, action);
 
 					if (conf->assign_hook)
-						(*conf->assign_hook) (newval, newextra);
+						conf->assign_hook(newval, newextra);
 					set_string_field(conf, conf->variable, newval);
 					set_extra_field(&conf->gen, &conf->gen.extra,
 									newextra);
@@ -6594,7 +6838,7 @@ set_config_option(const char *name, const char *value,
 						push_old_value(&conf->gen, action);
 
 					if (conf->assign_hook)
-						(*conf->assign_hook) (newval, newextra);
+						conf->assign_hook(newval, newextra);
 					*conf->variable = newval;
 					set_extra_field(&conf->gen, &conf->gen.extra,
 									newextra);
@@ -6696,15 +6940,15 @@ SetConfigOption(const char *name, const char *value,
  * this cannot be distinguished from a string variable with a NULL value!),
  * otherwise throw an ereport and don't return.
  *
- * If restrict_superuser is true, we also enforce that only superusers can
- * see GUC_SUPERUSER_ONLY variables.  This should only be passed as true
- * in user-driven calls.
+ * If restrict_privileged is true, we also enforce that only superusers and
+ * members of the pg_read_all_settings role can see GUC_SUPERUSER_ONLY
+ * variables.  This should only be passed as true in user-driven calls.
  *
  * The string is *not* allocated for modification and is really only
  * valid until the next call to configuration related functions.
  */
 const char *
-GetConfigOption(const char *name, bool missing_ok, bool restrict_superuser)
+GetConfigOption(const char *name, bool missing_ok, bool restrict_privileged)
 {
 	struct config_generic *record;
 	static char buffer[256];
@@ -6719,7 +6963,7 @@ GetConfigOption(const char *name, bool missing_ok, bool restrict_superuser)
 				 errmsg("unrecognized configuration parameter \"%s\"",
 						name)));
 	}
-	if (restrict_superuser &&
+	if (restrict_privileged &&
 		(record->flags & GUC_SUPERUSER_ONLY) &&
 		!is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_SETTINGS))
 		ereport(ERROR,
@@ -6899,7 +7143,7 @@ flatten_set_variable_args(const char *name, List *args)
 		switch (nodeTag(&con->val))
 		{
 			case T_Integer:
-				appendStringInfo(&buf, "%ld", intVal(&con->val));
+				appendStringInfo(&buf, "%d", intVal(&con->val));
 				break;
 			case T_Float:
 				/* represented as a string, so just copy it */
@@ -7267,8 +7511,7 @@ AlterSystemSetConfigFile(AlterSystemStmt *altersysstmt)
 	 * truncate and reuse it.
 	 */
 	Tmpfd = BasicOpenFile(AutoConfTmpFileName,
-						  O_CREAT | O_RDWR | O_TRUNC,
-						  S_IRUSR | S_IWUSR);
+						  O_CREAT | O_RDWR | O_TRUNC);
 	if (Tmpfd < 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
@@ -7335,7 +7578,7 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 		case VAR_SET_VALUE:
 		case VAR_SET_CURRENT:
 			if (stmt->is_local)
-				WarnNoTransactionChain(isTopLevel, "SET LOCAL");
+				WarnNoTransactionBlock(isTopLevel, "SET LOCAL");
 			(void) set_config_option(stmt->name,
 									 ExtractSetVariableArgs(stmt),
 									 (superuser() ? PGC_SUSET : PGC_USERSET),
@@ -7355,7 +7598,7 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 			{
 				ListCell   *head;
 
-				WarnNoTransactionChain(isTopLevel, "SET TRANSACTION");
+				WarnNoTransactionBlock(isTopLevel, "SET TRANSACTION");
 
 				foreach(head, stmt->args)
 				{
@@ -7406,7 +7649,7 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("SET LOCAL TRANSACTION SNAPSHOT is not implemented")));
 
-				WarnNoTransactionChain(isTopLevel, "SET TRANSACTION");
+				WarnNoTransactionBlock(isTopLevel, "SET TRANSACTION");
 				Assert(nodeTag(&con->val) == T_String);
 				ImportSnapshot(strVal(&con->val));
 			}
@@ -7416,11 +7659,11 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 			break;
 		case VAR_SET_DEFAULT:
 			if (stmt->is_local)
-				WarnNoTransactionChain(isTopLevel, "SET LOCAL");
+				WarnNoTransactionBlock(isTopLevel, "SET LOCAL");
 			/* fall through */
 		case VAR_RESET:
 			if (strcmp(stmt->name, "transaction_isolation") == 0)
-				WarnNoTransactionChain(isTopLevel, "RESET TRANSACTION");
+				WarnNoTransactionBlock(isTopLevel, "RESET TRANSACTION");
 
 			(void) set_config_option(stmt->name,
 									 NULL,
@@ -7549,6 +7792,15 @@ init_custom_variable(const char *name,
 	if (context == PGC_POSTMASTER &&
 		!process_shared_preload_libraries_in_progress)
 		elog(FATAL, "cannot create PGC_POSTMASTER variables after startup");
+
+	/*
+	 * We can't support custom GUC_LIST_QUOTE variables, because the wrong
+	 * things would happen if such a variable were set or pg_dump'd when the
+	 * defining extension isn't loaded.  Again, treat this as fatal because
+	 * the loadable module may be partly initialized already.
+	 */
+	if (flags & GUC_LIST_QUOTE)
+		elog(FATAL, "extensions cannot define GUC_LIST_QUOTE variables");
 
 	/*
 	 * Before pljava commit 398f3b876ed402bdaec8bc804f29e2be95c75139
@@ -8000,7 +8252,6 @@ ShowGUCConfigOption(const char *name, DestReceiver *dest)
 static void
 ShowAllGUCConfig(DestReceiver *dest)
 {
-	bool		am_superuser = superuser();
 	int			i;
 	TupOutputState *tstate;
 	TupleDesc	tupdesc;
@@ -8025,7 +8276,8 @@ ShowAllGUCConfig(DestReceiver *dest)
 		char	   *setting;
 
 		if ((conf->flags & GUC_NO_SHOW_ALL) ||
-			((conf->flags & GUC_SUPERUSER_ONLY) && !am_superuser))
+			((conf->flags & GUC_SUPERUSER_ONLY) &&
+			 !is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_SETTINGS)))
 			continue;
 
 		/* assign to the values array */
@@ -8137,6 +8389,9 @@ GetConfigOptionByNum(int varnum, const char **values, bool *noshow)
 	{
 		switch (conf->flags & (GUC_UNIT_MEMORY | GUC_UNIT_TIME))
 		{
+			case GUC_UNIT_BYTE:
+				values[2] = "B";
+				break;
 			case GUC_UNIT_KB:
 				values[2] = "kB";
 				break;
@@ -8348,9 +8603,10 @@ GetConfigOptionByNum(int varnum, const char **values, bool *noshow)
 	/*
 	 * If the setting came from a config file, set the source location. For
 	 * security reasons, we don't show source file/line number for
-	 * non-superusers.
+	 * insufficiently-privileged users.
 	 */
-	if (conf->source == PGC_S_FILE && superuser())
+	if (conf->source == PGC_S_FILE &&
+		is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_SETTINGS))
 	{
 		values[14] = conf->sourcefile;
 		snprintf(buffer, sizeof(buffer), "%d", conf->sourceline);
@@ -8394,7 +8650,7 @@ show_config_by_name(PG_FUNCTION_ARGS)
 /*
  * show_config_by_name_missing_ok - equiv to SHOW X command but implemented as
  * a function.  If X does not exist, suppress the error and just return NULL
- * if missing_ok is TRUE.
+ * if missing_ok is true.
  */
 Datum
 show_config_by_name_missing_ok(PG_FUNCTION_ARGS)
@@ -8677,7 +8933,7 @@ _ShowOption(struct config_generic *record, bool use_units)
 				struct config_bool *conf = (struct config_bool *) record;
 
 				if (conf->show_hook)
-					val = (*conf->show_hook) ();
+					val = conf->show_hook();
 				else
 					val = *conf->variable ? "on" : "off";
 			}
@@ -8688,7 +8944,7 @@ _ShowOption(struct config_generic *record, bool use_units)
 				struct config_int *conf = (struct config_int *) record;
 
 				if (conf->show_hook)
-					val = (*conf->show_hook) ();
+					val = conf->show_hook();
 				else
 				{
 					/*
@@ -8718,7 +8974,7 @@ _ShowOption(struct config_generic *record, bool use_units)
 				struct config_real *conf = (struct config_real *) record;
 
 				if (conf->show_hook)
-					val = (*conf->show_hook) ();
+					val = conf->show_hook();
 				else
 				{
 					snprintf(buffer, sizeof(buffer), "%g",
@@ -8733,7 +8989,7 @@ _ShowOption(struct config_generic *record, bool use_units)
 				struct config_string *conf = (struct config_string *) record;
 
 				if (conf->show_hook)
-					val = (*conf->show_hook) ();
+					val = conf->show_hook();
 				else if (*conf->variable && **conf->variable)
 					val = *conf->variable;
 				else
@@ -8746,7 +9002,7 @@ _ShowOption(struct config_generic *record, bool use_units)
 				struct config_enum *conf = (struct config_enum *) record;
 
 				if (conf->show_hook)
-					val = (*conf->show_hook) ();
+					val = conf->show_hook();
 				else
 					val = config_enum_lookup_by_value(conf, *conf->variable);
 			}
@@ -9160,6 +9416,8 @@ do_serialize(char **destptr, Size *maxbytes, const char *fmt,...)
 	if (*maxbytes <= 0)
 		elog(ERROR, "not enough space to serialize GUC state");
 
+	errno = 0;
+
 	va_start(vargs, fmt);
 	n = vsnprintf(*destptr, *maxbytes, fmt, vargs);
 	va_end(vargs);
@@ -9375,6 +9633,8 @@ RestoreGUCState(void *gucstate)
 		if (varsourcefile[0])
 			read_gucstate_binary(&srcptr, srcend,
 								 &varsourceline, sizeof(varsourceline));
+		else
+			varsourceline = 0;
 		read_gucstate_binary(&srcptr, srcend,
 							 &varsource, sizeof(varsource));
 		read_gucstate_binary(&srcptr, srcend,
@@ -9716,7 +9976,7 @@ GUCArrayReset(ArrayType *array)
  * or NULL for the Delete/Reset cases.  If skipIfNoPermissions is true, it's
  * not an error to have no permissions to set the option.
  *
- * Returns TRUE if OK, FALSE if skipIfNoPermissions is true and user does not
+ * Returns true if OK, false if skipIfNoPermissions is true and user does not
  * have permission to change this option (all other error cases result in an
  * error being thrown).
  */
@@ -9742,7 +10002,7 @@ validate_option_array_item(const char *name, const char *value,
 	 * define_custom_variable assumes we checked that.
 	 *
 	 * name is not known and can't be created as a placeholder.  Throw error,
-	 * unless skipIfNoPermissions is true, in which case return FALSE.
+	 * unless skipIfNoPermissions is true, in which case return false.
 	 */
 	gconf = find_option(name, true, WARNING);
 	if (!gconf)
@@ -9824,7 +10084,7 @@ call_bool_check_hook(struct config_bool *conf, bool *newval, void **extra,
 	GUC_check_errdetail_string = NULL;
 	GUC_check_errhint_string = NULL;
 
-	if (!(*conf->check_hook) (newval, extra, source))
+	if (!conf->check_hook(newval, extra, source))
 	{
 		ereport(elevel,
 				(errcode(GUC_check_errcode_value),
@@ -9858,7 +10118,7 @@ call_int_check_hook(struct config_int *conf, int *newval, void **extra,
 	GUC_check_errdetail_string = NULL;
 	GUC_check_errhint_string = NULL;
 
-	if (!(*conf->check_hook) (newval, extra, source))
+	if (!conf->check_hook(newval, extra, source))
 	{
 		ereport(elevel,
 				(errcode(GUC_check_errcode_value),
@@ -9892,7 +10152,7 @@ call_real_check_hook(struct config_real *conf, double *newval, void **extra,
 	GUC_check_errdetail_string = NULL;
 	GUC_check_errhint_string = NULL;
 
-	if (!(*conf->check_hook) (newval, extra, source))
+	if (!conf->check_hook(newval, extra, source))
 	{
 		ereport(elevel,
 				(errcode(GUC_check_errcode_value),
@@ -9926,7 +10186,7 @@ call_string_check_hook(struct config_string *conf, char **newval, void **extra,
 	GUC_check_errdetail_string = NULL;
 	GUC_check_errhint_string = NULL;
 
-	if (!(*conf->check_hook) (newval, extra, source))
+	if (!conf->check_hook(newval, extra, source))
 	{
 		ereport(elevel,
 				(errcode(GUC_check_errcode_value),
@@ -9960,7 +10220,7 @@ call_enum_check_hook(struct config_enum *conf, int *newval, void **extra,
 	GUC_check_errdetail_string = NULL;
 	GUC_check_errhint_string = NULL;
 
-	if (!(*conf->check_hook) (newval, extra, source))
+	if (!conf->check_hook(newval, extra, source))
 	{
 		ereport(elevel,
 				(errcode(GUC_check_errcode_value),
@@ -10158,6 +10418,20 @@ assign_session_replication_role(int newval, void *extra)
 	 */
 	if (SessionReplicationRole != newval)
 		ResetPlanCache();
+}
+
+static bool
+check_client_min_messages(int *newval, void **extra, GucSource source)
+{
+	/*
+	 * We disallow setting client_min_messages above ERROR, because not
+	 * sending an ErrorResponse message for an error breaks the FE/BE
+	 * protocol.  However, for backwards compatibility, we still accept FATAL
+	 * or PANIC as input values, and then adjust here.
+	 */
+	if (*newval > ERROR)
+		*newval = ERROR;
+	return true;
 }
 
 static bool
@@ -10431,6 +10705,11 @@ check_effective_io_concurrency(int *newval, void **extra, GucSource source)
 	else
 		return false;
 #else
+	if (*newval != 0)
+	{
+		GUC_check_errdetail("effective_io_concurrency must be set to 0 on platforms that lack posix_fadvise()");
+		return false;
+	}
 	return true;
 #endif							/* USE_PREFETCH */
 }
@@ -10512,7 +10791,7 @@ check_cluster_name(char **newval, void **extra, GucSource source)
 static const char *
 show_unix_socket_permissions(void)
 {
-	static char buf[8];
+	static char buf[12];
 
 	snprintf(buf, sizeof(buf), "%04o", Unix_socket_permissions);
 	return buf;
@@ -10521,9 +10800,18 @@ show_unix_socket_permissions(void)
 static const char *
 show_log_file_mode(void)
 {
-	static char buf[8];
+	static char buf[12];
 
 	snprintf(buf, sizeof(buf), "%04o", Log_file_mode);
+	return buf;
+}
+
+static const char *
+show_data_directory_mode(void)
+{
+	static char buf[12];
+
+	snprintf(buf, sizeof(buf), "%04o", data_directory_mode);
 	return buf;
 }
 

@@ -4,7 +4,7 @@
  *	  postgres transaction system definitions
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/xact.h
@@ -21,6 +21,13 @@
 #include "storage/sinval.h"
 #include "utils/datetime.h"
 
+/*
+ * Maximum size of Global Transaction ID (including '\0').
+ *
+ * Note that the max value of GIDSIZE must fit in the uint16 gidlen,
+ * specified in TwoPhaseFileHeader.
+ */
+#define GIDSIZE 200
 
 /*
  * Xact isolation levels
@@ -91,6 +98,11 @@ extern int	MyXactFlags;
  */
 #define XACT_FLAGS_ACQUIREDACCESSEXCLUSIVELOCK	(1U << 1)
 
+/*
+ * XACT_FLAGS_ACCESSEDTEMPNAMESPACE - set when a temporary namespace is
+ * accessed.  We don't allow PREPARE TRANSACTION in that case.
+ */
+#define XACT_FLAGS_ACCESSEDTEMPNAMESPACE		(1U << 2)
 
 /*
  *	start- and end-of-transaction callbacks for dynamically loaded modules
@@ -156,6 +168,7 @@ typedef void (*SubXactCallback) (SubXactEvent event, SubTransactionId mySubid,
 #define XACT_XINFO_HAS_TWOPHASE			(1U << 4)
 #define XACT_XINFO_HAS_ORIGIN			(1U << 5)
 #define XACT_XINFO_HAS_AE_LOCKS			(1U << 6)
+#define XACT_XINFO_HAS_GID				(1U << 7)
 
 /*
  * Also stored in xinfo, these indicating a variety of additional actions that
@@ -261,6 +274,7 @@ typedef struct xl_xact_commit
 	/* xl_xact_relfilenodes follows if XINFO_HAS_RELFILENODES */
 	/* xl_xact_invals follows if XINFO_HAS_INVALS */
 	/* xl_xact_twophase follows if XINFO_HAS_TWOPHASE */
+	/* twophase_gid follows if XINFO_HAS_GID. As a null-terminated string. */
 	/* xl_xact_origin follows if XINFO_HAS_ORIGIN, stored unaligned! */
 } xl_xact_commit;
 #define MinSizeOfXactCommit (offsetof(xl_xact_commit, xact_time) + sizeof(TimestampTz))
@@ -270,11 +284,13 @@ typedef struct xl_xact_abort
 	TimestampTz xact_time;		/* time of abort */
 
 	/* xl_xact_xinfo follows if XLOG_XACT_HAS_INFO */
-	/* No db_info required */
+	/* xl_xact_dbinfo follows if XINFO_HAS_DBINFO */
 	/* xl_xact_subxacts follows if HAS_SUBXACT */
 	/* xl_xact_relfilenodes follows if HAS_RELFILENODES */
 	/* No invalidation messages needed. */
 	/* xl_xact_twophase follows if XINFO_HAS_TWOPHASE */
+	/* twophase_gid follows if XINFO_HAS_GID. As a null-terminated string. */
+	/* xl_xact_origin follows if XINFO_HAS_ORIGIN, stored unaligned! */
 } xl_xact_abort;
 #define MinSizeOfXactAbort sizeof(xl_xact_abort)
 
@@ -286,7 +302,6 @@ typedef struct xl_xact_abort
 typedef struct xl_xact_parsed_commit
 {
 	TimestampTz xact_time;
-
 	uint32		xinfo;
 
 	Oid			dbId;			/* MyDatabaseId */
@@ -302,15 +317,23 @@ typedef struct xl_xact_parsed_commit
 	SharedInvalidationMessage *msgs;
 
 	TransactionId twophase_xid; /* only for 2PC */
+	char		twophase_gid[GIDSIZE];	/* only for 2PC */
+	int			nabortrels;		/* only for 2PC */
+	RelFileNode *abortnodes;	/* only for 2PC */
 
 	XLogRecPtr	origin_lsn;
 	TimestampTz origin_timestamp;
 } xl_xact_parsed_commit;
 
+typedef xl_xact_parsed_commit xl_xact_parsed_prepare;
+
 typedef struct xl_xact_parsed_abort
 {
 	TimestampTz xact_time;
 	uint32		xinfo;
+
+	Oid			dbId;			/* MyDatabaseId */
+	Oid			tsId;			/* MyDatabaseTableSpace */
 
 	int			nsubxacts;
 	TransactionId *subxacts;
@@ -319,6 +342,10 @@ typedef struct xl_xact_parsed_abort
 	RelFileNode *xnodes;
 
 	TransactionId twophase_xid; /* only for 2PC */
+	char		twophase_gid[GIDSIZE];	/* only for 2PC */
+
+	XLogRecPtr	origin_lsn;
+	TimestampTz origin_timestamp;
 } xl_xact_parsed_abort;
 
 
@@ -337,6 +364,7 @@ extern SubTransactionId GetCurrentSubTransactionId(void);
 extern void MarkCurrentTransactionIdLoggedIfAny(void);
 extern bool SubTransactionIsActive(SubTransactionId subxid);
 extern CommandId GetCurrentCommandId(bool used);
+extern void SetParallelStartTimestamps(TimestampTz xact_ts, TimestampTz stmt_ts);
 extern TimestampTz GetCurrentTransactionStartTimestamp(void);
 extern TimestampTz GetCurrentStatementStartTimestamp(void);
 extern TimestampTz GetCurrentTransactionStopTimestamp(void);
@@ -350,12 +378,14 @@ extern void CommitTransactionCommand(void);
 extern void AbortCurrentTransaction(void);
 extern void BeginTransactionBlock(void);
 extern bool EndTransactionBlock(void);
-extern bool PrepareTransactionBlock(char *gid);
+extern bool PrepareTransactionBlock(const char *gid);
 extern void UserAbortTransactionBlock(void);
-extern void ReleaseSavepoint(List *options);
-extern void DefineSavepoint(char *name);
-extern void RollbackToSavepoint(List *options);
-extern void BeginInternalSubTransaction(char *name);
+extern void BeginImplicitTransactionBlock(void);
+extern void EndImplicitTransactionBlock(void);
+extern void ReleaseSavepoint(const char *name);
+extern void DefineSavepoint(const char *name);
+extern void RollbackToSavepoint(const char *name);
+extern void BeginInternalSubTransaction(const char *name);
 extern void ReleaseCurrentSubTransaction(void);
 extern void RollbackAndReleaseCurrentSubTransaction(void);
 extern bool IsSubTransaction(void);
@@ -367,10 +397,10 @@ extern bool IsTransactionBlock(void);
 extern bool IsTransactionOrTransactionBlock(void);
 extern char TransactionBlockStatusCode(void);
 extern void AbortOutOfAnyTransaction(void);
-extern void PreventTransactionChain(bool isTopLevel, const char *stmtType);
-extern void RequireTransactionChain(bool isTopLevel, const char *stmtType);
-extern void WarnNoTransactionChain(bool isTopLevel, const char *stmtType);
-extern bool IsInTransactionChain(bool isTopLevel);
+extern void PreventInTransactionBlock(bool isTopLevel, const char *stmtType);
+extern void RequireTransactionBlock(bool isTopLevel, const char *stmtType);
+extern void WarnNoTransactionBlock(bool isTopLevel, const char *stmtType);
+extern bool IsInTransactionBlock(bool isTopLevel);
 extern void RegisterXactCallback(XactCallback callback, void *arg);
 extern void UnregisterXactCallback(XactCallback callback, void *arg);
 extern void RegisterSubXactCallback(SubXactCallback callback, void *arg);
@@ -384,12 +414,14 @@ extern XLogRecPtr XactLogCommitRecord(TimestampTz commit_time,
 					int nmsgs, SharedInvalidationMessage *msgs,
 					bool relcacheInval, bool forceSync,
 					int xactflags,
-					TransactionId twophase_xid);
+					TransactionId twophase_xid,
+					const char *twophase_gid);
 
 extern XLogRecPtr XactLogAbortRecord(TimestampTz abort_time,
 				   int nsubxacts, TransactionId *subxacts,
 				   int nrels, RelFileNode *rels,
-				   int xactflags, TransactionId twophase_xid);
+				   int xactflags, TransactionId twophase_xid,
+				   const char *twophase_gid);
 extern void xact_redo(XLogReaderState *record);
 
 /* xactdesc.c */

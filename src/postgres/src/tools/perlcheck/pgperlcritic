@@ -1,0 +1,20 @@
+#!/bin/sh
+
+# src/tools/perlcheck/pgperlcritic
+
+test -f src/tools/perlcheck/perlcriticrc || {
+	echo could not find src/tools/perlcheck/perlcriticrc
+	exit 1
+	}
+
+set -e
+
+# set this to override default perlcritic program:
+PERLCRITIC=${PERLCRITIC:-perlcritic}
+
+. src/tools/perlcheck/find_perl_files
+
+find_perl_files | xargs $PERLCRITIC \
+	  --quiet \
+	  --program-extensions .pl \
+	  --profile=src/tools/perlcheck/perlcriticrc

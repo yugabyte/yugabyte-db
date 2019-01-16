@@ -15,7 +15,7 @@
  * there's hardly any use case for using these without superuser-rights
  * anyway.
  *
- * Copyright (c) 2007-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2007-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/pageinspect/heapfuncs.c
@@ -298,9 +298,8 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 	TupleDesc	tupdesc;
 
 	/* Get tuple descriptor from relation OID */
-	rel = relation_open(relid, NoLock);
-	tupdesc = CreateTupleDescCopyConstr(rel->rd_att);
-	relation_close(rel, NoLock);
+	rel = relation_open(relid, AccessShareLock);
+	tupdesc = RelationGetDescr(rel);
 
 	raw_attrs = initArrayResult(BYTEAOID, CurrentMemoryContext, false);
 	nattrs = tupdesc->natts;
@@ -316,8 +315,7 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 		bool		is_null;
 		bytea	   *attr_data = NULL;
 
-		attr = tupdesc->attrs[i];
-		is_null = (t_infomask & HEAP_HASNULL) && att_isnull(i, t_bits);
+		attr = TupleDescAttr(tupdesc, i);
 
 		/*
 		 * Tuple header can specify less attributes than tuple descriptor as
@@ -327,6 +325,8 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 		 */
 		if (i >= (t_infomask2 & HEAP_NATTS_MASK))
 			is_null = true;
+		else
+			is_null = (t_infomask & HEAP_HASNULL) && att_isnull(i, t_bits);
 
 		if (!is_null)
 		{
@@ -334,7 +334,7 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 
 			if (attr->attlen == -1)
 			{
-				off = att_align_pointer(off, tupdesc->attrs[i]->attalign, -1,
+				off = att_align_pointer(off, attr->attalign, -1,
 										tupdata + off);
 
 				/*
@@ -353,7 +353,7 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 			}
 			else
 			{
-				off = att_align_nominal(off, tupdesc->attrs[i]->attalign);
+				off = att_align_nominal(off, attr->attalign);
 				len = attr->attlen;
 			}
 
@@ -371,7 +371,7 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 				memcpy(VARDATA(attr_data), tupdata + off, len);
 			}
 
-			off = att_addlength_pointer(off, tupdesc->attrs[i]->attlen,
+			off = att_addlength_pointer(off, attr->attlen,
 										tupdata + off);
 		}
 
@@ -385,6 +385,8 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_CORRUPTED),
 				 errmsg("end of tuple reached without looking at all its data")));
+
+	relation_close(rel, AccessShareLock);
 
 	return makeArrayResult(raw_attrs, CurrentMemoryContext);
 }

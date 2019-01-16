@@ -31,6 +31,7 @@ sub reset_pg_hba
 	unlink($node->data_dir . '/pg_hba.conf');
 	$node->append_conf('pg_hba.conf', "local all all $hba_method");
 	$node->reload;
+	return;
 }
 
 # Test access for a single role, useful to wrap all tests into one.
@@ -47,6 +48,7 @@ sub test_role
 	my $res = $node->psql('postgres', undef, extra_params => [ '-U', $role ]);
 	is($res, $expected_res,
 		"authentication $status_string for method $method, role $role");
+	return;
 }
 
 # Initialize master node
@@ -57,10 +59,11 @@ $node->start;
 # Create 3 roles with different password methods for each one. The same
 # password is used for all of them.
 $node->safe_psql('postgres',
-"SET password_encryption='scram-sha-256'; CREATE ROLE scram_role LOGIN PASSWORD 'pass';"
+	"SET password_encryption='scram-sha-256'; CREATE ROLE scram_role LOGIN PASSWORD 'pass';"
 );
 $node->safe_psql('postgres',
-"SET password_encryption='md5'; CREATE ROLE md5_role LOGIN PASSWORD 'pass';");
+	"SET password_encryption='md5'; CREATE ROLE md5_role LOGIN PASSWORD 'pass';"
+);
 $ENV{"PGPASSWORD"} = 'pass';
 
 # For "trust" method, all users should be able to connect.
