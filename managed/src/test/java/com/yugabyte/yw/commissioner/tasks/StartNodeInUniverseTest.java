@@ -98,6 +98,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
             TaskType.UpdateNodeProcess,
             TaskType.AnsibleClusterServerCtl,
             TaskType.UpdateNodeProcess,
+            TaskType.WaitForServer,
             TaskType.ChangeMasterConfig,
             TaskType.SetNodeState,
             TaskType.UniverseUpdateSucceeded
@@ -113,6 +114,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
                     "command", "start")),
             Json.toJson(ImmutableMap.of("processType", "MASTER",
                     "isAdd", true)),
+            Json.toJson(ImmutableMap.of()),
             Json.toJson(ImmutableMap.of()),
             Json.toJson(ImmutableMap.of("state", "Live")),
             Json.toJson(ImmutableMap.of())
