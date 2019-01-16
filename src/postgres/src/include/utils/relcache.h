@@ -4,7 +4,7 @@
  *	  Relation descriptor cache definitions.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/relcache.h
@@ -17,6 +17,11 @@
 #include "access/tupdesc.h"
 #include "nodes/bitmapset.h"
 
+
+/*
+ * Name of relcache init file(s), used to speed up backend startup
+ */
+#define RELCACHE_INIT_FILENAME	"pg_internal.init"
 
 typedef struct RelationData *Relation;
 
@@ -48,7 +53,8 @@ extern List *RelationGetIndexPredicate(Relation relation);
 
 typedef enum IndexAttrBitmapKind
 {
-	INDEX_ATTR_BITMAP_ALL,
+	INDEX_ATTR_BITMAP_HOT,
+	INDEX_ATTR_BITMAP_PROJ,
 	INDEX_ATTR_BITMAP_KEY,
 	INDEX_ATTR_BITMAP_PRIMARY_KEY,
 	INDEX_ATTR_BITMAP_IDENTITY_KEY

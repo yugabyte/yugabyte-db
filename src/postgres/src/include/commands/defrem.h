@@ -4,7 +4,7 @@
  *	  POSTGRES define and remove utility definitions.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/defrem.h
@@ -15,7 +15,9 @@
 #define DEFREM_H
 
 #include "catalog/objectaddress.h"
+#include "nodes/params.h"
 #include "nodes/parsenodes.h"
+#include "tcop/dest.h"
 #include "utils/array.h"
 
 /* commands/dropcmds.c */
@@ -25,26 +27,29 @@ extern void RemoveObjects(DropStmt *stmt);
 extern ObjectAddress DefineIndex(Oid relationId,
 			IndexStmt *stmt,
 			Oid indexRelationId,
+			Oid parentIndexId,
+			Oid parentConstraintId,
 			bool is_alter_table,
 			bool check_rights,
 			bool check_not_in_use,
 			bool skip_build,
 			bool quiet);
-extern Oid	ReindexIndex(RangeVar *indexRelation, int options);
+extern void ReindexIndex(RangeVar *indexRelation, int options);
 extern Oid	ReindexTable(RangeVar *relation, int options);
 extern void ReindexMultipleTables(const char *objectName, ReindexObjectType objectKind,
 					  int options);
 extern char *makeObjectName(const char *name1, const char *name2,
 			   const char *label);
 extern char *ChooseRelationName(const char *name1, const char *name2,
-				   const char *label, Oid namespaceid);
+				   const char *label, Oid namespaceid,
+				   bool isconstraint);
 extern bool CheckIndexCompatible(Oid oldId,
-					 char *accessMethodName,
+					 const char *accessMethodName,
 					 List *attributeList,
 					 List *exclusionOpNames);
 extern Oid	GetDefaultOpClass(Oid type_id, Oid am_id);
 extern Oid ResolveOpClass(List *opclass, Oid attrType,
-			   char *accessMethodName, Oid accessMethodId);
+			   const char *accessMethodName, Oid accessMethodId);
 
 /* commands/functioncmds.c */
 extern ObjectAddress CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt);
@@ -58,13 +63,15 @@ extern ObjectAddress CreateTransform(CreateTransformStmt *stmt);
 extern void DropTransformById(Oid transformOid);
 extern void IsThereFunctionInNamespace(const char *proname, int pronargs,
 						   oidvector *proargtypes, Oid nspOid);
-extern void ExecuteDoStmt(DoStmt *stmt);
+extern void ExecuteDoStmt(DoStmt *stmt, bool atomic);
+extern void ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver *dest);
+extern TupleDesc CallStmtResultDesc(CallStmt *stmt);
 extern Oid	get_cast_oid(Oid sourcetypeid, Oid targettypeid, bool missing_ok);
 extern Oid	get_transform_oid(Oid type_id, Oid lang_id, bool missing_ok);
 extern void interpret_function_parameter_list(ParseState *pstate,
 								  List *parameters,
 								  Oid languageOid,
-								  bool is_aggregate,
+								  ObjectType objtype,
 								  oidvector **parameterTypes,
 								  ArrayType **allParameterTypes,
 								  ArrayType **parameterModes,

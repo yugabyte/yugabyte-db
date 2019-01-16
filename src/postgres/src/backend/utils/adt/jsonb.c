@@ -3,7 +3,7 @@
  * jsonb.c
  *		I/O routines for jsonb type
  *
- * Copyright (c) 2014-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/adt/jsonb.c
@@ -131,7 +131,7 @@ jsonb_recv(PG_FUNCTION_ARGS)
 Datum
 jsonb_out(PG_FUNCTION_ARGS)
 {
-	Jsonb	   *jb = PG_GETARG_JSONB(0);
+	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
 	char	   *out;
 
 	out = JsonbToCString(NULL, &jb->root, VARSIZE(jb));
@@ -147,7 +147,7 @@ jsonb_out(PG_FUNCTION_ARGS)
 Datum
 jsonb_send(PG_FUNCTION_ARGS)
 {
-	Jsonb	   *jb = PG_GETARG_JSONB(0);
+	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
 	StringInfoData buf;
 	StringInfo	jtext = makeStringInfo();
 	int			version = 1;
@@ -155,7 +155,7 @@ jsonb_send(PG_FUNCTION_ARGS)
 	(void) JsonbToCString(jtext, &jb->root, VARSIZE(jb));
 
 	pq_begintypsend(&buf);
-	pq_sendint(&buf, version, 1);
+	pq_sendint8(&buf, version);
 	pq_sendtext(&buf, jtext->data, jtext->len);
 	pfree(jtext->data);
 	pfree(jtext);
@@ -172,7 +172,7 @@ jsonb_send(PG_FUNCTION_ARGS)
 Datum
 jsonb_typeof(PG_FUNCTION_ARGS)
 {
-	Jsonb	   *in = PG_GETARG_JSONB(0);
+	Jsonb	   *in = PG_GETARG_JSONB_P(0);
 	JsonbIterator *it;
 	JsonbValue	v;
 	char	   *result;
@@ -343,6 +343,7 @@ jsonb_in_scalar(void *pstate, char *token, JsonTokenType tokentype)
 {
 	JsonbInState *_state = (JsonbInState *) pstate;
 	JsonbValue	v;
+	Datum		numd;
 
 	switch (tokentype)
 	{
@@ -361,18 +362,19 @@ jsonb_in_scalar(void *pstate, char *token, JsonTokenType tokentype)
 			 */
 			Assert(token != NULL);
 			v.type = jbvNumeric;
-			v.val.numeric = DatumGetNumeric(DirectFunctionCall3(numeric_in, CStringGetDatum(token), 0, -1));
-
+			numd = DirectFunctionCall3(numeric_in,
+									   CStringGetDatum(token),
+									   ObjectIdGetDatum(InvalidOid),
+									   Int32GetDatum(-1));
+			v.val.numeric = DatumGetNumeric(numd);
 			break;
 		case JSON_TOKEN_TRUE:
 			v.type = jbvBool;
 			v.val.boolean = true;
-
 			break;
 		case JSON_TOKEN_FALSE:
 			v.type = jbvBool;
 			v.val.boolean = false;
-
 			break;
 		case JSON_TOKEN_NULL:
 			v.type = jbvNull;
@@ -772,9 +774,14 @@ datum_to_jsonb(Datum val, bool is_null, JsonbInState *result,
 									 strchr(outputstr, 'n') != NULL);
 					if (!numeric_error)
 					{
-						jb.type = jbvNumeric;
-						jb.val.numeric = DatumGetNumeric(DirectFunctionCall3(numeric_in, CStringGetDatum(outputstr), 0, -1));
+						Datum		numd;
 
+						jb.type = jbvNumeric;
+						numd = DirectFunctionCall3(numeric_in,
+												   CStringGetDatum(outputstr),
+												   ObjectIdGetDatum(InvalidOid),
+												   Int32GetDatum(-1));
+						jb.val.numeric = DatumGetNumeric(numd);
 						pfree(outputstr);
 					}
 					else
@@ -786,71 +793,19 @@ datum_to_jsonb(Datum val, bool is_null, JsonbInState *result,
 				}
 				break;
 			case JSONBTYPE_DATE:
-				{
-					DateADT		date;
-					struct pg_tm tm;
-					char		buf[MAXDATELEN + 1];
-
-					date = DatumGetDateADT(val);
-					/* Same as date_out(), but forcing DateStyle */
-					if (DATE_NOT_FINITE(date))
-						EncodeSpecialDate(date, buf);
-					else
-					{
-						j2date(date + POSTGRES_EPOCH_JDATE,
-							   &(tm.tm_year), &(tm.tm_mon), &(tm.tm_mday));
-						EncodeDateOnly(&tm, USE_XSD_DATES, buf);
-					}
-					jb.type = jbvString;
-					jb.val.string.len = strlen(buf);
-					jb.val.string.val = pstrdup(buf);
-				}
+				jb.type = jbvString;
+				jb.val.string.val = JsonEncodeDateTime(NULL, val, DATEOID);
+				jb.val.string.len = strlen(jb.val.string.val);
 				break;
 			case JSONBTYPE_TIMESTAMP:
-				{
-					Timestamp	timestamp;
-					struct pg_tm tm;
-					fsec_t		fsec;
-					char		buf[MAXDATELEN + 1];
-
-					timestamp = DatumGetTimestamp(val);
-					/* Same as timestamp_out(), but forcing DateStyle */
-					if (TIMESTAMP_NOT_FINITE(timestamp))
-						EncodeSpecialTimestamp(timestamp, buf);
-					else if (timestamp2tm(timestamp, NULL, &tm, &fsec, NULL, NULL) == 0)
-						EncodeDateTime(&tm, fsec, false, 0, NULL, USE_XSD_DATES, buf);
-					else
-						ereport(ERROR,
-								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-								 errmsg("timestamp out of range")));
-					jb.type = jbvString;
-					jb.val.string.len = strlen(buf);
-					jb.val.string.val = pstrdup(buf);
-				}
+				jb.type = jbvString;
+				jb.val.string.val = JsonEncodeDateTime(NULL, val, TIMESTAMPOID);
+				jb.val.string.len = strlen(jb.val.string.val);
 				break;
 			case JSONBTYPE_TIMESTAMPTZ:
-				{
-					TimestampTz timestamp;
-					struct pg_tm tm;
-					int			tz;
-					fsec_t		fsec;
-					const char *tzn = NULL;
-					char		buf[MAXDATELEN + 1];
-
-					timestamp = DatumGetTimestampTz(val);
-					/* Same as timestamptz_out(), but forcing DateStyle */
-					if (TIMESTAMP_NOT_FINITE(timestamp))
-						EncodeSpecialTimestamp(timestamp, buf);
-					else if (timestamp2tm(timestamp, &tz, &tm, &fsec, &tzn, NULL) == 0)
-						EncodeDateTime(&tm, fsec, true, tz, tzn, USE_XSD_DATES, buf);
-					else
-						ereport(ERROR,
-								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-								 errmsg("timestamp out of range")));
-					jb.type = jbvString;
-					jb.val.string.len = strlen(buf);
-					jb.val.string.val = pstrdup(buf);
-				}
+				jb.type = jbvString;
+				jb.val.string.val = JsonEncodeDateTime(NULL, val, TIMESTAMPTZOID);
+				jb.val.string.len = strlen(jb.val.string.val);
 				break;
 			case JSONBTYPE_JSONCAST:
 			case JSONBTYPE_JSON:
@@ -879,7 +834,7 @@ datum_to_jsonb(Datum val, bool is_null, JsonbInState *result,
 				break;
 			case JSONBTYPE_JSONB:
 				{
-					Jsonb	   *jsonb = DatumGetJsonb(val);
+					Jsonb	   *jsonb = DatumGetJsonbP(val);
 					JsonbIterator *it;
 
 					it = JsonbIteratorInit(&jsonb->root);
@@ -1076,11 +1031,12 @@ composite_to_jsonb(Datum composite, JsonbInState *result)
 		JsonbTypeCategory tcategory;
 		Oid			outfuncoid;
 		JsonbValue	v;
+		Form_pg_attribute att = TupleDescAttr(tupdesc, i);
 
-		if (tupdesc->attrs[i]->attisdropped)
+		if (att->attisdropped)
 			continue;
 
-		attname = NameStr(tupdesc->attrs[i]->attname);
+		attname = NameStr(att->attname);
 
 		v.type = jbvString;
 		/* don't need checkStringLen here - can't exceed maximum name length */
@@ -1097,8 +1053,7 @@ composite_to_jsonb(Datum composite, JsonbInState *result)
 			outfuncoid = InvalidOid;
 		}
 		else
-			jsonb_categorize_type(tupdesc->attrs[i]->atttypid,
-								  &tcategory, &outfuncoid);
+			jsonb_categorize_type(att->atttypid, &tcategory, &outfuncoid);
 
 		datum_to_jsonb(val, isnull, result, tcategory, outfuncoid, false);
 	}
@@ -1896,4 +1851,203 @@ jsonb_object_agg_finalfn(PG_FUNCTION_ARGS)
 	out = JsonbValueToJsonb(result.res);
 
 	PG_RETURN_POINTER(out);
+}
+
+
+/*
+ * Extract scalar value from raw-scalar pseudo-array jsonb.
+ */
+static bool
+JsonbExtractScalar(JsonbContainer *jbc, JsonbValue *res)
+{
+	JsonbIterator *it;
+	JsonbIteratorToken tok PG_USED_FOR_ASSERTS_ONLY;
+	JsonbValue	tmp;
+
+	if (!JsonContainerIsArray(jbc) || !JsonContainerIsScalar(jbc))
+	{
+		/* inform caller about actual type of container */
+		res->type = (JsonContainerIsArray(jbc)) ? jbvArray : jbvObject;
+		return false;
+	}
+
+	/*
+	 * A root scalar is stored as an array of one element, so we get the array
+	 * and then its first (and only) member.
+	 */
+	it = JsonbIteratorInit(jbc);
+
+	tok = JsonbIteratorNext(&it, &tmp, true);
+	Assert(tok == WJB_BEGIN_ARRAY);
+	Assert(tmp.val.array.nElems == 1 && tmp.val.array.rawScalar);
+
+	tok = JsonbIteratorNext(&it, res, true);
+	Assert(tok == WJB_ELEM);
+	Assert(IsAJsonbScalar(res));
+
+	tok = JsonbIteratorNext(&it, &tmp, true);
+	Assert(tok == WJB_END_ARRAY);
+
+	tok = JsonbIteratorNext(&it, &tmp, true);
+	Assert(tok == WJB_DONE);
+
+	return true;
+}
+
+/*
+ * Emit correct, translatable cast error message
+ */
+static void
+cannotCastJsonbValue(enum jbvType type, const char *sqltype)
+{
+	static const struct
+	{
+		enum jbvType type;
+		const char *msg;
+	}
+				messages[] =
+	{
+		{jbvNull, gettext_noop("cannot cast jsonb null to type %s")},
+		{jbvString, gettext_noop("cannot cast jsonb string to type %s")},
+		{jbvNumeric, gettext_noop("cannot cast jsonb numeric to type %s")},
+		{jbvBool, gettext_noop("cannot cast jsonb boolean to type %s")},
+		{jbvArray, gettext_noop("cannot cast jsonb array to type %s")},
+		{jbvObject, gettext_noop("cannot cast jsonb object to type %s")},
+		{jbvBinary, gettext_noop("cannot cast jsonb array or object to type %s")}
+	};
+	int			i;
+
+	for (i = 0; i < lengthof(messages); i++)
+		if (messages[i].type == type)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg(messages[i].msg, sqltype)));
+
+	/* should be unreachable */
+	elog(ERROR, "unknown jsonb type: %d", (int) type);
+}
+
+Datum
+jsonb_bool(PG_FUNCTION_ARGS)
+{
+	Jsonb	   *in = PG_GETARG_JSONB_P(0);
+	JsonbValue	v;
+
+	if (!JsonbExtractScalar(&in->root, &v) || v.type != jbvBool)
+		cannotCastJsonbValue(v.type, "boolean");
+
+	PG_FREE_IF_COPY(in, 0);
+
+	PG_RETURN_BOOL(v.val.boolean);
+}
+
+Datum
+jsonb_numeric(PG_FUNCTION_ARGS)
+{
+	Jsonb	   *in = PG_GETARG_JSONB_P(0);
+	JsonbValue	v;
+	Numeric		retValue;
+
+	if (!JsonbExtractScalar(&in->root, &v) || v.type != jbvNumeric)
+		cannotCastJsonbValue(v.type, "numeric");
+
+	/*
+	 * v.val.numeric points into jsonb body, so we need to make a copy to
+	 * return
+	 */
+	retValue = DatumGetNumericCopy(NumericGetDatum(v.val.numeric));
+
+	PG_FREE_IF_COPY(in, 0);
+
+	PG_RETURN_NUMERIC(retValue);
+}
+
+Datum
+jsonb_int2(PG_FUNCTION_ARGS)
+{
+	Jsonb	   *in = PG_GETARG_JSONB_P(0);
+	JsonbValue	v;
+	Datum		retValue;
+
+	if (!JsonbExtractScalar(&in->root, &v) || v.type != jbvNumeric)
+		cannotCastJsonbValue(v.type, "smallint");
+
+	retValue = DirectFunctionCall1(numeric_int2,
+								   NumericGetDatum(v.val.numeric));
+
+	PG_FREE_IF_COPY(in, 0);
+
+	PG_RETURN_DATUM(retValue);
+}
+
+Datum
+jsonb_int4(PG_FUNCTION_ARGS)
+{
+	Jsonb	   *in = PG_GETARG_JSONB_P(0);
+	JsonbValue	v;
+	Datum		retValue;
+
+	if (!JsonbExtractScalar(&in->root, &v) || v.type != jbvNumeric)
+		cannotCastJsonbValue(v.type, "integer");
+
+	retValue = DirectFunctionCall1(numeric_int4,
+								   NumericGetDatum(v.val.numeric));
+
+	PG_FREE_IF_COPY(in, 0);
+
+	PG_RETURN_DATUM(retValue);
+}
+
+Datum
+jsonb_int8(PG_FUNCTION_ARGS)
+{
+	Jsonb	   *in = PG_GETARG_JSONB_P(0);
+	JsonbValue	v;
+	Datum		retValue;
+
+	if (!JsonbExtractScalar(&in->root, &v) || v.type != jbvNumeric)
+		cannotCastJsonbValue(v.type, "bigint");
+
+	retValue = DirectFunctionCall1(numeric_int8,
+								   NumericGetDatum(v.val.numeric));
+
+	PG_FREE_IF_COPY(in, 0);
+
+	PG_RETURN_DATUM(retValue);
+}
+
+Datum
+jsonb_float4(PG_FUNCTION_ARGS)
+{
+	Jsonb	   *in = PG_GETARG_JSONB_P(0);
+	JsonbValue	v;
+	Datum		retValue;
+
+	if (!JsonbExtractScalar(&in->root, &v) || v.type != jbvNumeric)
+		cannotCastJsonbValue(v.type, "real");
+
+	retValue = DirectFunctionCall1(numeric_float4,
+								   NumericGetDatum(v.val.numeric));
+
+	PG_FREE_IF_COPY(in, 0);
+
+	PG_RETURN_DATUM(retValue);
+}
+
+Datum
+jsonb_float8(PG_FUNCTION_ARGS)
+{
+	Jsonb	   *in = PG_GETARG_JSONB_P(0);
+	JsonbValue	v;
+	Datum		retValue;
+
+	if (!JsonbExtractScalar(&in->root, &v) || v.type != jbvNumeric)
+		cannotCastJsonbValue(v.type, "double precision");
+
+	retValue = DirectFunctionCall1(numeric_float8,
+								   NumericGetDatum(v.val.numeric));
+
+	PG_FREE_IF_COPY(in, 0);
+
+	PG_RETURN_DATUM(retValue);
 }

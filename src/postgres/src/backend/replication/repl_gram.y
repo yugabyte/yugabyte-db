@@ -3,7 +3,7 @@
  *
  * repl_gram.y				- Parser for the replication commands
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -77,6 +77,7 @@ static SQLCmd *make_sqlcmd(void);
 %token K_MAX_RATE
 %token K_WAL
 %token K_TABLESPACE_MAP
+%token K_NOVERIFY_CHECKSUMS
 %token K_TIMELINE
 %token K_PHYSICAL
 %token K_LOGICAL
@@ -154,7 +155,7 @@ var_name:	IDENT	{ $$ = $1; }
 
 /*
  * BASE_BACKUP [LABEL '<label>'] [PROGRESS] [FAST] [WAL] [NOWAIT]
- * [MAX_RATE %d] [TABLESPACE_MAP]
+ * [MAX_RATE %d] [TABLESPACE_MAP] [NOVERIFY_CHECKSUMS]
  */
 base_backup:
 			K_BASE_BACKUP base_backup_opt_list
@@ -181,22 +182,22 @@ base_backup_opt:
 			| K_PROGRESS
 				{
 				  $$ = makeDefElem("progress",
-								   (Node *)makeInteger(TRUE), -1);
+								   (Node *)makeInteger(true), -1);
 				}
 			| K_FAST
 				{
 				  $$ = makeDefElem("fast",
-								   (Node *)makeInteger(TRUE), -1);
+								   (Node *)makeInteger(true), -1);
 				}
 			| K_WAL
 				{
 				  $$ = makeDefElem("wal",
-								   (Node *)makeInteger(TRUE), -1);
+								   (Node *)makeInteger(true), -1);
 				}
 			| K_NOWAIT
 				{
 				  $$ = makeDefElem("nowait",
-								   (Node *)makeInteger(TRUE), -1);
+								   (Node *)makeInteger(true), -1);
 				}
 			| K_MAX_RATE UCONST
 				{
@@ -206,7 +207,12 @@ base_backup_opt:
 			| K_TABLESPACE_MAP
 				{
 				  $$ = makeDefElem("tablespace_map",
-								   (Node *)makeInteger(TRUE), -1);
+								   (Node *)makeInteger(true), -1);
+				}
+			| K_NOVERIFY_CHECKSUMS
+				{
+				  $$ = makeDefElem("noverify_checksums",
+								   (Node *)makeInteger(true), -1);
 				}
 			;
 
@@ -247,22 +253,22 @@ create_slot_opt:
 			K_EXPORT_SNAPSHOT
 				{
 				  $$ = makeDefElem("export_snapshot",
-								   (Node *)makeInteger(TRUE), -1);
+								   (Node *)makeInteger(true), -1);
 				}
 			| K_NOEXPORT_SNAPSHOT
 				{
 				  $$ = makeDefElem("export_snapshot",
-								   (Node *)makeInteger(FALSE), -1);
+								   (Node *)makeInteger(false), -1);
 				}
 			| K_USE_SNAPSHOT
 				{
 				  $$ = makeDefElem("use_snapshot",
-								   (Node *)makeInteger(TRUE), -1);
+								   (Node *)makeInteger(true), -1);
 				}
 			| K_RESERVE_WAL
 				{
 				  $$ = makeDefElem("reserve_wal",
-								   (Node *)makeInteger(TRUE), -1);
+								   (Node *)makeInteger(true), -1);
 				}
 			;
 

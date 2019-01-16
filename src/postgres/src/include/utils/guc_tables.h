@@ -5,7 +5,7 @@
  *
  * See src/backend/utils/misc/README for design notes.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
  *	  src/include/utils/guc_tables.h
  *
@@ -56,7 +56,8 @@ enum config_group
 	FILE_LOCATIONS,
 	CONN_AUTH,
 	CONN_AUTH_SETTINGS,
-	CONN_AUTH_SECURITY,
+	CONN_AUTH_AUTH,
+	CONN_AUTH_SSL,
 	RESOURCES,
 	RESOURCES_MEM,
 	RESOURCES_DISK,

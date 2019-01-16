@@ -3,7 +3,7 @@
  * spi.h
  *				Server Programming Interface public declarations
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/spi.h
@@ -65,6 +65,8 @@ typedef struct _SPI_plan *SPIPlanPtr;
 #define SPI_OK_REL_UNREGISTER	16
 #define SPI_OK_TD_REGISTER		17
 
+#define SPI_OPT_NONATOMIC		(1 << 0)
+
 /* These used to be functions, now just no-ops for backwards compatibility */
 #define SPI_push()	((void) 0)
 #define SPI_pop()	((void) 0)
@@ -78,6 +80,7 @@ extern PGDLLIMPORT SPITupleTable *SPI_tuptable;
 extern PGDLLIMPORT int SPI_result;
 
 extern int	SPI_connect(void);
+extern int	SPI_connect_ext(int options);
 extern int	SPI_finish(void);
 extern int	SPI_execute(const char *src, bool read_only, long tcount);
 extern int SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
@@ -156,7 +159,13 @@ extern int	SPI_register_relation(EphemeralNamedRelation enr);
 extern int	SPI_unregister_relation(const char *name);
 extern int	SPI_register_trigger_data(TriggerData *tdata);
 
+extern void SPI_start_transaction(void);
+extern void SPI_commit(void);
+extern void SPI_rollback(void);
+
+extern void SPICleanup(void);
 extern void AtEOXact_SPI(bool isCommit);
 extern void AtEOSubXact_SPI(bool isCommit, SubTransactionId mySubid);
+extern bool SPI_inside_nonatomic_context(void);
 
 #endif							/* SPI_H */

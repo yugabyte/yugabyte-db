@@ -3,7 +3,7 @@
  * int.c
  *	  Functions for the built-in integer types (except int8).
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -32,14 +32,11 @@
 #include <limits.h>
 
 #include "catalog/pg_type.h"
+#include "common/int.h"
 #include "funcapi.h"
 #include "libpq/pqformat.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
-
-#include "yb_overflow_utils.h"
-
-#define SAMESIGN(a,b)	(((a) < 0) == ((b) < 0))
 
 #define Int2VectorSize(n)	(offsetof(int2vector, values) + (n) * sizeof(int16))
 
@@ -100,7 +97,7 @@ int2send(PG_FUNCTION_ARGS)
 	StringInfoData buf;
 
 	pq_begintypsend(&buf);
-	pq_sendint(&buf, arg1, sizeof(int16));
+	pq_sendint16(&buf, arg1);
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }
 
@@ -305,7 +302,7 @@ int4send(PG_FUNCTION_ARGS)
 	StringInfoData buf;
 
 	pq_begintypsend(&buf);
-	pq_sendint(&buf, arg1, sizeof(int32));
+	pq_sendint32(&buf, arg1);
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }
 
@@ -329,7 +326,7 @@ i4toi2(PG_FUNCTION_ARGS)
 {
 	int32		arg1 = PG_GETARG_INT32(0);
 
-	if (arg1 < SHRT_MIN || arg1 > SHRT_MAX)
+	if (unlikely(arg1 < SHRT_MIN) || unlikely(arg1 > SHRT_MAX))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("smallint out of range")));
@@ -588,6 +585,158 @@ int42ge(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(arg1 >= arg2);
 }
 
+
+/*----------------------------------------------------------
+ *	in_range functions for int4 and int2,
+ *	including cross-data-type comparisons.
+ *
+ *	Note: we provide separate intN_int8 functions for performance
+ *	reasons.  This forces also providing intN_int2, else cases with a
+ *	smallint offset value would fail to resolve which function to use.
+ *	But that's an unlikely situation, so don't duplicate code for it.
+ *---------------------------------------------------------*/
+
+Datum
+in_range_int4_int4(PG_FUNCTION_ARGS)
+{
+	int32		val = PG_GETARG_INT32(0);
+	int32		base = PG_GETARG_INT32(1);
+	int32		offset = PG_GETARG_INT32(2);
+	bool		sub = PG_GETARG_BOOL(3);
+	bool		less = PG_GETARG_BOOL(4);
+	int32		sum;
+
+	if (offset < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
+				 errmsg("invalid preceding or following size in window function")));
+
+	if (sub)
+		offset = -offset;		/* cannot overflow */
+
+	if (unlikely(pg_add_s32_overflow(base, offset, &sum)))
+	{
+		/*
+		 * If sub is false, the true sum is surely more than val, so correct
+		 * answer is the same as "less".  If sub is true, the true sum is
+		 * surely less than val, so the answer is "!less".
+		 */
+		PG_RETURN_BOOL(sub ? !less : less);
+	}
+
+	if (less)
+		PG_RETURN_BOOL(val <= sum);
+	else
+		PG_RETURN_BOOL(val >= sum);
+}
+
+Datum
+in_range_int4_int2(PG_FUNCTION_ARGS)
+{
+	/* Doesn't seem worth duplicating code for, so just invoke int4_int4 */
+	return DirectFunctionCall5(in_range_int4_int4,
+							   PG_GETARG_DATUM(0),
+							   PG_GETARG_DATUM(1),
+							   Int32GetDatum((int32) PG_GETARG_INT16(2)),
+							   PG_GETARG_DATUM(3),
+							   PG_GETARG_DATUM(4));
+}
+
+Datum
+in_range_int4_int8(PG_FUNCTION_ARGS)
+{
+	/* We must do all the math in int64 */
+	int64		val = (int64) PG_GETARG_INT32(0);
+	int64		base = (int64) PG_GETARG_INT32(1);
+	int64		offset = PG_GETARG_INT64(2);
+	bool		sub = PG_GETARG_BOOL(3);
+	bool		less = PG_GETARG_BOOL(4);
+	int64		sum;
+
+	if (offset < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
+				 errmsg("invalid preceding or following size in window function")));
+
+	if (sub)
+		offset = -offset;		/* cannot overflow */
+
+	if (unlikely(pg_add_s64_overflow(base, offset, &sum)))
+	{
+		/*
+		 * If sub is false, the true sum is surely more than val, so correct
+		 * answer is the same as "less".  If sub is true, the true sum is
+		 * surely less than val, so the answer is "!less".
+		 */
+		PG_RETURN_BOOL(sub ? !less : less);
+	}
+
+	if (less)
+		PG_RETURN_BOOL(val <= sum);
+	else
+		PG_RETURN_BOOL(val >= sum);
+}
+
+Datum
+in_range_int2_int4(PG_FUNCTION_ARGS)
+{
+	/* We must do all the math in int32 */
+	int32		val = (int32) PG_GETARG_INT16(0);
+	int32		base = (int32) PG_GETARG_INT16(1);
+	int32		offset = PG_GETARG_INT32(2);
+	bool		sub = PG_GETARG_BOOL(3);
+	bool		less = PG_GETARG_BOOL(4);
+	int32		sum;
+
+	if (offset < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
+				 errmsg("invalid preceding or following size in window function")));
+
+	if (sub)
+		offset = -offset;		/* cannot overflow */
+
+	if (unlikely(pg_add_s32_overflow(base, offset, &sum)))
+	{
+		/*
+		 * If sub is false, the true sum is surely more than val, so correct
+		 * answer is the same as "less".  If sub is true, the true sum is
+		 * surely less than val, so the answer is "!less".
+		 */
+		PG_RETURN_BOOL(sub ? !less : less);
+	}
+
+	if (less)
+		PG_RETURN_BOOL(val <= sum);
+	else
+		PG_RETURN_BOOL(val >= sum);
+}
+
+Datum
+in_range_int2_int2(PG_FUNCTION_ARGS)
+{
+	/* Doesn't seem worth duplicating code for, so just invoke int2_int4 */
+	return DirectFunctionCall5(in_range_int2_int4,
+							   PG_GETARG_DATUM(0),
+							   PG_GETARG_DATUM(1),
+							   Int32GetDatum((int32) PG_GETARG_INT16(2)),
+							   PG_GETARG_DATUM(3),
+							   PG_GETARG_DATUM(4));
+}
+
+Datum
+in_range_int2_int8(PG_FUNCTION_ARGS)
+{
+	/* Doesn't seem worth duplicating code for, so just invoke int4_int8 */
+	return DirectFunctionCall5(in_range_int4_int8,
+							   Int32GetDatum((int32) PG_GETARG_INT16(0)),
+							   Int32GetDatum((int32) PG_GETARG_INT16(1)),
+							   PG_GETARG_DATUM(2),
+							   PG_GETARG_DATUM(3),
+							   PG_GETARG_DATUM(4));
+}
+
+
 /*
  *		int[24]pl		- returns arg1 + arg2
  *		int[24]mi		- returns arg1 - arg2
@@ -599,16 +748,12 @@ Datum
 int4um(PG_FUNCTION_ARGS)
 {
 	int32		arg = PG_GETARG_INT32(0);
-	int32		result;
 
-	YB_DISALLOW_INT32_VALUE(arg, INT32_MIN);
-	result = -arg;
-	/* overflow check (needed for INT_MIN) */
-	if (arg != 0 && SAMESIGN(result, arg))
+	if (unlikely(arg == PG_INT32_MIN))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
-	PG_RETURN_INT32(result);
+	PG_RETURN_INT32(-arg);
 }
 
 Datum
@@ -626,14 +771,7 @@ int4pl(PG_FUNCTION_ARGS)
 	int32		arg2 = PG_GETARG_INT32(1);
 	int32		result;
 
-	result = arg1 + arg2;
-
-	/*
-	 * Overflow check.  If the inputs are of different signs then their sum
-	 * cannot overflow.  If the inputs are of the same sign, their sum had
-	 * better be that sign too.
-	 */
-	if (SAMESIGN(arg1, arg2) && !SAMESIGN(result, arg1))
+	if (unlikely(pg_add_s32_overflow(arg1, arg2, &result)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
@@ -647,15 +785,7 @@ int4mi(PG_FUNCTION_ARGS)
 	int32		arg2 = PG_GETARG_INT32(1);
 	int32		result;
 
-	YB_CHECK_INT32_OVERFLOW(sub, arg1, arg2);
-	result = arg1 - arg2;
-
-	/*
-	 * Overflow check.  If the inputs are of the same sign then their
-	 * difference cannot overflow.  If they are of different signs then the
-	 * result should be of the same sign as the first input.
-	 */
-	if (!SAMESIGN(arg1, arg2) && !SAMESIGN(result, arg1))
+	if (unlikely(pg_sub_s32_overflow(arg1, arg2, &result)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
@@ -669,25 +799,7 @@ int4mul(PG_FUNCTION_ARGS)
 	int32		arg2 = PG_GETARG_INT32(1);
 	int32		result;
 
-	YB_CHECK_INT32_OVERFLOW(mul, arg1, arg2);
-	result = arg1 * arg2;
-
-	/*
-	 * Overflow check.  We basically check to see if result / arg2 gives arg1
-	 * again.  There are two cases where this fails: arg2 = 0 (which cannot
-	 * overflow) and arg1 = INT_MIN, arg2 = -1 (where the division itself will
-	 * overflow and thus incorrectly match).
-	 *
-	 * Since the division is likely much more expensive than the actual
-	 * multiplication, we'd like to skip it where possible.  The best bang for
-	 * the buck seems to be to check whether both inputs are in the int16
-	 * range; if so, no overflow is possible.
-	 */
-	if (!(arg1 >= (int32) SHRT_MIN && arg1 <= (int32) SHRT_MAX &&
-		  arg2 >= (int32) SHRT_MIN && arg2 <= (int32) SHRT_MAX) &&
-		arg2 != 0 &&
-		((arg2 == -1 && arg1 < 0 && result < 0) ||
-		 result / arg2 != arg1))
+	if (unlikely(pg_mul_s32_overflow(arg1, arg2, &result)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
@@ -718,13 +830,11 @@ int4div(PG_FUNCTION_ARGS)
 	 */
 	if (arg2 == -1)
 	{
-		YB_DISALLOW_INT32_VALUE(arg1, INT32_MIN);
-		result = -arg1;
-		/* overflow check (needed for INT_MIN) */
-		if (arg1 != 0 && SAMESIGN(result, arg1))
+		if (unlikely(arg1 == PG_INT32_MIN))
 			ereport(ERROR,
 					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 					 errmsg("integer out of range")));
+		result = -arg1;
 		PG_RETURN_INT32(result);
 	}
 
@@ -741,10 +851,7 @@ int4inc(PG_FUNCTION_ARGS)
 	int32		arg = PG_GETARG_INT32(0);
 	int32		result;
 
-	YB_DISALLOW_INT32_VALUE(arg, INT32_MAX);
-	result = arg + 1;
-	/* Overflow check */
-	if (arg > 0 && result < 0)
+	if (unlikely(pg_add_s32_overflow(arg, 1, &result)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
@@ -756,15 +863,12 @@ Datum
 int2um(PG_FUNCTION_ARGS)
 {
 	int16		arg = PG_GETARG_INT16(0);
-	int16		result;
 
-	result = -arg;
-	/* overflow check (needed for SHRT_MIN) */
-	if (arg != 0 && SAMESIGN(result, arg))
+	if (unlikely(arg == PG_INT16_MIN))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("smallint out of range")));
-	PG_RETURN_INT16(result);
+	PG_RETURN_INT16(-arg);
 }
 
 Datum
@@ -782,14 +886,7 @@ int2pl(PG_FUNCTION_ARGS)
 	int16		arg2 = PG_GETARG_INT16(1);
 	int16		result;
 
-	result = arg1 + arg2;
-
-	/*
-	 * Overflow check.  If the inputs are of different signs then their sum
-	 * cannot overflow.  If the inputs are of the same sign, their sum had
-	 * better be that sign too.
-	 */
-	if (SAMESIGN(arg1, arg2) && !SAMESIGN(result, arg1))
+	if (unlikely(pg_add_s16_overflow(arg1, arg2, &result)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("smallint out of range")));
@@ -803,14 +900,7 @@ int2mi(PG_FUNCTION_ARGS)
 	int16		arg2 = PG_GETARG_INT16(1);
 	int16		result;
 
-	result = arg1 - arg2;
-
-	/*
-	 * Overflow check.  If the inputs are of the same sign then their
-	 * difference cannot overflow.  If they are of different signs then the
-	 * result should be of the same sign as the first input.
-	 */
-	if (!SAMESIGN(arg1, arg2) && !SAMESIGN(result, arg1))
+	if (unlikely(pg_sub_s16_overflow(arg1, arg2, &result)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("smallint out of range")));
@@ -822,20 +912,14 @@ int2mul(PG_FUNCTION_ARGS)
 {
 	int16		arg1 = PG_GETARG_INT16(0);
 	int16		arg2 = PG_GETARG_INT16(1);
-	int32		result32;
+	int16		result;
 
-	/*
-	 * The most practical way to detect overflow is to do the arithmetic in
-	 * int32 (so that the result can't overflow) and then do a range check.
-	 */
-	result32 = (int32) arg1 * (int32) arg2;
-
-	if (result32 < SHRT_MIN || result32 > SHRT_MAX)
+	if (unlikely(pg_mul_s16_overflow(arg1, arg2, &result)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("smallint out of range")));
 
-	PG_RETURN_INT16((int16) result32);
+	PG_RETURN_INT16(result);
 }
 
 Datum
@@ -862,12 +946,11 @@ int2div(PG_FUNCTION_ARGS)
 	 */
 	if (arg2 == -1)
 	{
-		result = -arg1;
-		/* overflow check (needed for SHRT_MIN) */
-		if (arg1 != 0 && SAMESIGN(result, arg1))
+		if (unlikely(arg1 == PG_INT16_MIN))
 			ereport(ERROR,
 					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 					 errmsg("smallint out of range")));
+		result = -arg1;
 		PG_RETURN_INT16(result);
 	}
 
@@ -885,15 +968,7 @@ int24pl(PG_FUNCTION_ARGS)
 	int32		arg2 = PG_GETARG_INT32(1);
 	int32		result;
 
-	YB_CHECK_INT32_OVERFLOW(add, (int32) arg1, arg2);
-	result = arg1 + arg2;
-
-	/*
-	 * Overflow check.  If the inputs are of different signs then their sum
-	 * cannot overflow.  If the inputs are of the same sign, their sum had
-	 * better be that sign too.
-	 */
-	if (SAMESIGN(arg1, arg2) && !SAMESIGN(result, arg1))
+	if (unlikely(pg_add_s32_overflow((int32) arg1, arg2, &result)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
@@ -907,15 +982,7 @@ int24mi(PG_FUNCTION_ARGS)
 	int32		arg2 = PG_GETARG_INT32(1);
 	int32		result;
 
-	YB_CHECK_INT32_OVERFLOW(sub, (int32) arg1, arg2);
-	result = arg1 - arg2;
-
-	/*
-	 * Overflow check.  If the inputs are of the same sign then their
-	 * difference cannot overflow.  If they are of different signs then the
-	 * result should be of the same sign as the first input.
-	 */
-	if (!SAMESIGN(arg1, arg2) && !SAMESIGN(result, arg1))
+	if (unlikely(pg_sub_s32_overflow((int32) arg1, arg2, &result)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
@@ -929,21 +996,7 @@ int24mul(PG_FUNCTION_ARGS)
 	int32		arg2 = PG_GETARG_INT32(1);
 	int32		result;
 
-	YB_CHECK_INT32_OVERFLOW(mul, (int32) arg1, arg2);
-	result = arg1 * arg2;
-
-	/*
-	 * Overflow check.  We basically check to see if result / arg2 gives arg1
-	 * again.  There is one case where this fails: arg2 = 0 (which cannot
-	 * overflow).
-	 *
-	 * Since the division is likely much more expensive than the actual
-	 * multiplication, we'd like to skip it where possible.  The best bang for
-	 * the buck seems to be to check whether both inputs are in the int16
-	 * range; if so, no overflow is possible.
-	 */
-	if (!(arg2 >= (int32) SHRT_MIN && arg2 <= (int32) SHRT_MAX) &&
-		result / arg2 != arg1)
+	if (unlikely(pg_mul_s32_overflow((int32) arg1, arg2, &result)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
@@ -956,7 +1009,7 @@ int24div(PG_FUNCTION_ARGS)
 	int16		arg1 = PG_GETARG_INT16(0);
 	int32		arg2 = PG_GETARG_INT32(1);
 
-	if (arg2 == 0)
+	if (unlikely(arg2 == 0))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
@@ -976,15 +1029,7 @@ int42pl(PG_FUNCTION_ARGS)
 	int16		arg2 = PG_GETARG_INT16(1);
 	int32		result;
 
-	YB_CHECK_INT32_OVERFLOW(add, arg1, (int32) arg2);
-	result = arg1 + arg2;
-
-	/*
-	 * Overflow check.  If the inputs are of different signs then their sum
-	 * cannot overflow.  If the inputs are of the same sign, their sum had
-	 * better be that sign too.
-	 */
-	if (SAMESIGN(arg1, arg2) && !SAMESIGN(result, arg1))
+	if (unlikely(pg_add_s32_overflow(arg1, (int32) arg2, &result)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
@@ -998,15 +1043,7 @@ int42mi(PG_FUNCTION_ARGS)
 	int16		arg2 = PG_GETARG_INT16(1);
 	int32		result;
 
-	YB_CHECK_INT32_OVERFLOW(sub, arg1, (int32) arg2);
-	result = arg1 - arg2;
-
-	/*
-	 * Overflow check.  If the inputs are of the same sign then their
-	 * difference cannot overflow.  If they are of different signs then the
-	 * result should be of the same sign as the first input.
-	 */
-	if (!SAMESIGN(arg1, arg2) && !SAMESIGN(result, arg1))
+	if (unlikely(pg_sub_s32_overflow(arg1, (int32) arg2, &result)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
@@ -1020,21 +1057,7 @@ int42mul(PG_FUNCTION_ARGS)
 	int16		arg2 = PG_GETARG_INT16(1);
 	int32		result;
 
-	YB_CHECK_INT32_OVERFLOW(mul, arg1, (int32) arg2);
-	result = arg1 * arg2;
-
-	/*
-	 * Overflow check.  We basically check to see if result / arg1 gives arg2
-	 * again.  There is one case where this fails: arg1 = 0 (which cannot
-	 * overflow).
-	 *
-	 * Since the division is likely much more expensive than the actual
-	 * multiplication, we'd like to skip it where possible.  The best bang for
-	 * the buck seems to be to check whether both inputs are in the int16
-	 * range; if so, no overflow is possible.
-	 */
-	if (!(arg1 >= (int32) SHRT_MIN && arg1 <= (int32) SHRT_MAX) &&
-		result / arg1 != arg2)
+	if (unlikely(pg_mul_s32_overflow(arg1, (int32) arg2, &result)))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
@@ -1048,7 +1071,7 @@ int42div(PG_FUNCTION_ARGS)
 	int16		arg2 = PG_GETARG_INT16(1);
 	int32		result;
 
-	if (arg2 == 0)
+	if (unlikely(arg2 == 0))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
@@ -1065,13 +1088,11 @@ int42div(PG_FUNCTION_ARGS)
 	 */
 	if (arg2 == -1)
 	{
-		YB_DISALLOW_INT32_VALUE(arg1, INT_MIN);
-		result = -arg1;
-		/* overflow check (needed for INT_MIN) */
-		if (arg1 != 0 && SAMESIGN(result, arg1))
+		if (unlikely(arg1 == PG_INT32_MIN))
 			ereport(ERROR,
 					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 					 errmsg("integer out of range")));
+		result = -arg1;
 		PG_RETURN_INT32(result);
 	}
 
@@ -1088,7 +1109,7 @@ int4mod(PG_FUNCTION_ARGS)
 	int32		arg1 = PG_GETARG_INT32(0);
 	int32		arg2 = PG_GETARG_INT32(1);
 
-	if (arg2 == 0)
+	if (unlikely(arg2 == 0))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
@@ -1116,7 +1137,7 @@ int2mod(PG_FUNCTION_ARGS)
 	int16		arg1 = PG_GETARG_INT16(0);
 	int16		arg2 = PG_GETARG_INT16(1);
 
-	if (arg2 == 0)
+	if (unlikely(arg2 == 0))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
@@ -1149,13 +1170,11 @@ int4abs(PG_FUNCTION_ARGS)
 	int32		arg1 = PG_GETARG_INT32(0);
 	int32		result;
 
-	YB_DISALLOW_INT32_VALUE(arg1, INT_MIN);
-	result = (arg1 < 0) ? -arg1 : arg1;
-	/* overflow check (needed for INT_MIN) */
-	if (result < 0)
+	if (unlikely(arg1 == PG_INT32_MIN))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
+	result = (arg1 < 0) ? -arg1 : arg1;
 	PG_RETURN_INT32(result);
 }
 
@@ -1165,12 +1184,11 @@ int2abs(PG_FUNCTION_ARGS)
 	int16		arg1 = PG_GETARG_INT16(0);
 	int16		result;
 
-	result = (arg1 < 0) ? -arg1 : arg1;
-	/* overflow check (needed for SHRT_MIN) */
-	if (result < 0)
+	if (unlikely(arg1 == PG_INT16_MIN))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("smallint out of range")));
+	result = (arg1 < 0) ? -arg1 : arg1;
 	PG_RETURN_INT16(result);
 }
 
@@ -1395,11 +1413,11 @@ generate_series_step_int4(PG_FUNCTION_ARGS)
 	if ((fctx->step > 0 && fctx->current <= fctx->finish) ||
 		(fctx->step < 0 && fctx->current >= fctx->finish))
 	{
-		/* increment current in preparation for next iteration */
-		fctx->current += fctx->step;
-
-		/* if next-value computation overflows, this is the final result */
-		if (SAMESIGN(result, fctx->step) && !SAMESIGN(result, fctx->current))
+		/*
+		 * Increment current in preparation for next iteration. If next-value
+		 * computation overflows, this is the final result.
+		 */
+		if (pg_add_s32_overflow(fctx->current, fctx->step, &fctx->current))
 			fctx->step = 0;
 
 		/* do when there is more left to send */

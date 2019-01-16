@@ -4,7 +4,7 @@
  *	  routines for managing the buffer pool's replacement strategy.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -166,6 +166,23 @@ ClockSweepTick(void)
 		}
 	}
 	return victim;
+}
+
+/*
+ * have_free_buffer -- a lockless check to see if there is a free buffer in
+ *					   buffer pool.
+ *
+ * If the result is true that will become stale once free buffers are moved out
+ * by other operations, so the caller who strictly want to use a free buffer
+ * should not call this.
+ */
+bool
+have_free_buffer()
+{
+	if (StrategyControl->firstFreeBuffer >= 0)
+		return true;
+	else
+		return false;
 }
 
 /*

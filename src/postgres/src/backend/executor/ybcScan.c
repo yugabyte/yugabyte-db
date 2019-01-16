@@ -343,8 +343,7 @@ YbScanState ybcBeginScan(Relation rel, Relation index, List *target_attrs, List 
 		int32 attr_typmod = 0;
 		if (target->resno > 0)
 		{
-			Form_pg_attribute attr;
-			attr = ybc_state->tupleDesc->attrs[target->resno - 1];
+			Form_pg_attribute attr = TupleDescAttr(ybc_state->tupleDesc, target->resno - 1);
 			/* Ignore dropped attributes */
 			if (attr->attisdropped)
 			{

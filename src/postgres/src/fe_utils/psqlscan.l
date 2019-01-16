@@ -23,7 +23,7 @@
  *
  * See psqlscan_int.h for additional commentary.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -70,6 +70,8 @@ typedef int YYSTYPE;
  */
 extern int	psql_yyget_column(yyscan_t yyscanner);
 extern void psql_yyset_column(int column_no, yyscan_t yyscanner);
+
+/* LCOV_EXCL_START */
 
 %}
 
@@ -296,6 +298,15 @@ identifier		{ident_start}{ident_cont}*
 typecast		"::"
 dot_dot			\.\.
 colon_equals	":="
+
+/*
+ * These operator-like tokens (unlike the above ones) also match the {operator}
+ * rule, which means that they might be overridden by a longer match if they
+ * are followed by a comment start or a + or - character. Accordingly, if you
+ * add to this list, you must also add corresponding code to the {operator}
+ * block to return the correct token in such cases. (This is not needed in
+ * psqlscan.l since the token value is ignored there.)
+ */
 equals_greater	"=>"
 less_equals		"<="
 greater_equals	">="
@@ -745,9 +756,13 @@ other			.
 											 PQUOTE_SQL_IDENT);
 				}
 
+:\{\?{variable_char}+\}	{
+					psqlscan_test_variable(cur_state, yytext, yyleng);
+				}
+
 	/*
 	 * These rules just avoid the need for scanner backup if one of the
-	 * two rules above fails to match completely.
+	 * three rules above fails to match completely.
 	 */
 
 :'{variable_char}*	{
@@ -757,6 +772,17 @@ other			.
 				}
 
 :\"{variable_char}*	{
+					/* Throw back everything but the colon */
+					yyless(1);
+					ECHO;
+				}
+
+:\{\?{variable_char}*	{
+					/* Throw back everything but the colon */
+					yyless(1);
+					ECHO;
+				}
+:\{	{
 					/* Throw back everything but the colon */
 					yyless(1);
 					ECHO;
@@ -800,20 +826,33 @@ other			.
 					 * to forbid operator names like '?-' that could not be
 					 * sequences of SQL operators.
 					 */
-					while (nchars > 1 &&
-						   (yytext[nchars - 1] == '+' ||
-							yytext[nchars - 1] == '-'))
+					if (nchars > 1 &&
+						(yytext[nchars - 1] == '+' ||
+						 yytext[nchars - 1] == '-'))
 					{
 						int			ic;
 
 						for (ic = nchars - 2; ic >= 0; ic--)
 						{
-							if (strchr("~!@#^&|`?%", yytext[ic]))
+							char c = yytext[ic];
+							if (c == '~' || c == '!' || c == '@' ||
+								c == '#' || c == '^' || c == '&' ||
+								c == '|' || c == '`' || c == '?' ||
+								c == '%')
 								break;
 						}
-						if (ic >= 0)
-							break; /* found a char that makes it OK */
-						nchars--; /* else remove the +/-, and check again */
+						if (ic < 0)
+						{
+							/*
+							 * didn't find a qualifying character, so remove
+							 * all trailing [+-]
+							 */
+							do {
+								nchars--;
+							} while (nchars > 1 &&
+								 (yytext[nchars - 1] == '+' ||
+								  yytext[nchars - 1] == '-'));
+						}
 					}
 
 					if (nchars < yyleng)
@@ -883,6 +922,8 @@ other			.
 				}
 
 %%
+
+/* LCOV_EXCL_STOP */
 
 /*
  * Create a lexer working state struct.
@@ -1440,5 +1481,30 @@ psqlscan_escape_variable(PsqlScanState state, const char *txt, int len,
 	{
 		/* Emit original token as-is */
 		psqlscan_emit(state, txt, len);
+	}
+}
+
+void
+psqlscan_test_variable(PsqlScanState state, const char *txt, int len)
+{
+	char	*varname;
+	char	*value;
+
+	varname = psqlscan_extract_substring(state, txt + 3, len - 4);
+	if (state->callbacks->get_variable)
+		value = state->callbacks->get_variable(varname, PQUOTE_PLAIN,
+											   state->cb_passthrough);
+	else
+		value = NULL;
+	free(varname);
+
+	if (value != NULL)
+	{
+		psqlscan_emit(state, "TRUE", 4);
+		free(value);
+	}
+	else
+	{
+		psqlscan_emit(state, "FALSE", 5);
 	}
 }

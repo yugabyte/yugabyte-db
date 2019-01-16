@@ -5,10 +5,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: PostgreSQL 10\n"
+"Project-Id-Version: PostgreSQL 11\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@postgresql.org\n"
-"POT-Creation-Date: 2018-05-04 23:25+0000\n"
-"PO-Revision-Date: 2018-05-05 09:38-0400\n"
+"POT-Creation-Date: 2018-05-07 00:46+0000\n"
+"PO-Revision-Date: 2018-05-06 21:20-0400\n"
 "Last-Translator: Peter Eisentraut <peter_e@gmx.net>\n"
 "Language-Team: German <peter_e@gmx.net>\n"
 "Language: de\n"
@@ -49,22 +49,22 @@ msgid_plural "(%lu rows)"
 msgstr[0] "(%lu Zeile)"
 msgstr[1] "(%lu Zeilen)"
 
-#: ../../fe_utils/print.c:2913
+#: ../../fe_utils/print.c:2915
 #, c-format
 msgid "Interrupted\n"
 msgstr "Unterbrochen\n"
 
-#: ../../fe_utils/print.c:2977
+#: ../../fe_utils/print.c:2979
 #, c-format
 msgid "Cannot add header to table content: column count of %d exceeded.\n"
 msgstr "Kann keinen weiteren Spaltenkopf zur Tabelle hinzufügen: Spaltenzahl %d überschritten.\n"
 
-#: ../../fe_utils/print.c:3017
+#: ../../fe_utils/print.c:3019
 #, c-format
 msgid "Cannot add cell to table content: total cell count of %d exceeded.\n"
 msgstr "Cann keine weitere Zelle zur Tabelle hinzufügen: Zellengesamtzahl %d überschritten.\n"
 
-#: ../../fe_utils/print.c:3266
+#: ../../fe_utils/print.c:3268
 #, c-format
 msgid "invalid output format (internal error): %d"
 msgstr "ungültiges Ausgabeformat (interner Fehler): %d"

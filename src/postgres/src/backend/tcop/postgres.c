@@ -3,7 +3,7 @@
  * postgres.c
  *	  POSTGRES C Backend Interface
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -42,6 +42,8 @@
 #include "catalog/pg_type.h"
 #include "commands/async.h"
 #include "commands/prepare.h"
+#include "executor/spi.h"
+#include "jit/jit.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "libpq/pqsignal.h"
@@ -145,6 +147,11 @@ static bool doing_extended_query_message = false;
 static bool ignore_till_sync = false;
 
 /*
+ * Flag to keep track of whether statement timeout timer is active.
+ */
+static bool stmt_timeout_active = false;
+
+/*
  * If an unnamed prepared statement exists, it's stored here.
  * We keep it separate from the hashtable kept by commands/prepare.c
  * in order to reduce overhead for short-lived queries.
@@ -160,6 +167,10 @@ static bool UseSemiNewlineNewline = false;	/* -j switch */
 static bool RecoveryConflictPending = false;
 static bool RecoveryConflictRetryable = true;
 static ProcSignalReason RecoveryConflictReason;
+
+/* reused buffer to pass to SendRowDescriptionMessage() */
+static MemoryContext row_description_context = NULL;
+static StringInfoData row_description_buf;
 
 /* ----------------------------------------------------------------
  *		decls for routines only used in this file
@@ -183,6 +194,8 @@ static bool IsTransactionExitStmtList(List *pstmts);
 static bool IsTransactionStmtList(List *pstmts);
 static void drop_unnamed_stmt(void);
 static void log_disconnections(int code, Datum arg);
+static void enable_statement_timeout(void);
+static void disable_statement_timeout(void);
 
 
 /* ----------------------------------------------------------------
@@ -303,7 +316,7 @@ interactive_getc(void)
 
 	c = getc(stdin);
 
-	ProcessClientReadInterrupt(true);
+	ProcessClientReadInterrupt(false);
 
 	return c;
 }
@@ -508,8 +521,9 @@ ReadCommand(StringInfo inBuf)
 /*
  * ProcessClientReadInterrupt() - Process interrupts specific to client reads
  *
- * This is called just after low-level reads. That might be after the read
- * finished successfully, or it was interrupted via interrupt.
+ * This is called just before and after low-level reads.
+ * 'blocked' is true if no data was available to read and we plan to retry,
+ * false if about to read or done reading.
  *
  * Must preserve errno!
  */
@@ -520,23 +534,31 @@ ProcessClientReadInterrupt(bool blocked)
 
 	if (DoingCommandRead)
 	{
-		/* Check for general interrupts that arrived while reading */
+		/* Check for general interrupts that arrived before/while reading */
 		CHECK_FOR_INTERRUPTS();
 
-		/* Process sinval catchup interrupts that happened while reading */
+		/* Process sinval catchup interrupts, if any */
 		if (catchupInterruptPending)
 			ProcessCatchupInterrupt();
 
-		/* Process sinval catchup interrupts that happened while reading */
+		/* Process notify interrupts, if any */
 		if (notifyInterruptPending)
 			ProcessNotifyInterrupt();
 	}
-	else if (ProcDiePending && blocked)
+	else if (ProcDiePending)
 	{
 		/*
-		 * We're dying. It's safe (and sane) to handle that now.
+		 * We're dying.  If there is no data available to read, then it's safe
+		 * (and sane) to handle that now.  If we haven't tried to read yet,
+		 * make sure the process latch is set, so that if there is no data
+		 * then we'll come back here and die.  If we're done reading, also
+		 * make sure the process latch is set, as we might've undesirably
+		 * cleared it while reading.
 		 */
-		CHECK_FOR_INTERRUPTS();
+		if (blocked)
+			CHECK_FOR_INTERRUPTS();
+		else
+			SetLatch(MyLatch);
 	}
 
 	errno = save_errno;
@@ -545,9 +567,9 @@ ProcessClientReadInterrupt(bool blocked)
 /*
  * ProcessClientWriteInterrupt() - Process interrupts specific to client writes
  *
- * This is called just after low-level writes. That might be after the read
- * finished successfully, or it was interrupted via interrupt. 'blocked' tells
- * us whether the
+ * This is called just before and after low-level writes.
+ * 'blocked' is true if no data could be written and we plan to retry,
+ * false if about to write or done writing.
  *
  * Must preserve errno!
  */
@@ -556,25 +578,39 @@ ProcessClientWriteInterrupt(bool blocked)
 {
 	int			save_errno = errno;
 
-	/*
-	 * We only want to process the interrupt here if socket writes are
-	 * blocking to increase the chance to get an error message to the client.
-	 * If we're not blocked there'll soon be a CHECK_FOR_INTERRUPTS(). But if
-	 * we're blocked we'll never get out of that situation if the client has
-	 * died.
-	 */
-	if (ProcDiePending && blocked)
+	if (ProcDiePending)
 	{
 		/*
-		 * We're dying. It's safe (and sane) to handle that now. But we don't
-		 * want to send the client the error message as that a) would possibly
-		 * block again b) would possibly lead to sending an error message to
-		 * the client, while we already started to send something else.
+		 * We're dying.  If it's not possible to write, then we should handle
+		 * that immediately, else a stuck client could indefinitely delay our
+		 * response to the signal.  If we haven't tried to write yet, make
+		 * sure the process latch is set, so that if the write would block
+		 * then we'll come back here and die.  If we're done writing, also
+		 * make sure the process latch is set, as we might've undesirably
+		 * cleared it while writing.
 		 */
-		if (whereToSendOutput == DestRemote)
-			whereToSendOutput = DestNone;
+		if (blocked)
+		{
+			/*
+			 * Don't mess with whereToSendOutput if ProcessInterrupts wouldn't
+			 * do anything.
+			 */
+			if (InterruptHoldoffCount == 0 && CritSectionCount == 0)
+			{
+				/*
+				 * We don't want to send the client the error message, as a)
+				 * that would possibly block again, and b) it would likely
+				 * lead to loss of protocol sync because we may have already
+				 * sent a partial protocol message.
+				 */
+				if (whereToSendOutput == DestRemote)
+					whereToSendOutput = DestNone;
 
-		CHECK_FOR_INTERRUPTS();
+				CHECK_FOR_INTERRUPTS();
+			}
+		}
+		else
+			SetLatch(MyLatch);
 	}
 
 	errno = save_errno;
@@ -884,7 +920,7 @@ exec_simple_query(const char *query_string)
 	ListCell   *parsetree_item;
 	bool		save_log_statement_stats = log_statement_stats;
 	bool		was_logged = false;
-	bool		isTopLevel;
+	bool		use_implicit_block;
 	char		msec_str[32];
 
 	/*
@@ -947,13 +983,14 @@ exec_simple_query(const char *query_string)
 	MemoryContextSwitchTo(oldcontext);
 
 	/*
-	 * We'll tell PortalRun it's a top-level command iff there's exactly one
-	 * raw parsetree.  If more than one, it's effectively a transaction block
-	 * and we want PreventTransactionChain to reject unsafe commands. (Note:
-	 * we're assuming that query rewrite cannot add commands that are
-	 * significant to PreventTransactionChain.)
+	 * For historical reasons, if multiple SQL statements are given in a
+	 * single "simple Query" message, we execute them as a single transaction,
+	 * unless explicit transaction control commands are included to make
+	 * portions of the list be separate transactions.  To represent this
+	 * behavior properly in the transaction machinery, we use an "implicit"
+	 * transaction block.
 	 */
-	isTopLevel = (list_length(parsetree_list) == 1);
+	use_implicit_block = (list_length(parsetree_list) > 1);
 
 	/*
 	 * Run through the raw parsetree(s) and process each one.
@@ -1000,6 +1037,16 @@ exec_simple_query(const char *query_string)
 
 		/* Make sure we are in a transaction command */
 		start_xact_command();
+
+		/*
+		 * If using an implicit transaction block, and we're not already in a
+		 * transaction block, start an implicit block to force this statement
+		 * to be grouped together with any following ones.  (We must do this
+		 * each time through the loop; otherwise, a COMMIT/ROLLBACK in the
+		 * list would cause later statements to not be grouped.)
+		 */
+		if (use_implicit_block)
+			BeginImplicitTransactionBlock();
 
 		/* If we got a cancel signal in parsing or prior command, quit */
 		CHECK_FOR_INTERRUPTS();
@@ -1098,25 +1145,17 @@ exec_simple_query(const char *query_string)
 		 */
 		(void) PortalRun(portal,
 						 FETCH_ALL,
-						 isTopLevel,
+						 true,	/* always top level */
 						 true,
 						 receiver,
 						 receiver,
 						 completionTag);
 
-		(*receiver->rDestroy) (receiver);
+		receiver->rDestroy(receiver);
 
 		PortalDrop(portal, false);
 
-		if (IsA(parsetree->stmt, TransactionStmt))
-		{
-			/*
-			 * If this was a transaction control statement, commit it. We will
-			 * start a new xact command for the next command (if any).
-			 */
-			finish_xact_command();
-		}
-		else if (lnext(parsetree_item) == NULL)
+		if (lnext(parsetree_item) == NULL)
 		{
 			/*
 			 * If this is the last parsetree of the query string, close down
@@ -1124,9 +1163,18 @@ exec_simple_query(const char *query_string)
 			 * is so that any end-of-transaction errors are reported before
 			 * the command-complete message is issued, to avoid confusing
 			 * clients who will expect either a command-complete message or an
-			 * error, not one and then the other.  But for compatibility with
-			 * historical Postgres behavior, we do not force a transaction
-			 * boundary between queries appearing in a single query string.
+			 * error, not one and then the other.  Also, if we're using an
+			 * implicit transaction block, we must close that out first.
+			 */
+			if (use_implicit_block)
+				EndImplicitTransactionBlock();
+			finish_xact_command();
+		}
+		else if (IsA(parsetree->stmt, TransactionStmt))
+		{
+			/*
+			 * If this was a transaction control statement, commit it. We will
+			 * start a new xact command for the next command.
 			 */
 			finish_xact_command();
 		}
@@ -1149,7 +1197,9 @@ exec_simple_query(const char *query_string)
 	}							/* end loop over parsetrees */
 
 	/*
-	 * Close down transaction statement, if one is open.
+	 * Close down transaction statement, if one is open.  (This will only do
+	 * something if the parsetree list was empty; otherwise the last loop
+	 * iteration already did it.)
 	 */
 	finish_xact_command();
 
@@ -1229,7 +1279,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	/*
 	 * Start up a transaction command so we can run parse analysis etc. (Note
 	 * that this will normally change current memory context.) Nothing happens
-	 * if we are already in one.
+	 * if we are already in one.  This also arms the statement timeout if
+	 * necessary.
 	 */
 	start_xact_command();
 
@@ -1517,7 +1568,8 @@ exec_bind_message(StringInfo input_message)
 	/*
 	 * Start up a transaction command so we can call functions etc. (Note that
 	 * this will normally change current memory context.) Nothing happens if
-	 * we are already in one.
+	 * we are already in one.  This also arms the statement timeout if
+	 * necessary.
 	 */
 	start_xact_command();
 
@@ -1583,7 +1635,7 @@ exec_bind_message(StringInfo input_message)
 	 * don't want a failure to occur between GetCachedPlan and
 	 * PortalDefineQuery; that would result in leaking our plancache refcount.
 	 */
-	oldContext = MemoryContextSwitchTo(PortalGetHeapMemory(portal));
+	oldContext = MemoryContextSwitchTo(portal->portalContext);
 
 	/* Copy the plan's query string into the portal */
 	query_string = pstrdup(psrc->query_string);
@@ -1621,10 +1673,11 @@ exec_bind_message(StringInfo input_message)
 		/* we have static list of params, so no hooks needed */
 		params->paramFetch = NULL;
 		params->paramFetchArg = NULL;
+		params->paramCompile = NULL;
+		params->paramCompileArg = NULL;
 		params->parserSetup = NULL;
 		params->parserSetupArg = NULL;
 		params->numParams = numParams;
-		params->paramMask = NULL;
 
 		for (paramno = 0; paramno < numParams; paramno++)
 		{
@@ -1990,7 +2043,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 						  receiver,
 						  completionTag);
 
-	(*receiver->rDestroy) (receiver);
+	receiver->rDestroy(receiver);
 
 	if (completed)
 	{
@@ -2009,6 +2062,9 @@ exec_execute_message(const char *portal_name, long max_rows)
 			 * those that start or end a transaction block.
 			 */
 			CommandCounterIncrement();
+
+			/* full command has been executed, reset timeout */
+			disable_statement_timeout();
 		}
 
 		/* Send appropriate CommandComplete to client */
@@ -2094,7 +2150,7 @@ check_log_statement(List *stmt_list)
  * If logging is needed, the duration in msec is formatted into msec_str[],
  * which must be a 32-byte buffer.
  *
- * was_logged should be TRUE if caller already logged query details (this
+ * was_logged should be true if caller already logged query details (this
  * essentially prevents 2 from being returned).
  */
 int
@@ -2182,6 +2238,9 @@ errdetail_params(ParamListInfo params)
 		StringInfoData param_str;
 		MemoryContext oldcontext;
 		int			paramno;
+
+		/* This code doesn't support dynamic param lists */
+		Assert(params->paramFetch == NULL);
 
 		/* Make sure any trash is generated in MessageContext */
 		oldcontext = MemoryContextSwitchTo(MessageContext);
@@ -2291,7 +2350,6 @@ static void
 exec_describe_statement_message(const char *stmt_name)
 {
 	CachedPlanSource *psrc;
-	StringInfoData buf;
 	int			i;
 
 	/*
@@ -2347,16 +2405,17 @@ exec_describe_statement_message(const char *stmt_name)
 	/*
 	 * First describe the parameters...
 	 */
-	pq_beginmessage(&buf, 't'); /* parameter description message type */
-	pq_sendint(&buf, psrc->num_params, 2);
+	pq_beginmessage_reuse(&row_description_buf, 't');	/* parameter description
+														 * message type */
+	pq_sendint16(&row_description_buf, psrc->num_params);
 
 	for (i = 0; i < psrc->num_params; i++)
 	{
 		Oid			ptype = psrc->param_types[i];
 
-		pq_sendint(&buf, (int) ptype, 4);
+		pq_sendint32(&row_description_buf, (int) ptype);
 	}
-	pq_endmessage(&buf);
+	pq_endmessage_reuse(&row_description_buf);
 
 	/*
 	 * Next send RowDescription or NoData to describe the result...
@@ -2368,7 +2427,10 @@ exec_describe_statement_message(const char *stmt_name)
 		/* Get the plan's primary targetlist */
 		tlist = CachedPlanGetTargetList(psrc, NULL);
 
-		SendRowDescriptionMessage(psrc->resultDesc, tlist, NULL);
+		SendRowDescriptionMessage(&row_description_buf,
+								  psrc->resultDesc,
+								  tlist,
+								  NULL);
 	}
 	else
 		pq_putemptymessage('n');	/* NoData */
@@ -2420,7 +2482,8 @@ exec_describe_portal_message(const char *portal_name)
 		return;					/* can't actually do anything... */
 
 	if (portal->tupDesc)
-		SendRowDescriptionMessage(portal->tupDesc,
+		SendRowDescriptionMessage(&row_description_buf,
+								  portal->tupDesc,
 								  FetchPortalTargetList(portal),
 								  portal->formats);
 	else
@@ -2438,25 +2501,27 @@ start_xact_command(void)
 	{
 		StartTransactionCommand();
 
-		/* Set statement timeout running, if any */
-		/* NB: this mustn't be enabled until we are within an xact */
-		if (StatementTimeout > 0)
-			enable_timeout_after(STATEMENT_TIMEOUT, StatementTimeout);
-		else
-			disable_timeout(STATEMENT_TIMEOUT, false);
-
 		xact_started = true;
 	}
+
+	/*
+	 * Start statement timeout if necessary.  Note that this'll intentionally
+	 * not reset the clock on an already started timeout, to avoid the timing
+	 * overhead when start_xact_command() is invoked repeatedly, without an
+	 * interceding finish_xact_command() (e.g. parse/bind/execute).  If that's
+	 * not desired, the timeout has to be disabled explicitly.
+	 */
+	enable_statement_timeout();
 }
 
 static void
 finish_xact_command(void)
 {
+	/* cancel active statement timeout after each command */
+	disable_statement_timeout();
+
 	if (xact_started)
 	{
-		/* Cancel any active statement timeout before committing */
-		disable_timeout(STATEMENT_TIMEOUT, false);
-
 		CommitTransactionCommand();
 
 #ifdef MEMORY_CONTEXT_CHECKING
@@ -2580,6 +2645,16 @@ quickdie(SIGNAL_ARGS)
 		whereToSendOutput = DestNone;
 
 	/*
+	 * Notify the client before exiting, to give a clue on what happened.
+	 *
+	 * It's dubious to call ereport() from a signal handler.  It is certainly
+	 * not async-signal safe.  But it seems better to try, than to disconnect
+	 * abruptly and leave the client wondering what happened.  It's remotely
+	 * possible that we crash or hang while trying to send the message, but
+	 * receiving a SIGQUIT is a sign that something has already gone badly
+	 * wrong, so there's not much to lose.  Assuming the postmaster is still
+	 * running, it will SIGKILL us soon if we get stuck for some reason.
+	 *
 	 * Ideally this should be ereport(FATAL), but then we'd not get control
 	 * back...
 	 */
@@ -2593,29 +2668,25 @@ quickdie(SIGNAL_ARGS)
 			 errhint("In a moment you should be able to reconnect to the"
 					 " database and repeat your command.")));
 
-	/*
-	 * We DO NOT want to run proc_exit() callbacks -- we're here because
-	 * shared memory may be corrupted, so we don't want to try to clean up our
-	 * transaction.  Just nail the windows shut and get out of town.  Now that
-	 * there's an atexit callback to prevent third-party code from breaking
-	 * things by calling exit() directly, we have to reset the callbacks
-	 * explicitly to make this work as intended.
-	 */
-	on_exit_reset();
-
 	if (IsYugaByteEnabled()) {
 		YBOnPostgresBackendShutdown();
 	}
 
 	/*
-	 * Note we do exit(2) not exit(0).  This is to force the postmaster into a
-	 * system reset cycle if some idiot DBA sends a manual SIGQUIT to a random
+	 * We DO NOT want to run proc_exit() or atexit() callbacks -- we're here
+	 * because shared memory may be corrupted, so we don't want to try to
+	 * clean up our transaction.  Just nail the windows shut and get out of
+	 * town.  The callbacks wouldn't be safe to run from a signal handler,
+	 * anyway.
+	 *
+	 * Note we do _exit(2) not _exit(0).  This is to force the postmaster into
+	 * a system reset cycle if someone sends a manual SIGQUIT to a random
 	 * backend.  This is necessary precisely because we don't clean up our
 	 * shared memory state.  (The "dead man switch" mechanism in pmsignal.c
 	 * should ensure the postmaster sees this as a crash, too, but no harm in
 	 * being doubly sure.)
 	 */
-	exit(2);
+	_exit(2);
 }
 
 /*
@@ -2735,7 +2806,8 @@ RecoveryConflictInterrupt(ProcSignalReason reason)
 				if (!IsWaitingForLock())
 					return;
 
-				/* Intentional drop through to check wait for pin */
+				/* Intentional fall through to check wait for pin */
+				/* FALLTHROUGH */
 
 			case PROCSIG_RECOVERY_CONFLICT_BUFFERPIN:
 
@@ -2748,7 +2820,8 @@ RecoveryConflictInterrupt(ProcSignalReason reason)
 
 				MyProc->recoveryConflictPending = true;
 
-				/* Intentional drop through to error handling */
+				/* Intentional fall through to error handling */
+				/* FALLTHROUGH */
 
 			case PROCSIG_RECOVERY_CONFLICT_LOCK:
 			case PROCSIG_RECOVERY_CONFLICT_TABLESPACE:
@@ -2792,7 +2865,8 @@ RecoveryConflictInterrupt(ProcSignalReason reason)
 					break;
 				}
 
-				/* Intentional drop through to session cancel */
+				/* Intentional fall through to session cancel */
+				/* FALLTHROUGH */
 
 			case PROCSIG_RECOVERY_CONFLICT_DATABASE:
 				RecoveryConflictPending = true;
@@ -2930,14 +3004,14 @@ ProcessInterrupts(void)
 	/*
 	 * Don't allow query cancel interrupts while reading input from the
 	 * client, because we might lose sync in the FE/BE protocol.  (Die
-	 * interrupts are OK, because we won't read any further messages from
-	 * the client in that case.)
+	 * interrupts are OK, because we won't read any further messages from the
+	 * client in that case.)
 	 */
 	if (QueryCancelPending && QueryCancelHoldoffCount != 0)
 	{
 		/*
-		 * Re-arm InterruptPending so that we process the cancel request
-		 * as soon as we're done reading the message.
+		 * Re-arm InterruptPending so that we process the cancel request as
+		 * soon as we're done reading the message.
 		 */
 		InterruptPending = true;
 	}
@@ -3809,8 +3883,7 @@ PostgresMain(int argc, char *argv[],
 		 * Validate we have been given a reasonable-looking DataDir (if under
 		 * postmaster, assume postmaster did this already).
 		 */
-		Assert(DataDir);
-		ValidatePgVersion(DataDir);
+		checkDataDir();
 
 		/* Change into DataDir (if under postmaster, was done already) */
 		ChangeToDataDir();
@@ -3819,6 +3892,9 @@ PostgresMain(int argc, char *argv[],
 		 * Create lockfile for data directory.
 		 */
 		CreateDataDirLockFile(false);
+
+		/* read control file (error checking and contains config ) */
+		LocalProcessControlFile(false);
 
 		/* Initialize MaxBackends (if under postmaster, was done already) */
 		InitializeMaxBackends();
@@ -3850,7 +3926,7 @@ PostgresMain(int argc, char *argv[],
 	 * it inside InitPostgres() instead.  In particular, anything that
 	 * involves database access should be there, not here.
 	 */
-	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL);
+	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, false);
 
 	/*
 	 * If the PostmasterContext is still around, recycle the space; we don't
@@ -3898,8 +3974,8 @@ PostgresMain(int argc, char *argv[],
 		StringInfoData buf;
 
 		pq_beginmessage(&buf, 'K');
-		pq_sendint(&buf, (int32) MyProcPid, sizeof(int32));
-		pq_sendint(&buf, (int32) MyCancelKey, sizeof(int32));
+		pq_sendint32(&buf, (int32) MyProcPid);
+		pq_sendint32(&buf, (int32) MyCancelKey);
 		pq_endmessage(&buf);
 		/* Need not flush since ReadyForQuery will do it. */
 	}
@@ -3917,6 +3993,19 @@ PostgresMain(int argc, char *argv[],
 	MessageContext = AllocSetContextCreate(TopMemoryContext,
 										   "MessageContext",
 										   ALLOCSET_DEFAULT_SIZES);
+
+	/*
+	 * Create memory context and buffer used for RowDescription messages. As
+	 * SendRowDescriptionMessage(), via exec_describe_statement_message(), is
+	 * frequently executed for ever single statement, we don't want to
+	 * allocate a separate buffer every time.
+	 */
+	row_description_context = AllocSetContextCreate(TopMemoryContext,
+													"RowDescriptionContext",
+													ALLOCSET_DEFAULT_SIZES);
+	MemoryContextSwitchTo(row_description_context);
+	initStringInfo(&row_description_buf);
+	MemoryContextSwitchTo(TopMemoryContext);
 
 	/*
 	 * Remember stand-alone backend startup time
@@ -3975,6 +4064,7 @@ PostgresMain(int argc, char *argv[],
 		 */
 		disable_all_timeouts(false);
 		QueryCancelPending = false; /* second to avoid race condition */
+		stmt_timeout_active = false;
 
 		/* Not reading from the client anymore. */
 		DoingCommandRead = false;
@@ -3999,6 +4089,9 @@ PostgresMain(int argc, char *argv[],
 		if (am_walsender)
 			WalSndErrorCleanup();
 
+		PortalErrorCleanup();
+		SPICleanup();
+
 		/*
 		 * We can't release replication slots inside AbortTransaction() as we
 		 * need to be able to start and abort transactions while having a slot
@@ -4011,6 +4104,8 @@ PostgresMain(int argc, char *argv[],
 
 		/* We also want to cleanup temporary slots on error. */
 		ReplicationSlotCleanup();
+
+		jit_reset_after_error();
 
 		/*
 		 * Now return to normal top-level context and clear ErrorContext for
@@ -4408,7 +4503,7 @@ PostgresMain(int argc, char *argv[],
 
 							/* Set portal data */
 							MemoryContext oldContext = MemoryContextSwitchTo(
-									PortalGetHeapMemory(portal));
+									portal->portalContext);
 							char          *stmt_name;
 							if (portal_name[0])
 								stmt_name = pstrdup(portal_name);
@@ -4717,11 +4812,8 @@ ShowUsage(const char *title)
 	}
 
 	/*
-	 * the only stats we don't show here are for memory usage -- i can't
-	 * figure out how to interpret the relevant fields in the rusage struct,
-	 * and they change names across o/s platforms, anyway. if you can figure
-	 * out what the entries mean, you can somehow extract resident set size,
-	 * shared text size, and unshared data and stack sizes.
+	 * The only stats we don't show here are ixrss, idrss, isrss.  It takes
+	 * some work to interpret them, and most platforms don't fill them in.
 	 */
 	initStringInfo(&str);
 
@@ -4741,6 +4833,16 @@ ShowUsage(const char *title)
 					 (long) sys.tv_sec,
 					 (long) sys.tv_usec);
 #if defined(HAVE_GETRUSAGE)
+	appendStringInfo(&str,
+					 "!\t%ld kB max resident size\n",
+#if defined(__darwin__)
+	/* in bytes on macOS */
+					 r.ru_maxrss / 1024
+#else
+	/* in kilobytes on most other platforms */
+					 r.ru_maxrss
+#endif
+		);
 	appendStringInfo(&str,
 					 "!\t%ld/%ld [%ld/%ld] filesystem blocks in/out\n",
 					 r.ru_inblock - Save_r.ru_inblock,
@@ -4809,4 +4911,43 @@ log_disconnections(int code, Datum arg)
 					hours, minutes, seconds, msecs,
 					port->user_name, port->database_name, port->remote_host,
 					port->remote_port[0] ? " port=" : "", port->remote_port)));
+}
+
+/*
+ * Start statement timeout timer, if enabled.
+ *
+ * If there's already a timeout running, don't restart the timer.  That
+ * enables compromises between accuracy of timeouts and cost of starting a
+ * timeout.
+ */
+static void
+enable_statement_timeout(void)
+{
+	/* must be within an xact */
+	Assert(xact_started);
+
+	if (StatementTimeout > 0)
+	{
+		if (!stmt_timeout_active)
+		{
+			enable_timeout_after(STATEMENT_TIMEOUT, StatementTimeout);
+			stmt_timeout_active = true;
+		}
+	}
+	else
+		disable_timeout(STATEMENT_TIMEOUT, false);
+}
+
+/*
+ * Disable statement timeout, if active.
+ */
+static void
+disable_statement_timeout(void)
+{
+	if (stmt_timeout_active)
+	{
+		disable_timeout(STATEMENT_TIMEOUT, false);
+
+		stmt_timeout_active = false;
+	}
 }

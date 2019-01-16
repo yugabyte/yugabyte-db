@@ -5,7 +5,7 @@
  *	  wherein you authenticate a user by seeing what IP address the system
  *	  says he comes from and choosing authentication method based on it).
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -144,8 +144,8 @@ static List *tokenize_inc_file(List *tokens, const char *outer_filename,
 				  const char *inc_filename, int elevel, char **err_msg);
 static bool parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 				   int elevel, char **err_msg);
-static bool verify_option_list_length(List *options, char *optionname,
-						  List *masters, char *mastername, int line_num);
+static bool verify_option_list_length(List *options, const char *optionname,
+						  List *masters, const char *mastername, int line_num);
 static ArrayType *gethba_options(HbaLine *hba);
 static void fill_hba_line(Tuplestorestate *tuple_store, TupleDesc tupdesc,
 			  int lineno, HbaLine *hba, const char *err_msg);
@@ -187,9 +187,9 @@ pg_isblank(const char c)
  * set *err_msg to a string describing the error.  Currently the only
  * possible error is token too long for buf.
  *
- * If successful: store null-terminated token at *buf and return TRUE.
- * If no more tokens on line: set *buf = '\0' and return FALSE.
- * If error: fill buf with truncated or misformatted token and return FALSE.
+ * If successful: store null-terminated token at *buf and return true.
+ * If no more tokens on line: set *buf = '\0' and return false.
+ * If error: fill buf with truncated or misformatted token and return false.
  */
 static bool
 next_token(char **lineptr, char *buf, int bufsz,
@@ -1505,22 +1505,24 @@ parse_hba_line(TokenizedLine *tok_line, int elevel)
 		/*
 		 * LDAP can operate in two modes: either with a direct bind, using
 		 * ldapprefix and ldapsuffix, or using a search+bind, using
-		 * ldapbasedn, ldapbinddn, ldapbindpasswd and ldapsearchattribute.
-		 * Disallow mixing these parameters.
+		 * ldapbasedn, ldapbinddn, ldapbindpasswd and one of
+		 * ldapsearchattribute or ldapsearchfilter.  Disallow mixing these
+		 * parameters.
 		 */
 		if (parsedline->ldapprefix || parsedline->ldapsuffix)
 		{
 			if (parsedline->ldapbasedn ||
 				parsedline->ldapbinddn ||
 				parsedline->ldapbindpasswd ||
-				parsedline->ldapsearchattribute)
+				parsedline->ldapsearchattribute ||
+				parsedline->ldapsearchfilter)
 			{
 				ereport(elevel,
 						(errcode(ERRCODE_CONFIG_FILE_ERROR),
-						 errmsg("cannot use ldapbasedn, ldapbinddn, ldapbindpasswd, ldapsearchattribute, or ldapurl together with ldapprefix"),
+						 errmsg("cannot use ldapbasedn, ldapbinddn, ldapbindpasswd, ldapsearchattribute, ldapsearchfilter, or ldapurl together with ldapprefix"),
 						 errcontext("line %d of configuration file \"%s\"",
 									line_num, HbaFileName)));
-				*err_msg = "cannot use ldapbasedn, ldapbinddn, ldapbindpasswd, ldapsearchattribute, or ldapurl together with ldapprefix";
+				*err_msg = "cannot use ldapbasedn, ldapbinddn, ldapbindpasswd, ldapsearchattribute, ldapsearchfilter, or ldapurl together with ldapprefix";
 				return NULL;
 			}
 		}
@@ -1532,6 +1534,22 @@ parse_hba_line(TokenizedLine *tok_line, int elevel)
 					 errcontext("line %d of configuration file \"%s\"",
 								line_num, HbaFileName)));
 			*err_msg = "authentication method \"ldap\" requires argument \"ldapbasedn\", \"ldapprefix\", or \"ldapsuffix\" to be set";
+			return NULL;
+		}
+
+		/*
+		 * When using search+bind, you can either use a simple attribute
+		 * (defaulting to "uid") or a fully custom search filter.  You can't
+		 * do both.
+		 */
+		if (parsedline->ldapsearchattribute && parsedline->ldapsearchfilter)
+		{
+			ereport(elevel,
+					(errcode(ERRCODE_CONFIG_FILE_ERROR),
+					 errmsg("cannot use ldapsearchattribute together with ldapsearchfilter"),
+					 errcontext("line %d of configuration file \"%s\"",
+								line_num, HbaFileName)));
+			*err_msg = "cannot use ldapsearchattribute together with ldapsearchfilter";
 			return NULL;
 		}
 	}
@@ -1599,7 +1617,7 @@ parse_hba_line(TokenizedLine *tok_line, int elevel)
 
 
 static bool
-verify_option_list_length(List *options, char *optionname, List *masters, char *mastername, int line_num)
+verify_option_list_length(List *options, const char *optionname, List *masters, const char *mastername, int line_num)
 {
 	if (list_length(options) == 0 ||
 		list_length(options) == 1 ||
@@ -1710,7 +1728,8 @@ parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 			return false;
 		}
 
-		if (strcmp(urldata->lud_scheme, "ldap") != 0)
+		if (strcmp(urldata->lud_scheme, "ldap") != 0 &&
+			strcmp(urldata->lud_scheme, "ldaps") != 0)
 		{
 			ereport(elevel,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
@@ -1721,6 +1740,8 @@ parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 			return false;
 		}
 
+		if (urldata->lud_scheme)
+			hbaline->ldapscheme = pstrdup(urldata->lud_scheme);
 		if (urldata->lud_host)
 			hbaline->ldapserver = pstrdup(urldata->lud_host);
 		hbaline->ldapport = urldata->lud_port;
@@ -1731,14 +1752,7 @@ parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 			hbaline->ldapsearchattribute = pstrdup(urldata->lud_attrs[0]);	/* only use first one */
 		hbaline->ldapscope = urldata->lud_scope;
 		if (urldata->lud_filter)
-		{
-			ereport(elevel,
-					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-					 errmsg("filters not supported in LDAP URLs")));
-			*err_msg = "filters not supported in LDAP URLs";
-			ldap_free_urldesc(urldata);
-			return false;
-		}
+			hbaline->ldapsearchfilter = pstrdup(urldata->lud_filter);
 		ldap_free_urldesc(urldata);
 #else							/* not OpenLDAP */
 		ereport(elevel,
@@ -1754,6 +1768,17 @@ parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 			hbaline->ldaptls = true;
 		else
 			hbaline->ldaptls = false;
+	}
+	else if (strcmp(name, "ldapscheme") == 0)
+	{
+		REQUIRE_AUTH_OPTION(uaLDAP, "ldapscheme", "ldap");
+		if (strcmp(val, "ldap") != 0 && strcmp(val, "ldaps") != 0)
+			ereport(elevel,
+					(errcode(ERRCODE_CONFIG_FILE_ERROR),
+					 errmsg("invalid ldapscheme value: \"%s\"", val),
+					 errcontext("line %d of configuration file \"%s\"",
+								line_num, HbaFileName)));
+		hbaline->ldapscheme = pstrdup(val);
 	}
 	else if (strcmp(name, "ldapserver") == 0)
 	{
@@ -1789,6 +1814,11 @@ parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 	{
 		REQUIRE_AUTH_OPTION(uaLDAP, "ldapsearchattribute", "ldap");
 		hbaline->ldapsearchattribute = pstrdup(val);
+	}
+	else if (strcmp(name, "ldapsearchfilter") == 0)
+	{
+		REQUIRE_AUTH_OPTION(uaLDAP, "ldapsearchfilter", "ldap");
+		hbaline->ldapsearchfilter = pstrdup(val);
 	}
 	else if (strcmp(name, "ldapbasedn") == 0)
 	{
@@ -2188,10 +2218,12 @@ load_hba(void)
 /*
  * This macro specifies the maximum number of authentication options
  * that are possible with any given authentication method that is supported.
- * Currently LDAP supports 10, so the macro value is well above the most any
- * method needs.
+ * Currently LDAP supports 11, and there are 3 that are not dependent on
+ * the auth method here.  It may not actually be possible to set all of them
+ * at the same time, but we'll set the macro value high enough to be
+ * conservative and avoid warnings from static analysis tools.
  */
-#define MAX_HBA_OPTIONS 12
+#define MAX_HBA_OPTIONS 14
 
 /*
  * Create a text array listing the options specified in the HBA line.
@@ -2268,6 +2300,11 @@ gethba_options(HbaLine *hba)
 				CStringGetTextDatum(psprintf("ldapsearchattribute=%s",
 											 hba->ldapsearchattribute));
 
+		if (hba->ldapsearchfilter)
+			options[noptions++] =
+				CStringGetTextDatum(psprintf("ldapsearchfilter=%s",
+											 hba->ldapsearchfilter));
+
 		if (hba->ldapscope)
 			options[noptions++] =
 				CStringGetTextDatum(psprintf("ldapscope=%d", hba->ldapscope));
@@ -2292,6 +2329,7 @@ gethba_options(HbaLine *hba)
 				CStringGetTextDatum(psprintf("radiusports=%s", hba->radiusports_s));
 	}
 
+	/* If you add more options, consider increasing MAX_HBA_OPTIONS. */
 	Assert(noptions <= MAX_HBA_OPTIONS);
 
 	if (noptions > 0)

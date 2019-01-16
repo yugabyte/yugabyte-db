@@ -24,12 +24,14 @@ non-ASCII characters            find using grep -P '[\x80-\xFF]'
         one page:      http://www.zipcon.net/~swhite/docs/computers/browsers/entities_page.html
         other lists:   http://www.zipcon.net/~swhite/docs/computers/browsers/entities.html
                        http://www.zipcon.net/~swhite/docs/computers/browsers/entities_page.html
-                       http://en.wikipedia.org/wiki/List_of_XML_and_HTML_character_entity_references
+                       https://en.wikipedia.org/wiki/List_of_XML_and_HTML_character_entity_references
 
-        we cannot use UTF8 because SGML Docbook does not support it
+        We cannot use UTF8 because back branches still use SGML Docbook,
+        which does not support it.  Also, rendering engines have to
+        support the referenced characters.
 
-        do not use numeric _UTF_ numeric character escapes (&#nnn;),
-        we can only use Latin1
+        Do not use numeric _UTF_ numeric character escapes (&#nnn;),
+        we can only use Latin1.
 
         Example: Alvaro Herrera is &Aacute;lvaro Herrera
 
@@ -44,7 +46,7 @@ For new features, add links to the documentation sections.
 
   <para>
    The release notes contain the significant changes in each
-   <productname>PostgreSQL</> release, with major features and migration
+   <productname>PostgreSQL</productname> release, with major features and migration
    issues listed at the top.  The release notes do not contain changes
    that affect only a few users or changes that are internal and therefore not
    user-visible.  For example, the optimizer is improved in almost every
@@ -56,9 +58,9 @@ For new features, add links to the documentation sections.
    A complete list of changes for each release can be obtained by
    viewing the <link linkend="git">Git</link> logs for each release.
    The <ulink
-   url="https://archives.postgresql.org/pgsql-committers/"><literal>pgsql-committers</literal>
+   url="https://www.postgresql.org/list/pgsql-committers/"><literal>pgsql-committers</literal>
    email list</ulink> records all source code changes as well.  There is also
-   a <ulink url="https://git.postgresql.org/gitweb?p=postgresql.git;a=summary">web
+   a <ulink url="https://git.postgresql.org/gitweb/?p=postgresql.git;a=summary">web
    interface</ulink> that shows changes to specific files.
   </para>
 
@@ -69,25 +71,81 @@ For new features, add links to the documentation sections.
   </para>
 
 <!--
-  To add a new major-release series, add an entry here and in filelist.sgml.
+  When beginning a new major-release series, create a new release-NN.sgml
+  file, removing the previous one, and change the &-reference here.
+  Don't forget to update filelist.sgml.  Also, add a link to the on-line
+  documentation for the newly forked-off branch in the list below.
 
-  The reason for splitting the release notes this way is so that appropriate
-  subsets can easily be copied into back branches.
+  The reason for keeping each branch's release notes in a differently-named
+  file is to reduce confusion when preparing minor-release updates.
+  All the active branches have to be edited concurrently when doing that.
 -->
-&release-10;
-&release-9.6;
-&release-9.5;
-&release-9.4;
-&release-9.3;
-&release-9.2;
-&release-9.1;
-&release-9.0;
-&release-8.4;
-&release-8.3;
-&release-8.2;
-&release-8.1;
-&release-8.0;
-&release-7.4;
-&release-old;
+
+&release-11;
+
+ <sect1 id="release-prior">
+  <title>Prior Releases</title>
+
+  <para>
+   Release notes for prior release branches can be found on the
+   <ulink url="https://www.postgresql.org/"><productname>PostgreSQL</productname></ulink>
+   web site.  At the time of release of version 11,
+   these were the supported prior release branches:
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      <productname>PostgreSQL</productname> 10:
+      <ulink url="https://www.postgresql.org/docs/10/release.html">
+       <literal>https://www.postgresql.org/docs/10/release.html</literal>
+      </ulink>
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <productname>PostgreSQL</productname> 9.6:
+      <ulink url="https://www.postgresql.org/docs/9.6/release.html">
+       <literal>https://www.postgresql.org/docs/9.6/release.html</literal>
+      </ulink>
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <productname>PostgreSQL</productname> 9.5:
+      <ulink url="https://www.postgresql.org/docs/9.5/release.html">
+       <literal>https://www.postgresql.org/docs/9.5/release.html</literal>
+      </ulink>
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <productname>PostgreSQL</productname> 9.4:
+      <ulink url="https://www.postgresql.org/docs/9.4/release.html">
+       <literal>https://www.postgresql.org/docs/9.4/release.html</literal>
+      </ulink>
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <productname>PostgreSQL</productname> 9.3:
+      <ulink url="https://www.postgresql.org/docs/9.3/release.html">
+       <literal>https://www.postgresql.org/docs/9.3/release.html</literal>
+      </ulink>
+     </para>
+    </listitem>
+   </itemizedlist>
+  </para>
+
+  <para>
+   Release notes for older release branches can be found at
+   <ulink url="https://www.postgresql.org/docs/manuals/archive/">
+    <literal>https://www.postgresql.org/docs/manuals/archive/</literal>
+   </ulink>
+  </para>
+ </sect1>
 
 </appendix>

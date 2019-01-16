@@ -3,7 +3,7 @@
  * parse_agg.c
  *	  handle aggregates and window functions in parser
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,7 +15,7 @@
 #include "postgres.h"
 
 #include "catalog/pg_aggregate.h"
-#include "catalog/pg_constraint_fn.h"
+#include "catalog/pg_constraint.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -420,6 +420,13 @@ check_agglevels_and_constraints(ParseState *pstate, Node *expr)
 				err = _("grouping operations are not allowed in window ROWS");
 
 			break;
+		case EXPR_KIND_WINDOW_FRAME_GROUPS:
+			if (isAgg)
+				err = _("aggregate functions are not allowed in window GROUPS");
+			else
+				err = _("grouping operations are not allowed in window GROUPS");
+
+			break;
 		case EXPR_KIND_SELECT_TARGET:
 			/* okay */
 			break;
@@ -502,9 +509,17 @@ check_agglevels_and_constraints(ParseState *pstate, Node *expr)
 			break;
 		case EXPR_KIND_PARTITION_EXPRESSION:
 			if (isAgg)
-				err = _("aggregate functions are not allowed in partition key expression");
+				err = _("aggregate functions are not allowed in partition key expressions");
 			else
-				err = _("grouping operations are not allowed in partition key expression");
+				err = _("grouping operations are not allowed in partition key expressions");
+
+			break;
+
+		case EXPR_KIND_CALL_ARGUMENT:
+			if (isAgg)
+				err = _("aggregate functions are not allowed in CALL arguments");
+			else
+				err = _("grouping operations are not allowed in CALL arguments");
 
 			break;
 
@@ -827,6 +842,7 @@ transformWindowFuncCall(ParseState *pstate, WindowFunc *wfunc,
 		case EXPR_KIND_WINDOW_ORDER:
 		case EXPR_KIND_WINDOW_FRAME_RANGE:
 		case EXPR_KIND_WINDOW_FRAME_ROWS:
+		case EXPR_KIND_WINDOW_FRAME_GROUPS:
 			err = _("window functions are not allowed in window definitions");
 			break;
 		case EXPR_KIND_SELECT_TARGET:
@@ -881,7 +897,10 @@ transformWindowFuncCall(ParseState *pstate, WindowFunc *wfunc,
 			err = _("window functions are not allowed in trigger WHEN conditions");
 			break;
 		case EXPR_KIND_PARTITION_EXPRESSION:
-			err = _("window functions are not allowed in partition key expression");
+			err = _("window functions are not allowed in partition key expressions");
+			break;
+		case EXPR_KIND_CALL_ARGUMENT:
+			err = _("window functions are not allowed in CALL arguments");
 			break;
 
 			/*

@@ -4,7 +4,7 @@
  *		Common support routines for bin/scripts/
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/scripts/common.c
@@ -356,8 +356,7 @@ appendQualifiedRelation(PQExpBuffer buf, const char *spec,
 		exit(1);
 	}
 	appendPQExpBufferStr(buf,
-						 fmtQualifiedId(PQserverVersion(conn),
-										PQgetvalue(res, 0, 1),
+						 fmtQualifiedId(PQgetvalue(res, 0, 1),
 										PQgetvalue(res, 0, 0)));
 	appendPQExpBufferStr(buf, columns);
 	PQclear(res);

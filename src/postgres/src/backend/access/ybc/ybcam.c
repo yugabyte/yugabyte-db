@@ -125,7 +125,7 @@ setup_ybcscan_from_scankey(Relation relation,
 		if (lhs->varattno > 0)
 		{
 			/* Get the type from the description */
-			lhs->vartype = where_tupdesc->attrs[lhs->varattno - 1]->atttypid;
+			lhs->vartype = TupleDescAttr(where_tupdesc, lhs->varattno - 1)->atttypid;
 		}
 		else
 		{

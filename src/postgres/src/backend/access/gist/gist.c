@@ -4,7 +4,7 @@
  *	  interface routines for the postgres GiST index access method.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -18,6 +18,8 @@
 #include "access/gistscan.h"
 #include "catalog/pg_collation.h"
 #include "miscadmin.h"
+#include "storage/lmgr.h"
+#include "storage/predicate.h"
 #include "nodes/execnodes.h"
 #include "utils/builtins.h"
 #include "utils/index_selfuncs.h"
@@ -36,7 +38,8 @@ static bool gistinserttuples(GISTInsertState *state, GISTInsertStack *stack,
 				 bool unlockbuf, bool unlockleftchild);
 static void gistfinishsplit(GISTInsertState *state, GISTInsertStack *stack,
 				GISTSTATE *giststate, List *splitinfo, bool releasebuf);
-static void gistvacuumpage(Relation rel, Page page, Buffer buffer);
+static void gistvacuumpage(Relation rel, Page page, Buffer buffer,
+			   Relation heapRel);
 
 
 #define ROTATEDIST(d) do { \
@@ -70,8 +73,9 @@ gisthandler(PG_FUNCTION_ARGS)
 	amroutine->amsearchnulls = true;
 	amroutine->amstorage = true;
 	amroutine->amclusterable = true;
-	amroutine->ampredlocks = false;
+	amroutine->ampredlocks = true;
 	amroutine->amcanparallel = false;
+	amroutine->amcaninclude = false;
 	amroutine->amkeytype = InvalidOid;
 
 	amroutine->ambuild = gistbuild;
@@ -169,7 +173,7 @@ gistinsert(Relation r, Datum *values, bool *isnull,
 						 values, isnull, true /* size is currently bogus */ );
 	itup->t_tid = *ht_ctid;
 
-	gistdoinsert(r, itup, 0, giststate);
+	gistdoinsert(r, itup, 0, giststate, heapRel);
 
 	/* cleanup */
 	MemoryContextSwitchTo(oldCxt);
@@ -215,7 +219,8 @@ gistplacetopage(Relation rel, Size freespace, GISTSTATE *giststate,
 				BlockNumber *newblkno,
 				Buffer leftchildbuf,
 				List **splitinfo,
-				bool markfollowright)
+				bool markfollowright,
+				Relation heapRel)
 {
 	BlockNumber blkno = BufferGetBlockNumber(buffer);
 	Page		page = BufferGetPage(buffer);
@@ -256,7 +261,7 @@ gistplacetopage(Relation rel, Size freespace, GISTSTATE *giststate,
 	 */
 	if (is_split && GistPageIsLeaf(page) && GistPageHasGarbage(page))
 	{
-		gistvacuumpage(rel, page, buffer);
+		gistvacuumpage(rel, page, buffer, heapRel);
 		is_split = gistnospace(page, itup, ntup, oldoffnum, freespace);
 	}
 
@@ -337,6 +342,9 @@ gistplacetopage(Relation rel, Size freespace, GISTSTATE *giststate,
 			GISTInitBuffer(ptr->buffer, (is_leaf) ? F_LEAF : 0);
 			ptr->page = BufferGetPage(ptr->buffer);
 			ptr->block.blkno = BufferGetBlockNumber(ptr->buffer);
+			PredicateLockPageSplit(rel,
+								   BufferGetBlockNumber(buffer),
+								   BufferGetBlockNumber(ptr->buffer));
 		}
 
 		/*
@@ -550,7 +558,7 @@ gistplacetopage(Relation rel, Size freespace, GISTSTATE *giststate,
 
 			recptr = gistXLogUpdate(buffer,
 									deloffs, ndeloffs, itup, ntup,
-									leftchildbuf);
+									leftchildbuf, NULL);
 
 			PageSetLSN(page, recptr);
 		}
@@ -598,7 +606,8 @@ gistplacetopage(Relation rel, Size freespace, GISTSTATE *giststate,
  * so it does not bother releasing palloc'd allocations.
  */
 void
-gistdoinsert(Relation r, IndexTuple itup, Size freespace, GISTSTATE *giststate)
+gistdoinsert(Relation r, IndexTuple itup, Size freespace,
+			 GISTSTATE *giststate, Relation heapRel)
 {
 	ItemId		iid;
 	IndexTuple	idxtuple;
@@ -610,6 +619,7 @@ gistdoinsert(Relation r, IndexTuple itup, Size freespace, GISTSTATE *giststate)
 	memset(&state, 0, sizeof(GISTInsertState));
 	state.freespace = freespace;
 	state.r = r;
+	state.heapRel = heapRel;
 
 	/* Start from the root */
 	firststack.blkno = GIST_ROOT_BLKNO;
@@ -1213,6 +1223,12 @@ gistinserttuples(GISTInsertState *state, GISTInsertStack *stack,
 	List	   *splitinfo;
 	bool		is_split;
 
+	/*
+	 * Check for any rw conflicts (in serializable isolation level) just
+	 * before we intend to modify the page
+	 */
+	CheckForSerializableConflictIn(state->r, NULL, stack->buffer);
+
 	/* Insert the tuple(s) to the page, splitting the page if necessary */
 	is_split = gistplacetopage(state->r, state->freespace, giststate,
 							   stack->buffer,
@@ -1220,7 +1236,8 @@ gistinserttuples(GISTInsertState *state, GISTInsertStack *stack,
 							   oldoffnum, NULL,
 							   leftchild,
 							   &splitinfo,
-							   true);
+							   true,
+							   state->heapRel);
 
 	/*
 	 * Before recursing up in case the page was split, release locks on the
@@ -1365,8 +1382,8 @@ gistSplit(Relation r,
 						IndexTupleSize(itup[0]), GiSTPageSize,
 						RelationGetRelationName(r))));
 
-	memset(v.spl_lisnull, TRUE, sizeof(bool) * giststate->tupdesc->natts);
-	memset(v.spl_risnull, TRUE, sizeof(bool) * giststate->tupdesc->natts);
+	memset(v.spl_lisnull, true, sizeof(bool) * giststate->tupdesc->natts);
+	memset(v.spl_risnull, true, sizeof(bool) * giststate->tupdesc->natts);
 	gistSplitByKey(r, page, itup, len, giststate, &v, 0);
 
 	/* form left and right vector */
@@ -1454,12 +1471,23 @@ initGISTstate(Relation index)
 		fmgr_info_copy(&(giststate->unionFn[i]),
 					   index_getprocinfo(index, i + 1, GIST_UNION_PROC),
 					   scanCxt);
-		fmgr_info_copy(&(giststate->compressFn[i]),
-					   index_getprocinfo(index, i + 1, GIST_COMPRESS_PROC),
-					   scanCxt);
-		fmgr_info_copy(&(giststate->decompressFn[i]),
-					   index_getprocinfo(index, i + 1, GIST_DECOMPRESS_PROC),
-					   scanCxt);
+
+		/* opclasses are not required to provide a Compress method */
+		if (OidIsValid(index_getprocid(index, i + 1, GIST_COMPRESS_PROC)))
+			fmgr_info_copy(&(giststate->compressFn[i]),
+						   index_getprocinfo(index, i + 1, GIST_COMPRESS_PROC),
+						   scanCxt);
+		else
+			giststate->compressFn[i].fn_oid = InvalidOid;
+
+		/* opclasses are not required to provide a Decompress method */
+		if (OidIsValid(index_getprocid(index, i + 1, GIST_DECOMPRESS_PROC)))
+			fmgr_info_copy(&(giststate->decompressFn[i]),
+						   index_getprocinfo(index, i + 1, GIST_DECOMPRESS_PROC),
+						   scanCxt);
+		else
+			giststate->decompressFn[i].fn_oid = InvalidOid;
+
 		fmgr_info_copy(&(giststate->penaltyFn[i]),
 					   index_getprocinfo(index, i + 1, GIST_PENALTY_PROC),
 					   scanCxt);
@@ -1469,6 +1497,7 @@ initGISTstate(Relation index)
 		fmgr_info_copy(&(giststate->equalFn[i]),
 					   index_getprocinfo(index, i + 1, GIST_EQUAL_PROC),
 					   scanCxt);
+
 		/* opclasses are not required to provide a Distance method */
 		if (OidIsValid(index_getprocid(index, i + 1, GIST_DISTANCE_PROC)))
 			fmgr_info_copy(&(giststate->distanceFn[i]),
@@ -1519,7 +1548,7 @@ freeGISTstate(GISTSTATE *giststate)
  * Function assumes that buffer is exclusively locked.
  */
 static void
-gistvacuumpage(Relation rel, Page page, Buffer buffer)
+gistvacuumpage(Relation rel, Page page, Buffer buffer, Relation heapRel)
 {
 	OffsetNumber deletable[MaxIndexTuplesPerPage];
 	int			ndeletable = 0;
@@ -1567,7 +1596,8 @@ gistvacuumpage(Relation rel, Page page, Buffer buffer)
 
 			recptr = gistXLogUpdate(buffer,
 									deletable, ndeletable,
-									NULL, 0, InvalidBuffer);
+									NULL, 0, InvalidBuffer,
+									&heapRel->rd_node);
 
 			PageSetLSN(page, recptr);
 		}

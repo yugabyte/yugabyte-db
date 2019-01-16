@@ -10,7 +10,7 @@
  * via functions such as SubTransGetTopmostTransaction().
  *
  *
- *	Copyright (c) 2003-2017, PostgreSQL Global Development Group
+ *	Copyright (c) 2003-2018, PostgreSQL Global Development Group
  *	Author: Jan Wieck, Afilias USA INC.
  *	64-bit txids: Marko Kreen, Skype Technologies
  *
@@ -640,7 +640,7 @@ txid_snapshot_send(PG_FUNCTION_ARGS)
 	uint32		i;
 
 	pq_begintypsend(&buf);
-	pq_sendint(&buf, snap->nxip, 4);
+	pq_sendint32(&buf, snap->nxip);
 	pq_sendint64(&buf, snap->xmin);
 	pq_sendint64(&buf, snap->xmax);
 	for (i = 0; i < snap->nxip; i++)

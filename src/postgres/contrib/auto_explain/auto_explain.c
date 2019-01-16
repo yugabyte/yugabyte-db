@@ -3,7 +3,7 @@
  * auto_explain.c
  *
  *
- * Copyright (c) 2008-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2008-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/auto_explain/auto_explain.c
@@ -16,6 +16,7 @@
 
 #include "commands/explain.h"
 #include "executor/instrument.h"
+#include "jit/jit.h"
 #include "utils/guc.h"
 
 PG_MODULE_MAGIC;
@@ -334,6 +335,8 @@ explain_ExecutorEnd(QueryDesc *queryDesc)
 			ExplainPrintPlan(es, queryDesc);
 			if (es->analyze && auto_explain_log_triggers)
 				ExplainPrintTriggers(es, queryDesc);
+			if (es->costs)
+				ExplainPrintJITSummary(es, queryDesc);
 			ExplainEndOutput(es);
 
 			/* Remove last line break */

@@ -3,7 +3,7 @@
  *
  *	options functions
  *
- *	Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/option.c
  */
 
@@ -22,7 +22,7 @@
 
 static void usage(void);
 static void check_required_directory(char **dirpath, char **configpath,
-						 char *envVarName, char *cmdLineOption, char *description);
+						 const char *envVarName, const char *cmdLineOption, const char *description);
 #define FIX_DEFAULT_READ_ONLY "-c default_transaction_read_only=false"
 
 
@@ -341,8 +341,8 @@ usage(void)
  */
 static void
 check_required_directory(char **dirpath, char **configpath,
-						 char *envVarName, char *cmdLineOption,
-						 char *description)
+						 const char *envVarName, const char *cmdLineOption,
+						 const char *description)
 {
 	if (*dirpath == NULL || strlen(*dirpath) == 0)
 	{

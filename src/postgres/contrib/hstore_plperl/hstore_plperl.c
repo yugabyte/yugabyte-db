@@ -5,7 +5,7 @@
 #include "fmgr.h"
 #include "plperl.h"
 #include "plperl_helpers.h"
-#include "hstore.h"
+#include "hstore/hstore.h"
 
 PG_MODULE_MAGIC;
 
@@ -68,7 +68,7 @@ Datum
 hstore_to_plperl(PG_FUNCTION_ARGS)
 {
 	dTHX;
-	HStore	   *in = PG_GETARG_HS(0);
+	HStore	   *in = PG_GETARG_HSTORE_P(0);
 	int			i;
 	int			count = HS_COUNT(in);
 	char	   *base = STRPTR(in);
@@ -101,13 +101,25 @@ Datum
 plperl_to_hstore(PG_FUNCTION_ARGS)
 {
 	dTHX;
-	HV		   *hv = (HV *) SvRV((SV *) PG_GETARG_POINTER(0));
+	SV		   *in = (SV *) PG_GETARG_POINTER(0);
+	HV		   *hv;
 	HE		   *he;
 	int32		buflen;
 	int32		i;
 	int32		pcount;
 	HStore	   *out;
 	Pairs	   *pairs;
+
+	/* Dereference references recursively. */
+	while (SvROK(in))
+		in = SvRV(in);
+
+	/* Now we must have a hash. */
+	if (SvTYPE(in) != SVt_PVHV)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 (errmsg("cannot transform non-hash Perl value to hstore"))));
+	hv = (HV *) in;
 
 	pcount = hv_iterinit(hv);
 

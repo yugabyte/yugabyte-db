@@ -11,7 +11,7 @@
  * The following code is written with the assumption that the OUI field
  * size is 24 bits.
  *
- * Portions Copyright (c) 1998-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1998-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/backend/utils/adt/mac8.c
@@ -405,6 +405,15 @@ hashmacaddr8(PG_FUNCTION_ARGS)
 	macaddr8   *key = PG_GETARG_MACADDR8_P(0);
 
 	return hash_any((unsigned char *) key, sizeof(macaddr8));
+}
+
+Datum
+hashmacaddr8extended(PG_FUNCTION_ARGS)
+{
+	macaddr8   *key = PG_GETARG_MACADDR8_P(0);
+
+	return hash_any_extended((unsigned char *) key, sizeof(macaddr8),
+							 PG_GETARG_INT64(1));
 }
 
 /*

@@ -4,7 +4,7 @@
  *	  POSTGRES relation descriptor (a/k/a relcache entry) definitions.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/rel.h
@@ -45,36 +45,6 @@ typedef struct LockInfoData
 } LockInfoData;
 
 typedef LockInfoData *LockInfo;
-
-/*
- * Information about the partition key of a relation
- */
-typedef struct PartitionKeyData
-{
-	char		strategy;		/* partitioning strategy */
-	int16		partnatts;		/* number of columns in the partition key */
-	AttrNumber *partattrs;		/* attribute numbers of columns in the
-								 * partition key */
-	List	   *partexprs;		/* list of expressions in the partitioning
-								 * key, or NIL */
-
-	Oid		   *partopfamily;	/* OIDs of operator families */
-	Oid		   *partopcintype;	/* OIDs of opclass declared input data types */
-	FmgrInfo   *partsupfunc;	/* lookup info for support funcs */
-
-	/* Partitioning collation per attribute */
-	Oid		   *partcollation;
-
-	/* Type information per attribute */
-	Oid		   *parttypid;
-	int32	   *parttypmod;
-	int16	   *parttyplen;
-	bool	   *parttypbyval;
-	char	   *parttypalign;
-	Oid		   *parttypcoll;
-}			PartitionKeyData;
-
-typedef struct PartitionKeyData *PartitionKey;
 
 /*
  * Here are the contents of a relation cache entry.
@@ -141,10 +111,12 @@ typedef struct RelationData
 	List	   *rd_statlist;	/* list of OIDs of extended stats */
 
 	/* data managed by RelationGetIndexAttrBitmap: */
-	Bitmapset  *rd_indexattr;	/* identifies columns used in indexes */
+	Bitmapset  *rd_indexattr;	/* columns used in non-projection indexes */
+	Bitmapset  *rd_projindexattr;	/* columns used in projection indexes */
 	Bitmapset  *rd_keyattr;		/* cols that can be ref'd by foreign keys */
 	Bitmapset  *rd_pkattr;		/* cols included in primary key */
 	Bitmapset  *rd_idattr;		/* included in replica identity index */
+	Bitmapset  *rd_projidx;		/* Oids of projection indexes */
 
 	PublicationActions *rd_pubactions;	/* publication actions */
 
@@ -230,12 +202,13 @@ typedef struct RelationData
  * The per-FK-column arrays can be fixed-size because we allow at most
  * INDEX_MAX_KEYS columns in a foreign key constraint.
  *
- * Currently, we only cache fields of interest to the planner, but the
- * set of fields could be expanded in future.
+ * Currently, we mostly cache fields of interest to the planner, but the set
+ * of fields has already grown the constraint OID for other uses.
  */
 typedef struct ForeignKeyCacheInfo
 {
 	NodeTag		type;
+	Oid			conoid;			/* oid of the constraint itself */
 	Oid			conrelid;		/* relation constrained by the foreign key */
 	Oid			confrelid;		/* relation referenced by the foreign key */
 	int			nkeys;			/* number of columns in the foreign key */
@@ -245,6 +218,14 @@ typedef struct ForeignKeyCacheInfo
 	Oid			conpfeqop[INDEX_MAX_KEYS];	/* PK = FK operator OIDs */
 } ForeignKeyCacheInfo;
 
+/*
+ * Options common for all indexes
+ */
+typedef struct GenericIndexOpts
+{
+	int32		vl_len_;
+	bool		recheck_on_update;
+} GenericIndexOpts;
 
 /*
  * StdRdOptions
@@ -277,6 +258,9 @@ typedef struct StdRdOptions
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	int			fillfactor;		/* page fill factor in percent (0..100) */
+	/* fraction of newly inserted tuples prior to trigger index cleanup */
+	float8		vacuum_cleanup_index_scale_factor;
+	int			toast_tuple_target; /* target for tuple toasting */
 	AutoVacOpts autovacuum;		/* autovacuum-related options */
 	bool		user_catalog_table; /* use as an additional catalog relation */
 	int			parallel_workers;	/* max number of parallel workers */
@@ -284,6 +268,14 @@ typedef struct StdRdOptions
 
 #define HEAP_MIN_FILLFACTOR			10
 #define HEAP_DEFAULT_FILLFACTOR		100
+
+/*
+ * RelationGetToastTupleTarget
+ *		Returns the relation's toast_tuple_target.  Note multiple eval of argument!
+ */
+#define RelationGetToastTupleTarget(relation, defaulttarg) \
+	((relation)->rd_options ? \
+	 ((StdRdOptions *) (relation)->rd_options)->toast_tuple_target : (defaulttarg))
 
 /*
  * RelationGetFillFactor
@@ -417,9 +409,23 @@ typedef struct ViewOptions
 
 /*
  * RelationGetNumberOfAttributes
- *		Returns the number of attributes in a relation.
+ *		Returns the total number of attributes in a relation.
  */
 #define RelationGetNumberOfAttributes(relation) ((relation)->rd_rel->relnatts)
+
+/*
+ * IndexRelationGetNumberOfAttributes
+ *		Returns the number of attributes in an index.
+ */
+#define IndexRelationGetNumberOfAttributes(relation) \
+		((relation)->rd_index->indnatts)
+
+/*
+ * IndexRelationGetNumberOfKeyAttributes
+ *		Returns the number of key attributes in an index.
+ */
+#define IndexRelationGetNumberOfKeyAttributes(relation) \
+		((relation)->rd_index->indnkeyatts)
 
 /*
  * RelationGetDescr
@@ -582,48 +588,6 @@ typedef struct ViewOptions
  *		Returns the PartitionKey of a relation
  */
 #define RelationGetPartitionKey(relation) ((relation)->rd_partkey)
-
-/*
- * PartitionKey inquiry functions
- */
-static inline int
-get_partition_strategy(PartitionKey key)
-{
-	return key->strategy;
-}
-
-static inline int
-get_partition_natts(PartitionKey key)
-{
-	return key->partnatts;
-}
-
-static inline List *
-get_partition_exprs(PartitionKey key)
-{
-	return key->partexprs;
-}
-
-/*
- * PartitionKey inquiry functions - one column
- */
-static inline int16
-get_partition_col_attnum(PartitionKey key, int col)
-{
-	return key->partattrs[col];
-}
-
-static inline Oid
-get_partition_col_typid(PartitionKey key, int col)
-{
-	return key->parttypid[col];
-}
-
-static inline int32
-get_partition_col_typmod(PartitionKey key, int col)
-{
-	return key->parttypmod[col];
-}
 
 /*
  * RelationGetPartitionDesc

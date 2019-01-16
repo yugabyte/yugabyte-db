@@ -12,7 +12,7 @@
  * identifying statement boundaries in multi-statement source strings.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/parsenodes.h
@@ -26,6 +26,8 @@
 #include "nodes/lockoptions.h"
 #include "nodes/primnodes.h"
 #include "nodes/value.h"
+#include "partitioning/partdefs.h"
+
 
 typedef enum OverridingKind
 {
@@ -111,7 +113,7 @@ typedef struct Query
 
 	QuerySource querySource;	/* where did I come from? */
 
-	uint32		queryId;		/* query identifier (can be set by plugins) */
+	uint64		queryId;		/* query identifier (can be set by plugins) */
 
 	bool		canSetTag;		/* do I set the command result tag? */
 
@@ -198,7 +200,7 @@ typedef struct Query
  * Similarly, if "typmods" is NIL then the actual typmod is expected to
  * be prespecified in typemod, otherwise typemod is unused.
  *
- * If pct_type is TRUE, then names is actually a field name and we look up
+ * If pct_type is true, then names is actually a field name and we look up
  * the type of that field.  Otherwise (the normal case), names is a type
  * name possibly qualified with schema and database name.
  */
@@ -499,27 +501,33 @@ typedef struct WindowDef
  * which were defaulted; the correct behavioral bits must be set either way.
  * The START_foo and END_foo options must come in pairs of adjacent bits for
  * the convenience of gram.y, even though some of them are useless/invalid.
- * We will need more bits (and fields) to cover the full SQL:2008 option set.
  */
 #define FRAMEOPTION_NONDEFAULT					0x00001 /* any specified? */
 #define FRAMEOPTION_RANGE						0x00002 /* RANGE behavior */
 #define FRAMEOPTION_ROWS						0x00004 /* ROWS behavior */
-#define FRAMEOPTION_BETWEEN						0x00008 /* BETWEEN given? */
-#define FRAMEOPTION_START_UNBOUNDED_PRECEDING	0x00010 /* start is U. P. */
-#define FRAMEOPTION_END_UNBOUNDED_PRECEDING		0x00020 /* (disallowed) */
-#define FRAMEOPTION_START_UNBOUNDED_FOLLOWING	0x00040 /* (disallowed) */
-#define FRAMEOPTION_END_UNBOUNDED_FOLLOWING		0x00080 /* end is U. F. */
-#define FRAMEOPTION_START_CURRENT_ROW			0x00100 /* start is C. R. */
-#define FRAMEOPTION_END_CURRENT_ROW				0x00200 /* end is C. R. */
-#define FRAMEOPTION_START_VALUE_PRECEDING		0x00400 /* start is V. P. */
-#define FRAMEOPTION_END_VALUE_PRECEDING			0x00800 /* end is V. P. */
-#define FRAMEOPTION_START_VALUE_FOLLOWING		0x01000 /* start is V. F. */
-#define FRAMEOPTION_END_VALUE_FOLLOWING			0x02000 /* end is V. F. */
+#define FRAMEOPTION_GROUPS						0x00008 /* GROUPS behavior */
+#define FRAMEOPTION_BETWEEN						0x00010 /* BETWEEN given? */
+#define FRAMEOPTION_START_UNBOUNDED_PRECEDING	0x00020 /* start is U. P. */
+#define FRAMEOPTION_END_UNBOUNDED_PRECEDING		0x00040 /* (disallowed) */
+#define FRAMEOPTION_START_UNBOUNDED_FOLLOWING	0x00080 /* (disallowed) */
+#define FRAMEOPTION_END_UNBOUNDED_FOLLOWING		0x00100 /* end is U. F. */
+#define FRAMEOPTION_START_CURRENT_ROW			0x00200 /* start is C. R. */
+#define FRAMEOPTION_END_CURRENT_ROW				0x00400 /* end is C. R. */
+#define FRAMEOPTION_START_OFFSET_PRECEDING		0x00800 /* start is O. P. */
+#define FRAMEOPTION_END_OFFSET_PRECEDING		0x01000 /* end is O. P. */
+#define FRAMEOPTION_START_OFFSET_FOLLOWING		0x02000 /* start is O. F. */
+#define FRAMEOPTION_END_OFFSET_FOLLOWING		0x04000 /* end is O. F. */
+#define FRAMEOPTION_EXCLUDE_CURRENT_ROW			0x08000 /* omit C.R. */
+#define FRAMEOPTION_EXCLUDE_GROUP				0x10000 /* omit C.R. & peers */
+#define FRAMEOPTION_EXCLUDE_TIES				0x20000 /* omit C.R.'s peers */
 
-#define FRAMEOPTION_START_VALUE \
-	(FRAMEOPTION_START_VALUE_PRECEDING | FRAMEOPTION_START_VALUE_FOLLOWING)
-#define FRAMEOPTION_END_VALUE \
-	(FRAMEOPTION_END_VALUE_PRECEDING | FRAMEOPTION_END_VALUE_FOLLOWING)
+#define FRAMEOPTION_START_OFFSET \
+	(FRAMEOPTION_START_OFFSET_PRECEDING | FRAMEOPTION_START_OFFSET_FOLLOWING)
+#define FRAMEOPTION_END_OFFSET \
+	(FRAMEOPTION_END_OFFSET_PRECEDING | FRAMEOPTION_END_OFFSET_FOLLOWING)
+#define FRAMEOPTION_EXCLUSION \
+	(FRAMEOPTION_EXCLUDE_CURRENT_ROW | FRAMEOPTION_EXCLUDE_GROUP | \
+	 FRAMEOPTION_EXCLUDE_TIES)
 
 #define FRAMEOPTION_DEFAULTS \
 	(FRAMEOPTION_RANGE | FRAMEOPTION_START_UNBOUNDED_PRECEDING | \
@@ -642,13 +650,13 @@ typedef struct ColumnDef
 	bool		is_local;		/* column has local (non-inherited) def'n */
 	bool		is_not_null;	/* NOT NULL constraint specified? */
 	bool		is_from_type;	/* column definition came from table type */
-	bool		is_from_parent; /* column def came from partition parent */
+	bool		is_from_parent; /* XXX unused */
 	char		storage;		/* attstorage setting, or 0 for default */
 	Node	   *raw_default;	/* default value (untransformed parse tree) */
 	Node	   *cooked_default; /* default value (transformed expr tree) */
 	char		identity;		/* attidentity setting */
-	RangeVar   *identitySequence; /* to store identity sequence name for ALTER
-								   * TABLE ... ADD COLUMN */
+	RangeVar   *identitySequence;	/* to store identity sequence name for
+									 * ALTER TABLE ... ADD COLUMN */
 	CollateClause *collClause;	/* untransformed COLLATE spec, if any */
 	Oid			collOid;		/* collation OID (InvalidOid if not set) */
 	List	   *constraints;	/* other constraints on column */
@@ -668,13 +676,13 @@ typedef struct TableLikeClause
 
 typedef enum TableLikeOption
 {
-	CREATE_TABLE_LIKE_DEFAULTS = 1 << 0,
+	CREATE_TABLE_LIKE_COMMENTS = 1 << 0,
 	CREATE_TABLE_LIKE_CONSTRAINTS = 1 << 1,
-	CREATE_TABLE_LIKE_IDENTITY = 1 << 2,
-	CREATE_TABLE_LIKE_INDEXES = 1 << 3,
-	CREATE_TABLE_LIKE_STORAGE = 1 << 4,
-	CREATE_TABLE_LIKE_COMMENTS = 1 << 5,
-	CREATE_TABLE_LIKE_STATISTICS = 1 << 6,
+	CREATE_TABLE_LIKE_DEFAULTS = 1 << 2,
+	CREATE_TABLE_LIKE_IDENTITY = 1 << 3,
+	CREATE_TABLE_LIKE_INDEXES = 1 << 4,
+	CREATE_TABLE_LIKE_STATISTICS = 1 << 5,
+	CREATE_TABLE_LIKE_STORAGE = 1 << 6,
 	CREATE_TABLE_LIKE_ALL = PG_INT32_MAX
 } TableLikeOption;
 
@@ -780,12 +788,14 @@ typedef struct PartitionElem
 typedef struct PartitionSpec
 {
 	NodeTag		type;
-	char	   *strategy;		/* partitioning strategy ('list' or 'range') */
+	char	   *strategy;		/* partitioning strategy ('hash', 'list' or
+								 * 'range') */
 	List	   *partParams;		/* List of PartitionElems */
 	int			location;		/* token location, or -1 if unknown */
 } PartitionSpec;
 
 /* Internal codes for partitioning strategies */
+#define PARTITION_STRATEGY_HASH		'h'
 #define PARTITION_STRATEGY_LIST		'l'
 #define PARTITION_STRATEGY_RANGE	'r'
 
@@ -795,11 +805,16 @@ typedef struct PartitionSpec
  * This represents the portion of the partition key space assigned to a
  * particular partition.  These are stored on disk in pg_class.relpartbound.
  */
-typedef struct PartitionBoundSpec
+struct PartitionBoundSpec
 {
 	NodeTag		type;
 
 	char		strategy;		/* see PARTITION_STRATEGY codes above */
+	bool		is_default;		/* is it a default partition bound? */
+
+	/* Partitioning info for HASH strategy: */
+	int			modulus;
+	int			remainder;
 
 	/* Partitioning info for LIST strategy: */
 	List	   *listdatums;		/* List of Consts (or A_Consts in raw tree) */
@@ -809,7 +824,7 @@ typedef struct PartitionBoundSpec
 	List	   *upperdatums;	/* List of PartitionRangeDatums */
 
 	int			location;		/* token location, or -1 if unknown */
-} PartitionBoundSpec;
+};
 
 /*
  * PartitionRangeDatum - one of the values in a range partition bound
@@ -835,7 +850,7 @@ typedef struct PartitionRangeDatum
 } PartitionRangeDatum;
 
 /*
- * PartitionCmd - info for ALTER TABLE ATTACH/DETACH PARTITION commands
+ * PartitionCmd - info for ALTER TABLE/INDEX ATTACH/DETACH PARTITION commands
  */
 typedef struct PartitionCmd
 {
@@ -890,8 +905,8 @@ typedef struct PartitionCmd
  *	  them from the joinaliasvars list, because that would affect the attnums
  *	  of Vars referencing the rest of the list.)
  *
- *	  inh is TRUE for relation references that should be expanded to include
- *	  inheritance children, if the rel has any.  This *must* be FALSE for
+ *	  inh is true for relation references that should be expanded to include
+ *	  inheritance children, if the rel has any.  This *must* be false for
  *	  RTEs other than RTE_RELATION entries.
  *
  *	  inFromCl marks those range variables that are listed in the FROM clause.
@@ -1019,7 +1034,7 @@ typedef struct RangeTblEntry
 	bool		self_reference; /* is this a recursive self-reference? */
 
 	/*
-	 * Fields valid for table functions, values, CTE and ENR RTEs (else NIL):
+	 * Fields valid for CTE, VALUES, ENR, and TableFunc RTEs (else NIL):
 	 *
 	 * We need these for CTE RTEs so that the types of self-referential
 	 * columns are well-defined.  For VALUES RTEs, storing these explicitly
@@ -1027,7 +1042,9 @@ typedef struct RangeTblEntry
 	 * ENRs, we store the types explicitly here (we could get the information
 	 * from the catalogs if 'relid' was supplied, but we'd still need these
 	 * for TupleDesc-based ENRs, so we might as well always store the type
-	 * info here).
+	 * info here).  For TableFuncs, these fields are redundant with data in
+	 * the TableFunc node, but keeping them here allows some code sharing with
+	 * the other cases.
 	 *
 	 * For ENRs only, we have to consider the possibility of dropped columns.
 	 * A dropped column is included in these lists, but it will have zeroes in
@@ -1149,7 +1166,7 @@ typedef struct WithCheckOption
  *		or InvalidOid if not available.
  * nulls_first means about what you'd expect.  If sortop is InvalidOid
  *		then nulls_first is meaningless and should be set to false.
- * hashable is TRUE if eqop is hashable (note this condition also depends
+ * hashable is true if eqop is hashable (note this condition also depends
  *		on the datatype of the input expression).
  *
  * In an ORDER BY item, all fields must be valid.  (The eqop isn't essential
@@ -1271,6 +1288,9 @@ typedef struct GroupingSet
  * if the clause originally came from WINDOW, and is NULL if it originally
  * was an OVER clause (but note that we collapse out duplicate OVERs).
  * partitionClause and orderClause are lists of SortGroupClause structs.
+ * If we have RANGE with offset PRECEDING/FOLLOWING, the semantics of that are
+ * specified by startInRangeFunc/inRangeColl/inRangeAsc/inRangeNullsFirst
+ * for the start offset, or endInRangeFunc/inRange* for the end offset.
  * winref is an ID number referenced by WindowFunc nodes; it must be unique
  * among the members of a Query's windowClause list.
  * When refname isn't null, the partitionClause is always copied from there;
@@ -1287,6 +1307,11 @@ typedef struct WindowClause
 	int			frameOptions;	/* frame_clause options, see WindowDef */
 	Node	   *startOffset;	/* expression for starting bound, if any */
 	Node	   *endOffset;		/* expression for ending bound, if any */
+	Oid			startInRangeFunc;	/* in_range function for startOffset */
+	Oid			endInRangeFunc; /* in_range function for endOffset */
+	Oid			inRangeColl;	/* collation for in_range tests */
+	bool		inRangeAsc;		/* use ASC sort order for in_range tests? */
+	bool		inRangeNullsFirst;	/* nulls sort first for in_range tests? */
 	Index		winref;			/* ID referenced by window functions */
 	bool		copiedOrder;	/* did we copy orderClause from refname? */
 } WindowClause;
@@ -1638,9 +1663,11 @@ typedef enum ObjectType
 	OBJECT_OPERATOR,
 	OBJECT_OPFAMILY,
 	OBJECT_POLICY,
+	OBJECT_PROCEDURE,
 	OBJECT_PUBLICATION,
 	OBJECT_PUBLICATION_REL,
 	OBJECT_ROLE,
+	OBJECT_ROUTINE,
 	OBJECT_RULE,
 	OBJECT_SCHEMA,
 	OBJECT_SEQUENCE,
@@ -1715,6 +1742,7 @@ typedef enum AlterTableType
 	AT_AddConstraint,			/* add constraint */
 	AT_AddConstraintRecurse,	/* internal to commands/tablecmds.c */
 	AT_ReAddConstraint,			/* internal to commands/tablecmds.c */
+	AT_ReAddDomainConstraint,	/* internal to commands/tablecmds.c */
 	AT_AlterConstraint,			/* alter constraint */
 	AT_ValidateConstraint,		/* validate constraint */
 	AT_ValidateConstraintRecurse,	/* internal to commands/tablecmds.c */
@@ -1780,6 +1808,8 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 	AlterTableType subtype;		/* Type of table alteration to apply */
 	char	   *name;			/* column, constraint, or trigger to act on,
 								 * or tablespace */
+	int16		num;			/* attribute number for columns referenced by
+								 * number */
 	RoleSpec   *newowner;
 	Node	   *def;			/* definition of new column, index,
 								 * constraint, or parent table */
@@ -1836,29 +1866,12 @@ typedef enum GrantTargetType
 	ACL_TARGET_DEFAULTS			/* ALTER DEFAULT PRIVILEGES */
 } GrantTargetType;
 
-typedef enum GrantObjectType
-{
-	ACL_OBJECT_COLUMN,			/* column */
-	ACL_OBJECT_RELATION,		/* table, view */
-	ACL_OBJECT_SEQUENCE,		/* sequence */
-	ACL_OBJECT_DATABASE,		/* database */
-	ACL_OBJECT_DOMAIN,			/* domain */
-	ACL_OBJECT_FDW,				/* foreign-data wrapper */
-	ACL_OBJECT_FOREIGN_SERVER,	/* foreign server */
-	ACL_OBJECT_FUNCTION,		/* function */
-	ACL_OBJECT_LANGUAGE,		/* procedural language */
-	ACL_OBJECT_LARGEOBJECT,		/* largeobject */
-	ACL_OBJECT_NAMESPACE,		/* namespace */
-	ACL_OBJECT_TABLESPACE,		/* tablespace */
-	ACL_OBJECT_TYPE				/* type */
-} GrantObjectType;
-
 typedef struct GrantStmt
 {
 	NodeTag		type;
 	bool		is_grant;		/* true = GRANT, false = REVOKE */
 	GrantTargetType targtype;	/* type of the grant target */
-	GrantObjectType objtype;	/* kind of object being operated on */
+	ObjectType	objtype;		/* kind of object being operated on */
 	List	   *objects;		/* list of RangeVar nodes, ObjectWithArgs
 								 * nodes, or plain names (as Value strings) */
 	List	   *privileges;		/* list of AccessPriv nodes */
@@ -2093,7 +2106,10 @@ typedef struct Constraint
 	char		generated_when;
 
 	/* Fields used for unique constraints (UNIQUE and PRIMARY KEY): */
-	List	   *keys;			/* String nodes naming referenced column(s) */
+	List	   *keys;			/* String nodes naming referenced key
+								 * column(s) */
+	List	   *including;		/* String nodes naming referenced nonkey
+								 * column(s) */
 
 	/* Fields used for EXCLUSION constraints: */
 	List	   *exclusions;		/* list of (IndexElem, operator name) pairs */
@@ -2679,7 +2695,7 @@ typedef struct FetchStmt
 	FetchDirection direction;	/* see above */
 	long		howMany;		/* number of rows, or position argument */
 	char	   *portalname;		/* name of portal (cursor) */
-	bool		ismove;			/* TRUE if MOVE */
+	bool		ismove;			/* true if MOVE */
 } FetchStmt;
 
 /* ----------------------
@@ -2691,6 +2707,10 @@ typedef struct FetchStmt
  * index, just a UNIQUE/PKEY constraint using an existing index.  isconstraint
  * must always be true in this case, and the fields describing the index
  * properties are empty.
+ *
+ * The relation to build the index on can be represented either by name
+ * (in which case the RangeVar indicates whether to recurse or not) or by OID
+ * (in which case the command is always recursive).
  * ----------------------
  */
 typedef struct IndexStmt
@@ -2698,9 +2718,12 @@ typedef struct IndexStmt
 	NodeTag		type;
 	char	   *idxname;		/* name of new index, or NULL for default */
 	RangeVar   *relation;		/* relation to build index on */
+	Oid			relationId;		/* OID of relation to build index on */
 	char	   *accessMethod;	/* name of access method (eg. btree) */
 	char	   *tableSpace;		/* tablespace, or NULL for default */
 	List	   *indexParams;	/* columns to index: a list of IndexElem */
+	List	   *indexIncludingParams;	/* additional columns to index: a list
+										 * of IndexElem */
 	List	   *options;		/* WITH clause options: a list of DefElem */
 	Node	   *whereClause;	/* qualification (partial-index predicate) */
 	List	   *excludeOpNames; /* exclusion operator names, or NIL if none */
@@ -2728,6 +2751,7 @@ typedef struct CreateStatsStmt
 	List	   *stat_types;		/* stat types (list of Value strings) */
 	List	   *exprs;			/* expressions to build statistics on */
 	List	   *relations;		/* rels to build stats on (list of RangeVar) */
+	char	   *stxcomment;		/* comment to apply to stats, or NULL */
 	bool		if_not_exists;	/* do nothing if stats name already exists */
 } CreateStatsStmt;
 
@@ -2738,12 +2762,12 @@ typedef struct CreateStatsStmt
 typedef struct CreateFunctionStmt
 {
 	NodeTag		type;
+	bool		is_procedure;	/* it's really CREATE PROCEDURE */
 	bool		replace;		/* T => replace if already exists */
 	List	   *funcname;		/* qualified name of function to create */
 	List	   *parameters;		/* a list of FunctionParameter */
 	TypeName   *returnType;		/* the return type */
 	List	   *options;		/* a list of DefElem */
-	List	   *withClause;		/* a list of DefElem */
 } CreateFunctionStmt;
 
 typedef enum FunctionParameterMode
@@ -2768,6 +2792,7 @@ typedef struct FunctionParameter
 typedef struct AlterFunctionStmt
 {
 	NodeTag		type;
+	ObjectType	objtype;
 	ObjectWithArgs *func;		/* name and args of function */
 	List	   *actions;		/* list of DefElem */
 } AlterFunctionStmt;
@@ -2790,7 +2815,25 @@ typedef struct InlineCodeBlock
 	char	   *source_text;	/* source text of anonymous code block */
 	Oid			langOid;		/* OID of selected language */
 	bool		langIsTrusted;	/* trusted property of the language */
+	bool		atomic;			/* atomic execution context */
 } InlineCodeBlock;
+
+/* ----------------------
+ *		CALL statement
+ * ----------------------
+ */
+typedef struct CallStmt
+{
+	NodeTag		type;
+	FuncCall   *funccall;		/* from the parser */
+	FuncExpr   *funcexpr;		/* transformed */
+} CallStmt;
+
+typedef struct CallContext
+{
+	NodeTag		type;
+	bool		atomic;
+} CallContext;
 
 /* ----------------------
  *		Alter Object Rename Statement
@@ -2932,7 +2975,8 @@ typedef struct TransactionStmt
 {
 	NodeTag		type;
 	TransactionStmtKind kind;	/* see above */
-	List	   *options;		/* for BEGIN/START and savepoint commands */
+	List	   *options;		/* for BEGIN/START commands */
+	char	   *savepoint_name; /* for savepoint commands */
 	char	   *gid;			/* for two-phase-commit related commands */
 } TransactionStmt;
 
@@ -3098,12 +3142,26 @@ typedef enum VacuumOption
 	VACOPT_DISABLE_PAGE_SKIPPING = 1 << 7	/* don't skip any pages */
 } VacuumOption;
 
+/*
+ * Info about a single target table of VACUUM/ANALYZE.
+ *
+ * If the OID field is set, it always identifies the table to process.
+ * Then the relation field can be NULL; if it isn't, it's used only to report
+ * failure to open/lock the relation.
+ */
+typedef struct VacuumRelation
+{
+	NodeTag		type;
+	RangeVar   *relation;		/* table name to process, or NULL */
+	Oid			oid;			/* table's OID; InvalidOid if not looked up */
+	List	   *va_cols;		/* list of column names, or NIL for all */
+} VacuumRelation;
+
 typedef struct VacuumStmt
 {
 	NodeTag		type;
 	int			options;		/* OR of VacuumOption flags */
-	RangeVar   *relation;		/* single table to process, or NULL */
-	List	   *va_cols;		/* list of column names, or NIL for all */
+	List	   *rels;			/* list of VacuumRelation, or NIL for all */
 } VacuumStmt;
 
 /* ----------------------
@@ -3376,7 +3434,7 @@ typedef struct AlterTSConfigurationStmt
 typedef struct CreatePublicationStmt
 {
 	NodeTag		type;
-	char	   *pubname;		/* Name of of the publication */
+	char	   *pubname;		/* Name of the publication */
 	List	   *options;		/* List of DefElem nodes */
 	List	   *tables;			/* Optional list of tables to add */
 	bool		for_all_tables; /* Special publication for all tables in db */
@@ -3385,7 +3443,7 @@ typedef struct CreatePublicationStmt
 typedef struct AlterPublicationStmt
 {
 	NodeTag		type;
-	char	   *pubname;		/* Name of of the publication */
+	char	   *pubname;		/* Name of the publication */
 
 	/* parameters used for ALTER PUBLICATION ... WITH */
 	List	   *options;		/* List of DefElem nodes */
@@ -3399,7 +3457,7 @@ typedef struct AlterPublicationStmt
 typedef struct CreateSubscriptionStmt
 {
 	NodeTag		type;
-	char	   *subname;		/* Name of of the subscription */
+	char	   *subname;		/* Name of the subscription */
 	char	   *conninfo;		/* Connection string to publisher */
 	List	   *publication;	/* One or more publication to subscribe to */
 	List	   *options;		/* List of DefElem nodes */
@@ -3418,7 +3476,7 @@ typedef struct AlterSubscriptionStmt
 {
 	NodeTag		type;
 	AlterSubscriptionType kind; /* ALTER_SUBSCRIPTION_OPTIONS, etc */
-	char	   *subname;		/* Name of of the subscription */
+	char	   *subname;		/* Name of the subscription */
 	char	   *conninfo;		/* Connection string to publisher */
 	List	   *publication;	/* One or more publication to subscribe to */
 	List	   *options;		/* List of DefElem nodes */
@@ -3427,7 +3485,7 @@ typedef struct AlterSubscriptionStmt
 typedef struct DropSubscriptionStmt
 {
 	NodeTag		type;
-	char	   *subname;		/* Name of of the subscription */
+	char	   *subname;		/* Name of the subscription */
 	bool		missing_ok;		/* Skip error if missing? */
 	DropBehavior behavior;		/* RESTRICT or CASCADE behavior */
 } DropSubscriptionStmt;

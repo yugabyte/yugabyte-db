@@ -3,7 +3,7 @@
  * subscriptioncmds.c
  *		subscription catalog manipulation functions
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -244,7 +244,7 @@ parse_subscription_options(List *options, bool *connect, bool *enabled_given,
 }
 
 /*
- * Auxiliary function to return a text array out of a list of String nodes.
+ * Auxiliary function to build a text array out of a list of String nodes.
  */
 static Datum
 publicationListToArray(List *publist)
@@ -259,12 +259,11 @@ publicationListToArray(List *publist)
 	/* Create memory context for temporary allocations. */
 	memcxt = AllocSetContextCreate(CurrentMemoryContext,
 								   "publicationListToArray to array",
-								   ALLOCSET_DEFAULT_MINSIZE,
-								   ALLOCSET_DEFAULT_INITSIZE,
-								   ALLOCSET_DEFAULT_MAXSIZE);
+								   ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(memcxt);
 
-	datums = palloc(sizeof(text *) * list_length(publist));
+	datums = (Datum *) palloc(sizeof(Datum) * list_length(publist));
+
 	foreach(cell, publist)
 	{
 		char	   *name = strVal(lfirst(cell));
@@ -275,7 +274,7 @@ publicationListToArray(List *publist)
 		{
 			char	   *pname = strVal(lfirst(pcell));
 
-			if (name == pname)
+			if (pcell == cell)
 				break;
 
 			if (strcmp(name, pname) == 0)
@@ -292,6 +291,7 @@ publicationListToArray(List *publist)
 
 	arr = construct_array(datums, list_length(publist),
 						  TEXTOID, -1, false, 'i');
+
 	MemoryContextDelete(memcxt);
 
 	return PointerGetDatum(arr);
@@ -339,7 +339,7 @@ CreateSubscription(CreateSubscriptionStmt *stmt, bool isTopLevel)
 	 * replication slot.
 	 */
 	if (create_slot)
-		PreventTransactionChain(isTopLevel, "CREATE SUBSCRIPTION ... WITH (create_slot = true)");
+		PreventInTransactionBlock(isTopLevel, "CREATE SUBSCRIPTION ... WITH (create_slot = true)");
 
 	if (!superuser())
 		ereport(ERROR,
@@ -450,8 +450,8 @@ CreateSubscription(CreateSubscriptionStmt *stmt, bool isTopLevel)
 				CheckSubscriptionRelkind(get_rel_relkind(relid),
 										 rv->schemaname, rv->relname);
 
-				SetSubscriptionRelState(subid, relid, table_state,
-										InvalidXLogRecPtr, false);
+				AddSubscriptionRelState(subid, relid, table_state,
+										InvalidXLogRecPtr);
 			}
 
 			/*
@@ -569,9 +569,9 @@ AlterSubscription_refresh(Subscription *sub, bool copy_data)
 		if (!bsearch(&relid, subrel_local_oids,
 					 list_length(subrel_states), sizeof(Oid), oid_cmp))
 		{
-			SetSubscriptionRelState(sub->oid, relid,
+			AddSubscriptionRelState(sub->oid, relid,
 									copy_data ? SUBREL_STATE_INIT : SUBREL_STATE_READY,
-									InvalidXLogRecPtr, false);
+									InvalidXLogRecPtr);
 			ereport(DEBUG1,
 					(errmsg("table \"%s.%s\" added to subscription \"%s\"",
 							rv->schemaname, rv->relname, sub->name)));
@@ -635,7 +635,7 @@ AlterSubscription(AlterSubscriptionStmt *stmt)
 
 	/* must be owner */
 	if (!pg_subscription_ownercheck(HeapTupleGetOid(tup), GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_SUBSCRIPTION,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_SUBSCRIPTION,
 					   stmt->subname);
 
 	subid = HeapTupleGetOid(tup);
@@ -854,7 +854,7 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 
 	/* must be owner */
 	if (!pg_subscription_ownercheck(subid, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_SUBSCRIPTION,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_SUBSCRIPTION,
 					   stmt->subname);
 
 	/* DROP hook for the subscription being removed */
@@ -897,7 +897,7 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 	 * don't have the proper facilities for that.
 	 */
 	if (slotname)
-		PreventTransactionChain(isTopLevel, "DROP SUBSCRIPTION");
+		PreventInTransactionBlock(isTopLevel, "DROP SUBSCRIPTION");
 
 
 	ObjectAddressSet(myself, SubscriptionRelationId, subid);
@@ -1022,7 +1022,7 @@ AlterSubscriptionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 		return;
 
 	if (!pg_subscription_ownercheck(HeapTupleGetOid(tup), GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_SUBSCRIPTION,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_SUBSCRIPTION,
 					   NameStr(form->subname));
 
 	/* New owner must be a superuser */
@@ -1122,9 +1122,9 @@ fetch_table_list(WalReceiverConn *wrconn, List *publications)
 	Assert(list_length(publications) > 0);
 
 	initStringInfo(&cmd);
-	appendStringInfo(&cmd, "SELECT DISTINCT t.schemaname, t.tablename\n"
-					 "  FROM pg_catalog.pg_publication_tables t\n"
-					 " WHERE t.pubname IN (");
+	appendStringInfoString(&cmd, "SELECT DISTINCT t.schemaname, t.tablename\n"
+						   "  FROM pg_catalog.pg_publication_tables t\n"
+						   " WHERE t.pubname IN (");
 	first = true;
 	foreach(lc, publications)
 	{
@@ -1135,9 +1135,9 @@ fetch_table_list(WalReceiverConn *wrconn, List *publications)
 		else
 			appendStringInfoString(&cmd, ", ");
 
-		appendStringInfo(&cmd, "%s", quote_literal_cstr(pubname));
+		appendStringInfoString(&cmd, quote_literal_cstr(pubname));
 	}
-	appendStringInfoString(&cmd, ")");
+	appendStringInfoChar(&cmd, ')');
 
 	res = walrcv_exec(wrconn, cmd.data, 2, tableRow);
 	pfree(cmd.data);

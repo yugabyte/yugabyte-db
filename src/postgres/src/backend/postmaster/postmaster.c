@@ -32,7 +32,7 @@
  *	  clients.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -74,8 +74,6 @@
 #include <sys/socket.h>
 #include <fcntl.h>
 #include <sys/param.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <netdb.h>
 #include <limits.h>
 
@@ -99,6 +97,7 @@
 #include "access/xlog.h"
 #include "bootstrap/bootstrap.h"
 #include "catalog/pg_control.h"
+#include "common/file_perm.h"
 #include "common/ip.h"
 #include "lib/ilist.h"
 #include "libpq/auth.h"
@@ -108,6 +107,7 @@
 #include "miscadmin.h"
 #include "pg_getopt.h"
 #include "pgstat.h"
+#include "port/pg_bswap.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/bgworker_internals.h"
 #include "postmaster/fork_process.h"
@@ -205,9 +205,9 @@ char	   *ListenAddresses;
 
 /*
  * ReservedBackends is the number of backends reserved for superuser use.
- * This number is taken out of the pool size given by MaxBackends so
+ * This number is taken out of the pool size given by MaxConnections so
  * number of backend slots available to non-superusers is
- * (MaxBackends - ReservedBackends).  Note what this really means is
+ * (MaxConnections - ReservedBackends).  Note what this really means is
  * "if there are <= ReservedBackends connections available, only superusers
  * can make new connections" --- pre-existing superuser connections don't
  * count against the limit.
@@ -393,7 +393,7 @@ static DNSServiceRef bonjour_sdref = NULL;
 static void CloseServerPorts(int status, Datum arg);
 static void unlink_external_pid_file(int status, Datum arg);
 static void getInstallationPaths(const char *argv0);
-static void checkDataDir(void);
+static void checkControlFile(void);
 static Port *ConnCreate(int serverFd);
 static void ConnFree(Port *port);
 static void reset_shared(int port);
@@ -590,9 +590,14 @@ PostmasterMain(int argc, char *argv[])
 	IsPostmasterEnvironment = true;
 
 	/*
-	 * for security, no dir or file created can be group or other accessible
+	 * We should not be creating any files or directories before we check the
+	 * data directory (see checkDataDir()), but just in case set the umask to
+	 * the most restrictive (owner-only) permissions.
+	 *
+	 * checkDataDir() will reset the umask based on the data directory
+	 * permissions.
 	 */
-	umask(S_IRWXG | S_IRWXO);
+	umask(PG_MODE_MASK_OWNER);
 
 	/*
 	 * Initialize random(3) so we don't get the same values in every run.
@@ -879,20 +884,20 @@ PostmasterMain(int argc, char *argv[])
 	/* Verify that DataDir looks reasonable */
 	checkDataDir();
 
+	/* Check that pg_control exists */
+	checkControlFile();
+
 	/* And switch working directory into it */
 	ChangeToDataDir();
 
 	/*
 	 * Check for invalid combinations of GUC settings.
 	 */
-	if (ReservedBackends >= MaxConnections)
+	if (ReservedBackends + max_wal_senders >= MaxConnections)
 	{
-		write_stderr("%s: superuser_reserved_connections must be less than max_connections\n", progname);
-		ExitPostmaster(1);
-	}
-	if (max_wal_senders >= MaxConnections)
-	{
-		write_stderr("%s: max_wal_senders must be less than max_connections\n", progname);
+		write_stderr("%s: superuser_reserved_connections (%d) plus max_wal_senders (%d) must be less than max_connections (%d)\n",
+					 progname,
+					 ReservedBackends, max_wal_senders, MaxConnections);
 		ExitPostmaster(1);
 	}
 	if (XLogArchiveMode > ARCHIVE_MODE_OFF && wal_level == WAL_LEVEL_MINIMAL)
@@ -955,6 +960,17 @@ PostmasterMain(int argc, char *argv[])
 	 * lockfiles go away after CloseServerPorts runs.
 	 */
 	CreateDataDirLockFile(true);
+
+	/*
+	 * Read the control file (for error checking and config info).
+	 *
+	 * Since we verify the control file's CRC, this has a useful side effect
+	 * on machines where we need a run-time test for CRC support instructions.
+	 * The postmaster will do the test once at startup, and then its child
+	 * processes will inherit the correct function pointer and not need to
+	 * repeat the test.
+	 */
+	LocalProcessControlFile(false);
 
 	/*
 	 * Initialize SSL library, if specified.
@@ -1075,7 +1091,7 @@ PostmasterMain(int argc, char *argv[])
 								 "_postgresql._tcp.",
 								 NULL,
 								 NULL,
-								 htons(PostPortNumber),
+								 pg_hton16(PostPortNumber),
 								 0,
 								 NULL,
 								 NULL,
@@ -1473,82 +1489,17 @@ getInstallationPaths(const char *argv0)
 	 */
 }
 
-
 /*
- * Validate the proposed data directory
+ * Check that pg_control exists in the correct location in the data directory.
+ *
+ * No attempt is made to validate the contents of pg_control here.  This is
+ * just a sanity check to see if we are looking at a real data directory.
  */
 static void
-checkDataDir(void)
+checkControlFile(void)
 {
 	char		path[MAXPGPATH];
 	FILE	   *fp;
-	struct stat stat_buf;
-
-	Assert(DataDir);
-
-	if (stat(DataDir, &stat_buf) != 0)
-	{
-		if (errno == ENOENT)
-			ereport(FATAL,
-					(errcode_for_file_access(),
-					 errmsg("data directory \"%s\" does not exist",
-							DataDir)));
-		else
-			ereport(FATAL,
-					(errcode_for_file_access(),
-					 errmsg("could not read permissions of directory \"%s\": %m",
-							DataDir)));
-	}
-
-	/* eventual chdir would fail anyway, but let's test ... */
-	if (!S_ISDIR(stat_buf.st_mode))
-		ereport(FATAL,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("specified data directory \"%s\" is not a directory",
-						DataDir)));
-
-	/*
-	 * Check that the directory belongs to my userid; if not, reject.
-	 *
-	 * This check is an essential part of the interlock that prevents two
-	 * postmasters from starting in the same directory (see CreateLockFile()).
-	 * Do not remove or weaken it.
-	 *
-	 * XXX can we safely enable this check on Windows?
-	 */
-#if !defined(WIN32) && !defined(__CYGWIN__)
-	if (stat_buf.st_uid != geteuid())
-		ereport(FATAL,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("data directory \"%s\" has wrong ownership",
-						DataDir),
-				 errhint("The server must be started by the user that owns the data directory.")));
-#endif
-
-	/*
-	 * Check if the directory has group or world access.  If so, reject.
-	 *
-	 * It would be possible to allow weaker constraints (for example, allow
-	 * group access) but we cannot make a general assumption that that is
-	 * okay; for example there are platforms where nearly all users
-	 * customarily belong to the same group.  Perhaps this test should be
-	 * configurable.
-	 *
-	 * XXX temporarily suppress check when on Windows, because there may not
-	 * be proper support for Unix-y file permissions.  Need to think of a
-	 * reasonable check to apply on Windows.
-	 */
-#if !defined(WIN32) && !defined(__CYGWIN__)
-	if (stat_buf.st_mode & (S_IRWXG | S_IRWXO))
-		ereport(FATAL,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("data directory \"%s\" has group or world access",
-						DataDir),
-				 errdetail("Permissions should be u=rwx (0700).")));
-#endif
-
-	/* Look for PG_VERSION before looking for pg_control */
-	ValidatePgVersion(DataDir);
 
 	snprintf(path, sizeof(path), "%s/global/pg_control", DataDir);
 
@@ -1986,7 +1937,7 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 		return STATUS_ERROR;
 	}
 
-	len = ntohl(len);
+	len = pg_ntoh32(len);
 	len -= 4;
 
 	if (len < (int32) sizeof(ProtocolVersion) ||
@@ -2022,7 +1973,7 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 	 * The first field is either a protocol version number or a special
 	 * request code.
 	 */
-	port->proto = proto = ntohl(*((ProtocolVersion *) buf));
+	port->proto = proto = pg_ntoh32(*((ProtocolVersion *) buf));
 
 	if (proto == CANCEL_REQUEST_CODE)
 	{
@@ -2180,8 +2131,8 @@ retry1:
 		/*
 		 * If the client requested a newer protocol version or if the client
 		 * requested any protocol options we didn't recognize, let them know
-		 * the newest minor protocol version we do support and the names of any
-		 * unrecognized options.
+		 * the newest minor protocol version we do support and the names of
+		 * any unrecognized options.
 		 */
 		if (PG_PROTOCOL_MINOR(proto) > PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST) ||
 			unrecognized_protocol_options != NIL)
@@ -2319,8 +2270,8 @@ SendNegotiateProtocolVersion(List *unrecognized_protocol_options)
 	ListCell   *lc;
 
 	pq_beginmessage(&buf, 'v'); /* NegotiateProtocolVersion */
-	pq_sendint(&buf, PG_PROTOCOL_LATEST, 4);
-	pq_sendint(&buf, list_length(unrecognized_protocol_options), 4);
+	pq_sendint32(&buf, PG_PROTOCOL_LATEST);
+	pq_sendint32(&buf, list_length(unrecognized_protocol_options));
 	foreach(lc, unrecognized_protocol_options)
 		pq_sendstring(&buf, lfirst(lc));
 	pq_endmessage(&buf);
@@ -2347,8 +2298,8 @@ processCancelRequest(Port *port, void *pkt)
 	int			i;
 #endif
 
-	backendPID = (int) ntohl(canc->backendPID);
-	cancelAuthCode = (int32) ntohl(canc->cancelAuthCode);
+	backendPID = (int) pg_ntoh32(canc->backendPID);
+	cancelAuthCode = (int32) pg_ntoh32(canc->cancelAuthCode);
 
 	/*
 	 * See if we have a matching backend.  In the EXEC_BACKEND case, we can no
@@ -2755,7 +2706,7 @@ pmdie(SIGNAL_ARGS)
 				signal_child(BgWriterPID, SIGTERM);
 			if (WalReceiverPID != 0)
 				signal_child(WalReceiverPID, SIGTERM);
-			if (pmState == PM_RECOVERY)
+			if (pmState == PM_STARTUP || pmState == PM_RECOVERY)
 			{
 				SignalSomeChildren(SIGTERM, BACKEND_TYPE_BGWORKER);
 
@@ -3186,8 +3137,9 @@ CleanupBackgroundWorker(int pid,
 			exitstatus = 0;
 #endif
 
-		snprintf(namebuf, MAXPGPATH, "%s: %s", _("worker process"),
-				 rw->rw_worker.bgw_name);
+		snprintf(namebuf, MAXPGPATH, _("background worker \"%s\""),
+				 rw->rw_worker.bgw_type);
+
 
 		if (!EXIT_STATUS_0(exitstatus))
 		{
@@ -3901,6 +3853,10 @@ PostmasterStateMachine(void)
 		ResetBackgroundWorkerCrashTimes();
 
 		shmem_exit(1);
+
+		/* re-read control file into local memory */
+		LocalProcessControlFile(true);
+
 		reset_shared(PostPortNumber);
 
 		StartupPID = StartupDataBase();
@@ -4334,14 +4290,14 @@ BackendInitialize(Port *port)
 	 *
 	 * For a walsender, the ps display is set in the following form:
 	 *
-	 * postgres: wal sender process <user> <host> <activity>
+	 * postgres: walsender <user> <host> <activity>
 	 *
-	 * To achieve that, we pass "wal sender process" as username and username
-	 * as dbname to init_ps_display(). XXX: should add a new variant of
+	 * To achieve that, we pass "walsender" as username and username as dbname
+	 * to init_ps_display(). XXX: should add a new variant of
 	 * init_ps_display() to avoid abusing the parameters like this.
 	 */
 	if (am_walsender)
-		init_ps_display("wal sender process", port->user_name, remote_ps_data,
+		init_ps_display(pgstat_get_backend_desc(B_WAL_SENDER), port->user_name, remote_ps_data,
 						update_process_title ? "authentication" : "");
 	else
 		init_ps_display(port->user_name, port->database_name, remote_ps_data,
@@ -4519,9 +4475,9 @@ internal_forkexec(int argc, char *argv[], Port *port)
 	{
 		/*
 		 * As in OpenTemporaryFileInTablespace, try to make the temp-file
-		 * directory
+		 * directory, ignoring errors.
 		 */
-		mkdir(PG_TEMP_FILES_DIR, S_IRWXU);
+		(void) MakePGDirectory(PG_TEMP_FILES_DIR);
 
 		fp = AllocateFile(tmpfilename, PG_BINARY_W);
 		if (!fp)
@@ -4885,6 +4841,20 @@ SubPostmasterMain(int argc, char *argv[])
 
 	/* Read in remaining GUC variables */
 	read_nondefault_variables();
+
+	/*
+	 * Check that the data directory looks valid, which will also check the
+	 * privileges on the data directory and update our umask and file/group
+	 * variables for creating files later.  Note: this should really be done
+	 * before we create any files or directories.
+	 */
+	checkDataDir();
+
+	/*
+	 * (re-)read control file, as it contains config. The postmaster will
+	 * already have read this, but this process doesn't know about that.
+	 */
+	LocalProcessControlFile(false);
 
 	/*
 	 * Reload any libraries that were preloaded by the postmaster.  Since we
@@ -5614,7 +5584,7 @@ MaxLivePostmasterChildren(void)
  * Connect background worker to a database.
  */
 void
-BackgroundWorkerInitializeConnection(char *dbname, char *username)
+BackgroundWorkerInitializeConnection(const char *dbname, const char *username, uint32 flags)
 {
 	BackgroundWorker *worker = MyBgworkerEntry;
 
@@ -5624,7 +5594,7 @@ BackgroundWorkerInitializeConnection(char *dbname, char *username)
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("database connection requirement not indicated during registration")));
 
-	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL);
+	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
@@ -5637,7 +5607,7 @@ BackgroundWorkerInitializeConnection(char *dbname, char *username)
  * Connect background worker to a database using OIDs.
  */
 void
-BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid)
+BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags)
 {
 	BackgroundWorker *worker = MyBgworkerEntry;
 
@@ -5647,7 +5617,7 @@ BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid)
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("database connection requirement not indicated during registration")));
 
-	InitPostgres(NULL, dboid, NULL, useroid, NULL);
+	InitPostgres(NULL, dboid, NULL, useroid, NULL, (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())

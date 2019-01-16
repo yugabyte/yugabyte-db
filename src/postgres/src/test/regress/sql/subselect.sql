@@ -99,8 +99,8 @@ SELECT *, pg_typeof(f1) FROM
 
 -- ... unless there's context to suggest differently
 
-explain verbose select '42' union all select '43';
-explain verbose select '42' union all select 43;
+explain (verbose, costs off) select '42' union all select '43';
+explain (verbose, costs off) select '42' union all select 43;
 
 -- check materialization of an initplan reference (bug #14524)
 explain (verbose, costs off)
@@ -568,3 +568,60 @@ select * from
   where tattle(x, u);
 
 drop function tattle(x int, y int);
+
+--
+-- Test that LIMIT can be pushed to SORT through a subquery that just projects
+-- columns.  We check for that having happened by looking to see if EXPLAIN
+-- ANALYZE shows that a top-N sort was used.  We must suppress or filter away
+-- all the non-invariant parts of the EXPLAIN ANALYZE output.
+--
+create table sq_limit (pk int primary key, c1 int, c2 int);
+insert into sq_limit values
+    (1, 1, 1),
+    (2, 2, 2),
+    (3, 3, 3),
+    (4, 4, 4),
+    (5, 1, 1),
+    (6, 2, 2),
+    (7, 3, 3),
+    (8, 4, 4);
+
+create function explain_sq_limit() returns setof text language plpgsql as
+$$
+declare ln text;
+begin
+    for ln in
+        explain (analyze, summary off, timing off, costs off)
+        select * from (select pk,c2 from sq_limit order by c1,pk) as x limit 3
+    loop
+        ln := regexp_replace(ln, 'Memory: \S*',  'Memory: xxx');
+        -- this case might occur if force_parallel_mode is on:
+        ln := regexp_replace(ln, 'Worker 0:  Sort Method',  'Sort Method');
+        return next ln;
+    end loop;
+end;
+$$;
+
+select * from explain_sq_limit();
+
+select * from (select pk,c2 from sq_limit order by c1,pk) as x limit 3;
+
+drop function explain_sq_limit();
+
+drop table sq_limit;
+
+--
+-- Ensure that backward scan direction isn't propagated into
+-- expression subqueries (bug #15336)
+--
+
+begin;
+
+declare c1 scroll cursor for
+ select * from generate_series(1,4) i
+  where i <> all (values (2),(3));
+
+move forward all in c1;
+fetch backward all in c1;
+
+commit;

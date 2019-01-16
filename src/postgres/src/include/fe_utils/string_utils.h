@@ -6,7 +6,7 @@
  * assorted contexts.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/fe_utils/string_utils.h
@@ -25,8 +25,7 @@ extern PQExpBuffer (*getLocalPQExpBuffer) (void);
 
 /* Functions */
 extern const char *fmtId(const char *identifier);
-extern const char *fmtQualifiedId(int remoteVersion,
-			   const char *schema, const char *id);
+extern const char *fmtQualifiedId(const char *schema, const char *id);
 
 extern char *formatPGVersionNumber(int version_number, bool include_minor,
 					  char *buf, size_t buflen);

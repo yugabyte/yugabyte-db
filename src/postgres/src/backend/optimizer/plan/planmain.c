@@ -9,7 +9,7 @@
  * shorn of features like subselects, inheritance, aggregates, grouping,
  * and so on.  (Those are the things planner.c deals with.)
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -123,6 +123,12 @@ query_planner(PlannerInfo *root, List *tlist,
 	 * array for indexing base relations.
 	 */
 	setup_simple_rel_arrays(root);
+
+	/*
+	 * Populate append_rel_array with each AppendRelInfo to allow direct
+	 * lookups by child relid.
+	 */
+	setup_append_rel_array(root);
 
 	/*
 	 * Construct RelOptInfo nodes for all base relations in query, and

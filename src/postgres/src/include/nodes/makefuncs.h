@@ -4,7 +4,7 @@
  *	  prototypes for the creator functions (for primitive nodes)
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/makefuncs.h
@@ -85,5 +85,7 @@ extern DefElem *makeDefElemExtended(char *nameSpace, char *name, Node *arg,
 					DefElemAction defaction, int location);
 
 extern GroupingSet *makeGroupingSet(GroupingSetKind kind, List *content, int location);
+
+extern VacuumRelation *makeVacuumRelation(RangeVar *relation, Oid oid, List *va_cols);
 
 #endif							/* MAKEFUNC_H */

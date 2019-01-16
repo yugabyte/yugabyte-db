@@ -4,7 +4,7 @@
  *
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/libpq/be-fsstubs.h
@@ -13,11 +13,6 @@
  */
 #ifndef BE_FSSTUBS_H
 #define BE_FSSTUBS_H
-
-/*
- * compatibility option for access control
- */
-extern bool lo_compat_privileges;
 
 /*
  * These are not fmgr-callable, but are available to C code.

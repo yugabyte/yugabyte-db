@@ -11,7 +11,7 @@
  * is that we have to work harder to clean up after ourselves when we modify
  * the query, since the derived data structures have to be updated too.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -42,6 +42,7 @@ static bool rel_is_distinct_for(PlannerInfo *root, RelOptInfo *rel,
 					List *clause_list);
 static Oid	distinct_col_search(int colno, List *colnos, List *opids);
 static bool is_innerrel_unique_for(PlannerInfo *root,
+					   Relids joinrelids,
 					   Relids outerrelids,
 					   RelOptInfo *innerrel,
 					   JoinType jointype,
@@ -565,7 +566,8 @@ reduce_unique_semijoins(PlannerInfo *root)
 						innerrel->joininfo);
 
 		/* Test whether the innerrel is unique for those clauses. */
-		if (!innerrel_is_unique(root, sjinfo->min_lefthand, innerrel,
+		if (!innerrel_is_unique(root,
+								joinrelids, sjinfo->min_lefthand, innerrel,
 								JOIN_SEMI, restrictlist, true))
 			continue;
 
@@ -580,7 +582,7 @@ reduce_unique_semijoins(PlannerInfo *root)
  *		Could the relation possibly be proven distinct on some set of columns?
  *
  * This is effectively a pre-checking function for rel_is_distinct_for().
- * It must return TRUE if rel_is_distinct_for() could possibly return TRUE
+ * It must return true if rel_is_distinct_for() could possibly return true
  * with this rel, but it should not expend a lot of cycles.  The idea is
  * that callers can avoid doing possibly-expensive processing to compute
  * rel_is_distinct_for()'s argument lists if the call could not possibly
@@ -733,7 +735,7 @@ rel_is_distinct_for(PlannerInfo *root, RelOptInfo *rel, List *clause_list)
  *		on some set of output columns?
  *
  * This is effectively a pre-checking function for query_is_distinct_for().
- * It must return TRUE if query_is_distinct_for() could possibly return TRUE
+ * It must return true if query_is_distinct_for() could possibly return true
  * with this query, but it should not expend a lot of cycles.  The idea is
  * that callers can avoid doing possibly-expensive processing to compute
  * query_is_distinct_for()'s argument lists if the call could not possibly
@@ -947,7 +949,8 @@ distinct_col_search(int colno, List *colnos, List *opids)
  *
  * We need an actual RelOptInfo for the innerrel, but it's sufficient to
  * identify the outerrel by its Relids.  This asymmetry supports use of this
- * function before joinrels have been built.
+ * function before joinrels have been built.  (The caller is expected to
+ * also supply the joinrelids, just to save recalculating that.)
  *
  * The proof must be made based only on clauses that will be "joinquals"
  * rather than "otherquals" at execution.  For an inner join there's no
@@ -966,6 +969,7 @@ distinct_col_search(int colno, List *colnos, List *opids)
  */
 bool
 innerrel_is_unique(PlannerInfo *root,
+				   Relids joinrelids,
 				   Relids outerrelids,
 				   RelOptInfo *innerrel,
 				   JoinType jointype,
@@ -1014,7 +1018,7 @@ innerrel_is_unique(PlannerInfo *root,
 	}
 
 	/* No cached information, so try to make the proof. */
-	if (is_innerrel_unique_for(root, outerrelids, innerrel,
+	if (is_innerrel_unique_for(root, joinrelids, outerrelids, innerrel,
 							   jointype, restrictlist))
 	{
 		/*
@@ -1073,12 +1077,12 @@ innerrel_is_unique(PlannerInfo *root,
  */
 static bool
 is_innerrel_unique_for(PlannerInfo *root,
+					   Relids joinrelids,
 					   Relids outerrelids,
 					   RelOptInfo *innerrel,
 					   JoinType jointype,
 					   List *restrictlist)
 {
-	Relids		joinrelids = bms_union(outerrelids, innerrel->relids);
 	List	   *clause_list = NIL;
 	ListCell   *lc;
 

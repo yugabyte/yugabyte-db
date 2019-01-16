@@ -3,7 +3,7 @@
  * hashinsert.c
  *	  Item insertion in hash tables for Postgres.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -22,6 +22,7 @@
 #include "utils/rel.h"
 #include "storage/lwlock.h"
 #include "storage/buf_internals.h"
+#include "storage/predicate.h"
 
 static void _hash_vacuum_one_page(Relation rel, Buffer metabuf, Buffer buf,
 					  RelFileNode hnode);
@@ -55,7 +56,7 @@ _hash_doinsert(Relation rel, IndexTuple itup, Relation heapRel)
 	hashkey = _hash_get_indextuple_hashkey(itup);
 
 	/* compute item size too */
-	itemsz = IndexTupleDSize(*itup);
+	itemsz = IndexTupleSize(itup);
 	itemsz = MAXALIGN(itemsz);	/* be safe, PageAddItem will do this but we
 								 * need to be consistent */
 
@@ -87,6 +88,8 @@ restart_insert:
 	buf = _hash_getbucketbuf_from_hashkey(rel, hashkey, HASH_WRITE,
 										  &usedmetap);
 	Assert(usedmetap != NULL);
+
+	CheckForSerializableConflictIn(rel, NULL, buf);
 
 	/* remember the primary bucket buffer to release the pin on it at end. */
 	bucket_buf = buf;
@@ -222,7 +225,7 @@ restart_insert:
 		XLogRegisterBuffer(1, metabuf, REGBUF_STANDARD);
 
 		XLogRegisterBuffer(0, buf, REGBUF_STANDARD);
-		XLogRegisterBufData(0, (char *) itup, IndexTupleDSize(*itup));
+		XLogRegisterBufData(0, (char *) itup, IndexTupleSize(itup));
 
 		recptr = XLogInsert(RM_HASH_ID, XLOG_HASH_INSERT);
 
@@ -309,7 +312,7 @@ _hash_pgaddmultitup(Relation rel, Buffer buf, IndexTuple *itups,
 	{
 		Size		itemsize;
 
-		itemsize = IndexTupleDSize(*itups[i]);
+		itemsize = IndexTupleSize(itups[i]);
 		itemsize = MAXALIGN(itemsize);
 
 		/* Find where to insert the tuple (preserving page's hashkey ordering) */

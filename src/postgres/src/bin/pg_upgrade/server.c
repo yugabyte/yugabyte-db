@@ -3,7 +3,7 @@
  *
  *	database server functions
  *
- *	Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/server.c
  */
 
@@ -309,8 +309,8 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 
 	/*
 	 * If pg_ctl failed, and the connection didn't fail, and
-	 * report_and_exit_on_error is enabled, fail now.  This
-	 * could happen if the server was already running.
+	 * report_and_exit_on_error is enabled, fail now.  This could happen if
+	 * the server was already running.
 	 */
 	if (!pg_ctl_return)
 	{

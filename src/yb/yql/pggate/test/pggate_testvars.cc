@@ -15,8 +15,6 @@
 #include "yb/yql/pggate/test/pggate_test.h"
 #include <gflags/gflags.h>
 
-#include "postgres/src/interfaces/ecpg/ecpglib/pg_type.h"
-
 namespace yb {
 namespace pggate {
 

@@ -1,6 +1,6 @@
 <!-- doc/src/sgml/ref/create_transform.sgml -->
 
-<refentry id="SQL-CREATETRANSFORM">
+<refentry id="sql-createtransform">
  <indexterm zone="sql-createtransform">
   <primary>CREATE TRANSFORM</primary>
  </indexterm>
@@ -144,7 +144,7 @@ CREATE [ OR REPLACE ] TRANSFORM FOR <replaceable>type_name</replaceable> LANGUAG
   <title>Notes</title>
 
   <para>
-   Use <xref linkend="sql-droptransform"> to remove transforms.
+   Use <xref linkend="sql-droptransform"/> to remove transforms.
   </para>
  </refsect1>
 
@@ -157,7 +157,7 @@ CREATE [ OR REPLACE ] TRANSFORM FOR <replaceable>type_name</replaceable> LANGUAG
 <programlisting>
 CREATE TYPE hstore ...;
 
-CREATE LANGUAGE plpythonu ...;
+CREATE EXTENSION plpythonu;
 </programlisting>
    Then create the necessary functions:
 <programlisting>
@@ -176,7 +176,7 @@ CREATE TRANSFORM FOR hstore LANGUAGE plpythonu (
     TO SQL WITH FUNCTION plpython_to_hstore(internal)
 );
 </programlisting>
-   In practice, these commands would be wrapped up in extensions.
+   In practice, these commands would be wrapped up in an extension.
   </para>
 
   <para>
@@ -201,10 +201,10 @@ CREATE TRANSFORM FOR hstore LANGUAGE plpythonu (
   <title>See Also</title>
 
   <para>
-   <xref linkend="sql-createfunction">,
-   <xref linkend="sql-createlanguage">,
-   <xref linkend="sql-createtype">,
-   <xref linkend="sql-droptransform">
+   <xref linkend="sql-createfunction"/>,
+   <xref linkend="sql-createlanguage"/>,
+   <xref linkend="sql-createtype"/>,
+   <xref linkend="sql-droptransform"/>
   </para>
  </refsect1>
 

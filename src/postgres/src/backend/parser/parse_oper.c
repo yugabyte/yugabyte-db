@@ -3,7 +3,7 @@
  * parse_oper.c
  *		handle operator things for parser
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -723,7 +723,10 @@ op_error(ParseState *pstate, List *op, char oprkind,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("operator does not exist: %s",
 						op_signature_string(op, oprkind, arg1, arg2)),
-				 errhint("No operator matches the given name and argument type(s). "
+				 (!arg1 || !arg2) ?
+				 errhint("No operator matches the given name and argument type. "
+						 "You might need to add an explicit type cast.") :
+				 errhint("No operator matches the given name and argument types. "
 						 "You might need to add explicit type casts."),
 				 parser_errposition(pstate, location)));
 }
@@ -1020,7 +1023,7 @@ static HTAB *OprCacheHash = NULL;
  * make_oper_cache_key
  *		Fill the lookup key struct given operator name and arg types.
  *
- * Returns TRUE if successful, FALSE if the search_path overflowed
+ * Returns true if successful, false if the search_path overflowed
  * (hence no caching is possible).
  *
  * pstate/location are used only to report the error position; pass NULL/-1

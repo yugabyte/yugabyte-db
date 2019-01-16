@@ -3,7 +3,7 @@
  * pg_namespace.c
  *	  routines to support manipulation of the pg_namespace relation
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -63,7 +63,7 @@ NamespaceCreate(const char *nspName, Oid ownerId, bool isTemp)
 				 errmsg("schema \"%s\" already exists", nspName)));
 
 	if (!isTemp)
-		nspacl = get_user_default_acl(ACL_OBJECT_NAMESPACE, ownerId,
+		nspacl = get_user_default_acl(OBJECT_SCHEMA, ownerId,
 									  InvalidOid);
 	else
 		nspacl = NULL;
@@ -99,6 +99,9 @@ NamespaceCreate(const char *nspName, Oid ownerId, bool isTemp)
 
 	/* dependency on owner */
 	recordDependencyOnOwner(NamespaceRelationId, nspoid, ownerId);
+
+	/* dependences on roles mentioned in default ACL */
+	recordDependencyOnNewAcl(NamespaceRelationId, nspoid, 0, ownerId, nspacl);
 
 	/* dependency on extension ... but not for magic temp schemas */
 	if (!isTemp)

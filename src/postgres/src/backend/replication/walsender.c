@@ -37,7 +37,7 @@
  * record, wait for it to be replicated to the standby, and then exit.
  *
  *
- * Portions Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/walsender.c
@@ -162,9 +162,12 @@ static StringInfoData output_message;
 static StringInfoData reply_message;
 static StringInfoData tmpbuf;
 
+/* Timestamp of last ProcessRepliesIfAny(). */
+static TimestampTz last_processing = 0;
+
 /*
- * Timestamp of the last receipt of the reply from the standby. Set to 0 if
- * wal_sender_timeout doesn't need to be active.
+ * Timestamp of last ProcessRepliesIfAny() that saw a reply from the
+ * standby. Set to 0 if wal_sender_timeout doesn't need to be active.
  */
 static TimestampTz last_reply_timestamp = 0;
 
@@ -241,8 +244,8 @@ static void ProcessStandbyReplyMessage(void);
 static void ProcessStandbyHSFeedbackMessage(void);
 static void ProcessRepliesIfAny(void);
 static void WalSndKeepalive(bool requestReply);
-static void WalSndKeepaliveIfNecessary(TimestampTz now);
-static void WalSndCheckTimeOut(TimestampTz now);
+static void WalSndKeepaliveIfNecessary(void);
+static void WalSndCheckTimeOut(void);
 static long WalSndComputeSleeptime(TimestampTz now);
 static void WalSndPrepareWrite(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid, bool last_write);
 static void WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid, bool last_write);
@@ -445,35 +448,35 @@ SendTimeLineHistory(TimeLineHistoryCmd *cmd)
 
 	/* Send a RowDescription message */
 	pq_beginmessage(&buf, 'T');
-	pq_sendint(&buf, 2, 2);		/* 2 fields */
+	pq_sendint16(&buf, 2);		/* 2 fields */
 
 	/* first field */
 	pq_sendstring(&buf, "filename");	/* col name */
-	pq_sendint(&buf, 0, 4);		/* table oid */
-	pq_sendint(&buf, 0, 2);		/* attnum */
-	pq_sendint(&buf, TEXTOID, 4);	/* type oid */
-	pq_sendint(&buf, -1, 2);	/* typlen */
-	pq_sendint(&buf, 0, 4);		/* typmod */
-	pq_sendint(&buf, 0, 2);		/* format code */
+	pq_sendint32(&buf, 0);		/* table oid */
+	pq_sendint16(&buf, 0);		/* attnum */
+	pq_sendint32(&buf, TEXTOID);	/* type oid */
+	pq_sendint16(&buf, -1);		/* typlen */
+	pq_sendint32(&buf, 0);		/* typmod */
+	pq_sendint16(&buf, 0);		/* format code */
 
 	/* second field */
 	pq_sendstring(&buf, "content"); /* col name */
-	pq_sendint(&buf, 0, 4);		/* table oid */
-	pq_sendint(&buf, 0, 2);		/* attnum */
-	pq_sendint(&buf, BYTEAOID, 4);	/* type oid */
-	pq_sendint(&buf, -1, 2);	/* typlen */
-	pq_sendint(&buf, 0, 4);		/* typmod */
-	pq_sendint(&buf, 0, 2);		/* format code */
+	pq_sendint32(&buf, 0);		/* table oid */
+	pq_sendint16(&buf, 0);		/* attnum */
+	pq_sendint32(&buf, BYTEAOID);	/* type oid */
+	pq_sendint16(&buf, -1);		/* typlen */
+	pq_sendint32(&buf, 0);		/* typmod */
+	pq_sendint16(&buf, 0);		/* format code */
 	pq_endmessage(&buf);
 
 	/* Send a DataRow message */
 	pq_beginmessage(&buf, 'D');
-	pq_sendint(&buf, 2, 2);		/* # of columns */
+	pq_sendint16(&buf, 2);		/* # of columns */
 	len = strlen(histfname);
-	pq_sendint(&buf, len, 4);	/* col1 len */
+	pq_sendint32(&buf, len);	/* col1 len */
 	pq_sendbytes(&buf, histfname, len);
 
-	fd = OpenTransientFile(path, O_RDONLY | PG_BINARY, 0666);
+	fd = OpenTransientFile(path, O_RDONLY | PG_BINARY);
 	if (fd < 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
@@ -490,23 +493,23 @@ SendTimeLineHistory(TimeLineHistoryCmd *cmd)
 				(errcode_for_file_access(),
 				 errmsg("could not seek to beginning of file \"%s\": %m", path)));
 
-	pq_sendint(&buf, histfilelen, 4);	/* col2 len */
+	pq_sendint32(&buf, histfilelen);	/* col2 len */
 
 	bytesleft = histfilelen;
 	while (bytesleft > 0)
 	{
-		char		rbuf[BLCKSZ];
+		PGAlignedBlock rbuf;
 		int			nread;
 
 		pgstat_report_wait_start(WAIT_EVENT_WALSENDER_TIMELINE_HISTORY_READ);
-		nread = read(fd, rbuf, sizeof(rbuf));
+		nread = read(fd, rbuf.data, sizeof(rbuf));
 		pgstat_report_wait_end();
 		if (nread <= 0)
 			ereport(ERROR,
 					(errcode_for_file_access(),
 					 errmsg("could not read file \"%s\": %m",
 							path)));
-		pq_sendbytes(&buf, rbuf, nread);
+		pq_sendbytes(&buf, rbuf.data, nread);
 		bytesleft -= nread;
 	}
 	CloseTransientFile(fd);
@@ -647,7 +650,7 @@ StartReplication(StartReplicationCmd *cmd)
 		/* Send a CopyBothResponse message, and start streaming */
 		pq_beginmessage(&buf, 'W');
 		pq_sendbyte(&buf, 0);
-		pq_sendint(&buf, 0, 2);
+		pq_sendint16(&buf, 0);
 		pq_endmessage(&buf);
 		pq_flush();
 
@@ -1061,24 +1064,28 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 		got_STOPPING = true;
 	}
 
+	/*
+	 * Create our decoding context, making it start at the previously ack'ed
+	 * position.
+	 *
+	 * Do this before sending CopyBoth, so that any errors are reported early.
+	 */
+	logical_decoding_ctx =
+		CreateDecodingContext(cmd->startpoint, cmd->options, false,
+							  logical_read_xlog_page,
+							  WalSndPrepareWrite, WalSndWriteData,
+							  WalSndUpdateProgress);
+
+
 	WalSndSetState(WALSNDSTATE_CATCHUP);
 
 	/* Send a CopyBothResponse message, and start streaming */
 	pq_beginmessage(&buf, 'W');
 	pq_sendbyte(&buf, 0);
-	pq_sendint(&buf, 0, 2);
+	pq_sendint16(&buf, 0);
 	pq_endmessage(&buf);
 	pq_flush();
 
-	/*
-	 * Initialize position to the last ack'ed one, then the xlog records begin
-	 * to be shipped from that position.
-	 */
-	logical_decoding_ctx = CreateDecodingContext(cmd->startpoint, cmd->options,
-												 logical_read_xlog_page,
-												 WalSndPrepareWrite,
-												 WalSndWriteData,
-												 WalSndUpdateProgress);
 
 	/* Start reading WAL from the oldest required WAL. */
 	logical_startptr = MyReplicationSlot->data.restart_lsn;
@@ -1152,7 +1159,7 @@ static void
 WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 				bool last_write)
 {
-	TimestampTz	now;
+	TimestampTz now;
 
 	/* output previously gathered data in a CopyData packet */
 	pq_putmessage_noblock('d', ctx->out->data, ctx->out->len);
@@ -1191,18 +1198,16 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 		/* Check for input from the client */
 		ProcessRepliesIfAny();
 
-		now = GetCurrentTimestamp();
-
 		/* die if timeout was reached */
-		WalSndCheckTimeOut(now);
+		WalSndCheckTimeOut();
 
 		/* Send keepalive if the time has come */
-		WalSndKeepaliveIfNecessary(now);
+		WalSndKeepaliveIfNecessary();
 
 		if (!pq_is_send_pending())
 			break;
 
-		sleeptime = WalSndComputeSleeptime(now);
+		sleeptime = WalSndComputeSleeptime(GetCurrentTimestamp());
 
 		wakeEvents = WL_LATCH_SET | WL_POSTMASTER_DEATH |
 			WL_SOCKET_WRITEABLE | WL_SOCKET_READABLE | WL_TIMEOUT;
@@ -1242,9 +1247,9 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 }
 
 /*
- * LogicalDecodingContext 'progress_update' callback.
+ * LogicalDecodingContext 'update_progress' callback.
  *
- * Write the current position to the log tracker (see XLogSendPhysical).
+ * Write the current position to the lag tracker (see XLogSendPhysical).
  */
 static void
 WalSndUpdateProgress(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid)
@@ -1297,7 +1302,6 @@ WalSndWaitForWal(XLogRecPtr loc)
 	for (;;)
 	{
 		long		sleeptime;
-		TimestampTz now;
 
 		/*
 		 * Emergency bailout if postmaster has died.  This is to avoid the
@@ -1382,13 +1386,11 @@ WalSndWaitForWal(XLogRecPtr loc)
 			!pq_is_send_pending())
 			break;
 
-		now = GetCurrentTimestamp();
-
 		/* die if timeout was reached */
-		WalSndCheckTimeOut(now);
+		WalSndCheckTimeOut();
 
 		/* Send keepalive if the time has come */
-		WalSndKeepaliveIfNecessary(now);
+		WalSndKeepaliveIfNecessary();
 
 		/*
 		 * Sleep until something happens or we time out.  Also wait for the
@@ -1397,7 +1399,7 @@ WalSndWaitForWal(XLogRecPtr loc)
 		 * new WAL to be generated.  (But if we have nothing to send, we don't
 		 * want to wake on socket-writable.)
 		 */
-		sleeptime = WalSndComputeSleeptime(now);
+		sleeptime = WalSndComputeSleeptime(GetCurrentTimestamp());
 
 		wakeEvents = WL_LATCH_SET | WL_POSTMASTER_DEATH |
 			WL_SOCKET_READABLE | WL_TIMEOUT;
@@ -1515,7 +1517,7 @@ exec_replication_command(const char *cmd_string)
 			break;
 
 		case T_BaseBackupCmd:
-			PreventTransactionChain(true, "BASE_BACKUP");
+			PreventInTransactionBlock(true, "BASE_BACKUP");
 			SendBaseBackup((BaseBackupCmd *) cmd_node);
 			break;
 
@@ -1531,7 +1533,7 @@ exec_replication_command(const char *cmd_string)
 			{
 				StartReplicationCmd *cmd = (StartReplicationCmd *) cmd_node;
 
-				PreventTransactionChain(true, "START_REPLICATION");
+				PreventInTransactionBlock(true, "START_REPLICATION");
 
 				if (cmd->kind == REPLICATION_KIND_PHYSICAL)
 					StartReplication(cmd);
@@ -1541,7 +1543,7 @@ exec_replication_command(const char *cmd_string)
 			}
 
 		case T_TimeLineHistoryCmd:
-			PreventTransactionChain(true, "TIMELINE_HISTORY");
+			PreventInTransactionBlock(true, "TIMELINE_HISTORY");
 			SendTimeLineHistory((TimeLineHistoryCmd *) cmd_node);
 			break;
 
@@ -1593,6 +1595,8 @@ ProcessRepliesIfAny(void)
 	unsigned char firstchar;
 	int			r;
 	bool		received = false;
+
+	last_processing = GetCurrentTimestamp();
 
 	for (;;)
 	{
@@ -1681,7 +1685,7 @@ ProcessRepliesIfAny(void)
 	 */
 	if (received)
 	{
-		last_reply_timestamp = GetCurrentTimestamp();
+		last_reply_timestamp = last_processing;
 		waiting_for_ping_response = false;
 	}
 }
@@ -2060,10 +2064,18 @@ WalSndComputeSleeptime(TimestampTz now)
 
 /*
  * Check whether there have been responses by the client within
- * wal_sender_timeout and shutdown if not.
+ * wal_sender_timeout and shutdown if not.  Using last_processing as the
+ * reference point avoids counting server-side stalls against the client.
+ * However, a long server-side stall can make WalSndKeepaliveIfNecessary()
+ * postdate last_processing by more than wal_sender_timeout.  If that happens,
+ * the client must reply almost immediately to avoid a timeout.  This rarely
+ * affects the default configuration, under which clients spontaneously send a
+ * message every standby_message_timeout = wal_sender_timeout/6 = 10s.  We
+ * could eliminate that problem by recognizing timeout expiration at
+ * wal_sender_timeout/2 after the keepalive.
  */
 static void
-WalSndCheckTimeOut(TimestampTz now)
+WalSndCheckTimeOut(void)
 {
 	TimestampTz timeout;
 
@@ -2074,7 +2086,7 @@ WalSndCheckTimeOut(TimestampTz now)
 	timeout = TimestampTzPlusMilliseconds(last_reply_timestamp,
 										  wal_sender_timeout);
 
-	if (wal_sender_timeout > 0 && now >= timeout)
+	if (wal_sender_timeout > 0 && last_processing >= timeout)
 	{
 		/*
 		 * Since typically expiration of replication timeout means
@@ -2105,8 +2117,6 @@ WalSndLoop(WalSndSendDataCallback send_data)
 	 */
 	for (;;)
 	{
-		TimestampTz now;
-
 		/*
 		 * Emergency bailout if postmaster has died.  This is to avoid the
 		 * necessity for manual cleanup of all postmaster children.
@@ -2168,7 +2178,7 @@ WalSndLoop(WalSndSendDataCallback send_data)
 			if (MyWalSnd->state == WALSNDSTATE_CATCHUP)
 			{
 				ereport(DEBUG1,
-						(errmsg("standby \"%s\" has now caught up with primary",
+						(errmsg("\"%s\" has now caught up with upstream server",
 								application_name)));
 				WalSndSetState(WALSNDSTATE_STREAMING);
 			}
@@ -2184,13 +2194,11 @@ WalSndLoop(WalSndSendDataCallback send_data)
 				WalSndDone(send_data);
 		}
 
-		now = GetCurrentTimestamp();
-
 		/* Check for replication timeout. */
-		WalSndCheckTimeOut(now);
+		WalSndCheckTimeOut();
 
 		/* Send keepalive if the time has come */
-		WalSndKeepaliveIfNecessary(now);
+		WalSndKeepaliveIfNecessary();
 
 		/*
 		 * We don't block if not caught up, unless there is unsent data
@@ -2208,7 +2216,11 @@ WalSndLoop(WalSndSendDataCallback send_data)
 			wakeEvents = WL_LATCH_SET | WL_POSTMASTER_DEATH | WL_TIMEOUT |
 				WL_SOCKET_READABLE;
 
-			sleeptime = WalSndComputeSleeptime(now);
+			/*
+			 * Use fresh timestamp, not last_processed, to reduce the chance
+			 * of reaching wal_sender_timeout before sending a keepalive.
+			 */
+			sleeptime = WalSndComputeSleeptime(GetCurrentTimestamp());
 
 			if (pq_is_send_pending())
 				wakeEvents |= WL_SOCKET_WRITEABLE;
@@ -2331,9 +2343,9 @@ retry:
 		int			segbytes;
 		int			readbytes;
 
-		startoff = recptr % XLogSegSize;
+		startoff = XLogSegmentOffset(recptr, wal_segment_size);
 
-		if (sendFile < 0 || !XLByteInSeg(recptr, sendSegNo))
+		if (sendFile < 0 || !XLByteInSeg(recptr, sendSegNo, wal_segment_size))
 		{
 			char		path[MAXPGPATH];
 
@@ -2341,7 +2353,7 @@ retry:
 			if (sendFile >= 0)
 				close(sendFile);
 
-			XLByteToSeg(recptr, sendSegNo);
+			XLByteToSeg(recptr, sendSegNo, wal_segment_size);
 
 			/*-------
 			 * When reading from a historic timeline, and there is a timeline
@@ -2374,14 +2386,14 @@ retry:
 			{
 				XLogSegNo	endSegNo;
 
-				XLByteToSeg(sendTimeLineValidUpto, endSegNo);
+				XLByteToSeg(sendTimeLineValidUpto, endSegNo, wal_segment_size);
 				if (sendSegNo == endSegNo)
 					curFileTimeLine = sendTimeLineNextTLI;
 			}
 
-			XLogFilePath(path, curFileTimeLine, sendSegNo);
+			XLogFilePath(path, curFileTimeLine, sendSegNo, wal_segment_size);
 
-			sendFile = BasicOpenFile(path, O_RDONLY | PG_BINARY, 0);
+			sendFile = BasicOpenFile(path, O_RDONLY | PG_BINARY);
 			if (sendFile < 0)
 			{
 				/*
@@ -2416,8 +2428,8 @@ retry:
 		}
 
 		/* How many bytes are within this segment? */
-		if (nbytes > (XLogSegSize - startoff))
-			segbytes = XLogSegSize - startoff;
+		if (nbytes > (wal_segment_size - startoff))
+			segbytes = wal_segment_size - startoff;
 		else
 			segbytes = nbytes;
 
@@ -2448,7 +2460,7 @@ retry:
 	 * read() succeeds in that case, but the data we tried to read might
 	 * already have been overwritten with new WAL records.
 	 */
-	XLByteToSeg(startptr, segno);
+	XLByteToSeg(startptr, segno, wal_segment_size);
 	CheckXLogRemoved(segno, ThisTimeLineID);
 
 	/*
@@ -2757,10 +2769,10 @@ XLogSendLogical(void)
 	char	   *errm;
 
 	/*
-	 * Don't know whether we've caught up yet. We'll set it to true in
-	 * WalSndWaitForWal, if we're actually waiting. We also set to true if
-	 * XLogReadRecord() had to stop reading but WalSndWaitForWal didn't wait -
-	 * i.e. when we're shutting down.
+	 * Don't know whether we've caught up yet. We'll set WalSndCaughtUp to
+	 * true in WalSndWaitForWal, if we're actually waiting. We also set to
+	 * true if XLogReadRecord() had to stop reading but WalSndWaitForWal
+	 * didn't wait - i.e. when we're shutting down.
 	 */
 	WalSndCaughtUp = false;
 
@@ -2773,6 +2785,9 @@ XLogSendLogical(void)
 
 	if (record != NULL)
 	{
+		/* XXX: Note that logical decoding cannot be used while in recovery */
+		XLogRecPtr	flushPtr = GetFlushRecPtr();
+
 		/*
 		 * Note the lack of any call to LagTrackerWrite() which is handled by
 		 * WalSndUpdateProgress which is called by output plugin through
@@ -2781,6 +2796,13 @@ XLogSendLogical(void)
 		LogicalDecodingProcessRecord(logical_decoding_ctx, logical_decoding_ctx->reader);
 
 		sentPtr = logical_decoding_ctx->reader->EndRecPtr;
+
+		/*
+		 * If we have sent a record that is at or beyond the flushed point, we
+		 * have caught up.
+		 */
+		if (sentPtr >= flushPtr)
+			WalSndCaughtUp = true;
 	}
 	else
 	{
@@ -3246,9 +3268,9 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 		if (!is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS))
 		{
 			/*
-			 * Only superusers and members of pg_read_all_stats can see details.
-			 * Other users only get the pid value to know it's a walsender,
-			 * but no details.
+			 * Only superusers and members of pg_read_all_stats can see
+			 * details. Other users only get the pid value to know it's a
+			 * walsender, but no details.
 			 */
 			MemSet(&nulls[1], true, PG_STAT_GET_WAL_SENDERS_COLS - 1);
 		}
@@ -3350,7 +3372,7 @@ WalSndKeepalive(bool requestReply)
  * Send keepalive message if too much time has elapsed.
  */
 static void
-WalSndKeepaliveIfNecessary(TimestampTz now)
+WalSndKeepaliveIfNecessary(void)
 {
 	TimestampTz ping_time;
 
@@ -3371,7 +3393,7 @@ WalSndKeepaliveIfNecessary(TimestampTz now)
 	 */
 	ping_time = TimestampTzPlusMilliseconds(last_reply_timestamp,
 											wal_sender_timeout / 2);
-	if (now >= ping_time)
+	if (last_processing >= ping_time)
 	{
 		WalSndKeepalive(true);
 		waiting_for_ping_response = true;

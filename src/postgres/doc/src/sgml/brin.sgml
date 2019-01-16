@@ -1,6 +1,6 @@
 <!-- doc/src/sgml/brin.sgml -->
 
-<chapter id="BRIN">
+<chapter id="brin">
 <title>BRIN Indexes</title>
 
    <indexterm>
@@ -16,7 +16,7 @@
   <acronym>BRIN</acronym> is designed for handling very large tables
   in which certain columns have some natural correlation with their
   physical location within the table.
-  A <firstterm>block range</> is a group of pages that are physically
+  A <firstterm>block range</firstterm> is a group of pages that are physically
   adjacent in the table; for each block range, some summary info is stored
   by the index.
   For example, a table storing a store's sale orders might have
@@ -29,7 +29,7 @@
  <para>
   <acronym>BRIN</acronym> indexes can satisfy queries via regular bitmap
   index scans, and will return all tuples in all pages within each range if
-  the summary info stored by the index is <firstterm>consistent</> with the
+  the summary info stored by the index is <firstterm>consistent</firstterm> with the
   query conditions.
   The query executor is in charge of rechecking these tuples and discarding
   those that do not match the query conditions &mdash; in other words, these
@@ -51,9 +51,9 @@
 
  <para>
   The size of the block range is determined at index creation time by
-  the <literal>pages_per_range</> storage parameter.  The number of index
+  the <literal>pages_per_range</literal> storage parameter.  The number of index
   entries will be equal to the size of the relation in pages divided by
-  the selected value for <literal>pages_per_range</>.  Therefore, the smaller
+  the selected value for <literal>pages_per_range</literal>.  Therefore, the smaller
   the number, the larger the index becomes (because of the need to
   store more index entries), but at the same time the summary data stored can
   be more precise and more data blocks can be skipped during an index scan.
@@ -107,13 +107,13 @@ LOG:  request for BRIN range summarization for index "brin_wi_idx" page 128 was 
  <para>
   The core <productname>PostgreSQL</productname> distribution
   includes the <acronym>BRIN</acronym> operator classes shown in
-  <xref linkend="brin-builtin-opclasses-table">.
+  <xref linkend="brin-builtin-opclasses-table"/>.
  </para>
 
  <para>
-  The <firstterm>minmax</>
+  The <firstterm>minmax</firstterm>
   operator classes store the minimum and the maximum values appearing
-  in the indexed column within the range.  The <firstterm>inclusion</>
+  in the indexed column within the range.  The <firstterm>inclusion</firstterm>
   operator classes store a value which includes the values in the indexed
   column within the range.
  </para>
@@ -174,21 +174,21 @@ LOG:  request for BRIN range summarization for index "brin_wi_idx" page 128 was 
      </entry>
     </row>
     <row>
-     <entry><literal>box_inclusion_ops</></entry>
+     <entry><literal>box_inclusion_ops</literal></entry>
      <entry><type>box</type></entry>
      <entry>
-      <literal>&lt;&lt;</>
-      <literal>&amp;&lt;</>
-      <literal>&amp;&amp;</>
-      <literal>&amp;&gt;</>
-      <literal>&gt;&gt;</>
-      <literal>~=</>
-      <literal>@&gt;</>
-      <literal>&lt;@</>
-      <literal>&amp;&lt;|</>
-      <literal>&lt;&lt;|</>
+      <literal>&lt;&lt;</literal>
+      <literal>&amp;&lt;</literal>
+      <literal>&amp;&amp;</literal>
+      <literal>&amp;&gt;</literal>
+      <literal>&gt;&gt;</literal>
+      <literal>~=</literal>
+      <literal>@&gt;</literal>
+      <literal>&lt;@</literal>
+      <literal>&amp;&lt;|</literal>
+      <literal>&lt;&lt;|</literal>
       <literal>|&gt;&gt;</literal>
-      <literal>|&amp;&gt;</>
+      <literal>|&amp;&gt;</literal>
      </entry>
     </row>
     <row>
@@ -261,11 +261,11 @@ LOG:  request for BRIN range summarization for index "brin_wi_idx" page 128 was 
      <entry><literal>network_inclusion_ops</literal></entry>
      <entry><type>inet</type></entry>
      <entry>
-      <literal>&amp;&amp;</>
-      <literal>&gt;&gt;=</>
+      <literal>&amp;&amp;</literal>
+      <literal>&gt;&gt;=</literal>
       <literal>&lt;&lt;=</literal>
       <literal>=</literal>
-      <literal>&gt;&gt;</>
+      <literal>&gt;&gt;</literal>
       <literal>&lt;&lt;</literal>
      </entry>
     </row>
@@ -358,18 +358,18 @@ LOG:  request for BRIN range summarization for index "brin_wi_idx" page 128 was 
      </entry>
     </row>
     <row>
-     <entry><literal>range_inclusion_ops</></entry>
+     <entry><literal>range_inclusion_ops</literal></entry>
      <entry><type>any range type</type></entry>
      <entry>
-      <literal>&lt;&lt;</>
-      <literal>&amp;&lt;</>
-      <literal>&amp;&amp;</>
-      <literal>&amp;&gt;</>
-      <literal>&gt;&gt;</>
-      <literal>@&gt;</>
-      <literal>&lt;@</>
-      <literal>-|-</>
-      <literal>=</>
+      <literal>&lt;&lt;</literal>
+      <literal>&amp;&lt;</literal>
+      <literal>&amp;&amp;</literal>
+      <literal>&amp;&gt;</literal>
+      <literal>&gt;&gt;</literal>
+      <literal>@&gt;</literal>
+      <literal>&lt;@</literal>
+      <literal>-|-</literal>
+      <literal>=</literal>
       <literal>&lt;</literal>
       <literal>&lt;=</literal>
       <literal>=</literal>
@@ -517,11 +517,11 @@ LOG:  request for BRIN range summarization for index "brin_wi_idx" page 128 was 
 
   <variablelist>
    <varlistentry>
-    <term><function>BrinOpcInfo *opcInfo(Oid type_oid)</></term>
+    <term><function>BrinOpcInfo *opcInfo(Oid type_oid)</function></term>
     <listitem>
      <para>
       Returns internal information about the indexed columns' summary data.
-      The return value must point to a palloc'd <structname>BrinOpcInfo</>,
+      The return value must point to a palloc'd <structname>BrinOpcInfo</structname>,
       which has this definition:
 <programlisting>
 typedef struct BrinOpcInfo
@@ -536,8 +536,8 @@ typedef struct BrinOpcInfo
     TypeCacheEntry *oi_typcache[FLEXIBLE_ARRAY_MEMBER];
 } BrinOpcInfo;
 </programlisting>
-      <structname>BrinOpcInfo</>.<structfield>oi_opaque</> can be used by the
-      operator class routines to pass information between support procedures
+      <structname>BrinOpcInfo</structname>.<structfield>oi_opaque</structfield> can be used by the
+      operator class routines to pass information between support functions
       during an index scan.
      </para>
     </listitem>
@@ -587,27 +587,27 @@ typedef struct BrinOpcInfo
   defined by the user for other data types using equivalent definitions,
   without having to write any source code; appropriate catalog entries being
   declared is enough.  Note that assumptions about the semantics of operator
-  strategies are embedded in the support procedures' source code.
+  strategies are embedded in the support functions' source code.
  </para>
 
  <para>
   Operator classes that implement completely different semantics are also
-  possible, provided implementations of the four main support procedures
+  possible, provided implementations of the four main support functions
   described above are written.  Note that backwards compatibility across major
-  releases is not guaranteed: for example, additional support procedures might
+  releases is not guaranteed: for example, additional support functions might
   be required in later releases.
  </para>
 
  <para>
   To write an operator class for a data type that implements a totally
-  ordered set, it is possible to use the minmax support procedures
+  ordered set, it is possible to use the minmax support functions
   alongside the corresponding operators, as shown in
-  <xref linkend="brin-extensibility-minmax-table">.
-  All operator class members (procedures and operators) are mandatory.
+  <xref linkend="brin-extensibility-minmax-table"/>.
+  All operator class members (functions and operators) are mandatory.
  </para>
 
  <table id="brin-extensibility-minmax-table">
-  <title>Procedure and Support Numbers for Minmax Operator Classes</title>
+  <title>Function and Support Numbers for Minmax Operator Classes</title>
   <tgroup cols="2">
    <thead>
     <row>
@@ -617,19 +617,19 @@ typedef struct BrinOpcInfo
    </thead>
    <tbody>
     <row>
-     <entry>Support Procedure 1</entry>
+     <entry>Support Function 1</entry>
      <entry>internal function <function>brin_minmax_opcinfo()</function></entry>
     </row>
     <row>
-     <entry>Support Procedure 2</entry>
+     <entry>Support Function 2</entry>
      <entry>internal function <function>brin_minmax_add_value()</function></entry>
     </row>
     <row>
-     <entry>Support Procedure 3</entry>
+     <entry>Support Function 3</entry>
      <entry>internal function <function>brin_minmax_consistent()</function></entry>
     </row>
     <row>
-     <entry>Support Procedure 4</entry>
+     <entry>Support Function 4</entry>
      <entry>internal function <function>brin_minmax_union()</function></entry>
     </row>
     <row>
@@ -659,8 +659,8 @@ typedef struct BrinOpcInfo
  <para>
   To write an operator class for a complex data type which has values
   included within another type, it's possible to use the inclusion support
-  procedures alongside the corresponding operators, as shown
-  in <xref linkend="brin-extensibility-inclusion-table">.  It requires
+  functions alongside the corresponding operators, as shown
+  in <xref linkend="brin-extensibility-inclusion-table"/>.  It requires
   only a single additional function, which can be written in any language.
   More functions can be defined for additional functionality.  All operators
   are optional.  Some operators require other operators, as shown as
@@ -668,7 +668,7 @@ typedef struct BrinOpcInfo
  </para>
 
  <table id="brin-extensibility-inclusion-table">
-  <title>Procedure and Support Numbers for Inclusion Operator Classes</title>
+  <title>Function and Support Numbers for Inclusion Operator Classes</title>
   <tgroup cols="3">
    <thead>
     <row>
@@ -679,42 +679,42 @@ typedef struct BrinOpcInfo
    </thead>
    <tbody>
     <row>
-     <entry>Support Procedure 1</entry>
+     <entry>Support Function 1</entry>
      <entry>internal function <function>brin_inclusion_opcinfo()</function></entry>
      <entry></entry>
     </row>
     <row>
-     <entry>Support Procedure 2</entry>
+     <entry>Support Function 2</entry>
      <entry>internal function <function>brin_inclusion_add_value()</function></entry>
      <entry></entry>
     </row>
     <row>
-     <entry>Support Procedure 3</entry>
+     <entry>Support Function 3</entry>
      <entry>internal function <function>brin_inclusion_consistent()</function></entry>
      <entry></entry>
     </row>
     <row>
-     <entry>Support Procedure 4</entry>
+     <entry>Support Function 4</entry>
      <entry>internal function <function>brin_inclusion_union()</function></entry>
      <entry></entry>
     </row>
     <row>
-     <entry>Support Procedure 11</entry>
+     <entry>Support Function 11</entry>
      <entry>function to merge two elements</entry>
      <entry></entry>
     </row>
     <row>
-     <entry>Support Procedure 12</entry>
+     <entry>Support Function 12</entry>
      <entry>optional function to check whether two elements are mergeable</entry>
      <entry></entry>
     </row>
     <row>
-     <entry>Support Procedure 13</entry>
+     <entry>Support Function 13</entry>
      <entry>optional function to check if an element is contained within another</entry>
      <entry></entry>
     </row>
     <row>
-     <entry>Support Procedure 14</entry>
+     <entry>Support Function 14</entry>
      <entry>optional function to check whether an element is empty</entry>
      <entry></entry>
     </row>
@@ -803,22 +803,22 @@ typedef struct BrinOpcInfo
  </table>
 
  <para>
-    Support procedure numbers 1-10 are reserved for the BRIN internal
+    Support function numbers 1-10 are reserved for the BRIN internal
     functions, so the SQL level functions start with number 11.  Support
     function number 11 is the main function required to build the index.
     It should accept two arguments with the same data type as the operator class,
     and return the union of them.  The inclusion operator class can store union
     values with different data types if it is defined with the
-    <literal>STORAGE</> parameter.  The return value of the union
-    function should match the <literal>STORAGE</> data type.
+    <literal>STORAGE</literal> parameter.  The return value of the union
+    function should match the <literal>STORAGE</literal> data type.
  </para>
 
  <para>
-    Support procedure numbers 12 and 14 are provided to support
-    irregularities of built-in data types.  Procedure number 12
+    Support function numbers 12 and 14 are provided to support
+    irregularities of built-in data types.  Function number 12
     is used to support network addresses from different families which
-    are not mergeable.  Procedure number 14 is used to support
-    empty ranges.  Procedure number 13 is an optional but
+    are not mergeable.  Function number 14 is used to support
+    empty ranges.  Function number 13 is an optional but
     recommended one, which allows the new value to be checked before
     it is passed to the union function.  As the BRIN framework can shortcut
     some operations when the union is not changed, using this
@@ -833,13 +833,13 @@ typedef struct BrinOpcInfo
     additional data types to be supported by defining extra sets
     of operators.  Inclusion operator class operator strategies are dependent
     on another operator strategy as shown in
-    <xref linkend="brin-extensibility-inclusion-table">, or the same
+    <xref linkend="brin-extensibility-inclusion-table"/>, or the same
     operator strategy as themselves.  They require the dependency
-    operator to be defined with the <literal>STORAGE</> data type as the
+    operator to be defined with the <literal>STORAGE</literal> data type as the
     left-hand-side argument and the other supported data type to be the
     right-hand-side argument of the supported operator.  See
-    <literal>float4_minmax_ops</> as an example of minmax, and
-    <literal>box_inclusion_ops</> as an example of inclusion.
+    <literal>float4_minmax_ops</literal> as an example of minmax, and
+    <literal>box_inclusion_ops</literal> as an example of inclusion.
  </para>
 </sect1>
 </chapter>

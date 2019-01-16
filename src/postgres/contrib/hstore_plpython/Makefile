@@ -4,19 +4,21 @@ MODULE_big = hstore_plpython$(python_majorversion)
 OBJS = hstore_plpython.o $(WIN32RES)
 PGFILEDESC = "hstore_plpython - hstore transform for plpython"
 
-PG_CPPFLAGS = -I$(top_srcdir)/src/pl/plpython $(python_includespec) -I$(top_srcdir)/contrib/hstore -DPLPYTHON_LIBNAME='"plpython$(python_majorversion)"'
-
 EXTENSION = hstore_plpythonu hstore_plpython2u hstore_plpython3u
 DATA = hstore_plpythonu--1.0.sql hstore_plpython2u--1.0.sql hstore_plpython3u--1.0.sql
 
 REGRESS = hstore_plpython
 REGRESS_PLPYTHON3_MANGLE := $(REGRESS)
 
+PG_CPPFLAGS = $(python_includespec) -DPLPYTHON_LIBNAME='"plpython$(python_majorversion)"'
+
 ifdef USE_PGXS
+PG_CPPFLAGS += -I$(includedir_server)/extension
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 else
+PG_CPPFLAGS += -I$(top_srcdir)/src/pl/plpython -I$(top_srcdir)/contrib
 subdir = contrib/hstore_plpython
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
@@ -26,7 +28,7 @@ endif
 # We must link libpython explicitly
 ifeq ($(PORTNAME), win32)
 # ... see silliness in plpython Makefile ...
-SHLIB_LINK += $(sort $(wildcard ../../src/pl/plpython/libpython*.a))
+SHLIB_LINK_INTERNAL += $(sort $(wildcard ../../src/pl/plpython/libpython*.a))
 else
 rpathdir = $(python_libdir)
 SHLIB_LINK += $(python_libspec) $(python_additional_libs)

@@ -38,7 +38,7 @@
  * by re-setting the page's page_dirty flag.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/slru.c
@@ -599,7 +599,7 @@ SimpleLruDoesPhysicalPageExist(SlruCtl ctl, int pageno)
 
 	SlruFileName(ctl, path, segno);
 
-	fd = OpenTransientFile(path, O_RDWR | PG_BINARY, S_IRUSR | S_IWUSR);
+	fd = OpenTransientFile(path, O_RDWR | PG_BINARY);
 	if (fd < 0)
 	{
 		/* expected: file doesn't exist */
@@ -614,7 +614,7 @@ SimpleLruDoesPhysicalPageExist(SlruCtl ctl, int pageno)
 
 	if ((endpos = lseek(fd, 0, SEEK_END)) < 0)
 	{
-		slru_errcause = SLRU_OPEN_FAILED;
+		slru_errcause = SLRU_SEEK_FAILED;
 		slru_errno = errno;
 		SlruReportIOError(ctl, pageno, 0);
 	}
@@ -629,7 +629,7 @@ SimpleLruDoesPhysicalPageExist(SlruCtl ctl, int pageno)
  * Physical read of a (previously existing) page into a buffer slot
  *
  * On failure, we cannot just ereport(ERROR) since caller has put state in
- * shared memory that must be undone.  So, we return FALSE and save enough
+ * shared memory that must be undone.  So, we return false and save enough
  * info in static variables to let SlruReportIOError make the report.
  *
  * For now, assume it's not worth keeping a file pointer open across
@@ -654,7 +654,7 @@ SlruPhysicalReadPage(SlruCtl ctl, int pageno, int slotno)
 	 * SlruPhysicalWritePage).  Hence, if we are InRecovery, allow the case
 	 * where the file doesn't exist, and return zeroes instead.
 	 */
-	fd = OpenTransientFile(path, O_RDWR | PG_BINARY, S_IRUSR | S_IWUSR);
+	fd = OpenTransientFile(path, O_RDWR | PG_BINARY);
 	if (fd < 0)
 	{
 		if (errno != ENOENT || !InRecovery)
@@ -705,7 +705,7 @@ SlruPhysicalReadPage(SlruCtl ctl, int pageno, int slotno)
  * Physical write of a page from a buffer slot
  *
  * On failure, we cannot just ereport(ERROR) since caller has put state in
- * shared memory that must be undone.  So, we return FALSE and save enough
+ * shared memory that must be undone.  So, we return false and save enough
  * info in static variables to let SlruReportIOError make the report.
  *
  * For now, assume it's not worth keeping a file pointer open across
@@ -804,8 +804,7 @@ SlruPhysicalWritePage(SlruCtl ctl, int pageno, int slotno, SlruFlush fdata)
 		 * don't use O_EXCL or O_TRUNC or anything like that.
 		 */
 		SlruFileName(ctl, path, segno);
-		fd = OpenTransientFile(path, O_RDWR | O_CREAT | PG_BINARY,
-							   S_IRUSR | S_IWUSR);
+		fd = OpenTransientFile(path, O_RDWR | O_CREAT | PG_BINARY);
 		if (fd < 0)
 		{
 			slru_errcause = SLRU_OPEN_FAILED;
@@ -929,7 +928,7 @@ SlruReportIOError(SlruCtl ctl, int pageno, TransactionId xid)
 							   path, offset)));
 			break;
 		case SLRU_FSYNC_FAILED:
-			ereport(ERROR,
+			ereport(data_sync_elevel(ERROR),
 					(errcode_for_file_access(),
 					 errmsg("could not access status of transaction %u", xid),
 					 errdetail("Could not fsync file \"%s\": %m.",

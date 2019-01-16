@@ -1,18 +1,17 @@
 /*-------------------------------------------------------------------------
  *
  * pg_statistic.h
- *	  definition of the system "statistic" relation (pg_statistic)
- *	  along with the relation's initial contents.
+ *	  definition of the "statistics" system catalog (pg_statistic)
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_statistic.h
  *
  * NOTES
- *	  the genbki.pl script reads this file and generates .bki
- *	  information from the DATA() statements.
+ *	  The Catalog.pm module reads this file and derives schema
+ *	  information.
  *
  *-------------------------------------------------------------------------
  */
@@ -20,15 +19,14 @@
 #define PG_STATISTIC_H
 
 #include "catalog/genbki.h"
+#include "catalog/pg_statistic_d.h"
 
 /* ----------------
  *		pg_statistic definition.  cpp turns this into
  *		typedef struct FormData_pg_statistic
  * ----------------
  */
-#define StatisticRelationId  2619
-
-CATALOG(pg_statistic,2619) BKI_WITHOUT_OIDS
+CATALOG(pg_statistic,2619,StatisticRelationId) BKI_WITHOUT_OIDS
 {
 	/* These fields form the unique key for the entry: */
 	Oid			starelid;		/* relation containing attribute */
@@ -128,45 +126,13 @@ CATALOG(pg_statistic,2619) BKI_WITHOUT_OIDS
  */
 typedef FormData_pg_statistic *Form_pg_statistic;
 
-/* ----------------
- *		compiler constants for pg_statistic
- * ----------------
- */
-#define Natts_pg_statistic				26
-#define Anum_pg_statistic_starelid		1
-#define Anum_pg_statistic_staattnum		2
-#define Anum_pg_statistic_stainherit	3
-#define Anum_pg_statistic_stanullfrac	4
-#define Anum_pg_statistic_stawidth		5
-#define Anum_pg_statistic_stadistinct	6
-#define Anum_pg_statistic_stakind1		7
-#define Anum_pg_statistic_stakind2		8
-#define Anum_pg_statistic_stakind3		9
-#define Anum_pg_statistic_stakind4		10
-#define Anum_pg_statistic_stakind5		11
-#define Anum_pg_statistic_staop1		12
-#define Anum_pg_statistic_staop2		13
-#define Anum_pg_statistic_staop3		14
-#define Anum_pg_statistic_staop4		15
-#define Anum_pg_statistic_staop5		16
-#define Anum_pg_statistic_stanumbers1	17
-#define Anum_pg_statistic_stanumbers2	18
-#define Anum_pg_statistic_stanumbers3	19
-#define Anum_pg_statistic_stanumbers4	20
-#define Anum_pg_statistic_stanumbers5	21
-#define Anum_pg_statistic_stavalues1	22
-#define Anum_pg_statistic_stavalues2	23
-#define Anum_pg_statistic_stavalues3	24
-#define Anum_pg_statistic_stavalues4	25
-#define Anum_pg_statistic_stavalues5	26
+#ifdef EXPOSE_TO_CLIENT_CODE
 
 /*
- * Currently, five statistical slot "kinds" are defined by core PostgreSQL,
- * as documented below.  Additional "kinds" will probably appear in
- * future to help cope with non-scalar datatypes.  Also, custom data types
- * can define their own "kind" codes by mutual agreement between a custom
- * typanalyze routine and the selectivity estimation functions of the type's
- * operators.
+ * Several statistical slot "kinds" are defined by core PostgreSQL, as
+ * documented below.  Also, custom data types can define their own "kind"
+ * codes by mutual agreement between a custom typanalyze routine and the
+ * selectivity estimation functions of the type's operators.
  *
  * Code reading the pg_statistic relation should not assume that a particular
  * data "kind" will appear in any particular slot.  Instead, search the
@@ -290,5 +256,7 @@ typedef FormData_pg_statistic *Form_pg_statistic;
  * bounds.  Only non-NULL, non-empty ranges are included.
  */
 #define STATISTIC_KIND_BOUNDS_HISTOGRAM  7
+
+#endif							/* EXPOSE_TO_CLIENT_CODE */
 
 #endif							/* PG_STATISTIC_H */

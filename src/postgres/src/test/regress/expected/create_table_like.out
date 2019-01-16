@@ -253,9 +253,10 @@ SELECT c.relname, objsubid, description FROM pg_description, pg_index i, pg_clas
 (2 rows)
 
 SELECT s.stxname, objsubid, description FROM pg_description, pg_statistic_ext s WHERE classoid = 'pg_statistic_ext'::regclass AND objoid = s.oid AND s.stxrelid = 'ctlt_all'::regclass ORDER BY s.stxname, objsubid;
- stxname | objsubid | description 
----------+----------+-------------
-(0 rows)
+      stxname      | objsubid | description 
+-------------------+----------+-------------
+ ctlt_all_a_b_stat |        0 | ab stats
+(1 row)
 
 CREATE TABLE inh_error1 () INHERITS (ctlt1, ctlt4);
 NOTICE:  merging multiple inherited definitions of column "a"

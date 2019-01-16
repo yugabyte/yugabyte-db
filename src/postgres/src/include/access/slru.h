@@ -3,7 +3,7 @@
  * slru.h
  *		Simple LRU buffering for transaction status logfiles
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/slru.h
@@ -37,7 +37,7 @@
 
 /*
  * Page status codes.  Note that these do not include the "dirty" bit.
- * page_dirty can be TRUE only in the VALID or WRITE_IN_PROGRESS states;
+ * page_dirty can be true only in the VALID or WRITE_IN_PROGRESS states;
  * in the latter case it implies that the page has been re-dirtied since
  * the write started.
  */

@@ -2,7 +2,7 @@
 #
 # Makefile for src/bin/scripts
 #
-# Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/bin/scripts/Makefile
@@ -19,7 +19,7 @@ include $(top_builddir)/src/Makefile.global
 PROGRAMS = createdb createuser dropdb dropuser clusterdb vacuumdb reindexdb pg_isready
 
 override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
-override LDFLAGS := -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport) $(LDFLAGS)
+LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport)
 
 all: $(PROGRAMS)
 

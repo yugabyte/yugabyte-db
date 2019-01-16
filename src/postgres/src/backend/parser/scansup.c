@@ -4,7 +4,7 @@
  *	  support routines for the lex/flex scanner, used by both the normal
  * backend as well as the bootstrap backend
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -209,7 +209,7 @@ truncate_identifier(char *ident, int len, bool warn)
 }
 
 /*
- * scanner_isspace() --- return TRUE if flex scanner considers char whitespace
+ * scanner_isspace() --- return true if flex scanner considers char whitespace
  *
  * This should be used instead of the potentially locale-dependent isspace()
  * function when it's important to match the lexer's behavior.

@@ -28,7 +28,7 @@ create event trigger regress_event_trigger on ddl_command_start
 
 -- OK
 create event trigger regress_event_trigger_end on ddl_command_end
-   execute procedure test_event_trigger();
+   execute function test_event_trigger();
 
 -- should fail, food is not a valid filter variable
 create event trigger regress_event_trigger2 on ddl_command_start
@@ -89,15 +89,26 @@ create event trigger regress_event_trigger_noperms on ddl_command_start
    execute procedure test_event_trigger();
 reset role;
 
--- all OK
-alter event trigger regress_event_trigger enable replica;
-alter event trigger regress_event_trigger enable always;
-alter event trigger regress_event_trigger enable;
+-- test enabling and disabling
 alter event trigger regress_event_trigger disable;
-
--- regress_event_trigger2 and regress_event_trigger_end should fire, but not
--- regress_event_trigger
+-- fires _trigger2 and _trigger_end should fire, but not _trigger
 create table event_trigger_fire1 (a int);
+alter event trigger regress_event_trigger enable;
+set session_replication_role = replica;
+-- fires nothing
+create table event_trigger_fire2 (a int);
+alter event trigger regress_event_trigger enable replica;
+-- fires only _trigger
+create table event_trigger_fire3 (a int);
+alter event trigger regress_event_trigger enable always;
+-- fires only _trigger
+create table event_trigger_fire4 (a int);
+reset session_replication_role;
+-- fires all three
+create table event_trigger_fire5 (a int);
+-- clean up
+alter event trigger regress_event_trigger disable;
+drop table event_trigger_fire2, event_trigger_fire3, event_trigger_fire4, event_trigger_fire5;
 
 -- regress_event_trigger_end should fire on these commands
 grant all on table event_trigger_fire1 to public;
@@ -262,6 +273,19 @@ CREATE SCHEMA evttrig
 	CREATE TABLE one (col_a SERIAL PRIMARY KEY, col_b text DEFAULT 'forty two')
 	CREATE INDEX one_idx ON one (col_b)
 	CREATE TABLE two (col_c INTEGER CHECK (col_c > 0) REFERENCES one DEFAULT 42);
+
+-- Partitioned tables with a partitioned index
+CREATE TABLE evttrig.parted (
+    id int PRIMARY KEY)
+    PARTITION BY RANGE (id);
+CREATE TABLE evttrig.part_1_10 PARTITION OF evttrig.parted (id)
+  FOR VALUES FROM (1) TO (10);
+CREATE TABLE evttrig.part_10_20 PARTITION OF evttrig.parted (id)
+  FOR VALUES FROM (10) TO (20) PARTITION BY RANGE (id);
+CREATE TABLE evttrig.part_10_15 PARTITION OF evttrig.part_10_20 (id)
+  FOR VALUES FROM (10) TO (15);
+CREATE TABLE evttrig.part_15_20 PARTITION OF evttrig.part_10_20 (id)
+  FOR VALUES FROM (15) TO (20);
 
 ALTER TABLE evttrig.two DROP COLUMN col_c;
 ALTER TABLE evttrig.one ALTER COLUMN col_b DROP DEFAULT;

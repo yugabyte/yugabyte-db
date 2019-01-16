@@ -60,7 +60,7 @@ static void plpython_error_callback(void *arg);
 static void plpython_inline_error_callback(void *arg);
 static void PLy_init_interp(void);
 
-static PLyExecutionContext *PLy_push_execution_context(void);
+static PLyExecutionContext *PLy_push_execution_context(bool atomic_context);
 static void PLy_pop_execution_context(void);
 
 /* static state for Python library conflict detection */
@@ -167,7 +167,7 @@ PLy_init_interp(void)
 	PLy_interp_globals = PyModule_GetDict(mainmod);
 	PLy_interp_safe_globals = PyDict_New();
 	if (PLy_interp_safe_globals == NULL)
-		PLy_elog(ERROR, "could not create globals");
+		PLy_elog(ERROR, NULL);
 	PyDict_SetItemString(PLy_interp_globals, "GD", PLy_interp_safe_globals);
 	Py_DECREF(mainmod);
 	if (PLy_interp_globals == NULL || PyErr_Occurred())
@@ -219,14 +219,19 @@ plpython2_validator(PG_FUNCTION_ARGS)
 Datum
 plpython_call_handler(PG_FUNCTION_ARGS)
 {
+	bool		nonatomic;
 	Datum		retval;
 	PLyExecutionContext *exec_ctx;
 	ErrorContextCallback plerrcontext;
 
 	PLy_initialize();
 
+	nonatomic = fcinfo->context &&
+		IsA(fcinfo->context, CallContext) &&
+		!castNode(CallContext, fcinfo->context)->atomic;
+
 	/* Note: SPI_finish() happens in plpy_exec.c, which is dubious design */
-	if (SPI_connect() != SPI_OK_CONNECT)
+	if (SPI_connect_ext(nonatomic ? SPI_OPT_NONATOMIC : 0) != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed");
 
 	/*
@@ -234,7 +239,7 @@ plpython_call_handler(PG_FUNCTION_ARGS)
 	 * popped again, so avoid putting anything that could throw error between
 	 * here and the PG_TRY.
 	 */
-	exec_ctx = PLy_push_execution_context();
+	exec_ctx = PLy_push_execution_context(!nonatomic);
 
 	PG_TRY();
 	{
@@ -304,7 +309,7 @@ plpython_inline_handler(PG_FUNCTION_ARGS)
 	PLy_initialize();
 
 	/* Note: SPI_finish() happens in plpy_exec.c, which is dubious design */
-	if (SPI_connect() != SPI_OK_CONNECT)
+	if (SPI_connect_ext(codeblock->atomic ? 0 : SPI_OPT_NONATOMIC) != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed");
 
 	MemSet(&fake_fcinfo, 0, sizeof(fake_fcinfo));
@@ -319,14 +324,19 @@ plpython_inline_handler(PG_FUNCTION_ARGS)
 									  ALLOCSET_DEFAULT_SIZES);
 	proc.pyname = MemoryContextStrdup(proc.mcxt, "__plpython_inline_block");
 	proc.langid = codeblock->langOid;
-	proc.result.out.d.typoid = VOIDOID;
+
+	/*
+	 * This is currently sufficient to get PLy_exec_function to work, but
+	 * someday we might need to be honest and use PLy_output_setup_func.
+	 */
+	proc.result.typoid = VOIDOID;
 
 	/*
 	 * Push execution context onto stack.  It is important that this get
 	 * popped again, so avoid putting anything that could throw error between
 	 * here and the PG_TRY.
 	 */
-	exec_ctx = PLy_push_execution_context();
+	exec_ctx = PLy_push_execution_context(codeblock->atomic);
 
 	PG_TRY();
 	{
@@ -384,8 +394,14 @@ plpython_error_callback(void *arg)
 	PLyExecutionContext *exec_ctx = (PLyExecutionContext *) arg;
 
 	if (exec_ctx->curr_proc)
-		errcontext("PL/Python function \"%s\"",
-				   PLy_procedure_name(exec_ctx->curr_proc));
+	{
+		if (exec_ctx->curr_proc->is_procedure)
+			errcontext("PL/Python procedure \"%s\"",
+					   PLy_procedure_name(exec_ctx->curr_proc));
+		else
+			errcontext("PL/Python function \"%s\"",
+					   PLy_procedure_name(exec_ctx->curr_proc));
+	}
 }
 
 static void
@@ -419,12 +435,14 @@ PLy_get_scratch_context(PLyExecutionContext *context)
 }
 
 static PLyExecutionContext *
-PLy_push_execution_context(void)
+PLy_push_execution_context(bool atomic_context)
 {
 	PLyExecutionContext *context;
 
+	/* Pick a memory context similar to what SPI uses. */
 	context = (PLyExecutionContext *)
-		MemoryContextAlloc(TopTransactionContext, sizeof(PLyExecutionContext));
+		MemoryContextAlloc(atomic_context ? TopTransactionContext : PortalContext,
+						   sizeof(PLyExecutionContext));
 	context->curr_proc = NULL;
 	context->scratch_ctx = NULL;
 	context->next = PLy_execution_contexts;

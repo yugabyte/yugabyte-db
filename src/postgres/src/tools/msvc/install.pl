@@ -6,6 +6,10 @@
 use strict;
 use warnings;
 
+use File::Basename;
+use File::Spec;
+BEGIN  { use lib File::Spec->rel2abs(dirname(__FILE__)); }
+
 use Install qw(Install);
 
 # buildenv.pl is for specifying the build environment settings
@@ -14,7 +18,7 @@ use Install qw(Install);
 
 if (-e "src/tools/msvc/buildenv.pl")
 {
-	do "src/tools/msvc/buildenv.pl";
+	do "./src/tools/msvc/buildenv.pl";
 }
 elsif (-e "./buildenv.pl")
 {

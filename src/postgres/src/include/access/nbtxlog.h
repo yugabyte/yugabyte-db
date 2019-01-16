@@ -3,7 +3,7 @@
  * nbtxlog.h
  *	  header file for postgres btree xlog routines
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/nbtxlog.h
@@ -28,8 +28,8 @@
 #define XLOG_BTREE_INSERT_META	0x20	/* same, plus update metapage */
 #define XLOG_BTREE_SPLIT_L		0x30	/* add index tuple with split */
 #define XLOG_BTREE_SPLIT_R		0x40	/* as above, new item on right */
-#define XLOG_BTREE_SPLIT_L_ROOT 0x50	/* add tuple with split of root */
-#define XLOG_BTREE_SPLIT_R_ROOT 0x60	/* as above, new item on right */
+#define XLOG_BTREE_SPLIT_L_HIGHKEY 0x50 /* as above, include truncated highkey */
+#define XLOG_BTREE_SPLIT_R_HIGHKEY 0x60 /* as above, include truncated highkey */
 #define XLOG_BTREE_DELETE		0x70	/* delete leaf index tuples for a page */
 #define XLOG_BTREE_UNLINK_PAGE	0x80	/* delete a half-dead page */
 #define XLOG_BTREE_UNLINK_PAGE_META 0x90	/* same, and update metapage */
@@ -39,6 +39,8 @@
 										 * vacuum */
 #define XLOG_BTREE_REUSE_PAGE	0xD0	/* old page is about to be reused from
 										 * FSM */
+#define XLOG_BTREE_META_CLEANUP	0xE0	/* update cleanup-related data in the
+										 * metapage */
 
 /*
  * All that we need to regenerate the meta-data page
@@ -49,6 +51,8 @@ typedef struct xl_btree_metadata
 	uint32		level;
 	BlockNumber fastroot;
 	uint32		fastlevel;
+	TransactionId oldest_btpo_xact;
+	float8		last_cleanup_num_heap_tuples;
 } xl_btree_metadata;
 
 /*
@@ -79,10 +83,11 @@ typedef struct xl_btree_insert
  * Note: the four XLOG_BTREE_SPLIT xl_info codes all use this data record.
  * The _L and _R variants indicate whether the inserted tuple went into the
  * left or right split page (and thus, whether newitemoff and the new item
- * are stored or not).  The _ROOT variants indicate that we are splitting
- * the root page, and thus that a newroot record rather than an insert or
- * split record should follow.  Note that a split record never carries a
- * metapage update --- we'll do that in the parent-level update.
+ * are stored or not).  The _HIGHKEY variants indicate that we've logged
+ * explicitly left page high key value, otherwise redo should use right page
+ * leftmost key as a left page high key.  _HIGHKEY is specified for internal
+ * pages where right page leftmost key is suppressed, and for leaf pages
+ * of covering indexes where high key have non-key attributes truncated.
  *
  * Backup Blk 0: original page / new left page
  *

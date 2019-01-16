@@ -3,7 +3,7 @@
  * date.c
  *	  implements DATE and TIME data types specified in SQL standard
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  *
@@ -41,8 +41,6 @@
 #endif
 
 
-static int	time2tm(TimeADT time, struct pg_tm *tm, fsec_t *fsec);
-static int	timetz2tm(TimeTzADT *time, struct pg_tm *tm, fsec_t *fsec, int *tzp);
 static int	tm2time(struct pg_tm *tm, fsec_t fsec, TimeADT *result);
 static int	tm2timetz(struct pg_tm *tm, fsec_t fsec, int tz, TimeTzADT *result);
 static void AdjustTimeForTypmod(TimeADT *time, int32 typmod);
@@ -239,7 +237,7 @@ date_send(PG_FUNCTION_ARGS)
 	StringInfoData buf;
 
 	pq_begintypsend(&buf);
-	pq_sendint(&buf, date, sizeof(date));
+	pq_sendint32(&buf, date);
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }
 
@@ -1013,6 +1011,34 @@ timestamptz_cmp_date(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(timestamptz_cmp_internal(dt1, dt2));
 }
 
+/*
+ * in_range support function for date.
+ *
+ * We implement this by promoting the dates to timestamp (without time zone)
+ * and then using the timestamp-and-interval in_range function.
+ */
+Datum
+in_range_date_interval(PG_FUNCTION_ARGS)
+{
+	DateADT		val = PG_GETARG_DATEADT(0);
+	DateADT		base = PG_GETARG_DATEADT(1);
+	Interval   *offset = PG_GETARG_INTERVAL_P(2);
+	bool		sub = PG_GETARG_BOOL(3);
+	bool		less = PG_GETARG_BOOL(4);
+	Timestamp	valStamp;
+	Timestamp	baseStamp;
+
+	valStamp = date2timestamp(val);
+	baseStamp = date2timestamp(base);
+
+	return DirectFunctionCall5(in_range_timestamp_interval,
+							   TimestampGetDatum(valStamp),
+							   TimestampGetDatum(baseStamp),
+							   IntervalPGetDatum(offset),
+							   BoolGetDatum(sub),
+							   BoolGetDatum(less));
+}
+
 
 /* Add an interval to a date, giving a new date.
  * Must handle both positive and negative intervals.
@@ -1249,7 +1275,7 @@ tm2time(struct pg_tm *tm, fsec_t fsec, TimeADT *result)
  * If out of this range, leave as UTC (in practice that could only happen
  * if pg_time_t is just 32 bits) - thomas 97/05/27
  */
-static int
+int
 time2tm(TimeADT time, struct pg_tm *tm, fsec_t *fsec)
 {
 	tm->tm_hour = time / USECS_PER_HOUR;
@@ -1506,6 +1532,12 @@ Datum
 time_hash(PG_FUNCTION_ARGS)
 {
 	return hashint8(fcinfo);
+}
+
+Datum
+time_hash_extended(PG_FUNCTION_ARGS)
+{
+	return hashint8extended(fcinfo);
 }
 
 Datum
@@ -1838,6 +1870,45 @@ time_mi_interval(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMEADT(result);
 }
 
+/*
+ * in_range support function for time.
+ */
+Datum
+in_range_time_interval(PG_FUNCTION_ARGS)
+{
+	TimeADT		val = PG_GETARG_TIMEADT(0);
+	TimeADT		base = PG_GETARG_TIMEADT(1);
+	Interval   *offset = PG_GETARG_INTERVAL_P(2);
+	bool		sub = PG_GETARG_BOOL(3);
+	bool		less = PG_GETARG_BOOL(4);
+	TimeADT		sum;
+
+	/*
+	 * Like time_pl_interval/time_mi_interval, we disregard the month and day
+	 * fields of the offset.  So our test for negative should too.
+	 */
+	if (offset->time < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
+				 errmsg("invalid preceding or following size in window function")));
+
+	/*
+	 * We can't use time_pl_interval/time_mi_interval here, because their
+	 * wraparound behavior would give wrong (or at least undesirable) answers.
+	 * Fortunately the equivalent non-wrapping behavior is trivial, especially
+	 * since we don't worry about integer overflow.
+	 */
+	if (sub)
+		sum = base - offset->time;
+	else
+		sum = base + offset->time;
+
+	if (less)
+		PG_RETURN_BOOL(val <= sum);
+	else
+		PG_RETURN_BOOL(val >= sum);
+}
+
 
 /* time_part()
  * Extract specified field from time type.
@@ -2043,7 +2114,7 @@ timetz_send(PG_FUNCTION_ARGS)
 
 	pq_begintypsend(&buf);
 	pq_sendint64(&buf, time->time);
-	pq_sendint(&buf, time->zone, sizeof(time->zone));
+	pq_sendint32(&buf, time->zone);
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }
 
@@ -2067,7 +2138,7 @@ timetztypmodout(PG_FUNCTION_ARGS)
 /* timetz2tm()
  * Convert TIME WITH TIME ZONE data type to POSIX time structure.
  */
-static int
+int
 timetz2tm(TimeTzADT *time, struct pg_tm *tm, fsec_t *fsec, int *tzp)
 {
 	TimeOffset	trem = time->time;
@@ -2214,6 +2285,22 @@ timetz_hash(PG_FUNCTION_ARGS)
 }
 
 Datum
+timetz_hash_extended(PG_FUNCTION_ARGS)
+{
+	TimeTzADT  *key = PG_GETARG_TIMETZADT_P(0);
+	Datum		seed = PG_GETARG_DATUM(1);
+	uint64		thash;
+
+	/* Same approach as timetz_hash */
+	thash = DatumGetUInt64(DirectFunctionCall2(hashint8extended,
+											   Int64GetDatumFast(key->time),
+											   seed));
+	thash ^= DatumGetUInt64(hash_uint32_extended(key->zone,
+												 DatumGetInt64(seed)));
+	PG_RETURN_UINT64(thash);
+}
+
+Datum
 timetz_larger(PG_FUNCTION_ARGS)
 {
 	TimeTzADT  *time1 = PG_GETARG_TIMETZADT_P(0);
@@ -2283,6 +2370,46 @@ timetz_mi_interval(PG_FUNCTION_ARGS)
 	result->zone = time->zone;
 
 	PG_RETURN_TIMETZADT_P(result);
+}
+
+/*
+ * in_range support function for timetz.
+ */
+Datum
+in_range_timetz_interval(PG_FUNCTION_ARGS)
+{
+	TimeTzADT  *val = PG_GETARG_TIMETZADT_P(0);
+	TimeTzADT  *base = PG_GETARG_TIMETZADT_P(1);
+	Interval   *offset = PG_GETARG_INTERVAL_P(2);
+	bool		sub = PG_GETARG_BOOL(3);
+	bool		less = PG_GETARG_BOOL(4);
+	TimeTzADT	sum;
+
+	/*
+	 * Like timetz_pl_interval/timetz_mi_interval, we disregard the month and
+	 * day fields of the offset.  So our test for negative should too.
+	 */
+	if (offset->time < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
+				 errmsg("invalid preceding or following size in window function")));
+
+	/*
+	 * We can't use timetz_pl_interval/timetz_mi_interval here, because their
+	 * wraparound behavior would give wrong (or at least undesirable) answers.
+	 * Fortunately the equivalent non-wrapping behavior is trivial, especially
+	 * since we don't worry about integer overflow.
+	 */
+	if (sub)
+		sum.time = base->time - offset->time;
+	else
+		sum.time = base->time + offset->time;
+	sum.zone = base->zone;
+
+	if (less)
+		PG_RETURN_BOOL(timetz_cmp_internal(val, &sum) <= 0);
+	else
+		PG_RETURN_BOOL(timetz_cmp_internal(val, &sum) >= 0);
 }
 
 /* overlaps_timetz() --- implements the SQL OVERLAPS operator.

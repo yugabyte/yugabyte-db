@@ -45,12 +45,14 @@
  *		  like HeapTupleSatisfiesSelf(), but includes open transactions
  *	 HeapTupleSatisfiesVacuum()
  *		  visible to any running transaction, used by VACUUM
+ *	 HeapTupleSatisfiesNonVacuumable()
+ *		  Snapshot-style API for HeapTupleSatisfiesVacuum
  *	 HeapTupleSatisfiesToast()
  *		  visible unless part of interrupted vacuum, used for TOAST
  *	 HeapTupleSatisfiesAny()
  *		  all tuples are visible
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -1381,6 +1383,26 @@ HeapTupleSatisfiesVacuum(HeapTuple htup, TransactionId OldestXmin,
 	return HEAPTUPLE_DEAD;
 }
 
+
+/*
+ * HeapTupleSatisfiesNonVacuumable
+ *
+ *	True if tuple might be visible to some transaction; false if it's
+ *	surely dead to everyone, ie, vacuumable.
+ *
+ *	This is an interface to HeapTupleSatisfiesVacuum that meets the
+ *	SnapshotSatisfiesFunc API, so it can be used through a Snapshot.
+ *	snapshot->xmin must have been set up with the xmin horizon to use.
+ */
+bool
+HeapTupleSatisfiesNonVacuumable(HeapTuple htup, Snapshot snapshot,
+								Buffer buffer)
+{
+	return HeapTupleSatisfiesVacuum(htup, snapshot->xmin, buffer)
+		!= HEAPTUPLE_DEAD;
+}
+
+
 /*
  * HeapTupleIsSurelyDead
  *
@@ -1391,7 +1413,7 @@ HeapTupleSatisfiesVacuum(HeapTuple htup, TransactionId OldestXmin,
  *	should already be set.  We assume that if no hint bits are set, the xmin
  *	or xmax transaction is still running.  This is therefore faster than
  *	HeapTupleSatisfiesVacuum, because we don't consult PGXACT nor CLOG.
- *	It's okay to return FALSE when in doubt, but we must return TRUE only
+ *	It's okay to return false when in doubt, but we must return true only
  *	if the tuple is removable.
  */
 bool

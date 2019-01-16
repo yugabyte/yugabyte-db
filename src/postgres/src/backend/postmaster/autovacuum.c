@@ -50,7 +50,7 @@
  * there is a window (caused by pgstat delay) on which a worker may choose a
  * table that was already vacuumed; this is a bug in the current design.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -79,6 +79,7 @@
 #include "lib/ilist.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
+#include "nodes/makefuncs.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/fork_process.h"
@@ -435,7 +436,7 @@ AutoVacLauncherMain(int argc, char *argv[])
 	am_autovacuum_launcher = true;
 
 	/* Identify myself via ps */
-	init_ps_display("autovacuum launcher process", "", "", "");
+	init_ps_display(pgstat_get_backend_desc(B_AUTOVAC_LAUNCHER), "", "", "");
 
 	ereport(DEBUG1,
 			(errmsg("autovacuum launcher started")));
@@ -476,7 +477,7 @@ AutoVacLauncherMain(int argc, char *argv[])
 	InitProcess();
 #endif
 
-	InitPostgres(NULL, InvalidOid, NULL, InvalidOid, NULL);
+	InitPostgres(NULL, InvalidOid, NULL, InvalidOid, NULL, false);
 
 	SetProcessingMode(NormalProcessing);
 
@@ -530,7 +531,7 @@ AutoVacLauncherMain(int argc, char *argv[])
 		}
 		AtEOXact_Buffers(false);
 		AtEOXact_SMgr();
-		AtEOXact_Files();
+		AtEOXact_Files(false);
 		AtEOXact_HashTables(false);
 
 		/*
@@ -1524,7 +1525,7 @@ AutoVacWorkerMain(int argc, char *argv[])
 	am_autovacuum_worker = true;
 
 	/* Identify myself via ps */
-	init_ps_display("autovacuum worker process", "", "", "");
+	init_ps_display(pgstat_get_backend_desc(B_AUTOVAC_WORKER), "", "", "");
 
 	SetProcessingMode(InitProcessing);
 
@@ -1692,7 +1693,7 @@ AutoVacWorkerMain(int argc, char *argv[])
 		 * Note: if we have selected a just-deleted database (due to using
 		 * stale stats info), we'll fail and exit here.
 		 */
-		InitPostgres(NULL, dbid, NULL, InvalidOid, dbname);
+		InitPostgres(NULL, dbid, NULL, InvalidOid, dbname, false);
 		SetProcessingMode(NormalProcessing);
 		set_ps_display(dbname, false);
 		ereport(DEBUG1,
@@ -2083,14 +2084,11 @@ do_autovacuum(void)
 		 */
 		if (classForm->relpersistence == RELPERSISTENCE_TEMP)
 		{
-			int			backendID;
-
-			backendID = GetTempNamespaceBackendId(classForm->relnamespace);
-
-			/* We just ignore it if the owning backend is still active */
-			if (backendID != InvalidBackendId &&
-				(backendID == MyBackendId ||
-				 BackendIdGetProc(backendID) == NULL))
+			/*
+			 * We just ignore it if the owning backend is still active and
+			 * using the temporary schema.
+			 */
+			if (!isTempNamespaceInUse(classForm->relnamespace))
 			{
 				/*
 				 * The table seems to be orphaned -- although it might be that
@@ -2218,7 +2216,6 @@ do_autovacuum(void)
 	{
 		Oid			relid = lfirst_oid(cell);
 		Form_pg_class classForm;
-		int			backendID;
 		ObjectAddress object;
 
 		/*
@@ -2260,10 +2257,8 @@ do_autovacuum(void)
 			UnlockRelationOid(relid, AccessExclusiveLock);
 			continue;
 		}
-		backendID = GetTempNamespaceBackendId(classForm->relnamespace);
-		if (!(backendID != InvalidBackendId &&
-			  (backendID == MyBackendId ||
-			   BackendIdGetProc(backendID) == NULL)))
+
+		if (isTempNamespaceInUse(classForm->relnamespace))
 		{
 			UnlockRelationOid(relid, AccessExclusiveLock);
 			continue;
@@ -3115,20 +3110,19 @@ relation_needs_vacanalyze(Oid relid,
 static void
 autovacuum_do_vac_analyze(autovac_table *tab, BufferAccessStrategy bstrategy)
 {
-	RangeVar	rangevar;
-
-	/* Set up command parameters --- use local variables instead of palloc */
-	MemSet(&rangevar, 0, sizeof(rangevar));
-
-	rangevar.schemaname = tab->at_nspname;
-	rangevar.relname = tab->at_relname;
-	rangevar.location = -1;
+	RangeVar   *rangevar;
+	VacuumRelation *rel;
+	List	   *rel_list;
 
 	/* Let pgstat know what we're doing */
 	autovac_report_activity(tab);
 
-	vacuum(tab->at_vacoptions, &rangevar, tab->at_relid, &tab->at_params, NIL,
-		   bstrategy, true);
+	/* Set up one VacuumRelation target, identified by OID, for vacuum() */
+	rangevar = makeRangeVar(tab->at_nspname, tab->at_relname, -1);
+	rel = makeVacuumRelation(rangevar, tab->at_relid, NIL);
+	rel_list = list_make1(rel);
+
+	vacuum(tab->at_vacoptions, rel_list, &tab->at_params, bstrategy, true);
 }
 
 /*

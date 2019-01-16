@@ -3,7 +3,7 @@
  * nodeIndexonlyscan.c
  *	  Routines to support index-only scans
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -84,8 +84,8 @@ IndexOnlyNext(IndexOnlyScanState *node)
 	{
 		/*
 		 * We reach here if the index only scan is not parallel, or if we're
-		 * executing a index only scan that was intended to be parallel
-		 * serially.
+		 * serially executing an index only scan that was planned to be
+		 * parallel.
 		 */
 		scandesc = index_beginscan(node->ss.ss_currentRelation,
 								   node->ioss_RelationDesc,
@@ -162,7 +162,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			/*
 			 * Rats, we have to visit the heap to check visibility.
 			 */
-			node->ioss_HeapFetches++;
+			InstrCountTuples2(node, 1);
 			tuple = index_fetch_heap(scandesc);
 			if (tuple == NULL)
 				continue;		/* no visible tuple, try next index entry */
@@ -214,8 +214,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		if (scandesc->xs_recheck)
 		{
 			econtext->ecxt_scantuple = slot;
-			ResetExprContext(econtext);
-			if (!ExecQual(node->indexqual, econtext))
+			if (!ExecQualAndReset(node->indexqual, econtext))
 			{
 				/* Fails recheck, so drop it and loop back for another */
 				InstrCountFiltered2(node, 1);
@@ -510,7 +509,6 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 	indexstate->ss.ps.plan = (Plan *) node;
 	indexstate->ss.ps.state = estate;
 	indexstate->ss.ps.ExecProcNode = ExecIndexOnlyScan;
-	indexstate->ioss_HeapFetches = 0;
 
 	/*
 	 * Miscellaneous initialization
@@ -518,23 +516,6 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 	 * create expression context for node
 	 */
 	ExecAssignExprContext(estate, &indexstate->ss.ps);
-
-	/*
-	 * initialize child expressions
-	 *
-	 * Note: we don't initialize all of the indexorderby expression, only the
-	 * sub-parts corresponding to runtime keys (see below).
-	 */
-	indexstate->ss.ps.qual =
-		ExecInitQual(node->scan.plan.qual, (PlanState *) indexstate);
-	indexstate->indexqual =
-		ExecInitQual(node->indexqual, (PlanState *) indexstate);
-
-	/*
-	 * tuple table initialization
-	 */
-	ExecInitResultTupleSlot(estate, &indexstate->ss.ps);
-	ExecInitScanTupleSlot(estate, &indexstate->ss);
 
 	/*
 	 * open the base relation and acquire appropriate lock on it.
@@ -552,15 +533,26 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 	 * suitable data anyway.)
 	 */
 	tupDesc = ExecTypeFromTL(node->indextlist, false);
-	ExecAssignScanType(&indexstate->ss, tupDesc);
+	ExecInitScanTupleSlot(estate, &indexstate->ss, tupDesc);
 
 	/*
-	 * Initialize result tuple type and projection info.  The node's
+	 * Initialize result slot, type and projection info.  The node's
 	 * targetlist will contain Vars with varno = INDEX_VAR, referencing the
 	 * scan tuple.
 	 */
-	ExecAssignResultTypeFromTL(&indexstate->ss.ps);
+	ExecInitResultTupleSlotTL(estate, &indexstate->ss.ps);
 	ExecAssignScanProjectionInfoWithVarno(&indexstate->ss, INDEX_VAR);
+
+	/*
+	 * initialize child expressions
+	 *
+	 * Note: we don't initialize all of the indexorderby expression, only the
+	 * sub-parts corresponding to runtime keys (see below).
+	 */
+	indexstate->ss.ps.qual =
+		ExecInitQual(node->scan.plan.qual, (PlanState *) indexstate);
+	indexstate->indexqual =
+		ExecInitQual(node->indexqual, (PlanState *) indexstate);
 
 	/*
 	 * If we are just doing EXPLAIN (ie, aren't going to run the plan), stop
@@ -649,7 +641,8 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 /* ----------------------------------------------------------------
  *		ExecIndexOnlyScanEstimate
  *
- *	estimates the space required to serialize index-only scan node.
+ *		Compute the amount of space we'll need in the parallel
+ *		query DSM, and inform pcxt->estimator about our needs.
  * ----------------------------------------------------------------
  */
 void
@@ -722,11 +715,12 @@ ExecIndexOnlyScanReInitializeDSM(IndexOnlyScanState *node,
  * ----------------------------------------------------------------
  */
 void
-ExecIndexOnlyScanInitializeWorker(IndexOnlyScanState *node, shm_toc *toc)
+ExecIndexOnlyScanInitializeWorker(IndexOnlyScanState *node,
+								  ParallelWorkerContext *pwcxt)
 {
 	ParallelIndexScanDesc piscan;
 
-	piscan = shm_toc_lookup(toc, node->ss.ps.plan->plan_node_id, false);
+	piscan = shm_toc_lookup(pwcxt->toc, node->ss.ps.plan->plan_node_id, false);
 	node->ioss_ScanDesc =
 		index_beginscan_parallel(node->ss.ss_currentRelation,
 								 node->ioss_RelationDesc,

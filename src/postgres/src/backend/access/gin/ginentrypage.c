@@ -4,7 +4,7 @@
  *	  routines for handling GIN entry tree pages.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -30,7 +30,7 @@ static void entrySplitPage(GinBtree btree, Buffer origbuf,
  * Form a tuple for entry tree.
  *
  * If the tuple would be too big to be stored, function throws a suitable
- * error if errorTooBig is TRUE, or returns NULL if errorTooBig is FALSE.
+ * error if errorTooBig is true, or returns NULL if errorTooBig is false.
  *
  * See src/backend/access/gin/README for a description of the index tuple
  * format that is being built here.  We build on the assumption that we
@@ -249,7 +249,7 @@ entryIsMoveRight(GinBtree btree, Page page)
 	GinNullCategory category;
 
 	if (GinPageRightMost(page))
-		return FALSE;
+		return false;
 
 	itup = getRightMostTuple(page);
 	attnum = gintuple_get_attrnum(btree->ginstate, itup);
@@ -258,9 +258,9 @@ entryIsMoveRight(GinBtree btree, Page page)
 	if (ginCompareAttEntries(btree->ginstate,
 							 btree->entryAttnum, btree->entryKey, btree->entryCategory,
 							 attnum, key, category) > 0)
-		return TRUE;
+		return true;
 
-	return FALSE;
+	return false;
 }
 
 /*
@@ -356,7 +356,7 @@ entryLocateLeafEntry(GinBtree btree, GinBtreeStack *stack)
 	if (btree->fullScan)
 	{
 		stack->off = FirstOffsetNumber;
-		return TRUE;
+		return true;
 	}
 
 	low = FirstOffsetNumber;
@@ -616,7 +616,7 @@ entrySplitPage(GinBtree btree, Buffer origbuf,
 	Page		lpage = PageGetTempPageCopy(BufferGetPage(origbuf));
 	Page		rpage = PageGetTempPageCopy(BufferGetPage(origbuf));
 	Size		pageSize = PageGetPageSize(lpage);
-	char		tupstore[2 * BLCKSZ];
+	PGAlignedBlock tupstore[2]; /* could need 2 pages' worth of tuples */
 
 	entryPreparePage(btree, lpage, off, insertData, updateblkno);
 
@@ -625,7 +625,7 @@ entrySplitPage(GinBtree btree, Buffer origbuf,
 	 * one after another in a temporary workspace.
 	 */
 	maxoff = PageGetMaxOffsetNumber(lpage);
-	ptr = tupstore;
+	ptr = tupstore[0].data;
 	for (i = FirstOffsetNumber; i <= maxoff; i++)
 	{
 		if (i == off)
@@ -658,7 +658,7 @@ entrySplitPage(GinBtree btree, Buffer origbuf,
 	GinInitPage(rpage, GinPageGetOpaque(lpage)->flags, pageSize);
 	GinInitPage(lpage, GinPageGetOpaque(rpage)->flags, pageSize);
 
-	ptr = tupstore;
+	ptr = tupstore[0].data;
 	maxoff++;
 	lsize = 0;
 
@@ -762,9 +762,9 @@ ginPrepareEntryScan(GinBtree btree, OffsetNumber attnum,
 	btree->fillRoot = ginEntryFillRoot;
 	btree->prepareDownlink = entryPrepareDownlink;
 
-	btree->isData = FALSE;
-	btree->fullScan = FALSE;
-	btree->isBuild = FALSE;
+	btree->isData = false;
+	btree->fullScan = false;
+	btree->isBuild = false;
 
 	btree->entryAttnum = attnum;
 	btree->entryKey = key;

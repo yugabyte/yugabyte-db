@@ -2,7 +2,7 @@
 #
 # Makefile for src/bin/pg_rewind
 #
-# Portions Copyright (c) 2013-2017, PostgreSQL Global Development Group
+# Portions Copyright (c) 2013-2018, PostgreSQL Global Development Group
 #
 # src/bin/pg_rewind/Makefile
 #
@@ -16,7 +16,7 @@ top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
 override CPPFLAGS := -I$(libpq_srcdir) -DFRONTEND $(CPPFLAGS)
-override LDFLAGS := $(libpq_pgport) $(LDFLAGS)
+LDFLAGS_INTERNAL += $(libpq_pgport)
 
 OBJS	= pg_rewind.o parsexlog.o xlogreader.o datapagemap.o timeline.o \
 	fetch.o file_ops.o copy_fetch.o libpq_fetch.o filemap.o logging.o \

@@ -3,7 +3,7 @@
  * ip.c
  *	  IPv6-aware network access.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -233,7 +233,7 @@ getnameinfo_unix(const struct sockaddr_un *sa, int salen,
 				 char *service, int servicelen,
 				 int flags)
 {
-	int			ret = -1;
+	int			ret;
 
 	/* Invalid arguments. */
 	if (sa == NULL || sa->sun_family != AF_UNIX ||
@@ -243,14 +243,14 @@ getnameinfo_unix(const struct sockaddr_un *sa, int salen,
 	if (node)
 	{
 		ret = snprintf(node, nodelen, "%s", "[local]");
-		if (ret == -1 || ret > nodelen)
+		if (ret < 0 || ret >= nodelen)
 			return EAI_MEMORY;
 	}
 
 	if (service)
 	{
 		ret = snprintf(service, servicelen, "%s", sa->sun_path);
-		if (ret == -1 || ret > servicelen)
+		if (ret < 0 || ret >= servicelen)
 			return EAI_MEMORY;
 	}
 

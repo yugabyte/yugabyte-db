@@ -10,6 +10,8 @@ use strict;
 use warnings;
 use VSObjectFactory;
 
+no warnings qw(redefine);    ## no critic
+
 sub _new
 {
 	my $classname = shift;
@@ -22,7 +24,8 @@ sub _new
 		VisualStudioVersion        => undef,
 		MinimumVisualStudioVersion => undef,
 		vcver                      => undef,
-		platform                   => undef, };
+		platform                   => undef,
+	};
 	bless($self, $classname);
 
 	$self->DeterminePlatform();
@@ -51,7 +54,7 @@ sub _new
 	  unless $options->{wal_blocksize};    # undef or 0 means default
 	die "Bad wal_blocksize $options->{wal_blocksize}"
 	  unless grep { $_ == $options->{wal_blocksize} }
-		  (1, 2, 4, 8, 16, 32, 64);
+	  (1, 2, 4, 8, 16, 32, 64);
 	$options->{wal_segsize} = 16
 	  unless $options->{wal_segsize};      # undef or 0 means default
 	die "Bad wal_segsize $options->{wal_segsize}"
@@ -74,6 +77,7 @@ sub DeterminePlatform
 	$? >> 8 == 0 or die "cl command not found";
 	$self->{platform} = ($output =~ /^\/favor:<.+AMD64/m) ? 'x64' : 'Win32';
 	print "Detected hardware platform: $self->{platform}\n";
+	return;
 }
 
 # Return 1 if $oldfile is newer than $newfile, or if $newfile doesn't exist.
@@ -111,6 +115,7 @@ sub copyFile
 	}
 	close($i);
 	close($o);
+	return;
 }
 
 sub GenerateFiles
@@ -157,7 +162,7 @@ sub GenerateFiles
 		{
 			s{PG_VERSION "[^"]+"}{PG_VERSION "$self->{strver}$extraver"};
 			s{PG_VERSION_NUM \d+}{PG_VERSION_NUM $self->{numver}};
-s{PG_VERSION_STR "[^"]+"}{PG_VERSION_STR "PostgreSQL $self->{strver}$extraver, compiled by Visual C++ build " CppAsString2(_MSC_VER) ", $bits-bit"};
+			s{PG_VERSION_STR "[^"]+"}{PG_VERSION_STR "PostgreSQL $self->{strver}$extraver, compiled by Visual C++ build " CppAsString2(_MSC_VER) ", $bits-bit"};
 			print $o $_;
 		}
 		print $o "#define PG_MAJORVERSION \"$self->{majorver}\"\n";
@@ -176,12 +181,9 @@ s{PG_VERSION_STR "[^"]+"}{PG_VERSION_STR "PostgreSQL $self->{strver}$extraver, c
 		  "\n";
 		print $o "#define RELSEG_SIZE ",
 		  (1024 / $self->{options}->{blocksize}) *
-		  $self->{options}->{segsize} *
-		  1024, "\n";
+		  $self->{options}->{segsize} * 1024, "\n";
 		print $o "#define XLOG_BLCKSZ ",
 		  1024 * $self->{options}->{wal_blocksize}, "\n";
-		print $o "#define XLOG_SEG_SIZE (", $self->{options}->{wal_segsize},
-		  " * 1024 * 1024)\n";
 
 		if ($self->{options}->{float4byval})
 		{
@@ -266,15 +268,24 @@ s{PG_VERSION_STR "[^"]+"}{PG_VERSION_STR "PostgreSQL $self->{strver}$extraver, c
 		"src/interfaces/ecpg/pgtypeslib/exports.txt",
 		"LIBPGTYPES");
 
-	if (IsNewer(
-			'src/backend/utils/fmgrtab.c', 'src/include/catalog/pg_proc.h'))
+	chdir('src/backend/utils');
+	my $pg_language_dat = '../../../src/include/catalog/pg_language.dat';
+	my $pg_proc_dat     = '../../../src/include/catalog/pg_proc.dat';
+	if (   IsNewer('fmgr-stamp', 'Gen_fmgrtab.pl')
+		|| IsNewer('fmgr-stamp', '../catalog/Catalog.pm')
+		|| IsNewer('fmgr-stamp', $pg_language_dat)
+		|| IsNewer('fmgr-stamp', $pg_proc_dat)
+		|| IsNewer('fmgr-stamp', '../../../src/include/access/transam.h'))
 	{
-		print "Generating fmgrtab.c, fmgroids.h, fmgrprotos.h...\n";
-		chdir('src/backend/utils');
 		system(
-"perl -I ../catalog Gen_fmgrtab.pl ../../../src/include/catalog/pg_proc.h");
-		chdir('../../..');
+			"perl -I ../catalog Gen_fmgrtab.pl -I../../../src/include/ $pg_language_dat $pg_proc_dat"
+		);
+		open(my $f, '>', 'fmgr-stamp')
+		  || confess "Could not touch fmgr-stamp";
+		close($f);
 	}
+	chdir('../../..');
+
 	if (IsNewer(
 			'src/include/utils/fmgroids.h',
 			'src/backend/utils/fmgroids.h'))
@@ -321,7 +332,7 @@ s{PG_VERSION_STR "[^"]+"}{PG_VERSION_STR "PostgreSQL $self->{strver}$extraver, c
 	{
 		print "Generating probes.h...\n";
 		system(
-'perl src/backend/utils/Gen_dummy_probes.pl src/backend/utils/probes.d > src/include/utils/probes.h'
+			'perl src/backend/utils/Gen_dummy_probes.pl src/backend/utils/probes.d > src/include/utils/probes.h'
 		);
 	}
 
@@ -332,7 +343,7 @@ s{PG_VERSION_STR "[^"]+"}{PG_VERSION_STR "PostgreSQL $self->{strver}$extraver, c
 	{
 		print "Generating spiexceptions.h...\n";
 		system(
-'perl src/pl/plpython/generate-spiexceptions.pl src/backend/utils/errcodes.txt > src/pl/plpython/spiexceptions.h'
+			'perl src/pl/plpython/generate-spiexceptions.pl src/backend/utils/errcodes.txt > src/pl/plpython/spiexceptions.h'
 		);
 	}
 
@@ -342,7 +353,7 @@ s{PG_VERSION_STR "[^"]+"}{PG_VERSION_STR "PostgreSQL $self->{strver}$extraver, c
 	{
 		print "Generating errcodes.h...\n";
 		system(
-'perl src/backend/utils/generate-errcodes.pl src/backend/utils/errcodes.txt > src/backend/utils/errcodes.h'
+			'perl src/backend/utils/generate-errcodes.pl src/backend/utils/errcodes.txt > src/backend/utils/errcodes.h'
 		);
 		copyFile('src/backend/utils/errcodes.h',
 			'src/include/utils/errcodes.h');
@@ -354,7 +365,7 @@ s{PG_VERSION_STR "[^"]+"}{PG_VERSION_STR "PostgreSQL $self->{strver}$extraver, c
 	{
 		print "Generating plerrcodes.h...\n";
 		system(
-'perl src/pl/plpgsql/src/generate-plerrcodes.pl src/backend/utils/errcodes.txt > src/pl/plpgsql/src/plerrcodes.h'
+			'perl src/pl/plpgsql/src/generate-plerrcodes.pl src/backend/utils/errcodes.txt > src/pl/plpgsql/src/plerrcodes.h'
 		);
 	}
 
@@ -364,7 +375,7 @@ s{PG_VERSION_STR "[^"]+"}{PG_VERSION_STR "PostgreSQL $self->{strver}$extraver, c
 	{
 		print "Generating pltclerrcodes.h...\n";
 		system(
-'perl src/pl/tcl/generate-pltclerrcodes.pl src/backend/utils/errcodes.txt > src/pl/tcl/pltclerrcodes.h'
+			'perl src/pl/tcl/generate-pltclerrcodes.pl src/backend/utils/errcodes.txt > src/pl/tcl/pltclerrcodes.h'
 		);
 	}
 
@@ -374,7 +385,7 @@ s{PG_VERSION_STR "[^"]+"}{PG_VERSION_STR "PostgreSQL $self->{strver}$extraver, c
 	{
 		print "Generating qsort_tuple.c...\n";
 		system(
-'perl src/backend/utils/sort/gen_qsort_tuple.pl > src/backend/utils/sort/qsort_tuple.c'
+			'perl src/backend/utils/sort/gen_qsort_tuple.pl > src/backend/utils/sort/qsort_tuple.c'
 		);
 	}
 
@@ -458,28 +469,65 @@ EOF
 
 	my $mf = Project::read_file('src/backend/catalog/Makefile');
 	$mf =~ s{\\\r?\n}{}g;
-	$mf =~ /^POSTGRES_BKI_SRCS\s*:?=[^,]+,(.*)\)$/gm
-	  || croak "Could not find POSTGRES_BKI_SRCS in Makefile\n";
-	my @allbki = split /\s+/, $1;
-	foreach my $bki (@allbki)
+	$mf =~ /^CATALOG_HEADERS\s*:?=(.*)$/gm
+	  || croak "Could not find CATALOG_HEADERS in Makefile\n";
+	my @bki_srcs = split /\s+/, $1;
+	push @bki_srcs, 'toasting.h';
+	push @bki_srcs, 'indexing.h';
+	$mf =~ /^POSTGRES_BKI_DATA\s*:?=[^,]+,(.*)\)$/gm
+	  || croak "Could not find POSTGRES_BKI_DATA in Makefile\n";
+	my @bki_data = split /\s+/, $1;
+
+	my $need_genbki = 0;
+	foreach my $bki (@bki_srcs, @bki_data)
 	{
 		next if $bki eq "";
 		if (IsNewer(
-				'src/backend/catalog/postgres.bki',
+				'src/backend/catalog/bki-stamp',
 				"src/include/catalog/$bki"))
 		{
-			print "Generating postgres.bki and schemapg.h...\n";
-			chdir('src/backend/catalog');
-			my $bki_srcs = join(' ../../../src/include/catalog/', @allbki);
-			system(
-"perl genbki.pl -I../../../src/include/catalog --set-version=$self->{majorver} $bki_srcs"
-			);
-			chdir('../../..');
-			copyFile(
-				'src/backend/catalog/schemapg.h',
-				'src/include/catalog/schemapg.h');
+			$need_genbki = 1;
 			last;
 		}
+	}
+	$need_genbki = 1
+	  if IsNewer('src/backend/catalog/bki-stamp',
+		'src/backend/catalog/genbki.pl');
+	$need_genbki = 1
+	  if IsNewer('src/backend/catalog/bki-stamp',
+		'src/backend/catalog/Catalog.pm');
+	if ($need_genbki)
+	{
+		chdir('src/backend/catalog');
+		my $bki_srcs = join(' ../../../src/include/catalog/', @bki_srcs);
+		system("perl genbki.pl --set-version=$self->{majorver} $bki_srcs");
+		open(my $f, '>', 'bki-stamp')
+		  || confess "Could not touch bki-stamp";
+		close($f);
+		chdir('../../..');
+	}
+
+	if (IsNewer(
+			'src/include/catalog/header-stamp',
+			'src/backend/catalog/bki-stamp'))
+	{
+		# Copy generated headers to include directory.
+		opendir(my $dh, 'src/backend/catalog/')
+		  || die "Can't opendir src/backend/catalog/ $!";
+		my @def_headers = grep { /pg_\w+_d\.h$/ } readdir($dh);
+		closedir $dh;
+		foreach my $def_header (@def_headers)
+		{
+			copyFile(
+				"src/backend/catalog/$def_header",
+				"src/include/catalog/$def_header");
+		}
+		copyFile(
+			'src/backend/catalog/schemapg.h',
+			'src/include/catalog/schemapg.h');
+		open(my $chs, '>', 'src/include/catalog/header-stamp')
+		  || confess "Could not touch header-stamp";
+		close($chs);
 	}
 
 	open(my $o, '>', "doc/src/sgml/version.sgml")
@@ -489,6 +537,7 @@ EOF
 <!ENTITY majorversion "$self->{majorver}">
 EOF
 	close($o);
+	return;
 }
 
 sub GenerateDefFile
@@ -511,6 +560,7 @@ sub GenerateDefFile
 		close($of);
 		close($if);
 	}
+	return;
 }
 
 sub AddProject
@@ -683,6 +733,7 @@ EOF
 EndGlobal
 EOF
 	close($sln);
+	return;
 }
 
 sub GetFakeConfigure
@@ -719,6 +770,8 @@ use strict;
 use warnings;
 use base qw(Solution);
 
+no warnings qw(redefine);    ## no critic
+
 sub new
 {
 	my $classname = shift;
@@ -741,6 +794,8 @@ package VS2008Solution;
 use strict;
 use warnings;
 use base qw(Solution);
+
+no warnings qw(redefine);    ## no critic
 
 sub new
 {
@@ -766,6 +821,8 @@ use strict;
 use warnings;
 use base qw(Solution);
 
+no warnings qw(redefine);    ## no critic
+
 sub new
 {
 	my $classname = shift;
@@ -790,6 +847,8 @@ use strict;
 use warnings;
 use base qw(Solution);
 
+no warnings qw(redefine);    ## no critic
+
 sub new
 {
 	my $classname = shift;
@@ -813,6 +872,8 @@ use Carp;
 use strict;
 use warnings;
 use base qw(Solution);
+
+no warnings qw(redefine);    ## no critic
 
 sub new
 {
@@ -840,6 +901,8 @@ use strict;
 use warnings;
 use base qw(Solution);
 
+no warnings qw(redefine);    ## no critic
+
 sub new
 {
 	my $classname = shift;
@@ -865,6 +928,8 @@ use Carp;
 use strict;
 use warnings;
 use base qw(Solution);
+
+no warnings qw(redefine);    ## no critic
 
 sub new
 {

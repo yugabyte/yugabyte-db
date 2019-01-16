@@ -4,7 +4,7 @@
  *	  include file for the bootstrapping code
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/bootstrap/bootstrap.h
@@ -43,8 +43,6 @@ extern void DefineAttr(char *name, char *type, int attnum, int nullness);
 extern void InsertOneTuple(Oid objectid);
 extern void InsertOneValue(char *value, int i);
 extern void InsertOneNull(int i);
-
-extern char *MapArrayTypeName(const char *s);
 
 extern void index_register(Oid heap, Oid ind, IndexInfo *indexInfo);
 extern void build_indices(void);

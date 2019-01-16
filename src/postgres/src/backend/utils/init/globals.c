@@ -3,7 +3,7 @@
  * globals.c
  *	  global variable declarations
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,6 +18,7 @@
  */
 #include "postgres.h"
 
+#include "common/file_perm.h"
 #include "libpq/libpq-be.h"
 #include "libpq/pqcomm.h"
 #include "miscadmin.h"
@@ -58,6 +59,12 @@ struct Latch *MyLatch;
  * explicitly.
  */
 char	   *DataDir = NULL;
+
+/*
+ * Mode of the data directory.  The default is 0700 but it may be changed in
+ * checkDataDir() to 0750 if the data directory actually has that mode.
+ */
+int			data_directory_mode = PG_DIR_MODE_OWNER;
 
 char		OutputFileName[MAXPGPATH];	/* debugging output file */
 
@@ -112,7 +119,7 @@ bool		enableFsync = true;
 bool		allowSystemTableMods = false;
 int			work_mem = 1024;
 int			maintenance_work_mem = 16384;
-int			replacement_sort_tuples = 150000;
+int			max_parallel_maintenance_workers = 2;
 
 /*
  * Primary determinants of sizes of shared-memory structures.
@@ -138,3 +145,5 @@ int			VacuumPageDirty = 0;
 
 int			VacuumCostBalance = 0;	/* working state for vacuum */
 bool		VacuumCostActive = false;
+
+double		vacuum_cleanup_index_scale_factor;

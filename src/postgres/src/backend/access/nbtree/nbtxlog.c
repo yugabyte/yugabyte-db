@@ -4,7 +4,7 @@
  *	  WAL replay logic for btrees.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -51,9 +51,15 @@ _bt_restore_page(Page page, char *from, int len)
 	i = 0;
 	while (from < end)
 	{
-		/* Need to copy tuple header due to alignment considerations */
+		/*
+		 * As we step through the items, 'from' won't always be properly
+		 * aligned, so we need to use memcpy().  Further, we use Item (which
+		 * is just a char*) here for our items array for the same reason;
+		 * wouldn't want the compiler or anyone thinking that an item is
+		 * aligned when it isn't.
+		 */
 		memcpy(&itupdata, from, sizeof(IndexTupleData));
-		itemsz = IndexTupleDSize(itupdata);
+		itemsz = IndexTupleSize(&itupdata);
 		itemsz = MAXALIGN(itemsz);
 
 		items[i] = (Item) from;
@@ -102,13 +108,16 @@ _bt_restore_meta(XLogReaderState *record, uint8 block_id)
 	md->btm_level = xlrec->level;
 	md->btm_fastroot = xlrec->fastroot;
 	md->btm_fastlevel = xlrec->fastlevel;
+	md->btm_oldest_btpo_xact = xlrec->oldest_btpo_xact;
+	md->btm_last_cleanup_num_heap_tuples = xlrec->last_cleanup_num_heap_tuples;
 
 	pageop = (BTPageOpaque) PageGetSpecialPointer(metapg);
 	pageop->btpo_flags = BTP_META;
 
 	/*
-	 * Set pd_lower just past the end of the metadata.  This is not essential
-	 * but it makes the page look compressible to xlog.c.
+	 * Set pd_lower just past the end of the metadata.  This is essential,
+	 * because without doing so, metadata will be lost if xlog.c compresses
+	 * the page.
 	 */
 	((PageHeader) metapg)->pd_lower =
 		((char *) md + sizeof(BTMetaPageData)) - (char *) metapg;
@@ -135,7 +144,7 @@ _bt_clear_incomplete_split(XLogReaderState *record, uint8 block_id)
 		Page		page = (Page) BufferGetPage(buf);
 		BTPageOpaque pageop = (BTPageOpaque) PageGetSpecialPointer(page);
 
-		Assert((pageop->btpo_flags & BTP_INCOMPLETE_SPLIT) != 0);
+		Assert(P_INCOMPLETE_SPLIT(pageop));
 		pageop->btpo_flags &= ~BTP_INCOMPLETE_SPLIT;
 
 		PageSetLSN(page, lsn);
@@ -193,7 +202,7 @@ btree_xlog_insert(bool isleaf, bool ismeta, XLogReaderState *record)
 }
 
 static void
-btree_xlog_split(bool onleft, bool isroot, XLogReaderState *record)
+btree_xlog_split(bool onleft, bool lhighkey, XLogReaderState *record)
 {
 	XLogRecPtr	lsn = record->EndRecPtr;
 	xl_btree_split *xlrec = (xl_btree_split *) XLogRecGetData(record);
@@ -204,7 +213,7 @@ btree_xlog_split(bool onleft, bool isroot, XLogReaderState *record)
 	BTPageOpaque ropaque;
 	char	   *datapos;
 	Size		datalen;
-	Item		left_hikey = NULL;
+	IndexTuple	left_hikey = NULL;
 	Size		left_hikeysz = 0;
 	BlockNumber leftsib;
 	BlockNumber rightsib;
@@ -240,14 +249,16 @@ btree_xlog_split(bool onleft, bool isroot, XLogReaderState *record)
 	_bt_restore_page(rpage, datapos, datalen);
 
 	/*
-	 * On leaf level, the high key of the left page is equal to the first key
-	 * on the right page.
+	 * When the high key isn't present is the wal record, then we assume it to
+	 * be equal to the first key on the right page.  It must be from the leaf
+	 * level.
 	 */
-	if (isleaf)
+	if (!lhighkey)
 	{
 		ItemId		hiItemId = PageGetItemId(rpage, P_FIRSTDATAKEY(ropaque));
 
-		left_hikey = PageGetItem(rpage, hiItemId);
+		Assert(isleaf);
+		left_hikey = (IndexTuple) PageGetItem(rpage, hiItemId);
 		left_hikeysz = ItemIdGetLength(hiItemId);
 	}
 
@@ -271,7 +282,7 @@ btree_xlog_split(bool onleft, bool isroot, XLogReaderState *record)
 		Page		lpage = (Page) BufferGetPage(lbuf);
 		BTPageOpaque lopaque = (BTPageOpaque) PageGetSpecialPointer(lpage);
 		OffsetNumber off;
-		Item		newitem = NULL;
+		IndexTuple	newitem = NULL;
 		Size		newitemsz = 0;
 		Page		newlpage;
 		OffsetNumber leftoff;
@@ -280,27 +291,28 @@ btree_xlog_split(bool onleft, bool isroot, XLogReaderState *record)
 
 		if (onleft)
 		{
-			newitem = (Item) datapos;
+			newitem = (IndexTuple) datapos;
 			newitemsz = MAXALIGN(IndexTupleSize(newitem));
 			datapos += newitemsz;
 			datalen -= newitemsz;
 		}
 
 		/* Extract left hikey and its size (assuming 16-bit alignment) */
-		if (!isleaf)
+		if (lhighkey)
 		{
-			left_hikey = (Item) datapos;
+			left_hikey = (IndexTuple) datapos;
 			left_hikeysz = MAXALIGN(IndexTupleSize(left_hikey));
 			datapos += left_hikeysz;
 			datalen -= left_hikeysz;
 		}
+
 		Assert(datalen == 0);
 
 		newlpage = PageGetTempPageCopySpecial(lpage);
 
 		/* Set high key */
 		leftoff = P_HIKEY;
-		if (PageAddItem(newlpage, left_hikey, left_hikeysz,
+		if (PageAddItem(newlpage, (Item) left_hikey, left_hikeysz,
 						P_HIKEY, false, false) == InvalidOffsetNumber)
 			elog(PANIC, "failed to add high key to left page after split");
 		leftoff = OffsetNumberNext(leftoff);
@@ -309,12 +321,12 @@ btree_xlog_split(bool onleft, bool isroot, XLogReaderState *record)
 		{
 			ItemId		itemid;
 			Size		itemsz;
-			Item		item;
+			IndexTuple	item;
 
 			/* add the new item if it was inserted on left page */
 			if (onleft && off == xlrec->newitemoff)
 			{
-				if (PageAddItem(newlpage, newitem, newitemsz, leftoff,
+				if (PageAddItem(newlpage, (Item) newitem, newitemsz, leftoff,
 								false, false) == InvalidOffsetNumber)
 					elog(ERROR, "failed to add new item to left page after split");
 				leftoff = OffsetNumberNext(leftoff);
@@ -322,8 +334,8 @@ btree_xlog_split(bool onleft, bool isroot, XLogReaderState *record)
 
 			itemid = PageGetItemId(lpage, off);
 			itemsz = ItemIdGetLength(itemid);
-			item = PageGetItem(lpage, itemid);
-			if (PageAddItem(newlpage, item, itemsz, leftoff,
+			item = (IndexTuple) PageGetItem(lpage, itemid);
+			if (PageAddItem(newlpage, (Item) item, itemsz, leftoff,
 							false, false) == InvalidOffsetNumber)
 				elog(ERROR, "failed to add old item to left page after split");
 			leftoff = OffsetNumberNext(leftoff);
@@ -332,7 +344,7 @@ btree_xlog_split(bool onleft, bool isroot, XLogReaderState *record)
 		/* cope with possibility that newitem goes at the end */
 		if (onleft && off == xlrec->newitemoff)
 		{
-			if (PageAddItem(newlpage, newitem, newitemsz, leftoff,
+			if (PageAddItem(newlpage, (Item) newitem, newitemsz, leftoff,
 							false, false) == InvalidOffsetNumber)
 				elog(ERROR, "failed to add new item to left page after split");
 			leftoff = OffsetNumberNext(leftoff);
@@ -598,7 +610,7 @@ btree_xlog_delete_get_latestRemovedXid(XLogReaderState *record)
 			UnlockReleaseBuffer(ibuffer);
 			return InvalidTransactionId;
 		}
-		LockBuffer(hbuffer, BUFFER_LOCK_SHARE);
+		LockBuffer(hbuffer, BT_READ);
 		hpage = (Page) BufferGetPage(hbuffer);
 
 		/*
@@ -755,11 +767,11 @@ btree_xlog_mark_page_halfdead(uint8 info, XLogReaderState *record)
 		nextoffset = OffsetNumberNext(poffset);
 		itemid = PageGetItemId(page, nextoffset);
 		itup = (IndexTuple) PageGetItem(page, itemid);
-		rightsib = ItemPointerGetBlockNumber(&itup->t_tid);
+		rightsib = BTreeInnerTupleGetDownLink(itup);
 
 		itemid = PageGetItemId(page, poffset);
 		itup = (IndexTuple) PageGetItem(page, itemid);
-		ItemPointerSet(&(itup->t_tid), rightsib, P_HIKEY);
+		BTreeInnerTupleSetDownLink(itup, rightsib);
 		nextoffset = OffsetNumberNext(poffset);
 		PageIndexTupleDelete(page, nextoffset);
 
@@ -788,10 +800,8 @@ btree_xlog_mark_page_halfdead(uint8 info, XLogReaderState *record)
 	 */
 	MemSet(&trunctuple, 0, sizeof(IndexTupleData));
 	trunctuple.t_info = sizeof(IndexTupleData);
-	if (xlrec->topparent != InvalidBlockNumber)
-		ItemPointerSet(&trunctuple.t_tid, xlrec->topparent, P_HIKEY);
-	else
-		ItemPointerSetInvalid(&trunctuple.t_tid);
+	BTreeTupleSetTopParent(&trunctuple, xlrec->topparent);
+
 	if (PageAddItem(page, (Item) &trunctuple, sizeof(IndexTupleData), P_HIKEY,
 					false, false) == InvalidOffsetNumber)
 		elog(ERROR, "could not add dummy high key to half-dead page");
@@ -898,10 +908,8 @@ btree_xlog_unlink_page(uint8 info, XLogReaderState *record)
 		/* Add a dummy hikey item */
 		MemSet(&trunctuple, 0, sizeof(IndexTupleData));
 		trunctuple.t_info = sizeof(IndexTupleData);
-		if (xlrec->topparent != InvalidBlockNumber)
-			ItemPointerSet(&trunctuple.t_tid, xlrec->topparent, P_HIKEY);
-		else
-			ItemPointerSetInvalid(&trunctuple.t_tid);
+		BTreeTupleSetTopParent(&trunctuple, xlrec->topparent);
+
 		if (PageAddItem(page, (Item) &trunctuple, sizeof(IndexTupleData), P_HIKEY,
 						false, false) == InvalidOffsetNumber)
 			elog(ERROR, "could not add dummy high key to half-dead page");
@@ -978,7 +986,6 @@ btree_xlog_reuse_page(XLogReaderState *record)
 	}
 }
 
-
 void
 btree_redo(XLogReaderState *record)
 {
@@ -998,13 +1005,13 @@ btree_redo(XLogReaderState *record)
 		case XLOG_BTREE_SPLIT_L:
 			btree_xlog_split(true, false, record);
 			break;
+		case XLOG_BTREE_SPLIT_L_HIGHKEY:
+			btree_xlog_split(true, true, record);
+			break;
 		case XLOG_BTREE_SPLIT_R:
 			btree_xlog_split(false, false, record);
 			break;
-		case XLOG_BTREE_SPLIT_L_ROOT:
-			btree_xlog_split(true, true, record);
-			break;
-		case XLOG_BTREE_SPLIT_R_ROOT:
+		case XLOG_BTREE_SPLIT_R_HIGHKEY:
 			btree_xlog_split(false, true, record);
 			break;
 		case XLOG_BTREE_VACUUM:
@@ -1025,6 +1032,9 @@ btree_redo(XLogReaderState *record)
 			break;
 		case XLOG_BTREE_REUSE_PAGE:
 			btree_xlog_reuse_page(record);
+			break;
+		case XLOG_BTREE_META_CLEANUP:
+			_bt_restore_meta(record, 0);
 			break;
 		default:
 			elog(PANIC, "btree_redo: unknown op code %u", info);

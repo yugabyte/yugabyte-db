@@ -32,6 +32,7 @@ static int	nconns = 0;
 /* In dry run only output permutations to be run by the tester. */
 static int	dry_run = false;
 
+static void exit_nicely(void) pg_attribute_noreturn();
 static void run_testspec(TestSpec *testspec);
 static void run_all_permutations(TestSpec *testspec);
 static void run_all_permutations_recurse(TestSpec *testspec, int nsteps,
@@ -593,7 +594,7 @@ run_permutation(TestSpec *testspec, int nsteps, Step **steps)
 		if (!PQsendQuery(conn, step->sql))
 		{
 			fprintf(stdout, "failed to send query for step %s: %s\n",
-					step->name, PQerrorMessage(conns[1 + step->session]));
+					step->name, PQerrorMessage(conn));
 			exit_nicely();
 		}
 
@@ -742,7 +743,7 @@ try_complete_step(Step *step, int flags)
 					PQntuples(res) != 1)
 				{
 					fprintf(stderr, "lock wait query failed: %s",
-							PQerrorMessage(conn));
+							PQerrorMessage(conns[0]));
 					exit_nicely();
 				}
 				waiting = ((PQgetvalue(res, 0, 0))[0] == 't');
@@ -765,15 +766,15 @@ try_complete_step(Step *step, int flags)
 			td += (int64) current_time.tv_usec - (int64) start_time.tv_usec;
 
 			/*
-			 * After 60 seconds, try to cancel the query.
+			 * After 180 seconds, try to cancel the query.
 			 *
 			 * If the user tries to test an invalid permutation, we don't want
 			 * to hang forever, especially when this is running in the
-			 * buildfarm.  So try to cancel it after a minute.  This will
-			 * presumably lead to this permutation failing, but remaining
-			 * permutations and tests should still be OK.
+			 * buildfarm.  This will presumably lead to this permutation
+			 * failing, but remaining permutations and tests should still be
+			 * OK.
 			 */
-			if (td > 60 * USECS_PER_SEC && !canceled)
+			if (td > 180 * USECS_PER_SEC && !canceled)
 			{
 				PGcancel   *cancel = PQgetCancel(conn);
 
@@ -790,15 +791,15 @@ try_complete_step(Step *step, int flags)
 			}
 
 			/*
-			 * After 75 seconds, just give up and die.
+			 * After 200 seconds, just give up and die.
 			 *
 			 * Since cleanup steps won't be run in this case, this may cause
 			 * later tests to fail.  That stinks, but it's better than waiting
 			 * forever for the server to respond to the cancel.
 			 */
-			if (td > 75 * USECS_PER_SEC)
+			if (td > 200 * USECS_PER_SEC)
 			{
-				fprintf(stderr, "step %s timed out after 75 seconds\n",
+				fprintf(stderr, "step %s timed out after 200 seconds\n",
 						step->name);
 				exit_nicely();
 			}

@@ -3,7 +3,7 @@
  * array_expanded.c
  *	  Basic functions for manipulating expanded arrays.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -394,11 +394,11 @@ DatumGetExpandedArrayX(Datum d, ArrayMetaState *metacache)
 }
 
 /*
- * DatumGetAnyArray: return either an expanded array or a detoasted varlena
+ * DatumGetAnyArrayP: return either an expanded array or a detoasted varlena
  * array.  The result must not be modified in-place.
  */
 AnyArrayType *
-DatumGetAnyArray(Datum d)
+DatumGetAnyArrayP(Datum d)
 {
 	ExpandedArrayHeader *eah;
 

@@ -3,7 +3,7 @@
  * tablefunc.h
  *				interface for TableFunc executor node
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/tablefunc.h
@@ -47,17 +47,17 @@ struct TableFuncScanState;
  *
  * DestroyBuilder shall release all resources associated with a table builder
  * context.  It may be called either because all rows have been consumed, or
- * because an error ocurred while processing the table expression.
+ * because an error occurred while processing the table expression.
  */
 typedef struct TableFuncRoutine
 {
 	void		(*InitOpaque) (struct TableFuncScanState *state, int natts);
 	void		(*SetDocument) (struct TableFuncScanState *state, Datum value);
-	void		(*SetNamespace) (struct TableFuncScanState *state, char *name,
-								 char *uri);
-	void		(*SetRowFilter) (struct TableFuncScanState *state, char *path);
+	void		(*SetNamespace) (struct TableFuncScanState *state, const char *name,
+								 const char *uri);
+	void		(*SetRowFilter) (struct TableFuncScanState *state, const char *path);
 	void		(*SetColumnFilter) (struct TableFuncScanState *state,
-									char *path, int colnum);
+									const char *path, int colnum);
 	bool		(*FetchRow) (struct TableFuncScanState *state);
 	Datum		(*GetValue) (struct TableFuncScanState *state, int colnum,
 							 Oid typid, int32 typmod, bool *isnull);

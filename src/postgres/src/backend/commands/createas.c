@@ -13,7 +13,7 @@
  * we must return a tuples-processed count in the completionTag.  (We no
  * longer do that for CTAS ... WITH NO DATA, however.)
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -334,8 +334,8 @@ ExecCreateTableAs(CreateTableAsStmt *stmt, const char *queryString,
 		query = linitial_node(Query, rewritten);
 		Assert(query->commandType == CMD_SELECT);
 
-		/* plan the query --- note we disallow parallelism */
-		plan = pg_plan_query(query, 0, params);
+		/* plan the query */
+		plan = pg_plan_query(query, CURSOR_OPT_PARALLEL_OK, params);
 
 		/*
 		 * Use a snapshot with an updated command ID to ensure this query sees
@@ -476,7 +476,7 @@ intorel_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 	lc = list_head(into->colNames);
 	for (attnum = 0; attnum < typeinfo->natts; attnum++)
 	{
-		Form_pg_attribute attribute = typeinfo->attrs[attnum];
+		Form_pg_attribute attribute = TupleDescAttr(typeinfo, attnum);
 		ColumnDef  *col;
 		char	   *colname;
 

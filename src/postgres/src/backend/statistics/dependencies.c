@@ -3,7 +3,7 @@
  * dependencies.c
  *	  POSTGRES functional dependencies
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -395,7 +395,7 @@ statext_dependencies_build(int numrows, HeapTuple *rows, Bitmapset *attrs,
 			degree = dependency_degree(numrows, rows, k, dependency, stats, attrs);
 
 			/*
-			 * if the dependency seems entirely invalid, don't store it it
+			 * if the dependency seems entirely invalid, don't store it
 			 */
 			if (degree == 0.0)
 				continue;

@@ -4,7 +4,7 @@
  *	  WAL replay logic for hash index.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -558,7 +558,7 @@ hash_xlog_move_page_contents(XLogReaderState *record)
 				Size		itemsz;
 				OffsetNumber l;
 
-				itemsz = IndexTupleDSize(*itup);
+				itemsz = IndexTupleSize(itup);
 				itemsz = MAXALIGN(itemsz);
 
 				data += itemsz;
@@ -686,7 +686,7 @@ hash_xlog_squeeze_page(XLogReaderState *record)
 				Size		itemsz;
 				OffsetNumber l;
 
-				itemsz = IndexTupleDSize(*itup);
+				itemsz = IndexTupleSize(itup);
 				itemsz = MAXALIGN(itemsz);
 
 				data += itemsz;

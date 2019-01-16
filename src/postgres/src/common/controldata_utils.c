@@ -4,7 +4,7 @@
  *		Common code for control data file output.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -44,6 +44,7 @@ get_controlfile(const char *DataDir, const char *progname, bool *crc_ok_p)
 	int			fd;
 	char		ControlFilePath[MAXPGPATH];
 	pg_crc32c	crc;
+	int			r;
 
 	AssertArg(crc_ok_p);
 
@@ -64,18 +65,34 @@ get_controlfile(const char *DataDir, const char *progname, bool *crc_ok_p)
 	}
 #endif
 
-	if (read(fd, ControlFile, sizeof(ControlFileData)) != sizeof(ControlFileData))
-#ifndef FRONTEND
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not read file \"%s\": %m", ControlFilePath)));
-#else
+	r = read(fd, ControlFile, sizeof(ControlFileData));
+	if (r != sizeof(ControlFileData))
 	{
-		fprintf(stderr, _("%s: could not read file \"%s\": %s\n"),
-				progname, ControlFilePath, strerror(errno));
-		exit(EXIT_FAILURE);
-	}
+		if (r < 0)
+#ifndef FRONTEND
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not read file \"%s\": %m", ControlFilePath)));
+#else
+		{
+			fprintf(stderr, _("%s: could not read file \"%s\": %s\n"),
+					progname, ControlFilePath, strerror(errno));
+			exit(EXIT_FAILURE);
+		}
 #endif
+		else
+#ifndef FRONTEND
+			ereport(ERROR,
+					(errmsg("could not read file \"%s\": read %d of %d",
+							ControlFilePath, r, (int) sizeof(ControlFileData))));
+#else
+		{
+			fprintf(stderr, _("%s: could not read file \"%s\": read %d of %d\n"),
+					progname, ControlFilePath, r, (int) sizeof(ControlFileData));
+			exit(EXIT_FAILURE);
+		}
+#endif
+	}
 
 	close(fd);
 

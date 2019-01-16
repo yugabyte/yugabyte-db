@@ -1,6 +1,6 @@
 #! /usr/bin/perl
 #
-# Copyright (c) 2007-2017, PostgreSQL Global Development Group
+# Copyright (c) 2007-2018, PostgreSQL Global Development Group
 #
 # src/backend/utils/mb/Unicode/UCS_to_EUC_JIS_2004.pl
 #
@@ -10,7 +10,7 @@
 use strict;
 use convutils;
 
-my $this_script = $0;
+my $this_script = 'src/backend/utils/mb/Unicode/UCS_to_EUC_JIS_2004.pl';
 
 # first generate UTF-8 --> EUC_JIS_2004 table
 
@@ -33,13 +33,15 @@ while (my $line = <$in>)
 		my $ucs2 = hex($u2);
 
 		push @all,
-		  { direction  => BOTH,
+		  {
+			direction  => BOTH,
 			ucs        => $ucs1,
 			ucs_second => $ucs2,
 			code       => $code,
 			comment    => $rest,
 			f          => $in_file,
-			l          => $. };
+			l          => $.
+		  };
 	}
 	elsif ($line =~ /^0x(.*)[ \t]*U\+(.*)[ \t]*#(.*)$/)
 	{
@@ -52,12 +54,14 @@ while (my $line = <$in>)
 		next if ($code < 0x80 && $ucs < 0x80);
 
 		push @all,
-		  { direction => BOTH,
+		  {
+			direction => BOTH,
 			ucs       => $ucs,
 			code      => $code,
 			comment   => $rest,
 			f         => $in_file,
-			l         => $. };
+			l         => $.
+		  };
 	}
 }
 close($in);

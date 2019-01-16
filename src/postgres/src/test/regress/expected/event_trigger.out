@@ -27,7 +27,7 @@ create event trigger regress_event_trigger on ddl_command_start
    execute procedure test_event_trigger();
 -- OK
 create event trigger regress_event_trigger_end on ddl_command_end
-   execute procedure test_event_trigger();
+   execute function test_event_trigger();
 -- should fail, food is not a valid filter variable
 create event trigger regress_event_trigger2 on ddl_command_start
    when food in ('sandwich')
@@ -88,16 +88,34 @@ create event trigger regress_event_trigger_noperms on ddl_command_start
 ERROR:  permission denied to create event trigger "regress_event_trigger_noperms"
 HINT:  Must be superuser to create an event trigger.
 reset role;
--- all OK
-alter event trigger regress_event_trigger enable replica;
-alter event trigger regress_event_trigger enable always;
-alter event trigger regress_event_trigger enable;
+-- test enabling and disabling
 alter event trigger regress_event_trigger disable;
--- regress_event_trigger2 and regress_event_trigger_end should fire, but not
--- regress_event_trigger
+-- fires _trigger2 and _trigger_end should fire, but not _trigger
 create table event_trigger_fire1 (a int);
 NOTICE:  test_event_trigger: ddl_command_start CREATE TABLE
 NOTICE:  test_event_trigger: ddl_command_end CREATE TABLE
+alter event trigger regress_event_trigger enable;
+set session_replication_role = replica;
+-- fires nothing
+create table event_trigger_fire2 (a int);
+alter event trigger regress_event_trigger enable replica;
+-- fires only _trigger
+create table event_trigger_fire3 (a int);
+NOTICE:  test_event_trigger: ddl_command_start CREATE TABLE
+alter event trigger regress_event_trigger enable always;
+-- fires only _trigger
+create table event_trigger_fire4 (a int);
+NOTICE:  test_event_trigger: ddl_command_start CREATE TABLE
+reset session_replication_role;
+-- fires all three
+create table event_trigger_fire5 (a int);
+NOTICE:  test_event_trigger: ddl_command_start CREATE TABLE
+NOTICE:  test_event_trigger: ddl_command_start CREATE TABLE
+NOTICE:  test_event_trigger: ddl_command_end CREATE TABLE
+-- clean up
+alter event trigger regress_event_trigger disable;
+drop table event_trigger_fire2, event_trigger_fire3, event_trigger_fire4, event_trigger_fire5;
+NOTICE:  test_event_trigger: ddl_command_end DROP TABLE
 -- regress_event_trigger_end should fire on these commands
 grant all on table event_trigger_fire1 to public;
 NOTICE:  test_event_trigger: ddl_command_end GRANT
@@ -331,6 +349,18 @@ CREATE SCHEMA evttrig
 	CREATE TABLE one (col_a SERIAL PRIMARY KEY, col_b text DEFAULT 'forty two')
 	CREATE INDEX one_idx ON one (col_b)
 	CREATE TABLE two (col_c INTEGER CHECK (col_c > 0) REFERENCES one DEFAULT 42);
+-- Partitioned tables with a partitioned index
+CREATE TABLE evttrig.parted (
+    id int PRIMARY KEY)
+    PARTITION BY RANGE (id);
+CREATE TABLE evttrig.part_1_10 PARTITION OF evttrig.parted (id)
+  FOR VALUES FROM (1) TO (10);
+CREATE TABLE evttrig.part_10_20 PARTITION OF evttrig.parted (id)
+  FOR VALUES FROM (10) TO (20) PARTITION BY RANGE (id);
+CREATE TABLE evttrig.part_10_15 PARTITION OF evttrig.part_10_20 (id)
+  FOR VALUES FROM (10) TO (15);
+CREATE TABLE evttrig.part_15_20 PARTITION OF evttrig.part_10_20 (id)
+  FOR VALUES FROM (15) TO (20);
 ALTER TABLE evttrig.two DROP COLUMN col_c;
 NOTICE:  NORMAL: orig=t normal=f istemp=f type=table column identity=evttrig.two.col_c name={evttrig,two,col_c} args={}
 NOTICE:  NORMAL: orig=f normal=t istemp=f type=table constraint identity=two_col_c_check on evttrig.two name={evttrig,two,two_col_c_check} args={}
@@ -341,14 +371,20 @@ NOTICE:  NORMAL: orig=t normal=f istemp=f type=table constraint identity=one_pke
 DROP INDEX evttrig.one_idx;
 NOTICE:  NORMAL: orig=t normal=f istemp=f type=index identity=evttrig.one_idx name={evttrig,one_idx} args={}
 DROP SCHEMA evttrig CASCADE;
-NOTICE:  drop cascades to 2 other objects
+NOTICE:  drop cascades to 3 other objects
 DETAIL:  drop cascades to table evttrig.one
 drop cascades to table evttrig.two
+drop cascades to table evttrig.parted
 NOTICE:  NORMAL: orig=t normal=f istemp=f type=schema identity=evttrig name={evttrig} args={}
 NOTICE:  NORMAL: orig=f normal=t istemp=f type=table identity=evttrig.one name={evttrig,one} args={}
 NOTICE:  NORMAL: orig=f normal=t istemp=f type=sequence identity=evttrig.one_col_a_seq name={evttrig,one_col_a_seq} args={}
 NOTICE:  NORMAL: orig=f normal=t istemp=f type=default value identity=for evttrig.one.col_a name={evttrig,one,col_a} args={}
 NOTICE:  NORMAL: orig=f normal=t istemp=f type=table identity=evttrig.two name={evttrig,two} args={}
+NOTICE:  NORMAL: orig=f normal=t istemp=f type=table identity=evttrig.parted name={evttrig,parted} args={}
+NOTICE:  NORMAL: orig=f normal=t istemp=f type=table identity=evttrig.part_1_10 name={evttrig,part_1_10} args={}
+NOTICE:  NORMAL: orig=f normal=t istemp=f type=table identity=evttrig.part_10_20 name={evttrig,part_10_20} args={}
+NOTICE:  NORMAL: orig=f normal=t istemp=f type=table identity=evttrig.part_10_15 name={evttrig,part_10_15} args={}
+NOTICE:  NORMAL: orig=f normal=t istemp=f type=table identity=evttrig.part_15_20 name={evttrig,part_15_20} args={}
 DROP TABLE a_temp_tbl;
 NOTICE:  NORMAL: orig=t normal=f istemp=t type=table identity=pg_temp.a_temp_tbl name={pg_temp,a_temp_tbl} args={}
 DROP EVENT TRIGGER regress_event_trigger_report_dropped;
@@ -371,8 +407,6 @@ alter table rewriteme alter column foo type numeric;
 ERROR:  rewrites not allowed
 CONTEXT:  PL/pgSQL function test_evtrig_no_rewrite() line 3 at RAISE
 alter table rewriteme add column baz int default 0;
-ERROR:  rewrites not allowed
-CONTEXT:  PL/pgSQL function test_evtrig_no_rewrite() line 3 at RAISE
 -- test with more than one reason to rewrite a single table
 CREATE OR REPLACE FUNCTION test_evtrig_no_rewrite() RETURNS event_trigger
 LANGUAGE plpgsql AS $$
@@ -386,7 +420,7 @@ alter table rewriteme
  add column onemore int default 0,
  add column another int default -1,
  alter column foo type numeric(10,4);
-NOTICE:  Table 'rewriteme' is being rewritten (reason = 6)
+NOTICE:  Table 'rewriteme' is being rewritten (reason = 4)
 -- shouldn't trigger a table_rewrite event
 alter table rewriteme alter column foo type numeric(12,4);
 -- typed tables are rewritten when their type changes.  Don't emit table

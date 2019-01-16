@@ -1,7 +1,7 @@
 /*
  *	pg_upgrade.h
  *
- *	Copyright (c) 2010-2017, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/pg_upgrade.h
  */
 
@@ -284,7 +284,7 @@ typedef struct
 typedef struct
 {
 	FILE	   *internal;		/* internal log FILE */
-	bool		verbose;		/* TRUE -> be verbose in messages */
+	bool		verbose;		/* true -> be verbose in messages */
 	bool		retain;			/* retain log files on success */
 } LogOpts;
 
@@ -294,7 +294,7 @@ typedef struct
 */
 typedef struct
 {
-	bool		check;			/* TRUE -> ask user for permission to make
+	bool		check;			/* true -> ask user for permission to make
 								 * changes */
 	transferMode transfer_mode; /* copy files or link them? */
 	int			jobs;

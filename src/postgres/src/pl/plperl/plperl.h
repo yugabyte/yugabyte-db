@@ -5,7 +5,7 @@
  *
  * This should be included _AFTER_ postgres.h and system include files
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1995, Regents of the University of California
  *
  * src/pl/plperl/plperl.h
@@ -17,13 +17,6 @@
 /* stop perl headers from hijacking stdio and other stuff on Windows */
 #ifdef WIN32
 #define WIN32IO_IS_STDIO
-/*
- * isnan is defined in both the perl and mingw headers. We don't use it,
- * so this just clears up the compile warning.
- */
-#ifdef isnan
-#undef isnan
-#endif
 #endif							/* WIN32 */
 
 /*
@@ -50,6 +43,18 @@
 #define __inline__ inline
 #endif
 
+/*
+ * Regarding bool, both PostgreSQL and Perl might use stdbool.h or not,
+ * depending on configuration.  If both agree, things are relatively harmless.
+ * If not, things get tricky.  If PostgreSQL does but Perl does not, define
+ * HAS_BOOL here so that Perl does not redefine bool; this avoids compiler
+ * warnings.  If PostgreSQL does not but Perl does, we need to undefine bool
+ * after we include the Perl headers; see below.
+ */
+#ifdef USE_STDBOOL
+#define HAS_BOOL 1
+#endif
+
 
 /*
  * Get the basic Perl API.  We use PERL_NO_GET_CONTEXT mode so that our code
@@ -65,6 +70,31 @@
  * before ppport.h, so use a #define flag to control inclusion here.
  */
 #ifdef PG_NEED_PERL_XSUB_H
+/*
+ * On Windows, port_win32.h defines macros for a lot of these same functions.
+ * To avoid compiler warnings when XSUB.h redefines them, #undef our versions.
+ */
+#ifdef WIN32
+#undef accept
+#undef bind
+#undef connect
+#undef fopen
+#undef kill
+#undef listen
+#undef lstat
+#undef mkdir
+#undef open
+#undef putenv
+#undef recv
+#undef rename
+#undef select
+#undef send
+#undef socket
+#undef stat
+#undef unlink
+#undef vfprintf
+#endif
+
 #include "XSUB.h"
 #endif
 
@@ -91,9 +121,17 @@
 #define NEED_sv_2pv_flags
 #include "ppport.h"
 
-/* perl may have a different width of "bool", don't buy it */
+/*
+ * perl might have included stdbool.h.  If we also did that earlier (see c.h),
+ * then that's fine.  If not, we probably rejected it for some reason.  In
+ * that case, undef bool and proceed with our own bool.  (Note that stdbool.h
+ * makes bool a macro, but our own replacement is a typedef, so the undef
+ * makes ours visible again).
+ */
+#ifndef USE_STDBOOL
 #ifdef bool
 #undef bool
+#endif
 #endif
 
 /* supply HeUTF8 if it's missing - ppport.h doesn't supply it, unfortunately */
@@ -125,6 +163,8 @@ HV		   *plperl_spi_exec_prepared(char *, HV *, int, SV **);
 SV		   *plperl_spi_query_prepared(char *, int, SV **);
 void		plperl_spi_freeplan(char *);
 void		plperl_spi_cursor_close(char *);
+void		plperl_spi_commit(void);
+void		plperl_spi_rollback(void);
 char	   *plperl_sv_to_literal(SV *, char *);
 void		plperl_util_elog(int level, SV *msg);
 

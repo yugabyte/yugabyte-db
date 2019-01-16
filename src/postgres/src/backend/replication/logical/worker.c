@@ -2,7 +2,7 @@
  * worker.c
  *	   PostgreSQL logical replication worker (apply)
  *
- * Copyright (c) 2016-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/worker.c
@@ -30,10 +30,12 @@
 #include "access/xact.h"
 #include "access/xlog_internal.h"
 
+#include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_subscription_rel.h"
 
+#include "commands/tablecmds.h"
 #include "commands/trigger.h"
 
 #include "executor/executor.h"
@@ -83,6 +85,7 @@
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/rel.h"
 #include "utils/timeout.h"
 #include "utils/tqual.h"
 #include "utils/syscache.h"
@@ -209,7 +212,7 @@ create_estate_for_relation(LogicalRepRelMapEntry *rel)
 
 	/* Triggers might need a slot */
 	if (resultRelInfo->ri_TrigDesc)
-		estate->es_trig_tuple_slot = ExecInitExtraTupleSlot(estate);
+		estate->es_trig_tuple_slot = ExecInitExtraTupleSlot(estate, NULL);
 
 	/* Prepare to catch AFTER triggers. */
 	AfterTriggerBeginQuery();
@@ -250,7 +253,7 @@ slot_fill_defaults(LogicalRepRelMapEntry *rel, EState *estate,
 	{
 		Expr	   *defexpr;
 
-		if (desc->attrs[attnum]->attisdropped)
+		if (TupleDescAttr(desc, attnum)->attisdropped)
 			continue;
 
 		if (rel->attrmap[attnum] >= 0)
@@ -337,7 +340,7 @@ slot_store_cstrings(TupleTableSlot *slot, LogicalRepRelMapEntry *rel,
 	/* Call the "in" function for each non-dropped attribute */
 	for (i = 0; i < natts; i++)
 	{
-		Form_pg_attribute att = slot->tts_tupleDescriptor->attrs[i];
+		Form_pg_attribute att = TupleDescAttr(slot->tts_tupleDescriptor, i);
 		int			remoteattnum = rel->attrmap[i];
 
 		if (!att->attisdropped && remoteattnum >= 0 &&
@@ -406,7 +409,7 @@ slot_modify_cstrings(TupleTableSlot *slot, LogicalRepRelMapEntry *rel,
 	/* Call the "in" function for each replaced attribute */
 	for (i = 0; i < natts; i++)
 	{
-		Form_pg_attribute att = slot->tts_tupleDescriptor->attrs[i];
+		Form_pg_attribute att = TupleDescAttr(slot->tts_tupleDescriptor, i);
 		int			remoteattnum = rel->attrmap[i];
 
 		if (remoteattnum < 0)
@@ -604,8 +607,11 @@ apply_handle_insert(StringInfo s)
 
 	/* Initialize the executor state. */
 	estate = create_estate_for_relation(rel);
-	remoteslot = ExecInitExtraTupleSlot(estate);
-	ExecSetSlotDescriptor(remoteslot, RelationGetDescr(rel->localrel));
+	remoteslot = ExecInitExtraTupleSlot(estate,
+										RelationGetDescr(rel->localrel));
+
+	/* Input functions may need an active snapshot, so get one */
+	PushActiveSnapshot(GetTransactionSnapshot());
 
 	/* Process and store remote tuple in the slot */
 	oldctx = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
@@ -613,7 +619,6 @@ apply_handle_insert(StringInfo s)
 	slot_fill_defaults(rel, estate, remoteslot);
 	MemoryContextSwitchTo(oldctx);
 
-	PushActiveSnapshot(GetTransactionSnapshot());
 	ExecOpenIndices(estate->es_result_relation_info, false);
 
 	/* Do the insert. */
@@ -708,10 +713,10 @@ apply_handle_update(StringInfo s)
 
 	/* Initialize the executor state. */
 	estate = create_estate_for_relation(rel);
-	remoteslot = ExecInitExtraTupleSlot(estate);
-	ExecSetSlotDescriptor(remoteslot, RelationGetDescr(rel->localrel));
-	localslot = ExecInitExtraTupleSlot(estate);
-	ExecSetSlotDescriptor(localslot, RelationGetDescr(rel->localrel));
+	remoteslot = ExecInitExtraTupleSlot(estate,
+										RelationGetDescr(rel->localrel));
+	localslot = ExecInitExtraTupleSlot(estate,
+									   RelationGetDescr(rel->localrel));
 	EvalPlanQualInit(&epqstate, estate, NULL, NIL, -1);
 
 	PushActiveSnapshot(GetTransactionSnapshot());
@@ -826,10 +831,10 @@ apply_handle_delete(StringInfo s)
 
 	/* Initialize the executor state. */
 	estate = create_estate_for_relation(rel);
-	remoteslot = ExecInitExtraTupleSlot(estate);
-	ExecSetSlotDescriptor(remoteslot, RelationGetDescr(rel->localrel));
-	localslot = ExecInitExtraTupleSlot(estate);
-	ExecSetSlotDescriptor(localslot, RelationGetDescr(rel->localrel));
+	remoteslot = ExecInitExtraTupleSlot(estate,
+										RelationGetDescr(rel->localrel));
+	localslot = ExecInitExtraTupleSlot(estate,
+									   RelationGetDescr(rel->localrel));
 	EvalPlanQualInit(&epqstate, estate, NULL, NIL, -1);
 
 	PushActiveSnapshot(GetTransactionSnapshot());
@@ -866,10 +871,10 @@ apply_handle_delete(StringInfo s)
 	else
 	{
 		/* The tuple to be deleted could not be found. */
-		ereport(DEBUG1,
-				(errmsg("logical replication could not find row for delete "
-						"in replication target relation \"%s\"",
-						RelationGetRelationName(rel->localrel))));
+		elog(DEBUG1,
+			 "logical replication could not find row for delete "
+			 "in replication target relation \"%s\"",
+			 RelationGetRelationName(rel->localrel));
 	}
 
 	/* Cleanup. */
@@ -884,6 +889,67 @@ apply_handle_delete(StringInfo s)
 	FreeExecutorState(estate);
 
 	logicalrep_rel_close(rel, NoLock);
+
+	CommandCounterIncrement();
+}
+
+/*
+ * Handle TRUNCATE message.
+ *
+ * TODO: FDW support
+ */
+static void
+apply_handle_truncate(StringInfo s)
+{
+	bool		cascade = false;
+	bool		restart_seqs = false;
+	List	   *remote_relids = NIL;
+	List	   *remote_rels = NIL;
+	List	   *rels = NIL;
+	List	   *relids = NIL;
+	List	   *relids_logged = NIL;
+	ListCell   *lc;
+
+	ensure_transaction();
+
+	remote_relids = logicalrep_read_truncate(s, &cascade, &restart_seqs);
+
+	foreach(lc, remote_relids)
+	{
+		LogicalRepRelId relid = lfirst_oid(lc);
+		LogicalRepRelMapEntry *rel;
+
+		rel = logicalrep_rel_open(relid, RowExclusiveLock);
+		if (!should_apply_changes_for_rel(rel))
+		{
+			/*
+			 * The relation can't become interesting in the middle of the
+			 * transaction so it's safe to unlock it.
+			 */
+			logicalrep_rel_close(rel, RowExclusiveLock);
+			continue;
+		}
+
+		remote_rels = lappend(remote_rels, rel);
+		rels = lappend(rels, rel->localrel);
+		relids = lappend_oid(relids, rel->localreloid);
+		if (RelationIsLogicallyLogged(rel->localrel))
+			relids_logged = lappend_oid(relids_logged, rel->localreloid);
+	}
+
+	/*
+	 * Even if we used CASCADE on the upstream master we explicitly default to
+	 * replaying changes without further cascading. This might be later
+	 * changeable with a user specified option.
+	 */
+	ExecuteTruncateGuts(rels, relids, relids_logged, DROP_RESTRICT, restart_seqs);
+
+	foreach(lc, remote_rels)
+	{
+		LogicalRepRelMapEntry *rel = lfirst(lc);
+
+		logicalrep_rel_close(rel, NoLock);
+	}
 
 	CommandCounterIncrement();
 }
@@ -918,6 +984,10 @@ apply_dispatch(StringInfo s)
 			/* DELETE */
 		case 'D':
 			apply_handle_delete(s);
+			break;
+			/* TRUNCATE */
+		case 'T':
+			apply_handle_truncate(s);
 			break;
 			/* RELATION */
 		case 'R':
@@ -1544,7 +1614,8 @@ ApplyWorkerMain(Datum main_arg)
 
 	/* Connect to our database. */
 	BackgroundWorkerInitializeConnectionByOid(MyLogicalRepWorker->dbid,
-											  MyLogicalRepWorker->userid);
+											  MyLogicalRepWorker->userid,
+											  0);
 
 	/* Load the subscription into persistent memory context. */
 	ApplyContext = AllocSetContextCreate(TopMemoryContext,
@@ -1552,13 +1623,19 @@ ApplyWorkerMain(Datum main_arg)
 										 ALLOCSET_DEFAULT_SIZES);
 	StartTransactionCommand();
 	oldctx = MemoryContextSwitchTo(ApplyContext);
-	MySubscription = GetSubscription(MyLogicalRepWorker->subid, false);
+
+	MySubscription = GetSubscription(MyLogicalRepWorker->subid, true);
+	if (!MySubscription)
+	{
+		ereport(LOG,
+				(errmsg("logical replication apply worker for subscription %u will not "
+						"start because the subscription was removed during startup",
+						MyLogicalRepWorker->subid)));
+		proc_exit(0);
+	}
+
 	MySubscriptionValid = true;
 	MemoryContextSwitchTo(oldctx);
-
-	/* Setup synchronous commit according to the user's wishes */
-	SetConfigOption("synchronous_commit", MySubscription->synccommit,
-					PGC_BACKEND, PGC_S_OVERRIDE);
 
 	if (!MySubscription->enabled)
 	{
@@ -1569,6 +1646,10 @@ ApplyWorkerMain(Datum main_arg)
 
 		proc_exit(0);
 	}
+
+	/* Setup synchronous commit according to the user's wishes */
+	SetConfigOption("synchronous_commit", MySubscription->synccommit,
+					PGC_BACKEND, PGC_S_OVERRIDE);
 
 	/* Keep us informed about subscription changes. */
 	CacheRegisterSyscacheCallback(SUBSCRIPTIONOID,

@@ -4,7 +4,7 @@
  *	  This file provides some definitions to support creation of toast tables
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/toasting.h
@@ -30,7 +30,7 @@ extern void BootstrapToastTable(char *relName,
 
 /*
  * This macro is just to keep the C compiler from spitting up on the
- * upcoming commands for genbki.pl.
+ * upcoming commands for Catalog.pm.
  */
 #define DECLARE_TOAST(name,toastoid,indexoid) extern int no_such_variable
 
