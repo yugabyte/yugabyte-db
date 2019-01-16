@@ -51,6 +51,8 @@
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/enums.h"
 
+using namespace std::literals;
+
 DEFINE_int32(inject_delay_commit_pre_voter_to_voter_secs, 0,
              "Amount of time to delay commit of a PRE_VOTER to VOTER transition. To be used for "
              "unit testing purposes only.");
@@ -106,7 +108,15 @@ ReplicaState::ReplicaState(ConsensusOptions options, string peer_uuid,
     retryable_requests_ = std::move(*retryable_requests);
   }
 
+  CHECK(leader_state_cache_.is_lock_free());
+
   StoreRoleAndTerm(cmeta_->active_role(), cmeta_->current_term());
+
+  // Actually we don't need this lock, but GetActiveRoleUnlocked checks that we are holding the
+  // lock.
+  auto lock = LockForRead();
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
 }
 
 ReplicaState::~ReplicaState() {
@@ -190,12 +200,30 @@ Status ReplicaState::LockForMajorityReplicatedIndexUpdate(UniqueLock* lock) cons
   return Status::OK();
 }
 
-LeaderState ReplicaState::GetLeaderState(LeaderLeaseCheckMode lease_check_mode) const {
-  auto lock = LockForRead();
-  return GetLeaderStateUnlocked(lease_check_mode);
+LeaderState ReplicaState::GetLeaderState() const {
+  auto cache = leader_state_cache_.load(std::memory_order_acquire);
+
+  CoarseTimePoint now = CoarseMonoClock::Now();
+  if (now >= cache.expire_at) {
+    auto lock = LockForRead();
+    return RefreshLeaderStateCacheUnlocked(&now);
+  }
+
+  LeaderState result = {cache.status()};
+  if (result.status == LeaderStatus::LEADER_AND_READY) {
+    result.term = cache.extra_value();
+  } else {
+    if (result.status == LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE) {
+      result.remaining_old_leader_lease = MonoDelta::FromMicroseconds(cache.extra_value());
+    }
+    result.MakeNotReadyLeader(result.status);
+  }
+
+  return result;
 }
 
-LeaderState ReplicaState::GetLeaderStateUnlocked(LeaderLeaseCheckMode lease_check_mode) const {
+LeaderState ReplicaState::GetLeaderStateUnlocked(
+    LeaderLeaseCheckMode lease_check_mode, CoarseTimePoint* now) const {
   LeaderState result;
 
   if (GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
@@ -208,7 +236,7 @@ LeaderState ReplicaState::GetLeaderStateUnlocked(LeaderLeaseCheckMode lease_chec
   }
 
   const auto lease_status = lease_check_mode != LeaderLeaseCheckMode::DONT_NEED_LEASE
-      ? GetLeaderLeaseStatusUnlocked(&result.remaining_old_leader_lease)
+      ? GetLeaderLeaseStatusUnlocked(&result.remaining_old_leader_lease, now)
       : LeaderLeaseStatus::HAS_LEASE;
   switch (lease_status) {
     case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE:
@@ -322,6 +350,8 @@ Status ReplicaState::SetPendingConfigUnlocked(const RaftConfigPB& new_config) {
       << "Existing pending config: " << cmeta_->pending_config().ShortDebugString() << "; "
       << "Attempted new pending config: " << new_config.ShortDebugString();
   cmeta_->set_pending_config(new_config);
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
   return Status::OK();
 }
 
@@ -333,6 +363,8 @@ Status ReplicaState::ClearPendingConfigUnlocked() {
     return STATUS(IllegalState, "Attempt to clear a non-existent pending config.");
   }
   cmeta_->clear_pending_config();
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
   return Status::OK();
 }
 
@@ -363,6 +395,8 @@ Status ReplicaState::SetCommittedConfigUnlocked(const RaftConfigPB& committed_co
 
   cmeta_->set_committed_config(committed_config);
   cmeta_->clear_pending_config();
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
   CHECK_OK(cmeta_->Flush());
   return Status::OK();
 }
@@ -444,6 +478,8 @@ void ReplicaState::SetLeaderUuidUnlocked(const std::string& uuid) {
   DCHECK(IsLocked());
   cmeta_->set_leader_uuid(uuid);
   StoreRoleAndTerm(cmeta_->active_role(), cmeta_->current_term());
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
 }
 
 const string& ReplicaState::GetLeaderUuidUnlocked() const {
@@ -1033,13 +1069,14 @@ void ReplicaState::UpdateOldLeaderLeaseExpirationUnlocked(
     MonoDelta lease_duration,
     MicrosTime ht_lease_expiration) {
   // Update both leader leases, i.e. regular and hybrid time.
-  UpdateOldLeaderLeaseExpirationUnlocked(MonoTime::Now() + lease_duration, ht_lease_expiration);
+  UpdateOldLeaderLeaseExpirationUnlocked(
+      CoarseMonoClock::Now() + lease_duration, ht_lease_expiration);
 }
 
 void ReplicaState::UpdateOldLeaderLeaseExpirationUnlocked(
-    MonoTime lease_expiration,
+    CoarseTimePoint lease_expiration,
     MicrosTime ht_lease_expiration) {
-  old_leader_lease_expiration_.MakeAtLeast(lease_expiration);
+  old_leader_lease_expiration_ = std::max(old_leader_lease_expiration_, lease_expiration);
   old_leader_ht_lease_expiration_ = std::max(ht_lease_expiration, old_leader_ht_lease_expiration_);
 }
 
@@ -1068,22 +1105,25 @@ LeaderLeaseStatus ReplicaState::GetLeaseStatusUnlocked(Policy policy) const {
   return LeaderLeaseStatus::HAS_LEASE;
 }
 
+// Policy that is used during leader lease calculation.
 struct GetLeaderLeaseStatusPolicy {
   const ReplicaState* replica_state;
   MonoDelta* remaining_old_leader_lease;
-  MonoTime now;
+  CoarseTimePoint* now;
 
-  explicit GetLeaderLeaseStatusPolicy(
-      const ReplicaState* replica_state_, MonoDelta* remaining_old_leader_lease_)
-      : replica_state(replica_state_), remaining_old_leader_lease(remaining_old_leader_lease_) {
+  GetLeaderLeaseStatusPolicy(
+      const ReplicaState* replica_state_, MonoDelta* remaining_old_leader_lease_,
+      CoarseTimePoint* now_)
+      : replica_state(replica_state_), remaining_old_leader_lease(remaining_old_leader_lease_),
+        now(now_) {
     if (remaining_old_leader_lease) {
-      *remaining_old_leader_lease = MonoDelta();
+      *remaining_old_leader_lease = 0s;
     }
   }
 
   bool OldLeaderLeaseExpired() {
     const auto remaining_old_leader_lease_duration =
-        replica_state->RemainingOldLeaderLeaseDuration(&now);
+        replica_state->RemainingOldLeaderLeaseDuration(now);
     if (remaining_old_leader_lease_duration) {
       if (remaining_old_leader_lease) {
         *remaining_old_leader_lease = remaining_old_leader_lease_duration;
@@ -1094,7 +1134,7 @@ struct GetLeaderLeaseStatusPolicy {
   }
 
   bool MajorityReplicatedLeaseExpired() {
-    return replica_state->MajorityReplicatedLeaderLeaseExpired(&now);
+    return replica_state->MajorityReplicatedLeaderLeaseExpired(now);
   }
 
   bool Enabled() {
@@ -1102,21 +1142,26 @@ struct GetLeaderLeaseStatusPolicy {
   }
 };
 
-bool ReplicaState::MajorityReplicatedLeaderLeaseExpired(MonoTime* now) const {
-  if (!majority_replicated_lease_expiration_) {
+bool ReplicaState::MajorityReplicatedLeaderLeaseExpired(CoarseTimePoint* now) const {
+  if (majority_replicated_lease_expiration_ == CoarseTimePoint()) {
     return true;
   }
 
-  if (!*now) {
-    *now = MonoTime::Now();
+  if (*now == CoarseTimePoint()) {
+    *now = CoarseMonoClock::Now();
   }
 
   return *now >= majority_replicated_lease_expiration_;
 }
 
 LeaderLeaseStatus ReplicaState::GetLeaderLeaseStatusUnlocked(
-    MonoDelta* remaining_old_leader_lease) const {
-  return GetLeaseStatusUnlocked(GetLeaderLeaseStatusPolicy(this, remaining_old_leader_lease));
+    MonoDelta* remaining_old_leader_lease, CoarseTimePoint* now) const {
+  if (now == nullptr) {
+    CoarseTimePoint local_now;
+    return GetLeaseStatusUnlocked(GetLeaderLeaseStatusPolicy(
+        this, remaining_old_leader_lease, &local_now));
+  }
+  return GetLeaseStatusUnlocked(GetLeaderLeaseStatusPolicy(this, remaining_old_leader_lease, now));
 }
 
 bool ReplicaState::MajorityReplicatedHybridTimeLeaseExpiredAt(MicrosTime hybrid_time) const {
@@ -1148,20 +1193,20 @@ LeaderLeaseStatus ReplicaState::GetHybridTimeLeaseStatusAtUnlocked(
   return GetLeaseStatusUnlocked(GetHybridTimeLeaseStatusAtPolicy(this, micros_time));
 }
 
-MonoDelta ReplicaState::RemainingOldLeaderLeaseDuration(MonoTime* now) const {
+MonoDelta ReplicaState::RemainingOldLeaderLeaseDuration(CoarseTimePoint* now) const {
   MonoDelta result;
-  if (old_leader_lease_expiration_) {
-    MonoTime now_local;
+  if (old_leader_lease_expiration_ != CoarseTimePoint()) {
+    CoarseTimePoint now_local;
     if (!now) {
       now = &now_local;
     }
-    *now = MonoTime::Now();
+    *now = CoarseMonoClock::Now();
 
     if (*now > old_leader_lease_expiration_) {
       // Reset the old leader lease expiration time so that we don't have to check it anymore.
-      old_leader_lease_expiration_ = MonoTime::kMin;
+      old_leader_lease_expiration_ = CoarseTimePoint::min();
     } else {
-      result = old_leader_lease_expiration_.GetDeltaSince(*now);
+      result = old_leader_lease_expiration_ - *now;
     }
   }
 
@@ -1198,6 +1243,9 @@ void ReplicaState::SetMajorityReplicatedLeaseExpirationUnlocked(
   majority_replicated_lease_expiration_ = majority_replicated_data.leader_lease_expiration;
   majority_replicated_ht_lease_expiration_.store(majority_replicated_data.ht_lease_expiration,
                                                  std::memory_order_release);
+
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
   cond_.notify_all();
 }
 
@@ -1219,6 +1267,29 @@ void ReplicaState::NotifyReplicationFinishedUnlocked(
   round->NotifyReplicationFinished(status, leader_term);
 
   retryable_requests_.ReplicationFinished(*round->replicate_msg(), status, leader_term);
+}
+
+consensus::LeaderState ReplicaState::RefreshLeaderStateCacheUnlocked(CoarseTimePoint* now) const {
+  auto result = GetLeaderStateUnlocked(LeaderLeaseCheckMode::NEED_LEASE, now);
+  LeaderStateCache cache;
+  if (result.status == LeaderStatus::LEADER_AND_READY) {
+    cache.Set(result.status, result.term, majority_replicated_lease_expiration_);
+  } else if (result.status == LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE) {
+    cache.Set(result.status, result.remaining_old_leader_lease.ToMicroseconds(),
+              *now + result.remaining_old_leader_lease);
+  } else {
+    cache.Set(result.status, 0 /* extra_value */, CoarseTimePoint::max());
+  }
+
+  leader_state_cache_.store(cache, std::memory_order_release);
+
+  return result;
+}
+
+void ReplicaState::SetLeaderNoOpCommittedUnlocked(bool value) {
+  leader_no_op_committed_ = value;
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
 }
 
 }  // namespace consensus

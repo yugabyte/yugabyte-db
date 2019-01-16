@@ -2663,7 +2663,7 @@ void RaftConsensus::DoElectionCallback(const std::string& originator_uuid,
 
   LOG_WITH_PREFIX(INFO) << "Leader election won for term " << result.election_term;
 
-  if (result.old_leader_lease_expiration) {
+  if (result.old_leader_lease_expiration != CoarseTimePoint()) {
     // Voters told us about the old leader's lease that we have to wait out.
     state_->UpdateOldLeaderLeaseExpirationUnlocked(
         result.old_leader_lease_expiration,

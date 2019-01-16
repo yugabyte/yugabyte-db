@@ -148,7 +148,7 @@ bool VoteCounter::AreAllVotesIn() const {
 
 ElectionResult::ElectionResult(ConsensusTerm election_term_,
                                ElectionVote decision_,
-                               MonoTime old_leader_lease_expiration_,
+                               CoarseTimePoint old_leader_lease_expiration_,
                                MicrosTime old_leader_ht_lease_expiration_)
   : election_term(election_term_),
     decision(decision_),
@@ -375,8 +375,8 @@ void LeaderElection::HandleVoteGrantedUnlocked(const string& voter_uuid, const V
   DCHECK_EQ(state.response.responder_term(), election_term());
   DCHECK(state.response.vote_granted());
   if (state.response.has_remaining_leader_lease_duration_ms()) {
-    old_leader_lease_expiration_.MakeAtLeast(MonoTime::Now() +
-        MonoDelta::FromMilliseconds(state.response.remaining_leader_lease_duration_ms()));
+    old_leader_lease_expiration_ = std::max(old_leader_lease_expiration_,
+        CoarseMonoClock::Now() + state.response.remaining_leader_lease_duration_ms() * 1ms);
   }
 
   if (state.response.has_leader_ht_lease_expiration()) {

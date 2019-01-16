@@ -201,7 +201,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   void UpdateMajorityReplicatedInTests(const OpId &majority_replicated,
                                        OpId *committed_index) {
     UpdateMajorityReplicated({ majority_replicated,
-                               MonoTime::kMin,
+                               CoarseTimePoint::min(),
                                HybridTime::kMin.GetPhysicalValueMicros() },
                              committed_index);
   }

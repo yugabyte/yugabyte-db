@@ -397,7 +397,6 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
       }
     }
 
-
     RETURN_NOT_OK(DoReadConflicts(
         write_batch_.read_pairs(), docdb::OperationKind::kRead, resolver));
 
