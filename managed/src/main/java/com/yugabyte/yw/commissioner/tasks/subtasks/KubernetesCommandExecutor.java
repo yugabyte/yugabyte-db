@@ -366,7 +366,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
 
     // If the instance type is not xsmall or dev, we would bump the master resource.
     if (!instanceType.getInstanceTypeCode().equals("xsmall") &&
-        !instanceType.getInstanceTypeCode().equals("dev") ) {
+        !instanceType.getInstanceTypeCode().equals("dev")) {
       Map<String, Object> masterResource = new HashMap<>();
       Map<String, Object> masterLimit = new HashMap<>();
       masterResource.put("cpu", 2);
@@ -478,7 +478,9 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     if (config.containsKey("KUBECONFIG_ANNOTATIONS")) {
       annotations =(HashMap<String, Object>) yaml.load(
           config.get("KUBECONFIG_ANNOTATIONS"));
-      overrides.putAll(annotations);
+      if (annotations != null ) {
+        overrides.putAll(annotations);
+      }
     }
 
     try {
