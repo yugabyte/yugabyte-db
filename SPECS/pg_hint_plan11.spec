@@ -5,7 +5,8 @@
 %define _bindir  %{_pgdir}/bin
 %define _libdir  %{_pgdir}/lib
 %define _datadir %{_pgdir}/share
-%define _bcdir %{_libdir}/bitcode/pg_hint_plan
+%define _bcdir %{_libdir}/bitcode
+%define _mybcdir %{_bcdir}/pg_hint_plan
 
 %if "%(echo ${MAKE_ROOT})" != ""
   %define _rpmdir %(echo ${MAKE_ROOT})/RPMS
@@ -63,13 +64,7 @@ make USE_PGXS=1 %{?_smp_mflags}
 ## Set variables for install
 %install
 rm -rf %{buildroot}
-install -d %{buildroot}%{_libdir}
-install pg_hint_plan.so %{buildroot}%{_libdir}/pg_hint_plan.so
-install -d %{buildroot}%{_datadir}/extension
-install -m 644 pg_hint_plan--1.3.2.sql %{buildroot}%{_datadir}/extension/pg_hint_plan--1.3.2.sql
-install -m 644 pg_hint_plan.control %{buildroot}%{_datadir}/extension/pg_hint_plan.control
-install -d %{buildroot}%{_bcdir}
-install -m 644 pg_hint_plan.bc %{buildroot}%{_bcdir}/pg_hint_plan.bc
+make install DESTDIR=%{buildroot}
 
 %clean
 rm -rf %{buildroot}
@@ -83,9 +78,10 @@ rm -rf %{buildroot}
 
 %files llvmjit
 %defattr(0755,root,root)
-%{_bcdir}
+%{_mybcdir}
 %defattr(0644,root,root)
-%{_bcdir}/pg_hint_plan.bc
+%{_bcdir}/pg_hint_plan.index.bc
+%{_mybcdir}/pg_hint_plan.bc
 
 # History of pg_hint_plan.
 %changelog
