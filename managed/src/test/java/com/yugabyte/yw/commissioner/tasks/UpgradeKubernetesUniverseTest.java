@@ -115,7 +115,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockKubernetesManager.getPodInfos(any(), any())).thenReturn(responsePods);
     
     responsePod.message = 
-        "{\"status\": { \"phase\": \"Running\" }}";
+        "{\"status\": { \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}}";
     when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(responsePod);
   }
 
