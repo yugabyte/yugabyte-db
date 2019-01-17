@@ -23,13 +23,18 @@
 #ifndef YBCMODIFYTABLE_H
 #define YBCMODIFYTABLE_H
 
+#include "nodes/execnodes.h"
+#include "executor/tuptable.h"
+
 extern Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple);
 
-void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot *slot);
+extern void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot *slot);
 
-void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple, Bitmapset *pkey);
+extern void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple, Bitmapset *pkey);
 
-void YBCExecuteUpdate(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
-											HeapTuple tuple);
+extern void YBCExecuteUpdate(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
+							 HeapTuple tuple);
+
+extern void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple tuple);
 
 #endif							/* YBCMODIFYTABLE_H */

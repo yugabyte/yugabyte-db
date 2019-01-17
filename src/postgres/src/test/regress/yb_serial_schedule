@@ -17,8 +17,7 @@ test: yb_int4_array
 test: yb_float4
 test: yb_float8
 test: yb_timestamp
-# Disable test because default values are disabled.
-# test: yb_insert
+test: yb_insert
 test: yb_schema
 #
 ####################################################################################################

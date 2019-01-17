@@ -3568,7 +3568,6 @@ ColConstraintElem:
 				}
 			| DEFAULT b_expr
 				{
-					parser_ybc_not_support(@1, "DEFAULT column value");
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_DEFAULT;
 					n->location = @1;
