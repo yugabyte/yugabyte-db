@@ -74,6 +74,7 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+#include "executor/ybcModifyTable.h"
 #include "pg_yb_utils.h"
 
 /* GUC variable */
@@ -6284,8 +6285,7 @@ heap_inplace_update(Relation relation, HeapTuple tuple)
 
 	if (IsYugaByteEnabled())
 	{
-		YBC_LOG_WARNING("Ignoring in-place update for %s.",
-		                RelationGetRelationName(relation));
+		YBCUpdateSysCatalogTuple(relation, tuple);
 		return;
 	}
 

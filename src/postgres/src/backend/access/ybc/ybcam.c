@@ -59,7 +59,7 @@ setup_ybcscan_from_scankey(Relation relation,
 	/*
 	 * Set up the where clause condition (for the YB scan).
 	 */
-	for (int i  = 0; i < nkeys; i++)
+	for (int i = 0; i < nkeys; i++)
 	{
 		if (key[i].sk_attno == InvalidOid)
 			break;
@@ -92,7 +92,7 @@ setup_ybcscan_from_scankey(Relation relation,
 			/* This must be an OID column. */
 			lhs->vartype = OIDOID;
 		}
-		cond->args    = lappend(cond->args, lhs);
+		cond->args = lappend(cond->args, lhs);
 
 		/* Set up value (rhs) */
 		Const *rhs = makeNode(Const);
@@ -129,10 +129,7 @@ setup_ybcscan_from_scankey(Relation relation,
 
 
 static bool
-tuple_matches_key(HeapTuple tup,
-                  TupleDesc tupdesc,
-                  int nkeys,
-                  ScanKey key)
+tuple_matches_key(HeapTuple tup, TupleDesc tupdesc, int nkeys, ScanKey key)
 {
 	for (int i = 0; i < nkeys; i++)
 	{
@@ -178,7 +175,7 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
 
 SysScanDesc ybc_systable_beginscan(Relation relation,
                                    Oid indexId,
-                                   bool first_time,
+                                   bool indexOK,
                                    Snapshot snapshot,
                                    int nkeys,
                                    ScanKey key)
@@ -187,9 +184,9 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 
 	/* Set up Postgres sys table scan description */
 	SysScanDesc scan_desc = (SysScanDesc) palloc0(sizeof(SysScanDescData));
-	scan_desc->heap_rel = relation;
-	scan_desc->snapshot = snapshot;
-	scan_desc->ybscan   = ybScan;
+	scan_desc->heap_rel   = relation;
+	scan_desc->snapshot   = snapshot;
+	scan_desc->ybscan     = ybScan;
 
 	return scan_desc;
 }

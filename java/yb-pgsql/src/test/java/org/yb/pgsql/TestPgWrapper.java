@@ -167,7 +167,7 @@ public class TestPgWrapper extends BasePgSQLTest {
   // TODO disabled until we support UPDATE for syscatalog tables.
   // Currently the "atthasdef" column in the pg_attribute table starts as false and is updated
   // _after_ processing and adding default values (and constraints) to pg_attrdef.
-  @Ignore
+  @Test
   public void testDefaultValues() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE TABLE testdefaultvaluetable " +

@@ -558,7 +558,8 @@ RelationBuildTupleDesc(Relation relation)
 
 		if (attp->atthasdef)
 		{
-			attrdef = (AttrDefault *)
+			if (attrdef == NULL)
+				attrdef = (AttrDefault *)
 					MemoryContextAllocZero(CacheMemoryContext,
 					                       relation->rd_rel->relnatts *
 					                       sizeof(AttrDefault));
@@ -710,6 +711,7 @@ RelationBuildRuleLock(Relation relation)
 									  RewriteRelRulenameIndexId,
 									  true, NULL,
 									  1, &key);
+
 	while (HeapTupleIsValid(rewrite_tuple = systable_getnext(rewrite_scan)))
 	{
 		Form_pg_rewrite rewrite_form = (Form_pg_rewrite) GETSTRUCT(rewrite_tuple);
