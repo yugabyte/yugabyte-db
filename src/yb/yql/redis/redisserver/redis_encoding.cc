@@ -30,7 +30,10 @@ namespace redisserver {
 
 const std::string kNilResponse = "$-1\r\n";
 const std::string kOkResponse = "+OK\r\n";
+const std::string kRedisVersionInfo = "999.999.999";
 const std::string kInfoResponse =
+    "# Server\r\n"
+    "redis_version:" + kRedisVersionInfo + "\r\n"
     "# Replication\r\n"
     "role:master\r\n"
     "connected_slaves:0\r\n"
