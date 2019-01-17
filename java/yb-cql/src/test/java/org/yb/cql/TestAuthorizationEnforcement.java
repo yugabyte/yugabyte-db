@@ -2269,4 +2269,32 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   public void testGrantSelectOnAllRoleFails() throws Exception {
     testPermissionOnResourceFails(SELECT, ALL_ROLES, "", username);
   }
+
+  @Test
+  public void testCreateIndexWithCreateTablePermission() throws Exception {
+    s.execute(String.format("CREATE TABLE %s.%s (h int, v int, PRIMARY KEY(h)) " +
+        "WITH transactions = { 'enabled' : true }", keyspace, table));
+    s.execute("USE " + keyspace);
+
+    grantPermission(CREATE, KEYSPACE, keyspace, username);
+
+    String create_index_stmt = String.format("CREATE INDEX order_by_v on %s.%s (v)",
+        keyspace, table);
+
+    thrown.expect(UnauthorizedException.class);
+    s2.execute(create_index_stmt);
+  }
+
+  @Test
+  public void testCreateIndexWithAlterTablePermission() throws Exception {
+    s.execute(String.format("CREATE TABLE %s.%s (h int, v int, PRIMARY KEY(h)) " +
+        "WITH transactions = { 'enabled' : true }", keyspace, table));
+    s.execute("USE " + keyspace);
+    grantPermission(ALTER, TABLE, table, username);
+
+    String create_index_stmt = String.format("CREATE INDEX order_by_v on %s.%s (v)",
+        keyspace, table);
+
+    s2.execute(create_index_stmt);
+  }
 }
