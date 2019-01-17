@@ -3208,6 +3208,10 @@ TEST_F(TestRedisService, TestDummyLocal) {
   DoRedisTestBulkString(__LINE__, {"INFO"}, kInfoResponse);
   DoRedisTestBulkString(__LINE__, {"INFO", "Replication"}, kInfoResponse);
   DoRedisTestBulkString(__LINE__, {"INFO", "foo", "bar", "whatever", "whatever"}, kInfoResponse);
+  DoRedisTest(__LINE__, {"INFO"}, RedisReplyType::kString, [] (const RedisReply& reply) {
+      ASSERT_NE(reply.as_string().find("redis_version"), string::npos);
+    }
+  );
 
   DoRedisTestOk(__LINE__, {"COMMAND"});
   DoRedisTestExpectError(__LINE__, {"EVAL"});
