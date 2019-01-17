@@ -14,7 +14,7 @@ REGRESSION_EXPECTED = expected/init.out expected/base_plan.out expected/pg_hint_
 REGRESS_OPTS = --encoding=UTF8
 
 EXTENSION = pg_hint_plan
-DATA = pg_hint_plan--$(HINTPLANVER).sql
+DATA = pg_hint_plan--*.sql
 
 EXTRA_CLEAN = sql/ut-fdw.sql expected/ut-fdw.out RPMS
 
