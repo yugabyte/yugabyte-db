@@ -940,8 +940,6 @@ export default class ClusterFields extends Component {
       label="Name" isReadOnly={isFieldReadOnly}/>);
     }
 
-    // Instance Type is read-only if use spot price is selected
-    const isInstanceTypeReadOnly = isFieldReadOnly;// && this.state.useSpotPrice;
     return (
       <div>
         <div className="form-section">
@@ -996,7 +994,7 @@ export default class ClusterFields extends Component {
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
                 <Field name={`${clusterType}.instanceType`} component={YBSelectWithLabel} label="Instance Type"
-                       options={universeInstanceTypeList} onInputChanged={this.instanceTypeChanged} readOnlySelect={isInstanceTypeReadOnly}/>
+                       options={universeInstanceTypeList} onInputChanged={this.instanceTypeChanged} />
               </div>
             </Col>
             <Col sm={12} md={12} lg={6}>
