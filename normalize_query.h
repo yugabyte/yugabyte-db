@@ -6,7 +6,7 @@
  * This header file is created from pg_stat_statements.c to implement
  * normalization of query string.
  *
- * Portions Copyright (c) 2008-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2008-2019, PostgreSQL Global Development Group
  */
 #ifndef NORMALIZE_QUERY_H
 #define NORMALIZE_QUERY_H

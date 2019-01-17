@@ -1,5 +1,5 @@
 # SPEC file for pg_store_plans
-# Copyright(C) 2018 NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# Copyright(C) 2019 NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 
 %define _pgdir   /usr/pgsql-11
 %define _bindir  %{_pgdir}/bin
