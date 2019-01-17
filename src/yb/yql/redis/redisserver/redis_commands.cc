@@ -551,10 +551,17 @@ void HandleInfo(LocalCommandData data) {
 void HandlePing(LocalCommandData data) {
   RedisResponsePB response;
   response.set_code(RedisResponsePB::OK);
-  if (data.arg_size() > 1) {
-    response.set_string_response(data.arg(1).cdata(), data.arg(1).size());
+  if (data.call()->connection_context().ClientMode() == RedisClientMode::kSubscribed) {
+    const auto& second = (data.arg_size() > 1 ? data.arg(1).ToBuffer() : "");
+    response.set_encoded_response(redisserver::EncodeAsArrayOfEncodedElements(
+        vector<string>{redisserver::EncodeAsBulkString("pong").ToBuffer(),
+                       redisserver::EncodeAsBulkString(second).ToBuffer()}));
   } else {
-    response.set_status_response("PONG");
+    if (data.arg_size() > 1) {
+      response.set_string_response(data.arg(1).cdata(), data.arg(1).size());
+    } else {
+      response.set_status_response("PONG");
+    }
   }
   data.Respond(&response);
 }
