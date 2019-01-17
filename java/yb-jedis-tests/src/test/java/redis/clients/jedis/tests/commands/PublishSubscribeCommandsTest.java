@@ -89,7 +89,6 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     }, "testchan1", "testchan2", "testchan3");
   }
 
-  @Ignore
   @Test
   public void pubSubChannelWithPingPong() throws InterruptedException {
     final CountDownLatch latchUnsubscribed = new CountDownLatch(1);

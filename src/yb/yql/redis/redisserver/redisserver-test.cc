@@ -234,11 +234,7 @@ class TestRedisService : public RedisTableTestBase {
       int line, const std::vector<std::string>& command, const std::vector<std::string>& expected) {
     std::vector<RedisReply> redis_replies;
     for (size_t i = 0; i < expected.size(); i++) {
-      if (expected[i] == "") {
-        redis_replies.push_back(RedisReply());
-      } else {
-        redis_replies.push_back(RedisReply(RedisReplyType::kString, expected[i]));
-      }
+      redis_replies.push_back(RedisReply(RedisReplyType::kString, expected[i]));
     }
     DoRedisTestResultsArray(line, command, redis_replies);
   }
@@ -1968,14 +1964,14 @@ void TestSubscribe(
   tester->UseClient(sc2);
   tester->DoRedisTestArray(__LINE__, {}, {"message", topic2, msg2});
   // No more messages to receive.
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
 
   tester->UseClient(sc3);
   tester->DoRedisTestArray(__LINE__, {}, {"message", topic1, msg1});
   tester->DoRedisTestArray(__LINE__, {}, {"message", topic2, msg2});
   // No more messages to receive.
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
 
   tester->UseClient(nullptr);
@@ -2077,18 +2073,18 @@ void TestUnsubscribe(
   // Verify the received messages.
   tester->UseClient(sc1);
   tester->DoRedisTestArray(__LINE__, {}, {"message", topic2, msg2});
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
 
   tester->UseClient(sc2);
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
 
   tester->UseClient(sc3);
   tester->DoRedisTestArray(__LINE__, {}, {"message", topic1, msg1});
   tester->DoRedisTestArray(__LINE__, {}, {"message", topic2, msg2});
   // No more messages to receive.
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
 
   // sc3 will unsubscribe from all topics. sc1 will still be subscribed to topic2.
@@ -2122,13 +2118,13 @@ void TestUnsubscribe(
   // No one should receive the message except sc1.
   tester->UseClient(sc1);
   tester->DoRedisTestArray(__LINE__, {}, {"message", topic2, msg3});
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
   tester->UseClient(sc2);
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
   tester->UseClient(sc3);
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
 
   // sc1 will unsubscribe from topic2. No one left subscribed to any topic.
@@ -2156,13 +2152,13 @@ void TestUnsubscribe(
 
   // No one should receive the message.
   tester->UseClient(sc1);
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
   tester->UseClient(sc2);
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
   tester->UseClient(sc3);
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
 
   tester->UseClient(nullptr);
@@ -2253,14 +2249,14 @@ void TestPSubscribe(
   tester->UseClient(sc2);
   tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern2, topic2, msg2});
   // No more messages to receive.
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
 
   tester->UseClient(sc3);
   tester->DoRedisTestArray(__LINE__, {}, {"pmessage", common_pattern, topic1, msg1});
   tester->DoRedisTestArray(__LINE__, {}, {"pmessage", common_pattern, topic2, msg2});
   // No more messages to receive.
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
 
   tester->UseClient(nullptr);
@@ -2385,18 +2381,18 @@ void TestPUnsubscribe(
   // Verify the received pmessages.
   tester->UseClient(sc1);
   tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern2, topic2, msg2});
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
 
   tester->UseClient(sc2);
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
 
   tester->UseClient(sc3);
   tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern1, topic1, msg1});
   tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern2, topic2, msg2});
   // No more messages to receive.
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
 
   if (ps0) {
@@ -2441,13 +2437,13 @@ void TestPUnsubscribe(
   // No one should receive the message.
   tester->UseClient(sc1);
   tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern2, topic2, msg3});
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
   tester->UseClient(sc2);
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
   tester->UseClient(sc3);
-  tester->DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
   tester->SyncClient();
 
   // Get sc1 to also punsubscribe from pattern 2. No one is subscribed to any patterns anymore.
@@ -2763,6 +2759,11 @@ TEST_F(TestRedisServiceExternal, SubscribedClientMode) {
   expected_no_sessions_ = true;
   const string topic1 = "topic1";
   const string value = "value";
+
+  DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  DoRedisTestBulkString(__LINE__, {"PING", "cmd2"}, "cmd2");
+  SyncClient();
+
   DoRedisTestResultsArray(
       __LINE__, {"SUBSCRIBE", topic1},
       {RedisReply(RedisReplyType::kString, "subscribe"),
@@ -2772,7 +2773,7 @@ TEST_F(TestRedisServiceExternal, SubscribedClientMode) {
   DoRedisTestExpectError(__LINE__, {"SET", "foo", value});
   SyncClient();
 
-  DoRedisTestBulkString(__LINE__, {"PING", "cmd2"}, "cmd2");
+  DoRedisTestArray(__LINE__, {"PING", "cmd2"}, {"pong", "cmd2"});
   SyncClient();
 
   DoRedisTestOk(__LINE__, {"QUIT"});
@@ -4307,8 +4308,10 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
 
   DoRedisTestBulkString(__LINE__, {"HGET", "map_key", "subkey1"}, "41");
 
-  DoRedisTestArray(__LINE__, {"HMGET", "map_key", "subkey1", "subkey3", "subkey2"},
-      {"41", "", "12"});
+  DoRedisTestResultsArray(
+      __LINE__, {"HMGET", "map_key", "subkey1", "subkey3", "subkey2"},
+      {RedisReply(RedisReplyType::kString, "41"), RedisReply(),
+       RedisReply(RedisReplyType::kString, "12")});
 
   DoRedisTestArray(__LINE__, {"HGETALL", "map_key"}, {"subkey1", "41", "subkey2", "12"});
 
@@ -4589,16 +4592,17 @@ TEST_F(TestRedisService, TestHMGetTiming) {
   for (int i = 0; i < num_hmgets; i++) {
     string si = std::to_string(i % num_keys);
     vector<string> command = {"HMGET", "parent_" + si};
-    vector<string> expected;
+    vector<RedisReply> expected;
     for (int j = 0; j < num_subkeys; j++) {
       int idx = is_random ?
           RandomUniformInt(0, max_query_subkey) :
           (j * max_query_subkey) / num_subkeys;
       string sj = std::to_string(idx);
       command.push_back("subkey_" + sj);
-      expected.push_back(idx >= size_hset ? "" : "value_" + sj);
+      expected.push_back(
+          idx >= size_hset ? RedisReply() : RedisReply(RedisReplyType::kString, "value_" + sj));
     }
-    DoRedisTestArray(__LINE__, command, expected);
+    DoRedisTestResultsArray(__LINE__, command, expected);
     if (is_serial) {
       SyncClient();
     }
