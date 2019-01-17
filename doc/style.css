@@ -54,6 +54,15 @@ th, td {
 	padding: 0.2em;
 }
 
+dt {
+	font-weight: 600;
+	margin-top: 1em;
+	margin-left: 1em;
+}
+dd {
+	margin-top: 0.5em;
+}
+
 thead th {
 	background: #f2f2f2;
 	text-align: center;
