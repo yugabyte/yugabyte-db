@@ -50,7 +50,7 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   // Permissions check happen in LookupTable if flag use_cassandra_authentication is enabled.
   RETURN_NOT_OK(sem_context->LookupTable(relation_->ToTableName(), relation_->loc(),
                                          true /* write_table */,
-                                         PermissionType::CREATE_PERMISSION,
+                                         PermissionType::ALTER_PERMISSION,
                                          &table_, &is_system_ignored,
                                          &column_descs_, &column_definitions_));
 
@@ -59,7 +59,8 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   sem_context->set_current_create_table_stmt(this);
 
   // Analyze index table like a regular table for the primary key definitions.
-  // If flag use_cassandra_authentication is enabled, this will also enforce the permissions.
+  // If flag use_cassandra_authentication is enabled, we will not check for the create permission
+  // on the table because creating an index requires the alter permission on the table.
   RETURN_NOT_OK(PTCreateTable::Analyze(sem_context));
 
   // Add remaining primary key columns from the indexed table. For non-unique index, add the columns
