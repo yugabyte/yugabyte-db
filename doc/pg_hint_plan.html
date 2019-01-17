@@ -57,8 +57,8 @@ pre { margin: 0 2em 0 2em; padding:0.3em; border-style: solid; border-width:0.1e
 <p>In the example below , hash join is selected as the joning method and scanning pgbench_accounts by sequential scan method.</p>
 <pre>
 postgres=# /*+
-postgres*#    <b><u>HashJoin(a b)</u></b>
-postgres*#    <b><u>>SeqScan(a)</u></b>
+postgres*#    <span class="strong">HashJoin(a b)</span>
+postgres*#    <span class="strong">SeqScan(a)</span>
 postgres*#  */
 postgres-# EXPLAIN SELECT *
 postgres-#    FROM pgbench_branches b
@@ -68,20 +68,19 @@ postgres-#   ORDER BY a.aid;
 ---------------------------------------------------------------------------------------
  Sort  (cost=31465.84..31715.84 rows=100000 width=197)
    Sort Key: a.aid
-   ->  <b><u>Hash Join</u></b>  (cost=1.02..4016.02 rows=100000 width=197)
+   ->  <span class="strong">Hash Join</span>  (cost=1.02..4016.02 rows=100000 width=197)
          Hash Cond: (a.bid = b.bid)
-         ->  <b><u>Seq Scan on pgbench_accounts a</u></b>  (cost=0.00..2640.00 rows=100000 width=97)
+         ->  <span class="strong">Seq Scan on pgbench_accounts a</span>  (cost=0.00..2640.00 rows=100000 width=97)
          ->  Hash  (cost=1.01..1.01 rows=1 width=100)
                ->  Seq Scan on pgbench_branches b  (cost=0.00..1.01 rows=1 width=100)
 (7 rows)
 
 postgres=# </pre>
 
-<h2 id="examples">Hint table</h2>
-<p> The above section mentioned that
-hints are placed in a comment with special form. This way of hinting
-is inconvenient for certain cases where queries cannot be edited. For
-such cases, hints can be placed in a special table named
+<h2 id="examples">The hint table</h2>
+<p> Hints are described in a comment in a special form in the above
+section. This is inconvenient in the case where queries cannot be
+edited. In the case hints can be placed in a special table named
 "hint_plan.hints". The table consists of the following columns.</p>
 <table>
 <thead>
@@ -102,23 +101,23 @@ such cases, hints can be placed in a special table named
 
 <p>The following example shows how to operate with the hint table.</p>
 <pre>
-<b>postgres=#</b> INSERT INTO hint_plan.hints(norm_query_string, application_name, hints)
-<b>postgres-#</b>     VALUES (
-<b>postgres(#</b>         'EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;',
-<b>postgres(#</b>         '',
-<b>postgres(#</b>         'SeqScan(t1)'
-<b>postgres(#</b>     );
+<span class="strong">postgres=#</span> INSERT INTO hint_plan.hints(norm_query_string, application_name, hints)
+<span class="strong">postgres-#</span>     VALUES (
+<span class="strong">postgres(#</span>         'EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;',
+<span class="strong">postgres(#</span>         '',
+<span class="strong">postgres(#</span>         'SeqScan(t1)'
+<span class="strong">postgres(#</span>     );
 INSERT 0 1
-<b>postgres=#</b> UPDATE hint_plan.hints
-<b>postgres-#</b>    SET hints = 'IndexScan(t1)'
-<b>postgres-#</b>  WHERE id = 1;
+<span class="strong">postgres=#</span> UPDATE hint_plan.hints
+<span class="strong">postgres-#</span>    SET hints = 'IndexScan(t1)'
+<span class="strong">postgres-#</span>  WHERE id = 1;
 UPDATE 1
-<b>postgres=#</b> DELETE FROM hint_plan.hints
-<b>postgres-#</b>  WHERE id = 1;
+<span class="strong">postgres=#</span> DELETE FROM hint_plan.hints
+<span class="strong">postgres-#</span>  WHERE id = 1;
 DELETE 1
-<b>postgres=#</b>
+<span class="strong">postgres=#</span>
 </pre>
-<p>The hint tables is owned by the creator user and having the default previledges  at the time of creation.
+<p>The hint table is owned by the creator user and having the default previledges at the time of creation.
 during CREATE EXTENSION. Table hints are prioritized than comment hits.</p>
 
 <h3 id="hint-group">The types of hints</h3>
@@ -128,11 +127,11 @@ during CREATE EXTENSION. Table hints are prioritized than comment hits.</p>
 <p>Scan method hints enforce specific scanning method on the target table. pg_hint_plan recognizes the target table by alias names if any. They are 'SeqScan' , 'IndexScan' and so on in this kind of hint.</p>
 <p>Scan hints are effective on ordinary tables, inheritance tables, UNLOGGED tables, temporary tables and  system catalogs. External(foreign) tables, table functions, VALUES clause, CTEs, views and subquiries are not affected.</p>
 <pre>
-<b>postgres=# /*+</b>
-<b>postgres*#     SeqScan(t1)</b>
-<b>postgres*#     IndexScan(t2 t2_pkey)</b>
-<b>postgres*#  */</b>
-<b>postgres-#</b> SELECT * FROM table1 t1 JOIN table table2 t2 ON (t1.key = t2.key);
+<span class="strong">postgres=# /*+</span>
+<span class="strong">postgres*#     SeqScan(t1)</span>
+<span class="strong">postgres*#     IndexScan(t2 t2_pkey)</span>
+<span class="strong">postgres*#  */</span>
+<span class="strong">postgres-#</span> SELECT * FROM table1 t1 JOIN table table2 t2 ON (t1.key = t2.key);
 </pre>
 
 
@@ -144,24 +143,24 @@ during CREATE EXTENSION. Table hints are prioritized than comment hits.</p>
 <p> This hint "Leading" enforces the order of join on two or more tables. There are two ways of enforcing. One is enforcing specific order of joining but not restricting direction at each join level. Another enfoces join direction additionaly. Details are seen in the <a href="hint_list.html">hint list</a> table.</p>
 
 <pre>
-<b>postgres=# /*+</b>
-<b>postgres*#     NestLoop(t1 t2)</b>
-<b>postgres*#     MergeJoin(t1 t2 t3)</b>
-<b>postgres*#     Leading(t1 t2 t3)</b>
-<b>postgres*#  */</b>
-<b>postgres-#</b> SELECT * FROM table1 t1
-<b>postgres-#</b>     JOIN table table2 t2 ON (t1.key = t2.key)
-<b>postgres-#</b>     JOIN table table3 t3 ON (t2.key = t3.key);
+<span class="strong">postgres=# /*+</span>
+<span class="strong">postgres*#     NestLoop(t1 t2)</span>
+<span class="strong">postgres*#     MergeJoin(t1 t2 t3)</span>
+<span class="strong">postgres*#     Leading(t1 t2 t3)</span>
+<span class="strong">postgres*#  */</span>
+<span class="strong">postgres-#</span> SELECT * FROM table1 t1
+<span class="strong">postgres-#</span>     JOIN table table2 t2 ON (t1.key = t2.key)
+<span class="strong">postgres-#</span>     JOIN table table3 t3 ON (t2.key = t3.key);
 </pre>
 
 <h4>Hint for row number correction</h4>
 <p>This hint "Rows" corrects row number misestimation of joins that comes from restrictions of the planner. </p>
 
 <pre>
-<b>postgres=# /*+ Rows(a b #10) */</b> SELECT... ; Sets rows of join result to 10
-<b>postgres=# /*+ Rows(a b +10) */</b> SELECT... ; Increments row number by 10
-<b>postgres=# /*+ Rows(a b -10) */</b> SELECT... ; Subtracts 10 from the row number.
-<b>postgres=# /*+ Rows(a b *10) */</b> SELECT... ; Makes the number 10 times larger.
+<span class="strong">postgres=# /*+ Rows(a b #10) */</span> SELECT... ; Sets rows of join result to 10
+<span class="strong">postgres=# /*+ Rows(a b +10) */</span> SELECT... ; Increments row number by 10
+<span class="strong">postgres=# /*+ Rows(a b -10) */</span> SELECT... ; Subtracts 10 from the row number.
+<span class="strong">postgres=# /*+ Rows(a b *10) */</span> SELECT... ; Makes the number 10 times larger.
 </pre>
 
 <h4>Hint for parallel plan</h4>
@@ -170,27 +169,27 @@ scans. The third parameter specifies the strength of enfocement. "soft" means th
 tables and system catalogues. External tables, table functions, values clause, CTEs, views and subqueries are not affected. Internal tables of a view can be specified by its real name/alias as the target object. The following example shows that the query is enforced differently on each table.</p>
 
 <pre>
-<b>postgres=#</b> explain <b>/*+ Parallel(c1 3 hard) Parallel(c2 5 hard) */</b>
+<span class="strong">postgres=#</span> explain <span class="strong">/*+ Parallel(c1 3 hard) Parallel(c2 5 hard) */</span>
        SELECT c2.a FROM c1 JOIN c2 ON (c1.a = c2.a);
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Hash Join  (cost=2.86..11406.38 rows=101 width=4)
    Hash Cond: (c1.a = c2.a)
    ->  Gather  (cost=0.00..7652.13 rows=1000101 width=4)
-         <b><u>Workers Planned: 3</u></b>
-         ->  Parallel Seq Scan on <b><u>c1</u></b>  (cost=0.00..7652.13 rows=322613 width=4)
+         <span class="strong">Workers Planned: 3</span>
+         ->  Parallel Seq Scan on <span class="strong">c1</span>  (cost=0.00..7652.13 rows=322613 width=4)
    ->  Hash  (cost=1.59..1.59 rows=101 width=4)
          ->  Gather  (cost=0.00..1.59 rows=101 width=4)
-               <b><u>Workers Planned: 5</u></b>
-               ->  Parallel Seq Scan on <b><u>c2</u></b>  (cost=0.00..1.59 rows=59 width=4)
+               <span class="strong">Workers Planned: 5</span>
+               ->  Parallel Seq Scan on <span class="strong">c2</span>  (cost=0.00..1.59 rows=59 width=4)
 
-<b>postgres=#</b> EXPLAIN <b>/*+ Parallel(tl 5 hard) */</b> SELECT sum(a) FROM tl;
+<span class="strong">postgres=#</span> EXPLAIN <span class="strong">/*+ Parallel(tl 5 hard) */</span> SELECT sum(a) FROM tl;
                                     QUERY PLAN                                  
 -----------------------------------------------------------------------------------
- <b><u>Finalize Aggregate</u></b>  (cost=693.02..693.03 rows=1 width=8)
+ <span class="strong">Finalize Aggregate</span>  (cost=693.02..693.03 rows=1 width=8)
    ->  Gather  (cost=693.00..693.01 rows=5 width=8)
-         <b><u>Workers Planned: 5</u></b>
-         ->  <b><u>Partial Aggregate</u></b>  (cost=693.00..693.01 rows=1 width=8)
+         <span class="strong">Workers Planned: 5</span>
+         ->  <span class="strong">Partial Aggregate</span>  (cost=693.00..693.01 rows=1 width=8)
                ->  Parallel Seq Scan on tl  (cost=0.00..643.00 rows=20000 width=4)
 </pre>
 </dd>
@@ -202,7 +201,7 @@ tables and system catalogues. External tables, table functions, values clause, C
 <h4>GUC parameters temporarily setting</h4>
 <p>'Set' hint changes GUC parameters just while planning. GUC parameter shown in <a href="http://www.postgresql.org/docs/current/static/runtime-config-query.html">Query Planning</a> can have the expected effects on planning unless any other hint conflicts with the planner method configuration parameters. The last one among hints on the same GUC parameter makes effect. <a href="#hint-GUC">GUC parameters for pg_hint_plan</a> are also settable by  this hint but it won't work as your expectation. See <a href="#restrictions">Restrictions</a> for details.</p>
 <pre>
-postgres=# <b>/*+ Set(random_page_cost 2.0) */</b>
+postgres=# <span class="strong">/*+ Set(random_page_cost 2.0) */</span>
 postgres-# SELECT * FROM table1 t1 WHERE key = 'value';
 ...
 </pre>
@@ -227,7 +226,6 @@ postgres-# SELECT * FROM table1 t1 WHERE key = 'value';
   <td>Specifies message level of debug print. Valid values are error, warning, notice, info, log, debug<n>.</td><td>INFO</td></tr>
 </tbody>
 </table>
-
 <h2 id="install">Installation</h2>
 This section describes the installation steps.
 <h3 id="build">building binary module</h3>
@@ -260,26 +258,27 @@ $ su
 </pre>
 
 <h2 id="hint_syntax">Details in hinting</h2>
-<h3>Syntax and placement</h3>
+<dl>
+<dt>Syntax and placement</dt>
 <dd>pg_hint_plan reads hints from only the first block comment and any characters except alphabets, digits, spaces, underscores, commas and parentheses stops parsing immediately. In the following example HashJoin(a b) and SeqScan(a) are parsed as hints but IndexScan(a) and MergeJoin(a b) are not.
 
 <pre>
-<b>postgres=# /*+</b>
-<b>postgres*#    HashJoin(a b)</b>
-<b>postgres*#    SeqScan(a)</b>
-<b>postgres*#  */</b>
-<b>postgres-# /*+ IndexScan(a) */</b>
-<b>postgres-#</b> EXPLAIN SELECT <b>/*+ MergeJoin(a b) */</b> *
-<b>postgres-#</b>    FROM pgbench_branches b
-<b>postgres-#</b>    JOIN pgbench_accounts a ON b.bid = a.bid
-<b>postgres-#</b>   ORDER BY a.aid;
+<span class="strong">postgres=# /*+</span>
+<span class="strong">postgres*#    HashJoin(a b)</span>
+<span class="strong">postgres*#    SeqScan(a)</span>
+<span class="strong">postgres*#  */</span>
+<span class="strong">postgres-# /*+ IndexScan(a) */</span>
+<span class="strong">postgres-#</span> EXPLAIN SELECT <span class="strong">/*+ MergeJoin(a b) */</span> *
+<span class="strong">postgres-#</span>    FROM pgbench_branches b
+<span class="strong">postgres-#</span>    JOIN pgbench_accounts a ON b.bid = a.bid
+<span class="strong">postgres-#</span>   ORDER BY a.aid;
                                       QUERY PLAN
 ---------------------------------------------------------------------------------------
  Sort  (cost=31465.84..31715.84 rows=100000 width=197)
    Sort Key: a.aid
-   ->  <b><u>Hash Join</u></b>  (cost=1.02..4016.02 rows=100000 width=197)
+   ->  <span class="strong">Hash Join</span>  (cost=1.02..4016.02 rows=100000 width=197)
          Hash Cond: (a.bid = b.bid)
-         ->  <b><u>Seq Scan on pgbench_accounts a</u></b>  (cost=0.00..2640.00 rows=100000 width=97)
+         ->  <span class="strong">Seq Scan on pgbench_accounts a</span>  (cost=0.00..2640.00 rows=100000 width=97)
          ->  Hash  (cost=1.01..1.01 rows=1 width=100)
                ->  Seq Scan on pgbench_branches b  (cost=0.00..1.01 rows=1 width=100)
 (7 rows)
@@ -287,7 +286,7 @@ $ su
 postgres=# </pre>
 </dd>
 
-<h3>Using with PL/pgSQL</h3>
+<dt>Using with PL/pgSQL</dt>
 <dd>pg_hint_plan works for queries in PL/pgSQL scripts with some restrictions.
 <ul>
  <li>Hints affect only on the following kind of queires.
@@ -309,9 +308,9 @@ postgres$# DECLARE
 postgres$#     id  integer;
 postgres$#     cnt integer;
 postgres$# BEGIN
-postgres$#     SELECT <b><u>/*+ NoIndexScan(a) */</u></b> aid
+postgres$#     SELECT <span class="strong">/*+ NoIndexScan(a) */</span> aid
 postgres$#         INTO id FROM pgbench_accounts a WHERE aid = $1;
-postgres$#     SELECT <b><u>/*+ SeqScan(a) */</u></b> count(*)
+postgres$#     SELECT <span class="strong">/*+ SeqScan(a) */</span> count(*)
 postgres$#         INTO cnt FROM pgbench_accounts a;
 postgres$#     RETURN id + cnt;
 postgres$# END;
@@ -319,11 +318,11 @@ postgres$# $$ LANGUAGE plpgsql;
 </pre>
 </dd>
 
-<h3>Letter case in a hinted object</h3>
+<dt>Letter case in the object names</dt>
 <dd>Unlike the way PostgreSQL handles object names, pg_hint_plan compares bare object names in hints against the database internal object names in case sensitive way. Therefore an object name TBL in a hint matches only "TBL" in database and does not match any unquoted names like TBL, tbl or Tbl.
 </dd>
 
-<h3>Escaping special chacaters in object names</h3>
+<dt>Escaping special chacaters in object names</dt>
 <dd>The objects as the hint parameter should be enclosed by double quotes if they includes parentheses, double quotes and white spaces. The escaping rule is the same as PostgreSQL.
 </dd>
 
@@ -332,15 +331,15 @@ postgres$# $$ LANGUAGE plpgsql;
 exists. This behavior is usable to point a specific occurance
 among multiple occurances of one table.
 <pre>
-<b>postgres=# /*+ HashJoin(t1 t1) */</b>
-<b>postgres-#</b> EXPLAIN SELECT * FROM s1.t1
-<b>postgres-#</b> JOIN public.t1 ON (s1.t1.id=public.t1.id);
+<span class="strong">postgres=# /*+ HashJoin(t1 t1) */</span>
+<span class="strong">postgres-#</span> EXPLAIN SELECT * FROM s1.t1
+<span class="strong">postgres-#</span> JOIN public.t1 ON (s1.t1.id=public.t1.id);
 INFO:  hint syntax error at or near "HashJoin(t1 t1)"
-<b><u>DETAIL:  Relation name "t1" is ambiguous.</u></b>
+<span class="strong">DETAIL:  Relation name "t1" is ambiguous.</span>
 ...
-<b>postgres=# /*+ HashJoin(pt st) */</b>
-<b>postgres-#</b> EXPLAIN SELECT * FROM s1.t1 st
-<b>postgres-#</b> JOIN public.t1 pt ON (st.id=pt.id);
+<span class="strong">postgres=# /*+ HashJoin(pt st) */</span>
+<span class="strong">postgres-#</span> EXPLAIN SELECT * FROM s1.t1 st
+<span class="strong">postgres-#</span> JOIN public.t1 pt ON (st.id=pt.id);
                              QUERY PLAN
 ---------------------------------------------------------------------
  <span class="strong">Hash Join</span>  (cost=64.00..1112.00 rows=28800 width=8)
@@ -351,14 +350,14 @@ INFO:  hint syntax error at or near "HashJoin(t1 t1)"
 </pre>
 </dd>
 
-<h3>Underlying tables of views or rules</h3>
+<dt>Underlying tables of views or rules</dt>
 <dd>Hints are not applicable on views itself, but they can affect the
 queries within if the object names match the object names in the
 expanded query on the view. Assigning aliases to the tables in a view
 enables them to be manipulated from outside the view.
 <pre>
-<b>postgres=#</b> CREATE VIEW v1 AS SELECT * FROM <b><u>t2</u></b>;
-<b>postgres=#</b> EXPLAIN <b>/*+ HashJoin(t1 v1) */</b>
+<span class="strong">postgres=#</span> CREATE VIEW v1 AS SELECT * FROM <span class="strong">t2</span>;
+<span class="strong">postgres=#</span> EXPLAIN <span class="strong">/*+ HashJoin(t1 v1) */</span>
           SELECT * FROM t1 JOIN v1 ON (c1.a = v1.a);
                             QUERY PLAN                            
 ------------------------------------------------------------------
@@ -370,27 +369,27 @@ enables them to be manipulated from outside the view.
 </pre>
 </dd>
 
-<h3>Inheritance tables</h3>
+<dt>Inheritance tables</dt>
 <dd>Hints can point only the parent of an inheritance tables and the
 hint affect all the inheritance. Hints simultaneously point directly
 to children are not in effect.
 </dd>
 
-<h3>Hinting on multistatements</h3>
+<dt>Hinting on multistatements</dt>
 <dd>One multistatement can have exactly one hint comment and the hints affects all of the individual statement in the multistatement. Notice that the seemingly multistatement on the interactive interface of psql is internally a sequence of single statements so hints affects only on the statement just following.</dd>
 
-<h3>VALUES expressions</h3>
+<dt>VALUES expressions</dt>
 <dd>VALUES expressions in FROM clause are named as *VALUES* internally
 so it is hintable if it is the only VALUES in a query. Two or more
 VALUES expressions in a query seems distinguishable looking its
 explain result. But in reality it is mere a cosmetic and they are not
 distinguisable.
 <pre>
-<b>postgres=# /*+ MergeJoin(*VALUES*_1 *VALUES*) */</b>
+<span class="strong">postgres=#</span> <span class="strong">/*+ MergeJoin(*VALUES*_1 *VALUES*) */</span>
       EXPLAIN SELECT * FROM (VALUES (1, 1), (2, 2)) v (a, b)
       JOIN (VALUES (1, 5), (2, 8), (3, 4)) w (a, c) ON v.a = w.a;
 INFO:  pg_hint_plan: hint syntax error at or near "MergeJoin(*VALUES*_1 *VALUES*) "
-<b><u>DETAIL:  Relation name "*VALUES*" is ambiguous.</u></b>
+<span class="strong">DETAIL:  Relation name "*VALUES*" is ambiguous.</span>
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Hash Join  (cost=0.05..0.12 rows=2 width=16)
@@ -406,20 +405,20 @@ INFO:  pg_hint_plan: hint syntax error at or near "MergeJoin(*VALUES*_1 *VALUES*
 <p>Subqueries in the following context occasionally can be hinted using the
 name "ANY_subquery".</p>
 <pre>
-IN (SELECT ... {<b>LIMIT | OFFSET</b> ...} ...)
-= ANY (SELECT ... {<b>LIMIT | OFFSET</b> ...} ...)
-= SOME (SELECT ... {<b>LIMIT | OFFSET</b> ...} ...)
+IN (SELECT ... {<span class="strong">LIMIT | OFFSET</span> ...} ...)
+= ANY (SELECT ... {<span class="strong">LIMIT | OFFSET</span> ...} ...)
+= SOME (SELECT ... {<span class="strong">LIMIT | OFFSET</span> ...} ...)
 </pre>
 <p>For these syntaxes, planner internally assigns the name to the subquery when planning joins on tables including it, so join hints are applicable on such joins using the implicit name as the following.</p>
 <pre>
-<b>postgres=# /*+HashJoin(a1 ANY_subquery)*/</b>
-<b>postgres=#</b> EXPLAIN SELECT *
-<b>postgres=#</b>    FROM pgbench_accounts a1
-<b>postgres=#</b>   WHERE aid IN (SELECT bid FROM pgbench_accounts a2 LIMIT 10);
+<span class="strong">postgres=# /*+HashJoin(a1 ANY_subquery)*/</span>
+<span class="strong">postgres=#</span> EXPLAIN SELECT *
+<span class="strong">postgres=#</span>    FROM pgbench_accounts a1
+<span class="strong">postgres=#</span>   WHERE aid IN (SELECT bid FROM pgbench_accounts a2 LIMIT 10);
                                          QUERY PLAN
 
 ---------------------------------------------------------------------------------------------
- <b><u>Hash Semi Join</u></b>  (cost=0.49..2903.00 rows=1 width=97)
+ <span class="strong">Hash Semi Join</span>  (cost=0.49..2903.00 rows=1 width=97)
    Hash Cond: (a1.aid = a2.bid)
    ->  Seq Scan on pgbench_accounts a1  (cost=0.00..2640.00 rows=100000 width=97)
    ->  Hash  (cost=0.36..0.36 rows=10 width=4)
@@ -428,58 +427,60 @@ IN (SELECT ... {<b>LIMIT | OFFSET</b> ...} ...)
 </pre>
 </dd>
 
-<h3>Using IndexOnlyScan hint</h3>
-<dd>An additional hint to enforce an index that can perform index only scan is required for IndexOnlyScan hint to work when any index that can not perform index only scan is also defined on the same table. </dd>
+<dt>Using IndexOnlyScan hint</dt>
+<dd>Index scan may unexpectedly performed on another index when the index specifed in IndexOnlyScan hint cannot perform index only scan.</dd>
 
-<h3>Behavior of NoIndexScan</h3>
+<dt>Behavior of NoIndexScan</dt>
 <dd>NoIndexScan hint involes NoIndexOnlyScan.</dd>
 
-<h3>Parallel hint and UNION</h3>
+<dt>Parallel hint and UNION</dt>
 <dd>A UNION can run in parallel only when all underlying subqueries
 are parallel-safe. Conversely enforcing parallel on any of
 the subqueries let a parallel-executable UNION run in
 parallel. Meanwhile, a parallel hint with zero workers hinhibits a scan
 from executed in parallel.</dd>
 
-<h3>Setting pg_hint_plan parameters by Set hints</h3>
+<dt>Setting pg_hint_plan parameters by Set hints</dt>
 <dd><p>pg_hint_plan paramters change the behavior of itself so some parameters doesn't work as expected.</p>
 <ul>
 <li>Hints to change enable_hint, enable_hint_tables are ignored even though they are reported as "used hints" in debug logs.</li>
 <li>Setting debug_print and message_level works from midst of the processing of the target query.</li>
 </ul>
 </dd>
-
+</dl>
 
 <h2 id="errors">Errors</h2>
 <p>pg_hint_plan stops parsing on any error and uses hints already parsed on the most cases. Followings are the typical errors.</p>
-<h3>Syntax errors </h3>
-<p>Any syntactical errors or wrong hint names are reported as an syntax error. These errors are reported in the server log with the message level which specified by pg_hint_plan.message_level if pg_hint_plan.debug_print is on and aboves.</p>
-<h3>Object misspecifications</h3>
-<p>Object misspecifications results silent ingorance of the hints. This kind of error is reported as "not used hints" in the server log by the same condtion to syntax errors.</p>
+<dl>
+<dt>Syntax errors </dt>
+<dd>Any syntactical errors or wrong hint names are reported as an syntax error. These errors are reported in the server log with the message level which specified by pg_hint_plan.message_level if pg_hint_plan.debug_print is on and aboves.</dd>
+<dt>Object misspecifications</dt>
+<dd>Object misspecifications results silent ingorance of the hints. This kind of error is reported as "not used hints" in the server log by the same condtion to syntax errors.</dd>
 
-<h3>Redundant or conflicting hints</h3>
-<p>The last hint will be active when redundant hints or hints conflicting with each other. This kind of error is reported as "duplication hints" in the server log by the same condition to syntax errors.</p>
+<dt>Redundant or conflicting hints</dt>
+<dd>The last hint will be active when redundant hints or hints conflicting with each other. This kind of error is reported as "duplication hints" in the server log by the same condition to syntax errors.</dd>
 
-<h3>Nested comments</h3>
-<p>Hint comment cannot include another block comment within. If pg_hint_plan finds it, differently from other erros, it stops parsing and abandans all hints already parsed. This kind of error is reported in the same manner as other errors. </p>
+<dt>Nested comments</dt>
+<dd>Hint comment cannot include another block comment within. If pg_hint_plan finds it, differently from other erros, it stops parsing and abandans all hints already parsed. This kind of error is reported in the same manner as other errors. </dd>
 
 <h2 id="func_limits">Functional limitations</h2>
-<h3>Influences of some of planner GUC parameters</h3>
-<p>The planner does not try to consider joining order for FROM clause entries more than from_collapse_limit. pg_hint_plan cannot affect joining order as expected for the case.</p>
+<dt>Influences of some of planner GUC parameters</dt>
+<dd>The planner does not try to consider joining order for FROM clause entries more than from_collapse_limit. pg_hint_plan cannot affect joining order as expected for the case.</dd>
 
-<h3>Cases that pg_hint_plan essentially does not work </h3>
-<p>By the nature of pg_hint_plan, it cannot affect some cases that out of scope of the planner like following.</p>
+<dt>Hints trying to enforce unexecutable plans </dt>
+<dd>Planner chooses any executable plans when the enforced plan cannot be executed.
 <ul>
 <li>FULL OUTER JOIN to use nested loop</li>
 <li>To use indexes that does not have columns used in quals</li>
 <li>To do TID scans for queries without ctid conditions</li>
 </ul>
+</dd>
 
-<h3>Queries in ECPG</h3>
-<p>ECPG removes comments in queries written as embedded SQLs so hints cannot be passed form those queries. The only exception is that EXECUTE command passes given string unmodifed. Please consider hint tables for this case.</p>
+<dt>Queries in ECPG</dt>
+<dd>ECPG removes comments in queries written as embedded SQLs so hints cannot be passed form those queries. The only exception is that EXECUTE command passes given string unmodifed. Please consider hint tables in the case.</dd>
 
-<h3>Work with pg_stat_statements</h3>
-<p>pg_stat_statements generates a query id ignoring comments. As the result the identical queires with different hints are summerized as the same query.</p>
+<dt>Work with pg_stat_statements</dt>
+<dd>pg_stat_statements generates a query id ignoring comments. As the result the identical queires with different hints are summerized as the same query.</dd>
 
 <h2 id="requirement">Requirements</h2>
 pg_hint_plan11 1.3 requires PostgreSQL 11.
