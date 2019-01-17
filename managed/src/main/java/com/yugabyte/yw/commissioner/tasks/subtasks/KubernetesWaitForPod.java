@@ -22,6 +22,8 @@ import play.api.Play;
 import play.libs.Json;
 import org.yaml.snakeyaml.Yaml;
 
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -99,11 +101,22 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
     }
   }
 
+  // Waits for pods as well as the containers inside the pod.
   private String waitForPod() {
     ShellProcessHandler.ShellResponse podResponse = kubernetesManager.getPodStatus(taskParams().providerUUID, taskParams().nodePrefix, taskParams().podName);
     JsonNode podInfo = parseShellResponseAsJson(podResponse);
     JsonNode statusNode = podInfo.path("status");
     String status = statusNode.get("phase").asText();
+    JsonNode podConditions = statusNode.path("conditions");
+    ArrayList conditions = Json.fromJson(podConditions, ArrayList.class);
+    Iterator iter = conditions.iterator();
+    while (iter.hasNext()) {
+      JsonNode info = Json.toJson(iter.next());
+      String statusContainer = info.path("status").asText();
+      if (statusContainer.equals("False")) {
+        status = "Not Ready";
+      }
+    }
     return status;
   }
 }
