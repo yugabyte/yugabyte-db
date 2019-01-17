@@ -4720,7 +4720,8 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 				}
 
 				/* Generate gather paths */
-				if (rel->reloptkind == RELOPT_BASEREL)
+				if (rel->reloptkind == RELOPT_BASEREL &&
+					bms_membership(root->all_baserels) != BMS_SINGLETON)
 					generate_gather_paths(root, rel, false);
 			}
 		}
