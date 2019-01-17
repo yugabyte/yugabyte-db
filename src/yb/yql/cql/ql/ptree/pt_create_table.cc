@@ -55,7 +55,10 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   // Processing table name.
   RETURN_NOT_OK(relation_->AnalyzeName(sem_context, OBJECT_TABLE));
 
-  if (FLAGS_use_cassandra_authentication) {
+  // For creating an index operation, SemContext::LookupTable should have already checked that the
+  // current role has the ALTER permission on the table. We don't need to check for any additional
+  // permissions for this operation.
+  if (FLAGS_use_cassandra_authentication && opcode() != TreeNodeOpcode::kPTCreateIndex) {
     RETURN_NOT_OK(sem_context->CheckHasKeyspacePermission(loc(), PermissionType::CREATE_PERMISSION,
                                                           yb_table_name().namespace_name()));
   }

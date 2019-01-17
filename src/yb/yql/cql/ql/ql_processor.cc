@@ -193,6 +193,12 @@ bool QLProcessor::CheckPermissions(const ParseTree& parse_tree, StatementExecute
                                           PermissionType::CREATE_PERMISSION, keyspace);
         break;
       }
+      case TreeNodeOpcode::kPTCreateIndex: {
+        const YBTableName indexed_table_name =
+            static_cast<const PTCreateIndex*>(tnode)->indexed_table_name();
+        s = ql_env_.HasTablePermission(indexed_table_name, PermissionType::ALTER_PERMISSION);
+        break;
+      }
       case TreeNodeOpcode::kPTAlterTable: {
         const YBTableName table_name = static_cast<const PTAlterTable*>(tnode)->yb_table_name();
         s = ql_env_.HasTablePermission(table_name, PermissionType::ALTER_PERMISSION);

@@ -60,7 +60,7 @@ std::string get_canonical_role(const std::string &role) {
   return strings::Substitute("$0/$1", kRolesRoleResource, role);
 }
 
-std::string PermissionName(PermissionType permission) {
+std::string PermissionName(const PermissionType permission) {
   switch(permission) {
     case PermissionType::ALTER_PERMISSION: return "ALTER";
     case PermissionType::CREATE_PERMISSION: return "CREATE";
