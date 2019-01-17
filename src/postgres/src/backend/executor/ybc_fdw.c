@@ -96,6 +96,67 @@ typedef struct YbFdwPlanState
 
 } YbFdwPlanState;
 
+static bool IsSupportedPredicateExpr(Expr *expr)
+{
+	switch (nodeTag(expr))
+	{
+		case T_RelabelType:
+		{
+			/*
+			 * RelabelType is a "dummy" type coercion between two binary-
+			 * compatible datatypes so we just recurse into its argument.
+			 */
+			RelabelType *rt = (RelabelType *) expr;
+			return IsSupportedPredicateExpr(rt->arg);
+		}
+		case T_Const:
+		case T_Param:
+			return true;
+		default:
+			break;
+	}
+
+	return false;
+}
+
+static void GetValFromPredicateExpr(Expr *expr,
+									ParamListInfo params_info,
+									Datum *value,
+									bool *isnull)
+{
+	switch (nodeTag(expr))
+	{
+		case T_RelabelType:
+		{
+			/*
+			 * RelabelType is a "dummy" type coercion between two binary-
+			 * compatible datatypes so we just recurse into its argument.
+			 */
+			RelabelType *rt = (RelabelType *) expr;
+			return GetValFromPredicateExpr(rt->arg, params_info, value, isnull);
+		}
+		case T_Const:
+		{
+			Const *cst = (Const *) expr;
+			*value  = cst->constvalue;
+			*isnull = cst->constisnull;
+			return;
+		}
+		case T_Param:
+		{
+			int paramid = ((Param *) expr)->paramid;
+			*value  = params_info->params[paramid - 1].value;
+			*isnull = params_info->params[paramid - 1].isnull;
+			return;
+		}
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR), errmsg(
+							"Found unsupported YugaByte RHS expression %s",
+							nodeToString(expr))));
+	}
+}
+
 /*
  * Returns whether an expression can be pushed down to be evaluated by YugaByte.
  * Otherwise, it will need to be evaluated by Postgres as it filters the rows
@@ -148,8 +209,8 @@ static void ybcClassifyWhereExpr(RelOptInfo *baserel,
 				 * Note: Postgres should have already evaluated expressions
 				 * with no column refs before this point.
 				 */
-				if ((IsA(left, Var) && IsA(right, Const)) ||
-				    (IsA(left, Const) && IsA(right, Var)))
+				if ((IsA(left, Var) && IsSupportedPredicateExpr(right)) ||
+				    (IsSupportedPredicateExpr(left) && IsA(right, Var)))
 				{
 					AttrNumber attrNum;
 					attrNum = IsA(left, Var) ? ((Var *) left)->varattno
@@ -195,7 +256,7 @@ static void ybcClassifyWhereExpr(RelOptInfo *baserel,
  * statement. Assumes the expression can be evaluated by YugaByte
  * (i.e. ybcIsYbExpression returns true).
  */
-static void ybcAddWhereCond(Expr* expr, YBCPgStatement yb_stmt)
+static void ybcAddWhereCond(EState *estate, Expr* expr, YBCPgStatement yb_stmt)
 {
 	OpExpr *opExpr = (OpExpr *) expr;
 
@@ -206,15 +267,30 @@ static void ybcAddWhereCond(Expr* expr, YBCPgStatement yb_stmt)
 	Assert(opExpr->args->length == 2);
 	Expr *left  = linitial(opExpr->args);
 	Expr *right = lsecond(opExpr->args);
-	Assert((IsA(left, Var) && IsA(right, Const)) ||
-	       (IsA(left, Const) && IsA(right, Var)));
+	Assert((IsA(left, Var) && IsSupportedPredicateExpr(right)) ||
+	       (IsSupportedPredicateExpr(left) && IsA(right, Var)));
 
-	Var       *col_desc = IsA(left, Var) ? (Var *) left : (Var *) right;
-	Const     *col_val  = IsA(left, Var) ? (Const *) right : (Const *) left;
+	Var *col_desc;
+	Expr *rhs_expr;
+
+	if (IsA(left, Var))
+	{
+		col_desc = (Var *) left;
+		rhs_expr = right;
+	}
+	else
+	{
+		col_desc = (Var *) right;
+		rhs_expr = left;
+	}
+
+	Datum value;
+	bool is_null;
+	GetValFromPredicateExpr(rhs_expr, estate->es_param_list_info, &value, &is_null);
 	YBCPgExpr ybc_expr  = YBCNewConstant(yb_stmt,
 	                                     col_desc->vartype,
-	                                     col_val->constvalue,
-	                                     col_val->constisnull);
+	                                     value,
+	                                     is_null);
 	HandleYBStatus(YBCPgDmlBindColumn(yb_stmt, col_desc->varattno, ybc_expr));
 }
 
@@ -493,6 +569,7 @@ static void
 ybcBeginForeignScan(ForeignScanState *node, int eflags)
 {
 	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
+	EState      *estate      = node->ss.ps.state;
 	Relation    relation     = node->ss.ss_currentRelation;
 
 	/* Planning function above should ensure both target and conds are set */
@@ -523,7 +600,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	foreach(lc, yb_conds)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
-		ybcAddWhereCond(expr, ybc_state->handle);
+		ybcAddWhereCond(estate, expr, ybc_state->handle);
 	}
 
 	/* Set scan targets. */

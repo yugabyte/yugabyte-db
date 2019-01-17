@@ -827,6 +827,7 @@ stmt :
 			| CreateUserStmt
 			| CreatedbStmt
 			| DeleteStmt
+			| DeallocateStmt
 			| DropStmt
 			| ExecuteStmt
 			| ExplainStmt
@@ -910,7 +911,6 @@ stmt :
 			| CreateEventTrigStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateRoleStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DeallocateStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DeclareCursorStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DefineStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DiscardStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -11044,28 +11044,24 @@ execute_param_clause: '(' expr_list ')'				{ $$ = $2; }
 
 DeallocateStmt: DEALLOCATE name
 					{
-						parser_ybc_not_support(@1, "DEALLOCATE");
 						DeallocateStmt *n = makeNode(DeallocateStmt);
 						n->name = $2;
 						$$ = (Node *) n;
 					}
 				| DEALLOCATE PREPARE name
 					{
-						parser_ybc_not_support(@1, "DEALLOCATE PREPARE");
 						DeallocateStmt *n = makeNode(DeallocateStmt);
 						n->name = $3;
 						$$ = (Node *) n;
 					}
 				| DEALLOCATE ALL
 					{
-						parser_ybc_not_support(@1, "DEALLOCATE ALL");
 						DeallocateStmt *n = makeNode(DeallocateStmt);
 						n->name = NULL;
 						$$ = (Node *) n;
 					}
 				| DEALLOCATE PREPARE ALL
 					{
-						parser_ybc_not_support(@1, "DEALLOCATE PREPARE ALL");
 						DeallocateStmt *n = makeNode(DeallocateStmt);
 						n->name = NULL;
 						$$ = (Node *) n;

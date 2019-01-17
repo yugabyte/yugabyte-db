@@ -19,6 +19,7 @@ test: yb_float8
 test: yb_timestamp
 test: yb_insert
 test: yb_schema
+test: yb_prepare
 #
 ####################################################################################################
 # YB Feature Testsuite: Used for reporting supported and unsupported features.
