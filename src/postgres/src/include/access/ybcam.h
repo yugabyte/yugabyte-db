@@ -51,9 +51,9 @@ typedef struct YbSysScanDescData *YbSysScanDesc;
  * We ignore the index id and always do a regular YugaByte scan (Postgres
  * would do either heap scan or index scan depending on the params).
  */
-extern SysScanDesc ybc_systable_beginscan(Relation heapRelation,
+extern SysScanDesc ybc_systable_beginscan(Relation relation,
                                           Oid indexId,
-                                          bool first_time,
+                                          bool indexOK,
                                           Snapshot snapshot,
                                           int nkeys,
                                           ScanKey key);

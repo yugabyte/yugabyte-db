@@ -961,10 +961,11 @@ ExecUpdate(ModifyTableState *mtstate,
 	}
 	else if (IsYugaByteEnabled())
 	{
-		if (!IsYBRelation(resultRelationDesc)) {
+		if (!IsYBRelation(resultRelationDesc))
+		{
 			ereport(ERROR,
-							(errcode(ERRCODE_UNDEFINED_OBJECT),
-							 errmsg("This relational object does not exist in YugaByte database")));
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("This relational object does not exist in YugaByte database")));
 		}
 		YBCExecuteUpdate(resultRelationDesc, resultRelInfo, planSlot, tuple);
 		if (resultRelInfo->ri_projectReturning)

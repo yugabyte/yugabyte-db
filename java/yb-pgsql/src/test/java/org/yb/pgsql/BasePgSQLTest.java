@@ -794,7 +794,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return nonTsanVsTsan(360, 1080);
+    return nonTsanVsTsan(720, 1080);
   }
 
 }
