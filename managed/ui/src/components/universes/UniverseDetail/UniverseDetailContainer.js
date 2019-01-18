@@ -65,19 +65,37 @@ const mapDispatchToProps = (dispatch) => {
 };
 
 function mapStateToProps(state, ownProps) {
-  // detect if software update is available for this universe  
+  // Detect if software update is available for this universe  
   const isUpdateAvailable = (state) => {
+    const isFirstVersionOlder = (first, second) => {
+      for (let idx = 0; idx < first.length; idx++) {
+        const first_ = parseInt(first[idx], 10);
+        const second_ = parseInt(second[idx], 10);
+        if (first_ < second_) { 
+          return true;
+        } else if (first_ > second_) {
+          return false;
+        }
+      }
+      return false;
+    };
     try {
-      if(isDefinedNotNull(state.universe.currentUniverse.data) && isNonEmptyObject(state.universe.currentUniverse.data)) {
+      if (isDefinedNotNull(state.universe.currentUniverse.data) && isNonEmptyObject(state.universe.currentUniverse.data)) {
         const primaryCluster = getPrimaryCluster(state.universe.currentUniverse.data.universeDetails.clusters);
         const currentversion = primaryCluster && (primaryCluster.userIntent.ybSoftwareVersion || undefined);
-        if (currentversion) {
+        if (currentversion && state.customer.softwareVersions.length) {
           for (let idx = 0; idx < state.customer.softwareVersions.length; idx++) {
             const current = currentversion.split("-");
             const iterator = state.customer.softwareVersions[idx].split("-");
-            // return number of versions avail to upgrade
-            if ( iterator[0] < current[0] //compare version and release codes separately because "b9" > "b13"
-              || (iterator[0] === current[0] && parseInt(iterator[1].substr(1), 10) <= parseInt(current[1].substr(1), 10))) return idx;
+            
+            const currentVersion = current[0];
+            const iteratorVersion = iterator[0];
+            const currentBuild = parseInt(current[1].substr(1), 10);
+            const iteratorBuild = parseInt(iterator[1].substr(1), 10);
+
+            // Compare versions till current won't be founded or founded an older one and compare release codes separately because "b9" > "b13"
+            if (isFirstVersionOlder(iteratorVersion.split("."), currentVersion.split("."))
+              || (iteratorVersion === currentVersion && iteratorBuild <= currentBuild)) return idx;
           };
         }
       }
