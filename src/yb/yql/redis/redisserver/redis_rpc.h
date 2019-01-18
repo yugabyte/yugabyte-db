@@ -66,7 +66,7 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
   // Shutdown this context. Clean up the subscriptions if any.
   void Shutdown(const Status& status) override;
 
-  void ReportPendingWriteBytes(size_t bytes_in_queue) override;
+  CHECKED_STATUS ReportPendingWriteBytes(size_t bytes_in_queue) override;
 
  private:
   void Connected(const rpc::ConnectionPtr& connection) override {}

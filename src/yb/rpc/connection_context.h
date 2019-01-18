@@ -74,7 +74,7 @@ class ConnectionContext {
 
   virtual RpcConnectionPB::StateType State() = 0;
 
-  virtual void ReportPendingWriteBytes(size_t bytes_in_queue) = 0;
+  virtual CHECKED_STATUS ReportPendingWriteBytes(size_t bytes_in_queue) = 0;
 };
 
 class ConnectionContextBase : public ConnectionContext {
@@ -87,7 +87,9 @@ class ConnectionContextBase : public ConnectionContext {
     return *allocator_;
   }
 
-  void ReportPendingWriteBytes(size_t bytes_in_queue) override {}
+  Status ReportPendingWriteBytes(size_t bytes_in_queue) override {
+    return Status::OK();
+  }
 
  private:
   GrowableBufferAllocator* allocator_;
