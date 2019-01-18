@@ -77,9 +77,6 @@ class MasterFailoverTest : public YBTest {
     // leader master failures (specifically, failures as result of
     // long pauses) more rapid.
 
-    // Set max missed heartbeats periods to 1.0 (down from 3.0).
-    opts_.extra_master_flags.push_back("--leader_failure_max_missed_heartbeat_periods=1.0");
-
     // Set the TS->master heartbeat timeout to 1 second (down from 15 seconds).
     opts_.extra_tserver_flags.push_back("--heartbeat_rpc_timeout_ms=1000");
     // Allow one TS heartbeat failure before retrying with back-off (down from 3).
