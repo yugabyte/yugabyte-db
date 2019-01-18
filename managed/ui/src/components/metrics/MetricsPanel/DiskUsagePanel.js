@@ -38,7 +38,7 @@ export default class DiskUsagePanel extends Component {
           : 
             <Fragment>
               <YBResourceCount size={Math.round(space.used * 10)/10} unit="GB used" />
-              <span className="gray-text metric-subtitle">{Math.round(space.free)} GB free out of {Math.round(space.size)} </span>
+              <span className="gray-text metric-subtitle">{Math.round(space.free)} GB free out of {Math.round(space.size)} GB</span>
               <LinearGraph value={value} base="used"/>
             </Fragment>
         }
