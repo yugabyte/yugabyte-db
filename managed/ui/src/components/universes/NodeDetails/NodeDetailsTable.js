@@ -90,8 +90,8 @@ export default class NodeDetailsTable extends Component {
             </TableHeaderColumn>
             <TableHeaderColumn dataField="privateIP">Private IP</TableHeaderColumn>
             <TableHeaderColumn dataField="nodeStatus">Status</TableHeaderColumn>
-            <TableHeaderColumn dataField="nodeAction"  columnClassName={"yb-actions-cell"}
-              dataFormat={getNodeAction}>Action</TableHeaderColumn>
+            {!this.props.isReadOnlyUniverse && <TableHeaderColumn dataField="nodeAction" columnClassName={"yb-actions-cell"}
+              dataFormat={getNodeAction}>Action</TableHeaderColumn>}
           </BootstrapTable>
         }
       />

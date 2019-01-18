@@ -25,7 +25,8 @@ export default class NodeDetails extends Component {
     if (!isNonEmptyArray(nodeDetails)) {
       return <span />;
     }
-
+    const isReadOnlyUniverse = getPromiseState(currentUniverse).isSuccess() && currentUniverse.data.universeDetails.capability === "READ_ONLY";
+    
     const universeCreated = universeDetails.updateInProgress;
     const sortedNodeDetails = nodeDetails.sort((a, b) => nodeComparisonFunction(a, b, currentUniverse.data.universeDetails.clusters));
     const nodeDetailRows = sortedNodeDetails.map((nodeDetail) => {
@@ -76,8 +77,8 @@ export default class NodeDetails extends Component {
 
     return (
       <Fragment>
-        <NodeDetailsTable nodeDetails={primaryNodeDetails} providerUUID={primaryCluster.userIntent.provider} clusterType='primary' />
-        { readOnlyCluster && <NodeDetailsTable nodeDetails={readOnlyNodeDetails} providerUUID={readOnlyCluster.userIntent.provider} clusterType='readonly' /> }
+        <NodeDetailsTable isReadOnlyUniverse={isReadOnlyUniverse} nodeDetails={primaryNodeDetails} providerUUID={primaryCluster.userIntent.provider} clusterType='primary' />
+        { readOnlyCluster && <NodeDetailsTable isReadOnlyUniverse={isReadOnlyUniverse} nodeDetails={readOnlyNodeDetails} providerUUID={readOnlyCluster.userIntent.provider} clusterType='readonly' /> }
       </Fragment>
     );
   }
