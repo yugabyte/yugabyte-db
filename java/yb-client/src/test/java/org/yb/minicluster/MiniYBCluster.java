@@ -68,6 +68,8 @@ public class MiniYBCluster implements AutoCloseable {
 
   private static final int REDIS_PORT = 6379;
 
+  private static final int POSTGRES_PORT = 5433;
+
   private static final int[] TSERVER_CLIENT_API_PORTS = new int[] {
       CQL_PORT, REDIS_PORT };
 
@@ -79,10 +81,6 @@ public class MiniYBCluster implements AutoCloseable {
   public static final int TSERVER_HEARTBEAT_INTERVAL_MS = 500;
 
   public static final int CATALOG_MANAGER_BG_TASK_WAIT_MS = 500;
-
-  // We expect that 127.0.0.1 - 127.0.0.254 are present on macOS as loopback IPs.
-  private static final int MIN_LOCALHOST_IP_ON_MACOS = 2;
-  private static final int MAX_LOCALHOST_IP_ON_MACOS = 254;
 
   private static final String TSERVER_MASTER_ADDRESSES_FLAG = "--tserver_master_addrs";
 
@@ -107,6 +105,7 @@ public class MiniYBCluster implements AutoCloseable {
   private final List<HostAndPort> masterHostPorts = new ArrayList<>();
   private final List<InetSocketAddress> cqlContactPoints = new ArrayList<>();
   private final List<InetSocketAddress> redisContactPoints = new ArrayList<>();
+  private final List<InetSocketAddress> pgsqlContactPoints = new ArrayList<>();
 
   // Client we can use for common operations.
   private YBClient syncClient;
@@ -150,6 +149,9 @@ public class MiniYBCluster implements AutoCloseable {
 
   private int replicationFactor = -1;
 
+  private boolean startPgSqlProxy = false;
+  private boolean pgTransactionsEnabled = false;
+
   /**
    * Not to be invoked directly, but through a {@link MiniYBClusterBuilder}.
    */
@@ -158,17 +160,26 @@ public class MiniYBCluster implements AutoCloseable {
                 int defaultTimeoutMs,
                 List<String> masterArgs,
                 List<List<String>> tserverArgs,
+                List<String> commonTServerArgs,
                 int numShardsPerTserver,
                 String testClassName,
                 boolean useIpWithCertificate,
-                int replicationFactor) throws Exception {
+                int replicationFactor,
+                boolean startPgSqlProxy,
+                boolean pgTransactionsEnabled) throws Exception {
     this.defaultTimeoutMs = defaultTimeoutMs;
     this.testClassName = testClassName;
     this.numShardsPerTserver = numShardsPerTserver;
     this.useIpWithCertificate = useIpWithCertificate;
     this.replicationFactor = replicationFactor;
+    this.startPgSqlProxy = startPgSqlProxy;
+    this.pgTransactionsEnabled = pgTransactionsEnabled;
+    if (pgTransactionsEnabled && !startPgSqlProxy) {
+      throw new AssertionError(
+          "Attempting to enable PostgreSQL transactions without enabling PostgreSQL API");
+    }
 
-    startCluster(numMasters, numTservers, masterArgs, tserverArgs);
+    startCluster(numMasters, numTservers, masterArgs, tserverArgs, commonTServerArgs);
     startSyncClient();
   }
 
@@ -343,14 +354,21 @@ public class MiniYBCluster implements AutoCloseable {
    *
    * @param numMasters how many masters to start
    * @param numTservers how many tablet servers to start
-   * @throws Exception
+   * @param masterArgs extra master arguments
+   * @param perTServerArgs per-tablet server arguments
    */
   private void startCluster(int numMasters,
                             int numTservers,
                             List<String> masterArgs,
-                            List<List<String>> tserverArgs) throws Exception {
+                            List<List<String>> perTServerArgs,
+                            List<String> commonTServerArgs) throws Exception {
     Preconditions.checkArgument(numMasters > 0, "Need at least one master");
     Preconditions.checkArgument(numTservers > 0, "Need at least one tablet server");
+    Preconditions.checkNotNull(perTServerArgs);
+    if (perTServerArgs.size() != numTservers) {
+      throw new AssertionError("numTservers=" + numTservers + " but (perTServerArgs has " +
+          perTServerArgs.size() + " elements");
+    }
     // The following props are set via yb-client's pom.
     String baseDirPath = TestUtils.getBaseTmpDir();
 
@@ -365,13 +383,24 @@ public class MiniYBCluster implements AutoCloseable {
     startMasters(numMasters, baseDirPath, masterArgs);
 
     LOG.info("Starting {} tablet servers...", numTservers);
-    startTabletServers(numTservers, tserverArgs);
+    startTabletServers(numTservers, perTServerArgs, commonTServerArgs);
   }
 
   private void startTabletServers(
-      int numTservers, List<List<String>> tserverArgs) throws Exception {
+      int numTservers,
+      List<List<String>> tserverArgs,
+      List<String> commonTServerArgs) throws Exception {
+    LOG.info("startTabletServers: numTServers=" + numTservers +
+        ", tserverArgs=" + tserverArgs +
+        ", commonTServerArgs=" + commonTServerArgs);
+
     for (int i = 0; i < numTservers; i++) {
-      startTServer(tserverArgs.get(i));
+      List<String> concatenatedArgs = new ArrayList<>();
+      if (tserverArgs.get(i) != null) {
+        concatenatedArgs.addAll(tserverArgs.get(i));
+      }
+      concatenatedArgs.addAll(commonTServerArgs);
+      startTServer(concatenatedArgs);
     }
 
     long tserverStartupDeadlineMs = System.currentTimeMillis() + 60000;
@@ -406,6 +435,10 @@ public class MiniYBCluster implements AutoCloseable {
 
   public void startTServer(List<String> tserverArgs, String tserverBindAddress,
                            Integer tserverRpcPort) throws Exception {
+    LOG.info("Starting a tablet server: " +
+        "tserverArgs=" + tserverArgs +
+        ", tserverBindAddress=" + tserverBindAddress +
+        ", tserverRpcPort=" + tserverRpcPort);
     String baseDirPath = TestUtils.getBaseTmpDir();
     long now = System.currentTimeMillis();
     if (tserverBindAddress == null) {
@@ -438,6 +471,17 @@ public class MiniYBCluster implements AutoCloseable {
         "--cql_proxy_webserver_port=" + cqlWebPort,
         "--yb_client_admin_operation_timeout_sec=" + YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC,
         "--callhome_enabled=false");
+
+    if (startPgSqlProxy) {
+      tsCmdLine.addAll(Lists.newArrayList(
+          "--pgsql_proxy_bind_address=" + tserverBindAddress + ":" + POSTGRES_PORT,
+          "--start_pgsql_proxy"
+      ));
+      if (pgTransactionsEnabled) {
+        tsCmdLine.add("--pg_transactions_enabled");
+      }
+    }
+
     if (tserverArgs != null) {
       for (String arg : tserverArgs) {
         tsCmdLine.add(arg);
@@ -451,6 +495,7 @@ public class MiniYBCluster implements AutoCloseable {
     tserverProcesses.put(HostAndPort.fromParts(tserverBindAddress, rpcPort), daemon);
     cqlContactPoints.add(new InetSocketAddress(tserverBindAddress, CQL_PORT));
     redisContactPoints.add(new InetSocketAddress(tserverBindAddress, REDIS_PORT));
+    pgsqlContactPoints.add(new InetSocketAddress(tserverBindAddress, POSTGRES_PORT));
 
     if (flagsPath.startsWith(baseDirPath)) {
       // We made a temporary copy of the flags; delete them later.
@@ -889,6 +934,14 @@ public class MiniYBCluster implements AutoCloseable {
    */
   public List<InetSocketAddress> getRedisContactPoints() {
     return redisContactPoints;
+  }
+
+  /**
+   * Returns a list of PostgreSQL contact points.
+   * @return PostgreSQL contact points
+   */
+  public List<InetSocketAddress> getPostgresContactPoints() {
+    return pgsqlContactPoints;
   }
 
   /**

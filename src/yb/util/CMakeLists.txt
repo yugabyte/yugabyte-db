@@ -255,7 +255,6 @@ if(NOT APPLE)
   set(UTIL_LIBS
     ${UTIL_LIBS}
     rt
-    vmem
     libbacktrace)
 endif()
 
@@ -284,11 +283,6 @@ target_link_libraries(yb_test_util
   glog
   gmock
   yb_util)
-
-if(NOT APPLE)
-target_link_libraries(yb_test_util
-  vmem)
-endif()
 
 #######################################
 # yb_test_main
