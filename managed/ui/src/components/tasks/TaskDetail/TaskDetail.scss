@@ -123,8 +123,9 @@ pre {
     height: auto !important;
     font-size: 12px !important;
     line-height: 1.5 !important;
+    display: block;
     border-radius: 7px;
-    padding: 12px 20px;
+    padding: 12px 20px !important;
     margin: 0;
     background: #F7F8F9;
     border: 1px solid #DEE0EA;
