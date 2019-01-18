@@ -229,3 +229,6 @@ if(YB_ENT_CURRENT_SOURCE_DIR)
     ADD_YB_TEST(${test})
   endforeach()
 endif()
+
+# Tablet server starts PostgreSQL as a child process
+adD_dependencies(tserver postgres)

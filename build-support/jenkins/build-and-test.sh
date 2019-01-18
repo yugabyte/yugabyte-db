@@ -346,11 +346,15 @@ if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
 fi
 
 if [[ ${YB_ENABLE_STATIC_ANALYZER:-auto} == "auto" ]]; then
-  if is_clang && is_linux && [[ $build_type == "debug" ]] && is_jenkins_master_build; then
+  if is_clang &&
+     is_linux &&
+     [[ $build_type =~ ^(debug|release)$ ]] &&
+     is_jenkins_master_build
+  then
     export YB_ENABLE_STATIC_ANALYZER=1
-    log "Enabling Clang static analyzer (this is a clang Linux debug build)"
+    log "Enabling Clang static analyzer (this is a clang Linux $build_type build)"
   else
-    log "Not enabling Clang static analyzer (this is not a clang Linux debug build):" \
+    log "Not enabling Clang static analyzer (this is not a clang Linux debug/release build):" \
         "OSTYPE=$OSTYPE, YB_COMPILER_TYPE=$YB_COMPILER_TYPE, build_type=$build_type"
   fi
 else
@@ -506,6 +510,7 @@ random_build_id=$( date +%Y%m%dT%H%M%S )_$RANDOM$RANDOM$RANDOM
 # -------------------------------------------------------------------------------------------------
 # Java build
 
+java_build_failed=false
 if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
   # This sets the proper NFS-shared directory for Maven's local repository on Jenkins.
   set_mvn_parameters
@@ -517,43 +522,51 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
 
   build_yb_java_code_in_all_dirs clean
 
-  if is_jenkins; then
-    # Use a unique version to avoid a race with other concurrent jobs on jar files that we install
-    # into ~/.m2/repository.
-    yb_new_group_id=org.yb$random_build_id
+  heading "Java 'clean' build is complete, will now actually build Java code"
 
-    for java_project_dir in "${yb_java_project_dirs[@]}"; do
-      pushd "$java_project_dir"
-      heading \
-        "Changing groupId from 'org.yb' to '$yb_new_group_id' in directory '$java_project_dir'"
-      find "$java_project_dir" -name "pom.xml" | \
-        while read pom_file_path; do
-          sed_i "s#<groupId>org[.]yb</groupId>#<groupId>$yb_new_group_id</groupId>#g" \
-                "$pom_file_path"
-        done
-      heading "Building Java code in directory '$java_project_dir'"
-      if ! build_yb_java_code_with_retries -DskipTests clean install; then
-        EXIT_STATUS=1
-        FAILURES+="Java build failed in directory '$java_project_dir'"$'\n'
-      fi
-      popd
-    done
+  # Use a unique version to avoid a race with other concurrent jobs on jar files that we install
+  # into ~/.m2/repository.
+  yb_new_group_id=org.yb$random_build_id
 
-    # Tell gen_version_info.py to store the Git SHA1 of the commit really present in the code
-    # being built, not our temporary commit to update pom.xml files.
-    get_current_git_sha1
-    export YB_VERSION_INFO_GIT_SHA1=$current_git_sha1
+  for java_project_dir in "${yb_java_project_dirs[@]}"; do
+    pushd "$java_project_dir"
+    heading \
+      "Changing groupId from 'org.yb' to '$yb_new_group_id' in directory '$java_project_dir'"
+    find "$java_project_dir" -name "pom.xml" | \
+      while read pom_file_path; do
+        sed_i "s#<groupId>org[.]yb</groupId>#<groupId>$yb_new_group_id</groupId>#g" \
+              "$pom_file_path"
+      done
+    heading "Building Java code in directory '$java_project_dir'"
+    if ! build_yb_java_code_with_retries -DskipTests clean install; then
+      EXIT_STATUS=1
+      FAILURES+="Java build failed in directory '$java_project_dir'"$'\n'
+      java_build_failed=true
+    else
+      log "Java code build in directory '$java_project_dir' SUCCEEDED"
+    fi
+    popd
+  done
 
-    commit_msg="Updating groupId to $yb_new_group_id during testing"
-
-    (
-      set -x
-      cd "$YB_SRC_ROOT"
-      git add -A .
-      git commit -m "$commit_msg"
-    )
-    unset commit_msg
+  if "$java_build_failed"; then
+    fatal "Java build failed, stopping here."
   fi
+
+  # Tell gen_version_info.py to store the Git SHA1 of the commit really present in the code
+  # being built, not our temporary commit to update pom.xml files.
+  get_current_git_sha1
+  export YB_VERSION_INFO_GIT_SHA1=$current_git_sha1
+
+  heading "Committing local changes (groupId update)"
+  commit_msg="Updating groupId to $yb_new_group_id during testing"
+
+  (
+    set -x
+    cd "$YB_SRC_ROOT"
+    git add -A .
+    git commit -m "$commit_msg"
+  )
+  unset commit_msg
 
   collect_java_tests
 

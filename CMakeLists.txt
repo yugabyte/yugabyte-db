@@ -1544,15 +1544,6 @@ else()
   message("Not using tcmalloc, because of '${YB_TCMALLOC_AVAILABLE}'")
 endif()
 
-# libvmem
-if (NOT APPLE)
-  find_package(Vmem REQUIRED)
-  include_directories(SYSTEM ${VMEM_INCLUDE_DIR})
-  ADD_THIRDPARTY_LIB(vmem
-    STATIC_LIB "${VMEM_STATIC_LIB}"
-    SHARED_LIB "${VMEM_SHARED_LIB}")
-endif()
-
 ## curl
 find_package(CURL REQUIRED)
 include_directories(SYSTEM ${CURL_INCLUDE_DIRS})

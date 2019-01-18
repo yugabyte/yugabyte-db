@@ -18,6 +18,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.SanitizerUtil;
 
 @RunWith(value=YBTestRunner.class)
@@ -25,8 +26,8 @@ public class TestClusterWithHighLoadAndSlowSync extends TestClusterBase {
   private static final Logger LOG = LoggerFactory.getLogger(TestClusterBase.class);
 
   @Override
-  protected void customizeMiniClusterOptions() {
-    addTServerArgs(
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    builder.addCommonTServerArgs(
         "--log_inject_latency",
         "--log_inject_latency_ms_mean=100",
         "--log_inject_latency_ms_stddev=50"

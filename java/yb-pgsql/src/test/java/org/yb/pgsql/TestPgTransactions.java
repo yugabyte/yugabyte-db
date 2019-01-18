@@ -19,6 +19,7 @@ import org.postgresql.core.TransactionState;
 import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.SanitizerUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
@@ -36,10 +37,16 @@ public class TestPgTransactions extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
 
   @Override
-  protected Map<String, String> getExtraPostgresEnvVars() {
-    Map<String, String> envVars = super.getExtraPostgresEnvVars();
+  protected Map<String, String> getInitDbEnvVars() {
+    Map<String, String> envVars = super.getInitDbEnvVars();
     envVars.put("YB_PG_TRANSACTIONS_ENABLED", "1");
     return envVars;
+  }
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    builder.enablePgTransactions(true);
   }
 
   @Test

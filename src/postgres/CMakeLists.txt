@@ -38,3 +38,6 @@ add_custom_target(
 # Make sure we rebuild postgres before the master/tserver libraries.
 add_dependencies(master postgres)
 add_dependencies(tserver postgres)
+
+# PostgreSQL server links with the pggate library.
+add_dependencies(postgres yb_pggate)
