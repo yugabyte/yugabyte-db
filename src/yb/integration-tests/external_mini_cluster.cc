@@ -153,7 +153,7 @@ namespace yb {
 static const char* const kMasterBinaryName = "yb-master";
 static const char* const kTabletServerBinaryName = "yb-tserver";
 static double kProcessStartTimeoutSeconds = 60.0;
-static double kTabletServerRegistrationTimeoutSeconds = 10.0;
+static MonoDelta kTabletServerRegistrationTimeout = 10s;
 
 static const int kHeapProfileSignal = SIGUSR1;
 
@@ -263,8 +263,7 @@ Status ExternalMiniCluster::Start() {
         Substitute("Failed starting tablet server $0", i));
   }
   RETURN_NOT_OK(WaitForTabletServerCount(
-                  opts_.num_tablet_servers,
-                  MonoDelta::FromSeconds(kTabletServerRegistrationTimeoutSeconds)));
+      opts_.num_tablet_servers, kTabletServerRegistrationTimeout));
 
   running_ = true;
   if (opts_.start_pgsql_proxy) {
@@ -308,9 +307,7 @@ Status ExternalMiniCluster::Restart() {
     }
   }
 
-  RETURN_NOT_OK(WaitForTabletServerCount(
-      tablet_servers_.size(),
-      MonoDelta::FromSeconds(kTabletServerRegistrationTimeoutSeconds)));
+  RETURN_NOT_OK(WaitForTabletServerCount(tablet_servers_.size(), kTabletServerRegistrationTimeout));
 
   running_ = true;
   return Status::OK();
@@ -962,28 +959,50 @@ Status ExternalMiniCluster::WaitForTabletServerCount(int count, const MonoDelta&
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);
 
+  std::vector<scoped_refptr<ExternalTabletServer>> last_unmatched = tablet_servers_;
+  bool had_leader = false;
+
   while (true) {
-    MonoDelta remaining = deadline.GetDeltaSince(MonoTime::Now());
+    MonoDelta remaining = deadline - MonoTime::Now();
     if (remaining.ToSeconds() < 0) {
-      return STATUS(TimedOut, Substitute("$0 TS(s) never registered with master", count));
+      std::vector<std::string> unmatched_uuids;
+      unmatched_uuids.reserve(last_unmatched.size());
+      for (const auto& server : last_unmatched) {
+        unmatched_uuids.push_back(server->instance_id().permanent_uuid());
+      }
+      if (!had_leader) {
+        return STATUS(TimedOut, "Does not have active master leader to check tserver registration");
+      }
+      return STATUS_FORMAT(TimedOut, "$0 TS(s) never registered with master (not registered $1)",
+                           count, unmatched_uuids);
     }
 
+    // We should give some time for RPC to proceed, otherwise all requests would fail.
+    remaining = std::max<MonoDelta>(remaining, 250ms);
+
+    last_unmatched = tablet_servers_;
+    had_leader = false;
     for (int i = 0; i < masters_.size(); i++) {
       master::ListTabletServersRequestPB req;
       master::ListTabletServersResponsePB resp;
       rpc::RpcController rpc;
       rpc.set_timeout(remaining);
-      RETURN_NOT_OK_PREPEND(master_proxy(i)->ListTabletServers(req, &resp, &rpc),
-                            "ListTabletServers RPC failed");
+      auto status = master_proxy(i)->ListTabletServers(req, &resp, &rpc);
+      LOG_IF(WARNING, !status.ok()) << "ListTabletServers failed: " << status;
+      if (!status.ok() || resp.has_error()) {
+        continue;
+      }
+      had_leader = true;
       // ListTabletServers() may return servers that are no longer online.
       // Do a second step of verification to verify that the descs that we got
       // are aligned (same uuid/seqno) with the TSs that we have in the cluster.
       int match_count = 0;
       for (const master::ListTabletServersResponsePB_Entry& e : resp.servers()) {
-        for (const scoped_refptr<ExternalTabletServer>& ets : tablet_servers_) {
-          if (ets->instance_id().permanent_uuid() == e.instance_id().permanent_uuid() &&
-              ets->instance_id().instance_seqno() == e.instance_id().instance_seqno()) {
+        for (auto it = last_unmatched.begin(); it != last_unmatched.end(); ++it) {
+          if ((**it).instance_id().permanent_uuid() == e.instance_id().permanent_uuid() &&
+              (**it).instance_id().instance_seqno() == e.instance_id().instance_seqno()) {
             match_count++;
+            last_unmatched.erase(it);
             break;
           }
         }

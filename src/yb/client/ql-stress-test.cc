@@ -355,7 +355,7 @@ TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleT
       consensus::RejectMode::kNonEmpty);
 
   ASSERT_OK(WaitForLeaderOfSingleTablet(
-      cluster_.get(), temp_leader, 10s, "Waiting for new leader"));
+      cluster_.get(), temp_leader, 20s, "Waiting for new leader"));
 
   // Give new leader some time to request lease.
   // TODO wait for specific event.
@@ -369,7 +369,7 @@ TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleT
   ASSERT_OK(StepDown(temp_leader, old_leader->permanent_uuid(), ForceStepDown::kTrue));
 
   ASSERT_OK(WaitForLeaderOfSingleTablet(
-      cluster_.get(), old_leader, 10s, "Waiting old leader to restore leadership"));
+      cluster_.get(), old_leader, 20s, "Waiting old leader to restore leadership"));
 
   down_cast<consensus::RaftConsensus*>(always_follower->consensus())->TEST_RejectMode(
       consensus::RejectMode::kNone);
