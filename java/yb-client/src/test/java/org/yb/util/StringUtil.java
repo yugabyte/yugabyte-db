@@ -13,7 +13,9 @@
 package org.yb.util;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 public final class StringUtil {
@@ -95,5 +97,27 @@ public final class StringUtil {
       maxLen = Math.max(maxLen, line.length());
     }
     return maxLen;
+  }
+
+  /**
+   * Returns an environment variable dump of the form
+   * <code>
+   * ENV_VAR_NAME_1: ENV_VAR_VALUE1
+   * ENV_VAR_NAME_2: ENV_VAR_VALUE2
+   * </code>
+   * @param envVars the input map of environment variables
+   * @param separator the separator, e.g. {@code ": "} for the example above.
+   * @param indentation the number of spaces to indent each line with
+   * @return the formatted environment variable dump.
+   */
+  public static String getEnvVarMapDumpStr(
+      Map<String, String> envVars, String separator, int indentation) {
+    List<String> envVarDump = new ArrayList<>();
+    for (Map.Entry<String, String> entry : envVars.entrySet()) {
+      envVarDump.add(entry.getKey() + separator + entry.getValue());
+    }
+    Collections.sort(envVarDump);
+    String indentStr = String.join("", Collections.nCopies(indentation, " "));
+    return indentStr + String.join("\n" + indentStr, envVarDump);
   }
 }

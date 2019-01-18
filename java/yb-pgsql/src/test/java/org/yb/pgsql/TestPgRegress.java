@@ -24,8 +24,10 @@ public class TestPgRegress extends BasePgSQLTest {
 
   @Test
   public void testPgRegress() throws Exception {
-    PgRegressRunner pgRegress = new PgRegressRunner(getPgHost(), getPgPort(), DEFAULT_PG_USER);
-    pgRegress.setEnvVars(getExtraPostgresEnvVars());
+    final int tserverIndex = 0;
+    PgRegressRunner pgRegress = new PgRegressRunner(
+        getPgHost(tserverIndex), getPgPort(tserverIndex), DEFAULT_PG_USER);
+    pgRegress.setEnvVars(getInitDbEnvVars());
     pgRegress.start();
     pgRegress.stop();
   }

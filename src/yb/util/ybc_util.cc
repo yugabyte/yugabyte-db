@@ -52,8 +52,10 @@ Status InitInternal(const char* argv0) {
     string env_var_name = "FLAGS_" + flag_info.name;
     const char* env_var_value = getenv(env_var_name.c_str());
     if (env_var_value) {
+#ifndef NDEBUG
       LOG(INFO) << "Setting flag " << flag_info.name << " to the value of the env var "
                 << env_var_name << ": " << env_var_value;
+#endif
       google::SetCommandLineOption(flag_info.name.c_str(), env_var_value);
     }
   }
