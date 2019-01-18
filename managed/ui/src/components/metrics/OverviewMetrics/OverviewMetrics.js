@@ -107,6 +107,7 @@ class OverviewMetrics extends Component {
               <YBWidget
                 noMargin
                 headerRight={
+                  metricKey === "disk_usage" ? null :
                   <YBPanelLegend data={legendData} />
                 }
                 headerLeft={metrics[type][metricKey].layout.title}
