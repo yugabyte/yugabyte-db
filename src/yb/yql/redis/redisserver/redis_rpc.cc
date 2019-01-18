@@ -136,14 +136,14 @@ size_t RedisConnectionContext::BufferLimit() {
   return FLAGS_redis_max_read_buffer_size;
 }
 
-void RedisConnectionContext::ReportPendingWriteBytes(size_t pending_bytes) {
+Status RedisConnectionContext::ReportPendingWriteBytes(size_t pending_bytes) {
   static constexpr size_t kHardLimit = 32_MB;
   static constexpr size_t kSoftLimit = 8_MB;
   auto mode = ClientMode();
   DVLOG(3) << "Connection in mode " << ToString(mode) << " has " << pending_bytes
            << " bytes in the queue.";
   if (mode == RedisClientMode::kNormal) {
-    return;
+    return Status::OK();
   }
 
   // We use the same buffering logic for subscribers and monitoring clients.
@@ -153,7 +153,7 @@ void RedisConnectionContext::ReportPendingWriteBytes(size_t pending_bytes) {
   if (pending_bytes > kHardLimit) {
     LOG(INFO) << "Connection in mode " << ToString(mode) << " has reached the HardLimit. "
               << pending_bytes << " bytes in the queue.";
-    Shutdown(STATUS(NetworkError, "Slow Redis Client: HardLimit exceeded."));
+    return STATUS(NetworkError, "Slow Redis Client: HardLimit exceeded.");
   } else if (pending_bytes > kSoftLimit) {
     auto now = CoarseMonoClock::Now();
     static const CoarseDuration kGracePeriod =
@@ -166,7 +166,7 @@ void RedisConnectionContext::ReportPendingWriteBytes(size_t pending_bytes) {
       LOG(INFO) << "Connection in mode " << ToString(mode) << " has reached the Softlimit > "
                 << yb::ToString(kGracePeriod) << " ago. " << pending_bytes
                 << " bytes in the queue.";
-      Shutdown(STATUS(NetworkError, "Slow Redis Client: Softlimit exceeded."));
+      return STATUS(NetworkError, "Slow Redis Client: Softlimit exceeded.");
     } else {
       DVLOG(1) << "Connection in mode " << ToString(mode)
                << " has reached the Softlimit less than  " << yb::ToString(kGracePeriod) << " ago. "
@@ -179,6 +179,7 @@ void RedisConnectionContext::ReportPendingWriteBytes(size_t pending_bytes) {
       soft_limit_exceeded_since_ = CoarseTimePoint::max();
     }
   }
+  return Status::OK();
 }
 
 void RedisConnectionContext::Shutdown(const Status& status) {

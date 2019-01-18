@@ -246,9 +246,17 @@ void Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) 
   // Check before and after calling Send. Before to reset state, if we
   // were over the limit; but are now back in good standing. After, to
   // check if we are now over the limit.
-  context_->ReportPendingWriteBytes(stream_->GetPendingWriteBytes());
+  Status s = context_->ReportPendingWriteBytes(stream_->GetPendingWriteBytes());
+  if (!s.ok()) {
+    Shutdown(s);
+    return;
+  }
   stream_->Send(std::move(outbound_data));
-  context_->ReportPendingWriteBytes(stream_->GetPendingWriteBytes());
+  s = context_->ReportPendingWriteBytes(stream_->GetPendingWriteBytes());
+  if (!s.ok()) {
+    Shutdown(s);
+    return;
+  }
 
   if (!batch) {
     OutboundQueued();
