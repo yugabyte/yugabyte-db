@@ -113,18 +113,19 @@ body {
 
 .footer {
   width: 100%;
-  /* Set the fixed height of the footer here */
-  height: 60px;
   background-color: #f5f5f5;
-  /* Pin the footer to the bottom */
-  position: absolute;
   bottom: 0;
   margin-left: -35px;
 }
 .footer pre {
   border: none;
+  /* To prevent horizontal scrolling */
+  white-space:pre-wrap;
 }
-
+.footer pre.message {
+  /* To prevent word break in the easter egg message */
+  word-break: inherit;
+}
 .yb-footer {
   margin-left: 180px;
 }

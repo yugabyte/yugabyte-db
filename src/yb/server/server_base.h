@@ -196,6 +196,7 @@ class RpcAndWebServerBase : public RpcServerBase {
 
  private:
   void GenerateInstanceID();
+  std::string GetEasterEggMessage() const;
   std::string FooterHtml() const;
 
   DISALLOW_COPY_AND_ASSIGN(RpcAndWebServerBase);
