@@ -212,7 +212,7 @@ Status RpcServerBase::Init() {
   return Status::OK();
 }
 
-std::string RpcServerBase::ToString() const {
+string RpcServerBase::ToString() const {
   return strings::Substitute("$0 : rpc=$1", name_, yb::ToString(first_rpc_address()));
 }
 
@@ -343,7 +343,7 @@ void RpcServerBase::Shutdown() {
 }
 
 RpcAndWebServerBase::RpcAndWebServerBase(
-    std::string name, const ServerBaseOptions& options,
+    string name, const ServerBaseOptions& options,
     const std::string& metric_namespace,
     MemTrackerPtr mem_tracker)
     : RpcServerBase(name, options, metric_namespace, std::move(mem_tracker)),
@@ -442,8 +442,18 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly r
   return Status::OK();
 }
 
-std::string RpcAndWebServerBase::FooterHtml() const {
-  return Substitute("<pre>$0\nserver uuid $1</pre>",
+string RpcAndWebServerBase::GetEasterEggMessage() const {
+  return "Congratulations on installing YugaByte DB Community Edition. "
+         "We'd like to welcome you to the community with a free t-shirt and pack of stickers! "
+         "Please claim your reward here: <a href='https://www.yugabyte.com/community-rewards/'>"
+         "https://www.yugabyte.com/community-rewards/</a>";
+
+}
+
+string RpcAndWebServerBase::FooterHtml() const {
+  return Substitute("<pre class='message'><i class=\"fa-lg fa fa-gift\" aria-hidden=\"true\"></i>"
+                    " $0</pre><pre>$1\nserver uuid $2</pre>",
+                    GetEasterEggMessage(),
                     VersionInfo::GetShortVersionString(),
                     instance_pb_->permanent_uuid());
 }
@@ -516,11 +526,11 @@ void RpcAndWebServerBase::Shutdown() {
   web_server_->Stop();
 }
 
-std::string TEST_RpcAddress(int index, Private priv) {
+string TEST_RpcAddress(int index, Private priv) {
   return Format("127.0.0.$0", index * 2 + (priv ? 0 : 1));
 }
 
-std::string TEST_RpcBindEndpoint(int index, uint16_t port) {
+string TEST_RpcBindEndpoint(int index, uint16_t port) {
   return Format("$0:$1", TEST_RpcAddress(index, Private::kTrue), port);
 }
 
