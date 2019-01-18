@@ -18,6 +18,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <algorithm>
+
 #include <boost/algorithm/string.hpp>
 
 #include "yb/gutil/strings/join.h"
@@ -185,19 +187,23 @@ class TestRedisService : public RedisTableTestBase {
     );
   }
 
+  void DoRedisTestIntRange(
+      int line,
+      const std::vector<std::string>& command,
+      int64_t expected_min, int64_t expected_max) {
+    DoRedisTest(line, command, RedisReplyType::kInteger,
+        [line, expected_min, expected_max](const RedisReply& reply) {
+          ASSERT_LE(expected_min, reply.as_integer()) << "Originator: " << __FILE__ << ":" << line;
+          ASSERT_GE(expected_max, reply.as_integer()) << "Originator: " << __FILE__ << ":" << line;
+        }
+    );
+  }
+
   void DoRedisTestApproxInt(int line,
                             const std::vector<std::string>& command,
                             int64_t expected,
                             int64_t err_bound) {
-    DoRedisTest(line, command, RedisReplyType::kInteger,
-        [line, expected, err_bound](const RedisReply& reply) {
-          // TODO: this does not check for wraparounds.
-          ASSERT_LE(expected - err_bound, reply.as_integer()) <<
-            "Originator: " << __FILE__ << ":" << line;
-          ASSERT_GE(expected + err_bound, reply.as_integer()) <<
-            "Originator: " << __FILE__ << ":" << line;
-        }
-    );
+    DoRedisTestIntRange(line, command, expected - err_bound, expected + err_bound);
   }
 
   void DoRedisTestResultsArray(
@@ -4674,7 +4680,7 @@ TEST_F(TestRedisService, TestTtlModifyNoOverwrite) {
   // TODO: when we support RENAME, it should also be added here.
   std::string k1 = "key";
   std::string k2 = "keyy";
-  int64_t millisecond_error = 500;
+  const int64_t millisecond_error = 500;
   // Test integer modify
   DoRedisTestOk(__LINE__, {"SET", k1, "3"});
   SyncClient();
@@ -4768,32 +4774,57 @@ TEST_F(TestRedisService, TestTtlPrimitive) {
   DoRedisTestInt(__LINE__, {"TTL", k1}, -1);
   DoRedisTestInt(__LINE__, {"PTTL", k1}, -1);
   SyncClient();
-  // Setting a ttl and checking expected return values.
-  DoRedisTestInt(__LINE__, {"EXPIRE", k1, "3"}, 1);
+  // Setting a TTL and checking expected return values.
+  DoRedisTestInt(__LINE__, {"EXPIRE", k1, "4"}, 1);
   SyncClient();
-  DoRedisTestInt(__LINE__, {"TTL", k1}, 3);
-  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 3000, millisecond_error);
-  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
-  SyncClient();
-  std::this_thread::sleep_for(2s);
-  DoRedisTestInt(__LINE__, {"TTL", k1}, 1);
-  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 1000, millisecond_error);
-  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
-  SyncClient();
-  // Checking expected return values after expiration.
-  std::this_thread::sleep_for(2s);
-  CheckExpiredPrimitive(&k1);
+  {
+    int attempt = 1;
+    while (true) {
+      const auto ttl_set_at = std::chrono::system_clock::now();
+      DoRedisTestInt(__LINE__, {"TTL", k1}, 4);
+      DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 4000, millisecond_error);
+      DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+      SyncClient();
+      auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now() - ttl_set_at).count();
+      std::this_thread::sleep_for(std::max(
+          static_cast<int64_t>(0), static_cast<int64_t>(2500 - elapsed_ms)) * 1ms);
+      // By this point there should be about 1.4 seconds left until the key's expiration.
+      auto total_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now() - ttl_set_at).count();
+      if (total_elapsed_ms > 2550) {
+        if (attempt < 10) {
+          LOG(INFO) << "TTL test took too long, re-trying (attempt: "
+                    << attempt << ")";
+          attempt++;
+          DoRedisTestOk(__LINE__, {"SET", k1, value});
+          DoRedisTestInt(__LINE__, {"EXPIRE", k1, "4"}, 1);
+          continue;
+        } else {
+          LOG(WARNING) << "TTL test took too long, not re-trying: attempt=" << attempt;
+        }
+      }
+      DoRedisTestInt(__LINE__, {"TTL", k1}, 1);
+      DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 1000, millisecond_error);
+      DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+      SyncClient();
+      // Checking expected return values after expiration.
+      std::this_thread::sleep_for(2s);
+      CheckExpiredPrimitive(&k1);
+      break;  // Success.
+    }
+  }
   // Testing functionality with SETEX.
   DoRedisTestOk(__LINE__, {"SETEX", k1, "5", value});
   SyncClient();
-  DoRedisTestInt(__LINE__, {"TTL", k1}, 5);
-  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 5000, millisecond_error);
+  DoRedisTestIntRange(__LINE__, {"TTL", k1}, 4, 5);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 4500, millisecond_error);
   DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
   SyncClient();
   // Set a new, earlier expiration.
   DoRedisTestInt(__LINE__, {"EXPIRE", k1, "2"}, 1);
   DoRedisTestInt(__LINE__, {"TTL", k1}, 2);
-  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 2000, millisecond_error);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 1500, millisecond_error);
   DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
   SyncClient();
   // Check that the value expires as expected.
