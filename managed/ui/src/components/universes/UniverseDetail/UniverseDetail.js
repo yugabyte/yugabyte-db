@@ -97,6 +97,12 @@ class UniverseDetail extends Component {
     return false;
   };
 
+  transitToDefaultRoute = () => {
+    const currentLocation = this.props.location;
+    currentLocation.query = currentLocation.query.tab ? {tab: currentLocation.query.tab} : {};
+    this.props.router.push(currentLocation);
+  }
+
   render() {
     const {
       uuid,
@@ -112,6 +118,9 @@ class UniverseDetail extends Component {
       closeModal,
       currentCustomer
     } = this.props;
+
+    const isReadOnlyUniverse = getPromiseState(currentUniverse).isSuccess() && currentUniverse.data.universeDetails.capability === "READ_ONLY";
+    
     if (pathname === "/universes/create") {
       return <UniverseFormContainer type="Create"/>;
     }
@@ -121,10 +130,22 @@ class UniverseDetail extends Component {
       return <span />;
     }
     if (isNonEmptyObject(query) && query.edit && query.async) {
-      return <UniverseFormContainer type="Async" />;
+      if (isReadOnlyUniverse) {
+        // not fully legit but mandatory fallback for manually edited query 
+        this.transitToDefaultRoute();
+      }
+      else {
+        return <UniverseFormContainer type="Async" />;
+      }
     }
     if (isNonEmptyObject(query) && query.edit) {
-      return <UniverseFormContainer type="Edit" />;
+      if (isReadOnlyUniverse) {
+        // not fully legit but mandatory fallback for manually edited query 
+        this.transitToDefaultRoute();
+      }
+      else {
+        return <UniverseFormContainer type="Edit" />;
+      }
     }
 
     if (getPromiseState(currentUniverse).isError()) {
@@ -134,29 +155,35 @@ class UniverseDetail extends Component {
     const width = this.state.dimensions.width;
     const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
     const tabElements = [
-      <Tab eventKey={"overview"} title="Overview" key="overview-tab" mountOnEnter={true} unmountOnExit={true}>
-        <UniverseOverviewContainer width={width} currentUniverse={currentUniverse} customer={currentCustomer} />
-      </Tab>,
-      <Tab eventKey={"tables"} title="Tables" key="tables-tab" mountOnEnter={true} unmountOnExit={true}>
-        <ListTablesContainer/>
-      </Tab>,
-      <Tab eventKey={"nodes"} title="Nodes" key="nodes-tab" mountOnEnter={true} unmountOnExit={true}>
-        <NodeDetailsContainer  />
-      </Tab>,
-      <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab" mountOnEnter={true} unmountOnExit={true}>
-        <div className="universe-detail-content-container">
-          <CustomerMetricsPanel origin={"universe"} width={width} nodePrefixes={nodePrefixes} />
-        </div>
-      </Tab>,
-      <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab" mountOnEnter={true} unmountOnExit={true}>
-        <UniverseTaskList universe={universe} tasks={tasks} />
-      </Tab>,
-      <Tab eventKey={"backups"} title="Backups" key="backups-tab" mountOnEnter={true} unmountOnExit={true}>
-        <ListBackupsContainer currentUniverse={currentUniverse.data} />
-      </Tab>,
-      <Tab eventKey={"health"} title="Health" key="alerts-tab" mountOnEnter={true} unmountOnExit={true}>
-        <UniverseHealthCheckList universe={universe} />
-      </Tab>
+      //common tabs for every universe
+      ...[
+        <Tab eventKey={"overview"} title="Overview" key="overview-tab" mountOnEnter={true} unmountOnExit={true}>
+          <UniverseOverviewContainer width={width} currentUniverse={currentUniverse} customer={currentCustomer} />
+        </Tab>,
+        <Tab eventKey={"tables"} title="Tables" key="tables-tab" mountOnEnter={true} unmountOnExit={true}>
+          <ListTablesContainer/>
+        </Tab>,
+        <Tab eventKey={"nodes"} title="Nodes" key="nodes-tab" mountOnEnter={true} unmountOnExit={true}>
+          <NodeDetailsContainer  />
+        </Tab>,
+        <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab" mountOnEnter={true} unmountOnExit={true}>
+          <div className="universe-detail-content-container">
+            <CustomerMetricsPanel origin={"universe"} width={width} nodePrefixes={nodePrefixes} />
+          </div>
+        </Tab>,
+        <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab" mountOnEnter={true} unmountOnExit={true}>
+          <UniverseTaskList universe={universe} tasks={tasks} />
+        </Tab>
+      ],
+      //tabs relevant for non-imported universes only
+      ...isReadOnlyUniverse ? [] : [
+        <Tab eventKey={"backups"} title="Backups" key="backups-tab" mountOnEnter={true} unmountOnExit={true}>
+          <ListBackupsContainer currentUniverse={currentUniverse.data} />
+        </Tab>,
+        <Tab eventKey={"health"} title="Health" key="alerts-tab" mountOnEnter={true} unmountOnExit={true}>
+          <UniverseHealthCheckList universe={universe} />
+        </Tab>
+      ]
     ];
     const currentBreadCrumb = (
       <div className="detail-label-small">
@@ -191,8 +218,8 @@ class UniverseDetail extends Component {
 
             {/* UNIVERSE EDIT */}
             <div className="universe-detail-btn-group">
-              <YBButton btnClass=" btn"
-                        btnText="Edit Universe" btnIcon="fa fa-pencil" onClick={this.onEditUniverseButtonClick} />
+              {!isReadOnlyUniverse && <YBButton btnClass=" btn"
+                        btnText="Edit Universe" btnIcon="fa fa-pencil" onClick={this.onEditUniverseButtonClick} />}
 
               <UniverseAppsModal nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet}/>
               <DropdownButton title="More" className={this.showUpgradeMarker() ? "btn-marked": ""} id="bg-nested-dropdown" pullRight>
@@ -203,11 +230,11 @@ class UniverseDetail extends Component {
                   </YBLabelWithIcon>
                   { this.showUpgradeMarker() ? <span className="badge badge-pill pull-right">{updateAvailable}</span> : ""} 
                 </MenuItem>
-                <MenuItem eventKey="2" onClick={this.onEditReadReplicaButtonClick} >
+                {!isReadOnlyUniverse && <MenuItem eventKey="2" onClick={this.onEditReadReplicaButtonClick} >
                   <YBLabelWithIcon icon="fa fa-copy fa-fw">
                     Configure Read Replica
                   </YBLabelWithIcon>
-                </MenuItem>
+                </MenuItem>}
                 <MenuItem eventKey="2" onClick={showGFlagsModal} >
                   <YBLabelWithIcon icon="fa fa-flag fa-fw">
                     Edit GFlags

@@ -4,6 +4,7 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { withRouter } from 'react-router';
 import { Tabs } from 'react-bootstrap';
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 
 class YBTabsPanel extends Component {
   tabSelect = selectedKey => {
@@ -17,6 +18,17 @@ class YBTabsPanel extends Component {
     this.props.router.push(currentLocation);
   };
 
+  queryTabHandler = () => {
+    const {location, children} = this.props;
+    const locationTabKey = location.query.tab;
+    if (isDefinedNotNull(locationTabKey)) {
+      return children.some((item) => {
+        return item.key.indexOf(locationTabKey) >= 0;
+      }) ? locationTabKey : false;
+    }
+    return false;
+  }
+
   static propTypes = {
     id: PropTypes.string.isRequired,
     activeTab: PropTypes.string,
@@ -27,8 +39,8 @@ class YBTabsPanel extends Component {
   }
 
   render() {
-    const {activeTab, defaultTab, location} = this.props;
-    const activeTabKey = activeTab || location.query.tab || defaultTab;
+    const {activeTab, defaultTab} = this.props;
+    const activeTabKey = activeTab || this.queryTabHandler() || defaultTab;
     return (
       <Tabs activeKey={activeTabKey} onSelect={this.tabSelect} id={this.props.id} className={this.props.className}>
         {this.props.children}
