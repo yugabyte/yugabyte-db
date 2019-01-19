@@ -192,7 +192,7 @@ void CQLInboundCall::RespondSuccess(const RefCntBuffer& buffer,
   QueueResponse(/* is_success */ true);
 }
 
-void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) {
+void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const {
   std::shared_ptr<const CQLRequest> request =
 #ifdef THREAD_SANITIZER
       request_;
@@ -267,10 +267,12 @@ void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_p
 void CQLInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
   int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
-
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
-    LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
-    trace_->Dump(&LOG(INFO), true);
+      LOG(WARNING) << ToString() << " took " << total_time << "ms. Details:";
+      rpc::RpcCallInProgressPB call_in_progress_pb;
+      GetCallDetails(&call_in_progress_pb);
+      LOG(WARNING) << call_in_progress_pb.DebugString() << "Trace: ";
+      trace_->Dump(&LOG(WARNING), /* include_time_deltas */ true);
   }
 }
 
