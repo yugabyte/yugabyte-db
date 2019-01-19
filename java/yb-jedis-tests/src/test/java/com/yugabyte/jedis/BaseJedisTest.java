@@ -49,6 +49,11 @@ import static junit.framework.TestCase.assertEquals;
 import static junit.framework.TestCase.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
+import org.yb.YBTestRunner;
+
+import org.junit.runner.RunWith;
+
+@RunWith(value=YBTestRunner.class)
 public abstract class BaseJedisTest extends BaseMiniClusterTest {
 
   protected enum JedisClientType { JEDIS, JEDISCLUSTER, YBJEDIS };
