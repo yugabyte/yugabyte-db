@@ -261,13 +261,27 @@ MonoTime RedisInboundCall::GetClientDeadline() const {
   return MonoTime::Max();  // No timeout specified in the protocol for Redis.
 }
 
+void RedisInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const {
+    rpc::RedisCallDetailsPB* redis_details = call_in_progress_pb->mutable_redis_details();
+    for (const RedisClientCommand& command : client_batch_) {
+        string query;
+        for (const Slice& arg : command) {
+            query += " " + arg.ToDebugString(FLAGS_rpcz_max_redis_query_dump_size);
+        }
+        redis_details->add_call_details()->set_redis_string(query);
+    }
+}
+
 void RedisInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
   auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
 
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
-    LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
-    trace_->Dump(&LOG(INFO), /* include_time_deltas */ true);
+    LOG(WARNING) << ToString() << " took " << total_time << "ms. Details:";
+    rpc::RpcCallInProgressPB call_in_progress_pb;
+    GetCallDetails(&call_in_progress_pb);
+    LOG(WARNING) << call_in_progress_pb.DebugString() << "Trace: ";
+    trace_->Dump(&LOG(WARNING), /* include_time_deltas */ true);
   }
 }
 
@@ -287,15 +301,7 @@ bool RedisInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
     return true;
   }
 
-  rpc::RedisCallDetailsPB* redis_details = resp->mutable_redis_details();
-  for (RedisClientCommand command : client_batch_) {
-    string query = "";
-    for (Slice arg : command) {
-      query += " " + arg.ToDebugString(FLAGS_rpcz_max_redis_query_dump_size);
-    }
-    redis_details->add_call_details()->set_redis_string(query);
-  }
-
+  GetCallDetails(resp);
   return true;
 }
 
