@@ -12,6 +12,7 @@
 //
 package org.yb;
 
+import org.hamcrest.Matcher;
 import org.junit.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -137,6 +138,21 @@ public class AssertionWrappers {
    */
   public static void assertEquals(Object expected, Object actual) {
     wrapAssertion(() -> Assert.assertEquals(expected, actual));
+  }
+
+  /**
+   * Asserts that actual satisfies the condition specified by matcher.
+   * If not, an AssertionError is thrown with information about the
+   * matcher and failing value.
+   *
+   * Type Parameters:
+   * T - the static type accepted by the matcher
+   * Parameters:
+   * @param actual - the computed value being compared
+   * @param matcher - an expression, built of Matchers, specifying allowed values
+   */
+  public static <T> void assertThat(T actual, Matcher<? super T> matcher) {
+    wrapAssertion(() -> Assert.assertThat(actual, matcher));
   }
 
   /**

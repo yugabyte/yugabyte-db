@@ -2079,9 +2079,10 @@ lint_java_code() {
   for java_project_dir in "${yb_java_project_dirs[@]}"; do
     local IFS=$'\n'
     local java_test_files=( $(
-      find "$java_project_dir" -name "Test*.java" -and \
+      find "$java_project_dir" \( -name "Test*.java" -or -name "*Test.java" \) -and \
           -not -name "TestUtils.java" -and \
-          -not -name "*Base.java"
+          -not -name "*Base.java" -and \
+          -not -name "Base*Test.java"
     ) )
     local java_test_file
     for java_test_file in "${java_test_files[@]}"; do

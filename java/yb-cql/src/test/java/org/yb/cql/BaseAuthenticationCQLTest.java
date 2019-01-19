@@ -23,9 +23,9 @@ import java.util.Iterator;
 import java.util.List;
 
 import static junit.framework.TestCase.fail;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertTrue;
 
 public class BaseAuthenticationCQLTest extends BaseCQLTest {
   // Type of resources.
