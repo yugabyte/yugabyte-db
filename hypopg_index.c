@@ -1668,8 +1668,7 @@ hypo_estimate_index(hypoIndex *entry, RelOptInfo *rel)
 			  - (fillfactor == 0 ? BTREE_DEFAULT_FILLFACTOR : fillfactor)
 						+ additional_bloat) / 100;
 
-		entry->pages =
-			entry->tuples * line_size * bloat_factor / usable_page_size;
+		entry->pages = (BlockNumber) (entry->tuples * line_size * bloat_factor / usable_page_size);
 #if PG_VERSION_NUM >= 90300
 		entry->tree_height = -1;	/* TODO */
 #endif
@@ -1751,7 +1750,7 @@ hypo_estimate_index(hypoIndex *entry, RelOptInfo *rel)
 			sizeof_SignType * bloomLength;
 
 		entry->pages = 1; /* meta page */
-		entry->pages += ceil(
+		entry->pages += (BlockNumber) ceil(
 				((double) entry->tuples * line_size) / usable_page_size);
 	}
 #endif
