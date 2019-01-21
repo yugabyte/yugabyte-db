@@ -624,13 +624,11 @@ class ClusterControl:
             adjust_env_for_postgres()
             os.system(command)
 
-    def stop_daemon(self, daemon_id):
-        self.options.validate_daemon_index(daemon_id.index)
-        pid = self.get_pid(daemon_id)
+    def stop_process(self, pid, name):
         if pid == 0:
-            logging.info("Server {} already stopped".format(daemon_id))
+            logging.info("{} already stopped".format(name))
             return
-        logging.info("Stopping server {} PID={}".format(daemon_id, pid))
+        logging.info("Stopping {} PID={}".format(name, pid))
         # Kill the process.
         os.kill(pid, signal.SIGTERM)
 
@@ -638,7 +636,7 @@ class ClusterControl:
         last_msg_time = time.time()
 
         def print_wait_msg():
-            logging.info("Waiting for server {} PID={} to stop...".format(daemon_id, pid))
+            logging.info("Waiting for {} PID={} to stop...".format(name, pid))
             sys.stdout.flush()
             sys.stderr.flush()
         print_wait_msg()
@@ -656,6 +654,27 @@ class ClusterControl:
             if current_time - last_msg_time >= 1:
                 print_wait_msg()
                 last_msg_time = current_time
+
+    def stop_daemon(self, daemon_id):
+        self.options.validate_daemon_index(daemon_id.index)
+        self.stop_process(self.get_pid(daemon_id), "Server {}".format(daemon_id))
+        postgres_pid = self.find_postgres_pid(daemon_id)
+        if postgres_pid != 0:
+            self.stop_process(postgres_pid, "Postmaster for {}".format(daemon_id))
+
+    def find_postgres_pid(self, daemon_id):
+        if not daemon_id.is_tserver():
+            return 0
+        base_dirs = self.options.get_base_node_dirs(daemon_id.index)
+        for dir in base_dirs:
+            postmaster_pid = os.path.join(dir, "pg_data", "postmaster.pid")
+            if os.path.exists(postmaster_pid):
+                try:
+                    with open(postmaster_pid, 'rt') as inp:
+                        return int(inp.readline())
+                except OSError as err:
+                    logging.info("Failed to read postmaster.pid for {}".format(daemon_id))
+                    return 0
 
     def restart_daemon(self, daemon_id):
         self.stop_daemon(daemon_id)
