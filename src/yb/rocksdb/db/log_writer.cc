@@ -125,7 +125,7 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr, size_t n) {
     // Only encode low 32-bits of the 64-bit log number.  This means
     // we will fail to detect an old record if we recycled a log from
     // ~4 billion logs ago, but that is effectively impossible, and
-    // even if it were we'dbe far more likely to see a false positive
+    // even if it were we'd be far more likely to see a false positive
     // on the 32-bit CRC.
     EncodeFixed32(buf + 7, static_cast<uint32_t>(log_number_));
     crc = crc32c::Extend(crc, buf + 7, 4);

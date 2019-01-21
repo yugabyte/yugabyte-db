@@ -120,8 +120,8 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
     }
     if (!is_table_file || !same_fs) {
       RLOG(db->GetOptions().info_log, "Copying %s", src_fname.c_str());
-      s = CopyFile(db->GetEnv(), db->GetName() + src_fname,
-                   full_private_path + src_fname,
+      std::string dest_name = full_private_path + src_fname;
+      s = CopyFile(db->GetEnv(), db->GetName() + src_fname, dest_name,
                    (type == kDescriptorFile) ? manifest_file_size : 0);
     }
   }
@@ -201,8 +201,8 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
   }
 
   // here we know that we succeeded and installed the new snapshot
-  RLOG(db->GetOptions().info_log, "Snapshot DONE. All is good");
-  RLOG(db->GetOptions().info_log, "Snapshot sequence number: %" PRIu64,
+  RLOG(db->GetOptions().info_log, "Checkpoint DONE. All is good");
+  RLOG(db->GetOptions().info_log, "Checkpoint sequence number: %" PRIu64,
       sequence_number);
 
   return s;

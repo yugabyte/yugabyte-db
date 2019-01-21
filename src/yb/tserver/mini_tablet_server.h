@@ -83,6 +83,7 @@ class MiniTabletServer {
   CHECKED_STATUS FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
       tablet::FlushFlags flags = tablet::FlushFlags::kAll);
+  CHECKED_STATUS CompactTablets();
   CHECKED_STATUS SwitchMemtables();
   CHECKED_STATUS CleanTabletLogs();
 

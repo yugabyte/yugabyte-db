@@ -349,7 +349,7 @@ Status MemTableList::InstallMemtableFlushResults(
   }
   if (frontiers) {
     DCHECK_NE(0, mems[0]->edit_.GetNewFiles().size());
-    mems[0]->edit_.SetFlushedFrontierUpdate(frontiers->Largest().Clone());
+    mems[0]->edit_.UpdateFlushedFrontier(frontiers->Largest().Clone());
   }
 
   // if some other thread is already committing, then return
