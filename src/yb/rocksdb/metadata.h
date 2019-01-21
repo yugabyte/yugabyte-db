@@ -89,6 +89,11 @@ class UserFrontier;
 // modified the copied value, the original value would also change.
 typedef yb::clone_ptr<UserFrontier> UserFrontierPtr;
 
+void UpdateUserFrontier(UserFrontierPtr* value, const UserFrontierPtr& update,
+                        UpdateUserValueType type);
+void UpdateUserFrontier(UserFrontierPtr* value, UserFrontierPtr&& update,
+                        UpdateUserValueType type);
+
 // When writing a batch of RocksDB records, the user could specify "frontier" values of that batch,
 // such as smallest/largest Raft OpId or smallest/largest HybridTime of records in that batch. We
 // maintain these values for each SSTable file and whole DB. This class defines an abstract
@@ -110,6 +115,11 @@ class UserFrontier {
   // UpdateUserValueType. A "largest" update should only increase fields, and a "smallest" should
   // only decrease them. Fields that are not set in rhs are not checked.
   virtual bool IsUpdateValid(const UserFrontier& rhs, UpdateUserValueType type) const = 0;
+
+  // Returns true if this frontier dominates another frontier, i.e. if we update this frontier
+  // with the values from the other one in the direction specified by update_type, nothing will
+  // change. This is used to check invariants.
+  bool Dominates(const UserFrontier& rhs, UpdateUserValueType update_type) const;
 
   virtual void FromOpIdPBDeprecated(const yb::OpIdPB& op_id) = 0;
   virtual void FromPB(const google::protobuf::Any& pb) = 0;

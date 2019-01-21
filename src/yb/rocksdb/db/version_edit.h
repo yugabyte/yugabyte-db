@@ -161,9 +161,7 @@ class VersionEdit {
   void SetLastSequence(SequenceNumber seq) {
     last_sequence_ = seq;
   }
-  void SetFlushedFrontierUpdate(UserFrontierPtr value) {
-    flushed_frontier_ = std::move(value);
-  }
+  void UpdateFlushedFrontier(UserFrontierPtr value);
   void SetMaxColumnFamily(uint32_t max_column_family) {
     max_column_family_ = max_column_family;
   }
@@ -254,6 +252,10 @@ class VersionEdit {
 
   std::string DebugString(bool hex_key = false) const;
 
+  std::string ToString() const {
+    return DebugString();
+  }
+
  private:
   friend class VersionSet;
   friend class Version;
@@ -268,7 +270,6 @@ class VersionEdit {
   boost::optional<uint32_t> max_column_family_;
   boost::optional<SequenceNumber> last_sequence_;
   UserFrontierPtr flushed_frontier_;
-  UserFrontierPtr flushed_frontier_update_;
 
   DeletedFileSet deleted_files_;
   std::vector<std::pair<int, FileMetaData>> new_files_;

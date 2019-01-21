@@ -63,6 +63,25 @@ TEST_F(ConsensusFrontierTest, TestUpdates) {
     ConsensusFrontier higher_cutoff{{1, 1}, 1000_usec_ht, 501_usec_ht};
     ConsensusFrontier higher_idx_lower_ht{{1, 2}, 999_usec_ht, 500_usec_ht};
 
+    EXPECT_TRUE(higher_idx.Dominates(frontier, UpdateUserValueType::kLargest));
+    EXPECT_TRUE(higher_ht.Dominates(frontier, UpdateUserValueType::kLargest));
+    EXPECT_TRUE(higher_cutoff.Dominates(frontier, UpdateUserValueType::kLargest));
+    EXPECT_FALSE(higher_idx.Dominates(frontier, UpdateUserValueType::kSmallest));
+    EXPECT_FALSE(higher_ht.Dominates(frontier, UpdateUserValueType::kSmallest));
+    EXPECT_FALSE(higher_cutoff.Dominates(frontier, UpdateUserValueType::kSmallest));
+    EXPECT_FALSE(frontier.Dominates(higher_idx, UpdateUserValueType::kLargest));
+    EXPECT_FALSE(frontier.Dominates(higher_ht, UpdateUserValueType::kLargest));
+    EXPECT_FALSE(frontier.Dominates(higher_cutoff, UpdateUserValueType::kLargest));
+    EXPECT_TRUE(frontier.Dominates(higher_idx, UpdateUserValueType::kSmallest));
+    EXPECT_TRUE(frontier.Dominates(higher_ht, UpdateUserValueType::kSmallest));
+    EXPECT_TRUE(frontier.Dominates(higher_cutoff, UpdateUserValueType::kSmallest));
+
+    // frontier and higher_idx_lower_ht are "incomparable" according to the "dominates" ordering.
+    EXPECT_FALSE(frontier.Dominates(higher_idx_lower_ht, UpdateUserValueType::kSmallest));
+    EXPECT_FALSE(frontier.Dominates(higher_idx_lower_ht, UpdateUserValueType::kLargest));
+    EXPECT_FALSE(higher_idx_lower_ht.Dominates(frontier, UpdateUserValueType::kSmallest));
+    EXPECT_FALSE(higher_idx_lower_ht.Dominates(frontier, UpdateUserValueType::kLargest));
+
     EXPECT_TRUE(frontier.IsUpdateValid(higher_idx, UpdateUserValueType::kLargest));
     EXPECT_TRUE(frontier.IsUpdateValid(higher_ht, UpdateUserValueType::kLargest));
     EXPECT_FALSE(higher_idx.IsUpdateValid(frontier, UpdateUserValueType::kLargest));
@@ -113,6 +132,7 @@ TEST_F(ConsensusFrontierTest, TestUpdates) {
         PbToString(pb),
         "{ op_id: { term: 2 index: 3 } hybrid_time: { physical: 24 logical: 1696 } "
             "history_cutoff: { physical: 48 logical: 3392 } }");
+
 }
 
 }  // namespace docdb

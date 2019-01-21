@@ -974,7 +974,7 @@ Status CompactionJob::InstallCompactionResults(
     }
   }
   if (largest_user_frontier_) {
-    compaction->edit()->SetFlushedFrontierUpdate(largest_user_frontier_);
+    compaction->edit()->UpdateFlushedFrontier(largest_user_frontier_);
   }
   return versions_->LogAndApply(compaction->column_family_data(),
                                 mutable_cf_options, compaction->edit(),

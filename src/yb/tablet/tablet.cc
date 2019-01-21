@@ -1251,6 +1251,16 @@ Status Tablet::Flush(FlushMode mode, FlushFlags flags) {
   return Status::OK();
 }
 
+Status Tablet::CompactSync() {
+  std::vector<std::string> file_names;
+  for (const auto& lfmd : regular_db_->GetLiveFilesMetaData()) {
+    file_names.push_back(lfmd.name);
+  }
+
+  LOG(INFO) << "Files to compact: " << yb::ToString(file_names);
+  return regular_db_->CompactFiles(rocksdb::CompactionOptions(), file_names, 0);
+}
+
 Status Tablet::WaitForFlush() {
   TRACE_EVENT0("tablet", "Tablet::WaitForFlush");
 

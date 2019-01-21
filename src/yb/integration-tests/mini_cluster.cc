@@ -329,6 +329,13 @@ Status MiniCluster::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags flag
   return Status::OK();
 }
 
+Status MiniCluster::CompactTablets() {
+  for (const auto& tablet_server : mini_tablet_servers_) {
+    RETURN_NOT_OK(tablet_server->CompactTablets());
+  }
+  return Status::OK();
+}
+
 Status MiniCluster::SwitchMemtables() {
   for (const auto& tablet_server : mini_tablet_servers_) {
     RETURN_NOT_OK(tablet_server->SwitchMemtables());

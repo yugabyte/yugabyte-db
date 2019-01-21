@@ -11,12 +11,16 @@
 // under the License.
 //
 
+#include <boost/scope_exit.hpp>
+
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/table_handle.h"
 
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
+
+#include "yb/docdb/consensus_frontier.h"
 
 #include "yb/tablet/tablet_peer.h"
 
@@ -26,11 +30,22 @@
 #include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/util/bfql/gen_opcodes.h"
 
+#include "yb/rocksdb/utilities/checkpoint.h"
+#include "yb/rocksdb/metadata.h"
+
+#include "yb/tablet/tablet_options.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
+
 DECLARE_double(respond_write_failed_probability);
 DECLARE_bool(detect_duplicates_for_retryable_requests);
 DECLARE_int32(raft_heartbeat_interval_ms);
 
 using namespace std::literals;
+
+using rocksdb::checkpoint::CreateCheckpoint;
+using rocksdb::UserFrontierPtr;
+using yb::tablet::TabletOptions;
+using yb::docdb::InitRocksDBOptions;
 
 namespace yb {
 namespace client {
@@ -108,11 +123,15 @@ class QLStressTest : public QLDmlTestBase {
     return row.column(0);
   }
 
+  void VerifyFlushedFrontiers();
+
   void TestRetryWrites(bool restarts);
 
   bool CheckRetryableRequestsCounts(size_t* total_entries, size_t* total_leaders);
 
   TableHandle table_;
+
+  int checkpoint_index_ = 0;
 };
 
 bool QLStressTest::CheckRetryableRequestsCounts(size_t* total_entries, size_t* total_leaders) {
@@ -378,6 +397,88 @@ TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleT
 
   ASSERT_OK(flush_future.get());
   ASSERT_OK(flush_future2.get());
+}
+
+namespace {
+
+void VerifyFlushedFrontier(const UserFrontierPtr& frontier, OpId* op_id) {
+  ASSERT_TRUE(frontier);
+  if (frontier) {
+    *op_id = down_cast<docdb::ConsensusFrontier*>(frontier.get())->op_id();
+    ASSERT_GT(op_id->term, 0);
+    ASSERT_GT(op_id->index, 0);
+  }
+}
+
+}  // anonymous namespace
+void QLStressTest::VerifyFlushedFrontiers() {
+  for (const auto& mini_tserver : cluster_->mini_tablet_servers()) {
+    auto peers = mini_tserver->server()->tablet_manager()->GetTabletPeers();
+    for (const auto& peer : peers) {
+      rocksdb::DB* db = peer->tablet()->TEST_db();
+      OpId op_id;
+      ASSERT_NO_FATALS(VerifyFlushedFrontier(db->GetFlushedFrontier(), &op_id));
+
+      // Also check that if we checkpoint this DB and open the checkpoint separately, the
+      // flushed frontier non-zero as well.
+      std::string checkpoint_dir;
+      ASSERT_OK(Env::Default()->GetTestDirectory(&checkpoint_dir));
+      checkpoint_dir += Format("/checkpoint_$0", checkpoint_index_);
+      checkpoint_index_++;
+
+      ASSERT_OK(CreateCheckpoint(db, checkpoint_dir));
+
+      rocksdb::Options options;
+
+      InitRocksDBOptions(&options, "test_tablet", nullptr, TabletOptions());
+      std::unique_ptr<rocksdb::DB> checkpoint_db;
+      rocksdb::DB* checkpoint_db_raw_ptr = nullptr;
+
+      options.create_if_missing = false;
+      ASSERT_OK(rocksdb::DB::Open(options, checkpoint_dir, &checkpoint_db_raw_ptr));
+      checkpoint_db.reset(checkpoint_db_raw_ptr);
+      OpId checkpoint_op_id;
+      ASSERT_NO_FATALS(
+          VerifyFlushedFrontier(checkpoint_db->GetFlushedFrontier(), &checkpoint_op_id));
+      ASSERT_OK(Env::Default()->DeleteRecursively(checkpoint_dir));
+
+      ASSERT_LE(op_id, checkpoint_op_id);
+    }
+  }
+}
+
+TEST_F_EX(QLStressTest, FlushCompact, QLStressTestSingleTablet) {
+  std::atomic<bool> stop(false);
+
+  std::thread writer([this, &stop] {
+    auto session = NewSession();
+    int key = 0;
+    std::string value = "value_";
+    while (!stop.load(std::memory_order_acquire)) {
+      ASSERT_OK(WriteRow(session, key, value + std::to_string(key)));
+      ++key;
+    }
+  });
+
+  BOOST_SCOPE_EXIT(&stop, &writer) {
+    stop.store(true);
+    writer.join();
+  } BOOST_SCOPE_EXIT_END;
+
+  auto start_time = MonoTime::Now();
+  const auto kTimeout = MonoDelta::FromSeconds(60);
+  int num_iter = 0;
+  while (MonoTime::Now() - start_time < kTimeout) {
+    ++num_iter;
+    std::this_thread::sleep_for(1s);
+    ASSERT_OK(cluster_->FlushTablets());
+    ASSERT_NO_FATALS(VerifyFlushedFrontiers());
+    std::this_thread::sleep_for(1s);
+    auto compact_status = cluster_->CompactTablets();
+    LOG_IF(INFO, !compact_status.ok()) << "Compaction failed: " << compact_status;
+    ASSERT_NO_FATALS(VerifyFlushedFrontiers());
+  }
+  ASSERT_GE(num_iter, 5);
 }
 
 } // namespace client

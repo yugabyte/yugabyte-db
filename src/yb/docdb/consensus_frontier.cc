@@ -18,9 +18,12 @@
 namespace yb {
 namespace docdb {
 
+ConsensusFrontier::~ConsensusFrontier() {
+}
+
 bool ConsensusFrontier::Equals(const UserFrontier& pre_rhs) const {
   const ConsensusFrontier& rhs = down_cast<const ConsensusFrontier&>(pre_rhs);
-  return op_id_ == rhs.op_id_ && ht_ == rhs.ht_;
+  return op_id_ == rhs.op_id_ && ht_ == rhs.ht_ && history_cutoff_ == rhs.history_cutoff_;
 }
 
 void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
