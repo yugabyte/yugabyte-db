@@ -14,6 +14,7 @@ import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsPanel } from '../../panels';
 import { ListTablesContainer, ListBackupsContainer } from '../../tables';
 import { isEmptyObject, isNonEmptyObject, isNonEmptyArray, isEmptyArray } from '../../../utils/ObjectUtils';
+import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { hasLiveNodes } from 'utils/UniverseUtils';
 
@@ -154,6 +155,7 @@ class UniverseDetail extends Component {
 
     const width = this.state.dimensions.width;
     const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
+    const isItKubernetesUniverse = isKubernetesUniverse(currentUniverse.data);
     const tabElements = [
       //common tabs for every universe
       ...[
@@ -163,12 +165,12 @@ class UniverseDetail extends Component {
         <Tab eventKey={"tables"} title="Tables" key="tables-tab" mountOnEnter={true} unmountOnExit={true}>
           <ListTablesContainer/>
         </Tab>,
-        <Tab eventKey={"nodes"} title="Nodes" key="nodes-tab" mountOnEnter={true} unmountOnExit={true}>
-          <NodeDetailsContainer  />
+        <Tab eventKey={"nodes"} title={isItKubernetesUniverse ? "Pods" : "Nodes"} key="nodes-tab" mountOnEnter={true} unmountOnExit={true}>
+          <NodeDetailsContainer />
         </Tab>,
         <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab" mountOnEnter={true} unmountOnExit={true}>
           <div className="universe-detail-content-container">
-            <CustomerMetricsPanel origin={"universe"} width={width} nodePrefixes={nodePrefixes} />
+            <CustomerMetricsPanel origin={"universe"} width={width} nodePrefixes={nodePrefixes} isKubernetesUniverse={isItKubernetesUniverse} />
           </div>
         </Tab>,
         <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab" mountOnEnter={true} unmountOnExit={true}>

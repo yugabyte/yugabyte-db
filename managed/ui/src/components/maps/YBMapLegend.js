@@ -26,9 +26,9 @@ export default class YBMapLegend extends Component {
 
       mapLegendItems = (
         <span>
-          <YBMapLegendItem regions={getPlacementRegions(primaryCluster)} provider={primaryCloud}
+          <YBMapLegendItem providerType={primaryCluster && primaryCluster.userIntent.providerType} regions={getPlacementRegions(primaryCluster)} provider={primaryCloud}
                            title={"Primary Data"} type="Root"/>
-          <YBMapLegendItem regions={getPlacementRegions(readreplicaCluster)} provider={readreplicaCloud}
+          <YBMapLegendItem providerType={readreplicaCluster && readreplicaCluster.userIntent.providerType} regions={getPlacementRegions(readreplicaCluster)} provider={readreplicaCloud}
                            title={"Read Replica"} type="ReadReplica"/>
         </span>
       );

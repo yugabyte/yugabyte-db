@@ -35,10 +35,10 @@ export default class CustomerMetricsPanel extends Component {
   };
 
   render() {
-    const { origin, nodePrefixes, width, tableName } = this.props;
+    const { origin, nodePrefixes, width, tableName, isKubernetesUniverse } = this.props;
     const graphPanelContainers = graphPanelTypes[origin].data.map(function (type, idx) {
       return (<GraphPanelContainer key={idx} isOpen={graphPanelTypes[origin].isOpen[idx]} type={type} width={width}
-                  nodePrefixes={nodePrefixes} tableName={tableName} />);
+                  nodePrefixes={nodePrefixes} tableName={tableName} isKubernetesUniverse={isKubernetesUniverse} />);
     });
 
     return (

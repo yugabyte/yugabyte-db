@@ -9,12 +9,12 @@ import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, 
   isNonEmptyArray, isEmptyString, trimSpecialChars } from 'utils/ObjectUtils';
 import { YBTextInput, YBTextInputWithLabel, YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
   YBToggle, YBUnControlledNumericInput, YBControlledNumericInputWithLabel } from 'components/common/forms/fields';
-import {getPromiseState} from 'utils/PromiseUtils';
+import { getPromiseState } from 'utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
 import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 import GFlagArrayComponent from './GFlagArrayComponent';
-import { getPrimaryCluster, getReadOnlyCluster, getClusterByType } from "../../../utils/UniverseUtils";
+import { getPrimaryCluster, getReadOnlyCluster, getClusterByType, isKubernetesUniverse } from "../../../utils/UniverseUtils";
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -120,6 +120,7 @@ export default class ClusterFields extends Component {
       if (userIntent && providerUUID) {
         const storageType = (userIntent.deviceInfo === null) ? null : userIntent.deviceInfo.storageType;
         this.setState({
+          isKubernetesUniverse: isKubernetesUniverse(this.props.universe.currentUniverse.data),
           providerSelected: providerUUID,
           instanceTypeSelected: userIntent.instanceType,
           numNodes: userIntent.numNodes,
@@ -145,6 +146,7 @@ export default class ClusterFields extends Component {
     } else {
       // Repopulate the form fields when switching back to the view
       if (formValues && isNonEmptyObject(formValues[clusterType])) {
+        this.setState({providerType: formValues[clusterType].providerType});
         this.setState({providerSelected: formValues[clusterType].provider});
         this.setState({numNodes: formValues[clusterType].numNodes ? formValues[clusterType].numNodes : 3});
         this.setState({replicationFactor: formValues[clusterType].replicationFactor ?
@@ -661,6 +663,9 @@ export default class ClusterFields extends Component {
     if (currentProviderData && currentProviderData.code === "onprem") {
       this.props.fetchNodeInstanceList(value);
     }
+    this.setState({
+      isKubernetesUniverse: currentProviderData.code === "kubernetes"
+    });
   }
 
   accessKeyChanged(event) {
@@ -960,7 +965,7 @@ export default class ClusterFields extends Component {
       <div>
         <AZSelectorTable {...this.props} clusterType={clusterType}
           numNodesChangedViaAzList={this.numNodesChangedViaAzList} minNumNodes={this.state.replicationFactor}
-          maxNumNodes={this.state.maxNumNodes} currentProvider={this.getCurrentProvider(currentProviderUUID)}/>
+          maxNumNodes={this.state.maxNumNodes} currentProvider={this.getCurrentProvider(currentProviderUUID)} isKubernetesUniverse={this.state.isKubernetesUniverse} />
         {placementStatus}
       </div>);
 
@@ -1023,10 +1028,10 @@ export default class ClusterFields extends Component {
                   label="Regions" multi={true} selectValChanged={this.regionListChanged} providerSelected={currentProviderUUID}/>
                 { clusterType === "async"
                   ? [<Field key="numNodes" name={`${clusterType}.numNodes`} type="text" component={YBControlledNumericInputWithLabel}
-                    label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
-                    minVal={Number(this.state.replicationFactor)}/>,
-                  <Field key="replicationFactor" name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 2, 3, 4, 5, 6, 7]}
-                    label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} isReadOnly={isFieldReadOnly}/>]
+                      label={this.state.isKubernetesUniverse ? "Pods" : "Nodes"} onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
+                      minVal={Number(this.state.replicationFactor)}/>,
+                    <Field key="replicationFactor" name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 2, 3, 4, 5, 6, 7]}
+                      label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} isReadOnly={isFieldReadOnly}/>]
                   : null
                 }
               </div>
@@ -1036,8 +1041,8 @@ export default class ClusterFields extends Component {
                   <div className="form-right-aligned-labels">
                     <Col lg={5}>
                       <Field name={`${clusterType}.numNodes`} type="text" component={YBControlledNumericInputWithLabel}
-                        label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
-                        minVal={Number(this.state.replicationFactor)}/>
+                            label={this.state.isKubernetesUniverse ? "Pods" : "Nodes"} onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
+                            minVal={Number(this.state.replicationFactor)}/>
                     </Col>
                     <Col lg={7} className="button-group-row">
                       <Field name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
@@ -1110,12 +1115,14 @@ export default class ClusterFields extends Component {
                   options={softwareVersionOptions} label="DB Version" onInputChanged={this.softwareVersionChanged} readOnlySelect={isFieldReadOnly}/>
               </div>
             </Col>
+            {!this.state.isKubernetesUniverse &&
             <Col lg={4}>
               <div className="form-right-aligned-labels">
                 <Field name={`${clusterType}.accessKeyCode`} type="select" component={YBSelectWithLabel} label="Access Key"
                   onInputChanged={this.accessKeyChanged} options={accessKeyOptions} readOnlySelect={isFieldReadOnly}/>
               </div>
             </Col>
+            }
           </Row>
         </div>
         <div className="form-section">

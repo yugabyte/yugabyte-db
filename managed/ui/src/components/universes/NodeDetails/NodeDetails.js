@@ -77,8 +77,8 @@ export default class NodeDetails extends Component {
 
     return (
       <Fragment>
-        <NodeDetailsTable isReadOnlyUniverse={isReadOnlyUniverse} nodeDetails={primaryNodeDetails} providerUUID={primaryCluster.userIntent.provider} clusterType='primary' />
-        { readOnlyCluster && <NodeDetailsTable isReadOnlyUniverse={isReadOnlyUniverse} nodeDetails={readOnlyNodeDetails} providerUUID={readOnlyCluster.userIntent.provider} clusterType='readonly' /> }
+        <NodeDetailsTable isKubernetesCluster={primaryCluster.userIntent.providerType === "kubernetes"} isReadOnlyUniverse={isReadOnlyUniverse} nodeDetails={primaryNodeDetails} providerUUID={primaryCluster.userIntent.provider} clusterType='primary' />
+        { readOnlyCluster && <NodeDetailsTable isKubernetesCluster={readOnlyCluster.userIntent.providerType === "kubernetes"} isReadOnlyUniverse={isReadOnlyUniverse} nodeDetails={readOnlyNodeDetails} providerUUID={readOnlyCluster.userIntent.provider} clusterType='readonly' /> }
       </Fragment>
     );
   }
