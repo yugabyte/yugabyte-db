@@ -1682,6 +1682,9 @@ ServerLoop(void)
 	last_lockfile_recheck_time = last_touch_time = time(NULL);
 
 	nSockets = initMasks(&readmask);
+#ifdef __APPLE__
+	bool yb_enabled = YBIsEnabledInPostgresEnvVar();
+#endif
 
 	for (;;)
 	{
@@ -1744,6 +1747,13 @@ ServerLoop(void)
 		if (selres > 0)
 		{
 			int			i;
+
+#ifdef __APPLE__
+			// If STDIN is closed, it means that parent did exit
+			if (yb_enabled && FD_ISSET(STDIN_FILENO, &rmask)) {
+				return STATUS_OK;
+			}
+#endif
 
 			for (i = 0; i < MAXLISTEN; i++)
 			{
@@ -1918,6 +1928,13 @@ initMasks(fd_set *rmask)
 	int			i;
 
 	FD_ZERO(rmask);
+
+#ifdef __APPLE__
+	if (YBIsEnabledInPostgresEnvVar()) {
+		FD_SET(STDIN_FILENO, rmask);
+		maxsock = STDIN_FILENO;
+	}
+#endif
 
 	for (i = 0; i < MAXLISTEN; i++)
 	{
