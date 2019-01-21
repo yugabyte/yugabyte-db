@@ -623,7 +623,8 @@ class Builder:
             self.compiler_flags.append('--gcc-toolchain={}'.format(self.linuxbrew_dir))
 
     def build_dependency(self, dep):
-        if self.args.build_type == BUILD_TYPE_UNINSTRUMENTED and dep.name in ['llvm', 'libcxx']:
+        if self.args.build_type == BUILD_TYPE_UNINSTRUMENTED and \
+           dep.name in ['llvm', 'libcxx', 'include-what-you-use']:
             return
         if not self.should_rebuild_dependency(dep):
             return
