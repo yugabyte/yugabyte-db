@@ -11,7 +11,7 @@ const pluralize = require('pluralize');
 
 export default class YBMapLegendItem extends Component {
   render() {
-    const {regions, provider, title, type} = this.props;
+    const {regions, provider, providerType, title, type} = this.props;
     let legendItemIcon = "";
     let legendText = "";
     if (type === "Root") {
@@ -39,7 +39,7 @@ export default class YBMapLegendItem extends Component {
         }
 
         if (nodeCount > 0) {
-          legendSubTexts.push(pluralize('Node', nodeCount, true));
+          legendSubTexts.push(pluralize(providerType==="kubernetes" ? 'Pod' : 'Node', nodeCount, true));
         }
 
         regionInfo = (

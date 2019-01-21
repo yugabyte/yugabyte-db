@@ -9,6 +9,7 @@ import { UniverseResources } from '../UniverseResources';
 import { YBPanelItem, YBWidget } from '../../panels';
 import { RegionMap, YBMapLegend} from '../../maps';
 import { isNonEmptyObject } from 'utils/ObjectUtils';
+import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
 
@@ -18,21 +19,25 @@ export default class UniverseOverview extends Component {
     return clusters.some((cluster) => cluster.clusterType === "ASYNC");
   }
 
-  getRegionMapWidget = (universeInfo) => {
+  getRegionMapWidget = (currentUniverse) => {
+    const universeInfo = currentUniverse.data;
     const universeResources = universeInfo.resources;
     let numNodes = 0;
     if (isNonEmptyObject(universeResources)) {
       numNodes = universeResources.numNodes;
     }
+
+    const isItKubernetesUniverse = isKubernetesUniverse(currentUniverse.data);
+    
     const mapWidget = (
       <YBWidget
         noMargin
         size={2}
         headerLeft={
-          "Universe Nodes"
+          isItKubernetesUniverse ? "Universe Pods" : "Universe Nodes"
         }
         headerRight={
-          numNodes +" nodes"
+          numNodes + (isItKubernetesUniverse ? " pods" : " nodes")
         }
         body={
           <div>
@@ -144,7 +149,7 @@ export default class UniverseOverview extends Component {
           <div>
             <Row>
               {this.getInfoWidgets(universeInfo)}
-              {this.getRegionMapWidget(universeInfo)}
+              {this.getRegionMapWidget(currentUniverse)}
               <OverviewMetricsContainer type={"overview"} origin={"universe"}
                     width={width} nodePrefixes={nodePrefixes} />
             </Row>

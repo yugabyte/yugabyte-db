@@ -190,7 +190,7 @@ class GraphPanel extends Component {
   }
 
   render() {
-    const { type, graph: { metrics }} = this.props;
+    const { type, isKubernetesUniverse, graph: { metrics }} = this.props;
 
     let panelItem = <YBLoading />;
     if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {
@@ -216,7 +216,7 @@ class GraphPanel extends Component {
     return (
       <Panel id={panelTypes[type].title} key={panelTypes[type]} eventKey={this.props.eventKey} defaultExpanded={this.state.isOpen} className="metrics-container">
         <Panel.Heading>
-          <Panel.Title tag="h4" toggle onClick={()=>{this.setState({isOpen: !this.state.isOpen});}}>{panelTypes[type].title}</Panel.Title>
+          <Panel.Title tag="h4" toggle onClick={()=>{this.setState({isOpen: !this.state.isOpen});}}>{panelTypes[type].title === "Node" && isKubernetesUniverse ? "Pod" : panelTypes[type].title}</Panel.Title>
         </Panel.Heading>
         <Panel.Body collapsible>
           {panelData}
