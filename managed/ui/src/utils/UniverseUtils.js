@@ -114,3 +114,7 @@ export function hasLiveNodes(universe) {
   }
   return false;
 }
+
+export function isKubernetesUniverse(currentUniverse) {
+  return isDefinedNotNull(getPrimaryCluster(currentUniverse.universeDetails.clusters)) && getPrimaryCluster(currentUniverse.universeDetails.clusters).userIntent.providerType === "kubernetes";
+}

@@ -7,11 +7,11 @@ import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { isObject } from 'lodash';
 import { isNonEmptyArray, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import './UniverseTable.scss';
-import {UniverseReadWriteMetrics} from '../../metrics';
-import {YBCost} from '../../common/descriptors';
-import {UniverseStatusContainer} from '../../universes';
+import { UniverseReadWriteMetrics } from '../../metrics';
+import { YBCost } from '../../common/descriptors';
+import { UniverseStatusContainer } from '../../universes';
 import { getUniverseNodes, getPlacementRegions,
-        getClusterProviderUUIDs, getProviderMetadata } from '../../../utils/UniverseUtils';
+        getClusterProviderUUIDs, getProviderMetadata, isKubernetesUniverse } from '../../../utils/UniverseUtils';
 const moment = require('moment');
 const pluralize = require('pluralize');
 
@@ -63,6 +63,7 @@ export default class UniverseTable extends Component {
 class YBUniverseItem extends Component {
   render() {
     const { universe } = this.props;
+    
     return (
       <div className={"universe-list-item"}>
         <ListGroupItem >
@@ -85,7 +86,7 @@ class YBUniverseItem extends Component {
           <div className={"universe-list-item-detail universe-list-flex"}>
             <Row>
               <Col sm={6}>
-                <CellLocationPanel {...this.props}/>
+                <CellLocationPanel isKubernetesUniverse={isKubernetesUniverse(universe)} {...this.props}/>
               </Col>
               <Col sm={6}>
                 <CellResourcesPanel {...this.props}/>
@@ -108,7 +109,7 @@ class YBUniverseItem extends Component {
 
 class CellLocationPanel extends Component {
   render() {
-    const {universe, universe: {universeDetails}, providers} = this.props;
+    const { universe, universe: {universeDetails}, providers, isKubernetesUniverse} = this.props;
     const numNodes = getUniverseNodes(universeDetails.clusters);
     const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
     const clusterProviders = providers.data.filter((p) => clusterProviderUUIDs.includes(p.uuid));
@@ -127,7 +128,7 @@ class CellLocationPanel extends Component {
       <div >
         <Row className={"cell-position-detail"}>
           <Col sm={3} className={"cell-num-nodes"}>
-            {pluralize('Node', numNodes, true)}
+            {pluralize(isKubernetesUniverse ? 'Pod' : 'Node', numNodes, true)}
           </Col>
           <Col sm={9}>
             <span className={"cell-provider-name"}>{providersText}</span>

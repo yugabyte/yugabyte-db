@@ -375,7 +375,7 @@ export default class AZSelectorTable extends Component {
                   <label>Name</label>
                 </Col>
                 <Col xs={4}>
-                  <label>Nodes</label>
+                  <label>{this.props.isKubernetesUniverse ? "Pods" : "Nodes"}</label>
                 </Col>
               </Row>
             </FlexGrow>

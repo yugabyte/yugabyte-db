@@ -11,6 +11,7 @@ import { YBPanelItem } from '../../panels';
 import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { isValidObject, isNonEmptyObject } from 'utils/ObjectUtils';
+import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import './GraphPanelHeader.scss';
 
 require('react-widgets/dist/css/react-widgets.css');
@@ -345,7 +346,8 @@ class UniversePicker extends Component {
 
 class NodePicker extends Component {
   render() {
-    const {selectedUniverse, nodeItemChanged, selectedNode} = this.props;
+    const { selectedUniverse, nodeItemChanged, selectedNode } = this.props;
+    
     let nodeItems =[];
     if (isNonEmptyObject(selectedUniverse) && selectedUniverse!== "all") {
       nodeItems = selectedUniverse.universeDetails.nodeDetailsSet
@@ -359,7 +361,7 @@ class NodePicker extends Component {
     const nodeOptionArray=[<option key={-1} value="all">All</option>].concat(nodeItems);
     return (
       <div className="node-picker">
-        Node:
+        {isKubernetesUniverse(selectedUniverse) ? "Pod" : "Node"}:
         <FormControl componentClass="select" onChange={nodeItemChanged} value={selectedNode}>
           {nodeOptionArray}
         </FormControl>

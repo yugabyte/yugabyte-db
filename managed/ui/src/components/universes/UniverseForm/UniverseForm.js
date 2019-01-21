@@ -163,7 +163,7 @@ class UniverseForm extends Component {
     const {formValues, universe, type} = this.props;
 
     const {universeConfigTemplate, currentUniverse: {data: {universeDetails}}} = universe;
-    const submitPayload = _.clone(universeConfigTemplate.data, true);
+    const submitPayload = {..._.clone(universeConfigTemplate.data, true)};
     const self = this;
     const getIntentValues = function (clusterType) {
       if (!isNonEmptyObject(formValues[clusterType]) ||
