@@ -794,6 +794,7 @@ class VersionSet {
 
   // Opened lazily
   std::unique_ptr<log::Writer> descriptor_log_;
+  std::string descriptor_log_file_name_;
 
   // generates a increasing version number for every new version
   uint64_t current_version_number_ = 0;

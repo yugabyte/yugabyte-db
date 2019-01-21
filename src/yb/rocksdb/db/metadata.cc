@@ -32,4 +32,29 @@ void UserFrontier::Update(const UserFrontier* rhs, UpdateUserValueType type, Use
   }
 }
 
+bool UserFrontier::Dominates(const UserFrontier& rhs, UpdateUserValueType update_type) const {
+  // Check that this value, if updated with the given rhs, stays the same, and hence "dominates" it.
+  std::unique_ptr<UserFrontier> copy = Clone();
+  copy->Update(rhs, update_type);
+  return Equals(*copy);
+}
+
+void UpdateUserFrontier(UserFrontierPtr* value, const UserFrontierPtr& update,
+                        UpdateUserValueType type) {
+  if (*value) {
+    (**value).Update(*update, type);
+  } else {
+    *value = update;
+  }
+}
+
+void UpdateUserFrontier(UserFrontierPtr* value, UserFrontierPtr&& update,
+                        UpdateUserValueType type) {
+  if (*value) {
+    (**value).Update(*update, type);
+  } else {
+    *value = std::move(update);
+  }
+}
+
 } // namespace rocksdb

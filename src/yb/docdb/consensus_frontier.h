@@ -23,7 +23,7 @@ namespace docdb {
 // between this and user boundary values is that here hybrid time is taken from committed Raft log
 // entries, whereas user boundary values extract hybrid time from keys in a memtable. This is
 // important for transactions, because boundary values would have the commit time of a transaction,
-// but e.g. "apply intent" Raft log entries will have a later hybrid time, which would be saved
+// but e.g. "apply intent" Raft log entries will have a later hybrid time, which would be reflected
 // here.
 class ConsensusFrontier : public rocksdb::UserFrontier {
  public:
@@ -36,6 +36,8 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
       : op_id_(op_id),
         ht_(ht),
         history_cutoff_(history_cutoff) {}
+
+  virtual ~ConsensusFrontier();
 
   bool Equals(const UserFrontier& rhs) const override;
   std::string ToString() const override;

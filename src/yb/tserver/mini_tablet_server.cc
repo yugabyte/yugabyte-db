@@ -178,6 +178,15 @@ Status MiniTabletServer::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags
   });
 }
 
+Status MiniTabletServer::CompactTablets() {
+  if (!server_) {
+    return Status::OK();
+  }
+  return ForAllTablets(this, [](TabletPeer* tablet_peer) {
+    return tablet_peer->tablet()->CompactSync();
+  });
+}
+
 Status MiniTabletServer::SwitchMemtables() {
   return ForAllTablets(this, [](TabletPeer* tablet_peer) {
     return tablet_peer->tablet()->TEST_SwitchMemtable();

@@ -2158,7 +2158,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
   Version* v = nullptr;
   std::unique_ptr<BaseReferencedVersionBuilder> builder_guard(nullptr);
 
-  // process all requests in the queue
+  // Process all requests in the queue.
   ManifestWriter* last_writer = &w;
   assert(!manifest_writers_.empty());
   assert(manifest_writers_.front() == &w);
@@ -2230,8 +2230,9 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
           "Creating manifest %" PRIu64 "\n", pending_manifest_file_number_);
       unique_ptr<WritableFile> descriptor_file;
       EnvOptions opt_env_opts = env_->OptimizeForManifestWrite(env_options_);
+      descriptor_log_file_name_ = DescriptorFileName(dbname_, pending_manifest_file_number_);
       s = NewWritableFile(
-          env_, DescriptorFileName(dbname_, pending_manifest_file_number_),
+          env_, descriptor_log_file_name_,
           &descriptor_file, opt_env_opts);
       if (s.ok()) {
         descriptor_file->SetPreallocationBlockSize(
@@ -2241,6 +2242,8 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
             new WritableFileWriter(std::move(descriptor_file), opt_env_opts));
         descriptor_log_.reset(new log::Writer(std::move(file_writer), 0, false));
         s = WriteSnapshot(descriptor_log_.get());
+      } else {
+        descriptor_log_file_name_ = "";
       }
     }
 
@@ -2402,6 +2405,11 @@ void VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
   }
   edit->SetNextFile(next_file_number_.load());
   edit->SetLastSequence(LastSequence());
+  if (flushed_frontier_) {
+    // Make sure that the flushed frontier stored in the version edit takes into account all the
+    // operations that were flushed prior to it.
+    edit->UpdateFlushedFrontier(flushed_frontier_);
+  }
 
   builder->Apply(edit);
 }
@@ -2675,7 +2683,8 @@ Status VersionSet::Recover(
       }
 
       if (edit.flushed_frontier_) {
-        flushed_frontier = std::move(edit.flushed_frontier_);
+        UpdateUserFrontier(
+            &flushed_frontier, edit.flushed_frontier_, UpdateUserValueType::kLargest);
       }
     }
     if (s.IsEndOfFile()) {
@@ -3309,6 +3318,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
         }
       }
       edit.SetLogNumber(cfd->GetLogNumber());
+      edit.flushed_frontier_ = flushed_frontier_;
       RETURN_NOT_OK(AddEdit(edit, db_options_, log));
     }
   }
@@ -3711,12 +3721,8 @@ void VersionSet::EnsureNonDecreasingFlushedFrontier(
   }
 }
 
-void VersionSet::UpdateFlushedFrontierNoSanityChecking(UserFrontierPtr values) {
-  if (flushed_frontier_) {
-    flushed_frontier_->Update(*values, UpdateUserValueType::kLargest);
-  } else {
-    flushed_frontier_ = std::move(values);
-  }
+void VersionSet::UpdateFlushedFrontierNoSanityChecking(UserFrontierPtr value) {
+  UpdateUserFrontier(&flushed_frontier_, std::move(value), UpdateUserValueType::kLargest);
 }
 
 }  // namespace rocksdb

@@ -21,9 +21,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#pragma once
-#include <memory>
+#ifndef YB_ROCKSDB_DB_LOG_READER_H
+#define YB_ROCKSDB_DB_LOG_READER_H
+
 #include <stdint.h>
+
+#include <memory>
 
 #include "yb/rocksdb/db/log_format.h"
 #include "yb/util/slice.h"
@@ -34,7 +37,6 @@ namespace rocksdb {
 
 class SequentialFileReader;
 class Logger;
-using std::unique_ptr;
 
 namespace log {
 
@@ -67,10 +69,13 @@ class Reader {
   //
   // The Reader will start reading at the first record located at physical
   // position >= initial_offset within the file.
-  Reader(std::shared_ptr<Logger> info_log,
-	 unique_ptr<SequentialFileReader>&& file,
-         Reporter* reporter, bool checksum, uint64_t initial_offset,
-         uint64_t log_num);
+  Reader(
+      std::shared_ptr<Logger> info_log,
+      std::unique_ptr<SequentialFileReader>&& file,
+      Reporter* reporter,
+      bool checksum,
+      uint64_t initial_offset,
+      uint64_t log_num);
 
   ~Reader();
 
@@ -104,7 +109,7 @@ class Reader {
 
  private:
   std::shared_ptr<Logger> info_log_;
-  const unique_ptr<SequentialFileReader> file_;
+  const std::unique_ptr<SequentialFileReader> file_;
   Reporter* const reporter_;
   bool const checksum_;
   char* const backing_store_;
@@ -118,6 +123,7 @@ class Reader {
 
   // Offset of the last record returned by ReadRecord.
   uint64_t last_record_offset_;
+
   // Offset of the first location past the end of buffer_.
   uint64_t end_of_buffer_offset_;
 
@@ -165,3 +171,5 @@ class Reader {
 
 }  // namespace log
 }  // namespace rocksdb
+
+#endif  // YB_ROCKSDB_DB_LOG_READER_H
