@@ -824,13 +824,14 @@ stmt :
 				{ $$ = NULL; }
 			| AlterDatabaseSetStmt
 			| AlterDatabaseStmt
+			| ConstraintsSetStmt
 			| CreateAsStmt
 			| CreateSchemaStmt
 			| CreateStmt
 			| CreateUserStmt
 			| CreatedbStmt
-			| DeleteStmt
 			| DeallocateStmt
+			| DeleteStmt
 			| DropStmt
 			| ExecuteStmt
 			| ExplainStmt
@@ -883,7 +884,6 @@ stmt :
 			| ClosePortalStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CommentStmt { parser_ybc_not_support(@1, "This statement"); }
-			| ConstraintsSetStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CopyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1414,14 +1414,12 @@ VariableSetStmt:
 				}
 			| SET LOCAL set_rest
 				{
-					parser_ybc_not_support(@1, "SET LOCAL variable");
 					VariableSetStmt *n = $3;
 					n->is_local = true;
 					$$ = (Node *) n;
 				}
 			| SET SESSION set_rest
 				{
-					parser_ybc_not_support(@1, "SET SESSION variable");
 					VariableSetStmt *n = $3;
 					n->is_local = false;
 					$$ = (Node *) n;
@@ -1492,7 +1490,6 @@ set_rest_more:	/* Generic SET syntaxes: */
 			/* Special syntaxes mandated by SQL standard: */
 			| TIME ZONE zone_value
 				{
-					parser_ybc_not_support(@1, "SET TIME ZONE");
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->kind = VAR_SET_VALUE;
 					n->name = "timezone";
@@ -1512,7 +1509,6 @@ set_rest_more:	/* Generic SET syntaxes: */
 				}
 			| SCHEMA Sconst
 				{
-					parser_ybc_not_support(@1, "SET SCHEMA");
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->kind = VAR_SET_VALUE;
 					n->name = "search_path";
@@ -1521,7 +1517,6 @@ set_rest_more:	/* Generic SET syntaxes: */
 				}
 			| NAMES opt_encoding
 				{
-					parser_ybc_not_support(@1, "SET NAMES");
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->kind = VAR_SET_VALUE;
 					n->name = "client_encoding";
@@ -1533,7 +1528,6 @@ set_rest_more:	/* Generic SET syntaxes: */
 				}
 			| ROLE NonReservedWord_or_Sconst
 				{
-					parser_ybc_not_support(@1, "SET ROLE");
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->kind = VAR_SET_VALUE;
 					n->name = "role";
@@ -1542,7 +1536,6 @@ set_rest_more:	/* Generic SET syntaxes: */
 				}
 			| SESSION AUTHORIZATION NonReservedWord_or_Sconst
 				{
-					parser_ybc_not_support(@1, "SET SESSION AUTHORIZATION");
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->kind = VAR_SET_VALUE;
 					n->name = "session_authorization";
@@ -1551,7 +1544,6 @@ set_rest_more:	/* Generic SET syntaxes: */
 				}
 			| SESSION AUTHORIZATION DEFAULT
 				{
-					parser_ybc_not_support(@1, "SET SESSION AUTHORIZATION DEFAULT");
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->kind = VAR_SET_DEFAULT;
 					n->name = "session_authorization";
@@ -1559,7 +1551,6 @@ set_rest_more:	/* Generic SET syntaxes: */
 				}
 			| XML_P OPTION document_or_content
 				{
-					parser_ybc_not_support(@1, "SET XML OPTION");
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->kind = VAR_SET_VALUE;
 					n->name = "xmloption";
@@ -1569,7 +1560,6 @@ set_rest_more:	/* Generic SET syntaxes: */
 			/* Special syntaxes invented by PostgreSQL: */
 			| TRANSACTION SNAPSHOT Sconst
 				{
-					parser_ybc_not_support(@1, "SET TRANSACTION SNAPSHOT");
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->kind = VAR_SET_MULTI;
 					n->name = "TRANSACTION SNAPSHOT";
@@ -1734,14 +1724,12 @@ FunctionSetResetClause:
 VariableShowStmt:
 			SHOW var_name
 				{
-					parser_ybc_not_support(@1, "SHOW variable");
 					VariableShowStmt *n = makeNode(VariableShowStmt);
 					n->name = $2;
 					$$ = (Node *) n;
 				}
 			| SHOW TIME ZONE
 				{
-					parser_ybc_not_support(@1, "SHOW TIME ZONE");
 					VariableShowStmt *n = makeNode(VariableShowStmt);
 					n->name = "timezone";
 					$$ = (Node *) n;
@@ -1754,14 +1742,12 @@ VariableShowStmt:
 				}
 			| SHOW SESSION AUTHORIZATION
 				{
-					parser_ybc_not_support(@1, "SHOW SESSION AUTHORIZATION");
 					VariableShowStmt *n = makeNode(VariableShowStmt);
 					n->name = "session_authorization";
 					$$ = (Node *) n;
 				}
 			| SHOW ALL
 				{
-					parser_ybc_not_support(@1, "SHOW ALL");
 					VariableShowStmt *n = makeNode(VariableShowStmt);
 					n->name = "all";
 					$$ = (Node *) n;
@@ -1772,7 +1758,6 @@ VariableShowStmt:
 ConstraintsSetStmt:
 			SET CONSTRAINTS constraints_set_list constraints_set_mode
 				{
-					parser_ybc_not_support(@1, "SET CONSTRAINTS");
 					ConstraintsSetStmt *n = makeNode(ConstraintsSetStmt);
 					n->constraints = $3;
 					n->deferred = $4;
