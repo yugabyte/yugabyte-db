@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2010
 aliases:
-  - /api/redis/append
-  - /api/yedis/append
+  - /latest/api/redis/append
+  - /latest/api/yedis/append
 ---
 
 ## Synopsis

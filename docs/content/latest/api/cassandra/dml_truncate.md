@@ -7,9 +7,8 @@ menu:
     parent: api-cassandra
     weight: 1330
 aliases:
-  - api/cassandra/dml_truncate
-  - api/cql/dml_truncate
-  - api/ycql/dml_truncate
+  - /latest/api/cassandra/dml_truncate
+  - /latest/api/ycql/dml_truncate
 ---
 
 ## Synopsis

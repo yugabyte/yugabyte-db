@@ -7,8 +7,8 @@ menu:
     identifier: api-postgresql-drop-table
     parent: api-postgresql-ddl
 aliases:
-  - api/postgresql/ddl_drop_table
-  - api/pgsql/ddl_drop_table
+  - /latest/api/postgresql/ddl_drop_table
+  - /latest/api/ysql/ddl_drop_table
 ---
 
 ## Synopsis

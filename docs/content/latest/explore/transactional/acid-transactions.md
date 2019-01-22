@@ -3,7 +3,7 @@ title: 1. ACID Transactions
 linkTitle: 1. ACID Transactions
 description: Distributed ACID Transactions
 aliases:
-  - /explore/transactions/
+  - /explore/transactional/acid-transactions/
   - /latest/explore/transactions/
 menu:
   latest:

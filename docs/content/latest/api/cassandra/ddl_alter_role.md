@@ -7,9 +7,8 @@ menu:
     parent: api-cassandra
     weight: 1210
 aliases:
-  - api/cassandra/ddl_alter_role
-  - api/cql/ddl_alter_role
-  - api/ycql/ddl_alter_role
+  - /latest/api/cassandra/ddl_alter_role
+  - /latest/api/ycql/ddl_alter_role
 ---
 
 ## Synopsis
@@ -60,8 +59,8 @@ cqlsh:example> ALTER ROLE finance with PASSWORD = 'jsfp9ajhufans2' AND SUPERUSER
 
 [`CREATE ROLE`](../ddl_create_role)
 [`DROP ROLE`](../ddl_drop_role)
-[`GRANT ROLE`](../dml_grant_role)
-[`REVOKE ROLE`](../dml_revoke_role)
-[`GRANT PERMISSION`](../dml_grant_permission)
-[`REVOKE PERMISSION`](../dml_revoke_permission)
+[`GRANT ROLE`](../ddl_grant_role)
+[`REVOKE ROLE`](../ddl_revoke_role)
+[`GRANT PERMISSION`](../ddl_grant_permission)
+[`REVOKE PERMISSION`](../ddl_revoke_permission)
 [Other CQL Statements](..)

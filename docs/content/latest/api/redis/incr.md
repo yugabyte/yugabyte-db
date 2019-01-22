@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2210
 aliases:
-  - api/redis/incr
-  - api/yedis/incr
+  - /latest/api/redis/incr
+  - /latest/api/yedis/incr
 ---
 
 ## Synopsis

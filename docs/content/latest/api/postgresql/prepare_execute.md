@@ -8,8 +8,8 @@ menu:
     parent: api-postgresql
     weight: 3600
 aliases:
-  - api/postgresql/prepare
-  - api/pgsql/prepare
+  - /latest/api/postgresql/prepare
+  - /latest/api/ysql/prepare
 ---
 
 ## Synopsis

@@ -7,9 +7,8 @@ menu:
     parent: api-cassandra
     weight: 1350
 aliases:
-  - api/cassandra/expr_fcall
-  - api/cql/expr_fcall
-  - api/ycql/expr_fcall
+  - /latest/api/cassandra/expr_fcall
+  - /latest/api/ycql/expr_fcall
 ---
 
 ## Synopsis

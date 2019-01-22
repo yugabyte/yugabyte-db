@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2551
 aliases:
-  - api/redis/publish
-  - api/yedis/publish
+  - /latest/api/redis/publish
+  - /latest/api/yedis/publish
 ---
 
 ## Synopsis

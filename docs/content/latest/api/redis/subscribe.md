@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2552
 aliases:
-  - api/redis/subscribe
-  - api/yedis/subscribe
+  - /latest/api/redis/subscribe
+  - /latest/api/yedis/subscribe
 ---
 `SUBSCRIBE` 
 

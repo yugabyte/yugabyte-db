@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2420
 aliases:
-  - api/redis/tscard
-  - api/yedis/tscard
+  - /latest/api/redis/tscard
+  - /latest/api/yedis/tscard
 ---
 
 ## Synopsis

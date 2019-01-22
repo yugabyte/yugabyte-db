@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2400
 aliases:
-  - api/redis/tsadd
-  - api/yedis/tsadd
+  - /latest/api/redis/tsadd
+  - /latest/api/yedis/tsadd
 ---
 
 ## Synopsis

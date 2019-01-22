@@ -11,9 +11,8 @@ menu:
     parent: api
     weight: 1300
 aliases:
-  - api/cassandra/
-  - api/cql/
-  - api/ycql/
+  - /latest/api/ycql/
+  - /latest/api/cassandra/
 ---
 
 ## Introduction

@@ -3,8 +3,7 @@ title: 2. Secondary Indexes
 linkTitle: 2. Secondary Indexes
 description: Secondary Indexes
 aliases:
-  - /explore/secondary-indexes/
-  - /latest/explore/secondary-indexes/
+  - /explore/transactional/secondary-indexes/
 menu:
   latest:
     identifier: secondary-indexes

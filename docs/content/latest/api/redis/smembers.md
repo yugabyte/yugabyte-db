@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2300
 aliases:
-  - api/redis/smembers
-  - api/yedis/smembers
+  - /latest/api/redis/smembers
+  - /latest/api/yedis/smembers
 ---
 ## Synopsis
 <b>`SMEMBERS key`</b><br>

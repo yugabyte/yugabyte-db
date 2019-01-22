@@ -7,9 +7,8 @@ menu:
     parent: api-cassandra
     weight: 1284
 aliases:
-  - api/cassandra/ddl_revoke_role
-  - api/cql/ddl_revoke_role
-  - api/ycql/ddl_revoke_role
+  - /latest/api/cassandra/ddl_revoke_role
+  - /latest/api/ycql/ddl_revoke_role
 ---
 
 ## Synopsis
@@ -48,8 +47,8 @@ cqlsh:example> REVOKE ROLE project_y from diana;
 
 [`ALTER ROLE`](../ddl_alter_role)
 [`DROP ROLE`](../ddl_drop_role)
-[`CREATE ROLE`](../dml_create_role)
-[`GRANT ROLE`](../dml_grant_role)
-[`GRANT PERMISSION`](../dml_grant_permission)
-[`REVOKE PERMISSION`](../dml_revoke_permission)
+[`CREATE ROLE`](../ddl_create_role)
+[`GRANT ROLE`](../ddl_grant_role)
+[`GRANT PERMISSION`](../ddl_grant_permission)
+[`REVOKE PERMISSION`](../ddl_revoke_permission)
 [Other CQL Statements](..)

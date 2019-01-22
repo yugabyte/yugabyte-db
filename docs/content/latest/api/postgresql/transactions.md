@@ -8,8 +8,8 @@ menu:
     parent: api-postgresql
     weight: 3400
 aliases:
-  - api/postgresql/transactions
-  - api/pgsql/transactions
+  - /latest/api/postgresql/transactions
+  - /latest/api/ysql/transactions
 ---
 
 ## Synopsis

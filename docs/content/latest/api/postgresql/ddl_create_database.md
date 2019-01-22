@@ -7,8 +7,8 @@ menu:
     identifier: api-postgresql-create-db
     parent: api-postgresql-ddl
 aliases:
-  - api/postgresql/ddl_create_database
-  - api/pgsql/ddl_create_database
+  - /latest/api/postgresql/ddl_create_database
+  - /latest/api/ysql/ddl_create_database
 ---
 
 ## Synopsis

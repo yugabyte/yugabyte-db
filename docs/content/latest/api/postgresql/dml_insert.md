@@ -7,8 +7,8 @@ menu:
     identifier: api-postgresql-insert
     parent: api-postgresql-dml
 aliases:
-  - api/postgresql/dml/insert
-  - api/pgsql/dml/insert
+  - /latest/api/postgresql/dml/insert
+  - /latest/api/ysql/dml/insert
 ---
 
 ## Synopsis

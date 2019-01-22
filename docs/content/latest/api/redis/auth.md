@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2020
 aliases:
-  - api/redis/auth
-  - api/yedis/auth
+  - /latest/api/redis/auth
+  - /latest/api/yedis/auth
 ---
 `AUTH` authenticates a client connection to YugaByte YEDIS API.
 

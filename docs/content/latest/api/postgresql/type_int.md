@@ -7,8 +7,8 @@ menu:
     identifier: api-postgresql-int
     parent: api-postgresql-type
 aliases:
-  - api/postgresql/type/int
-  - api/pgsql/type/int
+  - /latest/api/postgresql/type/int
+  - /latest/api/ysql/type/int
 ---
 
 ## Synopsis

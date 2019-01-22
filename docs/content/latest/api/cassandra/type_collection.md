@@ -7,9 +7,8 @@ menu:
     parent: api-cassandra
     weight: 1390
 aliases:
-  - api/cql/type_collection
-  - api/cassandra/type_collection
-  - api/ycql/type_collection
+  - /latest/api/cassandra/type_collection
+  - /latest/api/ycql/type_collection
 ---
 
 ## Synopsis

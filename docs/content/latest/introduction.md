@@ -1,18 +1,25 @@
 ---
-title: Overview
-linkTitle: Overview
-description: Overview
+title: Introduction
+linkTitle: Introduction
+description: Introduction
+image: /images/section_icons/index/introduction.png
 aliases:
-  - /introduction/overview/
-type: page
+  - /latest/introduction/overview/
+  - /latest/introduction/benefits/
+  - /latest/introduction/core-features/
 menu:
   latest:
-    identifier: overview
-    parent: introduction
-    weight: 30
+    identifier: introduction
+    weight: 20
 ---
 
 ## What is YugaByte DB?
+
+### Watch the Video
+
+{{< vimeo 305074082 >}}
+
+### Review Detailed Answer
 
 YugaByte DB is a transactional, high-performance database for building internet-scale, globally-distributed applications. Built using a unique combination of distributed document store, auto sharding, per-shard distributed consensus replication and multi-shard ACID transactions (inspired by Google Spanner), it is world's only distributed database that is both non-relational (support for Redis-compatible KV & Cassandra-compatible flexible schema transactional NoSQL APIs) and relational (support for PostgreSQL-compatible distributed SQL API) at the same time. 
 
@@ -26,12 +33,21 @@ YugaByte DB supports both Transactional NoSQL and Distributed SQL APIs.
 
 1. [YEDIS](../../api/redis/) - YEDIS is a transactional key-value API that is compatible with the [Redis](https://redis.io/commands) commands. YEDIS extends Redis with a new native [Time Series](https://blog.yugabyte.com/extending-redis-with-a-native-time-series-data-type-e5483c7116f8) data type.
 
-2. [YCQL](../../api/cassandra/) - YCQL is a transactional flexible-schema API that is compatible with [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html). It also extends CQL by adding [distributed ACID transactions](../../explore/transactional/), [strongly consistent secondary indexes](../../explore/transactional/secondary-indexes/) and a [native JSON data type](../../explore/transactional/json-documents/).
+2. [YCQL](../../api/cassandra/) - YCQL is a transactional flexible-schema API that is compatible with [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html). It also extends CQL by adding [distributed ACID transactions](../../explore/transactional/acid-transactions/), [strongly consistent secondary indexes](../../explore/transactional/secondary-indexes/) and a [native JSON column type](../../explore/transactional/json-documents/).
 
 3. [YSQL (Beta)](../../api/postgresql/) - YSQL is a distributed SQL API that is compatible with the SQL language in [PostgreSQL](https://www.postgresql.org/docs/10/sql-syntax.html).
 
 
-**For transactional, internet-scale workloads, the question of which API to choose is a trade-off between data modeling richness and query performance.** On one end of the spectrum is the YEDIS API that is completely optimized for single key access patterns, has simpler data modeling constructs and provides blazing-fast (sub-ms) query performance. On the other end of the spectrum is the YSQL API that supports complex multi-key relationships (through JOINS and foreign keys) and provides normal (single-digit ms) query performance. This is expected since multiple keys can be located on multiple shards hosted on multiple nodes, resulting in higher latency than a key-value API that accesses only a single key at any time. At the middle of the spectrum is the YCQL API that is still optimized for majority single-key workloads but has richer data modeling features such as globally consistent secondary indexes (powered by distributed ACID transactions) that can accelerate internet-scale application development significantly.
+{{< note title="Note" >}}
+The three YugaByte DB APIs are completely isolated and independent from one another. This means that the data inserted or managed by one API cannot be queried by a different API. Additionally, there is no common way to access the data across all the APIs (external frameworks such as [Presto](../../develop/ecosystem-integrations/presto/) can help for simple cases). 
+
+<b>The net impact is that application developers have to select an API first before undertaking detailed database schema/query design and implementation.</b>
+{{< /note >}}
+
+
+## Which API should I choose for my application?
+
+**For internet-scale, transactional workloads, the question of which API to choose is a trade-off between data modeling richness and query performance.** On one end of the spectrum is the YEDIS API that is completely optimized for single key access patterns, has simpler data modeling constructs and provides blazing-fast (sub-ms) query performance. On the other end of the spectrum is the YSQL API that supports complex multi-key relationships (through JOINS and foreign keys) and provides normal (single-digit ms) query performance. This is expected since multiple keys can be located on multiple shards hosted on multiple nodes, resulting in higher latency than a key-value API that accesses only a single key at any time. At the middle of the spectrum is the YCQL API that is still optimized for majority single-key workloads but has richer data modeling features such as globally consistent secondary indexes (powered by distributed ACID transactions) that can accelerate internet-scale application development significantly.
 
 ## How does YugaByte DB's common storage engine work?
 

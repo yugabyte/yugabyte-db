@@ -8,8 +8,8 @@ menu:
     parent: api-postgresql
     weight: 3700
 aliases:
-  - api/postgresql/explain
-  - api/pgsql/explain
+  - /latest/api/postgresql/explain
+  - /latest/api/ysql/explain
 ---
 
 ## Synopsis

@@ -7,8 +7,8 @@ menu:
     identifier: api-postgresql-text
     parent: api-postgresql-type
 aliases:
-  - api/postgresql/type/text
-  - api/pgsql/type/text
+  - /latest/api/postgresql/type/text
+  - /latest/api/ysql/type/text
 ---
 
 ## Synopsis

@@ -7,9 +7,8 @@ menu:
     parent: api-cassandra
     weight: 1290
 aliases:
-  - api/cassandra/ddl_use
-  - api/cql/ddl_use
-  - api/ycql/ddl_use
+  - /latest/api/cassandra/ddl_use
+  - /latest/api/ycql/ddl_use
 ---
 
 ## Synopsis

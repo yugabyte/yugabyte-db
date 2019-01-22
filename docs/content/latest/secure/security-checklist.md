@@ -33,7 +33,6 @@ See the [authorization](/secure/authorization) section to enable role-based acce
 Run the YugaByte DB processes (such as YB-Master and YB-TServer) with a dedicated operating system user account. Ensure that this dedicated user account has permissions to access the data drives, but no unnecessary permissions.
 
 
-
 ## Limit Network Exposure
 
 ### Restrict machine and port access
@@ -57,8 +56,6 @@ Limit the interfaces on which YugaByte DB instances listen for incoming connecti
 * In AWS, run the YugaByte DB cluster in a separate VPC ([Amazon Virtual Private Network](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html)) and peer this only with VPC(s) from which database access is required, for example from those VPCs where the application will run.
 
 * Make the security groups assigned to the database servers very restrictive. Ensure that they can communicate with each other on the necessary ports, and expose only the client accessible ports to just the required set of servers. See the [list of YugaByte DB ports](/deploy/checklist/#default-ports-reference).
-
-
 
 
 ## Enable encryption on the wire (Enterprise Edition)

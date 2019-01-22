@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2038
 aliases:
-  - api/redis/select
-  - api/yedis/select
+  - /latest/api/redis/select
+  - /latest/api/yedis/select
 ---
 
 ## Synopsis

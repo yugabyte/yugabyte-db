@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2555
 aliases:
-  - api/redis/punsubscribe
-  - api/yedis/punsubscribe
+  - /latest/api/redis/punsubscribe
+  - /latest/api/yedis/punsubscribe
 ---
 `PUNSUBSCRIBE` 
 

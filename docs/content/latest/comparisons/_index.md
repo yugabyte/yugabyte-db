@@ -32,7 +32,7 @@ Open Source | Apache 2.0 | 3-Clause BSD| SSPL | Apache 2.0| <i class="fa fa-time
 
 ## Distributed SQL Databases
 
-Feature |  Clustrix | CockroachDB | TiDB | AWS Aurora | [MS Azure CosmosDB](azure-cosmos/) | [Google Cloud Spanner](google-spanner/) | YugaByte DB
+Feature |  Clustrix | [CockroachDB](https://www.yugabyte.com/yugabyte-db-vs-cockroachdb/) | TiDB | Amazon Aurora | [MS Azure CosmosDB](azure-cosmos/) | [Google Cloud Spanner](google-spanner/) | YugaByte DB
 --------|---------|-------------|------------|----------------|----------------|-------------|-----------
 Linear Write Scalability | <i class="fa fa-check"></i> |  <i class="fa fa-check"></i> | <i class="fa fa-check"></i> | <i class="fa fa-times"></i> | <i class="fa fa-check">| <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
 Linear Read Scalability | <i class="fa fa-check"></i> |  <i class="fa fa-check"></i> | <i class="fa fa-check"></i> | <i class="fa fa-check"></i> | <i class="fa fa-check"> | <i class="fa fa-check"></i> | <i class="fa fa-check"></i>

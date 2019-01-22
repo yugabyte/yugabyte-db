@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2120
 aliases:
-  - api/redis/hget
-  - api/yedis/hget
+  - /latest/api/redis/hget
+  - /latest/api/yedis/hget
 ---
 
 ## Synopsis

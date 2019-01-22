@@ -7,9 +7,8 @@ menu:
     parent: api-cassandra
     weight: 1265
 aliases:
-  - api/cassandra/ddl_drop_role
-  - api/cql/ddl_drop_role
-  - api/ycql/ddl_drop_role
+  - /latest/api/cassandra/ddl_drop_role
+  - /latest/api/ycql/ddl_drop_role
 ---
 
 ## Synopsis
@@ -52,8 +51,8 @@ cqlsh:example> DROP ROLE IF EXISTS role2;
 
 [`ALTER ROLE`](../ddl_alter_role)
 [`CREATE ROLE`](../ddl_drop_role)
-[`GRANT ROLE`](../dml_grant_role)
-[`REVOKE ROLE`](../dml_revoke_role)
-[`GRANT PERMISSION`](../dml_grant_permission)
-[`REVOKE PERMISSION`](../dml_revoke_permission)
+[`GRANT ROLE`](../ddl_grant_role)
+[`REVOKE ROLE`](../ddl_revoke_role)
+[`GRANT PERMISSION`](../ddl_grant_permission)
+[`REVOKE PERMISSION`](../ddl_revoke_permission)
 [Other CQL Statements](..)

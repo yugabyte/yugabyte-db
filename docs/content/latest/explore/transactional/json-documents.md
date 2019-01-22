@@ -3,7 +3,7 @@ title: 3. JSON Documents
 linkTitle: 3. JSON Documents
 description: JSON Documents
 aliases:
-  - /explore/json-documents/
+  - /explore/transactional/json-documents/
   - /latest/explore/json-documents/
 menu:
   latest:

@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2034
 aliases:
-  - api/redis/deletedb
-  - api/yedis/deletedb
+  - /latest/api/redis/deletedb
+  - /latest/api/yedis/deletedb
 ---
 
 ## Synopsis

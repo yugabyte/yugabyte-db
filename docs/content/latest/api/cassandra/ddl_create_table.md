@@ -7,9 +7,8 @@ menu:
     parent: api-cassandra
     weight: 1240
 aliases:
-  - api/cassandra/ddl_create_table
-  - api/cql/ddl_create_table
-  - api/ycql/ddl_create_table
+  - /latest/api/cassandra/ddl_create_table
+  - /latest/api/ycql/ddl_create_table
 ---
 
 ## Synopsis

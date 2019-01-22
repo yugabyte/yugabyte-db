@@ -7,9 +7,8 @@ menu:
     parent: api-cassandra
     weight: 1270
 aliases:
-  - api/cassandra/ddl_drop_table
-  - api/cql/ddl_drop_table
-  - api/ycql/ddl_drop_table
+  - /latest/api/cassandra/ddl_drop_table
+  - /latest/api/ycql/ddl_drop_table
 ---
 
 ## Synopsis

@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2064
 aliases:
-  - api/redis/flushall
-  - api/yedis/flushall
+  - /latest/api/redis/flushall
+  - /latest/api/yedis/flushall
 ---
 
 ## Synopsis

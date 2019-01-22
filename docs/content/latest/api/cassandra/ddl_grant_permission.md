@@ -7,9 +7,8 @@ menu:
     parent: api-cassandra
     weight: 1281
 aliases:
-  - api/cassandra/ddl_grant_permission
-  - api/cql/ddl_grant_permission
-  - api/ycql/ddl_grant_permission
+  - /latest/api/cassandra/ddl_grant_permission
+  - /latest/api/ycql/ddl_grant_permission
 ---
 
 ## Synopsis
@@ -100,8 +99,8 @@ cqlsh:example> GRANT CREATE ON ALL KEYSPACES TO tests;
 
 [`ALTER ROLE`](../ddl_alter_role)
 [`DROP ROLE`](../ddl_drop_role)
-[`CREATE ROLE`](../dml_create_role)
-[`REVOKE ROLE`](../dml_revoke_role)
-[`GRANT PERMISSION`](../dml_grant_permission)
-[`REVOKE PERMISSION`](../dml_revoke_permission)
+[`CREATE ROLE`](../ddl_create_role)
+[`REVOKE ROLE`](../ddl_revoke_role)
+[`GRANT PERMISSION`](../ddl_grant_permission)
+[`REVOKE PERMISSION`](../ddl_revoke_permission)
 [Other CQL Statements](..)

@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2032
 aliases:
-  - api/redis/createdb
-  - api/yedis/createdb
+  - /latest/api/redis/createdb
+  - /latest/api/yedis/createdb
 ---
 
 

@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2553
 aliases:
-  - api/redis/unsubscribe
-  - api/yedis/unsubscribe
+  - /latest/api/redis/unsubscribe
+  - /latest/api/yedis/unsubscribe
 ---
 `UNSUBSCRIBE` 
 

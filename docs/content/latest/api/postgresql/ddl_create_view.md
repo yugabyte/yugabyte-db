@@ -7,8 +7,8 @@ menu:
     identifier: api-postgresql-create-view
     parent: api-postgresql-ddl
 aliases:
-  - api/postgresql/ddl_create_view
-  - api/pgsql/ddl_create_view
+  - /latest/api/postgresql/ddl_create_view
+  - /latest/api/ysql/ddl_create_view
 ---
 
 ## Synopsis

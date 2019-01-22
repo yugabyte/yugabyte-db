@@ -11,8 +11,8 @@ menu:
     parent: api
     weight: 2000
 aliases:
-  - /api/redis
-  - /api/yedis
+  - /latest/api/yedis
+  - /latest/api/redis
 ---
 
 ## Introduction

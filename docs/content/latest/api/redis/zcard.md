@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2510
 aliases:
-  - api/redis/zcard
-  - api/yedis/zcard
+  - /latest/api/redis/zcard
+  - /latest/api/yedis/zcard
 ---
 
 ## Synopsis

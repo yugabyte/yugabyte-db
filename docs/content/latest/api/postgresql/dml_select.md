@@ -7,8 +7,8 @@ menu:
     identifier: api-postgresql-select
     parent: api-postgresql-dml
 aliases:
-  - api/postgresql/dml/select
-  - api/pgsql/dml/select
+  - /latest/api/postgresql/dml/select
+  - /latest/api/ysql/dml/select
 ---
 
 ## Synopsis

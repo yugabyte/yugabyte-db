@@ -8,9 +8,8 @@ menu:
     parent: api-cassandra
     weight: 1283
 aliases:
-  - api/cassandra/ddl_revoke_permission
-  - api/cql/ddl_revoke_permission
-  - api/ycql/ddl_revoke_permission
+  - /latest/api/cassandra/ddl_revoke_permission
+  - /latest/api/ycql/ddl_revoke_permission
 ---
 
 ## Synopsis
@@ -61,8 +60,8 @@ cqlsh:example> REVOKE CREATE ON KEYSPACE qa FROM fred;
 
 [`ALTER ROLE`](../ddl_alter_role)
 [`DROP ROLE`](../ddl_drop_role)
-[`CREATE ROLE`](../dml_create_role)
-[`GRANT ROLE`](../dml_grant_role)
-[`REVOKE ROLE`](../dml_revoke_role)
-[`GRANT PERMISSION`](../dml_grant_permission)
+[`CREATE ROLE`](../ddl_create_role)
+[`GRANT ROLE`](../ddl_grant_role)
+[`REVOKE ROLE`](../ddl_revoke_role)
+[`GRANT PERMISSION`](../ddl_grant_permission)
 [Other CQL Statements](..)

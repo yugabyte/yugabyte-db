@@ -6,14 +6,13 @@ summary: Reference for PostgreSQL-compatible YSQL API
 image: /images/section_icons/api/pgsql.png
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
-  - api/postgresql
+  - /latest/api/postgresql/
+  - /latest/api/ysql/
 menu:
   latest:
     identifier: api-postgresql
     parent: api
     weight: 3000
-aliases:
-  - api/pgsql
 ---
 
 ## Introduction

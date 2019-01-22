@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2065
 aliases:
-  - api/redis/flushdb
-  - api/yedis/flushdb
+  - /latest/api/redis/flushdb
+  - /latest/api/yedis/flushdb
 ---
 
 ## Synopsis

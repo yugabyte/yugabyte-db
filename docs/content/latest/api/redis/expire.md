@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2061
 aliases:
-  - api/redis/expire
-  - api/yedis/expire
+  - /latest/api/redis/expire
+  - /latest/api/yedis/expire
 ---
 
 ## Synopsis

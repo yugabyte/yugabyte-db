@@ -7,9 +7,8 @@ menu:
     parent: api-cassandra
     weight: 1200
 aliases:
-  - api/cassandra/ddl_alter_keyspace
-  - api/cql/ddl_alter_keyspace
-  - api/ycql/ddl_alter_keyspace
+  - /latest/api/cassandra/ddl_alter_keyspace
+  - /latest/api/ycql/ddl_alter_keyspace
 ---
 
 ## Synopsis

@@ -7,9 +7,8 @@ menu:
     parent: api-cassandra
     weight: 1410
 aliases:
-  - api/cassandra/type_inet
-  - api/cql/type_inet
-  - api/ycql/type_inet
+  - /latest/api/cassandra/type_inet
+  - /latest/api/ycql/type_inet
 ---
 
 ## Synopsis

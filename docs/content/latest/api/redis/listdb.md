@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2036
 aliases:
-  - api/redis/listdb
-  - api/yedis/listdb
+  - /latest/api/redis/listdb
+  - /latest/api/yedis/listdb
 ---
 
 ## Synopsis

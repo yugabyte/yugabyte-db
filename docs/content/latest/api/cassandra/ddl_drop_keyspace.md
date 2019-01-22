@@ -7,9 +7,8 @@ menu:
     parent: api-cassandra
     weight: 1260
 aliases:
-  - api/cql/ddl_drop_keyspace
-  - api/cassandra/ddl_drop_keyspace
-  - api/ycql/ddl_drop_keyspace
+  - /latest/api/cassandra/ddl_drop_keyspace
+  - /latest/api/ycql/ddl_drop_keyspace
 ---
 
 ## Synopsis

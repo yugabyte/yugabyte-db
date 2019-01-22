@@ -7,8 +7,8 @@ menu:
     identifier: api-postgresql-number
     parent: api-postgresql-type
 aliases:
-  - api/postgresql/type/number
-  - api/pgsql/type/number
+  - /latest/api/postgresql/type/number
+  - /latest/api/ysql/type/number
 ---
 
 ## Synopsis

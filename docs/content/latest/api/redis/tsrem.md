@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2450
 aliases:
-  - api/redis/tsrem
-  - api/yedis/tsrem
+  - /latest/api/redis/tsrem
+  - /latest/api/yedis/tsrem
 ---
 
 ## Synopsis

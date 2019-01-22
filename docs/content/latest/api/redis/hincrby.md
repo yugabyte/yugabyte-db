@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2135
 aliases:
-  - api/redis/hincrby
-  - api/yedis/hincrby
+  - /latest/api/redis/hincrby
+  - /latest/api/yedis/hincrby
 ---
 
 ## Synopsis

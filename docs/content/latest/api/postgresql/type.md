@@ -8,8 +8,8 @@ menu:
     parent: api-postgresql
     weight: 3300
 aliases:
-  - api/postgresql/type
-  - api/pgsql/type
+  - /latest/api/postgresql/type
+  - /latest/api/ysql/type
 ---
 
 The following table lists all supported primitive types.

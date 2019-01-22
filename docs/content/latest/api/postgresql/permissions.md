@@ -8,8 +8,8 @@ menu:
     parent: api-postgresql
     weight: 3500
 aliases:
-  - api/postgresql/permissions
-  - api/pgsql/permissions
+  - /latest/api/postgresql/permissions
+  - /latest/api/ysql/permissions
 ---
 
 ## Synopsis 

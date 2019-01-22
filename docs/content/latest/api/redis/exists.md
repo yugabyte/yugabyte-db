@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2060
 aliases:
-  - api/redis/exist
-  - api/yedis/exist
+  - /latest/api/redis/exist
+  - /latest/api/yedis/exist
 ---
 Early Releases: Single-key request only. Requests with multiple keys are not yet supported.
 

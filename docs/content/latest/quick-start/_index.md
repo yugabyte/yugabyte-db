@@ -18,30 +18,8 @@ menu:
 We do not recommend a local multi-node cluster setup on a single host for production deployments or performance benchmarking. For those, consider deploying a true multi-node on multi-host setup using the <a href="../../latest/deploy">manual or orchestrated deployment steps</a>.
 {{< /note >}}
 
-{{< hero class="enterprise-edition" title="YugaByte DB Enterprise Edition" >}}
-<p class="subtitle">
-YugaByte DB Community Edition plus:
-</p>
-<div class="row features">
-<div class="col-12 col-md-12 col-lg-12 col-xl-4">
 
-  - Multi-cloud orchestration
-  - Monitoring dashboard
-  - Read replicas
-
-</div>
-<div class="col-12 col-md-12 col-lg-12 col-xl-4">
-
-  - Enterprise security
-  - Distributed backups
-  - Production support
-</div>
-</div>
-<a href="https://www.yugabyte.com/enterprise-edition-trial/" target="_blank" class="btn cta-button">
-  Contact Us
-</a>
-{{< /hero >}}
-
+## Get Started Yourself
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -117,3 +95,6 @@ YugaByte DB Community Edition plus:
   </div>
 </div>
 
+## Watch the Demo
+
+{{< vimeo 297325701 >}}

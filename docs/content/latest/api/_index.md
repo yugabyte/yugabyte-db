@@ -1,9 +1,9 @@
----
+  ---
 title: API Reference
 linkTitle: API Reference
 description: API Reference
 image: /images/section_icons/index/api.png
-headcontent: YugaByte DB's YCQL, YEDIS and YSQL APIs are wire-compatible with Apache Cassandra, Redis and PostgreSQL respectively. 
+headcontent: YugaByte DB's YCQL, YEDIS and YSQL APIs enable data modeling with flexible schema, key value and relational models. 
 aliases:
   - /api/
 menu:
@@ -15,7 +15,7 @@ menu:
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cassandra/">
+    <a class="section-link icon-offset" href="./cassandra/">
       <div class="head">
         <img class="icon" src="/images/section_icons/api/cql.png" aria-hidden="true" />
         <div class="title">YCQL</div>
@@ -27,7 +27,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="redis/">
+    <a class="section-link icon-offset" href="./redis/">
       <div class="head">
         <img class="icon" src="/images/section_icons/api/redis.png" aria-hidden="true" />
         <div class="title">YEDIS</div>
@@ -39,7 +39,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="postgresql/">
+    <a class="section-link icon-offset" href="./postgresql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/api/pgsql.png" aria-hidden="true" />
         <div class="title">YSQL (Beta)</div>

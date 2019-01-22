@@ -8,8 +8,8 @@ menu:
     parent: api-postgresql
     weight: 3200
 aliases:
-  - api/postgresql/dml
-  - api/pgsql/dml
+  - /latest/api/postgresql/dml
+  - /latest/api/ysql/dml
 ---
 
 Data manipulation language (DML) statements are used to read from and write to the existing database objects. Currently, YugaByte DB implicitly commits any updates by DML statements.

@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2233
 aliases:
-  - api/redis/pexpire
-  - api/yedis/pexpire
+  - /latest/api/redis/pexpire
+  - /latest/api/yedis/pexpire
 ---
 
 ## Synopsis

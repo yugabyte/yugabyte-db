@@ -7,8 +7,8 @@ menu:
     parent: api-redis
     weight: 2540
 aliases:
-  - api/redis/zrevrange
-  - api/yedis/zrevrange
+  - /latest/api/redis/zrevrange
+  - /latest/api/yedis/zrevrange
 ---
 
 ## Synopsis

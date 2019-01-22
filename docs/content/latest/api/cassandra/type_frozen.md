@@ -7,9 +7,8 @@ menu:
     parent: api-cassandra
     weight: 1400
 aliases:
-  - api/cassandra/type_frozen
-  - api/cql/type_frozen
-  - api/ycql/type_frozen
+  - /latest/api/cassandra/type_frozen
+  - /latest/api/ycql/type_frozen
 ---
 
 ## Synopsis
