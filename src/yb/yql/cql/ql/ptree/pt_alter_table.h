@@ -61,6 +61,11 @@ class PTAlterColumnDefinition : public TreeNode {
               AlterColumnType type);
   virtual ~PTAlterColumnDefinition();
 
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTAlterColumnDefinition;
+  }
+
   template<typename... TypeArgs>
   inline static PTAlterColumnDefinition::SharedPtr MakeShared(MemoryContext *memctx,
                                                   TypeArgs&& ... args) {

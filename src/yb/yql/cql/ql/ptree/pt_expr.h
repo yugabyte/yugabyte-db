@@ -923,11 +923,8 @@ class PTOperatorExpr : public PTExpr {
   virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context, PTExpr::SharedPtr op1) override;
 
  protected:
-  // Get the column descriptor from the current DML statement.
+  // Get the column descriptor from the current statement.
   const ColumnDesc *GetColumnDesc(const SemContext *sem_context, const MCString& col_name) const;
-
-  // Is the current DML a select on an uncovered index?
-  bool IsUncoveredIndexSelect(const SemContext *sem_context) const;
 };
 
 using PTOperator0 = PTExpr0<InternalType::VALUE_NOT_SET, DataType::UNKNOWN_DATA, PTOperatorExpr>;
@@ -1045,6 +1042,10 @@ class PTJsonColumnWithOperators : public PTOperator0 {
 
   // Analyze LHS expression.
   virtual CHECKED_STATUS CheckLhsExpr(SemContext *sem_context) override;
+
+  CHECKED_STATUS SetupPrimaryKey(SemContext *sem_context) const;
+  CHECKED_STATUS SetupHashAndPrimaryKey(SemContext *sem_context) const;
+  CHECKED_STATUS SetupCoveringIndexColumn(SemContext *sem_context) const;
 
  private:
   PTQualifiedName::SharedPtr name_;

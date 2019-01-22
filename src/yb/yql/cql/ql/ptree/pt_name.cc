@@ -33,8 +33,8 @@ PTName::PTName(MemoryContext *memctx,
 PTName::~PTName() {
 }
 
-CHECKED_STATUS PTName::SetupPrimaryKey(SemContext *sem_context) {
-  PTColumnDefinition *column = sem_context->GetColumnDefinition(*name_);
+CHECKED_STATUS PTName::SetupPrimaryKey(SemContext *sem_context) const {
+  PTColumnDefinition* const column = sem_context->GetColumnDefinition(*name_);
   if (column == nullptr) {
     return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
   }
@@ -44,7 +44,7 @@ CHECKED_STATUS PTName::SetupPrimaryKey(SemContext *sem_context) {
 
   // Add the analyzed column to table. For CREATE INDEX, need to check for proper datatype and set
   // column location because column definition is loaded from the indexed table definition actually.
-  PTCreateTable *table = sem_context->current_create_table_stmt();
+  PTCreateTable* const table = sem_context->current_create_table_stmt();
   if (table->opcode() == TreeNodeOpcode::kPTCreateIndex) {
     if (column->datatype() == nullptr) {
       return sem_context->Error(this, "Unsupported index datatype",
@@ -53,13 +53,12 @@ CHECKED_STATUS PTName::SetupPrimaryKey(SemContext *sem_context) {
     column->set_loc(*this);
     column->datatype()->set_loc(*this);
   }
-  RETURN_NOT_OK(table->AppendPrimaryColumn(sem_context, column));
 
-  return Status::OK();
+  return table->AppendPrimaryColumn(sem_context, column);
 }
 
-CHECKED_STATUS PTName::SetupHashAndPrimaryKey(SemContext *sem_context) {
-  PTColumnDefinition *column = sem_context->GetColumnDefinition(*name_);
+CHECKED_STATUS PTName::SetupHashAndPrimaryKey(SemContext *sem_context) const {
+  PTColumnDefinition* const column = sem_context->GetColumnDefinition(*name_);
   if (column == nullptr) {
     return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
   }
@@ -69,7 +68,7 @@ CHECKED_STATUS PTName::SetupHashAndPrimaryKey(SemContext *sem_context) {
 
   // Add the analyzed column to table. For CREATE INDEX, need to check for proper datatype and set
   // column location because column definition is loaded from the indexed table definition actually.
-  PTCreateTable *table = sem_context->current_create_table_stmt();
+  PTCreateTable* const table = sem_context->current_create_table_stmt();
   if (table->opcode() == TreeNodeOpcode::kPTCreateIndex) {
     if (column->datatype() == nullptr) {
       return sem_context->Error(this, "Unsupported index datatype",
@@ -78,13 +77,12 @@ CHECKED_STATUS PTName::SetupHashAndPrimaryKey(SemContext *sem_context) {
     column->set_loc(*this);
     column->datatype()->set_loc(*this);
   }
-  RETURN_NOT_OK(table->AppendHashColumn(sem_context, column));
 
-  return Status::OK();
+  return table->AppendHashColumn(sem_context, column);
 }
 
-CHECKED_STATUS PTName::SetupCoveringIndexColumn(SemContext *sem_context) {
-  PTColumnDefinition *column = sem_context->GetColumnDefinition(*name_);
+CHECKED_STATUS PTName::SetupCoveringIndexColumn(SemContext *sem_context) const {
+  PTColumnDefinition* const column = sem_context->GetColumnDefinition(*name_);
   if (column == nullptr) {
     return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
   }
@@ -98,7 +96,7 @@ CHECKED_STATUS PTName::SetupCoveringIndexColumn(SemContext *sem_context) {
 
   // Add the analyzed covering index column to table. Need to check for proper datatype and set
   // column location because column definition is loaded from the indexed table definition actually.
-  PTCreateTable *table = sem_context->current_create_table_stmt();
+  PTCreateTable* const table = sem_context->current_create_table_stmt();
   DCHECK(table->opcode() == TreeNodeOpcode::kPTCreateIndex);
   if (column->datatype() == nullptr) {
     return sem_context->Error(this, "Unsupported index datatype", ErrorCode::SQL_STATEMENT_INVALID);
