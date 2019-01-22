@@ -500,7 +500,7 @@ class ClusterControl:
             # 3      Fatal error: out of memory etc.
             if e.returncode != 1:
                 raise RuntimeError("Error during pgrep: {}".format(e.output))
-            return 0
+            return None
 
     def build_command(self, daemon_id, specific_arg_list):
         node_base_dirs = self.options.get_base_node_dirs(daemon_id.index)
@@ -590,13 +590,13 @@ class ClusterControl:
         self.options.master_addresses = ",".join(
             [self.options.get_address(DaemonId(DAEMON_TYPE_MASTER, i), "rpc", True)
              for i in range(1, num_servers + 1)
-             if not running_only or self.get_pid(DaemonId(DAEMON_TYPE_MASTER, i)) > 0])
+             if not running_only or self.get_pid(DaemonId(DAEMON_TYPE_MASTER, i)) is not None])
 
     def start_daemon(self, daemon_id):
         self.options.validate_daemon_type(daemon_id.daemon_type)
         self.options.validate_daemon_index(daemon_id.index)
 
-        if self.get_pid(daemon_id) > 0:
+        if self.get_pid(daemon_id) is not None:
             logging.info("Server {} already running".format(daemon_id))
             return
 
@@ -625,7 +625,7 @@ class ClusterControl:
             os.system(command)
 
     def stop_process(self, pid, name):
-        if pid == 0:
+        if pid is None:
             logging.info("{} already stopped".format(name))
             return
         logging.info("Stopping {} PID={}".format(name, pid))
@@ -659,12 +659,12 @@ class ClusterControl:
         self.options.validate_daemon_index(daemon_id.index)
         self.stop_process(self.get_pid(daemon_id), "Server {}".format(daemon_id))
         postgres_pid = self.find_postgres_pid(daemon_id)
-        if postgres_pid != 0:
+        if postgres_pid:
             self.stop_process(postgres_pid, "Postmaster for {}".format(daemon_id))
 
     def find_postgres_pid(self, daemon_id):
         if not daemon_id.is_tserver():
-            return 0
+            return None
         base_dirs = self.options.get_base_node_dirs(daemon_id.index)
         for dir in base_dirs:
             postmaster_pid = os.path.join(dir, "pg_data", "postmaster.pid")
@@ -674,7 +674,7 @@ class ClusterControl:
                         return int(inp.readline())
                 except OSError as err:
                     logging.info("Failed to read postmaster.pid for {}".format(daemon_id))
-                    return 0
+        return None
 
     def restart_daemon(self, daemon_id):
         self.stop_daemon(daemon_id)
@@ -728,7 +728,7 @@ class ClusterControl:
         start_time = time.time()
         while wait_count < MAX_WAIT_ITERS and (time.time() - start_time <= MAX_WAIT_SECONDS):
             try:
-                num_alive_ts = sum([self.get_pid(DaemonId(DAEMON_TYPE_TSERVER, i)) > 0
+                num_alive_ts = sum([self.get_pid(DaemonId(DAEMON_TYPE_TSERVER, i)) is not None
                                     for i in xrange(1, max_num_tservers + 1)])
                 logging.info("Waiting until we have enough tablet servers (currently %d)",
                              num_alive_ts)
@@ -770,7 +770,7 @@ class ClusterControl:
         def get_address(port_type):
             return self.options.get_address(daemon_id, port_type, include_base_url=True)
 
-        if pid == 0:
+        if pid is None:
             logging.info("Server {} is not running".format(daemon_id))
         else:
             info_list = [
