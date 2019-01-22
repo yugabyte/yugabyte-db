@@ -91,6 +91,12 @@ Service | Type | Port
 `yedis` | admin web server | 11000
 `pgsql` | rpc | 5433
 `pgsql` | admin web server | 13000
+`node_exporter` | Prometheus node exporter | 9300
+`ssh` | SSH access | 22
+
+{{< note title="Note" >}}
+In our Enterprise installs, we change the SSH port for added security.
+{{< /note >}}
 
 ## Running on public clouds
 
