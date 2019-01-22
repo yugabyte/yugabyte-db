@@ -5460,9 +5460,9 @@ Status DBImpl::ApplyVersionEdit(VersionEdit* edit) {
   return Status::OK();
 }
 
-Status DBImpl::SetFlushedFrontier(UserFrontierPtr frontier) {
+Status DBImpl::ModifyFlushedFrontier(UserFrontierPtr frontier, FrontierModificationMode mode) {
   VersionEdit edit;
-  edit.UpdateFlushedFrontier(std::move(frontier));
+  edit.ModifyFlushedFrontier(std::move(frontier), mode);
   return ApplyVersionEdit(&edit);
 }
 

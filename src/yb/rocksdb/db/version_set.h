@@ -766,7 +766,7 @@ class VersionSet {
   uint64_t ApproximateSize(Version* v, const FdWithBoundaries& f, const Slice& key);
 
   // Save current contents to *log
-  Status WriteSnapshot(log::Writer* log);
+  Status WriteSnapshot(log::Writer* log, UserFrontierPtr flushed_frontier_override);
 
   void AppendVersion(ColumnFamilyData* column_family_data, Version* v);
 

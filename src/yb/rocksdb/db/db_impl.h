@@ -216,7 +216,9 @@ class DBImpl : public DB {
 
   UserFrontierPtr GetFlushedFrontier() override;
 
-  CHECKED_STATUS SetFlushedFrontier(UserFrontierPtr frontier) override;
+  CHECKED_STATUS ModifyFlushedFrontier(
+      UserFrontierPtr frontier,
+      FrontierModificationMode mode) override;
 
   bool HasSomethingToFlush() override;
 

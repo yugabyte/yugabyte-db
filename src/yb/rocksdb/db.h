@@ -798,7 +798,9 @@ class DB {
 
   virtual UserFrontierPtr GetFlushedFrontier() { return nullptr; }
 
-  virtual CHECKED_STATUS SetFlushedFrontier(UserFrontierPtr values) {
+  virtual CHECKED_STATUS ModifyFlushedFrontier(
+      UserFrontierPtr values,
+      FrontierModificationMode mode) {
     return Status::OK();
   }
 
