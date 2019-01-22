@@ -41,6 +41,7 @@ using yb::OpId;
 using yb::HybridTime;
 
 YB_DEFINE_ENUM(UpdateUserValueType, ((kSmallest, 1))((kLargest, -1)));
+YB_DEFINE_ENUM(FrontierModificationMode, (kForce)(kUpdate));
 
 }  //  namespace rocksdb
 

@@ -1412,8 +1412,10 @@ ScopedPendingOperationPause Tablet::PauseReadWriteOperations() {
   FATAL_ERROR("Unreachable code -- the previous block must always return");
 }
 
-Status Tablet::SetFlushedFrontier(const docdb::ConsensusFrontier& frontier) {
-  const Status s = regular_db_->SetFlushedFrontier(frontier.Clone());
+Status Tablet::ModifyFlushedFrontier(
+    const docdb::ConsensusFrontier& frontier,
+    rocksdb::FrontierModificationMode mode) {
+  const Status s = regular_db_->ModifyFlushedFrontier(frontier.Clone(), mode);
   if (PREDICT_FALSE(!s.ok())) {
     auto status = STATUS(IllegalState, "Failed to set flushed frontier", s.ToString());
     LOG_WITH_PREFIX(WARNING) << status;
@@ -1425,7 +1427,7 @@ Status Tablet::SetFlushedFrontier(const docdb::ConsensusFrontier& frontier) {
     // It is OK to flush intents even if the regular DB is not yet flushed,
     // because it would wait for flush of regular DB if we have unflushed intents.
     // Otherwise it does not matter which flushed op id is stored.
-    RETURN_NOT_OK(intents_db_->SetFlushedFrontier(frontier.Clone()));
+    RETURN_NOT_OK(intents_db_->ModifyFlushedFrontier(frontier.Clone(), mode));
   }
 
   return Flush(FlushMode::kAsync);
@@ -1478,7 +1480,10 @@ Status Tablet::Truncate(TruncateOperationState *state) {
   docdb::ConsensusFrontier frontier;
   frontier.set_op_id({state->op_id().term(), state->op_id().index()});
   frontier.set_hybrid_time(state->hybrid_time());
-  RETURN_NOT_OK(SetFlushedFrontier(frontier));
+  // We use the kUpdate mode here, because unlike the case of restoring a snapshot to a completely
+  // different tablet in an arbitrary Raft group, here there is no possibility of the flushed
+  // frontier needing to go backwards.
+  RETURN_NOT_OK(ModifyFlushedFrontier(frontier, rocksdb::FrontierModificationMode::kUpdate));
 
   LOG_WITH_PREFIX(INFO) << "Created new db for truncated tablet";
   LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number

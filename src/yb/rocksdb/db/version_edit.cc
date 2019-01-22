@@ -357,7 +357,16 @@ void VersionEdit::InitNewDB() {
 }
 
 void VersionEdit::UpdateFlushedFrontier(UserFrontierPtr value) {
-  UpdateUserFrontier(&flushed_frontier_, std::move(value), UpdateUserValueType::kLargest);
+  ModifyFlushedFrontier(std::move(value), FrontierModificationMode::kUpdate);
+}
+
+void VersionEdit::ModifyFlushedFrontier(UserFrontierPtr value, FrontierModificationMode mode) {
+  if (mode == FrontierModificationMode::kForce) {
+    flushed_frontier_ = std::move(value);
+    force_flushed_frontier_ = true;
+  } else {
+    UpdateUserFrontier(&flushed_frontier_, std::move(value), UpdateUserValueType::kLargest);
+  }
 }
 
 }  // namespace rocksdb

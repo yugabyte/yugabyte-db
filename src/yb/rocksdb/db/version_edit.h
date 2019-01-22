@@ -162,6 +162,7 @@ class VersionEdit {
     last_sequence_ = seq;
   }
   void UpdateFlushedFrontier(UserFrontierPtr value);
+  void ModifyFlushedFrontier(UserFrontierPtr value, FrontierModificationMode mode);
   void SetMaxColumnFamily(uint32_t max_column_family) {
     max_column_family_ = max_column_family;
   }
@@ -270,6 +271,10 @@ class VersionEdit {
   boost::optional<uint32_t> max_column_family_;
   boost::optional<SequenceNumber> last_sequence_;
   UserFrontierPtr flushed_frontier_;
+
+  // Used when we're resetting the flushed frontier to a potentially lower value. This is needed
+  // when restoring from a backup into a new Raft group with an unrelated sequence of OpIds.
+  bool force_flushed_frontier_ = false;
 
   DeletedFileSet deleted_files_;
   std::vector<std::pair<int, FileMetaData>> new_files_;
