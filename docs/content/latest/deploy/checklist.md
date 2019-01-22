@@ -21,7 +21,6 @@ YugaByte DB consists of two distributed services - the YB-Master service and the
 - Set the appropriate [system limits using `ulimit`](../deploy/manual-deployment/system-config/#setting-ulimits/) on each node running a YugaByte DB process.
 - Use [ntp](../deploy/manual-deployment/system-config/#ntp/) to synchronize time among the machines.
 
-
 ## Replication
 
 YugaByte DB internally replicates data in order to survive node failure without compromising data correctness. The number of copies of the data represents the replication factor.
@@ -32,7 +31,7 @@ You would first need to choose a replication factor. You would need at least as 
 - The default replication factor is **3**.
     - A replication factor of **3** allows tolerating one machine failure.
     - A replication factor of **5** allows tolerating two machine failures.
-    - More generally, if the replication factor is `n`, YugaByte DB can survive `(n + 1) / 2` failures without compromising correctness or availability of data.
+    - More generally, if the replication factor is `n`, YugaByte DB can survive `(n - 1) / 2` failures without compromising correctness or availability of data.
 - Number of YB-Master processes running in a cluster should match replication factor. Run each process on a separate machine to prevent losing data on failures.
 - Number of YB-TServer processes running in the cluster should not be less than the replication factor. Run each process on a separate machine to prevent losing data on failures.
 - Specify the replication factor using the `--replication_factor` when bringing up the YB-Master processes.
@@ -41,7 +40,7 @@ See the [yb-master command reference](../admin/yb-master/) for more information.
 
 ## Hardware Requirements
 
-YugaByte DB is designed to run well on bare-metal machines, virtual machines or containers. 
+YugaByte DB is designed to run well on bare-metal machines, virtual machines or containers.
 
 ### CPU and RAM
 
@@ -78,9 +77,9 @@ Below is a minimal list of default ports (along with the network access required
 
 ### Default ports reference
 
-The above deployment uses the various default ports listed below. 
+The above deployment uses the various default ports listed below.
 
-Service | Type | Port 
+Service | Type | Port
 --------|------| -------
 `yb-master` | rpc | 7100
 `yb-master` | admin web server | 7000
@@ -93,16 +92,13 @@ Service | Type | Port
 `pgsql` | rpc | 5433
 `pgsql` | admin web server | 13000
 
-
-
 ## Running on public clouds
-
 
 ### Amazon Web Services (AWS)
 
 - Use the `c5` or `i3` instance families.
 - Recommended types are `i3.2xlarge`, `i3.4xlarge`, `c5.2xlarge`, `c5.4xlarge`
-- For the `c5` instance family, use `gp2` EBS (SSD) disks that are **at least 250GB** in size, larger if more IOPS are needed. 
+- For the `c5` instance family, use `gp2` EBS (SSD) disks that are **at least 250GB** in size, larger if more IOPS are needed.
       - The number of IOPS are proportional to the size of the disk.
       - In our testing, `gp2` EBS SSDs provide the best performance for a given cost among the various EBS disk options.
 - Avoid running on [`t2` instance types](https://aws.amazon.com/ec2/instance-types/t2/). The `t2` instance types are burstable instance types. Their baseline performance and ability to burst are governed by CPU Credits, and makes it hard to get steady performance.
@@ -116,4 +112,3 @@ Service | Type | Port
 - As a second choice, [remote persistent SSDs](https://cloud.google.com/compute/docs/disks/#pdspecs) work well. Make sure the size of these SSDs are **at least 250GB** in size, larger if more IOPS are needed.
       - The number of IOPS are proportional to the size of the disk.
 - Avoid running on `f1` or `g1` machine families. These are [burstable, shared core machines](https://cloud.google.com/compute/docs/machine-types#sharedcore) that may not deliver steady performance.
-

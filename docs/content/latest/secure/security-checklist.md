@@ -64,7 +64,7 @@ Limit the interfaces on which YugaByte DB instances listen for incoming connecti
 ## Enable encryption on the wire (Enterprise Edition)
 
 
-[TLS/SSL encryption](https://en.wikipedia.org/wiki/Transport_Layer_Security) ensures that network communication between servers is secure. You can configure YugaByte DB to use TLS to encrypt intra-cluster and client to cluster network communication. It is recommended to enable TLS encryption over the wire in YugaByte DB clusters and clinets to ensure privacy and integrity of data transferred over the network.
+[TLS/SSL encryption](https://en.wikipedia.org/wiki/Transport_Layer_Security) ensures that network communication between servers is secure. You can configure YugaByte DB to use TLS to encrypt intra-cluster and client to cluster network communication. It is recommended to enable TLS encryption over the wire in YugaByte DB clusters and clients to ensure privacy and integrity of data transferred over the network.
 
 Read more about enabling [TLS/SSL encryption](/secure/tls-encryption) in YugaByte DB.
 
