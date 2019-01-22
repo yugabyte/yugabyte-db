@@ -158,16 +158,21 @@ Status YBClient::Data::SyncLeaderMasterRpc(
     int* num_attempts, const char* func_name,
     const std::function<Status(MasterServiceProxy*, const ReqClass&, RespClass*, RpcController*)>&
         func) {
-  DCHECK(deadline.Initialized());
+  DSCHECK(deadline.Initialized(), InvalidArgument, "Deadline is not set");
+  MonoTime start_time;
 
   while (true) {
     RpcController rpc;
 
     // Have we already exceeded our deadline?
     MonoTime now = MonoTime::Now();
+    if (!start_time) {
+      start_time = now;
+    }
     if (deadline.ComesBefore(now)) {
-      return STATUS(TimedOut, Substitute("$0 timed out after deadline expired",
-                                         func_name));
+      return STATUS_FORMAT(TimedOut,
+          "$0 timed out after deadline expired. Time elapsed: $1, allowed: $2",
+          func_name, now - start_time, deadline - start_time);
     }
 
     // The RPC's deadline is intentionally earlier than the overall
@@ -197,7 +202,8 @@ Status YBClient::Data::SyncLeaderMasterRpc(
     }
 
     if (s.IsTimedOut()) {
-      if (MonoTime::Now().ComesBefore(deadline)) {
+      now = MonoTime::Now();
+      if (now.ComesBefore(deadline)) {
         YB_LOG_EVERY_N_SECS(WARNING, 1)
             << "Unable to send the request (" << req.ShortDebugString()
             << ") to leader Master (" << leader_master_hostport().ToString()
@@ -210,8 +216,9 @@ Status YBClient::Data::SyncLeaderMasterRpc(
         continue;
       } else {
         // Operation deadline expired during this latest RPC.
-        s = s.CloneAndPrepend(Substitute("$0 timed out after deadline expired",
-                                         func_name));
+        s = s.CloneAndPrepend(Format(
+            "$0 timed out after deadline expired. Time elapsed: $1, allowed: $2",
+            func_name, now - start_time, deadline - start_time));
       }
     }
 
