@@ -164,6 +164,11 @@ class PTCollection : public TreeNode {
   typedef MCSharedPtr<PTCollection> SharedPtr;
   typedef MCSharedPtr<const PTCollection> SharedPtrConst;
 
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTCollection;
+  }
+
  protected:
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor. Define them in protected section to prevent application from

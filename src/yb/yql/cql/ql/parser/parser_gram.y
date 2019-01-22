@@ -206,7 +206,7 @@ using namespace yb::ql;
 
                           // Create table.
                           CreateStmt schema_stmt TableElement TableConstraint
-                          columnDef ColConstraint ColConstraintElem
+                          columnDef columnElem ColConstraint ColConstraintElem
                           ConstraintElem ConstraintAttr
 
                           // Create role.
@@ -360,7 +360,7 @@ using namespace yb::ql;
 %type <PTypeFieldListNode> TypeFieldList
 
 // Name nodes.
-%type <PName>             indirection_el columnElem
+%type <PName>             indirection_el
 
 %type <PQualifiedNameListNode>  insert_column_list any_name_list relation_expr_list
 
@@ -1388,6 +1388,11 @@ columnElem:
   ColId {
     $$ = MAKE_NODE(@1, PTName, $1);
   }
+// TODO: Uncomment when the proper handling will be implemented
+//  | ColId json_ref {
+//    PTQualifiedName::SharedPtr name_node = MAKE_NODE(@1, PTQualifiedName, $1);
+//    $$ = MAKE_NODE(@1, PTJsonColumnWithOperators, name_node, $2);
+//  }
 ;
 
 key_match:

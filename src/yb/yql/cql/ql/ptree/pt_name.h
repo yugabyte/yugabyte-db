@@ -40,14 +40,23 @@ class PTName : public TreeNode {
                   const MCSharedPtr<MCString>& name = nullptr);
   virtual ~PTName();
 
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTName;
+  }
+
   template<typename... TypeArgs>
   inline static PTName::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
     return MCMakeShared<PTName>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  CHECKED_STATUS SetupPrimaryKey(SemContext *sem_context);
-  CHECKED_STATUS SetupHashAndPrimaryKey(SemContext *sem_context);
-  CHECKED_STATUS SetupCoveringIndexColumn(SemContext *sem_context);
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
+    return Status::OK();
+  }
+
+  CHECKED_STATUS SetupPrimaryKey(SemContext *sem_context) const;
+  CHECKED_STATUS SetupHashAndPrimaryKey(SemContext *sem_context) const;
+  CHECKED_STATUS SetupCoveringIndexColumn(SemContext *sem_context) const;
 
   const MCString& name() const {
     return *name_;

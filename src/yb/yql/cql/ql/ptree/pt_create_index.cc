@@ -42,6 +42,33 @@ PTCreateIndex::PTCreateIndex(MemoryContext *memctx,
 PTCreateIndex::~PTCreateIndex() {
 }
 
+namespace {
+
+CHECKED_STATUS SetupCoveringColumn(TreeNode *node, SemContext *sem_context) {
+  switch (node->opcode()) {
+  case TreeNodeOpcode::kPTName: {
+      PTName* const name_node = static_cast<PTName*>(node);
+      RETURN_NOT_OK(name_node->Analyze(sem_context));
+      RETURN_NOT_OK(name_node->SetupCoveringIndexColumn(sem_context));
+    }
+    break;
+
+  case TreeNodeOpcode::kPTJsonOp: {
+      PTJsonColumnWithOperators* const json_node = static_cast<PTJsonColumnWithOperators*>(node);
+      RETURN_NOT_OK(json_node->Analyze(sem_context));
+      RETURN_NOT_OK(json_node->SetupCoveringIndexColumn(sem_context));
+    }
+    break;
+
+  default:
+    return sem_context->Error(node, "Unexpected covering column type", ErrorCode::FAILURE);
+  }
+
+  return Status::OK();
+}
+
+} // namespace
+
 CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   // Look up indexed table.
   bool is_system_ignored;
@@ -81,8 +108,7 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
 
   // Add covering columns.
   if (covering_ != nullptr) {
-    RETURN_NOT_OK((covering_->Apply<SemContext, PTName>(sem_context,
-                                                        &PTName::SetupCoveringIndexColumn)));
+    RETURN_NOT_OK((covering_->Apply<SemContext, TreeNode>(sem_context, &SetupCoveringColumn)));
   }
 
   // Check whether the index is local, i.e. whether the hash keys match (including being in the
@@ -150,6 +176,18 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
 
 void PTCreateIndex::PrintSemanticAnalysisResult(SemContext *sem_context) {
   PTCreateTable::PrintSemanticAnalysisResult(sem_context);
+}
+
+Status PTCreateIndex::CheckPrimaryType(SemContext *sem_context,
+                                       const PTBaseType::SharedPtr& datatype) const {
+  DCHECK_NOTNULL(datatype.get());
+  DCHECK_NOTNULL(datatype->ql_type().get());
+
+  if (datatype->ql_type()->main() == DataType::JSONB) {
+    return CheckType(sem_context, datatype);
+  }
+
+  return PTCreateTable::CheckPrimaryType(sem_context, datatype);
 }
 
 Status PTCreateIndex::ToTableProperties(TableProperties *table_properties) const {

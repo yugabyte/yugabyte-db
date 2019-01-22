@@ -223,8 +223,8 @@ std::shared_ptr<QLType> SemContext::GetUDType(const string &keyspace_name,
   return type;
 }
 
-SymbolEntry *SemContext::SeekSymbol(const MCString& name) {
-  MCMap<MCString, SymbolEntry>::iterator iter = symtab_.find(name);
+const SymbolEntry *SemContext::SeekSymbol(const MCString& name) const {
+  MCMap<MCString, SymbolEntry>::const_iterator iter = symtab_.find(name);
   if (iter != symtab_.end()) {
     return &iter->second;
   }
@@ -239,8 +239,8 @@ PTColumnDefinition *SemContext::GetColumnDefinition(const MCString& col_name) {
   return entry->column_;
 }
 
-const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) {
-  SymbolEntry * entry = SeekSymbol(col_name);
+const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) const {
+  const SymbolEntry * entry = SeekSymbol(col_name);
   if (entry == nullptr) {
     return nullptr;
   }

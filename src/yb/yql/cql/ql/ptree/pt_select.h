@@ -94,6 +94,11 @@ class PTOrderBy : public TreeNode {
             const NullPlacement null_placement);
   virtual ~PTOrderBy();
 
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTOrderBy;
+  }
+
   template<typename... TypeArgs>
   inline static PTOrderBy::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
     return MCMakeShared<PTOrderBy>(memctx, std::forward<TypeArgs>(args)...);
@@ -137,6 +142,11 @@ class PTTableRef : public TreeNode {
              const PTQualifiedName::SharedPtr& name,
              MCSharedPtr<MCString> alias);
   virtual ~PTTableRef();
+
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTTableRef;
+  }
 
   template<typename... TypeArgs>
   inline static PTTableRef::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {

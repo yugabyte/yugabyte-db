@@ -53,6 +53,11 @@ class PTProperty : public TreeNode {
 
   virtual ~PTProperty();
 
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTProperty;
+  }
+
   template<typename... TypeArgs>
   inline static PTProperty::SharedPtr MakeShared(MemoryContext *memctx,
                                                  TypeArgs&&... args) {
@@ -60,7 +65,7 @@ class PTProperty : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) = 0;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override = 0;
 
   MCSharedPtr<MCString> lhs() const {
     return lhs_;

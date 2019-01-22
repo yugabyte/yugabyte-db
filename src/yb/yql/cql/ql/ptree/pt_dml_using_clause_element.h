@@ -37,6 +37,11 @@ class PTDmlUsingClauseElement : public TreeNode {
 
   virtual ~PTDmlUsingClauseElement();
 
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTDmlUsingClauseElement;
+  }
+
   template<typename... TypeArgs>
   inline static PTDmlUsingClauseElement::SharedPtr MakeShared(MemoryContext *memctx,
                                                        TypeArgs&&... args) {

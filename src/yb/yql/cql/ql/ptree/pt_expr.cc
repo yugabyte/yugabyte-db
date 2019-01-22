@@ -737,7 +737,12 @@ CHECKED_STATUS PTOperatorExpr::AnalyzeOperator(SemContext *sem_context,
 
 const ColumnDesc *PTOperatorExpr::GetColumnDesc(const SemContext *sem_context,
                                                 const MCString& col_name) const {
-  return sem_context->current_dml_stmt()->GetColumnDesc(sem_context, col_name);
+  // Get column from DML statement if it's DML.
+  if (sem_context->current_dml_stmt()) {
+    return sem_context->current_dml_stmt()->GetColumnDesc(sem_context, col_name);
+  } else { // Else get column from symbol table in context.
+    return sem_context->GetColumnDesc(col_name);
+  }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -888,6 +893,73 @@ CHECKED_STATUS PTJsonColumnWithOperators::AnalyzeOperator(SemContext *sem_contex
 
 CHECKED_STATUS PTJsonColumnWithOperators::CheckLhsExpr(SemContext *sem_context) {
   return Status::OK();
+}
+
+CHECKED_STATUS PTJsonColumnWithOperators::SetupPrimaryKey(SemContext *sem_context) const {
+  PTColumnDefinition* const column = sem_context->GetColumnDefinition(name_->first_name());
+  if (column == nullptr) {
+    return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
+  }
+
+  // Add the analyzed column to table. For CREATE INDEX, need to check for proper datatype and set
+  // column location because column definition is loaded from the indexed table definition actually.
+  PTCreateTable* const table = sem_context->current_create_table_stmt();
+  if (table->opcode() == TreeNodeOpcode::kPTCreateIndex) {
+    if (column->datatype() == nullptr) {
+      return sem_context->Error(this, "Unsupported index datatype",
+                                ErrorCode::SQL_STATEMENT_INVALID);
+    }
+    column->set_loc(*this);
+    column->datatype()->set_loc(*this);
+  }
+
+  // TODO: Added info about JSON attribute " ->'a'->>'b' " (next diff)!
+  return table->AppendPrimaryColumn(sem_context, column);
+}
+
+CHECKED_STATUS PTJsonColumnWithOperators::SetupHashAndPrimaryKey(SemContext *sem_context) const {
+  PTColumnDefinition* const column = sem_context->GetColumnDefinition(name_->first_name());
+  if (column == nullptr) {
+    return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
+  }
+
+  // Add the analyzed column to table. For CREATE INDEX, need to check for proper datatype and set
+  // column location because column definition is loaded from the indexed table definition actually.
+  PTCreateTable* const table = sem_context->current_create_table_stmt();
+  if (table->opcode() == TreeNodeOpcode::kPTCreateIndex) {
+    if (column->datatype() == nullptr) {
+      return sem_context->Error(this, "Unsupported index datatype",
+                                ErrorCode::SQL_STATEMENT_INVALID);
+    }
+    column->set_loc(*this);
+    column->datatype()->set_loc(*this);
+  }
+
+  // TODO: Added info about JSON attribute " ->'a'->>'b' " (next diff)!
+  return table->AppendHashColumn(sem_context, column);
+}
+
+CHECKED_STATUS PTJsonColumnWithOperators::SetupCoveringIndexColumn(SemContext *sem_context) const {
+  PTColumnDefinition* const column = sem_context->GetColumnDefinition(name_->first_name());
+  if (column == nullptr) {
+    return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
+  }
+  if (column->is_static()) {
+    return sem_context->Error(this, "Static column not supported as a covering index column",
+                              ErrorCode::SQL_STATEMENT_INVALID);
+  }
+
+  // Add the analyzed covering index column to table. Need to check for proper datatype and set
+  // column location because column definition is loaded from the indexed table definition actually.
+  PTCreateTable* const table = sem_context->current_create_table_stmt();
+  DCHECK(table->opcode() == TreeNodeOpcode::kPTCreateIndex);
+  if (column->datatype() == nullptr) {
+    return sem_context->Error(this, "Unsupported index datatype", ErrorCode::SQL_STATEMENT_INVALID);
+  }
+  column->set_loc(*this);
+  column->datatype()->set_loc(*this);
+  // TODO: Added info about JSON attribute " ->'a'->>'b' " (next diff)!
+  return table->AppendColumn(sem_context, column, true /* check_duplicate */);
 }
 
 //--------------------------------------------------------------------------------------------------
