@@ -2162,6 +2162,8 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
   ManifestWriter* last_writer = &w;
   assert(!manifest_writers_.empty());
   assert(manifest_writers_.front() == &w);
+
+  UserFrontierPtr flushed_frontier_override;
   if (edit->IsColumnFamilyManipulation()) {
     // no group commits for column family add or drop
     LogAndApplyCFHelper(edit);
@@ -2173,13 +2175,30 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     for (const auto& writer : manifest_writers_) {
       if (writer->edit->IsColumnFamilyManipulation() ||
           writer->cfd->GetID() != column_family_data->GetID()) {
-        // no group commits for column family add or drop
-        // also, group commits across column families are not supported
+        // No group commits for column family add or drop.
+        // Also, group commits across column families are not supported.
         break;
       }
       last_writer = writer;
       LogAndApplyHelper(column_family_data, builder, v, last_writer->edit, mu);
       batch_edits.push_back(last_writer->edit);
+      if (edit->force_flushed_frontier_) {
+        new_descriptor_log = true;
+        // We should not really get multiple concurrent version edits that are all forcing a new
+        // flushed frontier, so pick the last value.
+        flushed_frontier_override = edit->flushed_frontier_;
+      }
+    }
+    if (flushed_frontier_override) {
+      // Remove user frontier data from the individual edits. We will create a new manifest with the
+      // exact flushed frontier value needed.
+      for (auto* batch_edit : batch_edits) {
+        batch_edit->flushed_frontier_.reset();
+        for (auto& new_file : batch_edit->new_files_) {
+          new_file.second.smallest.user_frontier.reset();
+          new_file.second.largest.user_frontier.reset();
+        }
+      }
     }
     builder->SaveTo(v->storage_info());
   }
@@ -2200,7 +2219,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
   }
 
   if (new_descriptor_log) {
-    // if we're writing out new snapshot make sure to persist max column family
+    // If we're writing out new snapshot make sure to persist max column family.
     if (column_family_set_->GetMaxColumnFamily() > 0) {
       edit->SetMaxColumnFamily(column_family_set_->GetMaxColumnFamily());
     }
@@ -2223,9 +2242,9 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     }
 
     // This is fine because everything inside of this block is serialized --
-    // only one thread can be here at the same time
+    // only one thread can be here at the same time.
     if (new_descriptor_log) {
-      // create manifest file
+      // Create a new manifest file.
       RLOG(InfoLogLevel::INFO_LEVEL, db_options_->info_log,
           "Creating manifest %" PRIu64 "\n", pending_manifest_file_number_);
       unique_ptr<WritableFile> descriptor_file;
@@ -2241,7 +2260,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
         unique_ptr<WritableFileWriter> file_writer(
             new WritableFileWriter(std::move(descriptor_file), opt_env_opts));
         descriptor_log_.reset(new log::Writer(std::move(file_writer), 0, false));
-        s = WriteSnapshot(descriptor_log_.get());
+        s = WriteSnapshot(descriptor_log_.get(), flushed_frontier_override);
       } else {
         descriptor_log_file_name_ = "";
       }
@@ -2252,7 +2271,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
       v->PrepareApply(mutable_cf_options, true);
     }
 
-    // Write new record to MANIFEST log
+    // Write new records to MANIFEST log.
     if (s.ok()) {
       for (auto& e : batch_edits) {
         std::string record;
@@ -2339,7 +2358,9 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     manifest_file_number_ = pending_manifest_file_number_;
     manifest_file_size_ = new_manifest_file_size;
     prev_log_number_ = edit->prev_log_number_.get_value_or(0);
-    if (edit->flushed_frontier_) {
+    if (flushed_frontier_override) {
+      flushed_frontier_ = flushed_frontier_override;
+    } else if (edit->flushed_frontier_) {
       UpdateFlushedFrontier(edit->flushed_frontier_);
     }
   } else {
@@ -2405,9 +2426,11 @@ void VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
   }
   edit->SetNextFile(next_file_number_.load());
   edit->SetLastSequence(LastSequence());
-  if (flushed_frontier_) {
+
+  if (flushed_frontier_ && !edit->force_flushed_frontier_) {
     // Make sure that the flushed frontier stored in the version edit takes into account all the
-    // operations that were flushed prior to it.
+    // operations that were flushed prior to it. We don't do this when the version edit's flushed
+    // frontier must take override all other flushed frontier metadata.
     edit->UpdateFlushedFrontier(flushed_frontier_);
   }
 
@@ -3280,7 +3303,7 @@ CHECKED_STATUS AddEdit(const VersionEdit& edit, const DBOptions* db_options, log
 
 } // namespace
 
-Status VersionSet::WriteSnapshot(log::Writer* log) {
+Status VersionSet::WriteSnapshot(log::Writer* log, UserFrontierPtr flushed_frontier_override) {
   // TODO: Break up into multiple records to reduce memory usage on recovery?
 
   // WARNING: This method doesn't hold a mutex!!
@@ -3318,7 +3341,11 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
         }
       }
       edit.SetLogNumber(cfd->GetLogNumber());
-      edit.flushed_frontier_ = flushed_frontier_;
+      if (flushed_frontier_override) {
+        edit.flushed_frontier_ = flushed_frontier_override;
+      } else {
+        edit.flushed_frontier_ = flushed_frontier_;
+      }
       RETURN_NOT_OK(AddEdit(edit, db_options_, log));
     }
   }
