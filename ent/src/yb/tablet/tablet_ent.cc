@@ -105,7 +105,7 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
   } BOOST_SCOPE_EXIT_END;
 
   // Note: checkpoint::CreateCheckpoint() calls DisableFileDeletions()/EnableFileDeletions()
-  //       for rocksdb object.
+  //       for the RocksDB object.
   s = CreateCheckpoint(tmp_snapshot_dir);
   if (PREDICT_FALSE(!s.ok())) {
     LOG(WARNING) << "Cannot create db checkpoint: " << s;
@@ -119,10 +119,14 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
   RETURN_NOT_OK_PREPEND(env->SyncDir(top_snapshots_dir),
                         Substitute("Cannot sync top snapshots dir $0", top_snapshots_dir));
 
+  // Record the fact that we've executed the "create snapshot" Raft operation. We are not forcing
+  // the flushed frontier to have this exact value, although in practice it will, since this is the
+  // latest operation we've ever executed in this Raft group. This way we keep the current value
+  // of history cutoff.
   docdb::ConsensusFrontier frontier;
   frontier.set_op_id(tx_state->op_id());
   frontier.set_hybrid_time(tx_state->hybrid_time());
-  RETURN_NOT_OK(SetFlushedFrontier(frontier));
+  RETURN_NOT_OK(ModifyFlushedFrontier(frontier, rocksdb::FrontierModificationMode::kUpdate));
 
   LOG(INFO) << "Complete snapshot creation for tablet " << tablet_id()
             << " in folder " << snapshot_dir;
@@ -201,7 +205,17 @@ Status Tablet::RestoreCheckpoint(const std::string& dir, const docdb::ConsensusF
     return s;
   }
 
-  s = SetFlushedFrontier(frontier);
+  docdb::ConsensusFrontier final_frontier = frontier;
+  rocksdb::UserFrontierPtr checkpoint_flushed_frontier = regular_db_->GetFlushedFrontier();
+
+  // The history cutoff we are setting after restoring to this snapshot is determined by the
+  // compactions that were done in the checkpoint, not in the old state of RocksDB in this replica.
+  if (checkpoint_flushed_frontier) {
+    final_frontier.set_history_cutoff(
+        down_cast<docdb::ConsensusFrontier&>(*checkpoint_flushed_frontier).history_cutoff());
+  }
+
+  s = ModifyFlushedFrontier(final_frontier, rocksdb::FrontierModificationMode::kForce);
   if (PREDICT_FALSE(!s.ok())) {
     LOG(WARNING) << "Failed tablet db setting flushed op id: " << s;
     return s;
@@ -250,7 +264,10 @@ Status Tablet::DeleteSnapshot(SnapshotOperationState* tx_state) {
   docdb::ConsensusFrontier frontier;
   frontier.set_op_id(tx_state->op_id());
   frontier.set_hybrid_time(tx_state->hybrid_time());
-  RETURN_NOT_OK(SetFlushedFrontier(frontier));
+  // Here we are just recording the fact that we've executed the "delete snapshot" Raft operation
+  // so that it won't get replayed if we crash. No need to force the flushed frontier to be the
+  // exact value set above.
+  RETURN_NOT_OK(ModifyFlushedFrontier(frontier, rocksdb::FrontierModificationMode::kUpdate));
 
   LOG(INFO) << "Complete snapshot deletion on tablet " << tablet_id()
             << " in folder " << snapshot_dir;
