@@ -50,6 +50,11 @@ class PTRoleOption : public TreeNode {
   virtual ~PTRoleOption() {
   }
 
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTRoleOption;
+  }
+
   virtual PTRoleOptionType option_type() = 0;
 };
 

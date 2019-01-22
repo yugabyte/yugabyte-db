@@ -79,6 +79,9 @@ class PTCreateIndex : public PTCreateTable {
     return is_local_;
   }
 
+  virtual CHECKED_STATUS CheckPrimaryType(SemContext *sem_context,
+                                          const PTBaseType::SharedPtr& datatype) const override;
+
   virtual CHECKED_STATUS ToTableProperties(TableProperties *table_properties) const override;
 
   // Node semantics analysis.

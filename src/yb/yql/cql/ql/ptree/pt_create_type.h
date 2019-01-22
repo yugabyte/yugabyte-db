@@ -46,6 +46,11 @@ class PTTypeField : public TreeNode {
                      const PTBaseType::SharedPtr& datatype);
   virtual ~PTTypeField();
 
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTTypeField;
+  }
+
   template<typename... TypeArgs>
   inline static PTTypeField::SharedPtr MakeShared(MemoryContext *memctx,
                                                      TypeArgs&&... args) {

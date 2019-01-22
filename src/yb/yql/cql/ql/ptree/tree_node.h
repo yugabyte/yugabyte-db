@@ -34,13 +34,13 @@ class SemContext;
 
 YB_DEFINE_ENUM(TreeNodeOpcode,
                (kNoOp)
-               (kTreeNode)
                (kPTListNode)
                (kPTCreateKeyspace)
                (kPTUseKeyspace)
                (kPTAlterKeyspace)
                (kPTCreateTable)
                (kPTAlterTable)
+               (kPTTypeField)
                (kPTCreateType)
                (kPTCreateIndex)
                (kPTTruncateStmt)
@@ -55,6 +55,18 @@ YB_DEFINE_ENUM(TreeNodeOpcode,
                (kPTGrantRevokeRole)
                (kPTStartTransaction)
                (kPTCommit)
+               (kPTName)
+               (kPTProperty)
+               (kPTStatic)
+               (kPTConstraint)
+               (kPTCollection)
+               (kPTPrimitiveType)
+               (kPTColumnDefinition)
+               (kPTAlterColumnDefinition)
+               (kPTDmlUsingClauseElement)
+               (kPTTableRef)
+               (kPTOrderBy)
+               (kPTRoleOption)
 
                // Expressions.
                (kPTExpr)
@@ -79,9 +91,7 @@ class TreeNode : public MCBase {
   virtual ~TreeNode();
 
   // Node type.
-  virtual TreeNodeOpcode opcode() const {
-    return TreeNodeOpcode::kTreeNode;
-  }
+  virtual TreeNodeOpcode opcode() const = 0;
 
   // shared_ptr support.
   template<typename... TypeArgs>

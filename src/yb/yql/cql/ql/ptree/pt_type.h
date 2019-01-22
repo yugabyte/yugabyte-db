@@ -86,7 +86,12 @@ class PTPrimitiveType : public PTBaseType {
     return MCMakeShared<PTPrimitiveType>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual InternalType internal_type() const {
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTPrimitiveType;
+  }
+
+  virtual InternalType internal_type() const override {
     return itype_;
   }
 
@@ -94,13 +99,13 @@ class PTPrimitiveType : public PTBaseType {
     return data_type_;
   }
 
-  virtual std::shared_ptr<QLType> ql_type() const {
+  virtual std::shared_ptr<QLType> ql_type() const override {
     // Since all instances of a primitive type share one static QLType object, we can just call
     // "Create" to get the shared object.
     return QLType::Create(data_type_);
   }
 
-  virtual bool IsApplicableForPrimaryKey() {
+  virtual bool IsApplicableForPrimaryKey() override {
     return applicable_for_primary_key_;
   }
 };

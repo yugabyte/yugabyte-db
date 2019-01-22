@@ -55,6 +55,11 @@ class PTConstraint : public TreeNode {
   virtual ~PTConstraint() {
   }
 
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTConstraint;
+  }
+
   virtual PTConstraintType constraint_type() = 0;
 };
 
@@ -122,6 +127,11 @@ class PTStatic : public TreeNode {
   virtual ~PTStatic() {
   }
 
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTStatic;
+  }
+
   template<typename... TypeArgs>
   inline static PTStatic::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
     return MCMakeShared<PTStatic>(memctx, std::forward<TypeArgs>(args)...);
@@ -158,6 +168,11 @@ class PTColumnDefinition : public TreeNode {
 
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTColumnDefinition;
+  }
 
   // Access function for is_primary_key_.
   bool is_primary_key() const {
@@ -294,8 +309,8 @@ class PTCreateTable : public TreeNode {
 
   static CHECKED_STATUS CheckType(SemContext *sem_context, const PTBaseType::SharedPtr& datatype);
 
-  static CHECKED_STATUS CheckPrimaryType(SemContext *sem_context,
-                                         const PTBaseType::SharedPtr& datatype);
+  virtual CHECKED_STATUS CheckPrimaryType(SemContext *sem_context,
+                                          const PTBaseType::SharedPtr& datatype) const;
 
   // Table name.
   const PTQualifiedName::SharedPtr& table_name() const {
