@@ -143,6 +143,7 @@ public class TestPgSelect extends BasePgSQLTest {
     // Test aggregates.
     assertOneRow("SELECT avg(r) FROM test_target", 5.0D);
     assertOneRow("SELECT count(*) FROM test_target", 100L);
+    assertOneRow("SELECT count(test_target.*) FROM test_target", 100L);
 
     // Test distinct.
     try (ResultSet rs = statement.executeQuery("SELECT distinct(h) FROM test_target")) {
@@ -158,6 +159,15 @@ public class TestPgSelect extends BasePgSQLTest {
 
     // Test mistyped function.
     runInvalidQuery(statement, "SELECT vs * r FROM test_target");
+
+    // Test aggregates from table without primary key.
+    statement.execute("CREATE TABLE test_target_no_pkey(v1 int, v2 int)");
+    statement.execute("INSERT INTO test_target_no_pkey(v1, v2) VALUES (1,2)");
+    statement.execute("INSERT INTO test_target_no_pkey(v1, v2) VALUES (2,3)");
+    statement.execute("INSERT INTO test_target_no_pkey(v1, v2) VALUES (3,4)");
+    assertOneRow("SELECT sum(v1) FROM test_target_no_pkey", 6L);
+    assertOneRow("SELECT count(*) FROM test_target_no_pkey", 3L);
+    assertOneRow("SELECT sum(test_target_no_pkey.v2) FROM test_target_no_pkey", 9L);
   }
 
   @Test
