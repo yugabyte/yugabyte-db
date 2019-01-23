@@ -49,6 +49,9 @@
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
 
+/*  YB includes. */
+#include "executor/ybcModifyTable.h"
+#include "pg_yb_utils.h"
 
 typedef struct
 {
@@ -114,23 +117,27 @@ create_ctas_internal(List *attrList, IntoClause *into)
 	 */
 	intoRelationAddr = DefineRelation(create, relkind, InvalidOid, NULL, NULL);
 
-	/*
-	 * If necessary, create a TOAST table for the target table.  Note that
-	 * NewRelationCreateToastTable ends with CommandCounterIncrement(), so
-	 * that the TOAST table will be visible for insertion.
-	 */
-	CommandCounterIncrement();
+	/* TOAST tables are not needed in YugaByte database */
+	if (!IsYugaByteEnabled())
+	{
+		/*
+		 * If necessary, create a TOAST table for the target table.  Note that
+		 * NewRelationCreateToastTable ends with CommandCounterIncrement(), so
+		 * that the TOAST table will be visible for insertion.
+		 */
+		CommandCounterIncrement();
 
-	/* parse and validate reloptions for the toast table */
-	toast_options = transformRelOptions((Datum) 0,
-										create->options,
-										"toast",
-										validnsps,
-										true, false);
+		/* parse and validate reloptions for the toast table */
+		toast_options = transformRelOptions((Datum) 0,
+																				create->options,
+																				"toast",
+																				validnsps,
+																				true, false);
 
-	(void) heap_reloptions(RELKIND_TOASTVALUE, toast_options, true);
+		(void) heap_reloptions(RELKIND_TOASTVALUE, toast_options, true);
 
-	NewRelationCreateToastTable(intoRelationAddr.objectId, toast_options);
+		NewRelationCreateToastTable(intoRelationAddr.objectId, toast_options);
+	}
 
 	/* Create the "view" part of a materialized view. */
 	if (is_matview)
@@ -596,11 +603,15 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 	if (myState->rel->rd_rel->relhasoids)
 		HeapTupleSetOid(tuple, InvalidOid);
 
-	heap_insert(myState->rel,
-				tuple,
-				myState->output_cid,
-				myState->hi_options,
-				myState->bistate);
+	if (IsYugaByteEnabled()) {
+		YBCExecuteInsert(myState->rel, RelationGetDescr(myState->rel), tuple);
+	} else {
+		heap_insert(myState->rel,
+								tuple,
+								myState->output_cid,
+								myState->hi_options,
+								myState->bistate);
+	}
 
 	/* We know this is a newly created relation, so there are no indexes */
 

@@ -768,7 +768,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 	if (IsYugaByteEnabled())
 	{
-		YBCCreateTable(stmt, relkind, descriptor, relationId);
+		YBCCreateTable(stmt, relkind, descriptor, relationId, namespaceId);
 	}
 
 	/* Store inheritance information for new rel. */
