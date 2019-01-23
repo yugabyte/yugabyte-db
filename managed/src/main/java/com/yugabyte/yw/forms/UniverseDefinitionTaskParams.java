@@ -265,7 +265,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
              instanceType + ", numNodes=" + numNodes + ", prov=" + provider + ", provType=" +
              providerType + ", RF=" + replicationFactor + ", regions=" + regionList + ", pref=" +
              preferredRegion + ", ybVersion=" + ybSoftwareVersion + ", accessKey=" + accessKeyCode +
-             ", deviceInfo=" + deviceInfo;
+             ", deviceInfo='" + deviceInfo + "', timeSync=" + useTimeSync + ", publicIP=" + assignPublicIP;
     }
 
     public UserIntent clone() {
@@ -289,6 +289,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return newUserIntent;
     }
 
+    // NOTE: If new fields are checked, please add them to the toString() as well.
     public boolean equals(UserIntent other) {
       if (universeName.equals(other.universeName) &&
           provider.equals(other.provider) &&
