@@ -239,6 +239,12 @@ class Env {
   // same directory.
   virtual CHECKED_STATUS GetTestDirectory(std::string* path) = 0;
 
+  Result<std::string> GetTestDirectory() {
+    std::string test_dir;
+    RETURN_NOT_OK(GetTestDirectory(&test_dir));
+    return test_dir;
+  }
+
   // Returns the number of micro-seconds since some fixed point in time. Only
   // useful for computing deltas of time.
   virtual uint64_t NowMicros() = 0;

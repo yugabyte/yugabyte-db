@@ -73,6 +73,7 @@ class DocDBRocksDBUtil {
   const rocksdb::Options& options() const { return rocksdb_options_; }
 
   CHECKED_STATUS OpenRocksDB();
+
   CHECKED_STATUS ReopenRocksDB();
   CHECKED_STATUS DestroyRocksDB();
   void ResetMonotonicCounter();

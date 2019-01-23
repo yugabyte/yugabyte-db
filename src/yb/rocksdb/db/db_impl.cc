@@ -5831,6 +5831,16 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
   return s;
 }
 
+yb::Result<std::unique_ptr<DB>> DB::Open(const Options& options, const std::string& name) {
+  DB* db = nullptr;
+  Status status = Open(options, name, &db);
+  if (!status.ok()) {
+    delete db;
+    return status;
+  }
+  return std::unique_ptr<DB>(db);
+}
+
 Status DB::ListColumnFamilies(const DBOptions& db_options,
                               const std::string& name,
                               std::vector<std::string>* column_families) {

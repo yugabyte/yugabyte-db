@@ -30,6 +30,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/docdb/consensus_frontier.h"
 
 #include "yb/util/minmax.h"
 #include "yb/util/path_util.h"
@@ -3171,6 +3172,47 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 w: 1 } -> \
       )#");
 }
 
+TEST_F(DocDBTest, ForceFlushedFrontier) {
+  // We run with compactions disabled, because they may interefere with force-setting the OpId.
+  ASSERT_OK(DisableCompactions());
+  op_id_ = {1, 1};
+  rocksdb::UserFrontierPtr flushed_frontier;
+  for (int i = 1; i < 20; ++i) {
+    const DocKey doc_key(PrimitiveValues(i));
+    const KeyBytes encoded_doc_key = doc_key.Encode();
+    SetupRocksDBState(encoded_doc_key);
+    ASSERT_OK(FlushRocksDbAndWait());
+    flushed_frontier = rocksdb()->GetFlushedFrontier();
+    LOG(INFO) << "Flushed frontier after i=" << i << ": "
+              << (flushed_frontier ? flushed_frontier->ToString() : "N/A");
+  }
+  ASSERT_TRUE(flushed_frontier.get() != nullptr);
+  ConsensusFrontier consensus_frontier =
+      down_cast<ConsensusFrontier&>(*flushed_frontier);
+  ConsensusFrontier new_consensus_frontier = consensus_frontier;
+  new_consensus_frontier.set_op_id({
+      consensus_frontier.op_id().term,
+      consensus_frontier.op_id().index / 2
+  });
+  ASSERT_EQ(new_consensus_frontier.op_id().term, consensus_frontier.op_id().term);
+  ASSERT_LT(new_consensus_frontier.op_id().index, consensus_frontier.op_id().index);
+  ASSERT_EQ(new_consensus_frontier.hybrid_time(), consensus_frontier.hybrid_time());
+  ASSERT_EQ(new_consensus_frontier.history_cutoff(), consensus_frontier.history_cutoff());
+  rocksdb::UserFrontierPtr new_user_frontier_ptr(new ConsensusFrontier(new_consensus_frontier));
+
+  LOG(INFO) << "Attempting to change flushed frontier from " << consensus_frontier
+            << " to " << new_consensus_frontier;
+  ASSERT_OK(rocksdb_->ModifyFlushedFrontier(
+      new_user_frontier_ptr, rocksdb::FrontierModificationMode::kForce));
+  LOG(INFO) << "Checking that flushed froniter was set to " << new_consensus_frontier;
+  ASSERT_EQ(*new_user_frontier_ptr, *rocksdb_->GetFlushedFrontier());
+
+  LOG(INFO) << "Reopening RocksDB";
+  ASSERT_OK(ReopenRocksDB());
+  LOG(INFO) << "Checking that flushed frontier is still set to "
+            << rocksdb_->GetFlushedFrontier()->ToString();
+  ASSERT_EQ(*new_user_frontier_ptr, *rocksdb_->GetFlushedFrontier());
+}
 
 }  // namespace docdb
 }  // namespace yb
