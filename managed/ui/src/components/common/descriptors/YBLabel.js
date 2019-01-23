@@ -21,15 +21,17 @@ export default class YBLabel extends Component {
 
     let errorMsg;
     let hasError = false;
+    let touched;
     if (isNonEmptyObject(meta)) {
-      const touched = meta.touched;
+      touched = meta.touched;
       errorMsg = meta.error;
       hasError = errorMsg && touched;
     } else if (isNonEmptyObject(form)) {
       // In case for Formik field, touched might be undefined but when
       // form validation happens it can have errors.
       errorMsg = form.errors[field.name];
-      hasError = isNonEmptyString(errorMsg);
+      touched = (form.touched[field.name] || form.submitCount > 0);
+      hasError = touched && isNonEmptyString(errorMsg);
     }
     return (
       <div className={`form-group ${ hasError ? 'has-error' : ''}`} onClick={onLabelClick}>

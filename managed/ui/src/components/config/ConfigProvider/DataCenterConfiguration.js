@@ -9,7 +9,7 @@ import { YBTabsPanel } from '../../panels';
 import './providerConfig.scss';
 import awsLogo from './images/aws.svg';
 import azureLogo from './images/azure.png';
-import gkeLogo from './images/gke.png';
+import k8sLogo from './images/k8s.png';
 import pksLogo from './images/pks.png';
 import gcpLogo from './images/gcp.png';
 
@@ -29,13 +29,13 @@ class DataCenterConfiguration extends Component {
       </div>
     );
 
-    const gkeTabContent = (
+    const k8sTabContent = (
       <Row className="custom-tab">
         <Col md={4}>
-          <img src={gkeLogo} alt="Google Container Engine" className="gke-logo" />
+          <img src={k8sLogo} alt="Managed Kubernetes" className="k8s-logo" />
         </Col>
         <Col md={8}>
-          Google<br/>Container Engine
+          Managed<br/>Kubernetes Service
         </Col>
       </Row>
     );
@@ -70,8 +70,8 @@ class DataCenterConfiguration extends Component {
               <Tab eventKey="pks" title={pksTabContent} key="pks-tab" unmountOnExit={true}>
                 <KubernetesProviderConfigurationContainer type="pks" params={this.props.params} />
               </Tab>
-              <Tab eventKey="gke" title={gkeTabContent} key="gke-tab" unmountOnExit={true}>
-                <KubernetesProviderConfigurationContainer type="gke" params={this.props.params} />
+              <Tab eventKey="k8s" title={k8sTabContent} key="k8s-tab" unmountOnExit={true}>
+                <KubernetesProviderConfigurationContainer type="k8s" params={this.props.params} />
               </Tab>
               <Tab eventKey="onprem" title={onPremiseTabContent} key="onprem-tab" unmountOnExit={true}>
                 <OnPremConfigurationContainer params={this.props.params} />

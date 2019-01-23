@@ -16,3 +16,4 @@ export { default as YBToggle } from './YBToggle';
 export { default as YBDropZone } from './YBDropZone';
 export { default as YBFormSelect } from './YBFormSelect';
 export { default as YBFormInput } from './YBFormInput';
+export { default as YBFormDropZone } from './YBFormDropZone';

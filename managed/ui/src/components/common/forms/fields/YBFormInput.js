@@ -6,11 +6,13 @@ import { FormControl } from 'react-bootstrap';
 
 export default class YBFormInput extends Component {
   render() {
+    const { insetError, ...rest } = this.props;
+
     return (
       <YBLabel {...this.props} >
         <FormControl
           {...this.props.field}
-          {...this.props}
+          {...rest}
         />
       </YBLabel>
     );
