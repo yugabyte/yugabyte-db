@@ -143,6 +143,11 @@ DEFINE_int32(intents_flush_max_delay_ms, 2000,
              "Max time to wait for regular db to flush during flush of intents. "
              "After this time flush of regular db will be forced.");
 
+DEFINE_test_flag(
+    bool, tablet_verify_flushed_frontier_after_modifying, false,
+    "After modifying the flushed frontier in RocksDB, verify that the restored value of it "
+    "is as expected. Used for testing.");
+
 using namespace std::placeholders;
 
 using std::shared_ptr;
@@ -470,7 +475,7 @@ std::string Tablet::LogPrefix() const {
   return Format("T $0$1: ", tablet_id(), log_prefix_suffix_);
 }
 
-Status Tablet::OpenKeyValueTablet() {
+Status Tablet::OpenKeyValueTablet(DisableCompactions disable_compactions) {
   rocksdb::Options rocksdb_options;
   docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, tablet_options_);
   rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker("RegularDB", mem_tracker_);
@@ -486,6 +491,10 @@ Status Tablet::OpenKeyValueTablet() {
     }
     return rocksdb::MemTableFilter();
   });
+
+  if (disable_compactions) {
+    rocksdb_options.disable_auto_compactions = true;
+  }
 
   const string db_dir = metadata()->rocksdb_dir();
   RETURN_NOT_OK(CreateTabletDirectories(db_dir, metadata()->fs_manager()));
@@ -541,6 +550,24 @@ Status Tablet::OpenKeyValueTablet() {
                         << ", obj: " << db;
 
   return Status::OK();
+}
+
+Status Tablet::EnableCompactions() {
+  Status regular_db_status =
+      regular_db_->EnableAutoCompaction({regular_db_->DefaultColumnFamily()});
+  if (!regular_db_status.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Failed to enable compactions on regular DB: " << regular_db_status;
+  }
+  if (intents_db_) {
+    Status intents_db_status =
+        intents_db_->EnableAutoCompaction({intents_db_->DefaultColumnFamily()});
+    if (!intents_db_status.ok()) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Failed to enable compactions on provisional records DB: " << intents_db_status;
+      return intents_db_status;
+    }
+  }
+  return regular_db_status;
 }
 
 void Tablet::MarkFinishedBootstrapping() {
@@ -1422,6 +1449,38 @@ Status Tablet::ModifyFlushedFrontier(
     return status;
   }
   DCHECK_EQ(frontier, *regular_db_->GetFlushedFrontier());
+
+  if (FLAGS_tablet_verify_flushed_frontier_after_modifying &&
+      mode == rocksdb::FrontierModificationMode::kForce) {
+    LOG(INFO) << "Verifying that flushed frontier was force-set successfully";
+    string test_data_dir = VERIFY_RESULT(Env::Default()->GetTestDirectory());
+    const string checkpoint_dir_for_test = Format(
+        "$0/test_checkpoint_$1_$2", test_data_dir, tablet_id(), MonoTime::Now().ToUint64());
+    RETURN_NOT_OK(
+        rocksdb::checkpoint::CreateCheckpoint(regular_db_.get(), checkpoint_dir_for_test));
+    BOOST_SCOPE_EXIT(checkpoint_dir_for_test) {
+      CHECK_OK(Env::Default()->DeleteRecursively(checkpoint_dir_for_test));
+    } BOOST_SCOPE_EXIT_END;
+    rocksdb::Options rocksdb_options;
+    docdb::InitRocksDBOptions(
+        &rocksdb_options, tablet_id(), /* statistics */ nullptr, tablet_options_);
+    rocksdb_options.create_if_missing = false;
+    LOG_WITH_PREFIX(INFO) << "Opening the test RocksDB at " << checkpoint_dir_for_test
+        << ", expecting to see flushed frontier of " << frontier.ToString();
+    std::unique_ptr<rocksdb::DB> test_db = VERIFY_RESULT(
+        rocksdb::DB::Open(rocksdb_options, checkpoint_dir_for_test));
+    LOG_WITH_PREFIX(INFO) << "Getting flushed frontier from test RocksDB at "
+                          << checkpoint_dir_for_test;
+    auto restored_flushed_frontier = test_db->GetFlushedFrontier();
+    if (!restored_flushed_frontier) {
+      LOG_WITH_PREFIX(FATAL) << LogPrefix() << "Restored flushed frontier not present";
+    }
+    CHECK_EQ(
+        frontier,
+        down_cast<docdb::ConsensusFrontier&>(*restored_flushed_frontier));
+    LOG_WITH_PREFIX(INFO) << "Successfully verified persistently stored flushed frontier: "
+        << frontier.ToString();
+  }
 
   if (intents_db_) {
     // It is OK to flush intents even if the regular DB is not yet flushed,

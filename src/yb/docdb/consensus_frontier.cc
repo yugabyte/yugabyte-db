@@ -39,11 +39,7 @@ void ConsensusFrontier::FromPB(const google::protobuf::Any& any) {
   any.UnpackTo(&pb);
   op_id_ = OpId::FromPB(pb.op_id());
   ht_ = HybridTime(pb.hybrid_time());
-  if (pb.history_cutoff() == 0) {
-    history_cutoff_ = HybridTime();
-  } else {
-    history_cutoff_ = HybridTime(pb.history_cutoff());
-  }
+  history_cutoff_ = NormalizeHistoryCutoff(HybridTime(pb.history_cutoff()));
 }
 
 void ConsensusFrontier::FromOpIdPBDeprecated(const OpIdPB& pb) {

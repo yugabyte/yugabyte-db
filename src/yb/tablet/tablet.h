@@ -122,6 +122,7 @@ class WriteOperationState;
 using docdb::LockBatch;
 
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
+YB_STRONGLY_TYPED_BOOL(DisableCompactions);
 
 class TabletFlushStats : public rocksdb::EventListener {
  public:
@@ -220,6 +221,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Open the tablet.
   // Upon completion, the tablet enters the kBootstrapping state.
   CHECKED_STATUS Open();
+
+  CHECKED_STATUS EnableCompactions();
 
   // Mark that the tablet has finished bootstrapping.
   // This transitions from kBootstrapping to kOpen state.
@@ -516,7 +519,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS StartDocWriteOperation(WriteOperation* operation);
 
-  CHECKED_STATUS OpenKeyValueTablet();
+  CHECKED_STATUS OpenKeyValueTablet(
+      DisableCompactions disable_compactions = DisableCompactions::kFalse);
   virtual CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs);
 
   void DocDBDebugDump(std::vector<std::string> *lines);
