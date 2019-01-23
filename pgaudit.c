@@ -25,6 +25,7 @@
 #include "miscadmin.h"
 #include "libpq/auth.h"
 #include "nodes/nodes.h"
+#include "nodes/params.h"
 #include "tcop/utility.h"
 #include "tcop/deparse_utility.h"
 #include "utils/acl.h"
@@ -1293,7 +1294,7 @@ pgaudit_ExecutorStart_hook(QueryDesc *queryDesc, int eflags)
 
         /* Initialize the audit event */
         stackItem->auditEvent.commandText = queryDesc->sourceText;
-        stackItem->auditEvent.paramList = queryDesc->params;
+        stackItem->auditEvent.paramList = copyParamList(queryDesc->params);
     }
 
     /* Call the previous hook or standard function */
@@ -1366,7 +1367,7 @@ pgaudit_ProcessUtility_hook(PlannedStmt *pstmt,
                 elog(ERROR, "pgaudit stack is not empty");
 
             stackItem = stack_push();
-            stackItem->auditEvent.paramList = params;
+            stackItem->auditEvent.paramList = copyParamList(params);
         }
         else
             stackItem = stack_push();

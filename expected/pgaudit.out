@@ -843,11 +843,11 @@ END $$;",<none>
 NOTICE:  AUDIT: SESSION,34,2,READ,SELECT,TABLE,public.test,"SELECT id
 		  FROM test",<none>
 NOTICE:  AUDIT: SESSION,34,3,WRITE,INSERT,TABLE,public.test,"INSERT INTO test (id)
-			 VALUES (result.id + 100)",",,"
+			 VALUES (result.id + 100)",",,1"
 NOTICE:  AUDIT: SESSION,34,4,WRITE,INSERT,TABLE,public.test,"INSERT INTO test (id)
-			 VALUES (result.id + 100)",",,"
+			 VALUES (result.id + 100)",",,2"
 NOTICE:  AUDIT: SESSION,34,5,WRITE,INSERT,TABLE,public.test,"INSERT INTO test (id)
-			 VALUES (result.id + 100)",",,"
+			 VALUES (result.id + 100)",",,3"
 --
 -- Test obfuscated dynamic sql for clean logging
 DO $$
