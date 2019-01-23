@@ -36,10 +36,14 @@ class KubernetesProviderConfiguration extends Component {
     }
 
     const kubernetesRegions = regions.data.filter((region) => region.provider.code === PROVIDER_TYPE);
-  
+
     const configuredProviderData = kubernetesRegions.map((region) => {
       const providerData = providers.data.find((p) => p.uuid === region.provider.uuid);
-      if (!isDefinedNotNull(providerData) || providerData.config['KUBECONFIG_PROVIDER'] !== type) {
+
+      // If the type is PKS we don't want to include other k8s configs and vice versa.
+      if (!isDefinedNotNull(providerData) ||
+          (type === "pks" && providerData.config['KUBECONFIG_PROVIDER'] !== type) ||
+          (type === "k8s" && providerData.config['KUBECONFIG_PROVIDER'] === "pks")) {
         return null;
       }
       const providerTypeMetadata = KUBERNETES_PROVIDERS.find((providerType) => providerType.code === providerData.config['KUBECONFIG_PROVIDER']);
@@ -68,8 +72,8 @@ class KubernetesProviderConfiguration extends Component {
     } else {
       return (
         <CreateKubernetesConfigurationContainer
-          onCancel={this.toggleListView}
-          onSubmit={this.toggleListView}
+          hasConfigs={isNonEmptyArray(configuredProviderData)}
+          toggleListView={this.toggleListView}
           type={type} />
       );
     }
