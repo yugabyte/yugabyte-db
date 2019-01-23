@@ -128,7 +128,7 @@ Install [Homebrew](https://brew.sh/):
 Install the following packages using Homebrew:
 ```
 brew install autoconf automake bash bison ccache cmake coreutils flex gnu-tar icu4c libtool maven \
-             ninja pkg-config pstree wget zlib
+             ninja pkg-config pstree wget zlib python@2
 ```
 
 Also YugaByte DB build scripts rely on Bash 4. Make sure that `which bash` outputs
