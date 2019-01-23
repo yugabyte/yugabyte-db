@@ -28,10 +28,10 @@ enum class PgSystemAttrNum : int {
   // YugaByte system columns.
   kYBTupleId = -8, // ybctid.
 
-  // The following attribute number is stored persistently in the table schema. For this reason,
-  // the attribute number is chosen to avoid potential conflict with Postgres' own sys attributes
-  // now and future.
-  kYBRowIdAttributeNumber = - 100, // ybrowid
+  // The following attribute numbers ared stored persistently in the table schema. For this reason,
+  // they are chosen to avoid potential conflict with Postgres' own sys attributes now and future.
+  kYBRowIdAttributeNumber = -100, // ybrowid
+  kYBBaseTupleIdAttributeNumber = -101, // ybbasectid
 };
 
 // TODO(neil)

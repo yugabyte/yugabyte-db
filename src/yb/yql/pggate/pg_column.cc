@@ -31,6 +31,7 @@ void PgColumn::Init(PgSystemAttrNum attr_num) {
     case PgSystemAttrNum::kMaxCommandIdAttributeNumber:
     case PgSystemAttrNum::kTableOidAttributeNumber:
     case PgSystemAttrNum::kYBRowIdAttributeNumber:
+    case PgSystemAttrNum::kYBBaseTupleIdAttributeNumber:
       break;
 
     case PgSystemAttrNum::kYBTupleId: {

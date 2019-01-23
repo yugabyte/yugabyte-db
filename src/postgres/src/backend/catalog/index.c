@@ -72,6 +72,9 @@
 #include "utils/snapmgr.h"
 #include "utils/tqual.h"
 
+/*  YB includes. */
+#include "commands/ybccmds.h"
+#include "pg_yb_utils.h"
 
 /* Potentially set by pg_upgrade_support functions */
 Oid			binary_upgrade_next_index_pg_class_oid = InvalidOid;
@@ -862,6 +865,15 @@ index_create(Relation heapRelation,
 
 	Assert(indexRelationId == RelationGetRelid(indexRelation));
 
+	if (IsYugaByteEnabled())
+	{
+		YBCCreateIndex(indexRelationName,
+					   indexInfo,
+					   indexTupDesc,
+					   indexRelationId,
+					   heapRelation);
+	}
+
 	/*
 	 * Obtain exclusive lock on it.  Although no other backends can see it
 	 * until we commit, this prevents deadlock-risk complaints from lock
@@ -1077,7 +1089,7 @@ index_create(Relation heapRelation,
 	 * relcache entry has already been rebuilt thanks to sinval update during
 	 * CommandCounterIncrement.
 	 */
-	if (IsBootstrapProcessingMode())
+	if (IsBootstrapProcessingMode() || IsYugaByteEnabled())
 		RelationInitIndexAccessInfo(indexRelation);
 	else
 		Assert(indexRelation->rd_indexcxt != NULL);
@@ -1935,7 +1947,7 @@ index_update_stats(Relation rel,
 
 	if (reltuples >= 0)
 	{
-		BlockNumber relpages = RelationGetNumberOfBlocks(rel);
+		BlockNumber relpages = IsYugaByteEnabled() ? 0 : RelationGetNumberOfBlocks(rel);
 		BlockNumber relallvisible;
 
 		if (rd_rel->relkind != RELKIND_INDEX)

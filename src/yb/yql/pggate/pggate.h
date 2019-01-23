@@ -178,6 +178,25 @@ class PgApiImpl {
                                bool *is_hash);
 
   //------------------------------------------------------------------------------------------------
+  // Create and drop index.
+  CHECKED_STATUS NewCreateIndex(PgSession *pg_session,
+                                const char *database_name,
+                                const char *schema_name,
+                                const char *index_name,
+                                const PgObjectId& index_id,
+                                const PgObjectId& table_id,
+                                bool is_shared_index,
+                                bool is_unique_index,
+                                bool if_not_exist,
+                                PgStatement **handle);
+
+  CHECKED_STATUS CreateIndexAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
+                                      int attr_ybtype, bool is_hash, bool is_range);
+
+  CHECKED_STATUS ExecCreateIndex(PgStatement *handle);
+
+
+  //------------------------------------------------------------------------------------------------
   // All DML statements
   CHECKED_STATUS DmlAppendTarget(PgStatement *handle, PgExpr *expr);
 

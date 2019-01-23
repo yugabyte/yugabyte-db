@@ -26,6 +26,7 @@
 #include "access/htup.h"
 #include "catalog/dependency.h"
 #include "catalog/objectaddress.h"
+#include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
 #include "storage/lock.h"
 #include "utils/relcache.h"
@@ -48,5 +49,11 @@ extern void YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid r
 extern void YBCDropTable(Oid relationId);
 
 extern void YBCTruncateTable(Relation	rel);
+
+extern void YBCCreateIndex(const char *indexName,
+						   IndexInfo *indexInfo,
+						   TupleDesc indexTupleDesc,
+						   Oid indexId,
+						   Relation rel);
 
 #endif

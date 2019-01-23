@@ -89,11 +89,9 @@ Status PgDml::PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb,
   // Prepare protobuf to send to DocDB.
   target_pb->set_column_id(pg_col->id());
 
-  // Make sure that ProtoBuf has only one entry per column ID instead of one per reference.
-  //   SELECT col, col, col FROM a_table;
-  if (!pg_col->read_requested() && !pg_col->is_virtual_column()) {
+  // Mark non-virtual column reference for DocDB.
+  if (!pg_col->is_virtual_column()) {
     pg_col->set_read_requested(true);
-    AddColumnRefId(pg_col->id());
   }
 
   return Status::OK();
@@ -103,27 +101,20 @@ Status PgDml::PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_
   // Prepare protobuf to send to DocDB.
   assign_pb->set_column_id(pg_col->id());
 
-  // Make sure that ProtoBuf has only one entry per column ID instead of one per reference.
-  //   UPDATE a_table SET col = 1, col = 2, col = 3;
-  if (!pg_col->write_requested() && !pg_col->is_virtual_column()) {
+  // Mark non-virtual column reference for DocDB.
+  if (!pg_col->is_virtual_column()) {
     pg_col->set_write_requested(true);
-    AddColumnRefId(pg_col->id());
   }
 
   return Status::OK();
 }
 
-void PgDml::AddColumnRefId(int col_id) {
-  // Add col_id to column_refs_ if it is not already in the list.
-  if (column_refs_->ids_size() > 0) {
-    for (int32_t id : column_refs_->ids()) {
-      if (col_id == id) {
-        return;
-      }
+void PgDml::AddColumnRefIds(PgTableDesc::ScopedRefPtr table_desc, PgsqlColumnRefsPB *column_refs) {
+  for (const PgColumn& col : table_desc->columns()) {
+    if (col.read_requested() || col.write_requested()) {
+      column_refs->add_ids(col.id());
     }
   }
-
-  column_refs_->add_ids(col_id);
 }
 
 //--------------------------------------------------------------------------------------------------

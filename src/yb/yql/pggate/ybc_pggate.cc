@@ -245,6 +245,36 @@ YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecTruncateTable(handle));
 }
 
+// Index Operations -------------------------------------------------------------------------------
+
+YBCStatus YBCPgNewCreateIndex(YBCPgSession pg_session,
+                              const char *database_name,
+                              const char *schema_name,
+                              const char *index_name,
+                              const YBCPgOid database_oid,
+                              const YBCPgOid index_oid,
+                              const YBCPgOid table_oid,
+                              bool is_shared_index,
+                              bool is_unique_index,
+                              bool if_not_exist,
+                              YBCPgStatement *handle) {
+  const PgObjectId index_id(database_oid, index_oid);
+  const PgObjectId table_id(database_oid, table_oid);
+  return ToYBCStatus(pgapi->NewCreateIndex(pg_session, database_name, schema_name, index_name,
+                                           index_id, table_id, is_shared_index, is_unique_index,
+                                           if_not_exist, handle));
+}
+
+YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
+                                    int attr_ybtype, bool is_hash, bool is_range) {
+  return ToYBCStatus(pgapi->CreateIndexAddColumn(handle, attr_name, attr_num, attr_ybtype,
+                                                 is_hash, is_range));
+}
+
+YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecCreateIndex(handle));
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML Statements.
 //--------------------------------------------------------------------------------------------------

@@ -191,6 +191,14 @@ Status PgCreateTable::Exec() {
     table_creator->is_pg_shared_table();
   }
 
+  // For index, set indexed (base) table id.
+  if (indexed_table_id()) {
+    table_creator->indexed_table_id(indexed_table_id()->GetYBTableId());
+  }
+  if (is_unique_index()) {
+    table_creator->is_unique_index(true);
+  }
+
   const Status s = table_creator->Create();
   if (PREDICT_FALSE(!s.ok())) {
     if (s.IsAlreadyPresent()) {
@@ -246,6 +254,38 @@ PgTruncateTable::~PgTruncateTable() {
 
 Status PgTruncateTable::Exec() {
   return pg_session_->TruncateTable(table_id_);
+}
+
+//--------------------------------------------------------------------------------------------------
+// PgCreateIndex
+//--------------------------------------------------------------------------------------------------
+
+PgCreateIndex::PgCreateIndex(PgSession::ScopedRefPtr pg_session,
+                             const char *database_name,
+                             const char *schema_name,
+                             const char *index_name,
+                             const PgObjectId& index_id,
+                             const PgObjectId& base_table_id,
+                             bool is_shared_index,
+                             bool is_unique_index,
+                             bool if_not_exist)
+    : PgCreateTable(pg_session, database_name, schema_name, index_name, index_id,
+                    is_shared_index, if_not_exist, false /* add_primary_key */),
+      base_table_id_(base_table_id),
+      is_unique_index_(is_unique_index) {
+}
+
+PgCreateIndex::~PgCreateIndex() {
+}
+
+Status PgCreateIndex::Exec() {
+  // Add ybbasectid column to store the ybctid of the rows in the indexed table.
+  RETURN_NOT_OK(AddColumn("ybbasectid",
+                          static_cast<int32_t>(PgSystemAttrNum::kYBBaseTupleIdAttributeNumber),
+                          YB_YQL_DATA_TYPE_BINARY,
+                          false /* is_hash */,
+                          !is_unique_index_  /* is_range */));
+  return PgCreateTable::Exec();
 }
 
 }  // namespace pggate

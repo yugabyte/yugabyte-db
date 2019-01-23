@@ -106,6 +106,9 @@ our @types;
 
 # YB-specific pre-processing of the catalogs.
 
+# Primary keys used for system tables.
+my %pkidxs;
+
 # produce output, one catalog at a time
 foreach my $catname (@{ $catalogs->{names} })
 {
@@ -149,19 +152,32 @@ foreach my $catname (@{ $catalogs->{names} })
     }
     print $bki "\n )\n";
 
-    ## YB -- Add indexes as part of the create table decl.
+    # Select a unique index on the table if available as the table's primary key
+    # and add it after the table definition:
+    # - prefer the oid one if available,
+    # - otherwise default to first index.
+    my $pkidxname;
+    my $pkidx;
     foreach (@{ $catalogs->{indexing}->{data} })
     {
         next if /build indices/;
         my ($unique, $idxname, $oid, $icatname, $columns) =
             /declare (unique )?index (.*) (\d+) on (.+) using (.+)/;
         die "Unrecognized index declaration $_" if !$idxname;
-        if ($icatname eq $catname) {
-            # TODO only handle unique indexes for now, ignore the others.
-            if ($unique ne '') {
-                print $bki " yb_" . $_;
+        if ($icatname eq $catname && $unique)
+        {
+            if ($columns eq "btree(oid oid_ops)")
+            {
+                ($pkidxname, $pkidx) = ($idxname, $_);
+                last;
             }
+            ($pkidxname, $pkidx) = ($idxname, $_) if (!$pkidx);
         }
+    }
+    if ($pkidx)
+    {
+        print $bki " yb_" . $pkidx;
+        $pkidxs{$pkidxname} = 1;
     }
 
     # open it, unless bootstrap case (create bootstrap does this automatically)
@@ -300,6 +316,15 @@ foreach my $catname (@{ $catalogs->{names} })
     }
 
     print $bki "close $catname\n";
+}
+
+# Declare primary keys and indexes on the tables.
+foreach (@{ $catalogs->{indexing}->{data} })
+{
+	my ($unique, $idxname, $oid, $icatname, $columns) =
+		/declare (unique )?index (.*) (\d+) on (.+) using (.+)/;
+	next if $idxname && $pkidxs{$idxname};
+	print $bki $_;
 }
 
 # Any information needed for the BKI that is not contained in a pg_*.h header

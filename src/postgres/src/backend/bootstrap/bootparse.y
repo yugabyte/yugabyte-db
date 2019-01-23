@@ -112,7 +112,7 @@ static int num_columns_read = 0;
 	Oid			oidval;
 }
 
-%type <list>  boot_index_params Boot_YBIndexes
+%type <list>  boot_index_params
 %type <ielem> boot_index_param
 %type <istmt> Boot_YBIndex
 %type <str>   boot_ident
@@ -178,8 +178,9 @@ Boot_CloseStmt:
 				}
 		;
 Boot_YBIndex:
-          YBDECLARE UNIQUE INDEX boot_ident oidspec ON boot_ident USING boot_ident
-           LPAREN boot_index_params RPAREN
+          /* EMPTY */ { $$ = NULL; }
+          | YBDECLARE UNIQUE INDEX boot_ident oidspec ON boot_ident USING boot_ident
+            LPAREN boot_index_params RPAREN
 				{
 					IndexStmt *stmt = makeNode(IndexStmt);
 
@@ -211,11 +212,6 @@ Boot_YBIndex:
 				}
 		;
 
-Boot_YBIndexes:
-          /* EMPTY */ { $$ = NIL; }
-        | Boot_YBIndexes Boot_YBIndex { $$ = lappend($1, $2); }
-        ;
-
 Boot_CreateStmt:
 		  XCREATE boot_ident oidspec optbootstrap optsharedrelation optwithoutoids optrowtypeoid LPAREN
 				{
@@ -231,7 +227,7 @@ Boot_CreateStmt:
 				{
 					do_end();
 				}
-		  RPAREN Boot_YBIndexes
+		  RPAREN Boot_YBIndex
 				{
 					TupleDesc tupdesc;
 					bool	shared_relation;
@@ -303,9 +299,9 @@ Boot_CreateStmt:
 						elog(DEBUG4, "relation created with OID %u", id);
 					}
 
-                    if (IsYugaByteEnabled())
+					if (IsYugaByteEnabled())
 					{
-                        YBCCreateSysCatalogTable($2, $3, tupdesc, shared_relation, $13);
+						YBCCreateSysCatalogTable($2, $3, tupdesc, shared_relation, $13);
 					}
 
                     do_end();

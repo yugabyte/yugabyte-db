@@ -35,11 +35,17 @@ static constexpr PgOid kPgInvalidOid = 0;
 
 // A struct to identify a Postgres object by oid and the database oid it belongs to.
 struct PgObjectId {
-  const PgOid database_oid;
-  const PgOid object_oid;
+  PgOid database_oid;
+  PgOid object_oid;
 
   PgObjectId(const PgOid database_oid, const PgOid object_oid)
       : database_oid(database_oid), object_oid(object_oid) {}
+  PgObjectId()
+      : database_oid(kPgInvalidOid), object_oid(kPgInvalidOid) {}
+
+  bool IsValid() const {
+    return database_oid != kPgInvalidOid && object_oid != kPgInvalidOid;
+  }
 
   TableId GetYBTableId() const {
     return GetPgsqlTableId(database_oid, object_oid);
@@ -53,10 +59,10 @@ struct PgObjectId {
     return database_oid == other.database_oid && object_oid == other.object_oid;
   }
 
-  friend std::size_t hash_value(const PgObjectId& pgobject_id) {
+  friend std::size_t hash_value(const PgObjectId& id) {
     std::size_t value = 0;
-    boost::hash_combine(value, pgobject_id.database_oid);
-    boost::hash_combine(value, pgobject_id.object_oid);
+    boost::hash_combine(value, id.database_oid);
+    boost::hash_combine(value, id.object_oid);
     return value;
   }
 

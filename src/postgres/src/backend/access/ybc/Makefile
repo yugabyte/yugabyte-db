@@ -12,6 +12,6 @@ subdir = src/backend/access/ybc
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = ybcam.o
+OBJS = ybcam.o ybcin.o
 
 include $(top_srcdir)/src/backend/common.mk
