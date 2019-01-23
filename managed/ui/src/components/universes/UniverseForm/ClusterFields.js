@@ -952,7 +952,7 @@ export default class ClusterFields extends Component {
             <h4>User Tags</h4>
           </Col>
           <Col md={6}>
-            <FieldArray component={GFlagArrayComponent} name={`${clusterType}.instanceTags`} flagType="tag" operationType="Create" isReadOnly={isFieldReadOnly}/>
+            <FieldArray component={GFlagArrayComponent} name={`${clusterType}.instanceTags`} flagType="tag" operationType="Create" isReadOnly={false}/>
           </Col>
         </Row>);
     }
