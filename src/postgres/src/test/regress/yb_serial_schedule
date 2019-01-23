@@ -1,7 +1,7 @@
 # src/test/regress/yb_serial_schedule
 #
 ####################################################################################################
-# Postgres Testsuits: Porting from PostgreSQL original tests.
+# Postgres Testsuites: Porting from PostgreSQL original tests.
 ####################################################################################################
 # This includes all tests enabled for YugaByte.
 test: yb_boolean
@@ -23,7 +23,8 @@ test: yb_prepare
 #
 ####################################################################################################
 # YB Feature Testsuite: Used for reporting supported and unsupported features.
-# This testsuite walks through the 
+#   This testsuite walks through the syntax rules and quickly checks
+#   whether or not a feature is supported.
 ####################################################################################################
 # Disable test on types due to github::issue#714
 # test: yb_feature_types
@@ -31,6 +32,13 @@ test: yb_feature_insert
 test: yb_feature_delete
 test: yb_feature_update
 test: yb_feature_select
+#
+####################################################################################################
+# TABLE Testsuite: All DDL Statments on Tables
+# - CREATE and CREATE AS
+# - ALTER
+####################################################################################################
+test: yb_table_create
 #
 ####################################################################################################
 # Name and add new testsuites ...

@@ -42,7 +42,8 @@ extern void YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid
 
 /*  Table Functions ----------------------------------------------------------------------------- */
 
-extern void YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId);
+extern void YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId,
+													 Oid namespaceId);
 
 extern void YBCDropTable(Oid relationId);
 

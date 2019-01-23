@@ -822,6 +822,9 @@ stmtmulti:	stmtmulti ';' stmt
 stmt :
 			/*EMPTY*/
 				{ $$ = NULL; }
+			| AlterDatabaseSetStmt
+			| AlterDatabaseStmt
+			| CreateAsStmt
 			| CreateSchemaStmt
 			| CreateStmt
 			| CreateUserStmt
@@ -837,14 +840,12 @@ stmt :
 			| RevokeStmt
 			| SelectStmt
 			| TransactionStmt
-			| VariableSetStmt
-			| ViewStmt
-			| VariableShowStmt
-			| AlterDatabaseStmt
-			| AlterDatabaseSetStmt
 			| TruncateStmt
 			| UpdateStmt
 			| VariableResetStmt
+			| VariableSetStmt
+			| VariableShowStmt
+			| ViewStmt
 
 			/* Not supported statements */
 			| AlterEventTrigStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -884,7 +885,6 @@ stmt :
 			| ConstraintsSetStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CopyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateAsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateCastStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -4107,7 +4107,6 @@ CreateStatsStmt:
 CreateAsStmt:
 		CREATE OptTemp TABLE create_as_target AS SelectStmt opt_with_data
 				{
-					parser_ybc_not_support(@1, "CREATE AS");
 					CreateTableAsStmt *ctas = makeNode(CreateTableAsStmt);
 					ctas->query = $6;
 					ctas->into = $4;
@@ -4121,7 +4120,6 @@ CreateAsStmt:
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS create_as_target AS SelectStmt opt_with_data
 				{
-					parser_ybc_not_support(@1, "CREATE AS");
 					CreateTableAsStmt *ctas = makeNode(CreateTableAsStmt);
 					ctas->query = $9;
 					ctas->into = $7;
