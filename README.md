@@ -14,6 +14,7 @@ Basic statement logging can be provided by the standard logging facility with `l
 
 For example, an auditor may want to verify that a particular table was created inside a documented maintenance window. This might seem like a simple job for grep, but what if you are presented with something like this (intentionally obfuscated) example:
 ```
+DO $$
 BEGIN
     EXECUTE 'CREATE TABLE import' || 'ant_table (id INT)';
 END $$;
