@@ -38,8 +38,8 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
 
   Status s = regular_db_->Flush(rocksdb::FlushOptions());
   if (PREDICT_FALSE(!s.ok())) {
-    LOG(WARNING) << "Rocksdb flush status: " << s;
-    return s.CloneAndPrepend("Unable to flush rocksdb");
+    LOG_WITH_PREFIX(WARNING) << "RocksDB flush status: " << s;
+    return s.CloneAndPrepend("Unable to flush RocksDB");
   }
 
   const string top_snapshots_dir = Tablet::SnapshotsDirName(metadata_->rocksdb_dir());
@@ -51,21 +51,21 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
                                                tx_state->request()->snapshot_id());
   // Delete previous snapshot in the same directory if it exists.
   if (env->FileExists(snapshot_dir)) {
-    LOG(INFO) << "Deleting old snapshot dir " << snapshot_dir;
+    LOG_WITH_PREFIX(INFO) << "Deleting old snapshot dir " << snapshot_dir;
     RETURN_NOT_OK_PREPEND(env->DeleteRecursively(snapshot_dir),
                           "Cannot recursively delete old snapshot dir " + snapshot_dir);
     RETURN_NOT_OK_PREPEND(env->SyncDir(top_snapshots_dir),
                           "Cannot sync top snapshots dir " + top_snapshots_dir);
   }
 
-  LOG(INFO) << "Started tablet snapshot creation for tablet " << tablet_id()
-            << " in folder " << snapshot_dir;
+  LOG_WITH_PREFIX(INFO) << "Started tablet snapshot creation for tablet " << tablet_id()
+                        << " in folder " << snapshot_dir;
 
   const string tmp_snapshot_dir = snapshot_dir + kTempSnapshotDirSuffix;
 
   // Delete temp directory if it exists.
   if (env->FileExists(tmp_snapshot_dir)) {
-    LOG(INFO) << "Deleting old temp snapshot dir " << tmp_snapshot_dir;
+    LOG_WITH_PREFIX(INFO) << "Deleting old temp snapshot dir " << tmp_snapshot_dir;
     RETURN_NOT_OK_PREPEND(env->DeleteRecursively(tmp_snapshot_dir),
                           "Cannot recursively delete old temp snapshot dir " + tmp_snapshot_dir);
     RETURN_NOT_OK_PREPEND(env->SyncDir(top_snapshots_dir),
@@ -74,15 +74,17 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
 
   bool exit_on_failure = true;
   // Delete snapshot (RocksDB checkpoint) directories on exit.
-  BOOST_SCOPE_EXIT(env, &exit_on_failure, &snapshot_dir, &tmp_snapshot_dir, &top_snapshots_dir) {
+  BOOST_SCOPE_EXIT(env, &exit_on_failure, &snapshot_dir, &tmp_snapshot_dir, &top_snapshots_dir,
+                   this_) {
     bool do_sync = false;
 
     if (env->FileExists(tmp_snapshot_dir)) {
       do_sync = true;
       const Status deletion_status = env->DeleteRecursively(tmp_snapshot_dir);
       if (PREDICT_FALSE(!deletion_status.ok())) {
-        LOG(WARNING) << "Cannot recursively delete temp snapshot dir " << tmp_snapshot_dir
-                     << ": " << deletion_status;
+        LOG(WARNING)
+            << this_->LogPrefix() << "Cannot recursively delete temp snapshot dir "
+            << tmp_snapshot_dir << ": " << deletion_status;
       }
     }
 
@@ -90,15 +92,15 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
       do_sync = true;
       const Status deletion_status = env->DeleteRecursively(snapshot_dir);
       if (PREDICT_FALSE(!deletion_status.ok())) {
-        LOG(WARNING) << "Cannot recursively delete snapshot dir " << snapshot_dir
-                     << ": " << deletion_status;
+        LOG(WARNING) << this_->LogPrefix() << "Cannot recursively delete snapshot dir "
+                     << snapshot_dir << ": " << deletion_status;
       }
     }
 
     if (do_sync) {
       const Status sync_status = env->SyncDir(top_snapshots_dir);
       if (PREDICT_FALSE(!sync_status.ok())) {
-        LOG(WARNING) << "Cannot sync top snapshots dir " << top_snapshots_dir
+        LOG(WARNING) << this_->LogPrefix() << "Cannot sync top snapshots dir " << top_snapshots_dir
                      << ": " << sync_status;
       }
     }
@@ -108,8 +110,8 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
   //       for the RocksDB object.
   s = CreateCheckpoint(tmp_snapshot_dir);
   if (PREDICT_FALSE(!s.ok())) {
-    LOG(WARNING) << "Cannot create db checkpoint: " << s;
-    return s.CloneAndPrepend("Cannot create db checkpoint");
+    LOG_WITH_PREFIX(WARNING) << "Cannot create RocksDB checkpoint: " << s;
+    return s.CloneAndPrepend("Cannot create RocksDB checkpoint");
   }
 
   RETURN_NOT_OK_PREPEND(env->RenameFile(tmp_snapshot_dir, snapshot_dir),
@@ -128,8 +130,8 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
   frontier.set_hybrid_time(tx_state->hybrid_time());
   RETURN_NOT_OK(ModifyFlushedFrontier(frontier, rocksdb::FrontierModificationMode::kUpdate));
 
-  LOG(INFO) << "Complete snapshot creation for tablet " << tablet_id()
-            << " in folder " << snapshot_dir;
+  LOG_WITH_PREFIX(INFO) << "Complete snapshot creation for tablet " << tablet_id()
+                        << " in folder " << snapshot_dir;
 
   exit_on_failure = false;
   return Status::OK();
@@ -174,21 +176,22 @@ Status Tablet::RestoreCheckpoint(const std::string& dir, const docdb::ConsensusF
 
   Status s = rocksdb::DestroyDB(db_dir, rocksdb_options);
   if (PREDICT_FALSE(!s.ok())) {
-    LOG(WARNING) << "Cannot cleanup db files in directory " << db_dir << ": " << s;
+    LOG_WITH_PREFIX(WARNING) << "Cannot cleanup db files in directory " << db_dir << ": " << s;
     return STATUS(IllegalState, "Cannot cleanup db files", s.ToString());
   }
 
   if (!intents_db_dir.empty()) {
     s = rocksdb::DestroyDB(intents_db_dir, rocksdb_options);
     if (PREDICT_FALSE(!s.ok())) {
-      LOG(WARNING) << "Cannot cleanup db files in directory " << intents_db_dir << ": " << s;
+      LOG_WITH_PREFIX(WARNING) << "Cannot cleanup db files in directory " << intents_db_dir << ": "
+                               << s;
       return STATUS(IllegalState, "Cannot cleanup intents db files", s.ToString());
     }
   }
 
   s = rocksdb::CopyDirectory(rocksdb_options.env, dir, db_dir, rocksdb::CreateIfMissing::kTrue);
   if (PREDICT_FALSE(!s.ok())) {
-    LOG(WARNING) << "Copy checkpoint files status: " << s;
+    LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
     return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
   }
 
@@ -199,9 +202,9 @@ Status Tablet::RestoreCheckpoint(const std::string& dir, const docdb::ConsensusF
 
   // Reopen database from copied checkpoint.
   // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
-  s = OpenKeyValueTablet();
+  s = OpenKeyValueTablet(DisableCompactions::kTrue);
   if (PREDICT_FALSE(!s.ok())) {
-    LOG(WARNING) << "Failed tablet db opening from checkpoint: " << s;
+    LOG_WITH_PREFIX(WARNING) << "Failed tablet db opening from checkpoint: " << s;
     return s;
   }
 
@@ -217,13 +220,20 @@ Status Tablet::RestoreCheckpoint(const std::string& dir, const docdb::ConsensusF
 
   s = ModifyFlushedFrontier(final_frontier, rocksdb::FrontierModificationMode::kForce);
   if (PREDICT_FALSE(!s.ok())) {
-    LOG(WARNING) << "Failed tablet db setting flushed op id: " << s;
+    LOG_WITH_PREFIX(WARNING) << "Failed tablet DB setting flushed op id: " << s;
     return s;
   }
 
-  LOG(INFO) << "Checkpoint restored from " << dir;
-  LOG(INFO) << "Sequence numbers: old=" << sequence_number
+  LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << dir;
+  LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
             << ", restored=" << regular_db_->GetLatestSequenceNumber();
+
+  LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
+  s = EnableCompactions();
+  if (!s.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Failed to enable compactions after restoring a checkpoint";
+    return s;
+  }
 
   return Status::OK();
 }
@@ -250,14 +260,14 @@ Status Tablet::DeleteSnapshot(SnapshotOperationState* tx_state) {
   if (env->FileExists(snapshot_dir)) {
     const Status deletion_status = env->DeleteRecursively(snapshot_dir);
     if (PREDICT_FALSE(!deletion_status.ok())) {
-      LOG(WARNING) << "Cannot recursively delete snapshot dir " << snapshot_dir
-                   << ": " << deletion_status;
+      LOG_WITH_PREFIX(WARNING) << "Cannot recursively delete snapshot dir " << snapshot_dir
+                               << ": " << deletion_status;
     }
 
     const Status sync_status = env->SyncDir(top_snapshots_dir);
     if (PREDICT_FALSE(!sync_status.ok())) {
-      LOG(WARNING) << "Cannot sync top snapshots dir " << top_snapshots_dir
-                   << ": " << sync_status;
+      LOG_WITH_PREFIX(WARNING) << "Cannot sync top snapshots dir " << top_snapshots_dir
+                               << ": " << sync_status;
     }
   }
 
@@ -269,8 +279,8 @@ Status Tablet::DeleteSnapshot(SnapshotOperationState* tx_state) {
   // exact value set above.
   RETURN_NOT_OK(ModifyFlushedFrontier(frontier, rocksdb::FrontierModificationMode::kUpdate));
 
-  LOG(INFO) << "Complete snapshot deletion on tablet " << tablet_id()
-            << " in folder " << snapshot_dir;
+  LOG_WITH_PREFIX(INFO) << "Complete snapshot deletion on tablet " << tablet_id()
+                        << " in folder " << snapshot_dir;
 
   return Status::OK();
 }
