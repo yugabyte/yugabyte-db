@@ -331,7 +331,7 @@ Audit entries are written to the standard logging facility and contain the follo
 
 - **PARAMETER** - If `pgaudit.log_parameter` is set then this field will contain the statement parameters as quoted CSV.
 
-Use [log_line_prefix](http://www.postgresql.org/docs/11/static/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) to add any other fields that are needed to satisfy your audit log requirements. A typical log line prefix might be `'%m %u %d: '` which would provide the date/time, user name, and database name for each audit log.
+Use [log_line_prefix](http://www.postgresql.org/docs/11/static/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) to add any other fields that are needed to satisfy your audit log requirements. A typical log line prefix might be `'%m %u %d [%p]: '` which would provide the date/time, user name, database name, and process id for each audit log.
 
 ## Caveats
 
