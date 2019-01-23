@@ -18,14 +18,25 @@ import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
 import play.libs.ws.WSResponse;
 
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLConnection;
+import java.net.URLStreamHandler;
 import java.util.HashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.instanceOf;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
@@ -37,6 +48,8 @@ public class ApiHelperTest {
   WSRequest mockRequest;
   @Mock
   WSResponse mockResponse;
+  @Mock
+  HttpURLConnection mockConnection;
 
   @InjectMocks
   ApiHelper apiHelper;
@@ -115,5 +128,44 @@ public class ApiHelperTest {
     Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
     Mockito.verify(mockRequest, times(1)).post(postData);
     assertEquals(result.get("Success").asBoolean(), true);
+  }
+
+  private void testGetHeaderRequestHelper(String urlPath, boolean isSuccess) {
+    final URLStreamHandler handler = new URLStreamHandler() {
+      @Override
+      protected URLConnection openConnection(final URL arg0) throws IOException {
+        return mockConnection;
+      }
+    };
+    ApiHelper mockApiHelper = spy(apiHelper);
+    try {
+      when(mockConnection.getResponseMessage()).thenReturn(isSuccess ? "OK" : "Not Found");
+      URL url = new URL(null, urlPath, handler);
+      when(mockApiHelper.getUrl(urlPath)).thenReturn(url);
+    } catch (Exception e) {
+      e.printStackTrace();
+      assertNull(e.getMessage());
+    }
+    ObjectNode result = mockApiHelper.getHeaderStatus(urlPath);
+    if (isSuccess) {
+      assertEquals(result.get("status").asText(), "OK");
+    } else {
+      assertEquals(result.get("status").asText(), "Not Found");
+    }
+  }
+
+  @Test
+  public void testGetHeaderRequestOKL() {
+    testGetHeaderRequestHelper("http://www.yugabyte.com", true);
+  }
+
+  @Test
+  public void testGetHeaderRequestNonOK() {
+    testGetHeaderRequestHelper("http://www.yugabyte.com", false);
+  }
+
+  @Test
+  public void testGetHeaderRequestWithInvalidURL() {
+    testGetHeaderRequestHelper("file:///my/yugabyte/com", false);
   }
 }

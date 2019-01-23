@@ -57,6 +57,10 @@ public class SwamperHelper {
       this.port = port;
     }
 
+    public int getPort() {
+      return port;
+    }
+
     static TargetType createFromPort(int port) {
       return Arrays.stream(TargetType.values()).filter(t -> t.port == port).findFirst().orElse(INVALID_EXPORT);
     }
