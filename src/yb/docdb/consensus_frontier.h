@@ -19,6 +19,13 @@
 namespace yb {
 namespace docdb {
 
+inline HybridTime NormalizeHistoryCutoff(HybridTime history_cutoff) {
+  if (history_cutoff == HybridTime::kMin) {
+    return HybridTime::kInvalid;
+  }
+  return history_cutoff;
+}
+
 // DocDB implementation of RocksDB UserFrontier. Contains an op id and a hybrid time. The difference
 // between this and user boundary values is that here hybrid time is taken from committed Raft log
 // entries, whereas user boundary values extract hybrid time from keys in a memtable. This is
@@ -30,12 +37,11 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   std::unique_ptr<UserFrontier> Clone() const override {
     return std::make_unique<ConsensusFrontier>(*this);
   }
-
   ConsensusFrontier() {}
   ConsensusFrontier(const OpId& op_id, HybridTime ht, HybridTime history_cutoff)
       : op_id_(op_id),
         ht_(ht),
-        history_cutoff_(history_cutoff) {}
+        history_cutoff_(NormalizeHistoryCutoff(history_cutoff)) {}
 
   virtual ~ConsensusFrontier();
 
@@ -58,7 +64,9 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   void set_hybrid_time(HybridTime ht) { ht_ = ht; }
 
   HybridTime history_cutoff() const { return history_cutoff_; }
-  void set_history_cutoff(HybridTime history_cutoff) { history_cutoff_ = history_cutoff; }
+  void set_history_cutoff(HybridTime history_cutoff) {
+    history_cutoff_ = NormalizeHistoryCutoff(history_cutoff);
+  }
 
  private:
   OpId op_id_;

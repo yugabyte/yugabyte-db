@@ -820,8 +820,11 @@ class VersionSet {
   void operator=(const VersionSet&);
 
   void LogAndApplyCFHelper(VersionEdit* edit);
-  void LogAndApplyHelper(ColumnFamilyData* cfd, VersionBuilder* b, Version* v,
-                         VersionEdit* edit, InstrumentedMutex* mu);
+  void LogAndApplyHelper(
+      ColumnFamilyData* cfd,
+      VersionBuilder* b,
+      VersionEdit* edit,
+      InstrumentedMutex* mu);
 };
 
 }  // namespace rocksdb

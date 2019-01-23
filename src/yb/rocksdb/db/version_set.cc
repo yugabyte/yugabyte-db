@@ -38,6 +38,7 @@
 #include <string>
 
 #include <glog/logging.h>
+#include <boost/container/small_vector.hpp>
 
 #include "yb/gutil/casts.h"
 #include "yb/util/flags.h"
@@ -2165,7 +2166,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
 
   UserFrontierPtr flushed_frontier_override;
   if (edit->IsColumnFamilyManipulation()) {
-    // no group commits for column family add or drop
+    // No group commits for column family add or drop.
     LogAndApplyCFHelper(edit);
     batch_edits.push_back(edit);
   } else {
@@ -2179,27 +2180,27 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
         // Also, group commits across column families are not supported.
         break;
       }
-      last_writer = writer;
-      LogAndApplyHelper(column_family_data, builder, v, last_writer->edit, mu);
-      batch_edits.push_back(last_writer->edit);
-      if (edit->force_flushed_frontier_) {
+      FrontierModificationMode frontier_mode = FrontierModificationMode::kUpdate;
+      const bool force_flushed_frontier = writer->edit->force_flushed_frontier_;
+      if (force_flushed_frontier) {
+        if (writer != &w) {
+          // No group commit for edits that force a particular value of flushed frontier, either.
+          // (Also see the logic at the end of the for loop body.)
+          break;
+        }
         new_descriptor_log = true;
-        // We should not really get multiple concurrent version edits that are all forcing a new
-        // flushed frontier, so pick the last value.
         flushed_frontier_override = edit->flushed_frontier_;
       }
-    }
-    if (flushed_frontier_override) {
-      // Remove user frontier data from the individual edits. We will create a new manifest with the
-      // exact flushed frontier value needed.
-      for (auto* batch_edit : batch_edits) {
-        batch_edit->flushed_frontier_.reset();
-        for (auto& new_file : batch_edit->new_files_) {
-          new_file.second.smallest.user_frontier.reset();
-          new_file.second.largest.user_frontier.reset();
-        }
+      last_writer = writer;
+      LogAndApplyHelper(column_family_data, builder, last_writer->edit, mu);
+      batch_edits.push_back(last_writer->edit);
+
+      if (force_flushed_frontier) {
+        // This is also needed to disable group commit for flushed-frontier-forcing edits.
+        break;
       }
     }
+
     builder->SaveTo(v->storage_info());
   }
 
@@ -2259,7 +2260,11 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
 
         unique_ptr<WritableFileWriter> file_writer(
             new WritableFileWriter(std::move(descriptor_file), opt_env_opts));
-        descriptor_log_.reset(new log::Writer(std::move(file_writer), 0, false));
+        descriptor_log_.reset(new log::Writer(
+            std::move(file_writer), /* log_number */ 0, /* recycle_log_files */ false));
+        // This will write a snapshot containing metadata for all files in this DB. If we are
+        // forcing a particular value of the flushed frontier, we need to set it in this snapshot
+        // version edit as well.
         s = WriteSnapshot(descriptor_log_.get(), flushed_frontier_override);
       } else {
         descriptor_log_file_name_ = "";
@@ -2410,9 +2415,11 @@ void VersionSet::LogAndApplyCFHelper(VersionEdit* edit) {
   }
 }
 
-void VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
-                                   VersionBuilder* builder, Version* v,
-                                   VersionEdit* edit, InstrumentedMutex* mu) {
+void VersionSet::LogAndApplyHelper(
+    ColumnFamilyData* cfd,
+    VersionBuilder* builder,
+    VersionEdit* edit,
+    InstrumentedMutex* mu) {
   mu->AssertHeld();
   assert(!edit->IsColumnFamilyManipulation());
 
@@ -2428,9 +2435,6 @@ void VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
   edit->SetLastSequence(LastSequence());
 
   if (flushed_frontier_ && !edit->force_flushed_frontier_) {
-    // Make sure that the flushed frontier stored in the version edit takes into account all the
-    // operations that were flushed prior to it. We don't do this when the version edit's flushed
-    // frontier must take override all other flushed frontier metadata.
     edit->UpdateFlushedFrontier(flushed_frontier_);
   }
 
@@ -2708,6 +2712,11 @@ Status VersionSet::Recover(
       if (edit.flushed_frontier_) {
         UpdateUserFrontier(
             &flushed_frontier, edit.flushed_frontier_, UpdateUserValueType::kLargest);
+        VLOG(1) << "Updating flushed frontier with that from edit: "
+                << edit.flushed_frontier_->ToString()
+                << ", new flushed froniter: " << flushed_frontier->ToString();
+      } else {
+        VLOG(1) << "No flushed frontier found in edit";
       }
     }
     if (s.IsEndOfFile()) {
@@ -2927,12 +2936,12 @@ Status VersionSet::ListColumnFamilies(std::vector<std::string>* column_families,
 
   unique_ptr<SequentialFileReader> file_reader;
   {
-  unique_ptr<SequentialFile> file;
-  s = env->NewSequentialFile(dscname, &file, soptions);
-  if (!s.ok()) {
-    return s;
-  }
-  file_reader.reset(new SequentialFileReader(std::move(file)));
+    unique_ptr<SequentialFile> file;
+    s = env->NewSequentialFile(dscname, &file, soptions);
+    if (!s.ok()) {
+      return s;
+    }
+    file_reader.reset(new SequentialFileReader(std::move(file)));
   }
 
   std::map<uint32_t, std::string> column_family_names;
@@ -3306,7 +3315,7 @@ CHECKED_STATUS AddEdit(const VersionEdit& edit, const DBOptions* db_options, log
 Status VersionSet::WriteSnapshot(log::Writer* log, UserFrontierPtr flushed_frontier_override) {
   // TODO: Break up into multiple records to reduce memory usage on recovery?
 
-  // WARNING: This method doesn't hold a mutex!!
+  // WARNING: This method doesn't hold a mutex!
 
   // This is done without DB mutex lock held, but only within single-threaded
   // LogAndApply. Column family manipulations can only happen within LogAndApply
@@ -3334,10 +3343,12 @@ Status VersionSet::WriteSnapshot(log::Writer* log, UserFrontierPtr flushed_front
       VersionEdit edit;
       edit.SetColumnFamily(cfd->GetID());
 
+      const bool frontier_overridden = !!flushed_frontier_override;
       for (int level = 0; level < cfd->NumberLevels(); level++) {
         for (const auto& f :
              cfd->current()->storage_info()->LevelFiles(level)) {
-          edit.AddCleanedFile(level, *f);
+
+          edit.AddCleanedFile(level, *f, /* suppress_frontiers */ frontier_overridden);
         }
       }
       edit.SetLogNumber(cfd->GetLogNumber());
