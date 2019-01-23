@@ -139,6 +139,10 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertValue(json, "state", "FINISHED");
     assertNotNull(json.get("checks").get("create_prometheus_config"));
     assertEquals(json.get("checks").get("create_prometheus_config").asText(), "OK");
+    assertThat(json.get("checks").get("node_exporter").asText(),
+        allOf(notNullValue(), containsString("OK")));
+    assertThat(json.get("checks").get("node_exporter_ip_error_map").asText(),
+            allOf(notNullValue(), containsString("127.0.0")));
     assertEquals(json.get("universeUUID").asText(), univUUID);
     assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
 

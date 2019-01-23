@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.SwamperHelper.TargetType;
+
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -13,6 +16,7 @@ import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
@@ -82,11 +86,17 @@ public class ImportController extends Controller {
   // The RPC timeouts.
   private static final long RPC_TIMEOUT_MS = 5000L;
 
+  // Expected string for node exporter http request.
+  private static final String NODE_EXPORTER_RESP = "Node Exporter";
+
   @Inject
   FormFactory formFactory;
 
   @Inject
   YBClientService ybService;
+
+  @Inject
+  ApiHelper apiHelper;
 
   public Result importUniverse(UUID customerUUID) {
     // Get the submitted form data.
@@ -132,7 +142,15 @@ public class ImportController extends Controller {
       }
       userMasterIps.add(parts[0]);
 
-      if (Integer.parseInt(parts[1]) != MetaMasterController.MASTER_RPC_PORT) {
+      int portInt = 0;
+      try {
+        portInt = Integer.parseInt(parts[1]);
+      } catch (NumberFormatException nfe) {
+        LOG.error("Incorrect master rpc port '" + parts[1] + "', cannot be converted to integer.");
+        return null;
+      }
+
+      if (portInt != MetaMasterController.MASTER_RPC_PORT) {
         LOG.error("Incorrect master rpc port : " + parts[1] + " expected " +
                   MetaMasterController.MASTER_RPC_PORT);
         return null;
@@ -414,6 +432,7 @@ public class ImportController extends Controller {
    * Finalizes the universe in the database by:
    *   - setting up Prometheus config for metrics.
    *   - adding the universe to the active list of universes for this customer.
+   *   - checking if node_exporter is reachable on all the nodes.
    */
   private Result finishUniverseImport(ImportUniverseFormData importForm, 
                                       Customer customer,
@@ -472,6 +491,30 @@ public class ImportController extends Controller {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, results);
     }
 
+    //---------------------------------------------------------------------------------------------
+    // Check if node_exporter is enabled on all nodes.
+    //---------------------------------------------------------------------------------------------
+    Map<String, String> nodeExporterIPsToError = new HashMap<String, String>();
+    for (NodeDetails node : universe.getTServers()) {
+      String nodeIP = node.cloudInfo.private_ip;
+      String basePage = "http://" + nodeIP + ":" + TargetType.NODE_EXPORT.getPort();
+      ObjectNode resp = apiHelper.getHeaderStatus(basePage + "/metrics");
+      if (resp.isNull() || !resp.get("status").asText().equals("OK")) {
+        nodeExporterIPsToError.put(nodeIP,
+            resp.isNull() ? "Invalid response" : resp.get("status").asText());
+      } else {
+        String body = apiHelper.getBody(basePage);
+        if (!body.contains(NODE_EXPORTER_RESP)) {
+          nodeExporterIPsToError.put(nodeIP,
+              basePage + "response does not contain '" + NODE_EXPORTER_RESP + "'");
+        }
+      }
+    }
+    results.with("checks").put("node_exporter", "OK");
+    LOG.info("Errors per node: " + nodeExporterIPsToError.toString());
+    if (!nodeExporterIPsToError.isEmpty()) {
+      results.with("checks").put("node_exporter_ip_error_map", nodeExporterIPsToError.toString());
+    }
 
     //---------------------------------------------------------------------------------------------
     // Create a simple redis table if needed.
