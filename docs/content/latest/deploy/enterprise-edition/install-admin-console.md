@@ -24,6 +24,12 @@ menu:
       Airgapped
     </a>
   </li>
+  <li>
+    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
+      <i class="fa fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
@@ -32,5 +38,8 @@ menu:
   </div>
   <div id="airgapped" class="tab-pane fade" role="tabpanel" aria-labelledby="airgapped-tab">
     {{% includeMarkdown "install-admin-console/airgapped.md" /%}}
+  </div>
+  <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
+    {{% includeMarkdown "install-admin-console/kubernetes.md" /%}}
   </div>
 </div>
