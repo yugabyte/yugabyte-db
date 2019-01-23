@@ -31,6 +31,7 @@ using namespace std::literals;
 
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_bool(tablet_verify_flushed_frontier_after_modifying);
 
 namespace yb {
 
@@ -90,6 +91,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     flag_saver_.emplace();
 
     FLAGS_log_min_seconds_to_retain = 5;
+    FLAGS_tablet_verify_flushed_frontier_after_modifying = true;
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
