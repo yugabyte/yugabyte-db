@@ -5,8 +5,7 @@
 #   This testsuite walks through the syntax rules and quickly checks
 #   whether or not a feature is supported.
 ####################################################################################################
-# Disable test on types due to github::issue#714
-# test: yb_feature_types
+test: yb_feature_types
 test: yb_feature_insert
 test: yb_feature_delete
 test: yb_feature_update

@@ -27,7 +27,7 @@ CREATE INDEX tenk2_unique1 ON tenk2 USING btree(unique1 int4_ops);
 CREATE INDEX tenk2_unique2 ON tenk2 USING btree(unique2 int4_ops);
 CREATE INDEX tenk2_hundred ON tenk2 USING btree(hundred int4_ops);
 CREATE INDEX rix ON road USING btree (name text_ops);
-ERROR:  Invalid argument: Schema not found
+ERROR:  relation "road" does not exist
 CREATE INDEX iix ON ihighway USING btree (name text_ops);
 ERROR:  relation "ihighway" does not exist
 CREATE INDEX six ON shighway USING btree (name text_ops);
