@@ -88,6 +88,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   @Override
+  protected int getReplicationFactor() {
+    return 3;
+  }
+
+  @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     for (Map.Entry<String, String> entry : getTServerAndInitDbFlags().entrySet()) {

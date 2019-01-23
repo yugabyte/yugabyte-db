@@ -36,6 +36,7 @@
 
 #include "catalog/catalog.h"
 #include "access/htup_details.h"
+#include "utils/lsyscache.h"
 #include "utils/relcache.h"
 #include "utils/rel.h"
 #include "executor/tuptable.h"
@@ -146,7 +147,7 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 }
 
 void
-YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId)
+YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, Oid namespaceId)
 {
 	if (relkind != RELKIND_RELATION)
 	{
@@ -166,10 +167,14 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId)
 	 * making some assumptions below about how it will be assigned.
 	 */
 	char *db_name = get_database_name(MyDatabaseId);
+	char *schema_name = stmt->relation->schemaname;
+	if (schema_name == NULL) {
+		schema_name = get_namespace_name(namespaceId);
+	}
 	YBC_LOG_INFO("Creating Table %s, %s, %s",
-				 db_name,
-				 stmt->relation->schemaname,
-				 stmt->relation->relname);
+							 db_name,
+							 schema_name,
+							 stmt->relation->relname);
 
 	Constraint *primary_key = NULL;
 
@@ -191,13 +196,13 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId)
 
 	HandleYBStatus(YBCPgNewCreateTable(ybc_pg_session,
 	                                   db_name,
-	                                   stmt->relation->schemaname,
+	                                   schema_name,
 	                                   stmt->relation->relname,
 	                                   MyDatabaseId,
 	                                   relationId,
 	                                   false, /* is_shared_table */
 	                                   false, /* if_not_exists */
-									   primary_key == NULL /* add_primary_key */,
+																		 primary_key == NULL /* add_primary_key */,
 	                                   &handle));
 
 	/*
