@@ -17,7 +17,9 @@ menu:
 
 ### Watch the Video
 
+<div class="video-wrapper">
 {{< vimeo 305074082 >}}
+</div>
 
 ### Review Detailed Answer
 

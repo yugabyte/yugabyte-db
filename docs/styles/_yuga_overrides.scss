@@ -71,7 +71,7 @@ a {
     margin-top: 36px;
     padding-top: 0;
     font-size: 20px;
-    font-weight: 500;
+    font-weight: 600;
     margin-top: -52px;
     padding-top: 100px !important;
     @media only screen and (max-width: 767px) {
@@ -81,7 +81,7 @@ a {
   h4 {
     margin-top: 24px;
     font-size: 17px;
-    font-weight: 500;
+    font-weight: 600;
     font-style: normal;
     margin-top: -52px;
     padding-top: 100px !important;
@@ -402,7 +402,7 @@ a {
   > ul > li > a {
     font-family: Montserrat, sans-serif;
     font-size: 16px;
-    font-weight: 500;
+    font-weight: 600;
   }
   > ul > li > ul {
     margin-left: 10px;
@@ -536,7 +536,7 @@ a {
     color: $YB_DARK_BLUE;
     padding: 0;
     font-family: Montserrat, sans-serif;
-    font-weight: 500;
+    font-weight: 600;
   
     &::before {
       content: none;

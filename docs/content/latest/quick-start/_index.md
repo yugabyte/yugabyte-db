@@ -97,4 +97,6 @@ We do not recommend a local multi-node cluster setup on a single host for produc
 
 ## Watch the Demo
 
+<div class="video-wrapper">
 {{< vimeo 297325701 >}}
+</div>

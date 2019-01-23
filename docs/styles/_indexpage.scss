@@ -166,6 +166,7 @@
         display: flex;
         flex-direction: column;
         position: relative;
+        @include transition(0.125s);
 
         @media only screen and (min-width:768px) and (max-width:1024px) {
           height: 235px;
@@ -217,17 +218,18 @@
         }
 
         &:hover {
+          @include transition(0.3s);
+          transform: scale(1.03, 1.03);
+          z-index: 1000;
           &:before {
             color: rgba($YB_DARK_BLUE, 0.7);
             padding-right: 37px;
-            @include transition(0.35s);
+            @include transition(0.3s);
           }
 
           &:after {
-            @include transition(0.35s);
-            transform: translateX(8px);
-            transform: scale(1.02, 1.02);
-            box-shadow: 0 9px 20px rgba($YB_DARK_BLUE,.17);
+            @include transition(0.30s);
+            box-shadow: 0 19px 40px rgba($YB_DARK_BLUE,.17);
             border-radius: 15px;
           }
         }
@@ -320,4 +322,10 @@
       }
     }
   }
+}
+
+.video-wrapper {
+  width: 800px;
+  max-width: 100%;
+  margin: 20px auto 0;
 }
