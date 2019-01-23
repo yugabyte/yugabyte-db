@@ -22,14 +22,14 @@ export default class ListKubernetesConfigurations extends Component {
   }
 
   deleteProviderEnabled = (providerUUID) => {
-    return getPromiseState(this.props.universeList).isSuccess() 
-      && isDefinedNotNull(this.props.providers) 
-      && isDefinedNotNull(providerUUID) 
+    return getPromiseState(this.props.universeList).isSuccess()
+      && isDefinedNotNull(this.props.providers)
+      && isDefinedNotNull(providerUUID)
       && !this.props.universeList.data.some(universe => universe.universeDetails.clusters && universe.universeDetails.clusters.some(cluster => cluster.userIntent.provider === providerUUID));
   }
 
   render() {
-    const { 
+    const {
       providers,
       activeProviderUUID,
       type
@@ -55,7 +55,7 @@ export default class ListKubernetesConfigurations extends Component {
           </FlexGrow>
         </FlexContainer>
       );
-    };  
+    };
     const actionList = (item, row) => {
       const enabled = this.deleteProviderEnabled(row.uuid);
       return (
@@ -65,18 +65,19 @@ export default class ListKubernetesConfigurations extends Component {
       );
     };
     const providerTypeMetadata = KUBERNETES_PROVIDERS.find((providerType) => providerType.code === type);
-
     const onModalHide = () => {
       const { type } = this.props;
       browserHistory.push(`/config/cloud/${type}`);
     };
+
+    const title = providerTypeMetadata ? providerTypeMetadata.name + " configs" : "Managed Kubernetes Service configs";
     
     return (
       <div>
         <YBPanelItem
           header={
             <Fragment>
-              <h2 className="table-container-title pull-left">{providerTypeMetadata.name} configs</h2>
+              <h2 className="table-container-title pull-left">{title}</h2>
               <FlexContainer className="pull-right">
                 <FlexShrink>
                   <Button bsClass="btn btn-orange btn-config" onClick={this.props.onCreate}>
