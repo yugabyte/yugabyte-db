@@ -579,7 +579,7 @@ class Schema {
   inline Result<const ColumnSchema&> column_by_id(ColumnId id) const {
     int idx = find_column_by_id(id);
     if (idx < 0) {
-      return STATUS_FORMAT(InvalidArgument, "Column id $0 not found", idx);
+      return STATUS_FORMAT(InvalidArgument, "Column id $0 not found", id.ToString());
     }
     return cols_[idx];
   }

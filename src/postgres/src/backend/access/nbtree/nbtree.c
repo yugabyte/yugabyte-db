@@ -34,6 +34,8 @@
 #include "utils/index_selfuncs.h"
 #include "utils/memutils.h"
 
+#include "access/ybcin.h"
+#include "pg_yb_utils.h"
 
 /* Working state for btbuild and its callback */
 typedef struct
@@ -126,42 +128,84 @@ bthandler(PG_FUNCTION_ARGS)
 {
 	IndexAmRoutine *amroutine = makeNode(IndexAmRoutine);
 
-	amroutine->amstrategies = BTMaxStrategyNumber;
-	amroutine->amsupport = BTNProcs;
-	amroutine->amcanorder = true;
-	amroutine->amcanorderbyop = false;
-	amroutine->amcanbackward = true;
-	amroutine->amcanunique = true;
-	amroutine->amcanmulticol = true;
-	amroutine->amoptionalkey = true;
-	amroutine->amsearcharray = true;
-	amroutine->amsearchnulls = true;
-	amroutine->amstorage = false;
-	amroutine->amclusterable = true;
-	amroutine->ampredlocks = true;
-	amroutine->amcanparallel = true;
-	amroutine->amkeytype = InvalidOid;
+	if (IsYugaByteEnabled())
+	{
+		amroutine->amstrategies = BTMaxStrategyNumber;
+		amroutine->amsupport = BTNProcs;
+		amroutine->amcanorder = true;
+		amroutine->amcanorderbyop = false;
+		amroutine->amcanbackward = true;
+		amroutine->amcanunique = true;
+		amroutine->amcanmulticol = true;
+		amroutine->amoptionalkey = true;
+		amroutine->amsearcharray = true;
+		amroutine->amsearchnulls = true;
+		amroutine->amstorage = false;
+		amroutine->amclusterable = true;
+		amroutine->ampredlocks = true;
+		amroutine->amcanparallel = false; /* TODO: support parallel scan */
+		amroutine->amkeytype = InvalidOid;
 
-	amroutine->ambuild = btbuild;
-	amroutine->ambuildempty = btbuildempty;
-	amroutine->aminsert = btinsert;
-	amroutine->ambulkdelete = btbulkdelete;
-	amroutine->amvacuumcleanup = btvacuumcleanup;
-	amroutine->amcanreturn = btcanreturn;
-	amroutine->amcostestimate = btcostestimate;
-	amroutine->amoptions = btoptions;
-	amroutine->amproperty = btproperty;
-	amroutine->amvalidate = btvalidate;
-	amroutine->ambeginscan = btbeginscan;
-	amroutine->amrescan = btrescan;
-	amroutine->amgettuple = btgettuple;
-	amroutine->amgetbitmap = btgetbitmap;
-	amroutine->amendscan = btendscan;
-	amroutine->ammarkpos = btmarkpos;
-	amroutine->amrestrpos = btrestrpos;
-	amroutine->amestimateparallelscan = btestimateparallelscan;
-	amroutine->aminitparallelscan = btinitparallelscan;
-	amroutine->amparallelrescan = btparallelrescan;
+		amroutine->ambuild = ybcinbuild;
+		amroutine->ambuildempty = ybcinbuildempty;
+		amroutine->aminsert = ybcininsert;
+		amroutine->ambulkdelete = ybcinbulkdelete;
+		amroutine->amvacuumcleanup = ybcinvacuumcleanup;
+		amroutine->amcanreturn = ybcincanreturn;
+		amroutine->amcostestimate = ybcincostestimate;
+		amroutine->amoptions = ybcinoptions;
+		amroutine->amproperty = ybcinproperty;
+		amroutine->amvalidate = ybcinvalidate;
+		amroutine->ambeginscan = ybcinbeginscan;
+		amroutine->amrescan = ybcinrescan;
+		amroutine->amgettuple = ybcingettuple;
+		amroutine->amgetbitmap = ybcingetbitmap;
+		amroutine->amendscan = ybcinendscan;
+		amroutine->ammarkpos = ybcinmarkpos;
+		amroutine->amrestrpos = ybcinrestrpos;
+		amroutine->amestimateparallelscan = NULL; /* TODO: support parallel scan */
+		amroutine->aminitparallelscan = NULL;
+		amroutine->amparallelrescan = NULL;
+	}
+	else
+	{
+		amroutine->amstrategies = BTMaxStrategyNumber;
+		amroutine->amsupport = BTNProcs;
+		amroutine->amcanorder = true;
+		amroutine->amcanorderbyop = false;
+		amroutine->amcanbackward = true;
+		amroutine->amcanunique = true;
+		amroutine->amcanmulticol = true;
+		amroutine->amoptionalkey = true;
+		amroutine->amsearcharray = true;
+		amroutine->amsearchnulls = true;
+		amroutine->amstorage = false;
+		amroutine->amclusterable = true;
+		amroutine->ampredlocks = true;
+		amroutine->amcanparallel = true;
+		amroutine->amkeytype = InvalidOid;
+
+		amroutine->ambuild = btbuild;
+		amroutine->ambuildempty = btbuildempty;
+		amroutine->aminsert = btinsert;
+		amroutine->ambulkdelete = btbulkdelete;
+		amroutine->amvacuumcleanup = btvacuumcleanup;
+		amroutine->amcanreturn = btcanreturn;
+		amroutine->amcostestimate = btcostestimate;
+		amroutine->amoptions = btoptions;
+		amroutine->amproperty = btproperty;
+		amroutine->amvalidate = btvalidate;
+		amroutine->ambeginscan = btbeginscan;
+		amroutine->amrescan = btrescan;
+		amroutine->amgettuple = btgettuple;
+		amroutine->amgetbitmap = btgetbitmap;
+		amroutine->amendscan = btendscan;
+		amroutine->ammarkpos = btmarkpos;
+		amroutine->amrestrpos = btrestrpos;
+		amroutine->amestimateparallelscan = btestimateparallelscan;
+		amroutine->aminitparallelscan = btinitparallelscan;
+		amroutine->amparallelrescan = btparallelrescan;
+	}
 
 	PG_RETURN_POINTER(amroutine);
 }

@@ -56,9 +56,6 @@ Status PgDmlWrite::Prepare() {
 }
 
 void PgDmlWrite::PrepareColumns() {
-  // Setting protobuf.
-  column_refs_ = write_req_->mutable_column_refs();
-
   // Because Kudu API requires that primary columns must be listed in their created-order, the slots
   // for primary column bind expressions are allocated here in correct order.
   for (PgColumn &col : table_desc_->columns()) {
@@ -124,6 +121,9 @@ Status PgDmlWrite::Exec() {
     CHECK(exprpb->has_value() && exprpb->value().has_binary_value())
       << "YBCTID must be of BINARY datatype";
   }
+
+  // Add column references to protobuf.
+  AddColumnRefIds(table_desc_, write_req_->mutable_column_refs());
 
   // Execute the statement.
   RETURN_NOT_OK(doc_op_->Execute());

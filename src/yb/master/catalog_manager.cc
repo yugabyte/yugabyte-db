@@ -2063,22 +2063,25 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // For index table, populate the index info.
   scoped_refptr<TableInfo> indexed_table;
-  Schema indexed_schema;
   IndexInfoPB index_info;
+  const bool create_index_info = (orig_req->table_type() != PGSQL_TABLE_TYPE);
   if (req.has_indexed_table_id()) {
     TRACE("Looking up indexed table");
     indexed_table = GetTableInfo(req.indexed_table_id());
     if (indexed_table == nullptr) {
       return STATUS(NotFound, "The indexed table does not exist");
     }
-    RETURN_NOT_OK(indexed_table->GetSchema(&indexed_schema));
+    if (create_index_info) {
+      Schema indexed_schema;
+      RETURN_NOT_OK(indexed_table->GetSchema(&indexed_schema));
 
-    RETURN_NOT_OK(CreateIndexInfo(req.indexed_table_id(),
-                                  indexed_schema,
-                                  schema,
-                                  req.is_local_index(),
-                                  req.is_unique_index(),
-                                  &index_info));
+      RETURN_NOT_OK(CreateIndexInfo(req.indexed_table_id(),
+                                    indexed_schema,
+                                    schema,
+                                    req.is_local_index(),
+                                    req.is_unique_index(),
+                                    &index_info));
+    }
   }
 
   TSDescriptorVector all_ts_descs;
@@ -2103,8 +2106,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
 
     RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, true /* create_tablets */,
-                                      namespace_id, partitions, &index_info, &tablets, resp,
-                                      &table));
+                                      namespace_id, partitions,
+                                      create_index_info ? &index_info : nullptr,
+                                      &tablets, resp, &table));
   }
   TRACE("Inserted new table and tablet info into CatalogManager maps");
 
@@ -2141,7 +2145,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TRACE("Wrote table to system table");
 
   // For index table, insert index info in the indexed table.
-  if (req.has_indexed_table_id()) {
+  if (req.has_indexed_table_id() && create_index_info) {
     s = AddIndexInfoToTable(indexed_table, index_info);
     if (PREDICT_FALSE(!s.ok())) {
       return AbortTableCreation(table.get(), tablets,
@@ -2470,8 +2474,10 @@ TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
     metadata->set_indexed_table_id(req.indexed_table_id());
     metadata->set_is_local_index(req.is_local_index());
     metadata->set_is_unique_index(req.is_unique_index());
-    index_info->set_table_id(table->id());
-    metadata->mutable_index_info()->CopyFrom(*index_info);
+    if (index_info != nullptr) {
+      index_info->set_table_id(table->id());
+      metadata->mutable_index_info()->CopyFrom(*index_info);
+    }
   }
 
   if (req.is_pg_shared_table()) {

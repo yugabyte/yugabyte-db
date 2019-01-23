@@ -40,11 +40,7 @@
 #include "commands/ybctype.h"
 
 static YBCPgExpr
-YBCNewBinaryConstant(
-		YBCPgStatement ybc_stmt,
-		Oid type_id,
-		Datum datum,
-		bool is_null)
+YBCNewBinaryConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool is_null)
 {
 	char *data = NULL;
 	int64_t size = 0;

@@ -173,11 +173,15 @@ class PgCreateTable : public PgDdl {
 
   virtual StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_TABLE; }
 
+  // For PgCreateIndex: the indexed (base) table id and if this is a unique index.
+  virtual boost::optional<const PgObjectId&> indexed_table_id() const { return boost::none; }
+  virtual bool is_unique_index() const { return false; }
+
   CHECKED_STATUS AddColumn(const char *attr_name, int attr_num, int attr_ybtype,
                            bool is_hash, bool is_range);
 
   // Execute.
-  CHECKED_STATUS Exec();
+  virtual CHECKED_STATUS Exec();
 
  private:
   client::YBTableName table_name_;
@@ -231,6 +235,49 @@ class PgTruncateTable : public PgDdl {
 
  private:
   const PgObjectId table_id_;
+};
+
+//--------------------------------------------------------------------------------------------------
+// CREATE INDEX
+//--------------------------------------------------------------------------------------------------
+
+class PgCreateIndex : public PgCreateTable {
+ public:
+  // Public types.
+  typedef scoped_refptr<PgCreateIndex> ScopedRefPtr;
+  typedef scoped_refptr<const PgCreateIndex> ScopedRefPtrConst;
+
+  typedef std::unique_ptr<PgCreateIndex> UniPtr;
+  typedef std::unique_ptr<const PgCreateIndex> UniPtrConst;
+
+  // Constructors.
+  PgCreateIndex(PgSession::ScopedRefPtr pg_session,
+                const char *database_name,
+                const char *schema_name,
+                const char *index_name,
+                const PgObjectId& index_id,
+                const PgObjectId& base_table_id,
+                bool is_shared_index,
+                bool is_unique_index,
+                bool if_not_exist);
+  virtual ~PgCreateIndex();
+
+  virtual StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_INDEX; }
+
+  virtual boost::optional<const PgObjectId&> indexed_table_id() const override {
+    return base_table_id_;
+  }
+
+  virtual bool is_unique_index() const override {
+    return is_unique_index_;
+  }
+
+  // Execute.
+  virtual CHECKED_STATUS Exec() override;
+
+ private:
+  const PgObjectId base_table_id_;
+  bool is_unique_index_;
 };
 
 }  // namespace pggate

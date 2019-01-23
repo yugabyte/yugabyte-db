@@ -71,7 +71,7 @@ Status PgTableDesc::GetColumnInfo(int16_t attr_number, bool *is_primary, bool *i
   return Status::OK();
 }
 
-bool PgTableDesc::IsTransactional() {
+bool PgTableDesc::IsTransactional() const {
   return table_->schema().table_properties().is_transactional();
 }
 

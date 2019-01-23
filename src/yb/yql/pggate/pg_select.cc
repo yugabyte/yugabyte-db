@@ -47,9 +47,6 @@ Status PgSelect::Prepare() {
 }
 
 void PgSelect::PrepareColumns() {
-  // Setting protobuf.
-  column_refs_ = read_req_->mutable_column_refs();
-
   // When reading, only values of partition columns are special-cased in protobuf.
   // Because Kudu API requires that partition columns must be listed in their created-order, the
   // slots for partition column bind expressions are allocated here in correct order.
@@ -129,6 +126,9 @@ Status PgSelect::Exec() {
 
   // Update bind values for constants and placeholders.
   RETURN_NOT_OK(UpdateBindPBs());
+
+  // Add column references to protobuf.
+  AddColumnRefIds(table_desc_, read_req_->mutable_column_refs());
 
   // Execute select statement asynchronously.
   return doc_op_->Execute();

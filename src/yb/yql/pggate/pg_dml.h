@@ -43,9 +43,6 @@ class PgDml : public PgStatement {
                                       const PgColumn **col);
   CHECKED_STATUS PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_pb);
 
-  // Indicate in the protobuf that the given column must be read before the statement is processed.
-  void AddColumnRefId(int col_id);
-
   // Bind a column with an expression.
   CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
 
@@ -86,6 +83,9 @@ class PgDml : public PgStatement {
   // Update set values.
   CHECKED_STATUS UpdateAssignPBs();
 
+  // Indicate in the protobuf that the given column must be read before the statement is processed.
+  static void AddColumnRefIds(PgTableDesc::ScopedRefPtr table_desc, PgsqlColumnRefsPB *column_refs);
+
   // -----------------------------------------------------------------------------------------------
   // Data members that define the DML statement.
   //
@@ -102,9 +102,6 @@ class PgDml : public PgStatement {
   // NOTE:
   // - Where clause processing data is not supported yet.
   // - Some protobuf structure are also set up in PgColumn class.
-
-  // Column references.
-  PgsqlColumnRefsPB *column_refs_ = nullptr;
 
   // Column associated values (expressions) to be used by DML statements.
   // - When expression are constructed, we bind them with their associated protobuf.

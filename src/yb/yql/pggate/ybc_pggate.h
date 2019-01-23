@@ -146,6 +146,27 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              bool *is_primary,
                              bool *is_hash);
 
+// INDEX -------------------------------------------------------------------------------------------
+// Create and drop index "database_name.schema_name.index_name()".
+// - When "schema_name" is NULL, the index "database_name.index_name" is created.
+// - When "database_name" is NULL, the index "connected_database_name.index_name" is created.
+YBCStatus YBCPgNewCreateIndex(YBCPgSession pg_session,
+                              const char *database_name,
+                              const char *schema_name,
+                              const char *index_name,
+                              YBCPgOid database_oid,
+                              YBCPgOid index_oid,
+                              YBCPgOid table_oid,
+                              bool is_shared_index,
+                              bool is_unique_index,
+                              bool if_not_exist,
+                              YBCPgStatement *handle);
+
+YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
+                                    int attr_type, bool is_hash, bool is_range);
+
+YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle);
+
 //--------------------------------------------------------------------------------------------------
 // DML statements (select, insert, update, delete, truncate)
 //--------------------------------------------------------------------------------------------------
