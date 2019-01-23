@@ -100,6 +100,13 @@ static bool IsSupportedPredicateExpr(Expr *expr)
 {
 	switch (nodeTag(expr))
 	{
+		case T_Const:
+			return true;
+		case T_Param:
+		{
+			Param *param = (Param *) expr;
+			return param->paramkind == PARAM_EXTERN;
+		}
 		case T_RelabelType:
 		{
 			/*
@@ -109,9 +116,6 @@ static bool IsSupportedPredicateExpr(Expr *expr)
 			RelabelType *rt = (RelabelType *) expr;
 			return IsSupportedPredicateExpr(rt->arg);
 		}
-		case T_Const:
-		case T_Param:
-			return true;
 		default:
 			break;
 	}
@@ -491,9 +495,7 @@ ybcGetForeignPlan(PlannerInfo *root,
 			switch (i)
 			{
 				case InvalidAttrNumber:
-					ereport(ERROR,
-					        (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
-							        "Unexpected invalid attribute number")));
+					/* Nothing to do in YugaByte: Skip invalid attributes. */
 					break;
 				case SelfItemPointerAttributeNumber:
 				case MinTransactionIdAttributeNumber:
@@ -518,19 +520,6 @@ ybcGetForeignPlan(PlannerInfo *root,
 				}
 			}
 		}
-	}
-
-	/*
-	 * We can have no target columns for e.g. a count(*). For now we request
-	 * the first primary key column in that case.
-	 * TODO look into handling this on YugaByte side.
-	 */
-	if (!target_attrs)
-	{
-		TargetEntry *target = makeNode(TargetEntry);
-		int bms_idx = bms_next_member(yb_plan_state->primary_key, -1);
-		target->resno = bms_idx + baserel->min_attr - 1;
-		target_attrs = lappend(target_attrs, target);
 	}
 
 	List *yb_conds = list_concat(yb_plan_state->yb_hconds,
@@ -571,8 +560,9 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
 	EState      *estate      = node->ss.ps.state;
 	Relation    relation     = node->ss.ss_currentRelation;
+	TupleDesc   tupdesc      = RelationGetDescr(relation);
 
-	/* Planning function above should ensure both target and conds are set */
+  /* Planning function above should ensure both target and conds are set */
 	Assert(foreignScan->fdw_private->length == 2);
 	List *target_attrs = linitial(foreignScan->fdw_private);
 	List *yb_conds     = lsecond(foreignScan->fdw_private);
@@ -604,6 +594,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	}
 
 	/* Set scan targets. */
+	bool has_targets = false;
 	foreach(lc, target_attrs)
 	{
 		TargetEntry *target = (TargetEntry *) lfirst(lc);
@@ -612,7 +603,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 		if (target->resno > 0)
 		{
 			Form_pg_attribute attr;
-			attr = relation->rd_att->attrs[target->resno - 1];
+			attr = tupdesc->attrs[target->resno - 1];
 			/* Ignore dropped attributes */
 			if (attr->attisdropped)
 			{
@@ -624,6 +615,30 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 		                                                 expr),
 		                            ybc_state->handle,
 		                            ybc_state->stmt_owner);
+		has_targets = true;
+	}
+
+	/*
+	 * We can have no target columns at this point for e.g. a count(*). For now
+	 * we request the first non-dropped column in that case.
+	 * TODO look into handling this on YugaByte side.
+	 */
+	if (!has_targets)
+	{
+		for (int16_t i = 0; i < tupdesc->natts; i++)
+		{
+			/* Ignore dropped attributes */
+			if (tupdesc->attrs[i]->attisdropped)
+			{
+				continue;
+			}
+			YBCPgExpr expr = YBCNewColumnRef(ybc_state->handle, i + 1);
+			HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
+			                                                 expr),
+			                            ybc_state->handle,
+			                            ybc_state->stmt_owner);
+			break;
+		}
 	}
 
 	/* Execute the select statement. */

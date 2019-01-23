@@ -164,9 +164,6 @@ public class TestPgWrapper extends BasePgSQLTest {
     }
   }
 
-  // TODO disabled until we support UPDATE for syscatalog tables.
-  // Currently the "atthasdef" column in the pg_attribute table starts as false and is updated
-  // _after_ processing and adding default values (and constraints) to pg_attrdef.
   @Test
   public void testDefaultValues() throws Exception {
     try (Statement statement = connection.createStatement()) {
@@ -184,6 +181,62 @@ public class TestPgWrapper extends BasePgSQLTest {
         assertEquals(1, rs.getInt("v2"));
         assertEquals(i, rs.getInt("v3"));
       }
+    }
+  }
+
+  @Test
+  public void testPsqlCommands() throws Exception {
+    // Check that the internal queries for basic psql commands succeed.
+    // Do not check the actual output as it might vary depending on the database state.
+    try (Statement statement = connection.createStatement()) {
+
+      // List Databases: '\l'
+      statement.executeQuery(
+          "SELECT d.datname as \"Name\",\n" +
+              "       pg_catalog.pg_get_userbyid(d.datdba) as \"Owner\",\n" +
+              "       pg_catalog.pg_encoding_to_char(d.encoding) as \"Encoding\",\n" +
+              "       d.datcollate as \"Collate\",\n" +
+              "       d.datctype as \"Ctype\",\n" +
+              "       pg_catalog.array_to_string(d.datacl, E'\\n') AS \"Access privileges\"\n" +
+              "FROM pg_catalog.pg_database d\n" +
+              "ORDER BY 1;"
+      );
+
+      // List Databases: '\dt'
+      statement.executeQuery(
+          "SELECT n.nspname as \"Schema\",\n" +
+              "  c.relname as \"Name\",\n" +
+              "  CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN " +
+              "      'materialized view' WHEN 'i' THEN 'index' WHEN 'S' THEN 'sequence' WHEN 's'" +
+              "      THEN 'special' WHEN 'f' THEN 'foreign table' END as \"Type\",\n" +
+              "  pg_catalog.pg_get_userbyid(c.relowner) as \"Owner\"\n" +
+              "FROM pg_catalog.pg_class c\n" +
+              "     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n" +
+              "WHERE c.relkind IN ('r','')\n" +
+              "      AND n.nspname <> 'pg_catalog'\n" +
+              "      AND n.nspname <> 'information_schema'\n" +
+              "      AND n.nspname !~ '^pg_toast'\n" +
+              "  AND pg_catalog.pg_table_is_visible(c.oid)\n" +
+              "ORDER BY 1,2;"
+      );
+
+      // Describe table: '\d table_name' (example with pg_class, oid 1259).
+      statement.executeQuery(
+          "SELECT a.attname,\n" +
+              "  pg_catalog.format_type(a.atttypid, a.atttypmod),\n" +
+              "  (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128)\n" +
+              "   FROM pg_catalog.pg_attrdef d\n" +
+              "   WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef),\n" +
+              "  a.attnotnull, a.attnum,\n" +
+              "  (SELECT c.collname FROM pg_catalog.pg_collation c, pg_catalog.pg_type t\n" +
+              "   WHERE c.oid = a.attcollation AND t.oid = a.atttypid AND " +
+              "         a.attcollation <> t.typcollation) AS attcollation,\n" +
+              "  NULL AS indexdef,\n" +
+              "  NULL AS attfdwoptions\n" +
+              "FROM pg_catalog.pg_attribute a\n" +
+              "WHERE a.attrelid = '1259' AND a.attnum > 0 AND NOT a.attisdropped\n" +
+              "ORDER BY a.attnum;"
+      );
     }
   }
 
