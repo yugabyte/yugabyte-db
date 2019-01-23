@@ -368,7 +368,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			 * a table, except we can be sure that the index is not larger
 			 * than the table.
 			 */
-			if (info->indpred == NIL)
+			if (info->indpred == NIL && !IsYugaByteEnabled())
 			{
 				info->pages = RelationGetNumberOfBlocks(indexRelation);
 				info->tuples = rel->tuples;
@@ -383,7 +383,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 					info->tuples = rel->tuples;
 			}
 
-			if (info->relam == BTREE_AM_OID)
+			if (info->relam == BTREE_AM_OID && !IsYugaByteEnabled())
 			{
 				/* For btrees, get tree height while we have the index open */
 				info->tree_height = _bt_getrootheight(indexRelation);

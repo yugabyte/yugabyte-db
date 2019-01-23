@@ -332,6 +332,45 @@ Status PgApiImpl::GetColumnInfo(YBCPgTableDesc table_desc,
 }
 
 //--------------------------------------------------------------------------------------------------
+
+Status PgApiImpl::NewCreateIndex(PgSession *pg_session,
+                                 const char *database_name,
+                                 const char *schema_name,
+                                 const char *index_name,
+                                 const PgObjectId& index_id,
+                                 const PgObjectId& base_table_id,
+                                 bool is_shared_index,
+                                 bool is_unique_index,
+                                 bool if_not_exist,
+                                 PgStatement **handle) {
+  auto stmt = make_scoped_refptr<PgCreateIndex>(pg_session, database_name, schema_name, index_name,
+                                                index_id, base_table_id,
+                                                is_shared_index, is_unique_index, if_not_exist);
+  *handle = stmt.detach();
+  return Status::OK();
+}
+
+Status PgApiImpl::CreateIndexAddColumn(PgStatement *handle, const char *attr_name,
+                                       int attr_num, int attr_ybtype, bool is_hash,
+                                       bool is_range) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgCreateIndex *pg_stmt = down_cast<PgCreateIndex*>(handle);
+  return pg_stmt->AddColumn(attr_name, attr_num, attr_ybtype, is_hash, is_range);
+}
+
+Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  return down_cast<PgCreateIndex*>(handle)->Exec();
+}
+
+//--------------------------------------------------------------------------------------------------
 // DML Statment Support.
 //--------------------------------------------------------------------------------------------------
 

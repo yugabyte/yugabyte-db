@@ -1210,8 +1210,8 @@ void YBCInitializeRelCache()
 
 
 	SysScanDesc scandesc = systable_beginscan(pg_class_desc,
-	                                          RelationRelationId,
-	                                          true,
+											  RelationRelationId,
+	                                          false /* indexOk */,
 	                                          NULL,
 	                                          0,
 	                                          NULL);
@@ -1385,7 +1385,7 @@ void YBCInitializeRelCache()
 
 	scandesc = systable_beginscan(pg_attribute_desc,
 	                              AttributeRelationId,
-	                              criticalRelcachesBuilt,
+	                              false /* indexOk */,
 	                              NULL,
 	                              0,
 	                              NULL);
@@ -1531,6 +1531,8 @@ void YBCInitializeRelCache()
 	heap_close(pg_attribute_desc, AccessShareLock);
 
 	heap_close(pg_class_desc, AccessShareLock);
+
+	criticalRelcachesBuilt = true;
 }
 
 /*

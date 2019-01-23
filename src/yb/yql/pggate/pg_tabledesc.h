@@ -83,7 +83,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   CHECKED_STATUS GetColumnInfo(int16_t attr_number, bool *is_primary, bool *is_hash) const;
 
-  bool IsTransactional();
+  bool IsTransactional() const;
 
  private:
   std::shared_ptr<client::YBTable> table_;

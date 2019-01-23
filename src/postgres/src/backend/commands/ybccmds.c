@@ -89,7 +89,7 @@ YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_o
 	                                end_oid));
 }
 
-/* -------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------------------------- */
 /*  Table Functions. */
 
 /* Utility function to add columns to the YB create statement */
@@ -162,19 +162,17 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, O
 	YBCPgStatement handle = NULL;
 	ListCell       *listptr;
 
-	/*
-	 * TODO The attnum from pg_attribute has not been created yet, we are
-	 * making some assumptions below about how it will be assigned.
-	 */
 	char *db_name = get_database_name(MyDatabaseId);
 	char *schema_name = stmt->relation->schemaname;
-	if (schema_name == NULL) {
+	if (schema_name == NULL)
+	{
 		schema_name = get_namespace_name(namespaceId);
 	}
-	YBC_LOG_INFO("Creating Table %s, %s, %s",
-							 db_name,
-							 schema_name,
-							 stmt->relation->relname);
+	if (!IsBootstrapProcessingMode())
+		YBC_LOG_INFO("Creating Table %s.%s.%s",
+					 db_name,
+					 schema_name,
+					 stmt->relation->relname);
 
 	Constraint *primary_key = NULL;
 
@@ -210,7 +208,6 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, O
 	 * columns, then rest of primary key columns, then regular columns. If
 	 * no primary key is specified, an internal primary key is added above.
 	 */
-
 	if (primary_key != NULL) {
 		CreateTableAddColumns(handle,
 							  desc,
@@ -243,8 +240,8 @@ YBCDropTable(Oid relationId)
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewDropTable(ybc_pg_session,
-																	 MyDatabaseId,
-																	 relationId,
+									 MyDatabaseId,
+									 relationId,
 	                                 false,    /* if_exists */
 	                                 &handle));
 	HandleYBStmtStatus(YBCPgExecDropTable(handle), handle);
@@ -258,5 +255,62 @@ YBCTruncateTable(Relation rel) {
 
 	HandleYBStatus(YBCPgNewTruncateTable(ybc_pg_session, MyDatabaseId, relationId, &handle));
 	HandleYBStmtStatus(YBCPgExecTruncateTable(handle), handle);
+	HandleYBStatus(YBCPgDeleteStatement(handle));
+}
+
+void
+YBCCreateIndex(const char *indexName,
+			   IndexInfo *indexInfo,			   
+			   TupleDesc indexTupleDesc,
+			   Oid indexId,
+			   Relation rel)
+{
+	char *db_name	  = get_database_name(MyDatabaseId);
+	char *schema_name = get_namespace_name(RelationGetNamespace(rel));
+
+	if (!IsBootstrapProcessingMode())
+		YBC_LOG_INFO("Creating index %s.%s.%s",
+					 db_name,
+					 schema_name,
+					 indexName);
+
+	YBCPgStatement handle = NULL;
+
+	HandleYBStatus(YBCPgNewCreateIndex(ybc_pg_session,
+									   db_name,
+									   schema_name,
+									   indexName,
+									   MyDatabaseId,
+									   indexId,
+									   RelationGetRelid(rel),
+									   rel->rd_rel->relisshared,
+									   indexInfo->ii_Unique,
+									   false, /* if_not_exists */
+									   &handle));
+
+	int	 i;
+	bool is_hash = true;
+
+	for (i = 0; i < indexTupleDesc->natts; i++)
+	{
+		Form_pg_attribute att	   = indexTupleDesc->attrs[i];
+		char			  *attname = NameStr(att->attname);
+		AttrNumber		  attnum   = att->attnum;			
+		YBCPgDataType	  col_type = YBCDataTypeFromOidMod(att->atttypid,
+														   att->atttypmod);
+
+		HandleYBStmtStatus(YBCPgCreateIndexAddColumn(handle,
+													 attname,
+													 attnum,
+													 col_type,
+													 is_hash,
+													 true /* is_range */), handle);
+
+		is_hash = false;
+	}
+
+	/* Create the index. */
+	HandleYBStmtStatus(YBCPgExecCreateIndex(handle), handle);
+
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 }

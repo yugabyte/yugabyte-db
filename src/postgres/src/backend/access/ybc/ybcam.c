@@ -168,6 +168,7 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
 	scan_desc->rs_rd        = relation;
 	scan_desc->rs_snapshot  = snapshot;
 	scan_desc->rs_temp_snap = temp_snap;
+	scan_desc->rs_cblock    = InvalidBlockNumber;
 	scan_desc->ybscan       = ybScan;
 
 	return scan_desc;

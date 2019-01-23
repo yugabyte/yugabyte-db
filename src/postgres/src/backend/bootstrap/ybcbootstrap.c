@@ -120,41 +120,13 @@ void YBCCreateSysCatalogTable(const char *table_name,
                               Oid table_oid,
                               TupleDesc tupdesc,
                               bool is_shared_relation,
-                              List *pkey_idxs)
+                              IndexStmt *pkey_idx)
 {
 	/* Database and schema are fixed when running inidb. */
 	Assert(IsBootstrapProcessingMode());
 	char           *db_name     = "template1";
 	char           *schema_name = "pg_catalog";
 	YBCPgStatement yb_stmt      = NULL;
-	IndexStmt      *pkey_idx    = NULL;
-	ListCell       *lc          = NULL;
-
-	/*
-	 * If there are indexes, pick one as primary key:
-	 *  - prefer the oid one if available
-	 *  - otherwise default to first index.
-	 */
-	if (pkey_idxs != NULL && pkey_idxs->length > 0)
-	{
-		foreach (lc, pkey_idxs)
-		{
-			IndexStmt *idx = lfirst(lc);
-			if (idx->indexParams->length == 1)
-			{
-				IndexElem *elem = linitial(idx->indexParams);
-				if (strcmp(elem->name, "oid") == 0)
-				{
-					pkey_idx = idx;
-					break;
-				}
-			}
-		}
-		if (pkey_idx == NULL)
-		{
-			pkey_idx = (IndexStmt *) linitial(pkey_idxs);
-		}
-	}
 
 	HandleYBStatus(YBCPgNewCreateTable(ybc_pg_session,
 	                                   db_name,
@@ -166,15 +138,6 @@ void YBCCreateSysCatalogTable(const char *table_name,
 	                                   false, /* if_not_exists */
 									   pkey_idx == NULL, /* add_primary_key */
 	                                   &yb_stmt));
-
-	foreach (lc, pkey_idxs)
-	{
-		IndexStmt *idx = lfirst(lc);
-		if (idx != pkey_idx)
-		{
-			YBC_DEBUG_LOG_WARNING("Ignoring unique index %s", idx->idxname);
-		}
-	}
 
 	/* Add all key columns first, then the regular columns */
 	if (pkey_idx != NULL)

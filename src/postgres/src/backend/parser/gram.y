@@ -835,6 +835,7 @@ stmt :
 			| ExecuteStmt
 			| ExplainStmt
 			| GrantStmt
+			| IndexStmt
 			| InsertStmt
 			| PrepareStmt
 			| RevokeStmt
@@ -930,7 +931,6 @@ stmt :
 			| FetchStmt { parser_ybc_not_support(@1, "This statement"); }
 			| GrantRoleStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ImportForeignSchemaStmt { parser_ybc_not_support(@1, "This statement"); }
-			| IndexStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ListenStmt { parser_ybc_not_support(@1, "This statement"); }
 			| RefreshMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -7553,7 +7553,6 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 			ON qualified_name access_method_clause '(' index_params ')'
 			opt_reloptions OptTableSpace where_clause
 				{
-					parser_ybc_not_support(@1, "CREATE INDEX");
 					IndexStmt *n = makeNode(IndexStmt);
 					n->unique = $2;
 					n->concurrent = $4;
@@ -7580,7 +7579,6 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 			ON qualified_name access_method_clause '(' index_params ')'
 			opt_reloptions OptTableSpace where_clause
 				{
-					parser_ybc_not_support(@1, "CREATE INDEX");
 					IndexStmt *n = makeNode(IndexStmt);
 					n->unique = $2;
 					n->concurrent = $4;
@@ -7611,7 +7609,9 @@ opt_unique:
 		;
 
 opt_concurrently:
-			CONCURRENTLY							{ $$ = TRUE; }
+			CONCURRENTLY							{ 
+					parser_ybc_not_support(@1, "CREATE INDEX CONCURRENTLY");
+                                                      $$ = TRUE; }
 			| /*EMPTY*/								{ $$ = FALSE; }
 		;
 
@@ -7621,7 +7621,12 @@ opt_index_name:
 		;
 
 access_method_clause:
-			USING access_method						{ $$ = $2; }
+			USING access_method						{
+				if (strcmp($2, "btree") != 0)
+				{
+					parser_ybc_not_support(@1, "CREATE INDEX USING access_method");
+				}
+                                                      $$ = $2; }
 			| /*EMPTY*/								{ $$ = DEFAULT_INDEX_TYPE; }
 		;
 
@@ -7669,7 +7674,9 @@ index_elem:	ColId opt_collate opt_class opt_asc_desc opt_nulls_order
 				}
 		;
 
-opt_collate: COLLATE any_name						{ $$ = $2; }
+opt_collate: COLLATE any_name						{
+					parser_ybc_not_support(@1, "CREATE INDEX COLLATE");
+                                                      $$ = $2; }
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
@@ -7683,7 +7690,9 @@ opt_asc_desc: ASC							{ $$ = SORTBY_ASC; }
 		;
 
 opt_nulls_order: NULLS_LA FIRST_P			{ $$ = SORTBY_NULLS_FIRST; }
-			| NULLS_LA LAST_P				{ $$ = SORTBY_NULLS_LAST; }
+			| NULLS_LA LAST_P				{
+					parser_ybc_not_support(@1, "CREATE INDEX NULL LAST");
+                                              $$ = SORTBY_NULLS_LAST; }
 			| /*EMPTY*/						{ $$ = SORTBY_NULLS_DEFAULT; }
 		;
 

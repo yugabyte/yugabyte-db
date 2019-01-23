@@ -117,6 +117,7 @@ YBCDataTypeFromOidMod(Oid type_id, int32 typmod)
 		case INT4ARRAYOID:
 			return YB_YQL_DATA_TYPE_BINARY;
 		case NAMEOID:
+		case CSTRINGOID:
 			return YB_YQL_DATA_TYPE_STRING;
 		case CHAROID:
 			return YB_YQL_DATA_TYPE_INT8;
