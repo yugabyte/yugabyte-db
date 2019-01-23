@@ -61,6 +61,7 @@
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_fn.h"
+#include "catalog/binary_upgrade.h"
 #include "catalog/storage.h"
 #include "catalog/storage_xlog.h"
 #include "catalog/toasting.h"
@@ -521,7 +522,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 {
 	char		relname[NAMEDATALEN];
 	Oid			namespaceId;
-	Oid			relationId;
+	Oid			relationId = InvalidOid;
 	Oid			tablespaceId;
 	Relation	rel;
 	TupleDesc	descriptor;
@@ -739,6 +740,51 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	}
 
 	/*
+	 * In YugaByte mode create the YB table. We still call heap create below
+	 * which will now only handle the side-effects (i.e. updating the system
+	 * catalogs).
+	 */
+	if (IsYugaByteEnabled())
+	{
+		Relation pg_class_desc = heap_open(RelationRelationId,
+		                                   RowExclusiveLock);
+
+		/* Allocate a new OID for the relation same way as vanilla Postgres:
+		 * during a binary upgrade use override for pg_class.oid/relfilenode */
+		if (IsBinaryUpgrade &&
+		    (relkind == RELKIND_RELATION || relkind == RELKIND_SEQUENCE ||
+		     relkind == RELKIND_VIEW || relkind == RELKIND_MATVIEW ||
+		     relkind == RELKIND_COMPOSITE_TYPE || relkind == RELKIND_FOREIGN_TABLE ||
+		     relkind == RELKIND_PARTITIONED_TABLE))
+		{
+			if (!OidIsValid(binary_upgrade_next_heap_pg_class_oid))
+				ereport(ERROR,
+				        (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						        errmsg("pg_class heap OID value not set when in binary upgrade mode")));
+
+			relationId = binary_upgrade_next_heap_pg_class_oid;
+			binary_upgrade_next_heap_pg_class_oid = InvalidOid;
+		}
+		/* There might be no TOAST table, so we have to test for it. */
+		else if (IsBinaryUpgrade &&
+		         OidIsValid(binary_upgrade_next_toast_pg_class_oid) &&
+		         relkind == RELKIND_TOASTVALUE)
+		{
+			relationId = binary_upgrade_next_toast_pg_class_oid;
+			binary_upgrade_next_toast_pg_class_oid = InvalidOid;
+		}
+		else
+		{
+			relationId = GetNewRelFileNode(tablespaceId,
+			                               pg_class_desc,
+			                               stmt->relation->relpersistence);
+		}
+
+		heap_close(pg_class_desc, RowExclusiveLock);
+		YBCCreateTable(stmt, relkind, descriptor, relationId, namespaceId);
+	}
+
+	/*
 	 * Create the relation.  Inherited defaults and constraints are passed in
 	 * for immediate handling --- since they don't need parsing, they can be
 	 * stored immediately.
@@ -746,7 +792,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	relationId = heap_create_with_catalog(relname,
 										  namespaceId,
 										  tablespaceId,
-										  InvalidOid,
+										  relationId,
 										  InvalidOid,
 										  ofTypeId,
 										  ownerId,
@@ -765,11 +811,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 										  allowSystemTableMods,
 										  false,
 										  typaddress);
-
-	if (IsYugaByteEnabled())
-	{
-		YBCCreateTable(stmt, relkind, descriptor, relationId, namespaceId);
-	}
 
 	/* Store inheritance information for new rel. */
 	StoreCatalogInheritance(relationId, inheritOids, stmt->partbound != NULL);

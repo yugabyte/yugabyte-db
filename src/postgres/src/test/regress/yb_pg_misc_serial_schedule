@@ -7,6 +7,5 @@
 test: yb_insert
 test: yb_schema
 test: yb_prepare
-# Disable test on index due to github::issue#714
-# test: yb_create_table
-# test: yb_create_index
+test: yb_create_table
+test: yb_create_index
