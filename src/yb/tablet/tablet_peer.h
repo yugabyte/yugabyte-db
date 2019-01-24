@@ -269,9 +269,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
     return clock_;
   }
 
-  rpc::ThreadPool& thread_pool() override {
-    return *service_thread_pool_;
-  }
+  bool Enqueue(rpc::ThreadPoolTask* task) override;
 
   const std::shared_future<client::YBClientPtr>& client_future() const override {
     return client_future_;
@@ -406,7 +404,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // Cache the permanent of the tablet UUID to retrieve it without a lock in the common case.
   const std::string permanent_uuid_;
 
-  rpc::ThreadPool* service_thread_pool_;
+  std::atomic<rpc::ThreadPool*> service_thread_pool_{nullptr};
 
  private:
   HybridTime ReportReadRestart() override;

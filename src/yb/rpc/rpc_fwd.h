@@ -64,6 +64,7 @@ class Scheduler;
 class ServicePoolImpl;
 class Stream;
 class ThreadPool;
+class ThreadPoolTask;
 
 struct RpcMethodMetrics;
 
