@@ -133,8 +133,14 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 		bool is_hash = is_primary && is_first;
 		if (include_hash == is_hash && include_primary == is_primary)
 		{
+			if (is_primary && !YBCDataTypeIsValidForKey(att->atttypid)) {
+				ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("PRIMARY KEY containing column of type '%s' not yet supported",
+												YBPgTypeOidToStr(att->atttypid))));
+			}
 			YBCPgDataType col_type = YBCDataTypeFromOidMod(att->atttypid,
-														   att->atttypmod);
+																										 att->atttypmod);
 
 			HandleYBStmtStatus(YBCPgCreateTableAddColumn(handle,
 			                                             attname,
@@ -297,8 +303,14 @@ YBCCreateIndex(const char *indexName,
 		char			  *attname = NameStr(att->attname);
 		AttrNumber		  attnum   = att->attnum;			
 		YBCPgDataType	  col_type = YBCDataTypeFromOidMod(att->atttypid,
-														   att->atttypmod);
+																										 att->atttypmod);
 
+		if (!YBCDataTypeIsValidForKey(att->atttypid)) {
+			ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("INDEX on column of type '%s' not yet supported",
+											YBPgTypeOidToStr(att->atttypid))));
+		}
 		HandleYBStmtStatus(YBCPgCreateIndexAddColumn(handle,
 													 attname,
 													 attnum,

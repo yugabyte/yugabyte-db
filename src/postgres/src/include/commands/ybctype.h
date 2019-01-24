@@ -46,4 +46,10 @@ extern YBCPgDataType YBCDataTypeFromOidMod(Oid type_id, int32 typmod);
  */
 extern bool YBCIsPgBinarySerializedType(Oid type_id);
 
+/*
+ * Returns true if we are allow the given type to be used for key columns such as primary key or
+ * indexing key.
+ */
+bool YBCDataTypeIsValidForKey(Oid type_id);
+
 #endif

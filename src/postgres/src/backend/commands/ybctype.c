@@ -205,3 +205,94 @@ YBCIsPgBinarySerializedType(Oid type_id)
 			return false;
 	}
 }
+
+/*
+ * TODO(Alex) Turn ON or OFF certain type for KEY when testing its support.
+ */
+bool
+YBCDataTypeIsValidForKey(Oid type_id)
+{
+	switch (type_id)
+	{
+		case BOOLOID:
+		case INT2OID:
+		case XIDOID:
+		case INT4OID:
+		case INT8OID:
+		case FLOAT4OID:
+		case FLOAT8OID:
+		case REGPROCOID:
+		case REGPROCEDUREOID:
+		case OIDOID:
+		case TIMESTAMPOID:
+		case TIMESTAMPTZOID:
+		case NAMEOID:
+		case CSTRINGOID:
+		case CHAROID:
+		case BYTEAOID:
+		case TEXTOID:
+		case VARCHAROID:
+		case INT2VECTOROID:
+		case OIDVECTOROID:
+		case BPCHAROID:
+			return true;
+
+		default:
+			return false;
+
+		/* If certain datatype can be used in a PRIMARY or INDEX KEY, move it from the following list
+		 * to the "true" switch block.
+		 *
+			case INT4ARRAYOID:
+			case ANYARRAYOID:
+			case FLOAT4ARRAYOID:
+			case INT2ARRAYOID:
+			case JSONBOID:
+			case LSNOID:
+			case OIDARRAYOID:
+			case PGNODETREEOID:
+			case PGNDISTINCTOID:
+			case PGDEPENDENCIESOID:
+			case REGTYPEARRAYOID:
+			case YB_CHARARRAYOID:
+			case YB_TEXTARRAYOID:
+			case YB_ACLITEMARRAYOID:
+			case TIDOID:
+			case CIDOID:
+			case POINTOID:
+			case LSEGOID:
+			case PATHOID:
+			case BOXOID:
+			case POLYGONOID:
+			case LINEOID:
+			case ABSTIMEOID:
+			case RELTIMEOID:
+			case TINTERVALOID:
+			case UNKNOWNOID:
+			case CIRCLEOID:
+			case CASHOID:
+			case INETOID:
+			case CIDROID:
+			case DATEOID:
+			case TIMEOID:
+			case INTERVALOID:
+			case TIMETZOID:
+			case VARBITOID:
+			case NUMERICOID:
+			case REFCURSOROID:
+			case REGOPEROID:
+			case REGOPERATOROID:
+			case REGCLASSOID:
+			case REGTYPEOID:
+			case REGROLEOID:
+			case REGNAMESPACEOID:
+			case UUIDOID:
+			case TSVECTOROID:
+			case GTSVECTOROID:
+			case TSQUERYOID:
+			case REGCONFIGOID:
+			case REGDICTIONARYOID:
+			case INT4RANGEOID:
+		*/
+	}
+}
