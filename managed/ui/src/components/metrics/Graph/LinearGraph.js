@@ -3,7 +3,8 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 
-import { TimelineMax, Power2 } from "gsap/all";
+import { Power2 } from "gsap/all";
+import TimelineMax from 'gsap/TimelineMax';
 import './Graph.scss';
 
 const colorObj = {
