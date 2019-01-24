@@ -286,7 +286,8 @@ TEST_F(MasterTest, TestCallHome) {
 
   std::unordered_map<string, vector<string>> collection_levels;
   collection_levels["low"] = {"cluster_uuid", "node_uuid", "server_type", "version_info",
-                              "timestamp", "tables", "masters", "tservers", "tablets", "gflags"};
+                              "timestamp", "tables", "hostname", "current_user", "masters",
+                              "tservers", "tablets", "gflags"};
   auto& medium = collection_levels["medium"];
   medium = collection_levels["low"];
   medium.push_back("metrics");
@@ -311,6 +312,14 @@ TEST_F(MasterTest, TestCallHome) {
     string received_tag;
     ASSERT_OK(reader.ExtractString(reader.root(), "tag", &received_tag));
     ASSERT_EQ(received_tag, tag_value);
+
+    string received_hostname;
+    ASSERT_OK(reader.ExtractString(reader.root(), "hostname", &received_hostname));
+    ASSERT_EQ(received_hostname, mini_master_->master()->get_hostname());
+
+    string received_user;
+    ASSERT_OK(reader.ExtractString(reader.root(), "current_user", &received_user));
+    ASSERT_EQ(received_user, mini_master_->master()->get_current_user());
 
     auto count = reader.root()->MemberEnd() - reader.root()->MemberBegin();
     // The number of fields should be equal to the number of collectors plus one for the tag field.

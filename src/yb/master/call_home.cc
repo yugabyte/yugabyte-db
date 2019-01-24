@@ -138,6 +138,8 @@ class BasicCollector : public CollectorBase {
         }
         AppendPairToJson("node_uuid", master()->fs_manager()->uuid(), &json_);
         AppendPairToJson("server_type", "master", &json_);
+        AppendPairToJson("hostname", master()->get_hostname(), &json_);
+        AppendPairToJson("current_user", master()->get_current_user(), &json_);
         json_ += ",\"version_info\":" + VersionInfo::GetAllVersionInfoJson();
         break;
       }
@@ -145,6 +147,8 @@ class BasicCollector : public CollectorBase {
         AppendPairToJson("cluster_uuid", tserver()->cluster_uuid(), &json_);
         AppendPairToJson("node_uuid", tserver()->permanent_uuid(), &json_);
         AppendPairToJson("server_type", "tserver", &json_);
+        AppendPairToJson("hostname", tserver()->get_hostname(), &json_);
+        AppendPairToJson("current_user", tserver()->get_current_user(), &json_);
         break;
       }
     }
