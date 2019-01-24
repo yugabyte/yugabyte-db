@@ -119,7 +119,7 @@ const timestampFormatter = timestampMoment => (
 
 const countFormatter = (items, singleUnit, pluralUnit, hasError, descriptor = '') => {
   if (items.length === 0) {
-    return <span/>;
+    return;
   }
   return (
     <span className={`count status-${hasError ? 'bad' : 'good'}`}>
