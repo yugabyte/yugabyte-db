@@ -100,6 +100,11 @@ class RpcServerBase {
   const ServerBaseOptions& options() const {
     return options_;
   }
+  // Return the hostname of this server
+  const std::string get_hostname() const;
+
+  // Return the current user logged in to this server
+  const std::string get_current_user() const;
 
  protected:
   RpcServerBase(std::string name,
@@ -119,7 +124,6 @@ class RpcServerBase {
   virtual CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder);
 
   const std::string name_;
-
   std::shared_ptr<MemTracker> mem_tracker_;
   gscoped_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;

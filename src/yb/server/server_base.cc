@@ -66,6 +66,8 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/user.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/rolling_log.h"
 #include "yb/util/spinlock_profiling.h"
@@ -158,6 +160,29 @@ Endpoint RpcServerBase::first_rpc_address() const {
   const auto& addrs = rpc_server_->GetBoundAddresses();
   CHECK(!addrs.empty()) << "Not bound";
   return addrs[0];
+}
+
+const std::string RpcServerBase::get_hostname() const {
+  auto hostname = GetHostname();
+  if (hostname.ok()) {
+    LOG(INFO) << "Running on host " << *hostname;
+    return *hostname;
+  } else {
+    LOG(WARNING) << "Failed to get current host name: " << hostname.status();
+    return "unknown_hostname";
+  }
+}
+
+const std::string RpcServerBase::get_current_user() const {
+  string user_name;
+  auto s = GetLoggedInUser(&user_name);
+  if (s.ok()) {
+    LOG(INFO) << "Logged In User  " << user_name;
+    return user_name;
+  } else {
+    LOG(WARNING) << "Failed to get current user: " << user_name;
+    return "unknown_user";
+  }
 }
 
 const NodeInstancePB& RpcServerBase::instance_pb() const {
