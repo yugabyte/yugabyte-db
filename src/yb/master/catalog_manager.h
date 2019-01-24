@@ -75,6 +75,12 @@ class ThreadPool;
 template<class T>
 class AtomicGauge;
 
+namespace tablet {
+
+struct TableInfo;
+
+}
+
 namespace master {
 
 class CatalogManagerBgTasks;

@@ -236,16 +236,15 @@ Status AddHostPortPBs(const std::vector<Endpoint>& addrs,
   return Status::OK();
 }
 
-Status SchemaToPB(const Schema& schema, SchemaPB *pb, int flags) {
+void SchemaToPB(const Schema& schema, SchemaPB *pb, int flags) {
   pb->Clear();
-  RETURN_NOT_OK(SchemaToColumnPBs(schema, pb->mutable_columns(), flags));
+  SchemaToColumnPBs(schema, pb->mutable_columns(), flags);
   schema.table_properties().ToTablePropertiesPB(pb->mutable_table_properties());
-  return Status::OK();
 }
 
-Status SchemaToPBWithoutIds(const Schema& schema, SchemaPB *pb) {
+void SchemaToPBWithoutIds(const Schema& schema, SchemaPB *pb) {
   pb->Clear();
-  return SchemaToColumnPBs(schema, pb->mutable_columns(), SCHEMA_PB_WITHOUT_IDS);
+  SchemaToColumnPBs(schema, pb->mutable_columns(), SCHEMA_PB_WITHOUT_IDS);
 }
 
 Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
@@ -326,9 +325,9 @@ Status ColumnPBsToSchema(const RepeatedPtrField<ColumnSchemaPB>& column_pbs,
   return schema->Reset(columns, column_ids, num_key_columns);
 }
 
-Status SchemaToColumnPBs(const Schema& schema,
-                         RepeatedPtrField<ColumnSchemaPB>* cols,
-                         int flags) {
+void SchemaToColumnPBs(const Schema& schema,
+                       RepeatedPtrField<ColumnSchemaPB>* cols,
+                       int flags) {
   cols->Clear();
   int idx = 0;
   for (const ColumnSchema& col : schema.columns()) {
@@ -342,7 +341,6 @@ Status SchemaToColumnPBs(const Schema& schema,
 
     idx++;
   }
-  return Status::OK();
 }
 
 Result<UsePrivateIpMode> GetPrivateIpMode() {

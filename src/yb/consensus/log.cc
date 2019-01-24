@@ -1012,7 +1012,7 @@ Status Log::SwitchToAllocatedSegment() {
   // Set the new segment's schema.
   {
     boost::shared_lock<rw_spinlock> l(schema_lock_);
-    RETURN_NOT_OK(SchemaToPB(schema_, header.mutable_schema()));
+    SchemaToPB(schema_, header.mutable_schema());
     header.set_schema_version(schema_version_);
   }
 

@@ -161,25 +161,25 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   typedef std::vector<tablet::TabletPeerPtr> TabletPeers;
 
   explicit TabletServiceAdminImpl(TabletServer* server);
-  virtual void CreateTablet(const CreateTabletRequestPB* req,
-                            CreateTabletResponsePB* resp,
-                            rpc::RpcContext context) override;
+  void CreateTablet(const CreateTabletRequestPB* req,
+                    CreateTabletResponsePB* resp,
+                    rpc::RpcContext context) override;
 
-  virtual void DeleteTablet(const DeleteTabletRequestPB* req,
-                            DeleteTabletResponsePB* resp,
-                            rpc::RpcContext context) override;
+  void DeleteTablet(const DeleteTabletRequestPB* req,
+                    DeleteTabletResponsePB* resp,
+                    rpc::RpcContext context) override;
 
-  virtual void AlterSchema(const AlterSchemaRequestPB* req,
-                           AlterSchemaResponsePB* resp,
-                           rpc::RpcContext context) override;
+  void AlterSchema(const ChangeMetadataRequestPB* req,
+                   ChangeMetadataResponsePB* resp,
+                   rpc::RpcContext context) override;
 
-  virtual void CopartitionTable(const CopartitionTableRequestPB* req,
-                                CopartitionTableResponsePB* resp,
-                                rpc::RpcContext context) override;
+  void CopartitionTable(const CopartitionTableRequestPB* req,
+                        CopartitionTableResponsePB* resp,
+                        rpc::RpcContext context) override;
 
-  virtual void FlushTablets(const FlushTabletsRequestPB* req,
-                            FlushTabletsResponsePB* resp,
-                            rpc::RpcContext context) override;
+  void FlushTablets(const FlushTabletsRequestPB* req,
+                    FlushTabletsResponsePB* resp,
+                    rpc::RpcContext context) override;
 
  private:
   TabletServer* server_;

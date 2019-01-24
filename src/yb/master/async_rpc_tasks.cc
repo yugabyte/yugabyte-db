@@ -545,7 +545,7 @@ void AsyncAlterTable::HandleResponse(int attempt) {
 bool AsyncAlterTable::SendRequest(int attempt) {
   auto l = table_->LockForRead();
 
-  tserver::AlterSchemaRequestPB req;
+  tserver::ChangeMetadataRequestPB req;
   req.set_dest_uuid(permanent_uuid());
   req.set_tablet_id(tablet_->tablet_id());
   req.set_new_table_name(l->data().pb.name());

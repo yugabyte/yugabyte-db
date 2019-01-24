@@ -93,7 +93,7 @@
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
-#include "yb/tablet/operations/alter_schema_operation.h"
+#include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet_options.h"
@@ -1355,16 +1355,18 @@ HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, MonoTime deadline) {
   return SafeTime(RequireLease::kFalse, min_allowed, deadline);
 }
 
-Status Tablet::CreatePreparedAlterSchema(AlterSchemaOperationState *operation_state,
-                                         const Schema* schema) {
-  if (!key_schema_.KeyEquals(*schema)) {
-    return STATUS(InvalidArgument, "Schema keys cannot be altered",
-                  schema->CreateKeyProjection().ToString());
-  }
+Status Tablet::CreatePreparedChangeMetadata(ChangeMetadataOperationState *operation_state,
+                                            const Schema* schema) {
+  if (schema) {
+    if (!key_schema_.KeyEquals(*schema)) {
+      return STATUS(InvalidArgument, "Schema keys cannot be altered",
+          schema->CreateKeyProjection().ToString());
+    }
 
-  if (!schema->has_column_ids()) {
-    // this probably means that the request is not from the Master
-    return STATUS(InvalidArgument, "Missing Column IDs");
+    if (!schema->has_column_ids()) {
+      // this probably means that the request is not from the Master
+      return STATUS(InvalidArgument, "Missing Column IDs");
+    }
   }
 
   // Alter schema must run when no reads/writes are in progress.
@@ -1376,7 +1378,23 @@ Status Tablet::CreatePreparedAlterSchema(AlterSchemaOperationState *operation_st
   return Status::OK();
 }
 
-Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
+Status Tablet::AddTable(const TableInfoPB& table_info) {
+  Schema schema;
+  RETURN_NOT_OK(SchemaFromPB(table_info.schema(), &schema));
+
+  PartitionSchema partition_schema;
+  RETURN_NOT_OK(PartitionSchema::FromPB(table_info.partition_schema(), schema, &partition_schema));
+
+  metadata_->AddTable(
+      table_info.table_id(), table_info.table_name(), table_info.table_type(), schema, IndexMap(),
+      partition_schema, boost::none, table_info.schema_version());
+
+  RETURN_NOT_OK(metadata_->Flush());
+
+  return Status::OK();
+}
+
+Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   DCHECK(key_schema_.KeyEquals(*DCHECK_NOTNULL(operation_state->schema())))
       << "Schema keys cannot be altered";
 

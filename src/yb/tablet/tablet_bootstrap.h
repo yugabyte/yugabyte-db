@@ -116,7 +116,7 @@ class TabletBootstrap {
   CHECKED_STATUS PlayUpdateTransactionRequest(
       consensus::ReplicateMsg* replicate_msg, AlreadyApplied already_applied);
 
-  CHECKED_STATUS PlayAlterSchemaRequest(consensus::ReplicateMsg* replicate_msg);
+  CHECKED_STATUS PlayChangeMetadataRequest(consensus::ReplicateMsg* replicate_msg);
 
   CHECKED_STATUS PlayChangeConfigRequest(consensus::ReplicateMsg* replicate_msg);
 

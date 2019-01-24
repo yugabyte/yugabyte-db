@@ -201,7 +201,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
     l->mutable_data()->pb.set_version(0);
     l->mutable_data()->pb.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(1);
     l->mutable_data()->pb.set_state(SysTablesEntryPB::PREPARING);
-    ASSERT_OK(SchemaToPB(Schema(), l->mutable_data()->pb.mutable_schema()));
+    SchemaToPB(Schema(), l->mutable_data()->pb.mutable_schema());
     // Add the table
     ASSERT_OK(sys_catalog->AddItem(table.get(), kLeaderTerm));
 

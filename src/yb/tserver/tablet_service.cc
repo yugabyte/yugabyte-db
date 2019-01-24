@@ -61,7 +61,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"
 
-#include "yb/tablet/operations/alter_schema_operation.h"
+#include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
@@ -177,7 +177,7 @@ using std::shared_ptr;
 using std::vector;
 using std::string;
 using strings::Substitute;
-using tablet::AlterSchemaOperationState;
+using tablet::ChangeMetadataOperationState;
 using tablet::Tablet;
 using tablet::TabletPeer;
 using tablet::TabletPeerPtr;
@@ -266,9 +266,7 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
       const auto& ql_write_req = ql_write_op->request();
       auto* ql_write_resp = ql_write_op->response();
       const QLRowBlock* rowblock = ql_write_op->rowblock();
-      RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-          SchemaToColumnPBs(rowblock->schema(), ql_write_resp->mutable_column_schemas()),
-          response_, context_.get());
+      SchemaToColumnPBs(rowblock->schema(), ql_write_resp->mutable_column_schemas());
       faststring rows_data;
       rowblock->Serialize(ql_write_req.client(), &rows_data);
       int rows_data_sidecar_idx = 0;
@@ -344,13 +342,13 @@ TabletServiceAdminImpl::TabletServiceAdminImpl(TabletServer* server)
       server_(server) {
 }
 
-void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
-                                         AlterSchemaResponsePB* resp,
+void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
+                                         ChangeMetadataResponsePB* resp,
                                          rpc::RpcContext context) {
-  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "AlterSchema", req, resp, &context)) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "ChangeMetadata", req, resp, &context)) {
     return;
   }
-  DVLOG(3) << "Received Alter Schema RPC: " << req->DebugString();
+  DVLOG(3) << "Received Change Metadata RPC: " << req->DebugString();
 
   server::UpdateClock(*req, server_->Clock());
 
@@ -402,14 +400,14 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
     return;
   }
 
-  auto operation_state = std::make_unique<AlterSchemaOperationState>(
+  auto operation_state = std::make_unique<ChangeMetadataOperationState>(
       tablet.peer->tablet(), tablet.peer->log(), req);
 
   operation_state->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
 
   // Submit the alter schema op. The RPC will be responded to asynchronously.
-  tablet.peer->Submit(std::make_unique<tablet::AlterSchemaOperation>(
+  tablet.peer->Submit(std::make_unique<tablet::ChangeMetadataOperation>(
       std::move(operation_state)), tablet.leader_term);
 }
 
@@ -1563,8 +1561,7 @@ void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
   for (const TabletPeerPtr& peer : peers) {
     StatusAndSchemaPB* status = peer_status->Add();
     peer->GetTabletStatusPB(status->mutable_tablet_status());
-    CHECK_OK(SchemaToPB(peer->status_listener()->schema(),
-                        status->mutable_schema()));
+    SchemaToPB(peer->status_listener()->schema(), status->mutable_schema());
     peer->tablet_metadata()->partition_schema().ToPB(status->mutable_partition_schema());
   }
   context.RespondSuccess();

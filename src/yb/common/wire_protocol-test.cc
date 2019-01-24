@@ -99,7 +99,7 @@ TEST_F(WireProtocolTest, TestBadStatusWithPosixCode) {
 TEST_F(WireProtocolTest, TestSchemaRoundTrip) {
   google::protobuf::RepeatedPtrField<ColumnSchemaPB> pbs;
 
-  ASSERT_OK(SchemaToColumnPBs(schema_, &pbs));
+  SchemaToColumnPBs(schema_, &pbs);
   ASSERT_EQ(3, pbs.size());
 
   // Column 0.

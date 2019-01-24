@@ -109,7 +109,7 @@ class MaintenanceOpStats;
 
 namespace tablet {
 
-class AlterSchemaOperationState;
+class ChangeMetadataOperationState;
 class ScopedReadOperation;
 struct TabletMetrics;
 struct TransactionApplyData;
@@ -185,6 +185,8 @@ struct DocDbOpIds {
   OpId regular;
   OpId intents;
 };
+
+typedef std::function<Status(const TableInfo&)> AddTableListener;
 
 class Tablet : public AbstractTablet, public TransactionIntentApplier {
  public:
@@ -366,11 +368,15 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Prepares the transaction context for the alter schema operation.
   // An error will be returned if the specified schema is invalid (e.g.
   // key mismatch, or missing IDs)
-  CHECKED_STATUS CreatePreparedAlterSchema(AlterSchemaOperationState *operation_state,
+  CHECKED_STATUS CreatePreparedChangeMetadata(
+      ChangeMetadataOperationState *operation_state,
       const Schema* schema);
 
-  // Apply the Schema of the specified transaction.
-  CHECKED_STATUS AlterSchema(AlterSchemaOperationState* operation_state);
+  // Apply the Schema of the specified operation.
+  CHECKED_STATUS AlterSchema(ChangeMetadataOperationState* operation_state);
+
+  // Apply replicated add table operation.
+  CHECKED_STATUS AddTable(const TableInfoPB& table_info);
 
   // Truncate this tablet by resetting the content of RocksDB.
   CHECKED_STATUS Truncate(TruncateOperationState* state);

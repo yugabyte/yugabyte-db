@@ -39,7 +39,7 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/operations/alter_schema_operation.h"
+#include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
@@ -81,7 +81,7 @@ using consensus::OpIdEquals;
 using consensus::OpIdToString;
 using consensus::ReplicateMsg;
 using strings::Substitute;
-using tserver::AlterSchemaRequestPB;
+using tserver::ChangeMetadataRequestPB;
 using tserver::TruncateRequestPB;
 using tserver::WriteRequestPB;
 
@@ -314,7 +314,7 @@ Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
 
   if (VLOG_IS_ON(1)) {
     TabletSuperBlockPB super_block;
-    RETURN_NOT_OK(meta_->ToSuperBlock(&super_block));
+    meta_->ToSuperBlock(&super_block);
     VLOG_WITH_PREFIX(1) << "Tablet Metadata: " << super_block.DebugString();
   }
 
@@ -632,8 +632,8 @@ Status TabletBootstrap::HandleOperation(consensus::OperationType op_type,
       PlayWriteRequest(replicate);
       return Status::OK();
 
-    case consensus::ALTER_SCHEMA_OP:
-      return PlayAlterSchemaRequest(replicate);
+    case consensus::CHANGE_METADATA_OP:
+      return PlayChangeMetadataRequest(replicate);
 
     case consensus::CHANGE_CONFIG_OP:
       return PlayChangeConfigRequest(replicate);
@@ -872,23 +872,28 @@ void TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg) {
   tablet_->mvcc_manager()->Replicated(operation_state.hybrid_time());
 }
 
-Status TabletBootstrap::PlayAlterSchemaRequest(ReplicateMsg* replicate_msg) {
-  AlterSchemaRequestPB* alter_schema = replicate_msg->mutable_alter_schema_request();
+Status TabletBootstrap::PlayChangeMetadataRequest(ReplicateMsg* replicate_msg) {
+  ChangeMetadataRequestPB* request = replicate_msg->mutable_change_metadata_request();
 
   // Decode schema
   Schema schema;
-  RETURN_NOT_OK(SchemaFromPB(alter_schema->schema(), &schema));
+  if (request->has_schema()) {
+    RETURN_NOT_OK(SchemaFromPB(request->schema(), &schema));
+  }
 
-  AlterSchemaOperationState operation_state(alter_schema);
+  ChangeMetadataOperationState operation_state(request);
 
-  RETURN_NOT_OK(tablet_->CreatePreparedAlterSchema(&operation_state, &schema));
+  RETURN_NOT_OK(tablet_->CreatePreparedChangeMetadata(
+      &operation_state, request->has_schema() ? &schema : nullptr));
 
-  // Apply the alter schema to the tablet.
-  RETURN_NOT_OK_PREPEND(tablet_->AlterSchema(&operation_state), "Failed to AlterSchema:");
+  if (request->has_schema()) {
+    // Apply the alter schema to the tablet.
+    RETURN_NOT_OK_PREPEND(tablet_->AlterSchema(&operation_state), "Failed to AlterSchema:");
 
-  // Also update the log information. Normally, the AlterSchema() call above takes care of this, but
-  // our new log isn't hooked up to the tablet yet.
-  log_->SetSchemaForNextLogSegment(schema, operation_state.schema_version());
+    // Also update the log information. Normally, the AlterSchema() call above takes care of this,
+    // but our new log isn't hooked up to the tablet yet.
+    log_->SetSchemaForNextLogSegment(schema, operation_state.schema_version());
+  }
 
   return Status::OK();
 }

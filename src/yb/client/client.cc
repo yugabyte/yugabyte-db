@@ -1547,8 +1547,7 @@ Status YBTableCreator::Create() {
     req.mutable_replication_info()->CopyFrom(data_->replication_info_);
   }
 
-  RETURN_NOT_OK_PREPEND(SchemaToPB(internal::GetSchema(*data_->schema_), req.mutable_schema()),
-                        "Invalid schema");
+  SchemaToPB(internal::GetSchema(*data_->schema_), req.mutable_schema());
 
   // Check if partition schema is to multi column hash value.
   if (!data_->split_rows_.empty()) {
