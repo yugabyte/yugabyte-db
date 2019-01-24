@@ -87,10 +87,10 @@ enum SchemaPBConversionFlags {
 
 // Convert the specified schema to protobuf.
 // 'flags' is a bitfield of SchemaPBConversionFlags values.
-Status SchemaToPB(const Schema& schema, SchemaPB* pb, int flags = 0);
+void SchemaToPB(const Schema& schema, SchemaPB* pb, int flags = 0);
 
 // Convert the specified schema to protobuf without column IDs.
-Status SchemaToPBWithoutIds(const Schema& schema, SchemaPB *pb);
+void SchemaToPBWithoutIds(const Schema& schema, SchemaPB *pb);
 
 // Returns the Schema created from the specified protobuf.
 // If the schema is invalid, return a non-OK status.
@@ -120,7 +120,7 @@ CHECKED_STATUS ColumnPBsToColumnTuple(
 //
 // The 'cols' list is replaced by this method.
 // 'flags' is a bitfield of SchemaPBConversionFlags values.
-Status SchemaToColumnPBs(
+void SchemaToColumnPBs(
   const Schema& schema,
   google::protobuf::RepeatedPtrField<ColumnSchemaPB>* cols,
   int flags = 0);

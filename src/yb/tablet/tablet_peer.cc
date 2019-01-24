@@ -69,7 +69,7 @@
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer_mm_ops.h"
 
-#include "yb/tablet/operations/alter_schema_operation.h"
+#include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/operation_driver.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/write_operation.h"
@@ -560,8 +560,8 @@ consensus::OperationType MapOperationTypeToPB(OperationType operation_type) {
     case OperationType::kWrite:
       return consensus::WRITE_OP;
 
-    case OperationType::kAlterSchema:
-      return consensus::ALTER_SCHEMA_OP;
+    case OperationType::kChangeMetadata:
+      return consensus::CHANGE_METADATA_OP;
 
     case OperationType::kUpdateTransaction:
       return consensus::UPDATE_TRANSACTION_OP;
@@ -717,11 +717,11 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
           std::make_unique<WriteOperationState>(tablet()), yb::OpId::kUnknownTerm, MonoTime::Max(),
           this);
 
-    case consensus::ALTER_SCHEMA_OP:
-      DCHECK(replicate_msg->has_alter_schema_request()) << "ALTER_SCHEMA_OP replica"
-          " operation must receive an AlterSchemaRequestPB";
-      return std::make_unique<AlterSchemaOperation>(
-          std::make_unique<AlterSchemaOperationState>(tablet(), log()));
+    case consensus::CHANGE_METADATA_OP:
+      DCHECK(replicate_msg->has_change_metadata_request()) << "CHANGE_METADATA_OP replica"
+          " operation must receive an ChangeMetadataRequestPB";
+      return std::make_unique<ChangeMetadataOperation>(
+          std::make_unique<ChangeMetadataOperationState>(tablet(), log()));
 
     case consensus::UPDATE_TRANSACTION_OP:
       DCHECK(replicate_msg->has_transaction_state()) << "UPDATE_TRANSACTION_OP replica"

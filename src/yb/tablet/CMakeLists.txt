@@ -44,7 +44,7 @@ set(TABLET_SRCS
   transaction_participant.cc
   operation_order_verifier.cc
   operations/operation.cc
-  operations/alter_schema_operation.cc
+  operations/change_metadata_operation.cc
   operations/operation_driver.cc
   operations/operation_tracker.cc
   operations/truncate_operation.cc

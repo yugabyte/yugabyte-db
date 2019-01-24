@@ -112,6 +112,7 @@
 #include "yb/master/yql_size_estimates_vtable.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/rpc/messenger.h"
+#include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
@@ -377,7 +378,8 @@ class TabletLoader : public Visitor<PersistentTabletInfo> {
 
         // if the tablet is not in a "preparing" state, something is wrong...
         LOG(ERROR) << "Missing table " << table_id << " required by tablet " << tablet_id
-                   << "Metadata: " << metadata.DebugString();
+                   << ", metadata: " << metadata.DebugString()
+                   << ", tables: " << yb::ToString(catalog_manager_->table_ids_map_);
         return STATUS(Corruption, "Missing table for tablet: ", tablet_id);
       }
 
@@ -1170,7 +1172,7 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
     metadata.set_namespace_id(kSystemSchemaNamespaceId);
     metadata.set_name(kSysCatalogTableName);
     metadata.set_table_type(TableType::YQL_TABLE_TYPE);
-    RETURN_NOT_OK(SchemaToPB(sys_catalog_->schema_with_ids_, metadata.mutable_schema()));
+    SchemaToPB(sys_catalog_->schema_with_ids_, metadata.mutable_schema());
     metadata.set_version(0);
 
     table_ids_map_[table->id()] = table;
@@ -1246,7 +1248,7 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     if (!persisted_schema.Equals(schema)) {
       LOG(INFO) << Substitute("Updating schema of $0.$1 ...", namespace_name, table_name);
       auto l = table->LockForWrite();
-      RETURN_NOT_OK(SchemaToPB(schema, l->mutable_data()->pb.mutable_schema()));
+      SchemaToPB(schema, l->mutable_data()->pb.mutable_schema());
       l->mutable_data()->pb.set_version(l->data().pb.version() + 1);
 
       // Update sys-catalog with the new table schema.
@@ -1813,23 +1815,10 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
     tablet_lock->mutable_data()->pb.add_table_ids(table->id());
     table->AddTablet(tablet.get());
 
-    TabletMetadata* metadata = sys_catalog_->tablet_peer_->tablet()->metadata();
-    metadata->AddTable(table->id(),
-                       req->name(),
-                       PGSQL_TABLE_TYPE,
-                       schema,
-                       IndexMap(),
-                       partition_schema,
-                       partitions[0],
-                       boost::none,
-                       0 /* schema_version */);
-    RETURN_NOT_OK(metadata->Flush());
-
     RETURN_NOT_OK(sys_catalog_->UpdateItem(tablet.get(), leader_ready_term_));
     tablet_lock->Commit();
   }
   TRACE("Inserted new table info into CatalogManager maps");
-
 
   // Update the on-disk table state to "running".
   table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
@@ -1846,9 +1835,30 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
   // Commit the in-memory state.
   table->mutable_metadata()->CommitMutation();
 
-  LOG(INFO) << "Successfully created table " << table->ToString()
-            << " per request from " << RequestorString(rpc);
-  return Status::OK();
+  tserver::ChangeMetadataRequestPB change_req;
+  change_req.set_tablet_id(kSysCatalogTabletId);
+  auto& add_table = *change_req.mutable_add_table();
+
+  add_table.set_table_id(req->table_id());
+  add_table.set_table_type(TableType::PGSQL_TABLE_TYPE);
+  add_table.set_table_name(req->name());
+  SchemaToPB(schema, add_table.mutable_schema());
+  add_table.set_schema_version(0);
+
+  partition_schema.ToPB(add_table.mutable_partition_schema());
+
+  auto operation_state = std::make_unique<tablet::ChangeMetadataOperationState>(
+      sys_catalog_->tablet_peer_->tablet(), sys_catalog_->tablet_peer_->log(), &change_req);
+
+  Synchronizer synchronizer;
+
+  operation_state->set_completion_callback(
+      std::make_unique<tablet::SynchronizerOperationCompletionCallback>(&synchronizer));
+
+  sys_catalog_->tablet_peer_->Submit(std::make_unique<tablet::ChangeMetadataOperation>(
+      std::move(operation_state)), sys_catalog_->tablet_peer_->LeaderTerm());
+
+  return synchronizer.Wait();
 }
 
 Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
@@ -2467,7 +2477,7 @@ TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
   // TODO(bogdan): add back in replication_info once we allow overrides!
   // Use the Schema object passed in, since it has the column IDs already assigned,
   // whereas the user request PB does not.
-  CHECK_OK(SchemaToPB(schema, metadata->mutable_schema()));
+  SchemaToPB(schema, metadata->mutable_schema());
   partition_schema.ToPB(metadata->mutable_partition_schema());
   // For index table, set index details (indexed table id and whether the index is local).
   if (req.has_indexed_table_id()) {
@@ -3217,7 +3227,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     if (!l->data().pb.has_fully_applied_schema()) {
       l->mutable_data()->pb.mutable_fully_applied_schema()->CopyFrom(l->data().pb.schema());
     }
-    CHECK_OK(SchemaToPB(new_schema, l->mutable_data()->pb.mutable_schema()));
+    SchemaToPB(new_schema, l->mutable_data()->pb.mutable_schema());
   }
   l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
   l->mutable_data()->pb.set_next_column_id(next_col_id);

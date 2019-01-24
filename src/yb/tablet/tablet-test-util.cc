@@ -19,7 +19,7 @@
 
 #include "yb/gutil/strings/join.h"
 
-#include "yb/tablet/operations/alter_schema_operation.h"
+#include "yb/tablet/operations/change_metadata_operation.h"
 
 #include "yb/tserver/tserver_admin.pb.h"
 
@@ -60,11 +60,11 @@ void YBTabletTest::SetUpTestTablet(const std::string& root_dir) {
 }
 
 void YBTabletTest::AlterSchema(const Schema& schema) {
-  tserver::AlterSchemaRequestPB req;
+  tserver::ChangeMetadataRequestPB req;
   req.set_schema_version(tablet()->metadata()->schema_version() + 1);
 
-  AlterSchemaOperationState operation_state(nullptr, nullptr, &req);
-  ASSERT_OK(tablet()->CreatePreparedAlterSchema(&operation_state, &schema));
+  ChangeMetadataOperationState operation_state(nullptr, nullptr, &req);
+  ASSERT_OK(tablet()->CreatePreparedChangeMetadata(&operation_state, &schema));
   ASSERT_OK(tablet()->AlterSchema(&operation_state));
   operation_state.Finish();
 }

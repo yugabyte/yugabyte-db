@@ -250,7 +250,7 @@ Status FsTool::PrintTabletMeta(const string& tablet_id, int indent) {
             << schema.ToString() << std::endl;
 
   tablet::TabletSuperBlockPB pb;
-  RETURN_NOT_OK_PREPEND(meta->ToSuperBlock(&pb), "Could not get superblock");
+  meta->ToSuperBlock(&pb);
   std::cout << "Superblock:\n" << pb.DebugString() << std::endl;
 
   return Status::OK();

@@ -106,7 +106,7 @@ enum OperationType {
   UNKNOWN_OP = 0;
   NO_OP = 1;
   WRITE_OP = 3;
-  ALTER_SCHEMA_OP = 4;
+  CHANGE_METADATA_OP = 4;
   CHANGE_CONFIG_OP = 5;
   UPDATE_TRANSACTION_OP = 6;
   SNAPSHOT_OP = 7;
@@ -201,7 +201,7 @@ message ReplicateMsg {
 
   required OperationType op_type = 4;
   optional tserver.WriteRequestPB write_request = 5;
-  optional tserver.AlterSchemaRequestPB alter_schema_request = 6;
+  optional tserver.ChangeMetadataRequestPB change_metadata_request = 6;
   optional tserver.TransactionStatePB transaction_state = 10;
   optional tserver.TabletSnapshotOpRequestPB snapshot_request = 11;
   optional tserver.TruncateRequestPB truncate_request = 12;

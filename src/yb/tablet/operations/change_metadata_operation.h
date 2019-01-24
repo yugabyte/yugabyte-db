@@ -30,8 +30,8 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_ALTER_SCHEMA_OPERATION_H
-#define YB_TABLET_OPERATIONS_ALTER_SCHEMA_OPERATION_H
+#ifndef YB_TABLET_OPERATIONS_CHANGE_METADATA_OPERATION_H
+#define YB_TABLET_OPERATIONS_CHANGE_METADATA_OPERATION_H
 
 #include <mutex>
 #include <string>
@@ -53,21 +53,21 @@ namespace tablet {
 
 // Operation Context for the AlterSchema operation.
 // Keeps track of the Operation states (request, result, ...)
-class AlterSchemaOperationState : public OperationState {
+class ChangeMetadataOperationState : public OperationState {
  public:
-  ~AlterSchemaOperationState() {
+  ~ChangeMetadataOperationState() {
   }
 
-  AlterSchemaOperationState(Tablet* tablet, log::Log* log,
-                            const tserver::AlterSchemaRequestPB* request = nullptr)
+  ChangeMetadataOperationState(Tablet* tablet, log::Log* log,
+                            const tserver::ChangeMetadataRequestPB* request = nullptr)
       : OperationState(tablet), log_(log), request_(request) {
   }
 
-  explicit AlterSchemaOperationState(const tserver::AlterSchemaRequestPB* request)
-      : AlterSchemaOperationState(nullptr, nullptr, request) {
+  explicit ChangeMetadataOperationState(const tserver::ChangeMetadataRequestPB* request)
+      : ChangeMetadataOperationState(nullptr, nullptr, request) {
   }
 
-  const tserver::AlterSchemaRequestPB* request() const override { return request_; }
+  const tserver::ChangeMetadataRequestPB* request() const override { return request_; }
 
   void UpdateRequestFromConsensusRound() override;
 
@@ -119,25 +119,25 @@ class AlterSchemaOperationState : public OperationState {
   IndexMap index_map_;
 
   // The original RPC request and response.
-  const tserver::AlterSchemaRequestPB *request_;
+  const tserver::ChangeMetadataRequestPB *request_;
 
   // The lock held on the tablet's schema_lock_.
   std::unique_lock<rw_semaphore> schema_lock_;
 
-  DISALLOW_COPY_AND_ASSIGN(AlterSchemaOperationState);
+  DISALLOW_COPY_AND_ASSIGN(ChangeMetadataOperationState);
 };
 
 // Executes the alter schema transaction,.
-class AlterSchemaOperation : public Operation {
+class ChangeMetadataOperation : public Operation {
  public:
-  explicit AlterSchemaOperation(std::unique_ptr<AlterSchemaOperationState> operation_state);
+  explicit ChangeMetadataOperation(std::unique_ptr<ChangeMetadataOperationState> operation_state);
 
-  AlterSchemaOperationState* state() override {
-    return down_cast<AlterSchemaOperationState*>(Operation::state());
+  ChangeMetadataOperationState* state() override {
+    return down_cast<ChangeMetadataOperationState*>(Operation::state());
   }
 
-  const AlterSchemaOperationState* state() const override {
-    return down_cast<const AlterSchemaOperationState*>(Operation::state());
+  const ChangeMetadataOperationState* state() const override {
+    return down_cast<const ChangeMetadataOperationState*>(Operation::state());
   }
 
   consensus::ReplicateMsgPtr NewReplicateMsg() override;
@@ -160,10 +160,10 @@ class AlterSchemaOperation : public Operation {
   // Starts the AlterSchemaOperation by assigning it a timestamp.
   void DoStart() override;
 
-  DISALLOW_COPY_AND_ASSIGN(AlterSchemaOperation);
+  DISALLOW_COPY_AND_ASSIGN(ChangeMetadataOperation);
 };
 
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_OPERATIONS_ALTER_SCHEMA_OPERATION_H
+#endif  // YB_TABLET_OPERATIONS_CHANGE_METADATA_OPERATION_H

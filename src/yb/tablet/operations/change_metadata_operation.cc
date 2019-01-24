@@ -30,7 +30,7 @@
 // under the License.
 //
 
-#include "yb/tablet/operations/alter_schema_operation.h"
+#include "yb/tablet/operations/change_metadata_operation.h"
 
 #include <glog/logging.h>
 
@@ -49,99 +49,119 @@ namespace tablet {
 
 using std::bind;
 using consensus::ReplicateMsg;
-using consensus::ALTER_SCHEMA_OP;
+using consensus::CHANGE_METADATA_OP;
 using consensus::DriverType;
 using google::protobuf::RepeatedPtrField;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
-using tserver::AlterSchemaRequestPB;
-using tserver::AlterSchemaResponsePB;
+using tserver::ChangeMetadataRequestPB;
+using tserver::ChangeMetadataResponsePB;
 
-void AlterSchemaOperationState::SetIndexes(const RepeatedPtrField<IndexInfoPB>& indexes) {
+void ChangeMetadataOperationState::SetIndexes(const RepeatedPtrField<IndexInfoPB>& indexes) {
   index_map_.FromPB(indexes);
 }
 
-string AlterSchemaOperationState::ToString() const {
-  return Substitute("AlterSchemaOperationState "
-                    "[hybrid_time=$0, schema=$1, request=$2]",
-                    hybrid_time_even_if_unset().ToString(),
-                    schema_ == nullptr ? "(none)" : schema_->ToString(),
-                    request_ == nullptr ? "(none)" : request_->ShortDebugString());
+string ChangeMetadataOperationState::ToString() const {
+  return Format("ChangeMetadataOperationState {hybrid_time: $0 schema: $1 request: $2 }",
+                hybrid_time_even_if_unset(), schema_, request_);
 }
 
-void AlterSchemaOperationState::AcquireSchemaLock(rw_semaphore* l) {
+void ChangeMetadataOperationState::AcquireSchemaLock(rw_semaphore* l) {
   TRACE("Acquiring schema lock in exclusive mode");
   schema_lock_ = std::unique_lock<rw_semaphore>(*l);
   TRACE("Acquired schema lock");
 }
 
-void AlterSchemaOperationState::ReleaseSchemaLock() {
+void ChangeMetadataOperationState::ReleaseSchemaLock() {
   CHECK(schema_lock_.owns_lock());
   schema_lock_ = std::unique_lock<rw_semaphore>();
   TRACE("Released schema lock");
 }
 
-void AlterSchemaOperationState::UpdateRequestFromConsensusRound() {
-  request_ = consensus_round()->replicate_msg()->mutable_alter_schema_request();
+void ChangeMetadataOperationState::UpdateRequestFromConsensusRound() {
+  request_ = consensus_round()->replicate_msg()->mutable_change_metadata_request();
 }
 
-AlterSchemaOperation::AlterSchemaOperation(std::unique_ptr<AlterSchemaOperationState> state)
-    : Operation(std::move(state), OperationType::kAlterSchema) {}
+ChangeMetadataOperation::ChangeMetadataOperation(
+    std::unique_ptr<ChangeMetadataOperationState> state)
+    : Operation(std::move(state), OperationType::kChangeMetadata) {}
 
-consensus::ReplicateMsgPtr AlterSchemaOperation::NewReplicateMsg() {
+consensus::ReplicateMsgPtr ChangeMetadataOperation::NewReplicateMsg() {
   auto result = std::make_shared<ReplicateMsg>();
-  result->set_op_type(ALTER_SCHEMA_OP);
-  result->mutable_alter_schema_request()->CopyFrom(*state()->request());
+  result->set_op_type(CHANGE_METADATA_OP);
+  result->mutable_change_metadata_request()->CopyFrom(*state()->request());
   return result;
 }
 
-Status AlterSchemaOperation::Prepare() {
-  TRACE("PREPARE ALTER-SCHEMA: Starting");
+Status ChangeMetadataOperation::Prepare() {
+  TRACE("PREPARE CHANGE-METADATA: Starting");
 
   // Decode schema
-  gscoped_ptr<Schema> schema(new Schema);
-  Status s = SchemaFromPB(state()->request()->schema(), schema.get());
-  if (!s.ok()) {
-    state()->SetError(s, TabletServerErrorPB::INVALID_SCHEMA);
-    return s;
+  auto has_schema = state()->request()->has_schema();
+  std::unique_ptr<Schema> schema;
+  if (has_schema) {
+    schema = std::make_unique<Schema>();
+    Status s = SchemaFromPB(state()->request()->schema(), schema.get());
+    if (!s.ok()) {
+      state()->SetError(s, TabletServerErrorPB::INVALID_SCHEMA);
+      return s;
+    }
   }
 
   Tablet* tablet = state()->tablet();
-  RETURN_NOT_OK(tablet->CreatePreparedAlterSchema(state(), schema.get()));
+  RETURN_NOT_OK(tablet->CreatePreparedChangeMetadata(state(), schema.get()));
 
-  state()->AddToAutoReleasePool(schema.release());
+  if (has_schema) {
+    state()->AddToAutoReleasePool(schema.release());
+  }
 
   state()->SetIndexes(state()->request()->indexes());
 
-  TRACE("PREPARE ALTER-SCHEMA: finished");
-  return s;
+  TRACE("PREPARE CHANGE-METADATA: finished");
+  return Status::OK();
 }
 
-void AlterSchemaOperation::DoStart() {
+void ChangeMetadataOperation::DoStart() {
   state()->TrySetHybridTimeFromClock();
   TRACE("START. HybridTime: $0",
       server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }
 
-Status AlterSchemaOperation::Apply(int64_t leader_term) {
-  TRACE("APPLY ALTER-SCHEMA: Starting");
+Status ChangeMetadataOperation::Apply(int64_t leader_term) {
+  TRACE("APPLY CHANGE-METADATA: Starting");
 
   Tablet* tablet = state()->tablet();
-  RETURN_NOT_OK(tablet->AlterSchema(state()));
-  state()->log()->SetSchemaForNextLogSegment(*DCHECK_NOTNULL(state()->schema()),
-                                             state()->schema_version());
+  size_t num_operations = 0;
+
+  if (state()->request()->has_schema()) {
+    ++num_operations;
+    RETURN_NOT_OK(tablet->AlterSchema(state()));
+    state()->log()->SetSchemaForNextLogSegment(*DCHECK_NOTNULL(state()->schema()),
+        state()->schema_version());
+  }
+
+  if (state()->request()->has_add_table()) {
+    ++num_operations;
+    RETURN_NOT_OK(tablet->AddTable(state()->request()->add_table()));
+  }
+
+  if (num_operations != 1) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Wrong number of operations in Change Metadata Operation: $0",
+        num_operations);
+  }
 
   return Status::OK();
 }
 
-void AlterSchemaOperation::Finish(OperationResult result) {
+void ChangeMetadataOperation::Finish(OperationResult result) {
   if (PREDICT_FALSE(result == Operation::ABORTED)) {
     TRACE("AlterSchemaCommitCallback: transaction aborted");
     state()->Finish();
     return;
   }
 
-  // The schema lock was acquired by Tablet::CreatePreparedAlterSchema.
+  // The schema lock was acquired by Tablet::CreatePreparedChangeMetadata.
   // Normally, we would release it in tablet.cc after applying the operation,
   // but currently we need to wait until after the COMMIT message is logged
   // to release this lock as a workaround for KUDU-915. See the TODO in
@@ -155,8 +175,8 @@ void AlterSchemaOperation::Finish(OperationResult result) {
   state()->Finish();
 }
 
-string AlterSchemaOperation::ToString() const {
-  return Substitute("AlterSchemaOperation [state=$0]", state()->ToString());
+string ChangeMetadataOperation::ToString() const {
+  return Format("ChangeMetadataOperation { state: $0 }", state());
 }
 
 }  // namespace tablet

@@ -551,7 +551,7 @@ TEST_F(TabletServerTest, TestCreateTablet_TabletExists) {
   req.mutable_config()->CopyFrom(mini_server_->CreateLocalConfig());
 
   Schema schema = SchemaBuilder(schema_).Build();
-  ASSERT_OK(SchemaToPB(schema, req.mutable_schema()));
+  SchemaToPB(schema, req.mutable_schema());
 
   // Send the call
   {
