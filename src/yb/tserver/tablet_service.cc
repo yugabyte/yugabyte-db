@@ -944,7 +944,7 @@ class ReadOperationCompletionCallback : public OperationCompletionCallback {
       return;
     }
 
-    tablet_peer_->thread_pool().Enqueue(new ReadCompletionTask(service_, read_context_, context_));
+    tablet_peer_->Enqueue(new ReadCompletionTask(service_, read_context_, context_));
   }
 
  private:
