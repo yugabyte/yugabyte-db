@@ -39,7 +39,7 @@
 
 #include "yb/common/schema.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/tablet/operations/alter_schema_operation.h"
+#include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet-test-base.h"
 #include "yb/util/test_macros.h"

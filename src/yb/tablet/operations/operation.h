@@ -57,7 +57,7 @@ class OperationCompletionCallback;
 class OperationState;
 
 YB_DEFINE_ENUM(OperationType,
-               (kWrite)(kAlterSchema)(kUpdateTransaction)(kSnapshot)(kTruncate)(kEmpty));
+               (kWrite)(kChangeMetadata)(kUpdateTransaction)(kSnapshot)(kTruncate)(kEmpty));
 
 // Base class for transactions.  There are different implementations for different types (Write,
 // AlterSchema, etc.) OperationDriver implementations use Operations along with Consensus to execute
@@ -309,6 +309,19 @@ class LatchOperationCompletionCallback : public OperationCompletionCallback {
  private:
   CountDownLatch* latch_;
   ResponsePB* response_;
+};
+
+class SynchronizerOperationCompletionCallback : public OperationCompletionCallback {
+ public:
+  explicit SynchronizerOperationCompletionCallback(Synchronizer* synchronizer)
+    : synchronizer_(DCHECK_NOTNULL(synchronizer)) {}
+
+  void OperationCompleted() override {
+    synchronizer_->StatusCB(status());
+  }
+
+ private:
+  Synchronizer* synchronizer_;
 };
 
 }  // namespace tablet

@@ -122,12 +122,8 @@ class ChecksumStepper {
   }
 
   void Start() {
-    Status s = SchemaToColumnPBs(schema_, &cols_, SCHEMA_PB_WITHOUT_IDS);
-    if (!s.ok()) {
-      reporter_callback_.Run(s, 0);
-    } else {
-      SendRequest();
-    }
+    SchemaToColumnPBs(schema_, &cols_, SCHEMA_PB_WITHOUT_IDS);
+    SendRequest();
   }
 
   void HandleResponse() {

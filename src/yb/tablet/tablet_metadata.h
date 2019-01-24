@@ -100,10 +100,16 @@ struct TableInfo {
             uint32_t schema_version);
 
   CHECKED_STATUS LoadFromSuperBlock(const TabletSuperBlockPB& superblock);
-  CHECKED_STATUS ToSuperBlock(TabletSuperBlockPB* superblock);
+  void ToSuperBlock(TabletSuperBlockPB* superblock);
 
   CHECKED_STATUS LoadFromPB(const TableInfoPB& pb);
-  CHECKED_STATUS ToPB(TableInfoPB* pb);
+  void ToPB(TableInfoPB* pb) const;
+
+  std::string ToString() const {
+    TableInfoPB pb;
+    ToPB(&pb);
+    return pb.ShortDebugString();
+  }
 };
 
 // Manages the "blocks tracking" for the specified tablet.
@@ -276,7 +282,6 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
                 const Schema& schema,
                 const IndexMap& index_map,
                 const PartitionSchema& partition_schema,
-                const Partition& partition,
                 const boost::optional<IndexInfo>& index_info,
                 const uint32_t schema_version);
 
@@ -322,7 +327,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   CHECKED_STATUS ReadSuperBlockFromDisk(TabletSuperBlockPB* superblock) const;
 
   // Sets *superblock to the serialized form of the current metadata.
-  CHECKED_STATUS ToSuperBlock(TabletSuperBlockPB* superblock) const;
+  void ToSuperBlock(TabletSuperBlockPB* superblock) const;
 
   // Fully replace a superblock (used for bootstrap).
   CHECKED_STATUS ReplaceSuperBlock(const TabletSuperBlockPB &pb);
@@ -368,7 +373,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   CHECKED_STATUS ReplaceSuperBlockUnlocked(const TabletSuperBlockPB &pb);
 
   // Requires 'data_lock_'.
-  CHECKED_STATUS ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) const;
+  void ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) const;
 
   // Return standard "T xxx P yyy" log prefix.
   std::string LogPrefix() const;

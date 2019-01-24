@@ -434,7 +434,7 @@ Status MasterTest::DoCreateTable(const NamespaceName& namespace_name,
   CreateTableResponsePB resp;
 
   request->set_name(table_name);
-  RETURN_NOT_OK(SchemaToPB(schema, request->mutable_schema()));
+  SchemaToPB(schema, request->mutable_schema());
 
   if (!namespace_name.empty()) {
     request->mutable_namespace_()->set_name(namespace_name);

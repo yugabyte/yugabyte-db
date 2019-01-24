@@ -65,9 +65,9 @@ METRIC_DEFINE_gauge_uint64(tablet, write_operations_inflight,
                            yb::MetricUnit::kOperations,
                            "Number of write operations currently in-flight");
 METRIC_DEFINE_gauge_uint64(tablet, alter_schema_operations_inflight,
-                           "Alter Schema Operations In Flight",
+                           "Change Metadata Operations In Flight",
                            yb::MetricUnit::kOperations,
-                           "Number of alter schema operations currently in-flight");
+                           "Number of change metadata operations currently in-flight");
 METRIC_DEFINE_gauge_uint64(tablet, update_transaction_operations_inflight,
                            "Update Transaction Operations In Flight",
                            yb::MetricUnit::kOperations,
@@ -108,7 +108,7 @@ OperationTracker::Metrics::Metrics(const scoped_refptr<MetricEntity>& entity)
     : GINIT(all_operations_inflight),
       MINIT(operation_memory_pressure_rejections) {
   INSTANTIATE(Write, write);
-  INSTANTIATE(AlterSchema, alter_schema);
+  INSTANTIATE(ChangeMetadata, alter_schema);
   INSTANTIATE(UpdateTransaction, update_transaction);
   INSTANTIATE(Snapshot, snapshot);
   INSTANTIATE(Truncate, truncate);

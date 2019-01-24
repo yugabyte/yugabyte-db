@@ -146,14 +146,13 @@ Status TableInfo::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) {
   return Status::OK();
 }
 
-Status TableInfo::ToSuperBlock(TabletSuperBlockPB* superblock) {
+void TableInfo::ToSuperBlock(TabletSuperBlockPB* superblock) {
   superblock->set_primary_table_id(table_id);
   superblock->set_deprecated_table_name(table_name);
   superblock->set_deprecated_table_type(table_type);
 
   DCHECK(schema.has_column_ids());
-  RETURN_NOT_OK_PREPEND(SchemaToPB(schema, superblock->mutable_deprecated_schema()),
-                        "Couldn't serialize schema into superblock");
+  SchemaToPB(schema, superblock->mutable_deprecated_schema());
   if (index_info) {
     index_info->ToPB(superblock->mutable_deprecated_index_info());
   }
@@ -165,8 +164,6 @@ Status TableInfo::ToSuperBlock(TabletSuperBlockPB* superblock) {
   for (const DeletedColumn& deleted_col : deleted_cols) {
     deleted_col.CopyToPB(superblock->mutable_deprecated_deleted_cols()->Add());
   }
-
-  return Status::OK();
 }
 
 Status TableInfo::LoadFromPB(const TableInfoPB& pb) {
@@ -192,14 +189,13 @@ Status TableInfo::LoadFromPB(const TableInfoPB& pb) {
   return Status::OK();
 }
 
-Status TableInfo::ToPB(TableInfoPB* pb) {
+void TableInfo::ToPB(TableInfoPB* pb) const {
   pb->set_table_id(table_id);
   pb->set_table_name(table_name);
   pb->set_table_type(table_type);
 
   DCHECK(schema.has_column_ids());
-  RETURN_NOT_OK_PREPEND(SchemaToPB(schema, pb->mutable_schema()),
-                        "Couldn't serialize schema into protocol buffer");
+  SchemaToPB(schema, pb->mutable_schema());
   if (index_info) {
     index_info->ToPB(pb->mutable_index_info());
   }
@@ -211,8 +207,6 @@ Status TableInfo::ToPB(TableInfoPB* pb) {
   for (const DeletedColumn& deleted_col : deleted_cols) {
     deleted_col.CopyToPB(pb->mutable_deleted_cols()->Add());
   }
-
-  return Status::OK();
 }
 
 // ============================================================================
@@ -319,11 +313,21 @@ Status TabletMetadata::LoadOrCreate(FsManager* fs_manager,
   }
 }
 
+template <class TablesMap>
+CHECKED_STATUS MakeTableNotFound(const std::string& table_id, const std::string& tablet_id,
+                                 const TablesMap& tables) {
+  std::string suffix;
+#ifndef NDEBUG
+  suffix = Format(". Tables: $0.", tables);
+#endif
+  return STATUS_FORMAT(NotFound, "Table $0 not found in tablet $1$2", table_id, tablet_id, suffix);
+}
+
 Result<const TableInfo*> TabletMetadata::GetTableInfo(const std::string& table_id) const {
   std::lock_guard<LockType> l(data_lock_);
   const auto iter = tables_.find(!table_id.empty() ? table_id : primary_table_id_);
   if (iter == tables_.end()) {
-    return STATUS_FORMAT(NotFound, "table $0 not found in tablet $1", table_id, tablet_id_);
+    return MakeTableNotFound(table_id, tablet_id_, tables_);
   }
   return iter->second.get();
 }
@@ -332,7 +336,7 @@ Result<TableInfo*> TabletMetadata::GetTableInfo(const std::string& table_id) {
   std::lock_guard<LockType> l(data_lock_);
   const auto iter = tables_.find(!table_id.empty() ? table_id : primary_table_id_);
   if (iter == tables_.end()) {
-    return STATUS_FORMAT(NotFound, "table $0 not found in tablet $1", table_id, tablet_id_);
+    return MakeTableNotFound(table_id, tablet_id_, tables_);
   }
   return iter->second.get();
 }
@@ -533,7 +537,7 @@ Status TabletMetadata::Flush() {
   TabletSuperBlockPB pb;
   {
     std::lock_guard<LockType> l(data_lock_);
-    RETURN_NOT_OK(ToSuperBlockUnlocked(&pb));
+    ToSuperBlockUnlocked(&pb);
   }
   RETURN_NOT_OK(ReplaceSuperBlockUnlocked(pb));
   TRACE("Metadata flushed");
@@ -577,13 +581,13 @@ Status TabletMetadata::ReadSuperBlockFromDisk(TabletSuperBlockPB* superblock) co
   return Status::OK();
 }
 
-Status TabletMetadata::ToSuperBlock(TabletSuperBlockPB* superblock) const {
+void TabletMetadata::ToSuperBlock(TabletSuperBlockPB* superblock) const {
   // acquire the lock so that rowsets_ doesn't get changed until we're finished.
   std::lock_guard<LockType> l(data_lock_);
-  return ToSuperBlockUnlocked(superblock);
+  ToSuperBlockUnlocked(superblock);
 }
 
-Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) const {
+void TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) const {
   DCHECK(data_lock_.is_locked());
   // Convert to protobuf
   TabletSuperBlockPB pb;
@@ -591,7 +595,7 @@ Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) cons
   partition_.ToPB(pb.mutable_partition());
 
   for (const auto& iter : tables_) {
-    RETURN_NOT_OK(iter.second->ToPB(pb.add_tables()));
+    iter.second->ToPB(pb.add_tables());
   }
 
   pb.set_last_durable_mrs_id(last_durable_mrs_id_);
@@ -602,10 +606,9 @@ Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) cons
     tombstone_last_logged_opid_.ToPB(pb.mutable_tombstone_last_logged_opid());
   }
 
-  RETURN_NOT_OK(tables_.at(primary_table_id_)->ToSuperBlock(&pb));
+  tables_.find(primary_table_id_)->second->ToSuperBlock(&pb);
 
   superblock->Swap(&pb);
-  return Status::OK();
 }
 
 void TabletMetadata::SetSchema(const Schema& schema,
@@ -633,7 +636,7 @@ void TabletMetadata::SetPartitionSchema(const PartitionSchema& partition_schema)
 
 void TabletMetadata::SetTableName(const string& table_name) {
   std::lock_guard<LockType> l(data_lock_);
-  tables_.at(primary_table_id_)->table_name = table_name;
+  tables_[primary_table_id_]->table_name = table_name;
 }
 
 void TabletMetadata::AddTable(const std::string& table_id,
@@ -642,7 +645,6 @@ void TabletMetadata::AddTable(const std::string& table_id,
                               const Schema& schema,
                               const IndexMap& index_map,
                               const PartitionSchema& partition_schema,
-                              const Partition& partition,
                               const boost::optional<IndexInfo>& index_info,
                               const uint32_t schema_version) {
   DCHECK(schema.has_column_ids());
