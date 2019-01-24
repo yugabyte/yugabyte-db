@@ -773,6 +773,51 @@ CREATE TABLE tmp2 AS (SELECT * FROM tmp);
 DROP TABLE tmp;
 DROP TABLE tmp2;
 
+--
+-- Test MISC
+SET pgaudit.log = 'MISC';
+SET pgaudit.log_level = 'notice';
+SET pgaudit.log_client = ON;
+SET pgaudit.log_relation = ON;
+SET pgaudit.log_parameter = ON;
+
+CREATE ROLE alice;
+
+SET ROLE alice;
+CREATE TABLE t (a int, b text);
+SET search_path TO test, public;
+
+INSERT INTO t VALUES (1, 'misc');
+
+VACUUM t;
+RESET ROLE;
+
+--
+-- Test MISC_SET
+SET pgaudit.log = 'MISC_SET';
+
+SET ROLE alice;
+SET search_path TO public;
+
+INSERT INTO t VALUES (2, 'misc_set');
+
+VACUUM t;
+RESET ROLE;
+
+--
+-- Test ALL, -MISC, MISC_SET
+SET pgaudit.log = 'ALL, -MISC, MISC_SET';
+
+SET search_path TO public;
+
+INSERT INTO t VALUES (3, 'all, -misc, misc_set');
+
+VACUUM t;
+
+RESET ROLE;
+DROP TABLE public.t;
+DROP ROLE alice;
+
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise
 SET client_min_messages = 'warning';

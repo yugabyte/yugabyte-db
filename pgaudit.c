@@ -62,6 +62,7 @@ PG_FUNCTION_INFO_V1(pgaudit_sql_drop);
 #define LOG_READ        (1 << 3)    /* SELECTs */
 #define LOG_ROLE        (1 << 4)    /* GRANT/REVOKE, CREATE/ALTER/DROP ROLE */
 #define LOG_WRITE       (1 << 5)    /* INSERT, UPDATE, DELETE, TRUNCATE */
+#define LOG_MISC_SET    (1 << 6)    /* SET ... */
 
 #define LOG_NONE        0               /* nothing */
 #define LOG_ALL         (0xFFFFFFFF)    /* All */
@@ -79,6 +80,7 @@ static int auditLogBitmap = LOG_NONE;
 #define CLASS_DDL       "DDL"
 #define CLASS_FUNCTION  "FUNCTION"
 #define CLASS_MISC      "MISC"
+#define CLASS_MISC_SET  "MISC_SET"
 #define CLASS_READ      "READ"
 #define CLASS_ROLE      "ROLE"
 #define CLASS_WRITE     "WRITE"
@@ -610,6 +612,15 @@ log_audit_event(AuditEventStackItem *stackItem)
                 case T_DoStmt:
                     className = CLASS_FUNCTION;
                     class = LOG_FUNCTION;
+                    break;
+
+                /*
+                 * SET statements reported as MISC but filtered by MISC_SET
+                 * flags to maintain existing functionality.
+                 */
+                case T_VariableSetStmt:
+                    className = CLASS_MISC;
+                    class = LOG_MISC_SET;
                     break;
 
                 default:
@@ -1698,7 +1709,9 @@ check_pgaudit_log(char **newVal, void **extra, GucSource source)
         else if (pg_strcasecmp(token, CLASS_FUNCTION) == 0)
             class = LOG_FUNCTION;
         else if (pg_strcasecmp(token, CLASS_MISC) == 0)
-            class = LOG_MISC;
+            class = LOG_MISC | LOG_MISC_SET;
+        else if (pg_strcasecmp(token, CLASS_MISC_SET) == 0)
+            class = LOG_MISC_SET;
         else if (pg_strcasecmp(token, CLASS_READ) == 0)
             class = LOG_READ;
         else if (pg_strcasecmp(token, CLASS_ROLE) == 0)

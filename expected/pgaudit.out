@@ -1118,6 +1118,56 @@ NOTICE:  AUDIT: SESSION,68,1,READ,SELECT,TABLE,public.tmp,CREATE TABLE tmp2 AS (
 NOTICE:  AUDIT: SESSION,68,1,WRITE,INSERT,TABLE,public.tmp2,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<none>
 DROP TABLE tmp;
 DROP TABLE tmp2;
+--
+-- Test MISC
+SET pgaudit.log = 'MISC';
+NOTICE:  AUDIT: SESSION,69,1,MISC,SET,,,SET pgaudit.log = 'MISC';,<none>
+SET pgaudit.log_level = 'notice';
+NOTICE:  AUDIT: SESSION,70,1,MISC,SET,,,SET pgaudit.log_level = 'notice';,<none>
+SET pgaudit.log_client = ON;
+NOTICE:  AUDIT: SESSION,71,1,MISC,SET,,,SET pgaudit.log_client = ON;,<none>
+SET pgaudit.log_relation = ON;
+NOTICE:  AUDIT: SESSION,72,1,MISC,SET,,,SET pgaudit.log_relation = ON;,<none>
+SET pgaudit.log_parameter = ON;
+NOTICE:  AUDIT: SESSION,73,1,MISC,SET,,,SET pgaudit.log_parameter = ON;,<none>
+CREATE ROLE alice;
+SET ROLE alice;
+NOTICE:  AUDIT: SESSION,74,1,MISC,SET,,,SET ROLE alice;,<none>
+CREATE TABLE t (a int, b text);
+SET search_path TO test, public;
+NOTICE:  AUDIT: SESSION,75,1,MISC,SET,,,"SET search_path TO test, public;",<none>
+INSERT INTO t VALUES (1, 'misc');
+VACUUM t;
+NOTICE:  AUDIT: SESSION,76,1,MISC,VACUUM,,,VACUUM t;,<none>
+RESET ROLE;
+NOTICE:  AUDIT: SESSION,77,1,MISC,RESET,,,RESET ROLE;,<none>
+--
+-- Test MISC_SET
+SET pgaudit.log = 'MISC_SET';
+NOTICE:  AUDIT: SESSION,78,1,MISC,SET,,,SET pgaudit.log = 'MISC_SET';,<none>
+SET ROLE alice;
+NOTICE:  AUDIT: SESSION,79,1,MISC,SET,,,SET ROLE alice;,<none>
+SET search_path TO public;
+NOTICE:  AUDIT: SESSION,80,1,MISC,SET,,,SET search_path TO public;,<none>
+INSERT INTO t VALUES (2, 'misc_set');
+VACUUM t;
+RESET ROLE;
+NOTICE:  AUDIT: SESSION,81,1,MISC,RESET,,,RESET ROLE;,<none>
+--
+-- Test ALL, -MISC, MISC_SET
+SET pgaudit.log = 'ALL, -MISC, MISC_SET';
+NOTICE:  AUDIT: SESSION,82,1,MISC,SET,,,"SET pgaudit.log = 'ALL, -MISC, MISC_SET';",<none>
+SET search_path TO public;
+NOTICE:  AUDIT: SESSION,83,1,MISC,SET,,,SET search_path TO public;,<none>
+INSERT INTO t VALUES (3, 'all, -misc, misc_set');
+NOTICE:  AUDIT: SESSION,84,1,WRITE,INSERT,TABLE,public.t,"INSERT INTO t VALUES (3, 'all, -misc, misc_set');",<none>
+VACUUM t;
+RESET ROLE;
+NOTICE:  AUDIT: SESSION,85,1,MISC,RESET,,,RESET ROLE;,<none>
+DROP TABLE public.t;
+NOTICE:  AUDIT: SESSION,86,1,DDL,DROP TABLE,,,DROP TABLE public.t;,<none>
+DROP ROLE alice;
+NOTICE:  AUDIT: SESSION,87,1,ROLE,DROP ROLE,,,DROP ROLE alice;,<none>
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise
 SET client_min_messages = 'warning';
