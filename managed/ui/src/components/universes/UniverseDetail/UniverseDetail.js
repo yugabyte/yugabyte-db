@@ -180,7 +180,7 @@ class UniverseDetail extends Component {
         <Tab eventKey={"backups"} title="Backups" key="backups-tab" mountOnEnter={true} unmountOnExit={true}>
           <ListBackupsContainer currentUniverse={currentUniverse.data} />
         </Tab>,
-        <Tab eventKey={"health"} title="Health" key="alerts-tab" mountOnEnter={true} unmountOnExit={true}>
+        <Tab eventKey={"health"} title="Health" key="health-tab" mountOnEnter={true} unmountOnExit={true}>
           <UniverseHealthCheckList universe={universe} />
         </Tab>
       ]
