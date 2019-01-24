@@ -209,10 +209,6 @@ class CleanupAbortsTask : public rpc::ThreadPoolTask {
     retain_self_ = std::move(cleanup_task);
   }
 
-  void Cancel() {
-    retain_self_ = nullptr;
-  }
-
   void Run() override {
     size_t initial_number_of_transactions = transactions_to_cleanup_.size();
 
@@ -519,7 +515,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
         last_known_status_ = response.status();
         if (response.status() == TransactionStatus::ABORTED) {
           if (!local_commit_time_ && remove_intents_task_.Prepare(shared_self)) {
-            context_.participant_context_.thread_pool().Enqueue(&remove_intents_task_);
+            context_.participant_context_.Enqueue(&remove_intents_task_);
             VLOG_WITH_PREFIX(1) << "Transaction should be aborted: " << id();
           }
           context_.RemoveUnlocked(id());
@@ -879,9 +875,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     auto cleanup_aborts_task = std::make_shared<CleanupAbortsTask>(
         &applier_, std::move(set), &participant_context_, status_manager);
     cleanup_aborts_task->Prepare(cleanup_aborts_task);
-    if (!participant_context_.thread_pool().Enqueue(cleanup_aborts_task.get())) {
-      cleanup_aborts_task->Cancel();
-    }
+    participant_context_.Enqueue(cleanup_aborts_task.get());
   }
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data) {

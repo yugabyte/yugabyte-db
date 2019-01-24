@@ -61,6 +61,7 @@
 #include "yb/rocksdb/db/memtable.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/thread_pool.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
@@ -931,6 +932,16 @@ Status TabletPeer::UpdateState(TabletStatePB expected, TabletStatePB new_state,
   LOG_WITH_PREFIX(INFO) << "Changed state from " << TabletStatePB_Name(old) << " to "
                         << TabletStatePB_Name(new_state);
   return Status::OK();
+}
+
+bool TabletPeer::Enqueue(rpc::ThreadPoolTask* task) {
+  rpc::ThreadPool* thread_pool = service_thread_pool_.load(std::memory_order_acquire);
+  if (!thread_pool) {
+    task->Done(STATUS(Aborted, "Thread pool not ready"));
+    return false;
+  }
+
+  return thread_pool->Enqueue(task);
 }
 
 }  // namespace tablet
