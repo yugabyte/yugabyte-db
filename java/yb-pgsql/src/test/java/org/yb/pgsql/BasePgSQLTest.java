@@ -68,6 +68,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   private boolean pgInitialized = false;
 
+  public void runPgRegressTest(String schedule) throws Exception {
+    final int tserverIndex = 0;
+    PgRegressRunner pgRegress = new PgRegressRunner(schedule,
+        getPgHost(tserverIndex), getPgPort(tserverIndex), DEFAULT_PG_USER);
+    pgRegress.setEnvVars(getInitDbEnvVars());
+    pgRegress.start();
+    pgRegress.stop();
+  }
+
   /**
    * @return flags shared between tablet server and initdb
    */

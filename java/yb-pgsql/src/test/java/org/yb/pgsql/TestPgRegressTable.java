@@ -20,20 +20,14 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegress extends BasePgSQLTest {
-
-  @Test
-  public void testPgRegress() throws Exception {
-    final int tserverIndex = 0;
-    PgRegressRunner pgRegress = new PgRegressRunner(
-        getPgHost(tserverIndex), getPgPort(tserverIndex), DEFAULT_PG_USER);
-    pgRegress.setEnvVars(getInitDbEnvVars());
-    pgRegress.start();
-    pgRegress.stop();
-  }
-
+public class TestPgRegressTable extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
+  }
+
+  @Test
+  public void testPgRegressTable() throws Exception {
+    runPgRegressTest("yb_table_serial_schedule");
   }
 }
