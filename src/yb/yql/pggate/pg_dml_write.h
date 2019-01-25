@@ -38,6 +38,14 @@ class PgDmlWrite : public PgDml {
   // Execute.
   CHECKED_STATUS Exec();
 
+  void SetIsSystemCatalogChange() {
+    write_req_->set_is_ysql_catalog_change(true);
+  }
+
+  void SetCatalogCacheVersion(const uint64_t catalog_cache_version) override {
+    write_req_->set_ysql_catalog_version(catalog_cache_version);
+  }
+
  protected:
   // Constructor.
   PgDmlWrite(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);

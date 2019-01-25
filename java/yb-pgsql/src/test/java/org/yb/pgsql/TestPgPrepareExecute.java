@@ -111,7 +111,7 @@ public class TestPgPrepareExecute extends BasePgSQLTest {
     try (PreparedStatement sel = connection.prepareStatement(query)) {
       sel.setLong(1, 2);
       ResultSet rs = sel.executeQuery();
-      List<Row> rows = getRowSet(rs);
+      List<Row> rows = getRowList(rs);
       assertFalse(rows.toString().contains("Filter: "));
     }
 
@@ -121,7 +121,7 @@ public class TestPgPrepareExecute extends BasePgSQLTest {
     try (PreparedStatement sel = connection.prepareStatement(query)) {
       sel.setLong(1, 2);
       ResultSet rs = sel.executeQuery();
-      List<Row> rows = getRowSet(rs);
+      List<Row> rows = getRowList(rs);
       assertTrue(rows.toString().contains("Filter: "));
     }
   }

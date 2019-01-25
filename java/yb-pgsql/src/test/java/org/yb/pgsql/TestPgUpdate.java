@@ -170,7 +170,7 @@ public class TestPgUpdate extends BasePgSQLTest {
 
       // Verify RETURNING clause.
       ResultSet returning = update_stmt.getResultSet();
-      assertEquals(expectedRows, getSortedRowSet(returning));
+      assertEquals(expectedRows, getSortedRowList(returning));
     }
   }
 }

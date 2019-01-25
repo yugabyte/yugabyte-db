@@ -192,6 +192,10 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     desc->GetTSInformationPB(resp->add_tservers());
   }
 
+  // Retrieve the ysql catalog schema version.
+  uint64_t version = server_->catalog_manager()->GetYsqlCatalogVersion();
+  resp->set_ysql_catalog_version(version);
+
   rpc.RespondSuccess();
 }
 
@@ -334,6 +338,12 @@ void MasterServiceImpl::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
                                          ReservePgsqlOidsResponsePB* resp,
                                          rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::ReservePgsqlOids);
+}
+
+void MasterServiceImpl::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB* req,
+                                             GetYsqlCatalogConfigResponsePB* resp,
+                                             rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::GetYsqlCatalogConfig);
 }
 
 void MasterServiceImpl::CreateRole(const CreateRoleRequestPB* req,

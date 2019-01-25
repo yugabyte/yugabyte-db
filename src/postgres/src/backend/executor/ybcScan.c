@@ -361,6 +361,21 @@ YbScanState ybcBeginScan(Relation rel, Relation index, List *target_attrs, List 
 		                            ybc_state->stmt_owner);
 	}
 
+	/*
+	 * Set the current syscatalog version (will check that we are up to date).
+	 * Avoid it for syscatalog tables so that we can still use this for
+	 * refreshing the caches when we are behind.
+	 * Note: This works because we do not allow modifying schemas (alter/drop)
+	 * for system catalog tables.
+	 */
+	if (!IsSystemRelation(rel))
+	{
+		HandleYBStmtStatusWithOwner(YBCPgSetCatalogCacheVersion(ybc_state->handle,
+		                                                        ybc_catalog_cache_version),
+		                            ybc_state->handle,
+		                            ybc_state->stmt_owner);
+	}
+
 	/* Execute the select statement. */
 	HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybc_state->handle),
 	                            ybc_state->handle,

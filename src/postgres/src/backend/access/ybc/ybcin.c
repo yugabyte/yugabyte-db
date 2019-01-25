@@ -86,7 +86,7 @@ ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation 
 	Assert(!index->rd_index->indisprimary);
 
 	YBCExecuteInsertIndex(index, values, isnull, ybctid);
-	
+
 	return index->rd_index->indisunique ? true : false;
 }
 

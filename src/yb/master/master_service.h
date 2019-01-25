@@ -108,6 +108,10 @@ class MasterServiceImpl : public MasterServiceIf,
                                 ReservePgsqlOidsResponsePB* resp,
                                 rpc::RpcContext rpc) override;
 
+  virtual void GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB* req,
+                                    GetYsqlCatalogConfigResponsePB* resp,
+                                    rpc::RpcContext rpc) override;
+
   virtual void CreateRole(const CreateRoleRequestPB* req,
                           CreateRoleResponsePB* resp,
                           rpc::RpcContext rpc) override;

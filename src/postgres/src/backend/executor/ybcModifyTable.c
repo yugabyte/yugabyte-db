@@ -153,7 +153,55 @@ Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot)
 }
 
 /*
- * Insert a tuple into the a relation's backing YugaByte table.
+ * Need to update the version whenever we write to a system catalogs table (or
+ * indexes) except in bootstrap mode (initdb) where there is no point
+ * to keep track of versions yet.
+ */
+static bool IsSystemCatalogVersionChange(Relation rel)
+{
+	return IsSystemRelation(rel) && !IsBootstrapProcessingMode();
+}
+
+/*
+ * Utility method to execute a prepared write statement.
+ * Will handle the case if the write changes the system catalogs meaning
+ * we need to increment the catalog versions accordingly.
+ */
+static void YBCExecWriteStmt(YBCPgStatement ybc_stmt, Relation rel)
+{
+	bool is_syscatalog_change = IsSystemCatalogVersionChange(rel);
+
+	/* Let the master know if this should increment the catalog version. */
+	if (is_syscatalog_change)
+	{
+		YBCPgSetIsSystemCatalogChange(ybc_stmt);
+	}
+
+	HandleYBStmtStatus(YBCPgSetCatalogCacheVersion(ybc_stmt,
+		                                             ybc_catalog_cache_version),
+		                 ybc_stmt);
+
+	/* Execute the insert. */
+	HandleYBStmtStatus(YBCPgDmlExecWriteOp(ybc_stmt), ybc_stmt);
+
+	/*
+	 * Optimization to increment the catalog version for the local cache as
+	 * this backend is already aware of this change and should update its
+	 * catalog caches accordingly (without needing to ask the master).
+	 * Note that, since the master catalog version should have been identically
+	 * incremented, it will continue to match with the local cache version if
+	 * and only if no other master changes occurred in the meantime (i.e. from
+	 * other backends).
+	 * If changes occurred, then a cache refresh will be needed as usual.
+	 */
+	if (is_syscatalog_change)
+	{
+		ybc_catalog_cache_version += 1;
+	}
+}
+
+/*
+ * Insert a tuple into the relation's backing YugaByte table.
  */
 Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 {
@@ -163,6 +211,7 @@ Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 	int            natts    = RelationGetNumberOfAttributes(rel);
 	Bitmapset      *pkey    = GetTablePrimaryKey(rel);
 	YBCPgStatement ybc_stmt = NULL;
+	bool           is_null  = false;
 
 	/* Generate a new oid for this row if needed */
 	if (rel->rd_rel->relhasoids)
@@ -173,7 +222,6 @@ Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 
 	/* Create the INSERT request and add the values from the tuple. */
 	HandleYBStatus(YBCPgNewInsert(ybc_pg_session, dboid, relid, &ybc_stmt));
-	bool is_null = false;
 	for (AttrNumber attnum = minattr; attnum <= natts; attnum++)
 	{
 		/* Skip virtual (system) and dropped columns */
@@ -196,7 +244,8 @@ Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 
 		/* Add the column value to the insert request */
 		YBCPgExpr ybc_expr = YBCNewConstant(ybc_stmt, type_id, datum, is_null);
-		HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, attnum, ybc_expr), ybc_stmt);
+		HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, attnum, ybc_expr),
+		                   ybc_stmt);
 	}
 
 	/*
@@ -210,8 +259,8 @@ Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 		HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_stmt, ybc_expr), ybc_stmt);
 	}
 
-	/* Execute the insert and clean up. */
-	HandleYBStmtStatus(YBCPgExecInsert(ybc_stmt), ybc_stmt);
+	/* Execute the insert */
+	YBCExecWriteStmt(ybc_stmt, rel);
 
 	/*
 	 * If the relation has indexes, save ybctid to insert the new row into the indexes.
@@ -234,6 +283,7 @@ Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 		}
 	}
 
+	/* Clean up */
 	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
 	ybc_stmt = NULL;
 
@@ -275,8 +325,7 @@ void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum yb
 					   ybc_stmt);
 
 	/* Execute the insert and clean up. */
-	HandleYBStmtStatus(YBCPgExecInsert(ybc_stmt), ybc_stmt);
-
+	YBCExecWriteStmt(ybc_stmt, index);
 	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
 	ybc_stmt = NULL;
 }
@@ -304,7 +353,7 @@ void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot
 	HandleYBStmtStatus(YBCPgDmlBindColumn(delete_stmt,
 										  YBTupleIdAttributeNumber,
 										  ybctid_expr), delete_stmt);
-	HandleYBStmtStatus(YBCPgExecDelete(delete_stmt), delete_stmt);
+	YBCExecWriteStmt(delete_stmt, rel);
 
 	/* Complete execution */
 	HandleYBStatus(YBCPgDeleteStatement(delete_stmt));
@@ -312,7 +361,7 @@ void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot
 }
 
 /*
- * Delete a tuple into the an index's backing YugaByte index table.
+ * Delete a tuple from an index's backing YugaByte index table.
  */
 void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum ybctid)
 {
@@ -356,7 +405,7 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	}
 
 	/* Execute the delete and clean up. */
-	HandleYBStmtStatus(YBCPgExecDelete(ybc_stmt), ybc_stmt);
+	YBCExecWriteStmt(ybc_stmt, index);
 
 	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
 	ybc_stmt = NULL;
@@ -392,7 +441,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple, Bitmapset *pkey)
 	 */
 	CacheInvalidateHeapTuple(rel, tuple, NULL);
 
-	HandleYBStmtStatus(YBCPgExecDelete(delete_stmt), delete_stmt);
+	YBCExecWriteStmt(delete_stmt, rel);
 
 	/* Complete execution */
 	HandleYBStatus(YBCPgDeleteStatement(delete_stmt));
@@ -439,8 +488,8 @@ void YBCExecuteUpdate(Relation rel,
 		HandleYBStmtStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr), update_stmt);
 	}
 
-	/* Execute the statement */
-	HandleYBStmtStatus(YBCPgExecUpdate(update_stmt), update_stmt);
+	/* Execute the statement and clean up */
+	YBCExecWriteStmt(update_stmt, rel);
 	HandleYBStatus(YBCPgDeleteStatement(update_stmt));
 	update_stmt = NULL;
 
@@ -514,8 +563,8 @@ void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple tuple)
 	 */
 	CacheInvalidateHeapTuple(rel, tuple, NULL);
 
-	/* Execute the statement */
-	HandleYBStmtStatus(YBCPgExecUpdate(update_stmt), update_stmt);
+	/* Execute the statement and clean up */
+	YBCExecWriteStmt(update_stmt, rel);
 	HandleYBStatus(YBCPgDeleteStatement(update_stmt));
 	update_stmt = NULL;
 }

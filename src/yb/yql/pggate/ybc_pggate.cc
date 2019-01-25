@@ -76,6 +76,10 @@ YBCStatus YBCPgDestroySession(YBCPgSession pg_session) {
   return ToYBCStatus(pgapi->DestroySession(pg_session));
 }
 
+YBCStatus YBCPgInvalidateCache(YBCPgSession pg_session) {
+  return ToYBCStatus(pgapi->InvalidateCache(pg_session));
+}
+
 const YBCPgTypeEntity *YBCPgFindTypeEntity(int type_oid) {
   return pgapi->FindTypeEntity(type_oid);
 }
@@ -136,6 +140,10 @@ YBCStatus YBCPgReserveOids(YBCPgSession pg_session,
                            YBCPgOid *end_oid) {
   return ToYBCStatus(pgapi->ReserveOids(pg_session, database_oid, next_oid, count,
                                         begin_oid, end_oid));
+}
+
+YBCStatus YBCPgGetCatalogMasterVersion(YBCPgSession pg_session, uint64_t *version) {
+  return ToYBCStatus(pgapi->GetCatalogMasterVersion(pg_session, version));
 }
 
 // Schema Operations -------------------------------------------------------------------------------
@@ -282,6 +290,15 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
   return ToYBCStatus(pgapi->GetColumnInfo(table_desc, attr_number, is_primary, is_hash));
 }
 
+YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle,
+                                      uint64_t catalog_cache_version) {
+  return ToYBCStatus(pgapi->SetCatalogCacheVersion(handle, catalog_cache_version));
+}
+
+YBCStatus YBCPgSetIsSystemCatalogChange(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->SetIsSystemCatalogChange(handle));
+}
+
 YBCStatus YBCPgNewTruncateTable(YBCPgSession pg_session,
                                 const YBCPgOid database_oid,
                                 const YBCPgOid table_oid,
@@ -350,6 +367,12 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
                         YBCPgSysColumns *syscols, bool *has_data) {
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));
 }
+
+
+YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->DmlExecWriteOp(handle));
+}
+
 
 // INSERT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgSession pg_session,

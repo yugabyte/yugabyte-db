@@ -81,7 +81,7 @@ public class TestPgInsert extends BasePgSQLTest {
 
       // Check rows.
       try (ResultSet rs = statement.executeQuery("SELECT * FROM test")) {
-        assertEquals(expectedRows, getSortedRowSet(rs));
+        assertEquals(expectedRows, getSortedRowList(rs));
       }
     }
   }
@@ -116,7 +116,7 @@ public class TestPgInsert extends BasePgSQLTest {
 
           // Verify RETURNING clause.
           ResultSet returning = statement.getResultSet();
-          assertEquals(expectedRows, getSortedRowSet(returning));
+          assertEquals(expectedRows, getSortedRowList(returning));
         }
       }
     }

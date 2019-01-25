@@ -1335,20 +1335,14 @@ void YBCInitializeRelCache()
 		heap_freetuple(pg_class_tuple);
 
 		/*
-		 * Insert newly created relation into relcache hash table, if requested.
-		 *
-		 * There is one scenario in which we might find a hashtable entry already
-		 * present, even though our caller failed to find it: if the relation is a
-		 * system catalog or index that's used during relcache load, we might have
-		 * recursively created the same relcache entry during the preceding steps.
-		 * So allow RelationCacheInsert to delete any already-present relcache
-		 * entry for the same OID.  The already-present entry should have refcount
-		 * zero (else somebody forgot to close it); in the event that it doesn't,
-		 * we'll elog a WARNING and leak the already-present entry.
+		 * Insert newly created relation into relcache hash table if needed:
+		 * a. If it's not already there (e.g. new table or initialization).
+		 * b. If it's a regular (non-system) table it could be changed (e.g. by
+		 * an 'ALTER').
 		 */
 		Relation tmp_rel;
 		RelationIdCacheLookup(relation->rd_id, tmp_rel);
-		if (!tmp_rel)
+		if (!tmp_rel || !IsSystemRelation(tmp_rel))
 		{
 			RelationCacheInsert(relation, true);
 		}

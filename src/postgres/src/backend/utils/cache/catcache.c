@@ -591,6 +591,13 @@ ResetCatalogCaches(void)
 
 	CACHE1_elog(DEBUG2, "ResetCatalogCaches called");
 
+
+	if (IsYugaByteEnabled())
+	{
+		/* Reset catalog version. */
+		ybc_catalog_cache_version = 0;
+	}
+
 	slist_foreach(iter, &CacheHdr->ch_caches)
 	{
 		CatCache   *cache = slist_container(CatCache, cc_next, iter.cur);

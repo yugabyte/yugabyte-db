@@ -69,6 +69,9 @@
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
 #include "tcop/utility.h"
+#include "utils/relcache.h"
+#include "utils/catcache.h"
+#include "utils/syscache.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
@@ -1192,7 +1195,8 @@ static void
 exec_parse_message(const char *query_string,	/* string to execute */
 				   const char *stmt_name,	/* name for prepared stmt */
 				   Oid *paramTypes, /* parameter types */
-				   int numParams)	/* number of parameters */
+				   int numParams, /* number of parameters */
+				   CommandDest output_dest) /* where to send output */
 {
 	MemoryContext unnamed_stmt_context = NULL;
 	MemoryContext oldcontext;
@@ -1416,7 +1420,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	/*
 	 * Send ParseComplete.
 	 */
-	if (whereToSendOutput == DestRemote)
+	if (output_dest == DestRemote)
 		pq_putemptymessage('1');
 
 	/*
@@ -3573,6 +3577,94 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 #endif
 }
 
+static void ybcPrepareRetryIfNeeded(MemoryContext oldcontext,
+                                    bool cleanup_transaction,
+                                    bool *need_retry)
+{
+	/* Initialize, will set to true below if needed */
+	*need_retry = false;
+
+	if (!IsYugaByteEnabled())
+	{
+		return;
+	}
+
+	/* Get error data */
+	ErrorData *edata;
+	MemoryContextSwitchTo(oldcontext);
+	edata = CopyErrorData();
+	bool is_retryable_err = YBNeedRetryAfterCacheRefresh(edata);
+
+	/* Get the latest syscatalog version from the master */
+	uint64 catalog_master_version = 0;
+	YBCPgGetCatalogMasterVersion(ybc_pg_session,
+	                             (uint64_t *) &catalog_master_version);
+
+	/*
+	 * If versions are mismatched refresh the cache to get
+	 * the latest version of the catalog data and also retry the
+	 * query if possible.
+	 */
+	if (is_retryable_err &&
+	    ybc_catalog_cache_version != catalog_master_version)
+	{
+
+		/*
+		 * Reload the postgres caches and update the cache version.
+		 * Note: if catalog changes sneaked in since getting the
+		 * version it is unfortunate but ok. The master version will have
+		 * changed too (making our version number obsolete) so we will just end
+		 * up needing to do another cache refresh later.
+		 * See the comment for ybc_catalog_cache_version in 'pg_yb_utils.c' for
+		 * more details.
+		 */
+		ResetCatalogCaches();
+		YBCInitializeRelCache();
+		InitCatalogCachePhase2();
+		ybc_catalog_cache_version = catalog_master_version;
+
+		/* Also invalidate the pggate cache */
+		YBCPgInvalidateCache(ybc_pg_session);
+
+		/*
+		 * For single-query transactions we abort the current
+		 * transaction to undo any already-applied operations
+		 * and retry the query.
+		 *
+		 * For transaction blocks we would have to re-apply
+		 * all previous queries and also continue the
+		 * transaction for future queries (before commit).
+		 * So we just re-throw the error in that case.
+		 *
+		 */
+		if (!IsTransactionBlock())
+		{
+			/* Clear error state */
+			FlushErrorState();
+			FreeErrorData(edata);
+
+			if (cleanup_transaction)
+			{
+				/* Abort the transaction and clean up. */
+				AbortCurrentTransaction();
+				if (am_walsender)
+					WalSndErrorCleanup();
+
+				if (MyReplicationSlot != NULL)
+					ReplicationSlotRelease();
+
+				ReplicationSlotCleanup();
+
+				if (doing_extended_query_message)
+					ignore_till_sync = true;
+
+				xact_started = false;
+			}
+			/* Retry query */
+			*need_retry = true;
+		}
+	}
+}
 
 /* ----------------------------------------------------------------
  * PostgresMain
@@ -4096,26 +4188,50 @@ PostgresMain(int argc, char *argv[],
 		switch (firstchar)
 		{
 			case 'Q':			/* simple query */
+			{
+				const char *query_string;
+
+				/* Set statement_timestamp() */
+				SetCurrentStatementStartTimestamp();
+
+				query_string = pq_getmsgstring(&input_message);
+				pq_getmsgend(&input_message);
+
+				MemoryContext oldcontext = CurrentMemoryContext;
+
+				PG_TRY();
 				{
-					const char *query_string;
-
-					/* Set statement_timestamp() */
-					SetCurrentStatementStartTimestamp();
-
-					query_string = pq_getmsgstring(&input_message);
-					pq_getmsgend(&input_message);
-
 					if (am_walsender)
 					{
 						if (!exec_replication_command(query_string))
 							exec_simple_query(query_string);
-					}
-					else
+					} else
 						exec_simple_query(query_string);
-
-					send_ready_for_query = true;
 				}
-				break;
+				PG_CATCH();
+				{
+					bool need_retry = false;
+					ybcPrepareRetryIfNeeded(oldcontext,
+					                        true /* cleanup_transaction */,
+					                        &need_retry);
+					if (need_retry)
+					{
+						if (am_walsender)
+						{
+							if (!exec_replication_command(query_string))
+								exec_simple_query(query_string);
+						} else
+							exec_simple_query(query_string);
+					} else
+					{
+						PG_RE_THROW();
+					}
+				}
+				PG_END_TRY();
+
+				send_ready_for_query = true;
+			}
+			break;
 
 			case 'P':			/* parse */
 				{
@@ -4142,8 +4258,43 @@ PostgresMain(int argc, char *argv[],
 					}
 					pq_getmsgend(&input_message);
 
-					exec_parse_message(query_string, stmt_name,
-									   paramTypes, numParams);
+					MemoryContext oldcontext = CurrentMemoryContext;
+
+					PG_TRY();
+					{
+						exec_parse_message(query_string,
+						                   stmt_name,
+						                   paramTypes,
+						                   numParams,
+						                   whereToSendOutput);
+					}
+					PG_CATCH();
+					{
+						/*
+						 * TODO Cannot retry parse statements yet (without
+						 * aborting the followup bind/execute.
+						 */
+						bool can_retry = false;
+						bool need_retry = false;
+						ybcPrepareRetryIfNeeded(oldcontext,
+						                        false /* cleanup_transaction */,
+						                        &need_retry);
+						if (need_retry && can_retry)
+						{
+							exec_parse_message(query_string,
+							                   stmt_name,
+							                   paramTypes,
+							                   numParams,
+							                   whereToSendOutput);
+						}
+						else
+						{
+							PG_RE_THROW();
+						}
+
+					}
+					PG_END_TRY();
+
 				}
 				break;
 
@@ -4174,7 +4325,128 @@ PostgresMain(int argc, char *argv[],
 					max_rows = pq_getmsgint(&input_message, 4);
 					pq_getmsgend(&input_message);
 
-					exec_execute_message(portal_name, max_rows);
+					MemoryContext oldcontext = CurrentMemoryContext;
+
+					PG_TRY();
+					{
+						exec_execute_message(portal_name, max_rows);
+					}
+					PG_CATCH();
+					{
+						Portal old_portal = GetPortalByName(portal_name);
+
+						/*
+						 * TODO Do not support retrying for prepared statements
+						 * yet. (i.e. if portal is named or has params).
+						 */
+						bool can_retry = IsYugaByteEnabled() &&
+						                 old_portal &&
+						                 portal_name[0] == '\0' &&
+						                 !old_portal->portalParams;
+
+						/* Stuff we might need for retrying below */
+						char *query_string = NULL;
+						int num_params = 0;
+						Oid *param_types = NULL;
+						int   nformats = 0;
+						int16 *formats = NULL;
+
+						if (can_retry)
+						{
+							/*
+							 * Copy the data needed to retry before transaction
+							 * abort cleans it up.
+							 */
+							query_string = pstrdup(unnamed_stmt_psrc->query_string);
+							num_params   = unnamed_stmt_psrc->num_params;
+							if (unnamed_stmt_psrc->param_types)
+							{
+								param_types = (Oid *) palloc(num_params * sizeof(Oid));
+								memcpy(param_types,
+								       unnamed_stmt_psrc->param_types,
+								       num_params * sizeof(Oid));
+							}
+
+							if (old_portal->formats)
+							{
+								nformats = old_portal->tupDesc->natts;
+								formats  = (int16 *) palloc(nformats * sizeof(int16));
+								memcpy(formats,
+								       old_portal->formats,
+								       nformats * sizeof(int16));
+							}
+						}
+
+						bool need_retry = false;
+						/*
+						 * Execute may have been partially applied so need to
+						 * cleanup (and restart) the transaction.
+						 */
+						ybcPrepareRetryIfNeeded(oldcontext,
+						                        true /* cleanup_transaction */,
+						                        &need_retry);
+
+						if (need_retry && can_retry)
+						{
+
+							/* 1. Redo Parse: Create Cached stmt (no output) */
+							exec_parse_message(query_string,
+							                   portal_name,
+							                   param_types,
+							                   num_params,
+							                   DestNone);
+
+							/* 2. Redo the Bind step */
+							Portal portal;
+							/* Create portal */
+							if (portal_name[0] == '\0')
+								portal = CreatePortal(portal_name, true, true);
+							else
+								portal = CreatePortal(portal_name,
+								                      false,
+								                      false);
+
+							/* Set portal data */
+							MemoryContext oldContext = MemoryContextSwitchTo(
+									PortalGetHeapMemory(portal));
+							char          *stmt_name;
+							if (portal_name[0])
+								stmt_name = pstrdup(portal_name);
+							else
+								stmt_name = NULL;
+
+							/* TODO params are none for now (see above) */
+							ParamListInfo params = NULL;
+
+							MemoryContextSwitchTo(oldContext);
+
+							CachedPlan *cplan = GetCachedPlan(unnamed_stmt_psrc,
+							                                  params,
+							                                  false,
+							                                  NULL);
+
+							PortalDefineQuery(portal,
+							                  stmt_name,
+							                  query_string,
+							                  unnamed_stmt_psrc->commandTag,
+							                  cplan->stmt_list,
+							                  cplan);
+
+							/* Start portal */
+							PortalStart(portal, params, 0, InvalidSnapshot);
+							/* Set the output format */
+							PortalSetResultFormat(portal, nformats, formats);
+
+							/* 3. Now ready to retry the execute step. */
+							exec_execute_message(portal_name, max_rows);
+						}
+						else
+						{
+							PG_RE_THROW();
+						}
+
+					}
+					PG_END_TRY();
 				}
 				break;
 

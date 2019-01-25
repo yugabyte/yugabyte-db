@@ -1166,6 +1166,7 @@ void SetSysCacheTuple(Relation rel, HeapTuple tup)
 			break;
 
 		default:
+			/* For non-critical tables/indexes nothing to do */
 			return;
 	}
 }

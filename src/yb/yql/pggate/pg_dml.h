@@ -60,6 +60,8 @@ class PgDml : public PgStatement {
                        bool *has_data);
   CHECKED_STATUS WritePgTuple(PgTuple *pg_tuple);
 
+  virtual void SetCatalogCacheVersion(uint64_t catalog_cache_version) = 0;
+
  protected:
   // Method members.
   // Constructor.

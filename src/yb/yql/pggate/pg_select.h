@@ -58,6 +58,10 @@ class PgSelect : public PgDml {
   // Execute.
   CHECKED_STATUS Exec();
 
+  void SetCatalogCacheVersion(const uint64_t catalog_cache_version) override {
+    read_req_->set_ysql_catalog_version(catalog_cache_version);
+  }
+
  private:
   // Allocate column protobuf.
   PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;

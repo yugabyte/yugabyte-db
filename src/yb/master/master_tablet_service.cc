@@ -43,6 +43,23 @@ bool MasterTabletServiceImpl::GetTabletOrRespond(const tserver::ReadRequestPB* r
   return true;
 }
 
+void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
+           tserver::WriteResponsePB* resp,
+           rpc::RpcContext context) {
+
+  for (const auto& pg_req : req->pgsql_write_batch()) {
+    if (pg_req.is_ysql_catalog_change()) {
+      const auto &res = master_->catalog_manager()->IncrementYsqlCatalogVersion();
+      if (!res.ok()) {
+        context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
+            STATUS(InternalError, "Failed to increment YSQL catalog version"));
+      }
+    }
+  }
+
+  tserver::TabletServiceImpl::Write(req, resp, std::move(context));
+}
+
 namespace {
 
 void HandleUnsupportedMethod(const char* method_name, rpc::RpcContext* context) {
