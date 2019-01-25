@@ -64,7 +64,8 @@ public class HealthCheck extends Model {
     HealthCheck check = new HealthCheck();
     check.idKey = HealthCheckKey.create(universeUUID);
     check.customerId = customerId;
-    check.detailsJson = details;
+    // Validate it is correct JSON.
+    check.detailsJson = Json.stringify(Json.parse(details));
     // Save the object.
     check.save();
     keepOnlyLast(universeUUID, RECORD_LIMIT);
