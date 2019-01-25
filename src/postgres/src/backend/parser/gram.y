@@ -826,6 +826,7 @@ stmt :
 			| AlterDatabaseStmt
 			| ConstraintsSetStmt
 			| CreateAsStmt
+			| CopyStmt
 			| CreateSchemaStmt
 			| CreateStmt
 			| CreateUserStmt
@@ -884,7 +885,6 @@ stmt :
 			| ClosePortalStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CommentStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CopyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateCastStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -2963,7 +2963,6 @@ ClosePortalStmt:
 CopyStmt:	COPY opt_binary qualified_name opt_column_list opt_oids
 			copy_from opt_program copy_file_name copy_delimiter opt_with copy_options
 				{
-					parser_ybc_not_support(@1, "COPY");
 					CopyStmt *n = makeNode(CopyStmt);
 					n->relation = $3;
 					n->query = NULL;
@@ -2992,7 +2991,6 @@ CopyStmt:	COPY opt_binary qualified_name opt_column_list opt_oids
 				}
 			| COPY '(' PreparableStmt ')' TO opt_program copy_file_name opt_with copy_options
 				{
-					parser_ybc_not_support(@1, "COPY");
 					CopyStmt *n = makeNode(CopyStmt);
 					n->relation = NULL;
 					n->query = $3;
