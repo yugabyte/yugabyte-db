@@ -563,6 +563,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.GFlags);
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    assertEquals(0, subTasks.size());
+    assertEquals(1, subTasks.size());
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+    assertEquals(1, subTasksByPosition.get(0).size());
+    assertTaskType(subTasksByPosition.get(0), TaskType.UniverseUpdateSucceeded);
   }
 }

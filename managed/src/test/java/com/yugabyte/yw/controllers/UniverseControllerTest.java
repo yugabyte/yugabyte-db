@@ -36,6 +36,7 @@ import java.util.*;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -672,6 +673,44 @@ public class UniverseControllerTest extends WithApplication {
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
     assertBadRequest(result, "gflags param is required for taskType: GFlags");
+  }
+
+  @Test
+  public void testUniverseGFlagsUpgradeWithSameGFlags() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
+
+    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+        userIntent.masterGFlags = ImmutableMap.of("master-flag", "123");
+        userIntent.tserverGFlags = ImmutableMap.of("tserver-flag", "456");
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+    Universe.saveDetails(u.universeUUID, updater);
+
+    ObjectNode bodyJson = Json.newObject()
+        .put("universeUUID", u.universeUUID.toString())
+        .put("taskType", "GFlags")
+        .put("rollingUpgrade", false);
+    ObjectNode userIntentJson = Json.newObject().put("universeName", u.name);
+    ArrayNode clustersJsonArray =
+        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+
+    JsonNode masterGFlags = Json.parse("[{ \"name\": \"master-flag\", \"value\": \"123\"}]");
+    JsonNode tserverGFlags = Json.parse("[{ \"name\": \"tserver-flag\", \"value\": \"456\"}]");
+    userIntentJson.set("masterGFlags", masterGFlags);
+    userIntentJson.set("tserverGFlags", tserverGFlags);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertBadRequest(result, "Neither master nor tserver gflags changed");
   }
 
   @Test

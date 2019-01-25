@@ -126,6 +126,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
             }
             didUpgradeUniverse = true;
           }
+          break;
       }
 
       if (didUpgradeUniverse) {
@@ -138,11 +139,12 @@ public class UpgradeUniverse extends UniverseTaskBase {
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
         }
-
-        // Marks update of this universe as a success only if all the tasks before it succeeded.
-        createMarkUniverseUpdateSuccessTasks()
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
+
+      // Marks update of this universe as a success only if all the tasks before it succeeded.
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
