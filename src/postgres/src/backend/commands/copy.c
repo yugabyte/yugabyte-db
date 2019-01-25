@@ -48,6 +48,9 @@
 #include "utils/rel.h"
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
+#include "pg_yb_utils.h"
+#include "executor/ybcModifyTable.h"
+
 
 
 #define ISOCTAL(c) (((c) >= '0') && ((c) <= '7'))
@@ -2526,12 +2529,12 @@ CopyFrom(CopyState cstate)
 		 (resultRelInfo->ri_TrigDesc->trig_insert_before_row ||
 		  resultRelInfo->ri_TrigDesc->trig_insert_instead_row)) ||
 		cstate->partition_dispatch_info != NULL ||
-		cstate->volatile_defexprs)
+		cstate->volatile_defexprs || IsYugaByteEnabled())
 	{
 		useHeapMultiInsert = false;
 	}
 	else
-	{
+    {
 		useHeapMultiInsert = true;
 		bufferedTuples = palloc(MAX_BUFFERED_TUPLES * sizeof(HeapTuple));
 	}
@@ -2778,9 +2781,12 @@ CopyFrom(CopyState cstate)
 					List	   *recheckIndexes = NIL;
 
 					/* OK, store the tuple and create index entries for it */
-					heap_insert(resultRelInfo->ri_RelationDesc, tuple, mycid,
+					if (IsYugaByteEnabled()){
+						YBCExecuteInsert(cstate->rel, tupDesc, tuple);
+					} else {
+						heap_insert(resultRelInfo->ri_RelationDesc, tuple, mycid,
 								hi_options, bistate);
-
+					}
 					if (resultRelInfo->ri_NumIndices > 0)
 						recheckIndexes = ExecInsertIndexTuples(slot,
 															   &(tuple->t_self),
