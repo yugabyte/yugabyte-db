@@ -44,9 +44,6 @@ public class Commissioner {
   // The background progress monitor for the tasks.
   static ProgressMonitor progressMonitor;
 
-  // The background thread for checking universe status.
-  static HealthChecker healthChecker;
-
   // Threadpool to run user submitted tasks.
   static ExecutorService executor;
 
@@ -72,11 +69,6 @@ public class Commissioner {
     progressMonitor = new ProgressMonitor();
     progressMonitor.start();
     LOG.info("Started TaskProgressMonitor thread.");
-
-    // Initialize the Health Checker thread.
-    healthChecker = new HealthChecker();
-    healthChecker.start();
-    LOG.info("Started HealthChecker thread.");
   }
 
   /**

@@ -203,7 +203,8 @@ public class Universe extends Model {
 
     // For backwards compatibility from {universeDetails: {"userIntent": <foo>, "placementInfo": <bar>}}
     // to {universeDetails: {clusters: [{"userIntent": <foo>, "placementInfo": <bar>},...]}}
-    if (!detailsJson.has("clusters") || detailsJson.get("clusters").size() == 0) {
+    if (detailsJson != null && !detailsJson.isNull() &&
+        (!detailsJson.has("clusters") || detailsJson.get("clusters").size() == 0)) {
       UserIntent userIntent = Json.fromJson(detailsJson.get("userIntent"), UserIntent.class);
       PlacementInfo placementInfo = Json.fromJson(detailsJson.get("placementInfo"), PlacementInfo.class);
       universe.universeDetails.upsertPrimaryCluster(userIntent, placementInfo);

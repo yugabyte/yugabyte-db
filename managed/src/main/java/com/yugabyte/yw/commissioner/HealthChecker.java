@@ -34,23 +34,25 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import play.api.Play;
+import play.Configuration;
 import play.libs.Json;
 
+import akka.actor.ActorSystem;
+import com.google.common.annotations.VisibleForTesting;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.TimeUnit;
+import play.Environment;
+import scala.concurrent.ExecutionContext;
+import scala.concurrent.duration.Duration;
+
 @Singleton
-public class HealthChecker extends Thread {
+public class HealthChecker {
   public static final Logger LOG = LoggerFactory.getLogger(HealthChecker.class);
 
-  play.Configuration appConfig;
+  play.Configuration config;
 
-  // Email address from YugaByte to which to send emails, if enabled.
-  private String YB_ALERT_EMAIL = null;
-
-  // The interval at which the checker will run.
-  // Can be overridden per customer.
   private long HEALTH_CHECK_SLEEP_INTERVAL_MS = 0;
 
-  // The interval at which to send a status update of all the current universes.
-  // Can be overridden per customer.
   private long STATUS_UPDATE_INTERVAL_MS = 0;
 
   // Last time we sent a status update email per customer.
@@ -60,208 +62,245 @@ public class HealthChecker extends Thread {
   private Map<UUID, Long> lastCheckTimeMap = new HashMap<>();
 
   // What will run the health checking script.
-  static HealthManager healthManager = null;
+  HealthManager healthManager;
 
-  public HealthChecker() {
-    setName("HealthChecker");
+  private AtomicBoolean running = new AtomicBoolean(false);
+
+  private final ActorSystem actorSystem;
+
+  private final ExecutionContext executionContext;
+
+  private final Environment environment;
+
+  @Inject
+  public HealthChecker(
+      ActorSystem actorSystem,
+      Configuration config,
+      Environment environment,
+      ExecutionContext executionContext,
+      HealthManager healthManager) {
+    this.actorSystem = actorSystem;
+    this.config = config;
+    this.environment = environment;
+    this.executionContext = executionContext;
+    this.healthManager = healthManager;
+
+    this.initialize();
   }
 
-  @Override
-  public void run() {
-    LOG.info("Starting health checking");
-    while (true) {
-      try {
-        if (healthManager == null) {
-          initHealthManager();
-        }
-      } catch (RuntimeException e) {
-        LOG.error("Could not setup HealthManager yet...");
-        healthManager = null;
+  private void initialize() {
+    this.actorSystem.scheduler().schedule(
+      Duration.create(0, TimeUnit.MILLISECONDS), // initialDelay
+      Duration.create(this.healthCheckIntervalMs(), TimeUnit.MILLISECONDS), // interval
+      () -> scheduleRunner(),
+      this.executionContext
+    );
+  }
+
+  // The interval at which the checker will run.
+  // Can be overridden per customer.
+  private long healthCheckIntervalMs() {
+    Long interval = config.getLong("yb.health.check_interval_ms");
+    return interval == null ? 0 : interval;
+  }
+
+  // The interval at which to send a status update of all the current universes.
+  // Can be overridden per customer.
+  private long statusUpdateIntervalMs() {
+    Long interval = config.getLong("yb.health.status_interval_ms");
+    return interval == null ? 0 : interval;
+  }
+
+  private String ybAlertEmail() {
+    return config.getString("yb.health.default_email");
+  }
+
+  @VisibleForTesting
+  void scheduleRunner() {
+    if (running.get()) {
+      LOG.info("Previous run still underway");
+      return;
+    }
+
+    LOG.info("Running health checker");
+    running.set(true);
+    // TODO(bogdan): This will not be too DB friendly when we go multi-tenant.
+    for (Customer c : Customer.getAll()) {
+      checkCustomer(c);
+    }
+    running.set(false);
+  }
+
+  public void checkCustomer(Customer c) {
+    // We need an alerting config to do work.
+    CustomerConfig config = CustomerConfig.getAlertConfig(c.uuid);
+    if (config == null) {
+      LOG.info("Skipping customer " + c.uuid + " due to missing alerting config...");
+      return;
+    }
+    AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
+    long now = (new Date()).getTime();
+    long checkIntervalMs = alertingData.checkIntervalMs <= 0
+      ? healthCheckIntervalMs()
+      : alertingData.checkIntervalMs;
+    boolean shouldRunCheck = (now - checkIntervalMs) >
+        lastCheckTimeMap.getOrDefault(c.uuid, 0l);
+    long statusUpdateIntervalMs = alertingData.statusUpdateIntervalMs <= 0
+      ? statusUpdateIntervalMs()
+      : alertingData.statusUpdateIntervalMs;
+    boolean shouldSendStatusUpdate = (now - statusUpdateIntervalMs) >
+        lastStatusUpdateTimeMap.getOrDefault(c.uuid, 0l);
+    // Always do a check if it's time for a status update OR if it's time for a check.
+    if (shouldSendStatusUpdate || shouldRunCheck) {
+      // Since we'll do a check, update this all the time.
+      lastCheckTimeMap.put(c.uuid, now);
+      if (shouldSendStatusUpdate) {
+        lastStatusUpdateTimeMap.put(c.uuid, now);
       }
-      if (healthManager != null) {
-        // TODO(bogdan): This will not be too DB friendly when we go multi-tenant.
-        for (Customer c : Customer.getAll()) {
-          CustomerConfig config = CustomerConfig.getAlertConfig(c.uuid);
-          if (config == null) {
-            // LOG.debug("Skipping customer " + c.uuid + " due to missing alerting config...");
-            continue;
-          }
-          AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
-          long now = (new Date()).getTime();
-          long checkIntervalMs = alertingData.checkIntervalMs <= 0
-            ? HEALTH_CHECK_SLEEP_INTERVAL_MS
-            : alertingData.checkIntervalMs;
-          boolean shouldRunCheck = (now - checkIntervalMs) >
-              lastCheckTimeMap.getOrDefault(c.uuid, 0l);
-          long statusUpdateIntervalMs = alertingData.statusUpdateIntervalMs <= 0
-            ? STATUS_UPDATE_INTERVAL_MS
-            : alertingData.statusUpdateIntervalMs;
-          boolean shouldSendStatusUpdate = (now - statusUpdateIntervalMs) >
-              lastStatusUpdateTimeMap.getOrDefault(c.uuid, 0l);
-          // Always do a check if it's time for a status update OR if it's time for a check.
-          if (shouldSendStatusUpdate || shouldRunCheck) {
-            // Since we'll do a check, update this all the time.
-            lastCheckTimeMap.put(c.uuid, now);
-            if (shouldSendStatusUpdate) {
-              lastStatusUpdateTimeMap.put(c.uuid, now);
-            }
-            checkAllUniverses(c, config, shouldSendStatusUpdate);
-          }
-        }
-      }
-      sleep();
+      checkAllUniverses(c, config, shouldSendStatusUpdate);
     }
   }
 
-  /*
-   * This function will error out while the App is not yet initialized. Once it is, we should be
-   * safe to read the appConfig values.
-   */
-  private void initHealthManager() {
-    healthManager = Play.current().injector().instanceOf(HealthManager.class);
-    appConfig = Play.current().injector().instanceOf(play.Configuration.class);
-
-    HEALTH_CHECK_SLEEP_INTERVAL_MS = appConfig.getLong("yb.health.check_interval_ms");
-    STATUS_UPDATE_INTERVAL_MS = appConfig.getLong("yb.health.status_interval_ms");
-    YB_ALERT_EMAIL = appConfig.getString("yb.health.default_email");
-  }
-
-  private void checkAllUniverses(Customer c, CustomerConfig config,
-      boolean shouldSendStatusUpdate) {
+  public void checkAllUniverses(
+      Customer c, CustomerConfig config, boolean shouldSendStatusUpdate) {
+    // Process all of a customer's universes.
     for (Universe u : c.getUniverses()) {
-      UniverseDefinitionTaskParams details = u.getUniverseDetails();
-      if (details == null) {
-        LOG.warn("Skipping universe " + u.name + " due to invalid details json...");
-        continue;
-      }
-      if (details.updateInProgress) {
-        LOG.warn("Skipping universe " + u.name + " due to task in progress...");
-        continue;
-      }
-      LOG.info("Doing health check for universe: " + u.name);
-      Map<UUID, HealthManager.ClusterInfo> clusterMetadata = new HashMap<>();
-      boolean invalidUniverseData = false;
-      String providerCode = "";
-      for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
-        HealthManager.ClusterInfo info = new HealthManager.ClusterInfo();
-        clusterMetadata.put(cluster.uuid, info);
-        info.ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
-        info.nodePrefix = details.nodePrefix;
-
-        Provider provider = Provider.get(UUID.fromString(cluster.userIntent.provider));
-        if (provider == null) {
-          LOG.warn("Skipping universe " + u.name + " due to invalid provider "
-              + cluster.userIntent.provider);
-          invalidUniverseData = true;
-          break;
-        }
-        providerCode = provider.code;
-        // TODO(bogdan): We do not have access to the default port constant at this level, as it is
-        // baked in devops...hardcode it for now.
-        // Default to 54422.
-        int sshPort = 54422;
-        if (providerCode.equals(Common.CloudType.onprem.toString())) {
-          // For onprem, technically, each node could have a different port, but let's pick one of
-          // the nodes for now and go from there.
-          // TODO(bogdan): Improve the onprem support in devops to have port per node.
-          for (NodeDetails nd : details.nodeDetailsSet) {
-            NodeInstance onpremNode = NodeInstance.getByName(nd.nodeName);
-            if (onpremNode != null) {
-              NodeInstanceFormData.NodeInstanceData onpremDetails = onpremNode.getDetails();
-              if (onpremDetails != null) {
-                sshPort = onpremDetails.sshPort;
-                break;
-              }
-            }
-          }
-        }
-        AccessKey accessKey = AccessKey.get(provider.uuid, cluster.userIntent.accessKeyCode);
-        if (accessKey == null || accessKey.getKeyInfo() == null) {
-          if (!providerCode.equals(CloudType.kubernetes.toString())) {
-            LOG.warn("Skipping universe " + u.name + " due to invalid access key...");
-            invalidUniverseData = true;
-          }
-          break;
-        }
-        info.sshPort = sshPort;
-        info.identityFile = accessKey.getKeyInfo().privateKey;
-      }
-      // If any clusters were invalid, abort for this universe.
-      if (invalidUniverseData) {
-        continue;
-      }
-      for (NodeDetails nd : details.nodeDetailsSet) {
-        HealthManager.ClusterInfo info = clusterMetadata.get(nd.placementUuid);
-        if (info == null) {
-          invalidUniverseData = true;
-          LOG.warn(String.format(
-                "Universe %s has node %s with invalid placement %s", u.name, nd.nodeName,
-                nd.placementUuid));
-          break;
-        }
-        // TODO: we do not have a good way of marking the whole universe as k8s only.
-        boolean isK8s = providerCode.equals(Common.CloudType.kubernetes.toString());
-        if (nd.isMaster) {
-          if (isK8s) {
-            info.masterNodes.add(nd.nodeName);
-          } else {
-            info.masterNodes.add(nd.cloudInfo.private_ip);
-          }
-        }
-        if (nd.isTserver) {
-          if (isK8s) {
-            info.tserverNodes.add(nd.nodeName);
-          } else {
-            info.tserverNodes.add(nd.cloudInfo.private_ip);
-          }
-        }
-      }
-      // If any nodes were invalid, abort for this universe.
-      if (invalidUniverseData) {
-        continue;
-      }
-      List<String> destinations = new ArrayList<String>();
-      if (config != null) {
-        AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
-        if (alertingData.sendAlertsToYb) {
-          destinations.add(YB_ALERT_EMAIL);
-        }
-        if (alertingData.alertingEmail != null && !alertingData.alertingEmail.isEmpty()) {
-          destinations.add(alertingData.alertingEmail);
-        }
-      }
-      CustomerTask lastTask = CustomerTask.getLatestByUniverseUuid(u.universeUUID);
-      long potentialStartTime = 0;
-      if (lastTask != null && lastTask.getCompletionTime()!= null) {
-        potentialStartTime = lastTask.getCompletionTime().getTime();
-      }
-      // If last check had errors, set the flag to send an email. If this check will have an error,
-      // we would send an email anyway, but if this check shows a healthy universe, let's send an
-      // email about it.
-      HealthCheck lastCheck = HealthCheck.getLatest(u.universeUUID);
-      boolean lastCheckHadErrors = lastCheck != null && lastCheck.hasError();
-      // Setup customer tag including email and code, for ease of email parsing.
-      String customerTag = String.format("[%s][%s]", c.email, c.code);
-      Provider mainProvider = Provider.get(UUID.fromString(
-            details.getPrimaryCluster().userIntent.provider));
-      ShellProcessHandler.ShellResponse response = healthManager.runCommand(
-          mainProvider, new ArrayList(clusterMetadata.values()), u.name, customerTag,
-          (destinations.size() == 0 ? null : String.join(",", destinations)),
-          potentialStartTime, (shouldSendStatusUpdate || lastCheckHadErrors));
-      if (response.code == 0) {
-        HealthCheck.addAndPrune(u.universeUUID, u.customerId, response.message);
-      } else {
-        LOG.error(String.format(
-            "Health check script got error: code (%s), msg: ", response.code, response.message));
-      }
+      checkSingleUniverse(u, c, config, shouldSendStatusUpdate);
     }
   }
 
-  private void sleep() {
-    // Sleep for 5 seconds and check if it is time to run the script.
-    try {
-      Thread.sleep(5000);
-    } catch (InterruptedException e) {
+  public void checkSingleUniverse(
+      Universe u, Customer c, CustomerConfig config, boolean shouldSendStatusUpdate) {
+    // Validate universe data and make sure nothing is in progress.
+    UniverseDefinitionTaskParams details = u.getUniverseDetails();
+    if (details == null) {
+      LOG.warn("Skipping universe " + u.name + " due to invalid details json...");
+      return;
+    }
+    if (details.updateInProgress) {
+      LOG.warn("Skipping universe " + u.name + " due to task in progress...");
+      return;
+    }
+    LOG.info("Doing health check for universe: " + u.name);
+    Map<UUID, HealthManager.ClusterInfo> clusterMetadata = new HashMap<>();
+    boolean invalidUniverseData = false;
+    String providerCode = "";
+    for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
+      HealthManager.ClusterInfo info = new HealthManager.ClusterInfo();
+      clusterMetadata.put(cluster.uuid, info);
+      info.ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
+      info.nodePrefix = details.nodePrefix;
+      Provider provider = Provider.get(UUID.fromString(cluster.userIntent.provider));
+      if (provider == null) {
+        LOG.warn("Skipping universe " + u.name + " due to invalid provider "
+            + cluster.userIntent.provider);
+        invalidUniverseData = true;
+        break;
+      }
+      providerCode = provider.code;
+      // TODO(bogdan): We do not have access to the default port constant at this level, as it is
+      // baked in devops...hardcode it for now.
+      // Default to 54422.
+      int sshPort = 54422;
+      if (providerCode.equals(Common.CloudType.onprem.toString())) {
+        // For onprem, technically, each node could have a different port, but let's pick one of
+        // the nodes for now and go from there.
+        // TODO(bogdan): Improve the onprem support in devops to have port per node.
+        for (NodeDetails nd : details.nodeDetailsSet) {
+          NodeInstance onpremNode = NodeInstance.getByName(nd.nodeName);
+          if (onpremNode != null) {
+            NodeInstanceFormData.NodeInstanceData onpremDetails = onpremNode.getDetails();
+            if (onpremDetails != null) {
+              sshPort = onpremDetails.sshPort;
+              break;
+            }
+          }
+        }
+      }
+      AccessKey accessKey = AccessKey.get(provider.uuid, cluster.userIntent.accessKeyCode);
+      if (accessKey == null || accessKey.getKeyInfo() == null) {
+        if (!providerCode.equals(CloudType.kubernetes.toString())) {
+          LOG.warn("Skipping universe " + u.name + " due to invalid access key...");
+          invalidUniverseData = true;
+        }
+        break;
+      }
+      info.sshPort = sshPort;
+      info.identityFile = accessKey.getKeyInfo().privateKey;
+    }
+    // If any clusters were invalid, abort for this universe.
+    if (invalidUniverseData) {
+      return;
+    }
+    for (NodeDetails nd : details.nodeDetailsSet) {
+      HealthManager.ClusterInfo info = clusterMetadata.get(nd.placementUuid);
+      if (info == null) {
+        invalidUniverseData = true;
+        LOG.warn(String.format(
+              "Universe %s has node %s with invalid placement %s", u.name, nd.nodeName,
+              nd.placementUuid));
+        break;
+      }
+      // TODO: we do not have a good way of marking the whole universe as k8s only.
+      boolean isK8s = providerCode.equals(Common.CloudType.kubernetes.toString());
+      if (nd.isMaster) {
+        if (isK8s) {
+          info.masterNodes.add(nd.nodeName);
+        } else {
+          info.masterNodes.add(nd.cloudInfo.private_ip);
+        }
+      }
+      if (nd.isTserver) {
+        if (isK8s) {
+          info.tserverNodes.add(nd.nodeName);
+        } else {
+          info.tserverNodes.add(nd.cloudInfo.private_ip);
+        }
+      }
+    }
+    // If any nodes were invalid, abort for this universe.
+    if (invalidUniverseData) {
+      return;
+    }
+    List<String> destinations = new ArrayList<String>();
+    if (config != null) {
+      AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
+      String ybEmail = ybAlertEmail();
+      if (alertingData.sendAlertsToYb && ybEmail != null && !ybEmail.isEmpty()) {
+        destinations.add(ybEmail);
+      }
+      if (alertingData.alertingEmail != null && !alertingData.alertingEmail.isEmpty()) {
+        destinations.add(alertingData.alertingEmail);
+      }
+    }
+    CustomerTask lastTask = CustomerTask.getLatestByUniverseUuid(u.universeUUID);
+    long potentialStartTime = 0;
+    if (lastTask != null && lastTask.getCompletionTime()!= null) {
+      potentialStartTime = lastTask.getCompletionTime().getTime();
+    }
+    // If last check had errors, set the flag to send an email. If this check will have an error,
+    // we would send an email anyway, but if this check shows a healthy universe, let's send an
+    // email about it.
+    HealthCheck lastCheck = HealthCheck.getLatest(u.universeUUID);
+    boolean lastCheckHadErrors = lastCheck != null && lastCheck.hasError();
+    // Setup customer tag including email and code, for ease of email parsing.
+    String customerTag = String.format("[%s][%s]", c.email, c.code);
+    Provider mainProvider = Provider.get(UUID.fromString(
+          details.getPrimaryCluster().userIntent.provider));
+    // Call devops and process response.
+    ShellProcessHandler.ShellResponse response = healthManager.runCommand(
+        mainProvider,
+        new ArrayList(clusterMetadata.values()),
+        u.name,
+        customerTag,
+        (destinations.size() == 0 ? null : String.join(",", destinations)),
+        potentialStartTime,
+        (shouldSendStatusUpdate || lastCheckHadErrors));
+    if (response.code == 0) {
+      HealthCheck.addAndPrune(u.universeUUID, u.customerId, response.message);
+    } else {
+      LOG.error(String.format(
+          "Health check script got error: code (%s), msg: ", response.code, response.message));
     }
   }
 }
