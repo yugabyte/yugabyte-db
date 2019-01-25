@@ -497,8 +497,8 @@ TEST_F(RpcStubTest, TestDontHandleTimedOutCalls) {
   CountDownLatch latch(count);
   for (size_t i = 0; i < count; i++) {
     gscoped_ptr<AsyncSleep> sleep(new AsyncSleep);
-    sleep->rpc.set_timeout(MonoDelta::FromSeconds(1));
-    sleep->req.set_sleep_micros(100*1000); // 100ms
+    sleep->rpc.set_timeout(10s);
+    sleep->req.set_sleep_micros(500 * 1000); // 100ms
     p.SleepAsync(sleep->req, &sleep->resp, &sleep->rpc, [&latch]() { latch.CountDown(); });
     sleeps.push_back(sleep.release());
   }
@@ -509,7 +509,7 @@ TEST_F(RpcStubTest, TestDontHandleTimedOutCalls) {
   SleepRequestPB req;
   SleepResponsePB resp;
   req.set_sleep_micros(1000);
-  rpc.set_timeout(MonoDelta::FromMilliseconds(1));
+  rpc.set_timeout(250ms);
   Status s = p.Sleep(req, &resp, &rpc);
   ASSERT_TRUE(s.IsTimedOut()) << s.ToString();
 
