@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -652,26 +653,36 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
 
+    // Get the universe. This makes sure that a universe of this name does exist
+    // for this customer id.
+    Universe universe = null;
+    try {
+      universe = Universe.get(universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+
     // Bind rolling restart params
     RollingRestartParams taskParams;
     try {
       ObjectNode formData = (ObjectNode) request().body().asJson();
       taskParams = (RollingRestartParams) bindFormDataToTaskParams(formData, true);
+
+      if (taskParams.taskType == null) {
+        return ApiResponse.error(BAD_REQUEST, "task type is required");
+      }
+
       // TODO: we need to refactor this to read from cluster
       // instead of top level task param, for now just copy the master flag and tserver flag
       // from primary cluster.
-      Cluster primaryCluster = taskParams.getPrimaryCluster();
-      taskParams.masterGFlags = primaryCluster.userIntent.masterGFlags;
-      taskParams.tserverGFlags = primaryCluster.userIntent.tserverGFlags;
+      UserIntent primaryIntent = taskParams.getPrimaryCluster().userIntent;
+      taskParams.masterGFlags = primaryIntent.masterGFlags;
+      taskParams.tserverGFlags = primaryIntent.tserverGFlags;
     } catch (Throwable t) {
       return ApiResponse.error(BAD_REQUEST, t.getMessage());
     }
 
     try {
-      if (taskParams.taskType == null) {
-        return ApiResponse.error(BAD_REQUEST, "task type is required");
-      }
-
       CustomerTask.TaskType customerTaskType = null;
       // Validate if any required params are missed based on the taskType
       switch(taskParams.taskType) {
@@ -679,26 +690,31 @@ public class UniverseController extends AuthenticatedController {
           customerTaskType = CustomerTask.TaskType.UpgradeSoftware;
           if (taskParams.ybSoftwareVersion == null || taskParams.ybSoftwareVersion.isEmpty()) {
             return ApiResponse.error(
-              BAD_REQUEST,
-              "ybSoftwareVersion param is required for taskType: " + taskParams.taskType);
+                BAD_REQUEST,
+                "ybSoftwareVersion param is required for taskType: " + taskParams.taskType);
           }
           break;
         case GFlags:
           customerTaskType = CustomerTask.TaskType.UpgradeGflags;
           if ((taskParams.masterGFlags == null || taskParams.masterGFlags.isEmpty()) &&
-            (taskParams.tserverGFlags == null || taskParams.tserverGFlags.isEmpty())) {
+              (taskParams.tserverGFlags == null || taskParams.tserverGFlags.isEmpty())) {
             return ApiResponse.error(
-              BAD_REQUEST,
-              "gflags param is required for taskType: " + taskParams.taskType);
+                BAD_REQUEST,
+                "gflags param is required for taskType: " + taskParams.taskType);
+          }
+          UserIntent univIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+          if (taskParams.masterGFlags != null &&
+              taskParams.masterGFlags.equals(univIntent.masterGFlags) &&
+              taskParams.tserverGFlags != null &&
+              taskParams.tserverGFlags.equals(univIntent.tserverGFlags)) {
+            return ApiResponse.error(
+                BAD_REQUEST, "Neither master nor tserver gflags changed.");
           }
           break;
       }
 
       LOG.info("Got task type {}", customerTaskType.toString());
 
-      // Get the universe. This makes sure that a universe of this name does exist
-      // for this customer id.
-      Universe universe = Universe.get(universeUUID);
       taskParams.universeUUID = universe.universeUUID;
       taskParams.expectedUniverseVersion = universe.version;
       LOG.info("Found universe {} : name={} at version={}.",
