@@ -334,6 +334,10 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
                        const std::string& name_suffix = std::string());
   scoped_refptr<MetricEntity> metric_entity() const;
 
+  bool add_to_parent() const {
+    return add_to_parent_;
+  }
+
  private:
   bool CheckLimitExceeded() const {
     return limit_ >= 0 && limit_ < consumption();
