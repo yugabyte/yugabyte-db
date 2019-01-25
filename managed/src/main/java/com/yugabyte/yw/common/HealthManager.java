@@ -35,8 +35,13 @@ public class HealthManager extends DevopsBase {
   }
 
   public ShellProcessHandler.ShellResponse runCommand(
-      Provider provider, List<ClusterInfo> clusters, String universeName, String customerTag,
-      String destination, long potentialStartTimeMs, boolean shouldSendStatusUpdate) {
+      Provider provider,
+      List<ClusterInfo> clusters,
+      String universeName,
+      String customerTag,
+      String destination,
+      Long potentialStartTimeMs,
+      Boolean shouldSendStatusUpdate) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);

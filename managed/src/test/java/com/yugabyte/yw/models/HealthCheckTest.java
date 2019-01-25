@@ -100,4 +100,9 @@ public class HealthCheckTest extends FakeDBApplication {
         "{\"" + HealthCheck.FIELD_HAS_ERROR + "\": false}");
     assertFalse(falseError.hasError());
   }
+
+  @Test(expected = RuntimeException.class)
+  public void testInvalidDetailsJson() {
+    HealthCheck shouldThrow = addCheck(UUID.randomUUID(), "invalid_json");
+  }
 }

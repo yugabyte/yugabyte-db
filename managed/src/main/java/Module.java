@@ -24,7 +24,6 @@ public class Module extends AbstractModule {
     bind(SwamperHelper.class).asEagerSingleton();
     // Set LocalClientService as the implementation for YBClientService
     bind(YBClientService.class).to(LocalYBClientService.class);
-    bind(HealthChecker.class).asEagerSingleton();
     bind(HealthManager.class).asEagerSingleton();
     bind(NodeManager.class).asEagerSingleton();
     bind(MetricQueryHelper.class).asEagerSingleton();
@@ -37,5 +36,6 @@ public class Module extends AbstractModule {
     bind(KubernetesManager.class).asEagerSingleton();
     bind(CallHome.class).asEagerSingleton();
     bind(Scheduler.class).asEagerSingleton();
+    bind(HealthChecker.class).asEagerSingleton();
   }
 }

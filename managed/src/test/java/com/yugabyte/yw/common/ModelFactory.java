@@ -90,7 +90,10 @@ public class ModelFactory {
     params.universeUUID = universeUUID;
     params.nodeDetailsSet = new HashSet<>();
     params.upsertPrimaryCluster(userIntent, null);
-    return Universe.create(params, customerId);
+    Universe u = Universe.create(params, customerId);
+    c.addUniverseUUID(u.universeUUID);
+    c.save();
+    return u;
   }
 
   public static CustomerConfig createS3StorageConfig(Customer customer) {
