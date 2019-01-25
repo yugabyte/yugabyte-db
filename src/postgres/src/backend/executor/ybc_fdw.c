@@ -592,11 +592,11 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 	node->fdw_state = (void *) ybc_state;
 	HandleYBStatus(YBCPgNewSelect(ybc_pg_session,
-								  YBCGetDatabaseOid(relation),
-								  RelationGetRelid(relation),
-								  InvalidOid /* index_oid */,
-								  &ybc_state->handle,
-								  node->ss.ps.state ? &node->ss.ps.state->es_yb_read_ht : 0));
+	                              YBCGetDatabaseOid(relation),
+	                              RelationGetRelid(relation),
+	                              InvalidOid /* index_oid */,
+	                              &ybc_state->handle,
+	                              estate ? &estate->es_yb_read_ht : 0));
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
 	ybc_state->stmt_owner = CurrentResourceOwner;
@@ -615,7 +615,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 		TargetEntry *target = (TargetEntry *) lfirst(lc);
 
 		/* For regular (non-system) attribute check if they were deleted */
-		Oid attr_typid = InvalidOid;
+		Oid   attr_typid  = InvalidOid;
 		int32 attr_typmod = 0;
 		if (target->resno > 0)
 		{
@@ -626,13 +626,17 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 			{
 				continue;
 			}
-			attr_typid = attr->atttypid;
+			attr_typid  = attr->atttypid;
 			attr_typmod = attr->atttypmod;
 		}
 
-		YBCPgTypeAttrs type_attrs = { attr_typmod };
-		YBCPgExpr expr = YBCNewColumnRef(ybc_state->handle, target->resno, attr_typid, &type_attrs);
-		HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle, expr),
+		YBCPgTypeAttrs type_attrs = {attr_typmod};
+		YBCPgExpr      expr       = YBCNewColumnRef(ybc_state->handle,
+		                                            target->resno,
+		                                            attr_typid,
+		                                            &type_attrs);
+		HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
+		                                                 expr),
 		                            ybc_state->handle,
 		                            ybc_state->stmt_owner);
 		has_targets = true;
@@ -653,15 +657,24 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 				continue;
 			}
 
-			YBCPgTypeAttrs type_attrs = { tupdesc->attrs[i]->atttypmod };
-			YBCPgExpr expr = YBCNewColumnRef(ybc_state->handle, i + 1, tupdesc->attrs[i]->atttypid,
-											 &type_attrs);
-			HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle, expr),
+			YBCPgTypeAttrs type_attrs = {tupdesc->attrs[i]->atttypmod};
+			YBCPgExpr      expr       = YBCNewColumnRef(ybc_state->handle,
+			                                            i + 1,
+			                                            tupdesc->attrs[i]->atttypid,
+			                                            &type_attrs);
+			HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
+			                                                 expr),
 			                            ybc_state->handle,
 			                            ybc_state->stmt_owner);
 			break;
 		}
 	}
+
+	/* Set the current syscatalog version (will check that we are up to date) */
+	HandleYBStmtStatusWithOwner(YBCPgSetCatalogCacheVersion(ybc_state->handle,
+	                                                        ybc_catalog_cache_version),
+	                            ybc_state->handle,
+	                            ybc_state->stmt_owner);
 
 	/* Execute the select statement. */
 	HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybc_state->handle),

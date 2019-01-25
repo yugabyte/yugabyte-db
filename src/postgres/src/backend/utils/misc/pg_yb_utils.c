@@ -48,6 +48,8 @@
 
 YBCPgSession ybc_pg_session = NULL;
 
+uint64 ybc_catalog_cache_version = 0;
+
 /** These values are lazily initialized based on corresponding environment variables. */
 int ybc_pg_double_write = -1;
 int ybc_disable_pg_locking = -1;
@@ -77,6 +79,13 @@ IsYBRelationById(Oid relid)
 	bool     is_supported = IsYBRelation(relation);
 	RelationClose(relation);
 	return is_supported;
+}
+
+bool
+YBNeedRetryAfterCacheRefresh(ErrorData *edata)
+{
+	// TODO Inspect error code to distinguish retryable errors.
+	return true;
 }
 
 AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation)

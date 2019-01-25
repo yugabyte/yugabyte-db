@@ -37,6 +37,26 @@
 
 extern YBCPgSession ybc_pg_session;
 
+/*
+ * Version of the catalog entries in the relcache and catcache.
+ * We (only) rely on a following invariant: If the catalog cache version here is
+ * actually the latest (master) version, then the catalog data is indeed up to
+ * date. In any other case, we will end up doing a cache refresh anyway.
+ * (I.e. cache data is only valid if the version below matches with master's
+ * version, otherwise all bets are off and we need to refresh.)
+ *
+ * So we should handle cases like:
+ * 1. ybc_catalog_cache_version being behind the actual data in the caches.
+ * 2. Data in the caches spanning multiple version (because catalog was updated
+ *    during a cache refresh).
+ * As long as the invariant above is not violated we should (at most) end up
+ * doing a redundant cache refresh.
+ *
+ * TODO: Improve cache versioning and refresh logic to be more fine-grained to
+ * reduce frequency and/or duration of cache refreshes.
+ */
+extern uint64 ybc_catalog_cache_version;
+
 /**
  * Checks whether YugaByte functionality is enabled within PostgreSQL.
  * This relies on ybc_pg_session being non-NULL, so probably should not be used
@@ -54,9 +74,9 @@ extern bool IsYBRelationById(Oid relid);
 
 extern bool IsYBRelation(Relation relation);
 
-extern void YBReportFeatureUnsupported(const char *err_msg);
+extern bool YBNeedRetryAfterCacheRefresh(ErrorData *error);
 
-extern bool IsYBRelation(Relation relation);
+extern void YBReportFeatureUnsupported(const char *err_msg);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
 

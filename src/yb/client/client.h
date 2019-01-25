@@ -337,6 +337,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
                                   uint32_t next_oid, uint32_t count,
                                   uint32_t* begin_oid, uint32_t* end_oid);
 
+  CHECKED_STATUS GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
+
   // Grant permission with given arguments.
   CHECKED_STATUS GrantRevokePermission(GrantRevokeStatementType statement_type,
                                        const PermissionType& permission,

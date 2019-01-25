@@ -106,6 +106,8 @@ using yb::master::ListNamespacesRequestPB;
 using yb::master::ListNamespacesResponsePB;
 using yb::master::ReservePgsqlOidsRequestPB;
 using yb::master::ReservePgsqlOidsResponsePB;
+using yb::master::GetYsqlCatalogConfigRequestPB;
+using yb::master::GetYsqlCatalogConfigResponsePB;
 using yb::master::CreateUDTypeRequestPB;
 using yb::master::CreateUDTypeResponsePB;
 using yb::master::AlterRoleRequestPB;
@@ -612,6 +614,14 @@ Status YBClient::ReservePgsqlOids(const std::string& namespace_id,
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ReservePgsqlOids);
   *begin_oid = resp.begin_oid();
   *end_oid = resp.end_oid();
+  return Status::OK();
+}
+
+Status YBClient::GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version) {
+  GetYsqlCatalogConfigRequestPB req;
+  GetYsqlCatalogConfigResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetYsqlCatalogConfig);
+  *ysql_catalog_version = resp.version();
   return Status::OK();
 }
 

@@ -43,6 +43,9 @@ YBCStatus YBCPgCreateSession(const YBCPgEnv pg_env,
                              YBCPgSession *pg_session);
 YBCStatus YBCPgDestroySession(YBCPgSession pg_session);
 
+// Invalidate the sessions table cache.
+YBCStatus YBCPgInvalidateCache(YBCPgSession pg_session);
+
 // Delete statement given its handle.
 YBCStatus YBCPgDeleteStatement(YBCPgStatement handle);
 
@@ -81,7 +84,9 @@ YBCStatus YBCPgReserveOids(YBCPgSession pg_session,
                            YBCPgOid *begin_oid,
                            YBCPgOid *end_oid);
 
-// SCHENA ------------------------------------------------------------------------------------------
+YBCStatus YBCPgGetCatalogMasterVersion(YBCPgSession pg_session, uint64_t *version);
+
+// SCHEMA ------------------------------------------------------------------------------------------
 // Create schema "database_name.schema_name".
 // - When "database_name" is NULL, the connected database name is used.
 YBCStatus YBCPgNewCreateSchema(YBCPgSession pg_session,
@@ -164,6 +169,10 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              bool *is_primary,
                              bool *is_hash);
 
+YBCStatus YBCPgSetIsSystemCatalogChange(YBCPgStatement handle);
+
+YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle, uint64_t catalog_cache_version);
+
 // INDEX -------------------------------------------------------------------------------------------
 // Create and drop index "database_name.schema_name.index_name()".
 // - When "schema_name" is NULL, the index "database_name.index_name" is created.
@@ -223,6 +232,9 @@ YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
 // by YBCPgDmlBindColumn().
 YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
                         YBCPgSysColumns *syscols, bool *has_data);
+
+// Utility method that checks stmt type and calls either exec insert, update, or delete internally.
+YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle);
 
 // DB Operations: WHERE, ORDER_BY, GROUP_BY, etc.
 // + The following operations are run by DocDB.

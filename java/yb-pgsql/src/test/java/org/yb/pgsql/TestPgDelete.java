@@ -198,7 +198,7 @@ public class TestPgDelete extends BasePgSQLTest {
 
       // Verify RETURNING clause.
       ResultSet returning = delete_stmt.getResultSet();
-      assertEquals(expectedRows, getSortedRowSet(returning));
+      assertEquals(expectedRows, getSortedRowList(returning));
     }
   }
 }

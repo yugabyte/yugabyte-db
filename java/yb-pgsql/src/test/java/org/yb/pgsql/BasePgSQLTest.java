@@ -497,7 +497,19 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected List<Row> getRowSet(ResultSet rs) throws SQLException {
+  protected Set<Row> getRowSet(ResultSet rs) throws SQLException {
+    Set<Row> rows = new HashSet<>();
+    while (rs.next()) {
+      Comparable[] elems = new Comparable[rs.getMetaData().getColumnCount()];
+      for (int i = 0; i < elems.length; i++) {
+        elems[i] = (Comparable)rs.getObject(i + 1); // Column index starts from 1.
+      }
+      rows.add(new Row(elems));
+    }
+    return rows;
+  }
+
+  protected List<Row> getRowList(ResultSet rs) throws SQLException {
     List<Row> rows = new ArrayList<>();
     while (rs.next()) {
       Comparable[] elems = new Comparable[rs.getMetaData().getColumnCount()];
@@ -509,9 +521,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rows;
   }
 
-  protected List<Row> getSortedRowSet(ResultSet rs) throws SQLException {
+  protected List<Row> getSortedRowList(ResultSet rs) throws SQLException {
     // Sort all rows and return.
-    List<Row> rows = getRowSet(rs);
+    List<Row> rows = getRowList(rs);
     Collections.sort(rows);
     return rows;
   }

@@ -77,6 +77,9 @@ class PgApiImpl {
                                PgSession **pg_session);
   CHECKED_STATUS DestroySession(PgSession *pg_session);
 
+  // Invalidate the sessions table cache.
+  CHECKED_STATUS InvalidateCache(PgSession *pg_session);
+
   // Read session.
   PgSession::ScopedRefPtr GetSession(PgSession *handle);
 
@@ -119,6 +122,8 @@ class PgApiImpl {
                              uint32_t count,
                              PgOid *begin_oid,
                              PgOid *end_oid);
+
+  CHECKED_STATUS GetCatalogMasterVersion(PgSession *pg_session, uint64_t *version);
 
   //------------------------------------------------------------------------------------------------
   // Create and drop schema.
@@ -198,6 +203,10 @@ class PgApiImpl {
                                bool *is_primary,
                                bool *is_hash);
 
+  CHECKED_STATUS SetIsSystemCatalogChange(PgStatement *handle);
+
+  CHECKED_STATUS SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_cache_version);
+
   //------------------------------------------------------------------------------------------------
   // Create and drop index.
   CHECKED_STATUS NewCreateIndex(PgSession *pg_session,
@@ -248,6 +257,9 @@ class PgApiImpl {
   // by YBCPgDmlBindColumn().
   CHECKED_STATUS DmlFetch(PgStatement *handle, int32_t natts, uint64_t *values, bool *isnulls,
                           PgSysColumns *syscols, bool *has_data);
+
+  // Utility method that checks stmt type and calls exec insert, update, or delete internally.
+  CHECKED_STATUS DmlExecWriteOp(PgStatement *handle);
 
   // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
   // + The following operations are run by DocDB.

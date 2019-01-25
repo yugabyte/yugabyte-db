@@ -107,6 +107,10 @@ Status PgSession::ReserveOids(const PgOid database_oid,
                                    begin_oid, end_oid);
 }
 
+Status PgSession::GetCatalogMasterVersion(uint64_t *version) {
+  return client_->GetYsqlCatalogMasterVersion(version);
+}
+
 //--------------------------------------------------------------------------------------------------
 
 client::YBTableCreator *PgSession::NewTableCreator() {

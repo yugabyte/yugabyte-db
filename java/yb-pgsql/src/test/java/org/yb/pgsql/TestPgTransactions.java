@@ -30,8 +30,6 @@ import java.util.Map;
 
 import static org.yb.AssertionWrappers.*;
 
-// TODO this test suite is disabled as of 14/12/2019 until we fully handle transactions for system
-// catalog tables (used during initdb).
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgTransactions extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
@@ -44,8 +42,8 @@ public class TestPgTransactions extends BasePgSQLTest {
 
   @Test
   public void testBasicTransaction() throws Exception {
-    Connection connection1 = createConnectionNoAutoCommit();
     createSimpleTable("test", "v");
+    Connection connection1 = createConnectionNoAutoCommit();
     Statement statement = connection1.createStatement();
 
     // For the second connection we still enable auto-commit, so that every new SELECT will see
@@ -98,8 +96,8 @@ public class TestPgTransactions extends BasePgSQLTest {
    */
   @Test
   public void testTransactionConflicts() throws Exception {
-    Connection connection1 = createConnectionNoAutoCommit();
     createSimpleTable("test", "v");
+    Connection connection1 = createConnectionNoAutoCommit();
     Statement statement1 = connection1.createStatement();
     Connection connection2 = createConnectionNoAutoCommit();
     Statement statement2 = connection2.createStatement();

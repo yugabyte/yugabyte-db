@@ -149,6 +149,12 @@ message PgsqlWriteRequestPB {
   // Listing of all columns that this write operation is referencing.
   // TServers will need to read these columns when processing the write request.
   optional PgsqlColumnRefsPB column_refs = 15;
+
+  // The version of the ysql system catalog this query was prepared against.
+  optional uint64 ysql_catalog_version = 16;
+
+  // True only if this changes a system catalog table (or index).
+  optional bool is_ysql_catalog_change = 17 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -268,6 +274,9 @@ message PgsqlReadRequestPB {
 
   // the upper limit for partition (hash) key when paging.
   optional uint32 max_hash_code = 17;
+
+  // The version of the ysql system catalog this query was prepared against.
+  optional uint64 ysql_catalog_version = 16;
 }
 
 //--------------------------------------------------------------------------------------------------

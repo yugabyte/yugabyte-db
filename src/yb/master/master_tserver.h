@@ -48,9 +48,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   CHECKED_STATUS StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) override;
 
+  uint64_t ysql_catalog_version() const override;
+
  private:
   Master* master_ = nullptr;
-  std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
 };
 

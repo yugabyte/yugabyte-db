@@ -443,52 +443,64 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   req.set_config_index(server_->GetCurrentMasterIndex());
 
-  VLOG_WITH_PREFIX(2) << "Sending heartbeat:\n" << req.DebugString();
-  master::TSHeartbeatResponsePB resp;
-  RETURN_NOT_OK_PREPEND(proxy_->TSHeartbeat(req, &resp, &rpc),
-                        "Failed to send heartbeat");
-  if (resp.has_error()) {
-    if (resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {
-      return StatusFromPB(resp.error().status());
-    } else {
-      DCHECK(!resp.leader_master());
-      // Treat a not-the-leader error code as leader_master=false.
-      if (resp.leader_master()) {
-        LOG_WITH_PREFIX(WARNING) << "Setting leader master to false for "
-                                 << resp.error().code() << " code.";
-        resp.set_leader_master(false);
+  {
+    VLOG_WITH_PREFIX(2) << "Sending heartbeat:\n" << req.DebugString();
+    master::TSHeartbeatResponsePB resp;
+    RETURN_NOT_OK_PREPEND(proxy_->TSHeartbeat(req, &resp, &rpc),
+        "Failed to send heartbeat");
+    if (resp.has_error()) {
+      if (resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {
+        return StatusFromPB(resp.error().status());
+      } else {
+        DCHECK(!resp.leader_master());
+        // Treat a not-the-leader error code as leader_master=false.
+        if (resp.leader_master()) {
+          LOG_WITH_PREFIX(WARNING) << "Setting leader master to false for "
+                                   << resp.error().code() << " code.";
+          resp.set_leader_master(false);
+        }
       }
     }
+
+    VLOG_WITH_PREFIX(2) << "Received heartbeat response:\n" << resp.DebugString();
+    if (resp.has_master_config()) {
+      LOG_WITH_PREFIX(INFO) << "Received heartbeat response with config " << resp.DebugString();
+
+      RETURN_NOT_OK(server_->UpdateMasterAddresses(resp.master_config(), resp.leader_master()));
+    }
+
+    if (!resp.leader_master()) {
+      // If the master is no longer a leader, reset proxy so that we can
+      // determine the master and attempt to heartbeat during in the
+      // next heartbeat interval.
+      proxy_.reset();
+      return STATUS(ServiceUnavailable, "master is no longer the leader");
+    }
+
+    // At this point we know resp is a successful heartbeat response from the master so set it as
+    // the last heartbeat response. This invalidates resp so we should use last_hb_response_ instead
+    // below (hence using the nested scope for resp until here).
+    last_hb_response_.Swap(&resp);
   }
 
-  VLOG_WITH_PREFIX(2) << "Received heartbeat response:\n" << resp.DebugString();
-  if (resp.has_master_config()) {
-    LOG_WITH_PREFIX(INFO) << "Received heartbeat response with config " << resp.DebugString();
-
-    RETURN_NOT_OK(server_->UpdateMasterAddresses(resp.master_config(), resp.leader_master()));
-  }
-
-  if (!resp.leader_master()) {
-    // If the master is no longer a leader, reset proxy so that we can
-    // determine the master and attempt to heartbeat during in the
-    // next heartbeat interval.
-    proxy_.reset();
-    return STATUS(ServiceUnavailable, "master is no longer the leader");
-  }
-  last_hb_response_.Swap(&resp);
   if (last_hb_response_.needs_full_tablet_report()) {
     return STATUS(TryAgain, "");
   }
 
-  if (resp.has_cluster_uuid() && !resp.cluster_uuid().empty()) {
-    server_->set_cluster_uuid(resp.cluster_uuid());
+  if (last_hb_response_.has_cluster_uuid() && !last_hb_response_.cluster_uuid().empty()) {
+    server_->set_cluster_uuid(last_hb_response_.cluster_uuid());
   }
 
   // TODO: Handle TSHeartbeatResponsePB (e.g. deleted tablets and schema changes)
   server_->tablet_manager()->MarkTabletReportAcknowledged(req.tablet_report());
 
+  // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
+  if (last_hb_response_.has_ysql_catalog_version()) {
+    server_->set_ysql_catalog_version(last_hb_response_.ysql_catalog_version());
+  }
+
   // Update the live tserver list.
-  return server_->PopulateLiveTServers(resp);
+  return server_->PopulateLiveTServers(last_hb_response_);
 }
 
 Status Heartbeater::Thread::DoHeartbeat() {

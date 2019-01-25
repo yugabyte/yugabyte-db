@@ -174,7 +174,12 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
       PgsqlReadRequestPB *req = read_op_->mutable_request();
       // Set up paging state for next request.
       *req->mutable_paging_state() = res.paging_state();
-    } else {
+       // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
+       // The docdb layer will check the target table's schema version is compatible.
+       // This allows long-running queries to continue in the presence of other DDL statements
+       // as long as they do not affect the table(s) being queried.
+       req->clear_ysql_catalog_version();
+     } else {
       end_of_data_ = true;
     }
   } else {
