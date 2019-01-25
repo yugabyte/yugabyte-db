@@ -33,6 +33,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual server::Clock* Clock() = 0;
   virtual rpc::Publisher* GetPublisher() = 0;
 
+  virtual uint64_t ysql_catalog_version() const = 0;
+
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;
 };
 

@@ -1007,12 +1007,21 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		SetDatabasePath(fullpath);
 	}
 
+
 	/*
 	 * It's now possible to do real access to the system catalogs.
 	 *
 	 * Load relcache entries for the system catalogs.  This must create at
 	 * least the minimum set of "nailed-in" cache entries.
+	 *
+	 * In YugaByte mode initialize the catalog cache version to the latest
+	 * version from the master (except during initdb).
 	 */
+	if (IsYugaByteEnabled() && !IsBootstrapProcessingMode())
+	{
+		YBCPgGetCatalogMasterVersion(ybc_pg_session,
+		                             (uint64_t *) &ybc_catalog_cache_version);
+	}
 	RelationCacheInitializePhase3();
 
 	/* set up ACL framework (so CheckMyDatabase can check permissions) */

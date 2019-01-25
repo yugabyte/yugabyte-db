@@ -39,7 +39,7 @@ public class TestPgSelect extends BasePgSQLTest {
       // Test no where clause -- select all rows.
       String query = "SELECT * FROM test_where";
       try (ResultSet rs = statement.executeQuery(query)) {
-        assertEquals(allRows, getSortedRowSet(rs));
+        assertEquals(allRows, getSortedRowList(rs));
       }
       assertFalse(needsPgFiltering(query));
 
@@ -50,7 +50,7 @@ public class TestPgSelect extends BasePgSQLTest {
             .filter(row -> row.getLong(0).equals(2L))
             .collect(Collectors.toList());
         assertEquals(10, expectedRows.size());
-        assertEquals(expectedRows, getSortedRowSet(rs));
+        assertEquals(expectedRows, getSortedRowList(rs));
       }
       assertFalse(needsPgFiltering(query));
 
@@ -62,7 +62,7 @@ public class TestPgSelect extends BasePgSQLTest {
                 row.getDouble(1).equals(3.5))
             .collect(Collectors.toList());
         assertEquals(1, expectedRows.size());
-        assertEquals(expectedRows, getSortedRowSet(rs));
+        assertEquals(expectedRows, getSortedRowList(rs));
       }
       assertFalse(needsPgFiltering(query));
 
@@ -73,7 +73,7 @@ public class TestPgSelect extends BasePgSQLTest {
             .filter(row -> row.getDouble(1).equals(6.5))
             .collect(Collectors.toList());
         assertEquals(10, expectedRows.size());
-        assertEquals(expectedRows, getSortedRowSet(rs));
+        assertEquals(expectedRows, getSortedRowList(rs));
       }
       assertTrue(needsPgFiltering(query));
 
@@ -86,7 +86,7 @@ public class TestPgSelect extends BasePgSQLTest {
                 row.getDouble(1) < 8.5)
             .collect(Collectors.toList());
         assertEquals(5, expectedRows.size());
-        assertEquals(expectedRows, getSortedRowSet(rs));
+        assertEquals(expectedRows, getSortedRowList(rs));
       }
       assertTrue(needsPgFiltering(query));
 
@@ -99,7 +99,7 @@ public class TestPgSelect extends BasePgSQLTest {
             .collect(Collectors.toList());
         // 14 options (for hash key) minus [9,'v09'].
         assertEquals(13, expectedRows.size());
-        assertEquals(expectedRows, getSortedRowSet(rs));
+        assertEquals(expectedRows, getSortedRowList(rs));
       }
       assertTrue(needsPgFiltering(query));
 
@@ -113,7 +113,7 @@ public class TestPgSelect extends BasePgSQLTest {
             .collect(Collectors.toList());
         // 20 plus 10 options but 2 common ones ('v22' and 'v32').
         assertEquals(28, expectedRows.size());
-        assertEquals(expectedRows, getSortedRowSet(rs));
+        assertEquals(expectedRows, getSortedRowList(rs));
       }
       assertTrue(needsPgFiltering(query));
     }
@@ -129,7 +129,7 @@ public class TestPgSelect extends BasePgSQLTest {
       List<Row> expectedRows = allRows.stream()
           .map(row -> new Row(row.get(3), row.get(2), row.get(1), row.get(0)))
           .collect(Collectors.toList());
-      assertEquals(expectedRows, getSortedRowSet(rs));
+      assertEquals(expectedRows, getSortedRowList(rs));
     }
 
     // Test partial columns -- different order.
@@ -137,7 +137,7 @@ public class TestPgSelect extends BasePgSQLTest {
       List<Row> expectedRows = allRows.stream()
           .map(row -> new Row(row.get(3), row.get(1)))
           .collect(Collectors.toList());
-      assertEquals(expectedRows, getSortedRowSet(rs));
+      assertEquals(expectedRows, getSortedRowList(rs));
     }
 
     // Test aggregates.
@@ -151,7 +151,7 @@ public class TestPgSelect extends BasePgSQLTest {
           .map(row -> new Row(row.get(0)))
           .distinct()
           .collect(Collectors.toList());
-      assertEquals(expectedRows, getSortedRowSet(rs));
+      assertEquals(expectedRows, getSortedRowList(rs));
     }
 
     // Test selecting non-existent column.

@@ -398,10 +398,18 @@ message SysSecurityConfigEntryPB {
   optional uint64 roles_version = 1;
 }
 
+// Metadata about the YSQL catalog (current only version).
+message SysYSQLCatalogConfigEntryPB {
+  // YSQL catalog version. Every time the catalog tables are changed (i.e. by DDL statements)
+  // this version gets incremented.
+  optional uint64 version = 1;
+}
+
 // Various cluster configuration.
 message SysConfigEntryPB {
   oneof config {
     SysSecurityConfigEntryPB security_config = 1;
+    SysYSQLCatalogConfigEntryPB ysql_catalog_config = 2;
   }
 }
 
@@ -543,6 +551,10 @@ message TSHeartbeatResponsePB {
 
   // Cluster UUID. Sent by the master only after registration.
   optional string cluster_uuid = 9;
+
+  // Current YSQL catalog schema version.
+  // Used by tservers and postgres backends to decide if a cache refresh is needed.
+  optional uint64 ysql_catalog_version = 10;
 }
 
 message TSInformationPB {
@@ -1314,6 +1326,14 @@ message ReservePgsqlOidsResponsePB {
   optional uint32 end_oid = 3;   // The end (exclusive) oid reserved.
 }
 
+message GetYsqlCatalogConfigRequestPB {
+}
+
+message GetYsqlCatalogConfigResponsePB {
+  optional MasterErrorPB error = 1;
+  optional uint64 version = 2;
+}
+
 service MasterService {
   // TS->Master RPCs
   rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
@@ -1343,6 +1363,7 @@ service MasterService {
 
   // For Postgres:
   rpc ReservePgsqlOids(ReservePgsqlOidsRequestPB) returns (ReservePgsqlOidsResponsePB);
+  rpc GetYsqlCatalogConfig(GetYsqlCatalogConfigRequestPB) returns (GetYsqlCatalogConfigResponsePB);
 
   //  Authentication and Authorization.
   rpc CreateRole(CreateRoleRequestPB) returns (CreateRoleResponsePB);

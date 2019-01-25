@@ -869,18 +869,26 @@ class TestSysConfigLoader : public Visitor<PersistentSysConfigInfo> {
 TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
   SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
 
-  // 1. Verify that when master initializes, "security-config" entry is set up with
-  // roles_version = 0.
+  // 1. Verify that when master initializes:
+  //   a. "security-config" entry is set up with roles_version = 0.
+  //   b. "ysql-catalog-configuration" entry is set up with version = 0;
   scoped_refptr<SysConfigInfo> security_config = new SysConfigInfo(kSecurityConfigType);
   {
     auto l = security_config->LockForWrite();
     l->mutable_data()->pb.mutable_security_config()->set_roles_version(0);
     l->Commit();
   }
+  scoped_refptr<SysConfigInfo> ysql_catalog_config = new SysConfigInfo(kYsqlCatalogConfigType);
+  {
+    auto l = ysql_catalog_config->LockForWrite();
+    l->mutable_data()->pb.mutable_ysql_catalog_config()->set_version(0);
+    l->Commit();
+  }
   unique_ptr<TestSysConfigLoader> loader(new TestSysConfigLoader());
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(1, loader->sys_configs.size());
+  ASSERT_EQ(2, loader->sys_configs.size());
   ASSERT_TRUE(MetadatasEqual(security_config.get(), loader->sys_configs[0]));
+  ASSERT_TRUE(MetadatasEqual(ysql_catalog_config.get(), loader->sys_configs[1]));
 
   // 2. Add a new SysConfigEntryPB and verify it shows up.
   scoped_refptr<SysConfigInfo> test_config = new SysConfigInfo("test-security-configuration");
@@ -894,16 +902,18 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
   }
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(2, loader->sys_configs.size());
+  ASSERT_EQ(3, loader->sys_configs.size());
   ASSERT_TRUE(MetadatasEqual(security_config.get(), loader->sys_configs[0]));
   ASSERT_TRUE(MetadatasEqual(test_config.get(), loader->sys_configs[1]));
+  ASSERT_TRUE(MetadatasEqual(ysql_catalog_config.get(), loader->sys_configs[2]));
 
   // 2. Remove the SysConfigEntry and verify that it got removed.
   ASSERT_OK(sys_catalog->DeleteItem(test_config.get(), kLeaderTerm));
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(1, loader->sys_configs.size());
+  ASSERT_EQ(2, loader->sys_configs.size());
   ASSERT_TRUE(MetadatasEqual(security_config.get(), loader->sys_configs[0]));
+  ASSERT_TRUE(MetadatasEqual(ysql_catalog_config.get(), loader->sys_configs[1]));
 }
 
 class TestRoleLoader : public Visitor<PersistentRoleInfo> {

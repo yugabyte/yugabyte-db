@@ -142,6 +142,11 @@ Status PgApiImpl::DestroySession(PgSession *pg_session) {
   return Status::OK();
 }
 
+Status PgApiImpl::InvalidateCache(PgSession *pg_session) {
+  pg_session->InvalidateCache();
+  return Status::OK();
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status PgApiImpl::DeleteStatement(PgStatement *handle) {
@@ -206,6 +211,10 @@ Status PgApiImpl::ReserveOids(PgSession *pg_session,
                               PgOid *begin_oid,
                               PgOid *end_oid) {
   return pg_session->ReserveOids(database_oid, next_oid, count, begin_oid, end_oid);
+}
+
+Status PgApiImpl::GetCatalogMasterVersion(PgSession *pg_session, uint64_t *version) {
+  return pg_session->GetCatalogMasterVersion(version);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -408,6 +417,43 @@ Status PgApiImpl::GetColumnInfo(YBCPgTableDesc table_desc,
   return table_desc->GetColumnInfo(attr_number, is_primary, is_hash);
 }
 
+Status PgApiImpl::SetIsSystemCatalogChange(PgStatement *handle) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  switch (handle->stmt_op()) {
+    case StmtOp::STMT_INSERT:
+    case StmtOp::STMT_UPDATE:
+    case StmtOp::STMT_DELETE:
+      down_cast<PgDmlWrite *>(handle)->SetIsSystemCatalogChange();
+      return Status::OK();
+    default:
+      break;
+  }
+
+  return STATUS(InvalidArgument, "Invalid statement handle");
+}
+
+Status PgApiImpl::SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_cache_version) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  switch (handle->stmt_op()) {
+    case StmtOp::STMT_SELECT:
+    case StmtOp::STMT_INSERT:
+    case StmtOp::STMT_UPDATE:
+    case StmtOp::STMT_DELETE:
+      down_cast<PgDml *>(handle)->SetCatalogCacheVersion(catalog_cache_version);
+      return Status::OK();
+    default:
+      break;
+  }
+
+  return STATUS(InvalidArgument, "Invalid statement handle");
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewCreateIndex(PgSession *pg_session,
@@ -476,6 +522,18 @@ CHECKED_STATUS PgApiImpl::DmlAssignColumn(PgStatement *handle, int attr_num, PgE
 Status PgApiImpl::DmlFetch(PgStatement *handle, int32_t natts, uint64_t *values, bool *isnulls,
                            PgSysColumns *syscols, bool *has_data) {
   return down_cast<PgDml*>(handle)->Fetch(natts, values, isnulls, syscols, has_data);
+}
+
+Status PgApiImpl::DmlExecWriteOp(PgStatement *handle) {
+  switch (handle->stmt_op()) {
+    case StmtOp::STMT_INSERT:
+    case StmtOp::STMT_UPDATE:
+    case StmtOp::STMT_DELETE:
+      return down_cast<PgDmlWrite *>(handle)->Exec();
+    default:
+      break;
+  }
+  return STATUS(InvalidArgument, "Invalid statement handle");
 }
 
 // Insert ------------------------------------------------------------------------------------------

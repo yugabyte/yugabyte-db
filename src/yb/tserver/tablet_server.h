@@ -159,6 +159,15 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
     return publish_service_ptr_.get();
   }
 
+  void set_ysql_catalog_version(uint64_t new_version) {
+    DCHECK(new_version >= ysql_catalog_version_);
+    ysql_catalog_version_ = new_version;
+  }
+
+  uint64_t ysql_catalog_version() const override {
+    return ysql_catalog_version_;
+  }
+
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
@@ -210,6 +219,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   // Cluster uuid. This is sent by the master leader during the first hearbeat.
   std::string cluster_uuid_;
+
+  // Latest known version from the YSQL catalog (as reported by last heartbeat response).
+  uint64_t ysql_catalog_version_ = 0;
 
   // An instance to tablet server service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.

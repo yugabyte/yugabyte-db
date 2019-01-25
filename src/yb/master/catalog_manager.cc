@@ -585,11 +585,15 @@ class SysConfigLoader : public Visitor<PersistentSysConfigInfo> {
     auto l = config->LockForWrite();
     l->mutable_data()->pb.CopyFrom(metadata);
 
-    // For now we are only using this to store security config.
+    // For now we are only using this to store (ycql) security configor ysql catalog config.
     if (config_type == kSecurityConfigType) {
       LOG_IF(WARNING, catalog_manager_->security_config_ != nullptr)
           << "Multiple sys config type " << config_type << " found";
       catalog_manager_->security_config_ = config;
+    } else if (config_type == kYsqlCatalogConfigType) {
+      LOG_IF(WARNING, catalog_manager_->ysql_catalog_config_ != nullptr)
+          << "Multiple sys config type " << config_type << " found";
+      catalog_manager_->ysql_catalog_config_ = config;
     }
 
     l->Commit();
@@ -1076,6 +1080,22 @@ Status CatalogManager::PrepareDefaultSysConfig(int64_t term) {
 
     // Write to sys_catalog and in memory.
     RETURN_NOT_OK(sys_catalog_->AddItem(security_config_.get(), term));
+    l->Commit();
+  }
+
+  if (!ysql_catalog_config_) {
+    SysYSQLCatalogConfigEntryPB ysql_catalog_config;
+    ysql_catalog_config.set_version(0);
+
+    // Create in memory objects.
+    ysql_catalog_config_ = new SysConfigInfo(kYsqlCatalogConfigType);
+
+    // Prepare write.
+    auto l = ysql_catalog_config_->LockForWrite();
+    *l->mutable_data()->pb.mutable_ysql_catalog_config() = std::move(ysql_catalog_config);
+
+    // Write to sys_catalog and in memory.
+    RETURN_NOT_OK(sys_catalog_->AddItem(ysql_catalog_config_.get(), term));
     l->Commit();
   }
 
@@ -1793,11 +1813,11 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
     schema = client_schema.CopyWithColumnIds();
   }
 
-  // Verify no hash paritition schema is specified.
+  // Verify no hash partition schema is specified.
   if (req->partition_schema().has_hash_schema()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA,
                       STATUS(InvalidArgument,
-                             "PostreSQL system catalog tables are non-partitioned"));
+                             "PostgreSQL system catalog tables are non-partitioned"));
   }
 
   // Create partition schema and one partition.
@@ -1925,6 +1945,17 @@ Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
   l->Commit();
 
   VLOG(1) << "ReservePgsqlOids response: " << resp->ShortDebugString();
+
+  return Status::OK();
+}
+
+Status CatalogManager::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB* req,
+                                            GetYsqlCatalogConfigResponsePB* resp,
+                                            rpc::RpcContext* rpc) {
+  RETURN_NOT_OK(CheckOnline());
+  VLOG(1) << "GetYsqlCatalogConfig request: " << req->ShortDebugString();
+  auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForRead();
+  resp->set_version(l->data().pb.ysql_catalog_config().version());
 
   return Status::OK();
 }
@@ -5240,6 +5271,21 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
     }
   }
   return Status::OK();
+}
+
+Result<uint64_t> CatalogManager::IncrementYsqlCatalogVersion() {
+
+  auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForWrite();
+  uint64_t new_version = l->data().pb.ysql_catalog_config().version() + 1;
+  l->mutable_data()->pb.mutable_ysql_catalog_config()->set_version(new_version);
+  l->Commit();
+
+  return new_version;
+}
+
+uint64_t CatalogManager::GetYsqlCatalogVersion() {
+  auto l = ysql_catalog_config_->LockForRead();
+  return l->data().pb.ysql_catalog_config().version();
 }
 
 Status CatalogManager::ResetTabletReplicasFromReportedConfig(

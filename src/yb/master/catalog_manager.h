@@ -94,6 +94,7 @@ struct DeferredAssignmentActions;
 
 static const char* const kDefaultSysEntryUnusedId = "";
 static const char* const kSecurityConfigType = "security-configuration";
+static const char* const kYsqlCatalogConfigType = "ysql-catalog-configuration";
 
 using PlacementId = std::string;
 
@@ -635,7 +636,8 @@ class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
   DISALLOW_COPY_AND_ASSIGN(RoleInfo);
 };
 
-struct PersistentSysConfigInfo : public Persistent<SysConfigEntryPB, SysRowEntry::SYS_CONFIG> {};
+struct PersistentSysConfigInfo
+    : public Persistent<SysConfigEntryPB, SysRowEntry::SYS_CONFIG> {};
 
 class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
                       public MetadataCowWrapper<PersistentSysConfigInfo> {
@@ -794,6 +796,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
                                   ReservePgsqlOidsResponsePB* resp,
                                   rpc::RpcContext* rpc);
+
+  // Get the info (current only version) for the ysql system catalog.
+  CHECKED_STATUS GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB* req,
+                                      GetYsqlCatalogConfigResponsePB* resp,
+                                      rpc::RpcContext* rpc);
 
   // Copy Postgres sys catalog tables into a new namespace.
   CHECKED_STATUS CopyPgsqlSysTables(const NamespaceId& namespace_id,
@@ -992,6 +999,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
                                GetUDTypeInfoResponsePB* resp,
                                rpc::RpcContext* rpc);
+
+  Result<uint64_t> IncrementYsqlCatalogVersion();
+
+  uint64_t GetYsqlCatalogVersion();
 
   SysCatalogTable* sys_catalog() { return sys_catalog_.get(); }
 
@@ -1632,6 +1643,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Config information.
   scoped_refptr<ClusterConfigInfo> cluster_config_ = nullptr;
+
+  // YSQL Catalog information.
+  scoped_refptr<SysConfigInfo> ysql_catalog_config_ = nullptr;
 
   Master *master_;
   Atomic32 closing_;

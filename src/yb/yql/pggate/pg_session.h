@@ -74,6 +74,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                              PgOid *begin_oid,
                              PgOid *end_oid);
 
+  CHECKED_STATUS GetCatalogMasterVersion(uint64_t *version);
+
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.
   CHECKED_STATUS CreateSchema(const std::string& schema_name, bool if_not_exist);
@@ -129,6 +131,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Generate a new random and unique rowid. It is a v4 UUID.
   string GenerateNewRowid() {
     return rowid_generator_.Next(true /* binary_id */);
+  }
+
+  void InvalidateCache() {
+    table_cache_.clear();
   }
 
  private:

@@ -270,6 +270,8 @@ Status PgDml::Fetch(int32_t natts,
   return Status::OK();
 }
 
+
+
 Status PgDml::WritePgTuple(PgTuple *pg_tuple) {
   for (const PgExpr *target : targets_) {
     if (target->opcode() != PgColumnRef::Opcode::PG_EXPR_COLREF) {

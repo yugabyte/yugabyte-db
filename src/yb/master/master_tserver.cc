@@ -74,5 +74,9 @@ Status MasterTabletServer::StartRemoteBootstrap(const StartRemoteBootstrapReques
   return STATUS(NotSupported, "Remote boostrap not supported by master tserver");
 }
 
+uint64_t MasterTabletServer::ysql_catalog_version() const {
+  return master_->catalog_manager()->GetYsqlCatalogVersion();
+}
+
 } // namespace master
 } // namespace yb
