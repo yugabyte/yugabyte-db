@@ -276,6 +276,22 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
     pb->set_is_key(true);
     pb->set_is_hash_key(true);
   }
+
+  // Set JSON attribute path (for c->'a'->>'b' case).
+  for (const auto& op : col_schema.json_ops()) {
+    QLJsonOperationPB* const json_op_pb = pb->add_json_operations();
+    json_op_pb->set_json_operator(op.first);
+    *(json_op_pb->mutable_operand()->mutable_value()) = op.second;
+  }
+}
+
+ColumnSchema::QLJsonOperations JsonOpsFromPB(
+    const RepeatedPtrField<QLJsonOperationPB>& json_ops) {
+  ColumnSchema::QLJsonOperations op_vec;
+  for (const QLJsonOperationPB& pb : json_ops) {
+    op_vec.push_back(ColumnSchema::QLJsonOperation(pb.json_operator(), pb.operand().value()));
+  }
+  return op_vec;
 }
 
 ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
@@ -283,7 +299,8 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
   // processing SchemaPB.
   return ColumnSchema(pb.name(), QLType::FromQLTypePB(pb.type()), pb.is_nullable(),
                       pb.is_hash_key(), pb.is_static(), pb.is_counter(), pb.order(),
-                      ColumnSchema::SortingType(pb.sorting_type()));
+                      ColumnSchema::SortingType(pb.sorting_type()),
+                      JsonOpsFromPB(pb.json_operations()));
 }
 
 CHECKED_STATUS ColumnPBsToColumnTuple(

@@ -30,6 +30,8 @@
 namespace yb {
 namespace ql {
 
+class PTColumnDefinition;
+
 //--------------------------------------------------------------------------------------------------
 // Constraints.
 
@@ -139,108 +141,6 @@ class PTStatic : public TreeNode {
 
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
-};
-
-//--------------------------------------------------------------------------------------------------
-// Table column.
-
-class PTColumnDefinition : public TreeNode {
- public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef MCSharedPtr<PTColumnDefinition> SharedPtr;
-  typedef MCSharedPtr<const PTColumnDefinition> SharedPtrConst;
-
-  //------------------------------------------------------------------------------------------------
-  // Constructor and destructor.
-  PTColumnDefinition(MemoryContext *memctx,
-                     YBLocation::SharedPtr loc,
-                     const MCSharedPtr<MCString>& name,
-                     const PTBaseType::SharedPtr& datatype,
-                     const PTListNode::SharedPtr& qualifiers);
-  virtual ~PTColumnDefinition();
-
-  template<typename... TypeArgs>
-  inline static PTColumnDefinition::SharedPtr MakeShared(MemoryContext *memctx,
-                                                         TypeArgs&&... args) {
-    return MCMakeShared<PTColumnDefinition>(memctx, std::forward<TypeArgs>(args)...);
-  }
-
-  // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
-
-  // Node type.
-  virtual TreeNodeOpcode opcode() const override {
-    return TreeNodeOpcode::kPTColumnDefinition;
-  }
-
-  // Access function for is_primary_key_.
-  bool is_primary_key() const {
-    return is_primary_key_;
-  }
-  void set_is_primary_key() {
-    is_primary_key_ = true;
-  }
-
-  // Access function for is_hash_key_.
-  bool is_hash_key() const {
-    return is_hash_key_;
-  }
-  void set_is_hash_key() {
-    is_primary_key_ = true;
-    is_hash_key_ = true;
-  }
-
-  // Access function for is_static_.
-  bool is_static() const {
-    return is_static_;
-  }
-  void set_is_static() {
-    is_static_ = true;
-  }
-
-  // Access function for order_.
-  int32_t order() const {
-    return order_;
-  }
-  void set_order(int32 order) {
-    order_ = order;
-  }
-
-  ColumnSchema::SortingType sorting_type() {
-    return sorting_type_;
-  }
-
-  void set_sorting_type(ColumnSchema::SortingType sorting_type) {
-    sorting_type_ = sorting_type;
-  }
-
-  const char *yb_name() const {
-    return name_->c_str();
-  }
-
-  const PTBaseType::SharedPtr& datatype() const {
-    return datatype_;
-  }
-
-  std::shared_ptr<QLType> ql_type() const {
-    return datatype_->ql_type();
-  }
-
-  bool is_counter() const {
-    return datatype_->is_counter();
-  }
-
- private:
-  const MCSharedPtr<MCString> name_;
-  PTBaseType::SharedPtr datatype_;
-  PTListNode::SharedPtr qualifiers_;
-  bool is_primary_key_;
-  bool is_hash_key_;
-  bool is_static_;
-  int32_t order_;
-  // Sorting order. Only relevant when this key is a primary key.
-  ColumnSchema::SortingType sorting_type_;
 };
 
 //--------------------------------------------------------------------------------------------------

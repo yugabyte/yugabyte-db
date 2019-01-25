@@ -269,6 +269,11 @@ TEST_F(QLTestParser, TestCreateIndex) {
   PARSE_VALID_STMT("CREATE INDEX IF NOT EXISTS i ON k.t ((c1, c2), c3, c4) "
                    "COVERING (c5, c6) WITH CLUSTERING ORDER BY (c3 DESC, c4 ASC);");
 
+  // Valid statement: CREATE INDEX i ON (<json_attribute>).
+  PARSE_VALID_STMT("CREATE INDEX i ON t (c2->>'a');");
+  PARSE_VALID_STMT("CREATE INDEX i ON t (c2->'a'->>'b');");
+  PARSE_VALID_STMT("CREATE INDEX i ON t (c2->'a'->'b'->>'c');");
+
   // Invalid statement: mandatory index name missing.
   PARSE_INVALID_STMT("CREATE INDEX ON k.t (c1, c2, c3, c4);");
   // Invalid statement: index name must be simple name without keyspace qualifier.
