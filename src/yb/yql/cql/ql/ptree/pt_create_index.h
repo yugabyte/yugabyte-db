@@ -9,6 +9,7 @@
 
 #include "yb/client/client.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
+#include "yb/yql/cql/ql/ptree/pt_column_definition.h"
 
 namespace yb {
 namespace ql {
@@ -87,6 +88,10 @@ class PTCreateIndex : public PTCreateTable {
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
+
+  void AddColumnDefinition(const PTColumnDefinition::SharedPtr& column) {
+    column_definitions_.push_back(column);
+  }
 
  private:
   // Is it a unique index?

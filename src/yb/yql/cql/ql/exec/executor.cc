@@ -363,16 +363,19 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
       return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
-    b.AddColumn(column->yb_name())->Type(column->ql_type())
-        ->HashPrimaryKey()
-        ->Order(column->order());
+
+    YBColumnSpec *column_spec = b.AddColumn(column->yb_name())->Type(column->ql_type())
+                                ->HashPrimaryKey()
+                                ->Order(column->order());
+    RETURN_NOT_OK(ColumnOpsToSchema(column, column_spec));
   }
   const MCList<PTColumnDefinition *>& primary_columns = tnode->primary_columns();
   for (const auto& column : primary_columns) {
-    b.AddColumn(column->yb_name())->Type(column->ql_type())
-        ->PrimaryKey()
-        ->Order(column->order())
-        ->SetSortingType(column->sorting_type());
+    YBColumnSpec *column_spec = b.AddColumn(column->yb_name())->Type(column->ql_type())
+                                ->PrimaryKey()
+                                ->Order(column->order())
+                                ->SetSortingType(column->sorting_type());
+    RETURN_NOT_OK(ColumnOpsToSchema(column, column_spec));
   }
   const MCList<PTColumnDefinition *>& columns = tnode->columns();
   for (const auto& column : columns) {
@@ -388,6 +391,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     if (column->is_counter()) {
       column_spec->Counter();
     }
+    RETURN_NOT_OK(ColumnOpsToSchema(column, column_spec));
   }
 
   TableProperties table_properties;

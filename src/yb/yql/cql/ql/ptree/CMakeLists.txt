@@ -29,7 +29,7 @@ add_library(ql_ptree
             pt_create_role.cc
             pt_alter_role.cc
             pt_grant_revoke.cc
-
+            pt_column_definition.cc
             pt_create_index.cc
             pt_truncate.cc
             pt_drop.cc

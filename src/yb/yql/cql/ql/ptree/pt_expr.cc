@@ -896,7 +896,7 @@ CHECKED_STATUS PTJsonColumnWithOperators::CheckLhsExpr(SemContext *sem_context) 
 }
 
 CHECKED_STATUS PTJsonColumnWithOperators::SetupPrimaryKey(SemContext *sem_context) const {
-  PTColumnDefinition* const column = sem_context->GetColumnDefinition(name_->first_name());
+  PTColumnDefinition* column = sem_context->GetColumnDefinition(name_->first_name());
   if (column == nullptr) {
     return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
   }
@@ -909,16 +909,26 @@ CHECKED_STATUS PTJsonColumnWithOperators::SetupPrimaryKey(SemContext *sem_contex
       return sem_context->Error(this, "Unsupported index datatype",
                                 ErrorCode::SQL_STATEMENT_INVALID);
     }
+
+    DCHECK_GT(operators_->size(), 0);
+    // JSONB type cannot be Key (because it's not indexable). Let's replace JSONB type by TEXT.
+    // For that new PTColumnDefinition will be created of fly with replaced data type.
+    // Replace JSONB column type by TEXT indexable type.
+    const PTColumnDefinition::SharedPtr copied_column = MCMakeShared<PTColumnDefinition>(
+        sem_context->PTreeMem(), *column, operators_,
+        MCMakeShared<PTVarchar>(sem_context->PTreeMem(), loc_));
+    sem_context->current_create_index_stmt()->AddColumnDefinition(copied_column);
+    column = copied_column.get();
+
     column->set_loc(*this);
     column->datatype()->set_loc(*this);
   }
 
-  // TODO: Added info about JSON attribute " ->'a'->>'b' " (next diff)!
   return table->AppendPrimaryColumn(sem_context, column);
 }
 
 CHECKED_STATUS PTJsonColumnWithOperators::SetupHashAndPrimaryKey(SemContext *sem_context) const {
-  PTColumnDefinition* const column = sem_context->GetColumnDefinition(name_->first_name());
+  PTColumnDefinition* column = sem_context->GetColumnDefinition(name_->first_name());
   if (column == nullptr) {
     return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
   }
@@ -931,16 +941,26 @@ CHECKED_STATUS PTJsonColumnWithOperators::SetupHashAndPrimaryKey(SemContext *sem
       return sem_context->Error(this, "Unsupported index datatype",
                                 ErrorCode::SQL_STATEMENT_INVALID);
     }
+
+    DCHECK_GT(operators_->size(), 0);
+    // JSONB type cannot be Key (because it's not indexable). Let's replace JSONB type by TEXT.
+    // For that new PTColumnDefinition will be created of fly with replaced data type.
+    // Replace JSONB column type by TEXT indexable type.
+    const PTColumnDefinition::SharedPtr copied_column = MCMakeShared<PTColumnDefinition>(
+        sem_context->PTreeMem(), *column, operators_,
+        MCMakeShared<PTVarchar>(sem_context->PTreeMem(), loc_));
+    sem_context->current_create_index_stmt()->AddColumnDefinition(copied_column);
+    column = copied_column.get();
+
     column->set_loc(*this);
     column->datatype()->set_loc(*this);
   }
 
-  // TODO: Added info about JSON attribute " ->'a'->>'b' " (next diff)!
   return table->AppendHashColumn(sem_context, column);
 }
 
 CHECKED_STATUS PTJsonColumnWithOperators::SetupCoveringIndexColumn(SemContext *sem_context) const {
-  PTColumnDefinition* const column = sem_context->GetColumnDefinition(name_->first_name());
+  PTColumnDefinition* column = sem_context->GetColumnDefinition(name_->first_name());
   if (column == nullptr) {
     return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
   }
@@ -956,9 +976,19 @@ CHECKED_STATUS PTJsonColumnWithOperators::SetupCoveringIndexColumn(SemContext *s
   if (column->datatype() == nullptr) {
     return sem_context->Error(this, "Unsupported index datatype", ErrorCode::SQL_STATEMENT_INVALID);
   }
+
+  DCHECK_GT(operators_->size(), 0);
+  // JSONB type cannot be Key (because it's not indexable). Let's replace JSONB type by TEXT.
+  // For that new PTColumnDefinition will be created of fly with replaced data type.
+  // Replace JSONB column type by TEXT indexable type.
+  const PTColumnDefinition::SharedPtr copied_column = MCMakeShared<PTColumnDefinition>(
+      sem_context->PTreeMem(), *column, operators_,
+      MCMakeShared<PTVarchar>(sem_context->PTreeMem(), loc_));
+  sem_context->current_create_index_stmt()->AddColumnDefinition(copied_column);
+  column = copied_column.get();
+
   column->set_loc(*this);
   column->datatype()->set_loc(*this);
-  // TODO: Added info about JSON attribute " ->'a'->>'b' " (next diff)!
   return table->AppendColumn(sem_context, column, true /* check_duplicate */);
 }
 

@@ -165,7 +165,9 @@ class YBColumnSchema {
                  bool is_static = false,
                  bool is_counter = false,
                  int32_t order = 0,
-                 ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified);
+                 ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified,
+                 const ColumnSchema::QLJsonOperations& json_ops =
+                     ColumnSchema::QLJsonOperations());
   YBColumnSchema(const YBColumnSchema& other);
   ~YBColumnSchema();
 
@@ -183,7 +185,8 @@ class YBColumnSchema {
   bool is_static() const;
   bool is_counter() const;
   int32_t order() const;
-  yb::ColumnSchema::SortingType sorting_type() const;
+  ColumnSchema::SortingType sorting_type() const;
+  const ColumnSchema::QLJsonOperations& json_ops() const;
 
  private:
   friend class YBColumnSpec;
@@ -253,6 +256,10 @@ class YBColumnSpec {
   // Identify this column as counter.
   YBColumnSpec* Counter();
 
+  // Add JSON operation.
+  YBColumnSpec* JsonOp(JsonOperatorPB op, const std::string& str_value);
+  YBColumnSpec* JsonOp(JsonOperatorPB op, int32_t int_value);
+
   // Operations only relevant for Alter Table
   // ------------------------------------------------------------
 
@@ -271,6 +278,8 @@ class YBColumnSpec {
   explicit YBColumnSpec(const std::string& col_name);
 
   CHECKED_STATUS ToColumnSchema(YBColumnSchema* col) const;
+
+  YBColumnSpec* JsonOp(JsonOperatorPB op, const QLValuePB& value);
 
   // Owned.
   Data* data_;

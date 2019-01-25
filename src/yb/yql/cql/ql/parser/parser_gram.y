@@ -1388,11 +1388,10 @@ columnElem:
   ColId {
     $$ = MAKE_NODE(@1, PTName, $1);
   }
-// TODO: Uncomment when the proper handling will be implemented
-//  | ColId json_ref {
-//    PTQualifiedName::SharedPtr name_node = MAKE_NODE(@1, PTQualifiedName, $1);
-//    $$ = MAKE_NODE(@1, PTJsonColumnWithOperators, name_node, $2);
-//  }
+  | ColId json_ref {
+    PTQualifiedName::SharedPtr name_node = MAKE_NODE(@1, PTQualifiedName, $1);
+    $$ = MAKE_NODE(@1, PTJsonColumnWithOperators, name_node, $2);
+  }
 ;
 
 key_match:
