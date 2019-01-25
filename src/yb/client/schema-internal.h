@@ -79,6 +79,8 @@ class YBColumnSpec::Data {
 
   bool is_counter;
 
+  ColumnSchema::QLJsonOperations json_ops;
+
   // For ALTER
   bool has_rename_to;
   std::string rename_to;

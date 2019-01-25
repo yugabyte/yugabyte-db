@@ -264,51 +264,6 @@ CHECKED_STATUS PTCreateTable::ToTableProperties(TableProperties *table_propertie
 
 //--------------------------------------------------------------------------------------------------
 
-PTColumnDefinition::PTColumnDefinition(MemoryContext *memctx,
-                                       YBLocation::SharedPtr loc,
-                                       const MCSharedPtr<MCString>& name,
-                                       const PTBaseType::SharedPtr& datatype,
-                                       const PTListNode::SharedPtr& qualifiers)
-    : TreeNode(memctx, loc),
-      name_(name),
-      datatype_(datatype),
-      qualifiers_(qualifiers),
-      is_primary_key_(false),
-      is_hash_key_(false),
-      is_static_(false),
-      order_(-1),
-      sorting_type_(ColumnSchema::SortingType::kNotSpecified) {
-}
-
-PTColumnDefinition::~PTColumnDefinition() {
-}
-
-CHECKED_STATUS PTColumnDefinition::Analyze(SemContext *sem_context) {
-  if (!sem_context->processing_column_definition()) {
-    return Status::OK();
-  }
-
-  // Save context state, and set "this" as current column in the context.
-  SymbolEntry cached_entry = *sem_context->current_processing_id();
-  sem_context->set_current_column(this);
-
-  // Analyze column qualifiers.
-  RETURN_NOT_OK(sem_context->MapSymbol(*name_, this));
-  if (qualifiers_ != nullptr) {
-    RETURN_NOT_OK(qualifiers_->Analyze(sem_context));
-  }
-
-  // Add the analyzed column to table.
-  PTCreateTable *table = sem_context->current_create_table_stmt();
-  RETURN_NOT_OK(table->AppendColumn(sem_context, this));
-
-  // Restore the context value as we are done with this colummn.
-  sem_context->set_current_processing_id(cached_entry);
-  return Status::OK();
-}
-
-//--------------------------------------------------------------------------------------------------
-
 PTPrimaryKey::PTPrimaryKey(MemoryContext *memctx,
                            YBLocation::SharedPtr loc,
                            const PTListNode::SharedPtr& columns)
