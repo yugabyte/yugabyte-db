@@ -1,0 +1,12 @@
+# src/test/regress/yb_misc_serial_schedule
+#
+####################################################################################################
+# Postgres Testsuites: Porting from PostgreSQL original tests.
+# This includes miscellaneous tests that are not yet characterized to a proper testsuite.
+####################################################################################################
+test: yb_insert
+test: yb_schema
+test: yb_prepare
+# Disable test on index due to github::issue#714
+# test: yb_create_table
+# test: yb_create_index
