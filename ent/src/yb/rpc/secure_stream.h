@@ -80,7 +80,7 @@ class SecureContext {
 class SecureStream : public Stream, public StreamContext {
  public:
   SecureStream(const SecureContext& context, std::unique_ptr<Stream> lower_stream,
-               GrowableBufferAllocator* allocator, size_t limit);
+               const StreamCreateData& data);
 
   SecureStream(const SecureStream&) = delete;
   void operator=(const SecureStream&) = delete;
@@ -127,6 +127,7 @@ class SecureStream : public Stream, public StreamContext {
 
   const SecureContext& secure_context_;
   std::unique_ptr<Stream> lower_stream_;
+  const std::string remote_hostname_;
   StreamContext* context_;
   SecureState state_ = SecureState::kInitial;
   bool need_connect_ = false;

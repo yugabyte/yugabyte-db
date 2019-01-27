@@ -1,12 +1,12 @@
 Certificate:
     Data:
         Version: 3 (0x2)
-        Serial Number: 124 (0x7c)
+        Serial Number: 637 (0x27d)
     Signature Algorithm: sha256WithRSAEncryption
         Issuer: CN=YugaByte CA
         Validity
-            Not Before: Sep  6 18:39:41 2018 GMT
-            Not After : Sep 10 18:39:41 2023 GMT
+            Not Before: Jan 27 08:52:45 2019 GMT
+            Not After : Jan 31 08:52:45 2024 GMT
         Subject: CN=node.148
         Subject Public Key Info:
             Public Key Algorithm: rsaEncryption
@@ -28,35 +28,36 @@ Certificate:
             X509v3 Extended Key Usage: 
                 TLS Web Client Authentication, TLS Web Server Authentication
             X509v3 Subject Alternative Name: 
-                IP Address:127.0.0.148, IP Address:127.0.0.149
+                IP Address:127.0.0.148, DNS:127.*.*.149.ip.yugabyte
     Signature Algorithm: sha256WithRSAEncryption
-         30:2a:2f:8e:70:09:3e:41:e4:3b:c3:77:b3:c1:89:1a:19:1b:
-         c3:eb:31:9f:95:9e:9f:31:cb:21:f6:94:ad:6a:61:3f:42:62:
-         20:32:59:98:5a:66:b4:0f:d7:1c:52:f7:0f:ae:bf:f8:a0:b6:
-         57:16:c7:7d:3f:99:33:e7:80:5b:fe:d0:22:f8:f0:e0:08:12:
-         f4:af:a9:ee:03:15:80:82:3d:1d:74:d1:70:2d:85:02:f7:cc:
-         61:cf:4a:ff:7d:87:59:58:f1:f1:fb:b6:82:b8:0d:b6:ab:82:
-         29:9c:0f:2d:9a:77:9b:1d:fa:26:ac:6a:13:de:47:c9:70:3a:
-         78:04:5b:87:6d:79:7a:05:5f:91:07:fc:c1:dd:fd:52:c5:9a:
-         c2:bc:11:65:0c:e3:55:61:9c:19:85:1f:99:a0:a5:22:5d:dd:
-         92:48:49:d4:9c:fe:85:12:51:81:a7:a7:7c:72:69:e7:23:81:
-         29:fb:d3:ed:3f:36:5b:f6:d5:98:45:73:51:1a:05:eb:7a:1a:
-         5e:dc:40:c6:51:68:d0:e5:5b:28:ff:b6:2b:c3:8d:2e:08:f9:
-         1f:b9:72:50:20:5b:54:85:67:f5:41:f7:dd:d2:c8:24:0f:79:
-         fd:3f:09:53:f9:06:16:1a:e7:fd:e0:6b:a1:7c:4c:ab:a9:08:
-         1c:6d:d3:1d
+         a5:34:3f:8b:31:e2:6d:6e:0f:fb:fb:1e:f1:70:71:90:04:c1:
+         93:2a:fa:0d:3c:16:29:54:a4:18:04:ae:f7:b0:8b:13:f4:5e:
+         85:ae:79:d4:eb:b2:f8:f8:4c:92:82:01:32:06:58:9b:5e:18:
+         32:82:8e:d9:ee:a2:b8:bb:af:79:64:81:8c:5d:2a:52:6c:0a:
+         36:f3:6c:14:83:ce:d6:5c:ba:e1:4b:3d:48:5d:79:2c:20:70:
+         03:1e:0c:c6:dd:e4:ed:9c:cf:fb:c8:69:a7:10:58:7a:b5:21:
+         5e:02:b7:c1:a5:fb:89:af:9d:42:67:5f:95:9c:8d:b2:16:b0:
+         d9:74:58:38:ca:cb:a6:84:02:b2:8a:50:fe:37:ea:05:ef:a0:
+         24:c9:0d:8a:1b:a4:ef:5b:a0:68:23:c0:c1:a7:b7:e5:1c:6a:
+         0e:e0:9c:e1:3a:c2:70:ba:88:44:75:b1:ca:ef:3a:e0:8d:96:
+         34:c6:e7:d6:ae:98:a3:3f:c9:fb:82:54:5a:2a:04:93:83:68:
+         c4:4a:85:c5:b2:e9:37:d2:3e:85:1a:be:c1:a1:2b:24:81:56:
+         bc:1b:3e:69:b4:4f:58:42:87:87:e3:5a:46:56:3b:9c:64:d1:
+         50:60:79:eb:4d:9c:9e:28:81:d6:e1:94:f0:04:cf:f2:27:55:
+         34:d8:e6:78
 -----BEGIN CERTIFICATE-----
-MIICYzCCAUugAwIBAgIBfDANBgkqhkiG9w0BAQsFADAWMRQwEgYDVQQDDAtZdWdh
-Qnl0ZSBDQTAeFw0xODA5MDYxODM5NDFaFw0yMzA5MTAxODM5NDFaMBMxETAPBgNV
-BAMMCG5vZGUuMTQ4MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDWiwi1ZsjT
-3ZQWfQxWEH2X5IU72pUbjWefPXNC8XIeGYePqCBhr073a53PCYPerdJJ1xA3hdWt
-ee+QCYlnmRORl+1JOBtD6wv0dclznvTlM+uh/7aqGC3zteT1eou6WWmjyCqXOKN7
-SHcKbBxXUMq0jGO6D87YWVo5Y7psZ0r65wIDAQABo0MwQTAJBgNVHRMEAjAAMB0G
-A1UdJQQWMBQGCCsGAQUFBwMCBggrBgEFBQcDATAVBgNVHREEDjAMhwR/AACUhwR/
-AACVMA0GCSqGSIb3DQEBCwUAA4IBAQAwKi+OcAk+QeQ7w3ezwYkaGRvD6zGflZ6f
-Mcsh9pStamE/QmIgMlmYWma0D9ccUvcPrr/4oLZXFsd9P5kz54Bb/tAi+PDgCBL0
-r6nuAxWAgj0ddNFwLYUC98xhz0r/fYdZWPHx+7aCuA22q4IpnA8tmnebHfomrGoT
-3kfJcDp4BFuHbXl6BV+RB/zB3f1SxZrCvBFlDONVYZwZhR+ZoKUiXd2SSEnUnP6F
-ElGBp6d8cmnnI4Ep+9PtPzZb9tWYRXNRGgXrehpe3EDGUWjQ5Vso/7Yrw40uCPkf
-uXJQIFtUhWf1Qffd0sgkD3n9PwlT+QYWGuf94GuhfEyrqQgcbdMd
+MIICdzCCAV+gAwIBAgICAn0wDQYJKoZIhvcNAQELBQAwFjEUMBIGA1UEAwwLWXVn
+YUJ5dGUgQ0EwHhcNMTkwMTI3MDg1MjQ1WhcNMjQwMTMxMDg1MjQ1WjATMREwDwYD
+VQQDDAhub2RlLjE0ODCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEA1osItWbI
+092UFn0MVhB9l+SFO9qVG41nnz1zQvFyHhmHj6ggYa9O92udzwmD3q3SSdcQN4XV
+rXnvkAmJZ5kTkZftSTgbQ+sL9HXJc5705TProf+2qhgt87Xk9XqLullpo8gqlzij
+e0h3CmwcV1DKtIxjug/O2FlaOWO6bGdK+ucCAwEAAaNWMFQwCQYDVR0TBAIwADAd
+BgNVHSUEFjAUBggrBgEFBQcDAgYIKwYBBQUHAwEwKAYDVR0RBCEwH4cEfwAAlIIX
+MTI3LiouKi4xNDkuaXAueXVnYWJ5dGUwDQYJKoZIhvcNAQELBQADggEBAKU0P4sx
+4m1uD/v7HvFwcZAEwZMq+g08FilUpBgErvewixP0XoWuedTrsvj4TJKCATIGWJte
+GDKCjtnuori7r3lkgYxdKlJsCjbzbBSDztZcuuFLPUhdeSwgcAMeDMbd5O2cz/vI
+aacQWHq1IV4Ct8Gl+4mvnUJnX5WcjbIWsNl0WDjKy6aEArKKUP436gXvoCTJDYob
+pO9boGgjwMGnt+Ucag7gnOE6wnC6iER1scrvOuCNljTG59aumKM/yfuCVFoqBJOD
+aMRKhcWy6TfSPoUavsGhKySBVrwbPmm0T1hCh4fjWkZWO5xk0VBgeetNnJ4ogdbh
+lPAEz/InVTTY5ng=
 -----END CERTIFICATE-----
