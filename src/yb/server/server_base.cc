@@ -551,8 +551,8 @@ void RpcAndWebServerBase::Shutdown() {
   web_server_->Stop();
 }
 
-string TEST_RpcAddress(int index, Private priv) {
-  return Format("127.0.0.$0", index * 2 + (priv ? 0 : 1));
+std::string TEST_RpcAddress(int index, Private priv) {
+  return Format("127.0.0.$0$1", index * 2 + (priv ? 0 : 1), priv ? "" : ".ip.yugabyte");
 }
 
 string TEST_RpcBindEndpoint(int index, uint16_t port) {
@@ -568,8 +568,7 @@ void TEST_BreakConnectivity(rpc::Messenger* messenger, int index) {
     // We group servers by 2. When servers belongs to the same group, they should use
     // private ip for communication, otherwise public ip should be used.
     bool same_group = (i - 1) / 2 == (index - 1) / 2;
-    auto broken_address = boost::asio::ip::address::from_string(
-        TEST_RpcAddress(i, Private(!same_group)));
+    auto broken_address = CHECK_RESULT(HostToAddress(TEST_RpcAddress(i, Private(!same_group))));
     LOG(INFO) << "Break " << index << " => " << broken_address;
     messenger->BreakConnectivityWith(broken_address);
   }

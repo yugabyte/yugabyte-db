@@ -34,6 +34,8 @@
 
 #include <algorithm>
 
+#include <boost/scope_exit.hpp>
+
 #include "yb/client/client.h"
 
 #include "yb/consensus/consensus.h"
@@ -197,15 +199,26 @@ Status MiniCluster::StartMasters() {
   if (mini_masters_.size() < num_masters_initial_) {
     mini_masters_.resize(num_masters_initial_);
   }
+
+  bool started = false;
+  BOOST_SCOPE_EXIT(this_, &started) {
+    if (!started) {
+      for (const auto& master : this_->mini_masters_) {
+        if (master) {
+          master->Shutdown();
+        }
+      }
+    }
+  } BOOST_SCOPE_EXIT_END;
+
   for (int i = 0; i < num_masters_initial_; i++) {
-    gscoped_ptr<MiniMaster> mini_master(
-        new MiniMaster(env_, GetMasterFsRoot(i), master_rpc_ports_[i], master_web_ports_[i], i));
-    auto status = mini_master->StartDistributedMaster(master_rpc_ports_);
+    mini_masters_[i] = std::make_shared<MiniMaster>(
+        env_, GetMasterFsRoot(i), master_rpc_ports_[i], master_web_ports_[i], i);
+    auto status = mini_masters_[i]->StartDistributedMaster(master_rpc_ports_);
     LOG_IF(INFO, !status.ok()) << "Failed to start master: " << status;
     RETURN_NOT_OK_PREPEND(status, Substitute("Couldn't start follower $0", i));
-    VLOG(1) << "Started MiniMaster with UUID " << mini_master->permanent_uuid()
+    VLOG(1) << "Started MiniMaster with UUID " << mini_masters_[i]->permanent_uuid()
             << " at index " << i;
-    mini_masters_[i] = shared_ptr<MiniMaster>(mini_master.release());
   }
   int i = 0;
   for (const shared_ptr<MiniMaster>& master : mini_masters_) {
@@ -213,6 +226,7 @@ Status MiniCluster::StartMasters() {
     RETURN_NOT_OK_PREPEND(master->WaitForCatalogManagerInit(),
                           Substitute("Could not initialize catalog manager on master $0", i));
   }
+  started = true;
   return Status::OK();
 }
 

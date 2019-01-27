@@ -607,6 +607,10 @@ Status SetPermanentUuidForRemotePeer(
     LOG(WARNING) << "Error getting permanent uuid from config peer " << yb::ToString(endpoints)
                  << ": " << last_reply_value->controller.status();
 
+    if (last_reply_value->controller.status().IsAborted()) {
+      return last_reply_value->controller.status();
+    }
+
     if (!waiter.Wait()) {
       return STATUS_FORMAT(
           TimedOut, "Getting permanent uuid from $0 timed out after $1: $2",
