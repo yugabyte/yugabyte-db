@@ -307,10 +307,11 @@ Status SecureContext::UseCertificate(const Slice& data) {
   return Status::OK();
 }
 
-SecureStream::SecureStream(const SecureContext& context, std::unique_ptr<Stream> lower_stream,
-                           GrowableBufferAllocator* allocator, size_t limit)
+SecureStream::SecureStream(
+    const SecureContext& context, std::unique_ptr<Stream> lower_stream,
+    const StreamCreateData& data)
     : secure_context_(context), lower_stream_(std::move(lower_stream)),
-      received_data_(allocator, limit) {
+      remote_hostname_(data.remote_hostname), received_data_(data.allocator, data.limit) {
 }
 
 Status SecureStream::Start(bool connect, ev::loop_ref* loop, StreamContext* context) {
@@ -584,6 +585,40 @@ int SecureStream::VerifyCallback(int preverified, X509_STORE_CTX* store_context)
   return preverified;
 }
 
+namespace {
+
+// Matches pattern from RFC 2818:
+// Names may contain the wildcard character * which is considered to match any single domain name
+// component or component fragment. E.g., *.a.com matches foo.a.com but not bar.foo.a.com.
+// f*.com matches foo.com but not bar.com.
+bool MatchPattern(Slice pattern, Slice host) {
+  const char* p = pattern.cdata();
+  const char* p_end = pattern.cend();
+  const char* h = host.cdata();
+  const char* h_end = host.cend();
+
+  while (p != p_end && h != h_end) {
+    if (*p == '*') {
+      ++p;
+      while (h != h_end && *h != '.') {
+        if (MatchPattern(Slice(p, p_end), Slice(h, h_end))) {
+          return true;
+        }
+        ++h;
+      }
+    } else if (std::tolower(*p) == std::tolower(*h)) {
+      ++p;
+      ++h;
+    } else {
+      return false;
+    }
+  }
+
+  return p == p_end && h == h_end;
+}
+
+} // namespace
+
 // Verify according to RFC 2818.
 bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
   // Don't bother looking at certificates that have failed pre-verification.
@@ -613,7 +648,11 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
     if (gen->type == GEN_DNS) {
       ASN1_IA5STRING* domain = gen->d.dNSName;
       if (domain->type == V_ASN1_IA5STRING && domain->data && domain->length) {
-        VLOG(4) << "Domain: " << Slice(domain->data, domain->length).ToBuffer();
+        Slice domain_slice(domain->data, domain->length);
+        VLOG(4) << "Domain: " << domain_slice.ToBuffer() << " vs " << remote_hostname_;
+        if (MatchPattern(domain_slice, remote_hostname_)) {
+          return true;
+        }
       }
     } else if (gen->type == GEN_IPADD) {
       ASN1_OCTET_STRING* ip_address = gen->d.iPAddress;
@@ -622,7 +661,7 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
           boost::asio::ip::address_v4::bytes_type bytes;
           memcpy(&bytes, ip_address->data, bytes.size());
           auto allowed_address = boost::asio::ip::address_v4(bytes);
-          VLOG(4) << "IPv4: " << allowed_address.to_string();
+          VLOG(4) << "IPv4: " << allowed_address.to_string() << " vs " << address;
           if (address == allowed_address) {
             return true;
           }
@@ -630,7 +669,7 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
           boost::asio::ip::address_v6::bytes_type bytes;
           memcpy(&bytes, ip_address->data, bytes.size());
           auto allowed_address = boost::asio::ip::address_v6(bytes);
-          VLOG(4) << "IPv6: " << allowed_address.to_string();
+          VLOG(4) << "IPv6: " << allowed_address.to_string() << " vs " << address;
           if (address == allowed_address) {
             return true;
           }
@@ -649,9 +688,10 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
     common_name = X509_NAME_ENTRY_get_data(name_entry);
   }
   if (common_name && common_name->data && common_name->length) {
-    auto common_name_str = Slice(common_name->data, common_name->length).ToBuffer();
-    VLOG(4) << "Common name: " << common_name_str;
-    if (common_name_str == Remote().address().to_string()) {
+    Slice common_name_slice(common_name->data, common_name->length);
+    VLOG(4) << "Common name: " << common_name_slice.ToBuffer();
+    if (common_name_slice == Remote().address().to_string() ||
+        MatchPattern(common_name_slice, remote_hostname_)) {
       return true;
     }
   }
@@ -674,12 +714,9 @@ StreamFactoryPtr SecureStream::Factory(
     }
 
    private:
-    std::unique_ptr<Stream> Create(
-        const Endpoint& remote, Socket socket, GrowableBufferAllocator* allocator, size_t limit)
-            override {
-      auto lower_stream = lower_layer_factory_->Create(remote, std::move(socket), allocator, limit);
-      return std::make_unique<SecureStream>(
-          *context_, std::move(lower_stream), allocator, limit);
+    std::unique_ptr<Stream> Create(const StreamCreateData& data) override {
+      auto lower_stream = lower_layer_factory_->Create(data);
+      return std::make_unique<SecureStream>(*context_, std::move(lower_stream), data);
     }
 
     StreamFactoryPtr lower_layer_factory_;
