@@ -354,21 +354,17 @@ ora_decode(PG_FUNCTION_ARGS)
 
 		for (i = 1; i < nargs; i += 2)
 		{
-			FunctionCallInfoData	func;
 			Datum					result;
 
 			if (PG_ARGISNULL(i))
 				continue;
 
-			InitFunctionCallInfoData(func, eq, 2, collation, NULL, NULL);
+			result = FunctionCall2Coll(eq,
+									   collation,
+									   PG_GETARG_DATUM(0),
+									   PG_GETARG_DATUM(i));
 
-			func.arg[0] = PG_GETARG_DATUM(0);
-			func.arg[1] = PG_GETARG_DATUM(i);
-			func.argnull[0] = false;
-			func.argnull[1] = false;
-			result = FunctionCallInvoke(&func);
-
-			if (!func.isnull && DatumGetBool(result))
+			if (DatumGetBool(result))
 			{
 				retarg = i + 1;
 				break;

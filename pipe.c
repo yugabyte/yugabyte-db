@@ -682,6 +682,30 @@ dbms_pipe_pack_message_bytea(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
+static void
+init_args_3(FunctionCallInfo info, Datum arg0, Datum arg1, Datum arg2)
+{
+#if PG_VERSION_NUM >= 120000
+
+	info->args[0].value = arg0;
+	info->args[1].value = arg1;
+	info->args[2].value = arg2;
+	info->args[0].isnull = false;
+	info->args[1].isnull = false;
+	info->args[2].isnull = false;
+
+#else
+
+	info->arg[0] = arg0;
+	info->arg[1] = arg1;
+	info->arg[2] = arg2;
+	info->argnull[0] = false;
+	info->argnull[1] = false;
+	info->argnull[2] = false;
+
+#endif
+}
+
 
 /*
  *  We can serialize only typed record
@@ -693,7 +717,18 @@ dbms_pipe_pack_message_record(PG_FUNCTION_ARGS)
 	HeapTupleHeader rec = PG_GETARG_HEAPTUPLEHEADER(0);
 	Oid tupType;
 	bytea *data;
-	FunctionCallInfoData info;
+
+#if PG_VERSION_NUM >= 120000
+
+	LOCAL_FCINFO(info, 3);
+
+#else
+
+	FunctionCallInfoData info_data;
+	FunctionCallInfo info = &info_data;
+
+#endif
+
 
 	tupType = HeapTupleHeaderGetTypeId(rec);
 
@@ -703,16 +738,10 @@ dbms_pipe_pack_message_record(PG_FUNCTION_ARGS)
 	 * using fcinfo->flinfo->fn_extra.  So we need to pass it our own
 	 * flinfo parameter.
 	 */
-	InitFunctionCallInfoData(info, fcinfo->flinfo, 3, InvalidOid, NULL, NULL);
+	InitFunctionCallInfoData(*info, fcinfo->flinfo, 3, InvalidOid, NULL, NULL);
+	init_args_3(info, PointerGetDatum(rec), ObjectIdGetDatum(tupType), Int32GetDatum(-1));
 
-	info.arg[0] = PointerGetDatum(rec);
-	info.arg[1] = ObjectIdGetDatum(tupType);
-	info.arg[2] = Int32GetDatum(-1);
-	info.argnull[0] = false;
-	info.argnull[1] = false;
-	info.argnull[2] = false;
-
-	data = (bytea*) DatumGetPointer(record_send(&info));
+	data = (bytea*) DatumGetPointer(record_send(info));
 
 	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);
 	pack_field(output_buffer, IT_RECORD,
@@ -763,7 +792,17 @@ dbms_pipe_unpack_message(PG_FUNCTION_ARGS, message_data_type dtype)
 			break;
 		case IT_RECORD:
 		{
-			FunctionCallInfoData	info;
+#if PG_VERSION_NUM >= 120000
+
+			LOCAL_FCINFO(info, 3);
+
+#else
+
+			FunctionCallInfoData info_data;
+			FunctionCallInfo info = &info_data;
+
+#endif
+
 			StringInfoData	buf;
 			text		   *data = cstring_to_text_with_len(ptr, size);
 
@@ -778,16 +817,10 @@ dbms_pipe_unpack_message(PG_FUNCTION_ARGS, message_data_type dtype)
 			 * using fcinfo->flinfo->fn_extra.  So we need to pass it our own
 			 * flinfo parameter.
 			 */
-			InitFunctionCallInfoData(info, fcinfo->flinfo, 3, InvalidOid, NULL, NULL);
+			InitFunctionCallInfoData(*info, fcinfo->flinfo, 3, InvalidOid, NULL, NULL);
+			init_args_3(info, PointerGetDatum(&buf), ObjectIdGetDatum(tupType), Int32GetDatum(-1));
 
-			info.arg[0] = PointerGetDatum(&buf);
-			info.arg[1] = ObjectIdGetDatum(tupType);
-			info.arg[2] = Int32GetDatum(-1);
-			info.argnull[0] = false;
-			info.argnull[1] = false;
-			info.argnull[2] = false;
-
-			result = record_recv(&info);
+			result = record_recv(info);
 			break;
 		}
 		default:

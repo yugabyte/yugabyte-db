@@ -184,9 +184,9 @@ plvsubst_string_array(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	PG_RETURN_TEXT_P(plvsubst_string(PG_GETARG_TEXT_P(0),
-					 PG_GETARG_ARRAYTYPE_P(1),
-					 PG_ARGISNULL(2) ? c_subst : PG_GETARG_TEXT_P(2),
-					 fcinfo));
+									 PG_GETARG_ARRAYTYPE_P(1),
+									 PG_ARGISNULL(2) ? c_subst : PG_GETARG_TEXT_P(2),
+									 fcinfo));
 }
 
 Datum
@@ -194,7 +194,18 @@ plvsubst_string_string(PG_FUNCTION_ARGS)
 {
 	Datum		r;
 	ArrayType  *array;
-	FunctionCallInfoData locfcinfo;
+
+#if PG_VERSION_NUM >= 120000
+
+	LOCAL_FCINFO(locfcinfo, 2);
+
+#else
+
+	FunctionCallInfoData locfcinfo_data;
+	FunctionCallInfo locfcinfo = &locfcinfo_data;
+
+#endif
+
 	Oid		collation = PG_GET_COLLATION();
 
 	init_c_subst();
@@ -206,23 +217,35 @@ plvsubst_string_string(PG_FUNCTION_ARGS)
 	 * I can't use DirectFunctionCall2
 	 */
 
-	InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 2, collation, NULL, NULL);
+	InitFunctionCallInfoData(*locfcinfo, fcinfo->flinfo, 2, collation, NULL, NULL);
 
-	locfcinfo.arg[0] = PG_GETARG_DATUM(1);
-	locfcinfo.arg[1] = PG_GETARG_IF_EXISTS(2, DATUM, CStringGetTextDatum(","));
-	locfcinfo.argnull[0] = false;
-	locfcinfo.argnull[1] = false;
-	r = text_to_array(&locfcinfo);
+#if PG_VERSION_NUM >= 120000
 
-	if (locfcinfo.isnull || r == (Datum) 0)
+	locfcinfo->args[0].value = PG_GETARG_DATUM(1);
+	locfcinfo->args[1].value = PG_GETARG_IF_EXISTS(2, DATUM, CStringGetTextDatum(","));
+	locfcinfo->args[0].isnull = false;
+	locfcinfo->args[1].isnull = false;
+
+#else
+
+	locfcinfo->arg[0] = PG_GETARG_DATUM(1);
+	locfcinfo->arg[1] = PG_GETARG_IF_EXISTS(2, DATUM, CStringGetTextDatum(","));
+	locfcinfo->argnull[0] = false;
+	locfcinfo->argnull[1] = false;
+
+#endif
+
+	r = text_to_array(locfcinfo);
+
+	if (locfcinfo->isnull || r == (Datum) 0)
 		array = NULL;
 	else
 		array = DatumGetArrayTypeP(r);
 
 	PG_RETURN_TEXT_P(plvsubst_string(PG_GETARG_TEXT_P(0),
-					 array,
-					 PG_GETARG_IF_EXISTS(3, TEXT_P, c_subst),
-					 fcinfo));
+									 array,
+									 PG_GETARG_IF_EXISTS(3, TEXT_P, c_subst),
+									 fcinfo));
 }
 
 Datum
