@@ -37,6 +37,7 @@
 #include <memory>
 
 #include <boost/container/small_vector.hpp>
+#include <boost/optional/optional_fwd.hpp>
 
 #include "yb/util/env.h"
 #include "yb/util/status.h"
@@ -195,9 +196,10 @@ std::string HostPortToString(const std::string& host, int port);
 
 CHECKED_STATUS HostToAddresses(
     const std::string& host,
-    boost::container::small_vector<IpAddress, 1>* addresses);
+    boost::container::small_vector_base<IpAddress>* addresses);
 
 Result<IpAddress> HostToAddress(const std::string& host);
+boost::optional<IpAddress> TryFastResolve(const std::string& host);
 
 } // namespace yb
 

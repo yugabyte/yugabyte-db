@@ -67,10 +67,17 @@ class Stream {
   virtual ~Stream() {}
 };
 
+struct StreamCreateData {
+  Endpoint remote;
+  const std::string& remote_hostname;
+  Socket* socket;
+  GrowableBufferAllocator* allocator;
+  size_t limit;
+};
+
 class StreamFactory {
  public:
-  virtual std::unique_ptr<Stream> Create(
-      const Endpoint& remote, Socket socket, GrowableBufferAllocator* allocator, size_t limit) = 0;
+  virtual std::unique_ptr<Stream> Create(const StreamCreateData& data) = 0;
 
   virtual ~StreamFactory() {}
 };

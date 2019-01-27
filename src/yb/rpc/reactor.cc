@@ -381,7 +381,7 @@ ConnectionPtr Reactor::AssignOutboundCall(const OutboundCallPtr& call) {
     deadline.AddDelta(timeout);
   }
 
-  Status s = FindOrStartConnection(call->conn_id(), deadline, &conn);
+  Status s = FindOrStartConnection(call->conn_id(), call->hostname(), deadline, &conn);
   if (PREDICT_FALSE(!s.ok())) {
     call->SetFailed(s);
     return ConnectionPtr();
@@ -504,17 +504,18 @@ Result<Socket> CreateClientSocket(const Endpoint& remote) {
 
 template <class... Args>
 Result<std::unique_ptr<Stream>> CreateStream(
-    const StreamFactories& factories, const Protocol* protocol, Args&&... args) {
+    const StreamFactories& factories, const Protocol* protocol, const StreamCreateData& data) {
   auto it = factories.find(protocol);
   if (it == factories.end()) {
     return STATUS_FORMAT(NotFound, "Unknown protocol: $0", protocol);
   }
-  return it->second->Create(std::forward<Args>(args)...);
+  return it->second->Create(data);
 }
 
 } // namespace
 
 Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
+                                      const std::string& hostname,
                                       const MonoTime &deadline,
                                       ConnectionPtr* conn) {
   DCHECK(IsCurrentThread());
@@ -532,14 +533,13 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
   VLOG(2) << name() << " FindOrStartConnection: creating new connection for " << conn_id.ToString();
 
   // Create a new socket and start connecting to the remote.
-  auto sock = CreateClientSocket(conn_id.remote());
-  RETURN_NOT_OK(sock);
+  auto sock = VERIFY_RESULT(CreateClientSocket(conn_id.remote()));
   if (FLAGS_local_ip_for_outbound_sockets.empty()) {
     auto outbound_address = conn_id.remote().address().is_v6()
         ? messenger_->outbound_address_v6()
         : messenger_->outbound_address_v4();
     if (!outbound_address.is_unspecified()) {
-      auto status = sock->Bind(Endpoint(outbound_address, 0), /* explain_addr_in_use */ false);
+      auto status = sock.Bind(Endpoint(outbound_address, 0), /* explain_addr_in_use */ false);
       if (!status.ok()) {
         LOG(WARNING) << "Bind " << outbound_address << " failed: " << status.ToString();
       }
@@ -549,8 +549,9 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
   auto context = messenger_->connection_context_factory_->Create();
   auto& allocator = context->Allocator();
   auto stream = VERIFY_RESULT(CreateStream(
-      messenger_->stream_factories_, conn_id.protocol(), conn_id.remote(), std::move(*sock),
-      &allocator, context->BufferLimit() + allocator.block_size()));
+      messenger_->stream_factories_, conn_id.protocol(),
+      {conn_id.remote(), hostname, &sock, &allocator,
+       context->BufferLimit() + allocator.block_size()}));
 
   // Register the new connection in our map.
   auto connection = std::make_shared<Connection>(
@@ -838,8 +839,8 @@ void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote,
 
   auto stream = CreateStream(
       messenger_->stream_factories_, messenger_->listen_protocol_,
-      remote, std::move(*socket), &connection_context->Allocator(),
-      connection_context->BufferLimit());
+      {remote, std::string(), socket, &connection_context->Allocator(),
+       connection_context->BufferLimit()});
   if (!stream.ok()) {
     LOG(DFATAL) << "Failed to create stream for " << remote << ": " << stream.status();
     return;

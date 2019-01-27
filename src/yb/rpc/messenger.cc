@@ -407,7 +407,7 @@ void Messenger::QueueOutboundCall(OutboundCallPtr call) {
   if (IsArtificiallyDisconnectedFrom(remote.address())) {
     LOG(INFO) << "TEST: Rejected connection to " << remote;
     auto scheduled = reactor->ScheduleReactorTask(std::make_shared<NotifyDisconnectedReactorTask>(
-        std::move(call), SOURCE_LOCATION()));
+        call, SOURCE_LOCATION()));
     if (!scheduled) {
       call->Transferred(STATUS(Aborted, "Reactor is closing"), nullptr /* conn */);
     }

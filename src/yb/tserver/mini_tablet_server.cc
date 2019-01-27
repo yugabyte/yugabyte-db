@@ -35,6 +35,7 @@
 #include <utility>
 #include <functional>
 
+#include <boost/scope_exit.hpp>
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
@@ -91,6 +92,7 @@ MiniTabletServer::MiniTabletServer(const string& fs_root,
   // Start RPC server on loopback.
   FLAGS_rpc_server_allow_ephemeral_ports = true;
   opts_.rpc_opts.rpc_bind_addresses = server::TEST_RpcBindEndpoint(index_, rpc_port);
+  // A.B.C.D.xip.io resolves to A.B.C.D so it is very useful for testing.
   opts_.broadcast_addresses = {
       HostPort(server::TEST_RpcAddress(index_, server::Private::kFalse), rpc_port) };
   opts_.webserver_opts.port = 0;
@@ -123,6 +125,12 @@ Status MiniTabletServer::Start() {
   server::TEST_BreakConnectivity(server_->messenger().get(), index_);
 
   tunnel_ = std::make_unique<Tunnel>(&server_->messenger()->io_service());
+  BOOST_SCOPE_EXIT(this_) {
+    if (!this_->started_) {
+      this_->tunnel_->Shutdown();
+    }
+  } BOOST_SCOPE_EXIT_END;
+
   std::vector<Endpoint> local;
   RETURN_NOT_OK(opts_.broadcast_addresses[0].ResolveAddresses(&local));
   Endpoint remote = VERIFY_RESULT(ParseEndpoint(opts_.rpc_opts.rpc_bind_addresses, 0));

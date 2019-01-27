@@ -34,11 +34,10 @@ const size_t kMaxIov = 16;
 
 }
 
-TcpStream::TcpStream(
-    const Endpoint& remote, Socket socket, GrowableBufferAllocator* allocator, size_t limit)
-    : socket_(std::move(socket)),
-      remote_(remote),
-      read_buffer_(allocator, limit) {
+TcpStream::TcpStream(const StreamCreateData& data)
+    : socket_(std::move(*data.socket)),
+      remote_(data.remote),
+      read_buffer_(data.allocator, data.limit) {
 }
 
 TcpStream::~TcpStream() {
@@ -417,10 +416,8 @@ const Protocol* TcpStream::StaticProtocol() {
 StreamFactoryPtr TcpStream::Factory() {
   class TcpStreamFactory : public StreamFactory {
    private:
-    std::unique_ptr<Stream> Create(
-        const Endpoint& remote, Socket socket, GrowableBufferAllocator* allocator, size_t limit)
-            override {
-      return std::make_unique<TcpStream>(remote, std::move(socket), allocator, limit);
+    std::unique_ptr<Stream> Create(const StreamCreateData& data) override {
+      return std::make_unique<TcpStream>(data);
     }
   };
 
