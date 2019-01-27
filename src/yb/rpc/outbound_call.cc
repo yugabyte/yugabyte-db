@@ -156,6 +156,8 @@ class RemoteMethodsCache {
   ConcurrentValue<PtrCache> concurrent_cache_;
 };
 
+const std::string kEmptyString;
+
 } // namespace
 
 ///
@@ -167,7 +169,8 @@ OutboundCall::OutboundCall(
     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     google::protobuf::Message* response_storage, RpcController* controller,
     ResponseCallback callback)
-    : start_(MonoTime::Now()),
+    : hostname_(&kEmptyString),
+      start_(MonoTime::Now()),
       controller_(DCHECK_NOTNULL(controller)),
       response_(DCHECK_NOTNULL(response_storage)),
       call_id_(NextCallId()),

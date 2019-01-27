@@ -385,6 +385,7 @@ class Reactor {
   // The resulting connection object is managed internally by the reactor thread.
   // Deadline specifies latest time allowed for initializing the connection.
   CHECKED_STATUS FindOrStartConnection(const ConnectionId &conn_id,
+                                       const std::string& hostname,
                                        const MonoTime &deadline,
                                        ConnectionPtr* conn);
 

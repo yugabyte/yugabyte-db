@@ -27,8 +27,7 @@ namespace rpc {
 
 class TcpStream : public Stream {
  public:
-  TcpStream(
-      const Endpoint& remote, Socket socket, GrowableBufferAllocator* allocator, size_t limit);
+  explicit TcpStream(const StreamCreateData& data);
   ~TcpStream();
 
   Socket* socket() { return &socket_; }

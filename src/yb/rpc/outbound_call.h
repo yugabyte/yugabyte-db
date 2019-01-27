@@ -248,8 +248,9 @@ class OutboundCall : public RpcCall {
 
   std::string LogPrefix() const override;
 
-  void SetConnectionId(const ConnectionId& value) {
+  void SetConnectionId(const ConnectionId& value, const std::string* hostname) {
     conn_id_ = value;
+    hostname_ = hostname;
   }
 
   ////////////////////////////////////////////////////////////
@@ -257,6 +258,7 @@ class OutboundCall : public RpcCall {
   ////////////////////////////////////////////////////////////
 
   const ConnectionId& conn_id() const { return conn_id_; }
+  const std::string& hostname() const { return *hostname_; }
   const RemoteMethod& remote_method() const { return *remote_method_; }
   const ResponseCallback &callback() const { return callback_; }
   RpcController* controller() { return controller_; }
@@ -277,6 +279,7 @@ class OutboundCall : public RpcCall {
   virtual CHECKED_STATUS GetSidecar(int idx, Slice* sidecar) const;
 
   ConnectionId conn_id_;
+  const std::string* hostname_;
   MonoTime start_;
   RpcController* const controller_;
   // Pointer for the protobuf where the response should be written.

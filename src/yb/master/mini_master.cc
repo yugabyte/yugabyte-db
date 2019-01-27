@@ -121,8 +121,9 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
   opts->webserver_opts.port = web_port;
   opts->fs_opts.wal_paths = { fs_root_ };
   opts->fs_opts.data_paths = { fs_root_ };
-  opts->broadcast_addresses.push_back(VERIFY_RESULT(HostPort::FromString(server::TEST_RpcAddress(
-      index_, server::Private::kFalse), rpc_port)));
+  // A.B.C.D.xip.io resolves to A.B.C.D so it is very useful for testing.
+  opts->broadcast_addresses = {
+      HostPort(server::TEST_RpcAddress(index_, server::Private::kFalse), rpc_port) };
 
   if (!opts->has_placement_cloud()) {
     opts->SetPlacement(Format("cloud$0", (index_ + 1) / 2), Format("rack$0", index_), "zone");

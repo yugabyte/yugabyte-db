@@ -165,11 +165,11 @@ void Proxy::Resolve() {
 
   const std::string kService = "";
 
-  boost::system::error_code ec;
-  auto address = IpAddress::from_string(remote_.host(), ec);
-  if (!ec) {
-    Endpoint ep(address, remote_.port());
-    HandleResolve(ec, Resolver::results_type::create(ep, remote_.host(), kService));
+  auto address = TryFastResolve(remote_.host());
+  if (address) {
+    Endpoint ep(*address, remote_.port());
+    HandleResolve(boost::system::error_code(),
+                  Resolver::results_type::create(ep, remote_.host(), kService));
     return;
   }
 
@@ -247,7 +247,7 @@ void Proxy::ResolveDone(
 void Proxy::QueueCall(RpcController* controller, const Endpoint& endpoint) {
   uint8_t idx = num_calls_.fetch_add(1) % FLAGS_num_connections_to_server;
   ConnectionId conn_id(endpoint, idx, protocol_);
-  controller->call_->SetConnectionId(conn_id);
+  controller->call_->SetConnectionId(conn_id, &remote_.host());
   context_->QueueOutboundCall(controller->call_);
 }
 
