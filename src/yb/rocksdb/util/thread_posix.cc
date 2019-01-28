@@ -37,28 +37,23 @@ void ThreadPool::PthreadCall(const char* label, int result) {
   }
 }
 
-ThreadPool::ThreadPool()
-    : total_threads_limit_(1),
-      bgthreads_(0),
-      queue_(),
-      queue_len_(0),
-      exit_all_threads_(false),
-      low_io_priority_(false),
-      env_(nullptr) {
+ThreadPool::ThreadPool() {
   PthreadCall("mutex_init", pthread_mutex_init(&mu_, nullptr));
   PthreadCall("cvar_init", pthread_cond_init(&bgsignal_, nullptr));
 }
 
-ThreadPool::~ThreadPool() { assert(bgthreads_.size() == 0U); }
+ThreadPool::~ThreadPool() {
+  DCHECK(bgthreads_.empty());
+}
 
 void ThreadPool::JoinAllThreads() {
   PthreadCall("lock", pthread_mutex_lock(&mu_));
-  assert(!exit_all_threads_);
+  DCHECK(!exit_all_threads_);
   exit_all_threads_ = true;
   PthreadCall("signalall", pthread_cond_broadcast(&bgsignal_));
   PthreadCall("unlock", pthread_mutex_unlock(&mu_));
-  for (const auto tid : bgthreads_) {
-    pthread_join(tid, nullptr);
+  for (const auto& thread : bgthreads_) {
+    thread->Join();
   }
   bgthreads_.clear();
 }
@@ -89,8 +84,6 @@ void ThreadPool::BGThread(size_t thread_id) {
       // Current thread is the last generated one and is excessive.
       // We always terminate excessive thread in the reverse order of
       // generation time.
-      auto terminating_thread = bgthreads_.back();
-      pthread_detach(terminating_thread);
       bgthreads_.pop_back();
       if (HasExcessiveThread()) {
         // There is still at least more excessive thread to terminate.
@@ -134,33 +127,6 @@ void ThreadPool::BGThread(size_t thread_id) {
   }
 }
 
-// Helper struct for passing arguments when creating threads.
-struct BGThreadMetadata {
-  ThreadPool* thread_pool_;
-  size_t thread_id_;  // Thread count in the thread.
-  explicit BGThreadMetadata(ThreadPool* thread_pool, size_t thread_id)
-      : thread_pool_(thread_pool), thread_id_(thread_id) {}
-};
-
-static void* BGThreadWrapper(void* arg) {
-  BGThreadMetadata* meta = reinterpret_cast<BGThreadMetadata*>(arg);
-  size_t thread_id = meta->thread_id_;
-  ThreadPool* tp = meta->thread_pool_;
-#if ROCKSDB_USING_THREAD_STATUS
-  // for thread-status
-  ThreadStatusUtil::RegisterThread(
-      tp->GetHostEnv(), (tp->GetThreadPriority() == Env::Priority::HIGH
-                             ? ThreadStatus::HIGH_PRIORITY
-                             : ThreadStatus::LOW_PRIORITY));
-#endif
-  delete meta;
-  tp->BGThread(thread_id);
-#if ROCKSDB_USING_THREAD_STATUS
-  ThreadStatusUtil::UnregisterThread();
-#endif
-  return nullptr;
-}
-
 void ThreadPool::WakeUpAllThreads() {
   PthreadCall("signalall", pthread_cond_broadcast(&bgsignal_));
 }
@@ -190,24 +156,17 @@ void ThreadPool::SetBackgroundThreads(int num) {
 
 void ThreadPool::StartBGThreads() {
   // Start background thread if necessary
+  std::string category_name = yb::Format(
+      "rocksdb:$0", GetThreadPriority() == Env::Priority::HIGH ? "high" : "low");
   while (static_cast<int>(bgthreads_.size()) < total_threads_limit_) {
-    pthread_t t;
-    PthreadCall("create thread",
-                pthread_create(&t, nullptr, &BGThreadWrapper,
-                               new BGThreadMetadata(this, bgthreads_.size())));
+    size_t tid = bgthreads_.size();
+    std::string thread_name = yb::Format("$0:$1", category_name, tid);
+    yb::ThreadPtr thread;
+    CHECK_OK(yb::Thread::Create(
+        category_name, std::move(thread_name),
+        [this, tid]() { this->BGThread(tid); }, &thread));
 
-// Set the thread name to aid debugging
-#if defined(_GNU_SOURCE) && defined(__GLIBC_PREREQ)
-#if __GLIBC_PREREQ(2, 12)
-    char name_buf[36];
-    snprintf(name_buf, sizeof name_buf, "rocksdb:%s:bg%" ROCKSDB_PRIszt,
-             GetThreadPriority() == Env::Priority::HIGH ? "high" : "low", bgthreads_.size());
-    name_buf[sizeof name_buf - 1] = '\0';
-    pthread_setname_np(t, name_buf);
-#endif
-#endif
-
-    bgthreads_.push_back(t);
+    bgthreads_.push_back(thread);
   }
 }
 
