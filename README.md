@@ -255,7 +255,7 @@ Note that the YB logs are contained in the output file now.
 
 Please use [GitHub issues](https://github.com/YugaByte/yugabyte-db/issues) to report issues.
 
-To live chat with engineers, use our [gitter channel](https://gitter.im/YugaByte/Lobby).
+To live chat with our engineers, use our [gitter channel](https://gitter.im/YugaByte/Lobby).
 
 Also feel free to post questions on or subscribe to the [YugaByte Community Forum](http://forum.yugabyte.com).
 
