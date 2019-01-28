@@ -353,6 +353,8 @@ class Thread : public RefCountedThreadSafe<Thread> {
   static void FinishThread(void* arg);
 };
 
+typedef scoped_refptr<Thread> ThreadPtr;
+
 // Registers /threadz with the debug webserver, and creates thread-tracking metrics under
 // the given entity.
 Status StartThreadInstrumentation(const scoped_refptr<MetricEntity>& server_metrics,
