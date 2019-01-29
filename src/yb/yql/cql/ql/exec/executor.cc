@@ -76,6 +76,7 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
                             StatementExecutedCallback cb) {
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
+  session_->SetForceConsistentRead(false);
   session_->SetReadPoint(client::Restart::kFalse);
   RETURN_STMT_NOT_OK(Execute(parse_tree, params));
   FlushAsync();
@@ -84,6 +85,7 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
 void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallback cb) {
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
+  session_->SetForceConsistentRead(false);
   session_->SetReadPoint(client::Restart::kFalse);
 
   // Table for DML batches, where all statements must modify the same table.
@@ -1836,6 +1838,12 @@ bool Executor::WriteBatch::Empty() const {
 Status Executor::AddOperation(const YBqlReadOpPtr& op, TnodeContext *tnode_context) {
   DCHECK(write_batch_.Empty()) << "Concurrent read and write operations not supported yet";
   tnode_context->AddOperation(op);
+
+  // We need consistent read point if statement is executed in multiple RPC commands.
+  if (tnode_context->UnreadPartitionsRemaining() > 0 ||
+      op->request().hashed_column_values().empty()) {
+    session_->SetForceConsistentRead(true);
+  }
 
   TRACE("Apply");
   return session_->Apply(op);

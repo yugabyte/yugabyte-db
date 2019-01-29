@@ -26,7 +26,8 @@ class SerializableTxnTest : public TransactionTestBase {
     return IsolationLevel::SERIALIZABLE_ISOLATION;
   }
 
-  void TestIncrement(int key);
+  void TestIncrements(bool transactional);
+  void TestIncrement(int key, bool transactional);
 };
 
 TEST_F(SerializableTxnTest, NonConflictingWrites) {
@@ -124,7 +125,7 @@ TEST_F(SerializableTxnTest, ReadWriteConflict) {
 // Execute UPDATE table SET value = value + 1 WHERE key = kKey in parallel, using
 // serializable isolation.
 // With retries the resulting value should be equal to number of increments.
-void SerializableTxnTest::TestIncrement(int key) {
+void SerializableTxnTest::TestIncrement(int key, bool transactional) {
   const auto kIncrements = RegularBuildVsSanitizers(100, 20);
 
   {
@@ -146,8 +147,9 @@ void SerializableTxnTest::TestIncrement(int key) {
   auto value_column_id = table_.ColumnId(kValueColumn);
   for (int i = 0; i != kIncrements; ++i) {
     Entry entry;
-    entry.txn = CreateTransaction();
-    entry.session = CreateSession(entry.txn);
+    entry.txn = transactional ? CreateTransaction() : nullptr;
+    entry.session = CreateSession(entry.txn, clock_);
+    entry.session->SetReadPoint(Restart::kFalse);
     entries.push_back(entry);
   }
 
@@ -192,25 +194,31 @@ void SerializableTxnTest::TestIncrement(int key) {
             auto errors = entry.session->GetPendingErrors();
             ASSERT_EQ(errors.size(), 1);
             auto status = errors.front()->status();
-            ASSERT_TRUE(status.IsTryAgain() || status.IsTimedOut()) << status;
-            entry.txn = CreateTransaction();
+            ASSERT_TRUE(status.IsTryAgain() || (status.IsTimedOut() && transactional)) << status;
+            entry.txn = transactional ? CreateTransaction() : nullptr;
             entry.op = nullptr;
           } else {
             if (entry.op->response().status() == QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
               auto old_txn = entry.txn;
-              entry.txn = entry.txn->CreateRestartedTransaction();
+              if (transactional) {
+                entry.txn = entry.txn->CreateRestartedTransaction();
+              } else {
+                entry.session->SetReadPoint(Restart::kTrue);
+              }
               entry.op = nullptr;
             } else {
               ASSERT_EQ(entry.op->response().status(), QLResponsePB::YQL_STATUS_OK);
-              entry.commit_future = entry.txn->CommitFuture();
+              if (transactional) {
+                entry.commit_future = entry.txn->CommitFuture();
+              }
             }
           }
         }
       } else if (entry.commit_future.valid()) {
         if (entry.commit_future.wait_for(0s) == std::future_status::ready) {
           auto status = entry.commit_future.get();
-          if (status.IsExpired() || status.IsTimedOut()) {
-            entry.txn = CreateTransaction();
+          if (status.IsExpired()) {
+            entry.txn = transactional ? CreateTransaction() : nullptr;
             entry.op = nullptr;
           } else {
             ASSERT_OK(status);
@@ -234,20 +242,28 @@ void SerializableTxnTest::TestIncrement(int key) {
 // Execute UPDATE table SET value = value + 1 WHERE key = kKey in parallel, using
 // serializable isolation.
 // With retries the resulting value should be equal to number of increments.
-TEST_F(SerializableTxnTest, Increment) {
+void SerializableTxnTest::TestIncrements(bool transactional) {
   const auto kThreads = 3;
 
   std::vector<std::thread> threads;
   while (threads.size() != kThreads) {
     int key = threads.size();
-    threads.emplace_back([this, key] {
-      TestIncrement(key);
+    threads.emplace_back([this, key, transactional] {
+      TestIncrement(key, transactional);
     });
   }
 
   for (auto& thread : threads) {
     thread.join();
   }
+}
+
+TEST_F(SerializableTxnTest, Increment) {
+  TestIncrements(true /* transactional */);
+}
+
+TEST_F(SerializableTxnTest, IncrementNonTransactional) {
+  TestIncrements(false /* transactional */);
 }
 
 } // namespace client
