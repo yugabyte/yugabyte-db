@@ -1312,6 +1312,23 @@ lsm_rocksdb_compaction_time:
           "rocksdb_compaction_times_micros.avg": "Avg"
       ticksuffix: "&nbsp;\u00B5s"
 
+docdb_transaction:
+  metric: ""
+  function: "irate|sum"
+  range: "1m"
+  filters:
+    saved_name: "transaction_conflicts|expired_transactions"
+    export_type: "tserver_export"
+  group_by: "saved_name"
+  layout:
+    title: "Transaction"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "transaction_conflicts": "Transaction Conflicts"
+        "expired_transactions": "Expired Transactions"
+
 #Cassandra Metrics
 cql_server_rpc_per_second:
   metric: "rpc_latency_count"
@@ -1420,6 +1437,24 @@ cql_yb_latency:
         "remote,write": "Remote Write"
         "local,read": "Local Read"
         "local,write": "Local Write"
+      ticksuffix: "&nbsp;\u00B5s"
+
+cql_yb_transaction:
+  metric: "rpc_latency.avg"
+  function: "irate|avg"
+  range: "1m"
+  filters:
+    export_type: "cql_export"
+    service_type: "SQLProcessor"
+    service_method: "Transaction"
+  group_by: "service_method"
+  layout:
+    title: "Transaction"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "Transaction": "Transaction Execution"
       ticksuffix: "&nbsp;\u00B5s"
 
 cql_reactor_latency:

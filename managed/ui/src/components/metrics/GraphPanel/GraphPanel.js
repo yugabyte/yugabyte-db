@@ -57,7 +57,8 @@ const panelTypes = {
       "lsm_rocksdb_flush_size",
       "lsm_rocksdb_compaction",
       "lsm_rocksdb_compaction_time",
-      "lsm_rocksdb_compaction_numfiles"]},
+      "lsm_rocksdb_compaction_numfiles",
+      "docdb_transaction"]},
   proxies: {title: "YCQL and YEDIS",
     metrics: ["cql_server_rpc_per_second",
       "cql_sql_latency",
@@ -88,7 +89,8 @@ const panelTypes = {
       "cql_yb_local_vs_remote",
       "cql_yb_latency",
       "cql_reactor_latency",
-      "response_sizes"]},
+      "response_sizes",
+      "cql_yb_transaction"]},
 
   tserver_table: {
     title: "Tablet Server",
@@ -115,7 +117,8 @@ const panelTypes = {
       "lsm_rocksdb_flush_size",
       "lsm_rocksdb_compaction",
       "lsm_rocksdb_compaction_time",
-      "lsm_rocksdb_compaction_numfiles"]
+      "lsm_rocksdb_compaction_numfiles",
+      "docdb_transaction"]
   }
 };
 
