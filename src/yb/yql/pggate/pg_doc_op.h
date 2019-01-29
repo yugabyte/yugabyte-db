@@ -40,7 +40,9 @@ class PgDocOp {
   static const int64_t kPrefetchLimit = INT32_MAX;
 
   // Constructors & Destructors.
-  explicit PgDocOp(PgSession::ScopedRefPtr pg_session);
+  // read_time points to place where read_time for whole postgres statement is stored.
+  // It is available while statement is executed.
+  explicit PgDocOp(PgSession::ScopedRefPtr pg_session, uint64_t* read_time);
   virtual ~PgDocOp();
 
   // Postgres Ops.
@@ -67,6 +69,8 @@ class PgDocOp {
 
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
+
+  uint64_t* const read_time_;
 
   // This mutex protects the fields below.
   mutable std::mutex mtx_;
@@ -105,7 +109,8 @@ class PgDocReadOp : public PgDocOp {
   typedef scoped_refptr<PgDocReadOp> ScopedRefPtr;
 
   // Constructors & Destructors.
-  PgDocReadOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlReadOp *read_op);
+  PgDocReadOp(
+      PgSession::ScopedRefPtr pg_session, uint64_t* read_time, client::YBPgsqlReadOp *read_op);
   virtual ~PgDocReadOp();
 
   // Access function.
@@ -115,8 +120,8 @@ class PgDocReadOp : public PgDocOp {
 
  private:
   // Process response from DocDB.
-  virtual void InitUnlocked(std::unique_lock<std::mutex>* lock) override;
-  virtual CHECKED_STATUS SendRequestUnlocked() override;
+  void InitUnlocked(std::unique_lock<std::mutex>* lock) override;
+  CHECKED_STATUS SendRequestUnlocked() override;
   virtual void ReceiveResponse(Status exec_status);
 
   // Operator.
@@ -145,7 +150,7 @@ class PgDocWriteOp : public PgDocOp {
 
  private:
   // Process response from DocDB.
-  virtual CHECKED_STATUS SendRequestUnlocked() override;
+  CHECKED_STATUS SendRequestUnlocked() override;
   virtual void ReceiveResponse(Status exec_status);
 
   // Operator.

@@ -138,11 +138,21 @@ void YBSessionData::set_allow_local_calls_in_curr_thread(bool flag) {
   allow_local_calls_in_curr_thread_ = flag;
 }
 
+void YBSessionData::SetInTxnLimit(HybridTime value) {
+  auto *rp = DCHECK_NOTNULL(read_point());
+  if (rp) {
+    read_point()->SetInTxnLimit(value);
+  }
+}
+
+ConsistentReadPoint* YBSessionData::read_point() {
+  return transaction_ ? &transaction_->read_point() : read_point_.get();
+}
+
 internal::Batcher& YBSessionData::Batcher() {
   if (!batcher_) {
     batcher_.reset(new internal::Batcher(
-        client_.get(), error_collector_.get(), shared_from_this(), transaction_,
-        transaction_ ? &transaction_->read_point() : read_point_.get(),
+        client_.get(), error_collector_.get(), shared_from_this(), transaction_, read_point(),
         force_consistent_read_));
     if (timeout_.Initialized()) {
       batcher_->SetTimeout(timeout_);

@@ -257,7 +257,8 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Select.
-  CHECKED_STATUS NewSelect(PgSession *pg_session, const PgObjectId& table_id, PgStatement **handle);
+  CHECKED_STATUS NewSelect(
+      PgSession *pg_session, const PgObjectId& table_id, PgStatement **handle, uint64_t* read_time);
 
   CHECKED_STATUS ExecSelect(PgStatement *handle);
 

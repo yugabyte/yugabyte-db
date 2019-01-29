@@ -101,7 +101,7 @@ class PgWrapperTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
     DontVerifyClusterBeforeNextTearDown();
   }
 
-  void RunPsqlCommand(string statement, string expected_output) {
+  void RunPsqlCommand(const std::string& statement, const std::string& expected_output) {
     std::string tmp_dir;
     ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
 
@@ -132,15 +132,19 @@ class PgWrapperTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
   }
 
   void CreateTable(string statement) {
-    ASSERT_NO_FATALS(RunPsqlCommand(statement, "CREATE TABLE"));
+    RunPsqlCommand(statement, "CREATE TABLE");
   }
 
-  void InsertOneRow(string statement) {
-    ASSERT_NO_FATALS(RunPsqlCommand(statement, "INSERT 0 1"));
+  void InsertRows(const std::string& statement, size_t expected_rows) {
+    RunPsqlCommand(statement, Format("INSERT 0 $0", expected_rows));
+  }
+
+  void InsertOneRow(const std::string& statement) {
+    InsertRows(statement, 1 /* expected_rows */);
   }
 
   void UpdateOneRow(string statement) {
-    ASSERT_NO_FATALS(RunPsqlCommand(statement, "UPDATE 1"));
+    RunPsqlCommand(statement, "UPDATE 1");
   }
 
   void FlushOrCompact(string table_id, FlushOrCompaction flush_or_compaction) {
@@ -301,6 +305,16 @@ TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(TestCompactHistoryWithTxn)) {
   ASSERT_NO_FATALS(FlushOrCompact(table_id, FlushOrCompaction::kCompaction));
 
   read_txn_thread.join();
+}
+
+TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(InsertSelect)) {
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT, v TEXT)"));
+
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (1, 'abc')"));
+  for (size_t i = 0; i != RegularBuildVsSanitizers(7, 1); ++i) {
+     ASSERT_NO_FATALS(InsertRows(
+         "INSERT INTO mytbl SELECT * FROM mytbl", 1 << i /* expected_rows */));
+  }
 }
 
 }  // namespace pgwrapper

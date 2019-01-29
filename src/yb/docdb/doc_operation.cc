@@ -13,6 +13,8 @@
 
 #include "yb/docdb/doc_operation.h"
 
+#include <boost/optional/optional_io.hpp>
+
 #include "yb/common/jsonb.h"
 #include "yb/common/partition.h"
 #include "yb/common/ql_expr.h"
@@ -3266,6 +3268,8 @@ Status PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* 
 }
 
 Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
+  VLOG(4) << "Write, read time: " << data.read_time << ", txn: " << txn_op_context_;
+
   switch (request_.stmt_type()) {
     case PgsqlWriteRequestPB::PGSQL_INSERT:
       return ApplyInsert(data);
@@ -3467,6 +3471,8 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
                                    const Schema& query_schema,
                                    PgsqlResultSet *resultset,
                                    HybridTime *restart_read_ht) {
+  VLOG(4) << "Read, read time: " << read_time << ", txn: " << txn_op_context_;
+
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
   if (request_.has_limit()) {
     if (request_.limit() == 0) {

@@ -49,10 +49,12 @@ static MonoDelta kSessionTimeout = 60s;
 PgSession::PgSession(
     std::shared_ptr<client::YBClient> client,
     const string& database_name,
-    scoped_refptr<PgTxnManager> pg_txn_manager)
+    scoped_refptr<PgTxnManager> pg_txn_manager,
+    scoped_refptr<server::HybridClock> clock)
     : client_(client),
       session_(client_->NewSession()),
-      pg_txn_manager_(std::move(pg_txn_manager)) {
+      pg_txn_manager_(std::move(pg_txn_manager)),
+      clock_(std::move(clock)) {
   session_->SetTimeout(kSessionTimeout);
   session_->SetForceConsistentRead(true);
 }
@@ -145,7 +147,7 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_i
   return make_scoped_refptr<PgTableDesc>(table);
 }
 
-Status PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op) {
+Status PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op, uint64_t* read_time) {
   VLOG(2) << __PRETTY_FUNCTION__ << " called, is_transactional="
           << op->IsTransactional();
   if (op->IsTransactional()) {
@@ -153,7 +155,14 @@ Status PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op) {
   } else {
     has_non_txn_ops_ = true;
   }
-  return VERIFY_RESULT(GetSessionForOp(op))->Apply(op);
+  auto session = VERIFY_RESULT(GetSessionForOp(op));
+  if (read_time && has_txn_ops_) {
+    if (!*read_time) {
+      *read_time = clock_->Now().ToUint64();
+    }
+    session->SetInTxnLimit(HybridTime(*read_time));
+  }
+  return session->Apply(op);
 }
 
 Status PgSession::PgFlushAsync(StatusFunctor callback) {

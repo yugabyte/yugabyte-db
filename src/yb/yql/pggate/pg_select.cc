@@ -33,11 +33,11 @@ PgSelect::PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_i
 PgSelect::~PgSelect() {
 }
 
-Status PgSelect::Prepare() {
+Status PgSelect::Prepare(uint64_t* read_time) {
   RETURN_NOT_OK(LoadTable());
 
   // Allocate READ/SELECT operation.
-  auto doc_op = make_shared<PgDocReadOp>(pg_session_, table_desc_->NewPgsqlSelect());
+  auto doc_op = make_shared<PgDocReadOp>(pg_session_, read_time, table_desc_->NewPgsqlSelect());
   read_req_ = doc_op->read_op()->mutable_request();
   PrepareColumns();
 

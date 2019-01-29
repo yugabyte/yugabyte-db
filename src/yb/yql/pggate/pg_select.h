@@ -37,10 +37,12 @@ class PgSelect : public PgDml {
   PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
   virtual ~PgSelect();
 
-  virtual StmtOp stmt_op() const override { return StmtOp::STMT_SELECT; }
+  StmtOp stmt_op() const override { return StmtOp::STMT_SELECT; }
 
   // Prepare SELECT before execution.
-  CHECKED_STATUS Prepare();
+  // read_time points to place where read_time for whole postgres statement is stored.
+  // It is available while statement is executed.
+  CHECKED_STATUS Prepare(uint64_t* read_time);
 
   // Setup internal structures for binding values during prepare.
   void PrepareColumns();

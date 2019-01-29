@@ -106,7 +106,11 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
 
   void SetForceConsistentRead(bool value);
 
+  void SetInTxnLimit(HybridTime value);
+
  private:
+  ConsistentReadPoint* read_point();
+
   internal::Batcher& Batcher();
 
   // The client that this session is associated with.
