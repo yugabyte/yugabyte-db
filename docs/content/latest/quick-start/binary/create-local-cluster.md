@@ -16,12 +16,12 @@ Run the command below to see that we now have 3 `yb-master` processes and 3 `yb-
 $ ./bin/yb-ctl status
 ```
 ```sh
-2018-05-10 09:06:58,821 INFO: Server is running: type=master, node_id=1, PID=5243, admin service=http://127.0.0.1:7000
-2018-05-10 09:06:58,845 INFO: Server is running: type=master, node_id=2, PID=5246, admin service=http://127.0.0.2:7000
-2018-05-10 09:06:58,871 INFO: Server is running: type=master, node_id=3, PID=5249, admin service=http://127.0.0.3:7000
-2018-05-10 09:06:58,897 INFO: Server is running: type=tserver, node_id=1, PID=5252, admin service=http://127.0.0.1:9000, cql service=127.0.0.1:9042, redis service=127.0.0.1:6379, pgsql service=127.0.0.1:5433
-2018-05-10 09:06:58,922 INFO: Server is running: type=tserver, node_id=2, PID=5255, admin service=http://127.0.0.2:9000, cql service=127.0.0.2:9042, redis service=127.0.0.2:6379, pgsql service=127.0.0.2:5433
-2018-05-10 09:06:58,945 INFO: Server is running: type=tserver, node_id=3, PID=5258, admin service=http://127.0.0.3:9000, cql service=127.0.0.3:9042, redis service=127.0.0.3:6379, pgsql service=127.0.0.3:5433
+2019-01-29 20:42:43,425 INFO: Server is running: type=master, node_id=1, PID=13668, admin service=http://127.0.0.1:7000
+2019-01-29 20:42:43,432 INFO: Server is running: type=master, node_id=2, PID=13671, admin service=http://127.0.0.2:7000
+2019-01-29 20:42:43,439 INFO: Server is running: type=master, node_id=3, PID=13674, admin service=http://127.0.0.3:7000
+2019-01-29 20:42:43,446 INFO: Server is running: type=tserver, node_id=1, PID=13677, admin service=http://127.0.0.1:9000, cql service=127.0.0.1:9042, redis service=127.0.0.1:6379
+2019-01-29 20:42:43,453 INFO: Server is running: type=tserver, node_id=2, PID=13680, admin service=http://127.0.0.2:9000, cql service=127.0.0.2:9042, redis service=127.0.0.2:6379
+2019-01-29 20:42:43,460 INFO: Server is running: type=tserver, node_id=3, PID=13687, admin service=http://127.0.0.3:9000, cql service=127.0.0.3:9042, redis service=127.0.0.3:6379
 ```
 
 ## 3. Check cluster status with Admin UI
