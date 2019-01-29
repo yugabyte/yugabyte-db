@@ -67,6 +67,9 @@ class ConsistentReadPoint {
   // Apply restart read times from a child transaction result. This method is thread-safe.
   void ApplyChildTransactionResult(const ChildTransactionResultPB& result);
 
+  // Sets in transaction limit.
+  void SetInTxnLimit(HybridTime value);
+
   ConsistentReadPoint& operator=(ConsistentReadPoint&& other);
 
  private:

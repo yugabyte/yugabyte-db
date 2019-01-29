@@ -341,9 +341,10 @@ YBCStatus YBCPgExecDelete(YBCPgStatement handle) {
 YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
-                         YBCPgStatement *handle) {
+                         YBCPgStatement *handle,
+                         uint64_t* read_time) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewSelect(pg_session, table_id, handle));
+  return ToYBCStatus(pgapi->NewSelect(pg_session, table_id, handle, read_time));
 }
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle) {

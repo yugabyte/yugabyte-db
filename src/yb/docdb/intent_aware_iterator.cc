@@ -627,31 +627,40 @@ void IntentAwareIterator::ProcessIntent() {
       resolved_intent_txn_dht_.ToString(),
       decode_result->value_time.ToString(),
       read_time_.ToString());
-  auto real_time = decode_result->same_transaction ? intent_dht_from_same_txn_
-                                                   : resolved_intent_txn_dht_;
-  if (decode_result->value_time > real_time &&
-      (decode_result->same_transaction ||
-       decode_result->value_time.hybrid_time() <= read_time_.global_limit)) {
-    if (resolved_intent_state_ == ResolvedIntentState::kNoIntent) {
-      resolved_intent_key_prefix_.Reset(decode_result->intent_prefix);
-      auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
-      resolved_intent_state_ =
-          decode_result->intent_prefix.starts_with(prefix) ? ResolvedIntentState::kValid
-          : ResolvedIntentState::kInvalidPrefix;
-    }
-    if (decode_result->same_transaction) {
-      intent_dht_from_same_txn_ = decode_result->value_time;
-      // We set resolved_intent_txn_dht_ to maximum possible time (time higher than read_time_.read
-      // will cause read restart or will be ignored if higher than read_time_.global_limit) in
-      // order to ignore intents/values from other transactions. But we save origin intent time into
-      // intent_dht_from_same_txn_, so we can compare time of intents for the same key from the same
-      // transaction and select the latest one.
-      resolved_intent_txn_dht_ = DocHybridTime(read_time_.read, kMaxWriteId);
-    } else {
-      resolved_intent_txn_dht_ = decode_result->value_time;
-    }
-    resolved_intent_value_.Reset(decode_result->intent_value);
+  auto resolved_intent_time = decode_result->same_transaction ? intent_dht_from_same_txn_
+                                                              : resolved_intent_txn_dht_;
+  // If we already resolved intent that is newer that this one, we should ignore current
+  // intent because we are interested in the most recent intent only.
+  if (decode_result->value_time <= resolved_intent_time) {
+    return;
   }
+
+  // Ignore intent past read limit.
+  auto max_allowed_time = decode_result->same_transaction
+      ? read_time_.in_txn_limit : read_time_.global_limit;
+  if (decode_result->value_time.hybrid_time() > max_allowed_time) {
+    return;
+  }
+
+  if (resolved_intent_state_ == ResolvedIntentState::kNoIntent) {
+    resolved_intent_key_prefix_.Reset(decode_result->intent_prefix);
+    auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
+    resolved_intent_state_ =
+        decode_result->intent_prefix.starts_with(prefix) ? ResolvedIntentState::kValid
+        : ResolvedIntentState::kInvalidPrefix;
+  }
+  if (decode_result->same_transaction) {
+    intent_dht_from_same_txn_ = decode_result->value_time;
+    // We set resolved_intent_txn_dht_ to maximum possible time (time higher than read_time_.read
+    // will cause read restart or will be ignored if higher than read_time_.global_limit) in
+    // order to ignore intents/values from other transactions. But we save origin intent time into
+    // intent_dht_from_same_txn_, so we can compare time of intents for the same key from the same
+    // transaction and select the latest one.
+    resolved_intent_txn_dht_ = DocHybridTime(read_time_.read, kMaxWriteId);
+  } else {
+    resolved_intent_txn_dht_ = decode_result->value_time;
+  }
+  resolved_intent_value_.Reset(decode_result->intent_value);
 }
 
 void IntentAwareIterator::UpdateResolvedIntentSubDocKeyEncoded() {

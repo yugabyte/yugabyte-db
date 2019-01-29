@@ -117,6 +117,10 @@ void ConsistentReadPoint::ApplyChildTransactionResult(const ChildTransactionResu
   }
 }
 
+void ConsistentReadPoint::SetInTxnLimit(HybridTime value) {
+  read_time_.in_txn_limit = value;
+}
+
 ConsistentReadPoint& ConsistentReadPoint::operator=(ConsistentReadPoint&& other) {
   clock_.swap(other.clock_);
   read_time_ = std::move(other.read_time_);

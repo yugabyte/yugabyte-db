@@ -579,9 +579,10 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 	node->fdw_state = (void *) ybc_state;
 	HandleYBStatus(YBCPgNewSelect(ybc_pg_session,
-								  YBCGetDatabaseOid(relation),
-								  RelationGetRelid(relation),
-	                              &ybc_state->handle));
+								                YBCGetDatabaseOid(relation),
+								                RelationGetRelid(relation),
+	                              &ybc_state->handle,
+	                              node->ss.ps.state ? &node->ss.ps.state->es_yb_read_ht : 0));
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
 	ybc_state->stmt_owner = CurrentResourceOwner;

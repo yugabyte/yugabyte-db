@@ -239,7 +239,8 @@ YbScanState ybcBeginScan(Relation rel, List *target_attrs, List *yb_conds)
 	/* Allocate and initialize YB scan state. */
 	ybc_state = (YbScanState) palloc0(sizeof(YbScanStateData));
 
-	HandleYBStatus(YBCPgNewSelect(ybc_pg_session, dboid, relid, &ybc_state->handle));
+	HandleYBStatus(YBCPgNewSelect(
+	    ybc_pg_session, dboid, relid, &ybc_state->handle, NULL /* read_time */));
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
 	ybc_state->stmt_owner = CurrentResourceOwner;

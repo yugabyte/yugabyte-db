@@ -152,7 +152,8 @@ TEST_F(PggateTestDelete, TestDelete) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      pg_session_, kDefaultDatabaseOid, tab_oid, &pg_stmt, nullptr /* read_time */));
 
   // Specify the selected expressions.
   YBCPgExpr colref;

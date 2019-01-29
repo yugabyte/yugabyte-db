@@ -795,7 +795,7 @@ determine_test_timeout() {
   if [[ -n ${YB_TEST_TIMEOUT:-} ]]; then
     timeout_sec=$YB_TEST_TIMEOUT
   else
-    if [[ $rel_test_binary == "bin/compact_on_deletion_collector_test" ]]; then
+    if [[ $rel_test_binary == "tests-pgwrapper/pg_wrapper-test" ]]; then
       # This test is particularly slow on TSAN, and it has to be run all at once (we cannot use
       # --gtest_filter) because of dependencies between tests.
       timeout_sec=$INCREASED_TEST_TIMEOUT_SEC
