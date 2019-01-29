@@ -56,6 +56,7 @@ Status PgTxnManager::BeginTransaction() {
 void PgTxnManager::StartNewSession() {
   session_ = std::make_shared<YBSession>(async_client_init_->client(), clock_);
   session_->SetReadPoint(client::Restart::kFalse);
+  session_->SetForceConsistentRead(true);
 }
 
 Status PgTxnManager::BeginWriteTransactionIfNecessary() {

@@ -1865,6 +1865,10 @@ bool YBSession::allow_local_calls_in_curr_thread() const {
   return data_->allow_local_calls_in_curr_thread();
 }
 
+void YBSession::SetForceConsistentRead(bool value) {
+  data_->SetForceConsistentRead(value);
+}
+
 ////////////////////////////////////////////////////////////
 // YBTableAlterer
 ////////////////////////////////////////////////////////////

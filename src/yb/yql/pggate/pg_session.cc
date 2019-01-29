@@ -54,6 +54,7 @@ PgSession::PgSession(
       session_(client_->NewSession()),
       pg_txn_manager_(std::move(pg_txn_manager)) {
   session_->SetTimeout(kSessionTimeout);
+  session_->SetForceConsistentRead(true);
 }
 
 PgSession::~PgSession() {

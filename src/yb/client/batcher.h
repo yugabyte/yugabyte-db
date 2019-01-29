@@ -89,7 +89,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
           ErrorCollector* error_collector,
           const std::shared_ptr<YBSessionData>& session,
           YBTransactionPtr transaction,
-          ConsistentReadPoint* read_point);
+          ConsistentReadPoint* read_point,
+          bool force_consistent_read);
 
   // Abort the current batch. Any writes that were buffered and not yet sent are
   // discarded. Those that were sent may still be delivered.  If there is a pending Flush
@@ -140,6 +141,10 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   ConsistentReadPoint* read_point() {
     return read_point_;
+  }
+
+  void SetForceConsistentRead(bool value) {
+    force_consistent_read_ = value;
   }
 
   YBTransactionPtr transaction() const;
@@ -200,7 +205,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   void FlushBuffersIfReady();
   void FlushBuffer(
       RemoteTablet* tablet, InFlightOps::const_iterator begin, InFlightOps::const_iterator end,
-      const bool allow_local_calls_in_curr_thread);
+      bool allow_local_calls_in_curr_thread, bool need_consistent_read);
 
   // Calls/Schedules flush_callback_ and resets it to free resources.
   void RunCallback(const Status& s);
@@ -294,6 +299,9 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   // The consistent read point for this batch if it is specified.
   ConsistentReadPoint* read_point_ = nullptr;
+
+  // Force consistent read on transactional table, even we have only single shard commands.
+  bool force_consistent_read_;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };
