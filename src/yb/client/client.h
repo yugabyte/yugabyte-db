@@ -1133,6 +1133,11 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   YBClient* client() const;
 
+  // Sets force consistent read mode, if true then consistent read point will be used even we have
+  // only one command to flush.
+  // It is useful when whole statement is executed using multiple flushes.
+  void SetForceConsistentRead(bool value);
+
  private:
   friend class YBClient;
   friend class internal::Batcher;

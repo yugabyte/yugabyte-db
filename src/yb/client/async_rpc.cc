@@ -97,25 +97,23 @@ AsyncRpcMetrics::AsyncRpcMetrics(const scoped_refptr<yb::MetricEntity>& entity)
       time_to_send(METRIC_handler_latency_yb_client_time_to_send.Instantiate(entity)) {
 }
 
-AsyncRpc::AsyncRpc(
-    const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet,
-    bool allow_local_calls_in_curr_thread, InFlightOps ops, YBConsistencyLevel yb_consistency_level)
-    : Rpc(batcher->deadline(), batcher->messenger(), &batcher->proxy_cache()),
-      batcher_(batcher),
+AsyncRpc::AsyncRpc(AsyncRpcData* data, YBConsistencyLevel yb_consistency_level)
+    : Rpc(data->batcher->deadline(), data->batcher->messenger(), &data->batcher->proxy_cache()),
+      batcher_(data->batcher),
       trace_(new Trace),
-      tablet_invoker_(LocalTabletServerOnly(ops),
+      tablet_invoker_(LocalTabletServerOnly(data->ops),
                       yb_consistency_level == YBConsistencyLevel::CONSISTENT_PREFIX,
-                      batcher->client_,
+                      data->batcher->client_,
                       this,
                       this,
-                      tablet,
+                      data->tablet,
                       mutable_retrier(),
                       trace_.get()),
-      ops_(std::move(ops)),
+      ops_(std::move(data->ops)),
       start_(MonoTime::Now()),
-      async_rpc_metrics_(batcher->async_rpc_metrics()) {
+      async_rpc_metrics_(data->batcher->async_rpc_metrics()) {
   mutable_retrier()->mutable_controller()->set_allow_local_calls_in_curr_thread(
-      allow_local_calls_in_curr_thread);
+      data->allow_local_calls_in_curr_thread);
   if (Trace::CurrentTrace()) {
     Trace::CurrentTrace()->AddChildTrace(trace_.get());
   }
@@ -246,17 +244,17 @@ void AsyncRpc::SendRpcToTserver() {
 }
 
 template <class Req, class Resp>
-AsyncRpcBase<Req, Resp>::AsyncRpcBase(
-    const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet,
-    bool allow_local_calls_in_curr_thread, InFlightOps ops, YBConsistencyLevel consistency_level)
-    : AsyncRpc(batcher, tablet, allow_local_calls_in_curr_thread, ops, consistency_level) {
+AsyncRpcBase<Req, Resp>::AsyncRpcBase(AsyncRpcData* data, YBConsistencyLevel consistency_level)
+    : AsyncRpc(data, consistency_level) {
   req_.set_tablet_id(tablet_invoker_.tablet()->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
   const ConsistentReadPoint* read_point = batcher_->read_point();
   if (read_point) {
     req_.set_propagated_hybrid_time(read_point->Now().ToUint64());
-    // Set read time for consistent read only if the table is transaction-enabled.
-    if (table()->InternalSchema().table_properties().is_transactional()) {
+    // Set read time for consistent read only if the table is transaction-enabled and
+    // consistent read is required.
+    if (data->need_consistent_read &&
+        table()->InternalSchema().table_properties().is_transactional()) {
       auto read_time = read_point->GetReadTime(tablet_invoker_.tablet()->tablet_id());
       if (read_time) {
         read_time.AddToPB(&req_);
@@ -294,12 +292,9 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
   return true;
 }
 
-WriteRpc::WriteRpc(
-    const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet,
-    bool allow_local_calls_in_curr_thread, InFlightOps ops)
-    : AsyncRpcBase(
-          batcher, tablet, allow_local_calls_in_curr_thread, ops, YBConsistencyLevel::STRONG) {
-  TRACE_TO(trace_, "WriteRpc initiated to $0", tablet->tablet_id());
+WriteRpc::WriteRpc(AsyncRpcData* data)
+    : AsyncRpcBase(data, YBConsistencyLevel::STRONG) {
+  TRACE_TO(trace_, "WriteRpc initiated to $0", data->tablet->tablet_id());
 #ifndef NDEBUG
   const Schema& schema = GetSchema(table()->schema());
 #endif
@@ -372,7 +367,7 @@ WriteRpc::WriteRpc(
   }
 
   if (VLOG_IS_ON(3)) {
-    VLOG(3) << "Created batch for " << tablet->tablet_id() << ":\n"
+    VLOG(3) << "Created batch for " << data->tablet->tablet_id() << ":\n"
             << req_.ShortDebugString();
   }
 
@@ -381,7 +376,7 @@ WriteRpc::WriteRpc(
     auto temp = client_id.ToUInt64Pair();
     req_.set_client_id1(temp.first);
     req_.set_client_id2(temp.second);
-    auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId(tablet->tablet_id());
+    auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId(data->tablet->tablet_id());
     req_.set_request_id(request_pair.first);
     req_.set_min_running_request_id(request_pair.second);
   }
@@ -557,13 +552,11 @@ void WriteRpc::ProcessResponseFromTserver(const Status& status) {
   SwapRequestsAndResponses(false);
 }
 
-ReadRpc::ReadRpc(
-    const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet,
-    bool allow_local_calls_in_curr_thread, InFlightOps ops, YBConsistencyLevel yb_consistency_level)
-    : AsyncRpcBase(batcher, tablet, allow_local_calls_in_curr_thread, ops, yb_consistency_level) {
-  TRACE_TO(trace_, "ReadRpc initiated to $0", tablet->tablet_id());
+ReadRpc::ReadRpc(AsyncRpcData* data, YBConsistencyLevel yb_consistency_level)
+    : AsyncRpcBase(data, yb_consistency_level) {
+  TRACE_TO(trace_, "ReadRpc initiated to $0", data->tablet->tablet_id());
   req_.set_consistency_level(yb_consistency_level);
-  req_.set_proxy_uuid(batcher->proxy_uuid());
+  req_.set_proxy_uuid(data->batcher->proxy_uuid());
 
   int ctr = 0;
   for (auto& op : ops_) {
@@ -610,7 +603,8 @@ ReadRpc::ReadRpc(
   }
 
   if (VLOG_IS_ON(3)) {
-    VLOG(3) << "Created batch for " << tablet->tablet_id() << ":\n" << req_.ShortDebugString();
+    VLOG(3) << "Created batch for " << data->tablet->tablet_id() << ":\n"
+            << req_.ShortDebugString();
   }
 }
 

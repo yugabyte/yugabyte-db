@@ -142,7 +142,8 @@ internal::Batcher& YBSessionData::Batcher() {
   if (!batcher_) {
     batcher_.reset(new internal::Batcher(
         client_.get(), error_collector_.get(), shared_from_this(), transaction_,
-        transaction_ ? &transaction_->read_point() : read_point_.get()));
+        transaction_ ? &transaction_->read_point() : read_point_.get(),
+        force_consistent_read_));
     if (timeout_.Initialized()) {
       batcher_->SetTimeout(timeout_);
     }
@@ -231,6 +232,13 @@ int YBSessionData::CountPendingErrors() const {
 
 CollectedErrors YBSessionData::GetPendingErrors() {
   return error_collector_->GetErrors();
+}
+
+void YBSessionData::SetForceConsistentRead(bool value) {
+  force_consistent_read_ = value;
+  if (batcher_) {
+    batcher_->SetForceConsistentRead(value);
+  }
 }
 
 }  // namespace client

@@ -108,7 +108,8 @@ Batcher::Batcher(YBClient* client,
                  ErrorCollector* error_collector,
                  const std::shared_ptr<YBSessionData>& session_data,
                  YBTransactionPtr transaction,
-                 ConsistentReadPoint* read_point)
+                 ConsistentReadPoint* read_point,
+                 bool force_consistent_read)
   : state_(kGatheringOps),
     client_(client),
     weak_session_data_(session_data),
@@ -119,7 +120,8 @@ Batcher::Batcher(YBClient* client,
     buffer_bytes_used_(0),
     async_rpc_metrics_(session_data->async_rpc_metrics()),
     transaction_(std::move(transaction)),
-    read_point_(read_point) {
+    read_point_(read_point),
+    force_consistent_read_(force_consistent_read) {
 }
 
 void Batcher::Abort(const Status& status) {
@@ -425,6 +427,7 @@ OpGroup GetOpGroup(const InFlightOpPtr& op) {
 void Batcher::FlushBuffersIfReady() {
   InFlightOps ops;
 
+  bool force_consistent_read = force_consistent_read_;
   // We're only ready to flush if:
   // 1. The batcher is in the flushing state (i.e. FlushAsync was called).
   // 2. All outstanding ops have finished lookup. Why? To avoid a situation
@@ -443,6 +446,7 @@ void Batcher::FlushBuffersIfReady() {
 
     auto transaction = this->transaction();
     if (transaction) {
+      force_consistent_read = true;
       // If this Batcher is executed in context of transaction,
       // then this transaction should initialize metadata used by RPC calls.
       //
@@ -492,8 +496,11 @@ void Batcher::FlushBuffersIfReady() {
     if ((**it).tablet.get() != (**start).tablet.get() ||
         start_group != it_group ||
         num_sidecars >= rpc::CallResponse::kMaxSidecarSlices) {
+      // Consistent read is not required when whole batch fits into one command.
+      bool need_consistent_read = force_consistent_read || start != ops.begin() || it != ops.end();
       FlushBuffer(
-          start->get()->tablet.get(), start, it, /* allow_local_calls_in_curr_thread */ false);
+          start->get()->tablet.get(), start, it, /* allow_local_calls_in_curr_thread */ false,
+          need_consistent_read);
       start = it;
       start_group = it_group;
       num_sidecars = 0;
@@ -503,7 +510,10 @@ void Batcher::FlushBuffersIfReady() {
     }
   }
 
-  FlushBuffer(start->get()->tablet.get(), start, ops.end(), allow_local_calls_in_curr_thread_);
+  // Consistent read is not required when whole batch fits into one command.
+  bool need_consistent_read = force_consistent_read || start != ops.begin();
+  FlushBuffer(start->get()->tablet.get(), start, ops.end(), allow_local_calls_in_curr_thread_,
+              need_consistent_read);
 }
 
 const std::shared_ptr<rpc::Messenger>& Batcher::messenger() const {
@@ -537,7 +547,7 @@ void Batcher::RequestFinished(const TabletId& tablet_id, RetryableRequestId requ
 
 void Batcher::FlushBuffer(
     RemoteTablet* tablet, InFlightOps::const_iterator begin, InFlightOps::const_iterator end,
-    const bool allow_local_calls_in_curr_thread) {
+    const bool allow_local_calls_in_curr_thread, const bool need_consistent_read) {
   VLOG(3) << "FlushBuffersIfReady: already in flushing state, immediately flushing to "
           << tablet->tablet_id();
 
@@ -554,19 +564,18 @@ void Batcher::FlushBuffer(
   InFlightOps ops(begin, end);
   std::shared_ptr<AsyncRpc> rpc;
   auto op_group = GetOpGroup(*begin);
+  AsyncRpcData data{this, tablet, allow_local_calls_in_curr_thread, need_consistent_read,
+                    std::move(ops)};
   switch (op_group) {
     case OpGroup::kWrite:
-      rpc = std::make_shared<WriteRpc>(
-          this, tablet, allow_local_calls_in_curr_thread, std::move(ops));
+      rpc = std::make_shared<WriteRpc>(&data);
       break;
     case OpGroup::kLeaderRead:
       rpc =
-          std::make_shared<ReadRpc>(this, tablet, allow_local_calls_in_curr_thread, std::move(ops));
+          std::make_shared<ReadRpc>(&data);
       break;
     case OpGroup::kConsistentPrefixRead:
-      rpc = std::make_shared<ReadRpc>(
-          this, tablet, allow_local_calls_in_curr_thread, std::move(ops),
-          YBConsistencyLevel::CONSISTENT_PREFIX);
+      rpc = std::make_shared<ReadRpc>(&data, YBConsistencyLevel::CONSISTENT_PREFIX);
       break;
   }
   if (!rpc) {

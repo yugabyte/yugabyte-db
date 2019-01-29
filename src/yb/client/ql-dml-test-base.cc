@@ -161,12 +161,13 @@ Result<int32_t> KeyValueTableTest::SelectRow(
   return rowblock->row(0).column(0).int32_value();
 }
 
-YBSessionPtr KeyValueTableTest::CreateSession(const YBTransactionPtr& transaction) {
-  auto session = std::make_shared<YBSession>(client_);
+YBSessionPtr KeyValueTableTest::CreateSession(const YBTransactionPtr& transaction,
+                                              const server::ClockPtr& clock) {
+  auto session = std::make_shared<YBSession>(client_, clock);
   if (transaction) {
     session->SetTransaction(transaction);
   }
-  session->SetTimeout(NonTsanVsTsan(15s, 60s));
+  session->SetTimeout(RegularBuildVsSanitizers(15s, 60s));
   return session;
 }
 
