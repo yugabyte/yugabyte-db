@@ -511,6 +511,9 @@ typedef struct EState
 	struct dsa_area *es_query_dsa;
 
 	bool		es_use_parallel_mode; /* can we use parallel workers? */
+
+	uint64_t es_yb_read_ht; /* read hybrid time used by YB proxy to read consistent snapshot,
+                             initial value is 0, it means that value is not initialised */
 } EState;
 
 

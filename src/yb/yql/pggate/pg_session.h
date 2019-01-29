@@ -24,6 +24,8 @@
 #include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
 
+#include "yb/server/hybrid_clock.h"
+
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
@@ -43,7 +45,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Constructors.
   PgSession(std::shared_ptr<client::YBClient> client,
             const string& database_name,
-            scoped_refptr<PgTxnManager> pg_txn_manager);
+            scoped_refptr<PgTxnManager> pg_txn_manager,
+            scoped_refptr<server::HybridClock> clock);
   virtual ~PgSession();
 
   //------------------------------------------------------------------------------------------------
@@ -83,7 +86,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
 
   // Apply the given operation to read and write database content.
-  CHECKED_STATUS PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op);
+  CHECKED_STATUS PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op, uint64_t* read_time);
   CHECKED_STATUS PgFlushAsync(StatusFunctor callback);
 
   // Return the number of errors which are pending.
@@ -152,6 +155,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // A transaction manager allowing to begin/abort/commit transactions.
   scoped_refptr<PgTxnManager> pg_txn_manager_;
+
+  const scoped_refptr<server::HybridClock> clock_;
 
   // Execution status.
   Status status_;

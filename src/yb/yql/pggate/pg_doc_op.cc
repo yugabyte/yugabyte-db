@@ -19,8 +19,8 @@ using std::shared_ptr;
 namespace yb {
 namespace pggate {
 
-PgDocOp::PgDocOp(PgSession::ScopedRefPtr pg_session)
-    : pg_session_(std::move(pg_session)) {
+PgDocOp::PgDocOp(PgSession::ScopedRefPtr pg_session, uint64_t* read_time)
+    : pg_session_(std::move(pg_session)), read_time_(read_time) {
 }
 
 PgDocOp::~PgDocOp() {
@@ -127,8 +127,9 @@ Status PgDocOp::SendRequestIfNeededUnlocked() {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocReadOp::PgDocReadOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlReadOp *read_op)
-    : PgDocOp(pg_session), read_op_(read_op) {
+PgDocReadOp::PgDocReadOp(
+    PgSession::ScopedRefPtr pg_session, uint64_t* read_time, client::YBPgsqlReadOp *read_op)
+    : PgDocOp(pg_session, read_time), read_op_(read_op) {
 }
 
 PgDocReadOp::~PgDocReadOp() {
@@ -143,7 +144,7 @@ void PgDocReadOp::InitUnlocked(std::unique_lock<std::mutex>* lock) {
 }
 
 Status PgDocReadOp::SendRequestUnlocked() {
-  RETURN_NOT_OK(pg_session_->PgApplyAsync(read_op_));
+  RETURN_NOT_OK(pg_session_->PgApplyAsync(read_op_, read_time_));
   waiting_for_response_ = true;
   RETURN_NOT_OK(
       pg_session_->PgFlushAsync([this](const Status& s) { PgDocReadOp::ReceiveResponse(s); }));
@@ -183,7 +184,7 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
 //--------------------------------------------------------------------------------------------------
 
 PgDocWriteOp::PgDocWriteOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlWriteOp *write_op)
-    : PgDocOp(pg_session), write_op_(write_op) {
+    : PgDocOp(pg_session, nullptr /* read_time */), write_op_(write_op) {
 }
 
 PgDocWriteOp::~PgDocWriteOp() {
@@ -192,7 +193,7 @@ PgDocWriteOp::~PgDocWriteOp() {
 Status PgDocWriteOp::SendRequestUnlocked() {
   CHECK(!waiting_for_response_);
 
-  RETURN_NOT_OK(pg_session_->PgApplyAsync(write_op_));
+  RETURN_NOT_OK(pg_session_->PgApplyAsync(write_op_, read_time_));
   waiting_for_response_ = true;
   Status s = pg_session_->PgFlushAsync([this](const Status& s) {
     PgDocWriteOp::ReceiveResponse(s);
@@ -226,7 +227,8 @@ void PgDocWriteOp::ReceiveResponse(Status exec_status) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocCompoundOp::PgDocCompoundOp(PgSession::ScopedRefPtr pg_session) : PgDocOp(pg_session) {
+PgDocCompoundOp::PgDocCompoundOp(PgSession::ScopedRefPtr pg_session)
+    : PgDocOp(pg_session, nullptr /* read_time */) {
 }
 
 PgDocCompoundOp::~PgDocCompoundOp() {

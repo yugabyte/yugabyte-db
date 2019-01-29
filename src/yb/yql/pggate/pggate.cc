@@ -109,7 +109,7 @@ Status PgApiImpl::DestroyEnv(PgEnv *pg_env) {
 Status PgApiImpl::CreateSession(const PgEnv *pg_env,
                                 const string& database_name,
                                 PgSession **pg_session) {
-  auto session = make_scoped_refptr<PgSession>(client(), database_name, pg_txn_manager_);
+  auto session = make_scoped_refptr<PgSession>(client(), database_name, pg_txn_manager_, clock_);
   if (!database_name.empty()) {
     RETURN_NOT_OK(session->ConnectDatabase(database_name));
   }
@@ -460,11 +460,12 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
 
 Status PgApiImpl::NewSelect(PgSession *pg_session,
                             const PgObjectId& table_id,
-                            PgStatement **handle) {
+                            PgStatement **handle,
+                            uint64_t* read_time) {
   DCHECK(pg_session) << "Invalid session handle";
   *handle = nullptr;
   auto stmt = make_scoped_refptr<PgSelect>(pg_session, table_id);
-  RETURN_NOT_OK(stmt->Prepare());
+  RETURN_NOT_OK(stmt->Prepare(read_time));
   *handle = stmt.detach();
   return Status::OK();
 }

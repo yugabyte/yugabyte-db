@@ -1131,6 +1131,9 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   void set_allow_local_calls_in_curr_thread(bool flag);
   bool allow_local_calls_in_curr_thread() const;
 
+  // Sets in transaction read limit for this session.
+  void SetInTxnLimit(HybridTime value);
+
   YBClient* client() const;
 
   // Sets force consistent read mode, if true then consistent read point will be used even we have

@@ -358,6 +358,8 @@ message ReadHybridTimePB {
   optional fixed64 local_limit_ht = 2;
 
   optional fixed64 global_limit_ht = 3;
+
+  optional fixed64 in_txn_limit_ht = 4;
 }
 
 // For clarification of field meaning see comments of appropriate fields in YBTransaction::Impl
