@@ -190,12 +190,6 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, O
 		{
 			primary_key = constraint;
 		}
-		else
-		{
-			ereport(ERROR,
-			        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
-					        "Only PRIMARY KEY constraints are currently supported.")));
-		}
 	}
 
 	HandleYBStatus(YBCPgNewCreateTable(ybc_pg_session,
