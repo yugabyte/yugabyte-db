@@ -223,6 +223,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
+  private static String getTagBasedName(String tagValue, Cluster cluster, int nodeIdx,
+      String region, String az) {
+    return tagValue.replace(TemplatedTags.UNIVERSE, cluster.userIntent.universeName)
+                   .replace(TemplatedTags.INSTANCE_ID, Integer.toString(nodeIdx))
+                   .replace(TemplatedTags.ZONE, az)
+                   .replace(TemplatedTags.REGION, region);
+  }
+
   /**
    * Method to derive the expected node name from the input parameters.
    *
@@ -242,17 +250,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     String newName = "";
     if (cluster.clusterType == ClusterType.ASYNC) {
-      newName = prefix + Universe.READONLY + cluster.index + Universe.NODEIDX_PREFIX + nodeIdx;
-      if (!tagValue.isEmpty()) {
-        throw new UnsupportedOperationException("Instance tags not supported for Read Replicas.");
+      if (tagValue.isEmpty()) {
+        newName = prefix + Universe.READONLY + cluster.index + Universe.NODEIDX_PREFIX + nodeIdx;
+      } else {
+        newName = getTagBasedName(tagValue, cluster, nodeIdx, region, az) +
+                  Universe.READONLY + cluster.index;
       }
     } else {
-      newName = prefix + Universe.NODEIDX_PREFIX + nodeIdx;
-      if (!tagValue.isEmpty()) {
-        newName = tagValue.replace(TemplatedTags.UNIVERSE, cluster.userIntent.universeName)
-                          .replace(TemplatedTags.INSTANCE_ID, Integer.toString(nodeIdx))
-                          .replace(TemplatedTags.ZONE, az)
-                          .replace(TemplatedTags.REGION, region);
+      if (tagValue.isEmpty()) {
+        newName = prefix + Universe.NODEIDX_PREFIX + nodeIdx;
+      } else {
+        newName = getTagBasedName(tagValue, cluster, nodeIdx, region, az);
       }
     }
 
@@ -341,6 +349,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public void selectMasters() {
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster == null) {
+      return;
+    }
     Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
     LOG.info("Current active master count = " + PlacementInfoUtil.getNumActiveMasters(primaryNodes));
     int numMastersToChoose = primaryCluster.userIntent.replicationFactor -
