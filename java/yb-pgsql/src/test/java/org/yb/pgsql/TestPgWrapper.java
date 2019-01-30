@@ -240,4 +240,27 @@ public class TestPgWrapper extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testNotNullConstraint() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(
+          "CREATE TABLE testnotnullconstraint (k int primary key, v1 text not null)");
+      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expectMessage("null value in column \"v1\" violates not-null constraint");
+      statement.execute("INSERT INTO testnotnullconstraint(k, v1) VALUES (1, null)");
+    }
+  }
+
+  @Test
+  public void testCheckConstraint() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(
+          "CREATE TABLE testcheckconstraint (k int primary key, v1 int CHECK (v1 > 9));");
+
+      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expectMessage("new row for relation \"testcheckconstraint\" violates check " +
+          "constraint \"testcheckconstraint_v1_check\"");
+      statement.execute("INSERT INTO testcheckconstraint(k, v1) VALUES (1, -1)");
+    }
+  }
 }

@@ -374,12 +374,6 @@ ExecInsert(ModifyTableState *mtstate,
 
 		newId = InvalidOid;
 	}
-	else if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
-	{
-		newId = YBCExecuteInsert(resultRelationDesc,
-		                         slot->tts_tupleDescriptor,
-		                         tuple);
-	}
 	else
 	{
 		/*
@@ -421,130 +415,138 @@ ExecInsert(ModifyTableState *mtstate,
 		if (resultRelationDesc->rd_att->constr || check_partition_constr)
 			ExecConstraints(resultRelInfo, slot, estate);
 
-		if (onconflict != ONCONFLICT_NONE && resultRelInfo->ri_NumIndices > 0)
+		if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
 		{
-			/* Perform a speculative insertion. */
-			uint32		specToken;
-			ItemPointerData conflictTid;
-			bool		specConflict;
-
-			/*
-			 * Do a non-conclusive check for conflicts first.
-			 *
-			 * We're not holding any locks yet, so this doesn't guarantee that
-			 * the later insert won't conflict.  But it avoids leaving behind
-			 * a lot of canceled speculative insertions, if you run a lot of
-			 * INSERT ON CONFLICT statements that do conflict.
-			 *
-			 * We loop back here if we find a conflict below, either during
-			 * the pre-check, or when we re-check after inserting the tuple
-			 * speculatively.
-			 */
-	vlock:
-			specConflict = false;
-			if (!ExecCheckIndexConstraints(slot, estate, &conflictTid,
-										   arbiterIndexes))
+			newId = YBCExecuteInsert(resultRelationDesc,
+									 slot->tts_tupleDescriptor,
+									 tuple);
+		}
+		else {
+			if (onconflict != ONCONFLICT_NONE && resultRelInfo->ri_NumIndices > 0)
 			{
-				/* committed conflict tuple found */
-				if (onconflict == ONCONFLICT_UPDATE)
-				{
-					/*
-					 * In case of ON CONFLICT DO UPDATE, execute the UPDATE
-					 * part.  Be prepared to retry if the UPDATE fails because
-					 * of another concurrent UPDATE/DELETE to the conflict
-					 * tuple.
-					 */
-					TupleTableSlot *returning = NULL;
+				/* Perform a speculative insertion. */
+				uint32		specToken;
+				ItemPointerData conflictTid;
+				bool		specConflict;
 
-					if (ExecOnConflictUpdate(mtstate, resultRelInfo,
-											 &conflictTid, planSlot, slot,
-											 estate, canSetTag, &returning))
+				/*
+				 * Do a non-conclusive check for conflicts first.
+				 *
+				 * We're not holding any locks yet, so this doesn't guarantee that
+				 * the later insert won't conflict.  But it avoids leaving behind
+				 * a lot of canceled speculative insertions, if you run a lot of
+				 * INSERT ON CONFLICT statements that do conflict.
+				 *
+				 * We loop back here if we find a conflict below, either during
+				 * the pre-check, or when we re-check after inserting the tuple
+				 * speculatively.
+				 */
+		vlock:
+				specConflict = false;
+				if (!ExecCheckIndexConstraints(slot, estate, &conflictTid,
+												 arbiterIndexes))
+				{
+					/* committed conflict tuple found */
+					if (onconflict == ONCONFLICT_UPDATE)
 					{
-						InstrCountFiltered2(&mtstate->ps, 1);
-						return returning;
+						/*
+						 * In case of ON CONFLICT DO UPDATE, execute the UPDATE
+						 * part.  Be prepared to retry if the UPDATE fails because
+						 * of another concurrent UPDATE/DELETE to the conflict
+						 * tuple.
+						 */
+						TupleTableSlot *returning = NULL;
+
+						if (ExecOnConflictUpdate(mtstate, resultRelInfo,
+												 &conflictTid, planSlot, slot,
+												 estate, canSetTag, &returning))
+						{
+							InstrCountFiltered2(&mtstate->ps, 1);
+							return returning;
+						}
+						else
+							goto vlock;
 					}
 					else
-						goto vlock;
+					{
+						/*
+						 * In case of ON CONFLICT DO NOTHING, do nothing. However,
+						 * verify that the tuple is visible to the executor's MVCC
+						 * snapshot at higher isolation levels.
+						 */
+						Assert(onconflict == ONCONFLICT_NOTHING);
+						ExecCheckTIDVisible(estate, resultRelInfo, &conflictTid);
+						InstrCountFiltered2(&mtstate->ps, 1);
+						return NULL;
+					}
 				}
-				else
-				{
-					/*
-					 * In case of ON CONFLICT DO NOTHING, do nothing. However,
-					 * verify that the tuple is visible to the executor's MVCC
-					 * snapshot at higher isolation levels.
-					 */
-					Assert(onconflict == ONCONFLICT_NOTHING);
-					ExecCheckTIDVisible(estate, resultRelInfo, &conflictTid);
-					InstrCountFiltered2(&mtstate->ps, 1);
-					return NULL;
-				}
-			}
 
-			/*
-			 * Before we start insertion proper, acquire our "speculative
-			 * insertion lock".  Others can use that to wait for us to decide
-			 * if we're going to go ahead with the insertion, instead of
-			 * waiting for the whole transaction to complete.
-			 */
-			specToken = SpeculativeInsertionLockAcquire(GetCurrentTransactionId());
-			HeapTupleHeaderSetSpeculativeToken(tuple->t_data, specToken);
+				/*
+				 * Before we start insertion proper, acquire our "speculative
+				 * insertion lock".  Others can use that to wait for us to decide
+				 * if we're going to go ahead with the insertion, instead of
+				 * waiting for the whole transaction to complete.
+				 */
+				specToken = SpeculativeInsertionLockAcquire(GetCurrentTransactionId());
+				HeapTupleHeaderSetSpeculativeToken(tuple->t_data, specToken);
 
-			/* insert the tuple, with the speculative token */
-			newId = heap_insert(resultRelationDesc, tuple,
-								estate->es_output_cid,
-								HEAP_INSERT_SPECULATIVE,
-								NULL);
+				/* insert the tuple, with the speculative token */
+				newId = heap_insert(resultRelationDesc, tuple,
+									estate->es_output_cid,
+									HEAP_INSERT_SPECULATIVE,
+									NULL);
 
-			/* insert index entries for tuple */
-			recheckIndexes = ExecInsertIndexTuples(slot, &(tuple->t_self),
-												   estate, true, &specConflict,
-												   arbiterIndexes);
-
-			/* adjust the tuple's state accordingly */
-			if (!specConflict)
-				heap_finish_speculative(resultRelationDesc, tuple);
-			else
-				heap_abort_speculative(resultRelationDesc, tuple);
-
-			/*
-			 * Wake up anyone waiting for our decision.  They will re-check
-			 * the tuple, see that it's no longer speculative, and wait on our
-			 * XID as if this was a regularly inserted tuple all along.  Or if
-			 * we killed the tuple, they will see it's dead, and proceed as if
-			 * the tuple never existed.
-			 */
-			SpeculativeInsertionLockRelease(GetCurrentTransactionId());
-
-			/*
-			 * If there was a conflict, start from the beginning.  We'll do
-			 * the pre-check again, which will now find the conflicting tuple
-			 * (unless it aborts before we get there).
-			 */
-			if (specConflict)
-			{
-				list_free(recheckIndexes);
-				goto vlock;
-			}
-
-			/* Since there was no insertion conflict, we're done */
-		}
-		else
-		{
-			/*
-			 * insert the tuple normally.
-			 *
-			 * Note: heap_insert returns the tid (location) of the new tuple
-			 * in the t_self field.
-			 */
-			newId = heap_insert(resultRelationDesc, tuple,
-								estate->es_output_cid,
-								0, NULL);
-
-			/* insert index entries for tuple */
-			if (resultRelInfo->ri_NumIndices > 0)
+				/* insert index entries for tuple */
 				recheckIndexes = ExecInsertIndexTuples(slot, &(tuple->t_self),
-													   estate, false, NULL,
-													   arbiterIndexes);
+														 estate, true, &specConflict,
+														 arbiterIndexes);
+
+				/* adjust the tuple's state accordingly */
+				if (!specConflict)
+					heap_finish_speculative(resultRelationDesc, tuple);
+				else
+					heap_abort_speculative(resultRelationDesc, tuple);
+
+				/*
+				 * Wake up anyone waiting for our decision.  They will re-check
+				 * the tuple, see that it's no longer speculative, and wait on our
+				 * XID as if this was a regularly inserted tuple all along.  Or if
+				 * we killed the tuple, they will see it's dead, and proceed as if
+				 * the tuple never existed.
+				 */
+				SpeculativeInsertionLockRelease(GetCurrentTransactionId());
+
+				/*
+				 * If there was a conflict, start from the beginning.  We'll do
+				 * the pre-check again, which will now find the conflicting tuple
+				 * (unless it aborts before we get there).
+				 */
+				if (specConflict)
+				{
+					list_free(recheckIndexes);
+					goto vlock;
+				}
+
+				/* Since there was no insertion conflict, we're done */
+			}
+			else
+			{
+				/*
+				 * insert the tuple normally.
+				 *
+				 * Note: heap_insert returns the tid (location) of the new tuple
+				 * in the t_self field.
+				 */
+				newId = heap_insert(resultRelationDesc, tuple,
+									estate->es_output_cid,
+									0, NULL);
+
+				/* insert index entries for tuple */
+				if (resultRelInfo->ri_NumIndices > 0)
+					recheckIndexes = ExecInsertIndexTuples(slot, &(tuple->t_self),
+															 estate, false, NULL,
+															 arbiterIndexes);
+			}
 		}
 	}
 
@@ -1335,7 +1337,6 @@ ExecOnConflictUpdate(ModifyTableState *mtstate,
 	ReleaseBuffer(buffer);
 	return true;
 }
-
 
 /*
  * Process BEFORE EACH STATEMENT triggers
