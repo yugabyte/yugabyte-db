@@ -28,11 +28,15 @@ The `CREATE TABLE` statement creates a new table in a database. It defines the t
 
 #### table_column
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="376" height="65" viewbox="0 0 376 65"><path class="connector" d="M0 37h5m54 0h10m80 0h50m-5 0q-5 0-5-5v-17q0-5 5-5h142q5 0 5 5v17q0 5-5 5m-5 0h40m-207 0q5 0 5 5v8q0 5 5 5h182q5 0 5-5v-8q0-5 5-5m5 0h5"/><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="5" y="20" width="54" height="25"/><text class="text" x="15" y="37">name</text></a><a xlink:href="../grammar_diagrams#data-type"><rect class="rule" x="69" y="20" width="80" height="25"/><text class="text" x="79" y="37">data_type</text></a><a xlink:href="../grammar_diagrams#column-constraint"><rect class="rule" x="199" y="20" width="132" height="25"/><text class="text" x="209" y="37">column_constraint</text></a></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="507" height="95" viewbox="0 0 507 95"><path class="connector" d="M0 37h5m106 0h10m98 0h50m-5 0q-5 0-5-5v-17q0-5 5-5h203q5 0 5 5v17q0 5-5 5m-198 0h20m132 0h41m-188 0q5 0 5 5v20q0 5 5 5h5m153 0h5q5 0 5-5v-20q0-5 5-5m5 0h40m-268 0q5 0 5 5v38q0 5 5 5h243q5 0 5-5v-38q0-5 5-5m5 0h5"/><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="5" y="20" width="106" height="25"/><text class="text" x="15" y="37">column_name</text></a><a xlink:href="../grammar_diagrams#column-type"><rect class="rule" x="121" y="20" width="98" height="25"/><text class="text" x="131" y="37">column_type</text></a><a xlink:href="../grammar_diagrams#column-constraint"><rect class="rule" x="289" y="20" width="132" height="25"/><text class="text" x="299" y="37">column_constraint</text></a><a xlink:href="../grammar_diagrams#column-default-value"><rect class="rule" x="289" y="50" width="153" height="25"/><text class="text" x="299" y="67">column_default_value</text></a></svg>
 
 #### column_constraint
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="136" height="35" viewbox="0 0 136 35"><path class="connector" d="M0 22h5m73 0h10m43 0h5"/><rect class="literal" x="5" y="5" width="73" height="25" rx="7"/><text class="text" x="15" y="22">PRIMARY</text><rect class="literal" x="88" y="5" width="43" height="25" rx="7"/><text class="text" x="98" y="22">KEY</text></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="274" height="95" viewbox="0 0 274 95"><path class="connector" d="M0 22h25m73 0h10m43 0h118m-254 25q0 5 5 5h5m45 0h10m52 0h122q5 0 5-5m-249-25q5 0 5 5v50q0 5 5 5h5m61 0h10m25 0h10m83 0h10m25 0h5q5 0 5-5v-50q0-5 5-5m5 0h5"/><rect class="literal" x="25" y="5" width="73" height="25" rx="7"/><text class="text" x="35" y="22">PRIMARY</text><rect class="literal" x="108" y="5" width="43" height="25" rx="7"/><text class="text" x="118" y="22">KEY</text><rect class="literal" x="25" y="35" width="45" height="25" rx="7"/><text class="text" x="35" y="52">NOT</text><rect class="literal" x="80" y="35" width="52" height="25" rx="7"/><text class="text" x="90" y="52">NULL</text><rect class="literal" x="25" y="65" width="61" height="25" rx="7"/><text class="text" x="35" y="82">CHECK</text><rect class="literal" x="96" y="65" width="25" height="25" rx="7"/><text class="text" x="106" y="82">(</text><a xlink:href="../grammar_diagrams#expression"><rect class="rule" x="131" y="65" width="83" height="25"/><text class="text" x="141" y="82">expression</text></a><rect class="literal" x="224" y="65" width="25" height="25" rx="7"/><text class="text" x="234" y="82">)</text></svg>
+
+### column_default_value
+
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="178" height="35" viewbox="0 0 178 35"><path class="connector" d="M0 22h5m75 0h10m83 0h5"/><rect class="literal" x="5" y="5" width="75" height="25" rx="7"/><text class="text" x="15" y="22">DEFAULT</text><a xlink:href="../grammar_diagrams#expression"><rect class="rule" x="90" y="5" width="83" height="25"/><text class="text" x="100" y="22">expression</text></a></svg>
 
 #### table_constraints
 
@@ -48,9 +52,11 @@ create_table ::= CREATE TABLE qualified_name '(' table_element [ ',' table_eleme
 
 table_element ::= table_column | table_constraints
 
-table_column ::= name column_type [ column_constraint ...]
+table_column ::= name column_type [ column_constraint ... | default_value ]
 
-column_constraint ::= PRIMARY KEY
+column_constraint ::= PRIMARY KEY | NOT NULL | CHECK '(' expression ')'
+
+default_value ::= DEFAULT expression
 
 table_constraints ::= PRIMARY KEY '(' column_list ')'
 
@@ -60,6 +66,7 @@ column_list ::= name [ ',' name ...]
 Where
 
 - `qualified_name` and `name` are identifiers (`qualified_name` can be a qualified name).
+- `expression` for DEFAULT keyword must be of the same type as the column it modifies. It must be of type boolean for CHECK constraints.
 
 ## Semantics
 - An error is raised if `qualified_name` already exists in the specified database.
@@ -73,6 +80,13 @@ Where
 
 ```{.sql .copy .separator-hash}
 postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
+```
+```{.sql .copy .separator-hash}
+postgres=# CREATE TABLE student_grade (student_id int, class_id int, term_id int, grade int CHECK (grade >= 0 AND grade <= 10), PRIMARY KEY (student_id, class_id, term_id));
+```
+
+```{.sql .copy .separator-hash}
+postgres=# CREATE TABLE cars (id int PRIMARY KEY, brand text CHECK (brand in ('X', 'Y', 'Z')), model text NOT NULL, color text NOT NULL DEFAULT 'WHITE' CHECK (color in ('RED', 'WHITE', 'BLUE')));
 ```
 
 ## See Also

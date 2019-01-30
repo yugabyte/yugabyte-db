@@ -1,5 +1,5 @@
 ---
-title: Roles and Premissions
+title: Roles and Permissions
 description: Roles and Permissions
 summary: Roles and Permissions
 menu:

@@ -27,7 +27,7 @@ Additionally the `SET` and `SHOW` commands can be used to set and, respectively,
 
 #### set
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="551" height="95" viewbox="0 0 551 95"><path class="connector" d="M0 22h5m43 0h10m106 0h10m87 0h10m58 0h30m53 0h10m104 0h20m-197 25q0 5 5 5h5m53 0h10m86 0h23q5 0 5-5m-192-25q5 0 5 5v50q0 5 5 5h5m97 0h10m53 0h12q5 0 5-5v-50q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="43" height="25" rx="7"/><text class="text" x="15" y="22">SET</text><rect class="literal" x="58" y="5" width="106" height="25" rx="7"/><text class="text" x="68" y="22">TRANSACTION</text><rect class="literal" x="174" y="5" width="87" height="25" rx="7"/><text class="text" x="184" y="22">ISOLATION</text><rect class="literal" x="271" y="5" width="58" height="25" rx="7"/><text class="text" x="281" y="22">LEVEL</text><rect class="literal" x="359" y="5" width="53" height="25" rx="7"/><text class="text" x="369" y="22">READ</text><rect class="literal" x="422" y="5" width="104" height="25" rx="7"/><text class="text" x="432" y="22">UNCOMMITED</text><rect class="literal" x="359" y="35" width="53" height="25" rx="7"/><text class="text" x="369" y="52">READ</text><rect class="literal" x="422" y="35" width="86" height="25" rx="7"/><text class="text" x="432" y="52">COMMITED</text><rect class="literal" x="359" y="65" width="97" height="25" rx="7"/><text class="text" x="369" y="82">REPEATABLE</text><rect class="literal" x="466" y="65" width="53" height="25" rx="7"/><text class="text" x="476" y="82">READ</text></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="551" height="95" viewbox="0 0 551 95"><path class="connector" d="M0 22h5m43 0h10m106 0h10m87 0h10m58 0h30m53 0h10m104 0h20m-197 25q0 5 5 5h5m53 0h10m86 0h23q5 0 5-5m-192-25q5 0 5 5v50q0 5 5 5h5m97 0h10m53 0h12q5 0 5-5v-50q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="43" height="25" rx="7"/><text class="text" x="15" y="22">SET</text><rect class="literal" x="58" y="5" width="106" height="25" rx="7"/><text class="text" x="68" y="22">TRANSACTION</text><rect class="literal" x="174" y="5" width="87" height="25" rx="7"/><text class="text" x="184" y="22">ISOLATION</text><rect class="literal" x="271" y="5" width="58" height="25" rx="7"/><text class="text" x="281" y="22">LEVEL</text><rect class="literal" x="359" y="5" width="53" height="25" rx="7"/><text class="text" x="369" y="22">READ</text><rect class="literal" x="422" y="5" width="104" height="25" rx="7"/><text class="text" x="432" y="22">UNCOMMITTED</text><rect class="literal" x="359" y="35" width="53" height="25" rx="7"/><text class="text" x="369" y="52">READ</text><rect class="literal" x="422" y="35" width="86" height="25" rx="7"/><text class="text" x="432" y="52">COMMITTED</text><rect class="literal" x="359" y="65" width="97" height="25" rx="7"/><text class="text" x="369" y="82">REPEATABLE</text><rect class="literal" x="466" y="65" width="53" height="25" rx="7"/><text class="text" x="476" y="82">READ</text></svg>
 
 #### show
 
@@ -38,7 +38,7 @@ Additionally the `SET` and `SHOW` commands can be used to set and, respectively,
 ```
 transaction ::= { 'ABORT' | 'ROLLBACK' | 'BEGIN' | 'END' | 'COMMIT' } [ 'TRANSACTION' | 'WORK' ] ;
 
-set ::= SET TRANSACTION ISOLATION LEVEL { READ UNCOMMITED | READ COMMITED | REPEATABLE READ }
+set ::= SET TRANSACTION ISOLATION LEVEL { READ UNCOMMITTED | READ COMMITTED | REPEATABLE READ }
 show ::= SHOW TRANSACTION ISOLATION LEVEL
 ```
 
@@ -88,7 +88,7 @@ postgres=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 postgres=# INSERT INTO sample(k1, k2, v1, v2) VALUES (2, 2.0, 3, 'a'), (2, 3.0, 4, 'b');
 ```
 
-- In each shell, check the only the rows from the curent transaction are visible.
+- In each shell, check the only the rows from the current transaction are visible.
 ```{.sql .copy .separator-hash}
 postgres=# SELECT * FROM sample; -- run in first shell
 ```
@@ -121,7 +121,7 @@ postgres=# COMMIT TRANSACTION; -- run in first shell.
 postgres=# ABORT TRANSACTION; -- run second shell.
 ```
 
-- In each shell check that only the rows from the commited transaction are visible.
+- In each shell check that only the rows from the committed transaction are visible.
 ```{.sql .copy .separator-hash}
 postgres=# SELECT * FROM sample; -- run in first shell.
 ```
