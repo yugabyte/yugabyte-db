@@ -6,6 +6,7 @@ import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.getNodeName;
@@ -112,12 +113,17 @@ public class UniverseDefinitionTaskBaseTest {
     String name = getNodeName(tempCluster, "", "oldPrefix", myNode.nodeIdx,
                               myNode.cloudInfo.region, myNode.cloudInfo.az);
     assertEquals("oldPrefix-readonly0-n1", name);
+
+    name = getNodeName(tempCluster, "${universe}-${instance-id}", "oldPrefix", myNode.nodeIdx,
+                       myNode.cloudInfo.region, myNode.cloudInfo.az);
+    assertEquals("TagsTestUniverse-1-readonly0", name);
   }
 
   @Test
   public void testNameTagsFailures() {
     try {
       checkTagPattern("");
+      assertFalse(true);
     } catch (RuntimeException e) {
       assertThat(e.getMessage(),
                  allOf(notNullValue(), containsString("Invalid value '' for Name")));
@@ -125,6 +131,7 @@ public class UniverseDefinitionTaskBaseTest {
 
     try {
       checkTagPattern("${universe}-${zone");
+      assertFalse(true);
     } catch (RuntimeException e) {
       assertThat(e.getMessage(),
                  allOf(notNullValue(), containsString("Number of '${' does not match '}'")));
@@ -132,6 +139,7 @@ public class UniverseDefinitionTaskBaseTest {
 
     try {
       checkTagPattern("universe}-${zone}-${region}");
+      assertFalse(true);
     } catch (RuntimeException e) {
       assertThat(e.getMessage(),
                  allOf(notNullValue(), containsString("Number of '${' does not match '}'")));
@@ -139,6 +147,7 @@ public class UniverseDefinitionTaskBaseTest {
 
     try {
       checkTagPattern("${universe-${zone}}-${region}");
+      assertFalse(true);
     } catch (RuntimeException e) {
       assertThat(e.getMessage(),
                  allOf(notNullValue(), containsString("Invalid variable universe-")));
@@ -146,6 +155,7 @@ public class UniverseDefinitionTaskBaseTest {
 
     try {
       checkTagPattern("${wrongkey}-${region}");
+      assertFalse(true);
     } catch (RuntimeException e) {
       assertThat(e.getMessage(),
                  allOf(notNullValue(), containsString("Invalid variable wrongkey")));
@@ -153,6 +163,7 @@ public class UniverseDefinitionTaskBaseTest {
 
     try {
       checkTagPattern("${universe}.${region}-${zone}");
+      assertFalse(true);
     } catch (RuntimeException e) {
       assertThat(e.getMessage(),
                  allOf(notNullValue(), containsString("should be part of Name value")));
@@ -160,17 +171,10 @@ public class UniverseDefinitionTaskBaseTest {
 
     try {
       checkTagPattern("${universe}-${universe}-test-${region}");
+      assertFalse(true);
     } catch (RuntimeException e) {
       assertThat(e.getMessage(),
                  allOf(notNullValue(), containsString("Duplicate universe")));
-    }
-
-    try {
-      Cluster tempCluster = new Cluster(ClusterType.ASYNC, userIntent);
-      getNodeName(tempCluster, "${universe}-${instance-id}", "oldPrefix", 1, "r", "z");
-    } catch (RuntimeException e) {
-      assertThat(e.getMessage(), allOf(notNullValue(),
-                     containsString("Instance tags not supported for Read Replicas.")));
     }
   }
 }
