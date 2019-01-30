@@ -3538,7 +3538,6 @@ ColConstraintElem:
 				}
 			| CHECK '(' a_expr ')' opt_no_inherit
 				{
-					parser_ybc_not_support(@1, "CHECK column");
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_CHECK;
 					n->location = @1;
