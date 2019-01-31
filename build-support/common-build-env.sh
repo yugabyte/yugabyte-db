@@ -1861,26 +1861,16 @@ kill_stuck_processes() {
   if [[ -z ${YB_TEST_INVOCATION_ID:-} ]]; then
     return
   fi
-
-  local append_output_to=/dev/null
-  if [[ -n ${test_log_path:-} ]]; then
-    append_output_to=$test_log_path
-  fi
-
-  # Activate the virtualenv if needed (expect it to be already installed).
-  activate_virtualenv_no_install
-
-  set +e
-  "$YB_SRC_ROOT"/build-support/kill_stuck_processes.py 2>&1 | tee -a "$append_output_to"
-  local exit_code=$?
-  set -e
-
-  # Use return code 3 to mean stuck processes.
-  if [[ $exit_code -eq 3 ]]; then
-    killed_stuck_processes=true
-  elif [[ $exit_code -ne 0 ]]; then
-    fatal "Fatal: kill_stuck_processes.py failed with exit code ${exit_code}"
-  fi
+  local pid
+  for pid in $( pgrep -f "$YB_TEST_INVOCATION_ID" ); do
+    log "Found pid $pid from this test suite (YB_TEST_INVOCATION_ID=$YB_TEST_INVOCATION_ID)," \
+        "killing it with SIGKILL."
+    ps -p "$pid" -f
+    if kill -9 "$pid"; then
+      killed_stuck_processes=true
+      log "Killed process $pid with SIGKILL."
+    fi
+  done
 }
 
 handle_build_root_from_current_dir() {
@@ -1939,7 +1929,7 @@ add_python_wrappers_dir_to_path() {
   export PATH=$YB_PYTHON_WRAPPERS_DIR:$PATH
 }
 
-activate_virtualenv_no_install() {
+activate_virtualenv() {
   local virtualenv_parent_dir=$YB_BUILD_PARENT_DIR
   local virtualenv_dir=$virtualenv_parent_dir/$YB_VIRTUALENV_BASENAME
   if [[ ! $virtualenv_dir = */$YB_VIRTUALENV_BASENAME ]]; then
@@ -1980,10 +1970,6 @@ activate_virtualenv_no_install() {
   set +u
   . "$virtualenv_dir"/bin/activate
   set -u
-}
-
-activate_virtualenv() {
-  activate_virtualenv_no_install
   local pip_no_cache=""
   if [[ -n ${YB_PIP_NO_CACHE:-} ]]; then
     pip_no_cache="--no-cache-dir"
