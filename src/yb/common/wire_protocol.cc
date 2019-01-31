@@ -166,7 +166,7 @@ Status StatusFromPB(const AppStatusPB& pb) {
   auto code = kErrorCodeToStatus[pb.code()];
   if (code == Status::kQLError) {
     if (!pb.has_ql_error_code()) {
-      return STATUS(InternalError, "SQL error code missing");
+      return STATUS(InternalError, "Query error code missing");
     }
     error_code = pb.ql_error_code();
   }

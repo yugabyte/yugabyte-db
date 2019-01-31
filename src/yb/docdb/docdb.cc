@@ -242,7 +242,7 @@ Status SetDocOpQLErrorResponse(DocOperation* doc_op, std::string err_msg) {
   switch (doc_op->OpType()) {
     case DocOperation::Type::QL_WRITE_OPERATION: {
       const auto &resp = down_cast<QLWriteOperation *>(doc_op)->response();
-      resp->set_status(QLResponsePB::YQL_STATUS_SQL_ERROR);
+      resp->set_status(QLResponsePB::YQL_STATUS_QUERY_ERROR);
       resp->set_error_message(err_msg);
       break;
     }
