@@ -475,7 +475,7 @@ std::string Tablet::LogPrefix() const {
   return Format("T $0$1: ", tablet_id(), log_prefix_suffix_);
 }
 
-Status Tablet::OpenKeyValueTablet(DisableCompactions disable_compactions) {
+Status Tablet::OpenKeyValueTablet() {
   rocksdb::Options rocksdb_options;
   docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, tablet_options_);
   rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker("RegularDB", mem_tracker_);
@@ -492,9 +492,7 @@ Status Tablet::OpenKeyValueTablet(DisableCompactions disable_compactions) {
     return rocksdb::MemTableFilter();
   });
 
-  if (disable_compactions) {
-    rocksdb_options.disable_auto_compactions = true;
-  }
+  rocksdb_options.disable_auto_compactions = true;
 
   const string db_dir = metadata()->rocksdb_dir();
   RETURN_NOT_OK(CreateTabletDirectories(db_dir, metadata()->fs_manager()));
@@ -553,10 +551,14 @@ Status Tablet::OpenKeyValueTablet(DisableCompactions disable_compactions) {
 }
 
 Status Tablet::EnableCompactions() {
-  Status regular_db_status =
-      regular_db_->EnableAutoCompaction({regular_db_->DefaultColumnFamily()});
-  if (!regular_db_status.ok()) {
-    LOG_WITH_PREFIX(WARNING) << "Failed to enable compactions on regular DB: " << regular_db_status;
+  Status regular_db_status;
+  if (regular_db_) {
+    regular_db_status =
+        regular_db_->EnableAutoCompaction({regular_db_->DefaultColumnFamily()});
+    if (!regular_db_status.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Failed to enable compactions on regular DB: "
+                               << regular_db_status;
+    }
   }
   if (intents_db_) {
     Status intents_db_status =

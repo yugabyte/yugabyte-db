@@ -144,7 +144,7 @@ class TabletHarness {
   CHECKED_STATUS Open() {
     RETURN_NOT_OK(tablet_->Open());
     tablet_->MarkFinishedBootstrapping();
-    return Status::OK();
+    return tablet_->EnableCompactions();
   }
 
   server::Clock* clock() const {
