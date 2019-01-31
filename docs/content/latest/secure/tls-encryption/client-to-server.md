@@ -23,7 +23,7 @@ Flag                                 | Process    | Description                 
 -------------------------------------|--------------------------|------------------------------|
 `--use_client_to_server_encryption`  | YB-TServer | Optional, default value is `false`. Set to `true` to enable encryption between the various YugaByte DB clients and the database cluster. |
 `allow_insecure_connections`         | YB-TServer | Optional, defaults to `true`. Set to `false` to disallow any client with unencrypted communication from joining this cluster. Default value is `true`. Note that this flag requires the `use_client_to_server_encryption` to be enabled. |
-`certs_for_client_dir`               | YB-TServer | Optional, defaults to the same directory as the server to server encryption. This directory should contain the configuration for the client to perform TLS communication with the cluster. Default value  |
+`certs_for_client_dir`               | YB-TServer | Optional, defaults to the same directory as the server to server encryption. This directory should contain the configuration for the client to perform TLS communication with the cluster. Default value for the YB-TServers is `<data drive>/yb-data/tserver/data/certs`  |
 
 You can enable access control by starting the `yb-tserver` processes minimally with the `--use_client_to_server_encryption=true` flag as described above. This will allow both encrypted client and clients without encryption to connect to the cluster. To ensure that only clients with appropriate encryption configured are able to connect, set the `--allow_insecure_connections=false` flag as well.
 

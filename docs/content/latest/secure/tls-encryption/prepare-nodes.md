@@ -311,9 +311,9 @@ do
   ssh <username>@$node mkdir ~/yugabyte-tls-config
 
   # Copy all the config files into the above directory.
-  scp $node/ca.crt <user>@$node:~/yugabyte-tls-config
-  scp $node/node.$node.crt <user>@$node:~/yugabyte-tls-config
-  scp $node/node.$node.key <user>@$node:~/yugabyte-tls-config
+  scp $node/ca.crt <user>@$node:~/yugabyte-tls-config/$NODE_IP
+  scp $node/node.$node.crt <user>@$node:~/yugabyte-tls-config/$NODE_IP
+  scp $node/node.$node.key <user>@$node:~/yugabyte-tls-config/$NODE_IP
 done
 ```
 

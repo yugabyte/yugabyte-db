@@ -27,15 +27,15 @@ To enable cqlsh to connect, set the following environment variables:
 Variable       | Description                  |
 ---------------|------------------------------|
 `SSL_CERTFILE` | The root certificate file (`ca.crt`). |
-`SSL_USERKEY`  | The user key file  (`node.<name>.crt`). |
-`SSL_USERCERT` | The user certificate file (`node.<name>.key`).  |
+`SSL_USERCERT` | The user certificate file  (`node.<name>.crt`). |
+`SSL_USERKEY`  | The user key file (`node.<name>.key`).  |
 
 
 You can do so by doing the following:
 
 ```{.bash}
 $ export SSL_CERTFILE=<path to file>/ca.crt
-$ export SSL_USERKEY=<path to file>/node.<name>.crt
+$ export SSL_USERCERT=<path to file>/node.<name>.crt
 $ export SSL_USERKEY=<path to file>/node.<name>.key
 ```
 
