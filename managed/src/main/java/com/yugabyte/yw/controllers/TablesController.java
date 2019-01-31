@@ -305,22 +305,32 @@ public class TablesController extends AuthenticatedController {
 
     taskParams.universeUUID = universeUUID;
     taskParams.tableUUID = tableUUID;
-    Backup backup = Backup.create(customerUUID, taskParams);
-    UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
-    LOG.info("Submitted task to backup table {}:{}, task uuid = {}.",
-        tableUUID, taskParams.tableName, taskUUID);
-    backup.setTaskUUID(taskUUID);
-    CustomerTask.create(customer,
-        taskParams.universeUUID,
-        taskUUID,
-        CustomerTask.TargetType.Backup,
-        CustomerTask.TaskType.Create,
-        taskParams.tableName);
-    LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
-        tableUUID, taskParams.keyspace, taskParams.tableName);
+    // taskParams.schedulingFrequency = 600000;
 
     ObjectNode resultNode = Json.newObject();
-    resultNode.put("taskUUID", taskUUID.toString());
+    if (taskParams.schedulingFrequency != 0L) {
+      Schedule schedule = Schedule.create(customerUUID, taskParams,
+          TaskType.BackupUniverse, taskParams.schedulingFrequency);
+      UUID scheduleUUID = schedule.getScheduleUUID();
+      LOG.info("Submitted backup to be scheduled {}:{}, schedule uuid = {}.",
+          tableUUID, taskParams.tableName, scheduleUUID);
+      resultNode.put("scheduleUUID", scheduleUUID.toString());
+    } else {
+      Backup backup = Backup.create(customerUUID, taskParams);
+      UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
+      LOG.info("Submitted task to backup table {}:{}, task uuid = {}.",
+          tableUUID, taskParams.tableName, taskUUID);
+      backup.setTaskUUID(taskUUID);
+      CustomerTask.create(customer,
+          taskParams.universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.Backup,
+          CustomerTask.TaskType.Create,
+          taskParams.tableName);
+      LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
+          tableUUID, taskParams.keyspace, taskParams.tableName);
+      resultNode.put("taskUUID", taskUUID.toString());
+    }
     return ApiResponse.success(resultNode);
   }
 

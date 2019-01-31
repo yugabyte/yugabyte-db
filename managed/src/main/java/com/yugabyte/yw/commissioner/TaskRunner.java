@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.ScheduleTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -142,11 +143,19 @@ public class TaskRunner implements Runnable {
 
       // Update the task state to success and checkpoint it.
       updateTaskState(TaskInfo.State.Success);
+
     } catch (Throwable t) {
       LOG.error("Error running task", t);
 
       // Update the task state to failure and checkpoint it.
       updateTaskState(TaskInfo.State.Failure);
+
+    } finally {
+      // In case it was a scheduled task, update state of the task.
+      ScheduleTask scheduleTask = ScheduleTask.fetchByTaskUUID(getTaskUUID());
+      if (scheduleTask != null) {
+        scheduleTask.setCompletedTime();
+      }
     }
   }
 
