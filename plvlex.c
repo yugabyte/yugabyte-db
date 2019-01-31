@@ -20,7 +20,6 @@
 #include "nodes/pg_list.h"
 #include "utils/date.h"
 #include "utils/builtins.h"
-#include "utils/nabstime.h"
 #include "plvlex.h"
 #include "sqlparse.h"
 #include "funcapi.h"

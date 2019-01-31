@@ -16,7 +16,6 @@
 #include "postgres.h"
 #include "utils/date.h"
 #include "utils/builtins.h"
-#include "utils/nabstime.h"
 #include <sys/time.h>
 #include <stdlib.h>
 #include "orafce.h"
