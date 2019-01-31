@@ -8,6 +8,7 @@ import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.scheduler.Scheduler;
 
 /**
  * This class is a Guice module that tells Guice to bind different types
@@ -35,5 +36,6 @@ public class Module extends AbstractModule {
     bind(AWSInitializer.class).asEagerSingleton();
     bind(KubernetesManager.class).asEagerSingleton();
     bind(CallHome.class).asEagerSingleton();
+    bind(Scheduler.class).asEagerSingleton();
   }
 }

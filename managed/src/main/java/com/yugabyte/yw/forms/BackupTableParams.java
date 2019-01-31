@@ -21,4 +21,11 @@ public class BackupTableParams extends TableManagerParams {
 
   @Constraints.Required
   public ActionType actionType;
+
+  // Specifies the frequency for running the backup in milliseconds.
+  public long schedulingFrequency = 0L;
+
+  // Specifies the time before deleting the backup from the storage
+  // bucket.
+  public long timeBeforeDelete = 0L;
 }
