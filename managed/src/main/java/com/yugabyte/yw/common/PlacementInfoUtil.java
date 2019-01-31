@@ -44,6 +44,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
@@ -1401,17 +1402,22 @@ public class PlacementInfoUtil {
   }
 
   /**
-   * Given a set of nodes and the number of masters, selects the masters and marks them as such.
+   * Given a set of nodes and number of desired masters, select masters from the nodes that
+   * will be added to the universe.
    *
    * @param nodesMap   : a map of node name to NodeDetails
    * @param numMasters : the number of masters to choose
-   * @return nothing
    */
   private static void selectMasters(Map<String, NodeDetails> nodesMap, int numMasters) {
     // Group the cluster nodes by subnets.
     Map<String, TreeSet<String>> subnetsToNodenameMap = new HashMap<String, TreeSet<String>>();
     for (Entry<String, NodeDetails> entry : nodesMap.entrySet()) {
-      String subnet = entry.getValue().cloudInfo.subnet_id;
+      NodeDetails node = entry.getValue();
+      // TODO: Live is checked as some tests use it as the starting state. Should be made ToBeAdded.
+      if (node.state != NodeState.Live && node.state != NodeState.ToBeAdded) {
+        continue;
+      }
+      String subnet = node.cloudInfo.subnet_id;
       if (!subnetsToNodenameMap.containsKey(subnet)) {
         subnetsToNodenameMap.put(subnet, new TreeSet<String>());
       }

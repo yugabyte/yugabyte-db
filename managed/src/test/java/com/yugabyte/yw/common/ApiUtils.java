@@ -56,6 +56,8 @@ public class ApiUtils {
         universeDetails.upsertPrimaryCluster(userIntent, null);
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
+          // TODO: This state needs to be ToBeAdded as Create(k8s)Univ runtime sets it to Live
+          // and nodeName should be null for ToBeAdded.
           NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live,
               idx <= userIntent.replicationFactor);
           node.placementUuid = universeDetails.getPrimaryCluster().uuid;
@@ -101,6 +103,8 @@ public class ApiUtils {
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
+          // TODO: This state needs to be ToBeAdded as Create(k8s)Univ runtime sets it to Live
+          // and nodeName should be null for ToBeAdded.
           NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live,
               setMasters && idx <= userIntent.replicationFactor);
           node.placementUuid = universeDetails.getPrimaryCluster().uuid;
@@ -188,6 +192,7 @@ public class ApiUtils {
                                                  NodeDetails.NodeState state,
                                                  boolean isMaster) {
     NodeDetails node = new NodeDetails();
+    // TODO: Set nodeName to null for ToBeAdded state
     node.nodeName = "host-n" + idx;
     node.cloudInfo = new CloudSpecificInfo();
     node.cloudInfo.cloud = "aws";
