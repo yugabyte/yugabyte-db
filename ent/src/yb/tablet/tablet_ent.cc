@@ -202,7 +202,7 @@ Status Tablet::RestoreCheckpoint(const std::string& dir, const docdb::ConsensusF
 
   // Reopen database from copied checkpoint.
   // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
-  s = OpenKeyValueTablet(DisableCompactions::kTrue);
+  s = OpenKeyValueTablet();
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed tablet db opening from checkpoint: " << s;
     return s;
