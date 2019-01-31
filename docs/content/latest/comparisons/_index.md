@@ -14,7 +14,7 @@ menu:
 
 ## NoSQL Databases
 
-Feature | [Apache Cassandra](cassandra/) | [Redis](redis/) | [MongoDB](mongodb/) | FoundationDB |[Amazon DynamoDB](amazon-dynamodb/) | [MS Azure CosmosDB](azure-cosmos/)| YugaByte DB
+Feature | [Apache Cassandra](cassandra/) | [Redis In-Memory Store](redis/) | [MongoDB](mongodb/) | [FoundationDB](foundationdb/) |[Amazon DynamoDB](amazon-dynamodb/) | [MS Azure CosmosDB](azure-cosmos/)| YugaByte DB
 --------|-----------|-------|---------|--------|-------------|--------------|-----------------
 Linear Read &amp; Write Scalability | <i class="fa fa-check"></i> | <i class="fa fa-times"></i> | <i class="fa fa-check"></i> |<i class="fa fa-check"></i>| <i class="fa fa-check"></i> | <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
 Automated Failover &amp; Repair | <i class="fa fa-check"></i> | <i class="fa fa-times"></i> | <i class="fa fa-check"></i> |<i class="fa fa-check"></i>|<i class="fa fa-check"></i> | <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
@@ -22,11 +22,11 @@ Auto Sharding | <i class="fa fa-check"></i> |<i class="fa fa-times"></i>|<i clas
 Auto Rebalancing | <i class="fa fa-check"></i> |<i class="fa fa-times"></i>| <i class="fa fa-check"></i> |<i class="fa fa-check"></i>|<i class="fa fa-check"></i> | <i class="fa fa-check"></i> | <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
 Distributed ACID Transactions | <i class="fa fa-times"></i> |<i class="fa fa-times"></i>| <i class="fa fa-times"></i> |<i class="fa fa-check"></i>| <i class="fa fa-times"></i> | <i class="fa fa-times"></i> | <i class="fa fa-check"></i>
 Consensus Driven Strongly Consistent Replication | <i class="fa fa-times"></i> |<i class="fa fa-times"></i>| <i class="fa fa-times"></i> |<i class="fa fa-check"></i>| <i class="fa fa-times"></i> | <i class="fa fa-times"></i> | <i class="fa fa-check"></i>
-Strongly Consistent Secondary Indexes | <i class="fa fa-times"></i> |<i class="fa fa-times"></i>| <i class="fa fa-times"></i> |<i class="fa fa-times"></i>| <i class="fa fa-times"></i> | <i class="fa fa-times"></i> | <i class="fa fa-check"></i>
-Multiple Read Consistency Levels | <i class="fa fa-check"></i> |<i class="fa fa-times"></i>| <i class="fa fa-check"></i> |<i class="fa fa-times"></i>| <i class="fa fa-check"></i> | <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
+Strongly Consistent Secondary Indexes | <i class="fa fa-times"></i> |<i class="fa fa-times"></i>| <i class="fa fa-times"></i> |<i class="fa fa-check"></i>| <i class="fa fa-times"></i> | <i class="fa fa-times"></i> | <i class="fa fa-check"></i>
+Multiple Read Consistency Levels | <i class="fa fa-check"></i> |<i class="fa fa-times"></i>| <i class="fa fa-check"></i> |<i class="fa fa-check"></i>| <i class="fa fa-check"></i> | <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
 Low, Predictable p99 Latencies | <i class="fa fa-times"></i> |<i class="fa fa-check"></i>| <i class="fa fa-times"></i> |<i class="fa fa-times"></i>|<i class="fa fa-check"></i> | <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
 High Data Density| <i class="fa fa-times"></i> |<i class="fa fa-times"></i>| <i class="fa fa-times"></i> |<i class="fa fa-times"></i>| <i class="fa fa-times"></i> | <i class="fa fa-times"></i> | <i class="fa fa-check"></i>
-Open API | Cassandra QL   |Redis| MongoDB QL |Proprietary Key-Value| Proprietary | Cassandra QL, MongoDB QL | Cassandra-compatible YCQL, Redis-compatible YEDIS
+Open API | Cassandra QL   |Redis| MongoDB QL |Proprietary KV, MongoDB QL| Proprietary KV, Document | Cassandra QL, MongoDB QL | Cassandra-compatible YCQL, Redis-compatible YEDIS
 Open Source | Apache 2.0 | 3-Clause BSD| SSPL | Apache 2.0| <i class="fa fa-times"></i> | <i class="fa fa-times"></i> | Apache 2.0
 
 

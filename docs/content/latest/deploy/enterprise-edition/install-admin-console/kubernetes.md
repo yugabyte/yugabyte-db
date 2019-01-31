@@ -47,7 +47,7 @@ Tiller (the Helm server-side component) has been upgraded to the current version
 Happy Helming!
 ```
 
-### Download YugaWare helm chart
+### Download YugaWare Helm Chart
 ```{.sh .copy .separator-dollar}
 $ wget https://downloads.yugabyte.com/kubernetes/yugaware-1.0.0.tgz
 ```

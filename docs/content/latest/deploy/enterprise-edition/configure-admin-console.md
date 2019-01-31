@@ -83,7 +83,7 @@ $ docker images | grep "yuga" | awk '{print $3}' | xargs docker rmi -f
 $ rm -rf /opt/yugabyte
 ```
 
-And then uninstall Replicated itself by following instructions documented [here](https://www.replicated.com/docs/distributing-an-application/installing-via-script/#removing-replicated).
+And then uninstall Replicated itself by following instructions documented [here](https://help.replicated.com/docs/native/customer-installations/installing-via-script/#removing-replicated).
 
 ## Troubleshoot
 
