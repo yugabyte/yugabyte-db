@@ -18,16 +18,16 @@ ERROR:  OID out of range
 INSERT INTO oid_table (id, value, tag) VALUES (4294967297, 4294967297, 11);
 ERROR:  OID out of range
 INSERT INTO oid_table (id, value, tag) VALUES (-1, -10, 100);
-ERROR:  SQL error: Primary key already exists
+ERROR:  Query error: Primary key already exists
 INSERT INTO oid_table (id, value, tag) VALUES (-2, -21, 101);
 INSERT INTO oid_table (id, value, tag) VALUES (-1000, -1010, 102);
 INSERT INTO oid_table (id, value, tag) VALUES (-1000000, -1000010, 103);
 INSERT INTO oid_table (id, value, tag) VALUES (-1000000000, -1000000010, 104);
 INSERT INTO oid_table (id, value, tag) VALUES (-2000000000, -2000000020, 105);
 INSERT INTO oid_table (id, value, tag) VALUES (-2147483647, -2147483647, 106);
-ERROR:  SQL error: Primary key already exists
+ERROR:  Query error: Primary key already exists
 INSERT INTO oid_table (id, value, tag) VALUES (-2147483648, -2147483648, 107);
-ERROR:  SQL error: Primary key already exists
+ERROR:  Query error: Primary key already exists
 INSERT INTO oid_table (id, value, tag) VALUES (-2147483649, -2147483649, 108);
 ERROR:  OID out of range
 INSERT INTO oid_table (id, value, tag) VALUES (-4294967295, -4294967295, 109);

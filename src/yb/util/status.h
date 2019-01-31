@@ -144,7 +144,7 @@ namespace yb {
     ((Incomplete, INCOMPLETE, 17, "Incomplete")) \
     ((EndOfFile, END_OF_FILE, 18, "End of file")) \
     ((InvalidCommand, INVALID_COMMAND, 19, "Invalid command")) \
-    ((QLError, SQL_ERROR, 20, "SQL error")) \
+    ((QLError, QL_ERROR, 20, "Query error")) \
     ((InternalError, INTERNAL_ERROR, 21, "Internal error")) \
     ((Expired, EXPIRED, 22, "Operation expired")) \
     ((LeaderNotReadyToServe, LEADER_NOT_READY_TO_SERVE, 23, \

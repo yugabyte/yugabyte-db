@@ -72,7 +72,7 @@ message AppStatusPB {
     INCOMPLETE = 17;
     END_OF_FILE = 18;
     INVALID_COMMAND = 19;
-    SQL_ERROR = 20;
+    QL_ERROR = 20;
     INTERNAL_ERROR = 21;
     EXPIRED = 22;
     LEADER_NOT_READY_TO_SERVE = 23;
