@@ -122,7 +122,6 @@ class WriteOperationState;
 using docdb::LockBatch;
 
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
-YB_STRONGLY_TYPED_BOOL(DisableCompactions);
 
 class TabletFlushStats : public rocksdb::EventListener {
  public:
@@ -525,8 +524,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS StartDocWriteOperation(WriteOperation* operation);
 
-  CHECKED_STATUS OpenKeyValueTablet(
-      DisableCompactions disable_compactions = DisableCompactions::kFalse);
+  CHECKED_STATUS OpenKeyValueTablet();
   virtual CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs);
 
   void DocDBDebugDump(std::vector<std::string> *lines);
