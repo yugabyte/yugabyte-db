@@ -6,8 +6,8 @@ import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.fail;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.getNodeName;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.checkTagPattern;
@@ -123,7 +123,7 @@ public class UniverseDefinitionTaskBaseTest {
   public void testNameTagsFailures() {
     try {
       checkTagPattern("");
-      assertFalse(true);
+      fail();
     } catch (RuntimeException e) {
       assertThat(e.getMessage(),
                  allOf(notNullValue(), containsString("Invalid value '' for Name")));
@@ -131,7 +131,7 @@ public class UniverseDefinitionTaskBaseTest {
 
     try {
       checkTagPattern("${universe}-${zone");
-      assertFalse(true);
+      fail();
     } catch (RuntimeException e) {
       assertThat(e.getMessage(),
                  allOf(notNullValue(), containsString("Number of '${' does not match '}'")));
@@ -139,7 +139,7 @@ public class UniverseDefinitionTaskBaseTest {
 
     try {
       checkTagPattern("universe}-${zone}-${region}");
-      assertFalse(true);
+      fail();
     } catch (RuntimeException e) {
       assertThat(e.getMessage(),
                  allOf(notNullValue(), containsString("Number of '${' does not match '}'")));
@@ -147,7 +147,7 @@ public class UniverseDefinitionTaskBaseTest {
 
     try {
       checkTagPattern("${universe-${zone}}-${region}");
-      assertFalse(true);
+      fail();
     } catch (RuntimeException e) {
       assertThat(e.getMessage(),
                  allOf(notNullValue(), containsString("Invalid variable universe-")));
@@ -155,7 +155,7 @@ public class UniverseDefinitionTaskBaseTest {
 
     try {
       checkTagPattern("${wrongkey}-${region}");
-      assertFalse(true);
+      fail();
     } catch (RuntimeException e) {
       assertThat(e.getMessage(),
                  allOf(notNullValue(), containsString("Invalid variable wrongkey")));
@@ -163,7 +163,7 @@ public class UniverseDefinitionTaskBaseTest {
 
     try {
       checkTagPattern("${universe}.${region}-${zone}");
-      assertFalse(true);
+      fail();
     } catch (RuntimeException e) {
       assertThat(e.getMessage(),
                  allOf(notNullValue(), containsString("should be part of Name value")));
@@ -171,7 +171,7 @@ public class UniverseDefinitionTaskBaseTest {
 
     try {
       checkTagPattern("${universe}-${universe}-test-${region}");
-      assertFalse(true);
+      fail();
     } catch (RuntimeException e) {
       assertThat(e.getMessage(),
                  allOf(notNullValue(), containsString("Duplicate universe")));
