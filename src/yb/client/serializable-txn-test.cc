@@ -243,7 +243,7 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
 // serializable isolation.
 // With retries the resulting value should be equal to number of increments.
 void SerializableTxnTest::TestIncrements(bool transactional) {
-  const auto kThreads = 3;
+  const auto kThreads = RegularBuildVsSanitizers(3, 2);
 
   std::vector<std::thread> threads;
   while (threads.size() != kThreads) {
