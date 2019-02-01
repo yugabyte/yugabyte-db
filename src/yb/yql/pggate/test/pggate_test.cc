@@ -138,6 +138,10 @@ void PggateTest::ConnectDB(const string& db_name) {
   CHECK_YBC_STATUS(YBCPgConnectDatabase(pg_session_, db_name.c_str()));
 }
 
+void PggateTest::CommitTransaction() {
+  CHECK_YBC_STATUS(YBCPgTxnManager_CommitTransaction_Status(YBCGetPgTxnManager()));
+}
+
 // ------------------------------------------------------------------------------------------------
 // Make sure that DataType in common.proto matches the YBCPgDataType enum
 // TODO: find a better way to generate these enums.

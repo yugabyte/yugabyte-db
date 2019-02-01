@@ -122,11 +122,11 @@ TransactionManager* PgTxnManager::GetOrCreateTransactionManager() {
   return transaction_manager_holder_.get();
 }
 
-client::YBSession* PgTxnManager::GetTransactionalSession() {
-  if (txn_in_progress_) {
-    return session_.get();
+Result<client::YBSession*> PgTxnManager::GetTransactionalSession() {
+  if (!txn_in_progress_) {
+    RETURN_NOT_OK(BeginTransaction());
   }
-  return nullptr;
+  return session_.get();
 }
 
 void PgTxnManager::ResetTxnAndSession() {

@@ -31,6 +31,15 @@
 extern bool YBCIsEnvVarTrue(const char* env_var_name);
 
 /**
+ * Checks if the given environment variable is set to a "true" value (e.g. "1"),
+ * but with the given default value in case the environment variable is not
+ * defined, or is set to an empty string or the string "auto".
+ */
+extern bool YBCIsEnvVarTrueWithDefault(
+    const char* env_var_name,
+    bool default_value);
+
+/**
  * Checks if the YB_ENABLED_IN_POSTGRES is set. This is different from
  * IsYugaByteEnabled(), because the IsYugaByteEnabled() also checks that we are
  * in the "normal processing mode" and we have a YB client session.

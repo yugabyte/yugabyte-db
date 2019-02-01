@@ -36,8 +36,20 @@
 bool
 YBCIsEnvVarTrue(const char* env_var_name)
 {
+	return YBCIsEnvVarTrueWithDefault(env_var_name, /* default_value */ false);
+}
+
+bool
+YBCIsEnvVarTrueWithDefault(const char* env_var_name, bool default_value)
+{
 	const char* env_var_value = getenv(env_var_name);
-	return env_var_value != NULL && strcmp(env_var_value, "1") == 0;
+	if (!env_var_value ||
+		strlen(env_var_value) == 0 ||
+		strcmp(env_var_value, "auto") == 0)
+	{
+		return default_value;
+	}
+	return strcmp(env_var_value, "1") == 0;
 }
 
 bool

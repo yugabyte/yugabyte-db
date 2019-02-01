@@ -99,7 +99,7 @@ YBTransactionsEnabled()
 	static int cached_value = -1;
 	if (cached_value == -1)
 	{
-		cached_value = YBCIsEnvVarTrue("YB_PG_TRANSACTIONS_ENABLED");
+		cached_value = YBCIsEnvVarTrueWithDefault("YB_PG_TRANSACTIONS_ENABLED", true);
 	}
 	return IsYugaByteEnabled() && cached_value;
 }
@@ -412,7 +412,7 @@ YBReportIfYugaByteEnabled()
 	if (YBIsEnabledInPostgresEnvVar()) {
 		ereport(LOG, (errmsg(
 			"YugaByte is ENABLED in PostgreSQL. Transactions are %s.",
-			YBCIsEnvVarTrue("YB_PG_TRANSACTIONS_ENABLED") ? "enabled" : "disabled")));
+			YBTransactionsEnabled() ? "enabled" : "disabled")));
 	} else {
 		ereport(LOG, (errmsg("YugaByte is NOT ENABLED -- "
 							"this is a vanilla PostgreSQL server!")));
