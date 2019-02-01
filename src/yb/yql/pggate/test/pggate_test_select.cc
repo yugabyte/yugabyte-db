@@ -52,6 +52,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   ++col_count;
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
+  CommitTransaction();
   pg_stmt = nullptr;
 
   // INSERT ----------------------------------------------------------------------------------------
@@ -93,6 +94,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   for (int i = 0; i < insert_row_count; i++) {
     // Insert the row with the original seed.
     CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
+    CommitTransaction();
 
     // Update the constant expresions to insert the next row.
     // TODO(neil) When we support binds, we can also call UpdateBind here.

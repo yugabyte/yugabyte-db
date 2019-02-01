@@ -21,6 +21,7 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/common/clock.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/util/result.h"
 #endif  // YBC_CXX_DECLARATION_MODE
 
 #ifdef YBC_CXX_DECLARATION_MODE
@@ -42,8 +43,8 @@ YBC_STATUS_METHOD_NO_ARGS(AbortTransaction)
   PgTxnManager(client::AsyncClientInitialiser* async_client_init,
                scoped_refptr<ClockBase> clock);
 
-  // Returns the transactional session, or nullptr otherwise.
-  client::YBSession* GetTransactionalSession();
+  // Returns the transactional session, starting a new transaction if necessary.
+  yb::Result<client::YBSession*> GetTransactionalSession();
 
   Status BeginWriteTransactionIfNecessary();
 
