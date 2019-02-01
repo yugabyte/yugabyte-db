@@ -559,7 +559,7 @@ void LookupRpc::DoFinished(
     if (resp.error().code() == master::MasterErrorPB::NOT_THE_LEADER ||
         resp.error().code() == master::MasterErrorPB::CATALOG_MANAGER_NOT_INITIALIZED) {
       if (client()->IsMultiMaster()) {
-        LOG(WARNING) << "Leader Master has changed, re-trying...";
+        YB_LOG_EVERY_N_SECS(WARNING, 1) << "Leader Master has changed, re-trying...";
         ResetMasterLeaderAndRetry();
         return;
       }
@@ -570,7 +570,7 @@ void LookupRpc::DoFinished(
   if (new_status.IsTimedOut()) {
     if (MonoTime::Now().ComesBefore(retrier().deadline())) {
       if (client()->IsMultiMaster()) {
-        LOG(WARNING) << "Leader Master timed out, re-trying...";
+        YB_LOG_EVERY_N_SECS(WARNING, 1) << "Leader Master timed out, re-trying...";
         ResetMasterLeaderAndRetry();
         return;
       }
@@ -582,7 +582,8 @@ void LookupRpc::DoFinished(
 
   if (new_status.IsNetworkError() || new_status.IsRemoteError()) {
     if (client()->IsMultiMaster()) {
-      LOG(WARNING) << "Encountered a error from the Master: " << new_status << ", retrying...";
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Encountered a error from the Master: "
+           << new_status << ", retrying...";
       ResetMasterLeaderAndRetry();
       return;
     }
