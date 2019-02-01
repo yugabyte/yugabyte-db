@@ -86,6 +86,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   for (int i = 0; i < insert_row_count; i++) {
     // Insert the row with the original seed.
     CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
+    CommitTransaction();
 
     // Update the constant expresions to insert the next row.
     // TODO(neil) When we support binds, we can also call UpdateBind here.
@@ -134,6 +135,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   for (int i = 0; i < update_row_count; i++) {
     // Update the row with the original seed.
     CHECK_YBC_STATUS(YBCPgExecUpdate(pg_stmt));
+    CommitTransaction();
 
     // Update the constant expresions to update the next row.
     // TODO(neil) When we support binds, we can also call UpdateBind here.

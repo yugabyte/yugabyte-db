@@ -166,7 +166,8 @@ Status PgCreateTable::Exec() {
   if (!is_pg_catalog_table_) {
     TableProperties table_properties;
     const char* pg_txn_enabled_env_var = getenv("YB_PG_TRANSACTIONS_ENABLED");
-    const bool transactional = (pg_txn_enabled_env_var && strcmp(pg_txn_enabled_env_var, "1") == 0);
+    const bool transactional =
+        !pg_txn_enabled_env_var || strcmp(pg_txn_enabled_env_var, "1") == 0;
     LOG(INFO) << Format(
         "PgCreateTable: creating a $0 table: $1",
         transactional ? "transactional" : "non-transactional", table_name_.ToString());

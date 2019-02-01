@@ -64,7 +64,7 @@ extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
 
 /**
  * Whether to route BEGIN / COMMIT / ROLLBACK to YugaByte's distributed
- * transactions. This will be enabled by default soon after 10/12/2018.
+ * transactions.
  */
 extern bool YBTransactionsEnabled();
 

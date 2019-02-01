@@ -148,8 +148,6 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_i
 }
 
 Status PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op, uint64_t* read_time) {
-  VLOG(2) << __PRETTY_FUNCTION__ << " called, is_transactional="
-          << op->IsTransactional();
   if (op->IsTransactional()) {
     has_txn_ops_ = true;
   } else {
@@ -218,21 +216,13 @@ Status PgSession::CombineErrorsToStatus(client::CollectedErrors errors, Status s
 }
 
 Result<YBSession*> PgSession::GetSession(bool transactional, bool read_only_op) {
-  YBSession* const txn_session =
-      transactional ? pg_txn_manager_->GetTransactionalSession() : nullptr;
-  if (transactional && !txn_session) {
-    return STATUS_FORMAT(
-        IllegalState,
-        "GetSession called for a transactional operation, read_only_op=$0, but the transactional "
-            "session has not been created",
-        read_only_op);
-  }
-  if (txn_session) {
-    VLOG(2) << __PRETTY_FUNCTION__
-            << ": read_only_op=" << read_only_op << ", returning transactional session";
+  if (transactional) {
+    YBSession* txn_session = VERIFY_RESULT(pg_txn_manager_->GetTransactionalSession());
     if (!read_only_op) {
       pg_txn_manager_->BeginWriteTransactionIfNecessary();
     }
+    VLOG(2) << __PRETTY_FUNCTION__
+            << ": read_only_op=" << read_only_op << ", returning transactional session";
     return txn_session;
   }
   VLOG(2) << __PRETTY_FUNCTION__

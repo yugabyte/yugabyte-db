@@ -49,6 +49,7 @@ TEST_F(PggateTestDelete, TestDelete) {
                                              DataType::STRING, false, false));
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
+  CommitTransaction();
   pg_stmt = nullptr;
 
   // INSERT ----------------------------------------------------------------------------------------
@@ -60,6 +61,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   int seed = 1;
   YBCPgExpr expr_hash;
   CHECK_YBC_STATUS(YBCPgNewConstantInt8(pg_stmt, seed, false, &expr_hash));
+
   YBCPgExpr expr_id;
   CHECK_YBC_STATUS(YBCPgNewConstantInt4(pg_stmt, seed, false, &expr_id));
   YBCPgExpr expr_depcnt;
@@ -86,6 +88,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   for (int i = 0; i < insert_row_count; i++) {
     // Insert the row with the original seed.
     CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
+    CommitTransaction();
 
     // Update the constant expresions to insert the next row.
     // TODO(neil) When we support binds, we can also call UpdateBind here.
@@ -100,6 +103,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   }
 
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
+  CommitTransaction();
   pg_stmt = nullptr;
 
   // DELETE ----------------------------------------------------------------------------------------
@@ -121,6 +125,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   for (int i = 0; i < delete_row_count; i++) {
     // Delete the row with the original seed.
     CHECK_YBC_STATUS(YBCPgExecDelete(pg_stmt));
+    CommitTransaction();
 
     // Update the constant expresions to delete the next row.
     // TODO(neil) When we support binds, we can also call UpdateBind here.
@@ -130,6 +135,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   }
 
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
+  CommitTransaction();
   pg_stmt = nullptr;
 
   // SELECT ----------------------------------------------------------------------------------------

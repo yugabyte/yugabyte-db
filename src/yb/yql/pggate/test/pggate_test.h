@@ -63,6 +63,9 @@ class PggateTest : public YBTest {
   void ConnectDB(const string& db_name = kDefaultDatabase);
 
  protected:
+
+  void CommitTransaction();
+
   //------------------------------------------------------------------------------------------------
   // Simulated cluster.
   std::shared_ptr<ExternalMiniCluster> cluster_;

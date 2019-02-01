@@ -37,13 +37,6 @@ public class TestPgTransactions extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
 
   @Override
-  protected Map<String, String> getInitDbEnvVars() {
-    Map<String, String> envVars = super.getInitDbEnvVars();
-    envVars.put("YB_PG_TRANSACTIONS_ENABLED", "1");
-    return envVars;
-  }
-
-  @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     builder.enablePgTransactions(true);
