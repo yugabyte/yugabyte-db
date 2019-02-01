@@ -55,6 +55,7 @@
 #include "yb/util/memory/memory.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 
 METRIC_DEFINE_histogram(
     server, handler_latency_outbound_call_queue_time, "Time taken to queue the request ",
@@ -73,7 +74,7 @@ METRIC_DEFINE_histogram(
 // enough that involuntary context switches don't trigger it, but low enough
 // that any serious blocking behavior on the reactor would.
 DEFINE_int64(
-    rpc_callback_max_cycles, 100 * 1000 * 1000,
+    rpc_callback_max_cycles, 100 * 1000 * 1000 * yb::kTimeMultiplier,
     "The maximum number of cycles for which an RPC callback "
     "should be allowed to run without emitting a warning."
     " (Advanced debugging option)");
