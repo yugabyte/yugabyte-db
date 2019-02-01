@@ -301,6 +301,15 @@ public class Universe extends Model {
   }
 
   /**
+   * Checks if there is any node in a transit state across the universe.
+   *
+   * @return true if there is any such node.
+   */
+  public boolean nodesInTransit() {
+    return getUniverseDetails().nodeDetailsSet.stream().filter(n -> n.isInTransit()).count() > 0;
+  }
+
+  /**
    * Returns details about a single node in the universe.
    *
    * @param nodeName

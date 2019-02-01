@@ -54,6 +54,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -567,6 +568,101 @@ public class UniverseControllerTest extends WithApplication {
     assertNull(CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique());
   }
 
+  private ObjectNode getValidPayload(UUID univUUID, boolean isRolling) {
+    ObjectNode bodyJson = Json.newObject()
+       .put("universeUUID", univUUID.toString())
+       .put("taskType", "Software")
+       .put("rollingUpgrade", isRolling)
+	   .put("ybSoftwareVersion", "0.0.1");
+    ObjectNode userIntentJson = Json.newObject()
+       .put("universeName", "Single UserUniverse")
+       .put("ybSoftwareVersion", "0.0.1");
+    ArrayNode clustersJsonArray =
+        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+    return bodyJson;
+  }
+
+  // Change the node state to removed, for one of the nodes in the given universe uuid.
+  private void setInTransitNode(UUID universeUUID) {
+    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        NodeDetails node = universeDetails.nodeDetailsSet.iterator().next();
+        node.state = NodeState.Removed;
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+    Universe.saveDetails(universeUUID, updater);
+  }
+
+  private void testUniverseUpgradeWithNodesInTransitHelper(boolean isRolling) {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater());
+
+    setInTransitNode(uUUID);
+
+    ObjectNode bodyJson = getValidPayload(uUUID, isRolling);
+    String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    if (isRolling) {
+      assertBadRequest(result, "as it has nodes in one of");
+      assertNull(CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique());
+    } else {
+      assertOk(result);
+      JsonNode json = Json.parse(contentAsString(result));
+      assertValue(json, "taskUUID", fakeTaskUUID.toString());
+    }
+  }
+
+  @Test
+  public void testUniverseUpgradeWithNodesInTransit() {
+    testUniverseUpgradeWithNodesInTransitHelper(true);
+  }
+
+  @Test
+  public void testUniverseUpgradeWithNodesInTransitNonRolling() {
+    testUniverseUpgradeWithNodesInTransitHelper(false);
+  }
+
+  @Test
+  public void testUniverseExpandWithTransitNodes() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
+    Universe u = createUniverse(customer.getCustomerId());
+    Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    setInTransitNode(u.universeUUID);
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson = Json.newObject()
+      .put("universeName", u.name)
+      .put("numNodes", 5)
+      .put("instanceType", i.getInstanceTypeCode())
+      .put("replicationFactor", 3)
+      .put("provider", p.uuid.toString());
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
+    Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
+    assertBadRequest(result, "as it has nodes in one of");
+    assertNull(CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique());
+  }
+
   @Test
   public void testUniverseSoftwareUpgradeValidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
@@ -574,16 +670,7 @@ public class UniverseControllerTest extends WithApplication {
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getCustomerId());
 
-    ObjectNode bodyJson = Json.newObject()
-        .put("universeUUID", u.universeUUID.toString())
-        .put("taskType", "Software")
-        .put("ybSoftwareVersion", "0.0.1");
-    ObjectNode userIntentJson = Json.newObject()
-        .put("universeName", "Single UserUniverse")
-        .put("ybSoftwareVersion", "0.0.1");
-    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
-    bodyJson.set("clusters", clustersJsonArray);
-
+    ObjectNode bodyJson = getValidPayload(u.universeUUID, true);
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
