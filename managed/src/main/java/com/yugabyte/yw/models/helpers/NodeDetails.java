@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.NodeActionType;
 
 import java.util.Arrays;
@@ -96,6 +97,10 @@ public class NodeDetails {
   public boolean isYsqlServer = true;
   public int ysqlServerRpcPort = 5433;
 
+  // List of states which are considered in-transit and ops such as upgrade should not be allowed.
+  public static final Set<NodeState> IN_TRANSIT_STATES =
+      ImmutableSet.of(NodeState.Removed, NodeState.Stopped, NodeState.Decommissioned);
+
   @Override
   public NodeDetails clone() {
     NodeDetails clone = new NodeDetails();
@@ -148,6 +153,11 @@ public class NodeDetails {
       state == NodeState.ToBeRemoved ||
       state == NodeState.Removing ||
       state == NodeState.Stopping);
+  }
+
+  @JsonIgnore
+  public boolean isInTransit() {
+    return IN_TRANSIT_STATES.contains(state);
   }
 
   public Set<NodeActionType> getAllowedActions() {

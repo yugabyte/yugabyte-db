@@ -279,6 +279,12 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
+    if (universe.nodesInTransit()) {
+      return ApiResponse.error(BAD_REQUEST, "Cannot perform an edit operation on universe " +
+                               universeUUID + " as it has nodes in one of " +
+                               NodeDetails.IN_TRANSIT_STATES + " states.");
+    }
+
     try {
       Cluster primaryCluster = taskParams.getPrimaryCluster();
       UUID uuid = null;
@@ -670,6 +676,12 @@ public class UniverseController extends AuthenticatedController {
 
       if (taskParams.taskType == null) {
         return ApiResponse.error(BAD_REQUEST, "task type is required");
+      }
+
+      if (taskParams.rollingUpgrade && universe.nodesInTransit()) {
+        return ApiResponse.error(BAD_REQUEST, "Cannot perform rolling upgrade of universe " +
+                                 universeUUID + " as it has nodes in one of " +
+                                 NodeDetails.IN_TRANSIT_STATES + " states.");
       }
 
       // TODO: we need to refactor this to read from cluster
