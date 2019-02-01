@@ -934,8 +934,49 @@ REVOKE ALL ON pg_subscription FROM public;
 GRANT SELECT (subdbid, subname, subowner, subenabled, subslotname, subpublications)
     ON pg_subscription TO public;
 
--- TODO Removed unsupported CREATE FUNCTION declarations and related
--- grant/revoke commands (compared to standard system_views.sql).
+-- YB NOTE : We have removed a bunch of unsupported / unnecessary CREATE FUNCTION 
+-- declarations and related grant/revoke commands (compared to standard system_views.sql).
+
+--
+-- Redeclare built-in functions that need default values attached to their
+-- arguments.  It's impractical to set those up directly in pg_proc.h because
+-- of the complexity and platform-dependency of the expression tree
+-- representation.  (Note that internal functions still have to have entries
+-- in pg_proc.h; we are merely causing their proargnames and proargdefaults
+-- to get filled in.)
+--
+
+CREATE OR REPLACE FUNCTION
+  make_interval(years int4 DEFAULT 0, months int4 DEFAULT 0, weeks int4 DEFAULT 0,
+                days int4 DEFAULT 0, hours int4 DEFAULT 0, mins int4 DEFAULT 0,
+                secs double precision DEFAULT 0.0)
+RETURNS interval
+LANGUAGE INTERNAL
+STRICT IMMUTABLE PARALLEL SAFE
+AS 'make_interval';
+
+CREATE OR REPLACE FUNCTION
+  jsonb_set(jsonb_in jsonb, path text[] , replacement jsonb,
+            create_if_missing boolean DEFAULT true)
+RETURNS jsonb
+LANGUAGE INTERNAL
+STRICT IMMUTABLE PARALLEL SAFE
+AS 'jsonb_set';
+
+CREATE OR REPLACE FUNCTION
+  parse_ident(str text, strict boolean DEFAULT true)
+RETURNS text[]
+LANGUAGE INTERNAL
+STRICT IMMUTABLE PARALLEL SAFE
+AS 'parse_ident';
+
+CREATE OR REPLACE FUNCTION
+  jsonb_insert(jsonb_in jsonb, path text[] , replacement jsonb,
+            insert_after boolean DEFAULT false)
+RETURNS jsonb
+LANGUAGE INTERNAL
+STRICT IMMUTABLE PARALLEL SAFE
+AS 'jsonb_insert';
 
 GRANT pg_read_all_settings TO pg_monitor;
 GRANT pg_read_all_stats TO pg_monitor;
