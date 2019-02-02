@@ -15,6 +15,7 @@ package org.yb.cql;
 
 import com.datastax.driver.core.*;
 import org.junit.BeforeClass;
+import org.yb.minicluster.BaseMiniClusterTest;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -66,7 +67,7 @@ public class BaseAuthenticationCQLTest extends BaseCQLTest {
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
     // Setting verbose level for debugging.
-    BaseCQLTest.tserverArgs = Arrays.asList("--use_cassandra_authentication=true");
+    BaseMiniClusterTest.tserverArgs.add("--use_cassandra_authentication=true");
     BaseCQLTest.setUpBeforeClass();
   }
 

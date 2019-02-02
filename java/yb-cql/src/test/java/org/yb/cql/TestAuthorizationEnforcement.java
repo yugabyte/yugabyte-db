@@ -24,6 +24,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.minicluster.BaseMiniClusterTest;
 
 import java.sql.Time;
 import java.util.ArrayList;
@@ -68,8 +69,9 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
   @BeforeClass
   public static void SetUpBeforeClass() throws Exception {
-    BaseCQLTest.tserverArgs = Arrays.asList("--use_cassandra_authentication=true",
-        "--update_permissions_cache_msecs=" + PERMISSIONS_CACHE_TIME_MSECS);
+    BaseMiniClusterTest.tserverArgs.add("--use_cassandra_authentication=true");
+    BaseMiniClusterTest.tserverArgs.add("--update_permissions_cache_msecs=" +
+                                        PERMISSIONS_CACHE_TIME_MSECS);
     BaseCQLTest.setUpBeforeClass();
   }
 
