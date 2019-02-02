@@ -30,6 +30,8 @@ import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.Statement;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SocketOptions;
+import com.datastax.driver.core.exceptions.InvalidQueryException;
+import com.datastax.driver.core.exceptions.OperationTimedOutException;
 import com.datastax.driver.core.exceptions.QueryValidationException;
 
 import org.slf4j.Logger;
@@ -112,6 +114,8 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
     LOG.info("BaseCQLTest.setUpBeforeClass is running");
+    BaseMiniClusterTest.tserverArgs.add(
+        "--client_read_write_timeout_ms=180000");
 
     // Disable extended peer check, to ensure "SELECT * FROM system.peers" works without
     // all columns.

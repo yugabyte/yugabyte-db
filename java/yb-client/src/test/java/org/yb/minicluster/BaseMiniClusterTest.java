@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
 import org.yb.client.TestUtils;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -51,8 +52,8 @@ public class BaseMiniClusterTest extends BaseYBTest {
    */
   protected static MiniYBCluster miniCluster;
 
-  protected static List<String> masterArgs = null;
-  protected static List<String> tserverArgs = null;
+  protected static List<String> masterArgs = new ArrayList<String>();
+  protected static List<String> tserverArgs = new ArrayList<String>();
   protected boolean useIpWithCertificate = MiniYBCluster.DEFAULT_USE_IP_WITH_CERTIFICATE;
 
   // Comma separate describing the master addresses and ports.

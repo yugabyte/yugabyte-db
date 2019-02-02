@@ -23,9 +23,12 @@ import com.datastax.driver.core.ColumnDefinitions.Definition;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSetFuture;
 import com.datastax.driver.core.Row;
+import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.TableMetadata;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
+
+import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.RocksDBMetrics;
 
@@ -45,7 +48,7 @@ public class TestIndex extends BaseCQLTest {
 
   @BeforeClass
   public static void SetUpBeforeClass() throws Exception {
-    BaseCQLTest.tserverArgs = Arrays.asList("--allow_index_table_read_write");
+    BaseMiniClusterTest.tserverArgs.add("--allow_index_table_read_write");
     BaseCQLTest.setUpBeforeClass();
   }
 
@@ -738,6 +741,7 @@ public class TestIndex extends BaseCQLTest {
 
     // Restart the cluster
     miniCluster.restart();
+    Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
     setUpCqlClient();
 
     // Test inserting duplicate h2 and r values again.
