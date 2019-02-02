@@ -1201,9 +1201,8 @@ namespace {
 // - TryAgain: when the transaction has a write conflict with another transaction or read-
 //             restart is required.
 // - Expired:  when the transaction expires due to missed heartbeat
-// - TimedOut: when a tablet times out while contacting the transaction status tablet
 bool NeedsRestart(const Status& s) {
-  return s.IsTryAgain() || s.IsExpired() || s.IsTimedOut();
+  return s.IsTryAgain() || s.IsExpired();
 }
 
 // Process TnodeContexts and their children under an ExecContext.
