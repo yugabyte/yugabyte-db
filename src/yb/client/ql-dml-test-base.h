@@ -87,10 +87,15 @@ class KeyValueTableTest : public QLDmlTestBase {
   YBSessionPtr CreateSession(const YBTransactionPtr& transaction = nullptr,
                              const server::ClockPtr& clock = nullptr);
 
+  // Selects all rows from test table, returning map key => value.
+  Result<std::map<int32_t, int32_t>> SelectAllRows(const YBSessionPtr& session);
+
   static const std::string kKeyColumn;
   static const std::string kValueColumn;
   TableHandle table_;
 };
+
+CHECKED_STATUS CheckOp(YBqlOp* op);
 
 }  // namespace client
 }  // namespace yb

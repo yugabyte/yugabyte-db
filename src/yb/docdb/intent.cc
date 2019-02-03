@@ -44,14 +44,18 @@ Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key) {
         ValueType::kHybridTime, static_cast<ValueType>(prefix_end[2]));
 
   if (prefix_end[0] != ValueTypeAsChar::kIntentTypeSet) {
-    if (prefix_end[0] != ValueTypeAsChar::kObsoleteIntentType) {
+    if (prefix_end[0] == ValueTypeAsChar::kObsoleteIntentType) {
+      result.intent_types = ObsoleteIntentTypeToSet(prefix_end[1]);
+    } else if (prefix_end[0] == ValueTypeAsChar::kObsoleteIntentTypeSet) {
+      result.intent_types = ObsoleteIntentTypeSetToNew(prefix_end[1]);
+    } else {
       return STATUS_FORMAT(
           Corruption,
-          "Expecting intent type set ($0) or intent type ($1), found $2",
+          "Expecting intent type set ($0) or intent type ($1) or obsolete intent type set ($2), "
+              "found $3",
           ValueType::kIntentTypeSet, ValueType::kObsoleteIntentType,
-          static_cast<ValueType>(prefix_end[0]));
+          ValueType::kObsoleteIntentTypeSet, static_cast<ValueType>(prefix_end[0]));
     }
-    result.intent_types = ObsoleteIntentTypeToSet(prefix_end[1]);
   } else {
     result.intent_types = IntentTypeSet(prefix_end[1]);
   }
@@ -148,6 +152,22 @@ IntentTypeSet ObsoleteIntentTypeToSet(uint8_t obsolete_intent_type) {
   LOG(DFATAL) << "Unexpected obsolete intent type: " << static_cast<int>(obsolete_intent_type);
 
   return IntentTypeSet();
+}
+
+IntentTypeSet ObsoleteIntentTypeSetToNew(uint8_t obsolete_intent_type_set) {
+  IntentTypeSet result;
+  for (size_t idx = 0; idx != 4; ++idx) {
+    if (obsolete_intent_type_set & (1 << idx)) {
+      result.Set(static_cast<IntentType>((idx >> 1) | (idx << 1)));
+    }
+  }
+  return result;
+}
+
+bool IntentValueType(char ch) {
+  return ch == ValueTypeAsChar::kIntentTypeSet ||
+         ch == ValueTypeAsChar::kObsoleteIntentTypeSet ||
+         ch == ValueTypeAsChar::kObsoleteIntentType;
 }
 
 }  // namespace docdb

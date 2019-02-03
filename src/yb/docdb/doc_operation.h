@@ -100,15 +100,14 @@ const int kNilSubkeyIndex = -1;
 typedef boost::container::small_vector_base<RefCntPrefix> DocPathsToLock;
 
 YB_DEFINE_ENUM(GetDocPathsMode, (kLock)(kIntents));
+YB_DEFINE_ENUM(DocOperationType,
+               (PGSQL_WRITE_OPERATION)(PGSQL_READ_OPERATION)(QL_WRITE_OPERATION)
+                   (REDIS_WRITE_OPERATION));
 
 class DocOperation {
  public:
-  enum Type {
-    PGSQL_WRITE_OPERATION,
-    PGSQL_READ_OPERATION,
-    QL_WRITE_OPERATION,
-    REDIS_WRITE_OPERATION,
-  };
+  typedef DocOperationType Type;
+
   virtual ~DocOperation() {}
 
   // Does the operation require a read snapshot to be taken before being applied? If so, a
@@ -129,6 +128,23 @@ class DocOperation {
   virtual CHECKED_STATUS Apply(const DocOperationApplyData& data) = 0;
   virtual Type OpType() = 0;
   virtual void ClearResponse() = 0;
+
+  virtual std::string ToString() const = 0;
+};
+
+template <DocOperationType OperationType, class RequestPB>
+class DocOperationBase : public DocOperation {
+ public:
+  Type OpType() override {
+    return OperationType;
+  }
+
+  std::string ToString() const override {
+    return Format("$0 { request: $1 }", OperationType, request_);
+  }
+
+ protected:
+  RequestPB request_;
 };
 
 typedef std::vector<std::unique_ptr<DocOperation>> DocOperations;
@@ -145,7 +161,8 @@ struct RedisValue {
   int64_t internal_index = 0;
 };
 
-class RedisWriteOperation : public DocOperation {
+class RedisWriteOperation :
+    public DocOperationBase<DocOperationType::REDIS_WRITE_OPERATION, RedisWriteRequestPB> {
  public:
   // Construct a RedisWriteOperation. Content of request will be swapped out by the constructor.
   explicit RedisWriteOperation(RedisWriteRequestPB* request) {
@@ -160,8 +177,6 @@ class RedisWriteOperation : public DocOperation {
       GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const override;
 
   RedisResponsePB &response() { return response_; }
-
-  Type OpType() override { return Type::REDIS_WRITE_OPERATION; }
 
  private:
   void ClearResponse() override {
@@ -187,7 +202,6 @@ class RedisWriteOperation : public DocOperation {
   CHECKED_STATUS ApplyAdd(const DocOperationApplyData& data);
   CHECKED_STATUS ApplyRemove(const DocOperationApplyData& data);
 
-  RedisWriteRequestPB request_;
   RedisResponsePB response_;
   // TODO: Currently we have a separate iterator per operation, but in future, we leave the option
   // open for operations to share iterators.
@@ -261,7 +275,9 @@ class RedisReadOperation {
 //--------------------------------------------------------------------------------------------------
 // CQL support.
 //--------------------------------------------------------------------------------------------------
-class QLWriteOperation : public DocOperation, public DocExprExecutor {
+class QLWriteOperation :
+    public DocOperationBase<DocOperationType::QL_WRITE_OPERATION, QLWriteRequestPB>,
+    public DocExprExecutor {
  public:
   QLWriteOperation(const Schema& schema,
                    const IndexMap& index_map,
@@ -316,8 +332,6 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
 
   // Rowblock to return the "[applied]" status for conditional DML.
   const QLRowBlock* rowblock() const { return rowblock_.get(); }
-
-  Type OpType() override { return Type::QL_WRITE_OPERATION; }
 
  private:
   void ClearResponse() override {
@@ -374,7 +388,6 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
   boost::optional<DocKey> pk_doc_key_;
   RefCntPrefix encoded_pk_doc_key_;
 
-  QLWriteRequestPB request_;
   QLResponsePB* response_ = nullptr;
 
   std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>> index_requests_;
@@ -441,7 +454,9 @@ class QLReadOperation : public DocExprExecutor {
 // PGSQL support.
 //--------------------------------------------------------------------------------------------------
 
-class PgsqlWriteOperation : public DocOperation, public DocExprExecutor {
+class PgsqlWriteOperation :
+    public DocOperationBase<DocOperationType::PGSQL_WRITE_OPERATION, PgsqlWriteRequestPB>,
+    public DocExprExecutor {
  public:
   PgsqlWriteOperation(const Schema& schema,
                       const TransactionOperationContextOpt& txn_op_context)
@@ -457,8 +472,6 @@ class PgsqlWriteOperation : public DocOperation, public DocExprExecutor {
 
   // Execute write.
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
-
-  Type OpType() override { return Type::PGSQL_WRITE_OPERATION; }
 
  private:
   void ClearResponse() override {
@@ -489,7 +502,6 @@ class PgsqlWriteOperation : public DocOperation, public DocExprExecutor {
   const TransactionOperationContextOpt txn_op_context_;
 
   // Input arguments.
-  PgsqlWriteRequestPB request_;
   PgsqlResponsePB* response_ = nullptr;
 
   // TODO(neil) Output arguments.
@@ -508,7 +520,7 @@ class PgsqlWriteOperation : public DocOperation, public DocExprExecutor {
   RefCntPrefix encoded_range_doc_key_;
 };
 
-class PgsqlReadOperation : public DocOperation, public DocExprExecutor {
+class PgsqlReadOperation : public DocExprExecutor {
  public:
   // Construct and access methods.
   PgsqlReadOperation(const PgsqlReadRequestPB& request,
@@ -516,21 +528,8 @@ class PgsqlReadOperation : public DocOperation, public DocExprExecutor {
       : request_(request), txn_op_context_(txn_op_context) {
   }
 
-  bool RequireReadSnapshot() const override { return request_.has_column_refs(); }
   const PgsqlReadRequestPB& request() const { return request_; }
   PgsqlResponsePB& response() { return response_; }
-
-  // Execute read operations.
-  CHECKED_STATUS Apply(const DocOperationApplyData& data) override {
-    LOG(FATAL) << "This should not be called for read operations";
-    return Status::OK();
-  }
-
-  CHECKED_STATUS GetDocPaths(
-      GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const override {
-    LOG(FATAL) << "This lock should not be applied as writing while reading is not yet allowed";
-    return Status::OK();
-  }
 
   CHECKED_STATUS Execute(const common::YQLStorageIf& ql_storage,
                          MonoTime deadline,
@@ -540,15 +539,9 @@ class PgsqlReadOperation : public DocOperation, public DocExprExecutor {
                          PgsqlResultSet *result_set,
                          HybridTime *restart_read_ht);
 
-  Type OpType() override { return Type::PGSQL_READ_OPERATION; }
-
   virtual CHECKED_STATUS GetTupleId(QLValue *result) const override;
 
  private:
-  void ClearResponse() override {
-    response_.Clear();
-  }
-
   CHECKED_STATUS PopulateResultSet(const QLTableRow::SharedPtr& table_row,
                                    PgsqlResultSet *result_set);
 

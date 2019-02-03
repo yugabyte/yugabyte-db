@@ -15,6 +15,10 @@
 
 #include "yb/client/transaction.h"
 
+#include "yb/util/random_util.h"
+
+#include "yb/yql/cql/ql/util/statement_result.h"
+
 using namespace std::literals;
 
 namespace yb {
@@ -264,6 +268,131 @@ TEST_F(SerializableTxnTest, Increment) {
 
 TEST_F(SerializableTxnTest, IncrementNonTransactional) {
   TestIncrements(false /* transactional */);
+}
+
+// Test that repeats example from this article:
+// https://blogs.msdn.microsoft.com/craigfr/2007/05/16/serializable-vs-snapshot-isolation-level/
+//
+// Multiple rows with values 0 and 1 are stored in table.
+// Two concurrent transaction fetches all rows from table and does the following.
+// First transaction changes value of all rows with value 0 to 1.
+// Second transaction changes value of all rows with value 1 to 0.
+// As outcome we should have rows with the same value.
+//
+// The described prodecure is repeated multiple times to increase probability of catching bug,
+// w/o running test multiple times.
+TEST_F(SerializableTxnTest, Coloring) {
+  constexpr auto kKeys = 20;
+  constexpr auto kColors = 2;
+  constexpr auto kIterations = 20;
+
+  size_t iterations_left = kIterations;
+  for (int i = 0; iterations_left > 0 && !testing::Test::HasFailure(); ++i) {
+    SCOPED_TRACE(Format("Iteration: $0", i));
+
+    auto session = CreateSession(nullptr /* transaction */, clock_);
+    session->SetForceConsistentRead(true);
+
+    {
+      std::vector<YBqlWriteOpPtr> ops;
+      for (int i = 0; i != kKeys; ++i) {
+        auto color = RandomUniformInt(0, kColors - 1);
+        ops.push_back(ASSERT_RESULT(WriteRow(session,
+            i,
+            color,
+            WriteOpType::INSERT,
+            Flush::kFalse)));
+      }
+
+      ASSERT_OK(session->Flush());
+
+      for (const auto& op : ops) {
+        ASSERT_OK(CheckOp(op.get()));
+      }
+    }
+
+    std::vector<std::thread> threads;
+    std::atomic<size_t> successes(0);
+
+    while (threads.size() != kColors) {
+      int32_t color = threads.size();
+      threads.emplace_back([this, color, &successes, kKeys] {
+        for (;;) {
+          auto txn = CreateTransaction();
+          LOG(INFO) << "Start: " << txn->id() << ", color: " << color;
+          auto session = CreateSession(txn);
+          session->SetTransaction(txn);
+          auto values = SelectAllRows(session);
+          if (!values.ok()) {
+            ASSERT_TRUE(values.status().IsIOError()) << values.status();
+            for (const auto& error : session->GetPendingErrors()) {
+              ASSERT_TRUE(error->status().IsTryAgain()) << error->status();
+            }
+            continue;
+          }
+          ASSERT_EQ(values->size(), kKeys);
+
+          std::vector<YBqlWriteOpPtr> ops;
+          for (const auto& p : *values) {
+            if (p.second == color) {
+              continue;
+            }
+            ops.push_back(ASSERT_RESULT(WriteRow(
+                session, p.first, color, WriteOpType::INSERT, Flush::kFalse)));
+          }
+
+          if (ops.empty()) {
+            break;
+          }
+
+          auto flush_status = session->Flush();
+          if (!flush_status.ok()) {
+            ASSERT_TRUE(flush_status.IsIOError()) << flush_status;
+            for (const auto& error : session->GetPendingErrors()) {
+              ASSERT_TRUE(error->status().IsTryAgain()) << error->status();
+            }
+            break;
+          }
+
+          for (const auto& op : ops) {
+            ASSERT_OK(CheckOp(op.get()));
+          }
+
+          LOG(INFO) << "Commit: " << txn->id() << ", color: " << color;
+          auto commit_status = txn->CommitFuture().get();
+          if (!commit_status.ok()) {
+            ASSERT_TRUE(commit_status.IsExpired()) << commit_status;
+            break;
+          }
+
+          ++successes;
+          break;
+        }
+      });
+    }
+
+    for (auto& thread : threads) {
+      thread.join();
+    }
+
+    if (successes == 0) {
+      continue;
+    }
+
+    session->SetReadPoint(Restart::kFalse);
+    auto values = ASSERT_RESULT(SelectAllRows(session));
+    ASSERT_EQ(values.size(), kKeys);
+    LOG(INFO) << "Values: " << yb::ToString(values);
+    int32_t color = -1;
+    for (const auto& p : values) {
+      if (color == -1) {
+        color = p.second;
+      } else {
+        ASSERT_EQ(color, p.second);
+      }
+    }
+    --iterations_left;
+  }
 }
 
 } // namespace client

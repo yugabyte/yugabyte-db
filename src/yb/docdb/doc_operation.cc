@@ -3116,9 +3116,16 @@ Status QLReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* o
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
       request_.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
       &hashed_components));
-  DocKey doc_key(request_.hash_code(), hashed_components);
   auto pair = out->mutable_read_pairs()->Add();
-  pair->set_key(doc_key.Encode().data());
+  if (hashed_components.empty()) {
+    // Empty hashed components mean that we don't have primary key at all, but request
+    // could still contain hash_code as part of tablet routing.
+    // So we should ignore it.
+    pair->set_key(std::string(1, ValueTypeAsChar::kGroupEnd));
+  } else {
+    DocKey doc_key(request_.hash_code(), hashed_components);
+    pair->set_key(doc_key.Encode().data());
+  }
   pair->set_value(std::string(1, ValueTypeAsChar::kNull));
   return Status::OK();
 }
