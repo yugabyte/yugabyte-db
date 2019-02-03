@@ -132,6 +132,7 @@ class SecureStream : public Stream, public StreamContext {
   SecureState state_ = SecureState::kInitial;
   bool need_connect_ = false;
   std::vector<OutboundDataPtr> pending_data_;
+  std::vector<std::string> certificate_entries_;
 
   GrowableBuffer received_data_;
 
