@@ -309,6 +309,7 @@ class PrimitiveValue {
 
   uint16_t GetUInt16() const {
     DCHECK(ValueType::kUInt16Hash == type_ ||
+           ValueType::kObsoleteIntentTypeSet == type_ ||
            ValueType::kObsoleteIntentType == type_ ||
            ValueType::kIntentTypeSet == type_);
     return uint16_val_;

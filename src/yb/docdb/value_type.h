@@ -33,10 +33,15 @@ namespace docdb {
     ((kLowest, 0)) \
     /* Obsolete intent prefix. Should be deleted when DBs in old format are gone. */ \
     ((kObsoleteIntentPrefix, 10)) \
-    /* We use ASCII code 15 in order to have it before all other value types which can occur in */ \
+    /* We use ASCII code 13 in order to have it before all other value types which can occur in */ \
     /* key, so intents will be written in the same order as original keys for which intents are */ \
     /* written. */ \
-    ((kIntentTypeSet, 15)) \
+    ((kIntentTypeSet, 13)) \
+    /* Obsolete intent prefix. Should be deleted when DBs in old format are gone. */ \
+    /* It has different values to intent type set entries, that was not optimised for RocksDB */ \
+    /* lookup. */ \
+    /* I.e. strong/weak and read/write bits are swapped. */ \
+    ((kObsoleteIntentTypeSet, 15)) \
     /* Obsolete intent prefix. Should be deleted when DBs in old format are gone. */ \
     /* Old intent type had 6 different types of intents, one for each possible intent. */ \
     /* Intent type set has 4 different types of intents, but allow their combinations. */ \
@@ -160,15 +165,21 @@ constexpr int kWeakIntentFlag         = 0b000;
 
 // "Strong" intents are obtained on the node that an operation is working with. See the example
 // above.
-constexpr int kStrongIntentFlag       = 0b001;
+constexpr int kStrongIntentFlag       = 0b010;
 
 constexpr int kReadIntentFlag         = 0b000;
-constexpr int kWriteIntentFlag        = 0b010;
+constexpr int kWriteIntentFlag        = 0b001;
 
+// We put weak intents before strong intents to be able to skip weak intents while checking for
+// conflicts.
+//
+// This was not always the case.
+// kObsoleteIntentTypeSet corresponds to intent type set values stored in such a way that
+// strong/weak and read/write bits are swapped compared to the current format.
 YB_DEFINE_ENUM(IntentType,
     ((kWeakRead,      kWeakIntentFlag |  kReadIntentFlag))
-    ((kStrongRead,  kStrongIntentFlag |  kReadIntentFlag))
     ((kWeakWrite,     kWeakIntentFlag | kWriteIntentFlag))
+    ((kStrongRead,  kStrongIntentFlag |  kReadIntentFlag))
     ((kStrongWrite, kStrongIntentFlag | kWriteIntentFlag))
 );
 

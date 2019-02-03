@@ -109,7 +109,7 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
     }
     if (txn_status_result.status().IsNotFound()) {
       // We have intent w/o metadata, that means that transaction was already cleaned up.
-      LOG(ERROR) << "Intent for transaction w/o metadata: " << transaction_id;
+      LOG(WARNING) << "Intent for transaction w/o metadata: " << transaction_id;
       txn_status_manager_->Cleanup({transaction_id});
       return HybridTime::kMin;
     }
@@ -204,10 +204,9 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
 // Given that key is well-formed DocDB encoded key, checks if it is an intent key for the same key
 // as intent_prefix. If key is not well-formed DocDB encoded key, result could be true or false.
 bool IsIntentForTheSameKey(const Slice& key, const Slice& intent_prefix) {
-  return key.starts_with(intent_prefix)
-      && key.size() > intent_prefix.size()
-      && (key[intent_prefix.size()] == ValueTypeAsChar::kIntentTypeSet ||
-          key[intent_prefix.size()] == ValueTypeAsChar::kObsoleteIntentType);
+  return key.starts_with(intent_prefix) &&
+         key.size() > intent_prefix.size() &&
+         IntentValueType(key[intent_prefix.size()]);
 }
 
 std::string DebugDumpKeyToStr(const Slice &key) {

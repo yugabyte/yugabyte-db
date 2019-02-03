@@ -108,15 +108,18 @@ CHECKED_STATUS ApplyIntent(RefCntPrefix key,
   // Have to strip kGroupEnd from end of key, because when only hash key is specified, we will
   // get two kGroupEnd at end of strong intent.
   size_t size = key.size();
-  if (size <= 0) {
-    return STATUS(Corruption, "Empty key is not allowed");
-  }
-  if (key.data()[0] == ValueTypeAsChar::kGroupEnd) {
-    return STATUS_FORMAT(Corruption, "Key starting with group end: $0",
-                         key.as_slice().ToDebugHexString());
-  }
-  while (key.data()[size - 1] == ValueTypeAsChar::kGroupEnd) {
-    --size;
+  if (size > 0) {
+    if (key.data()[0] == ValueTypeAsChar::kGroupEnd) {
+      if (size != 1) {
+        return STATUS_FORMAT(Corruption, "Key starting with group end: $0",
+            key.as_slice().ToDebugHexString());
+      }
+      size = 0;
+    } else {
+      while (key.data()[size - 1] == ValueTypeAsChar::kGroupEnd) {
+        --size;
+      }
+    }
   }
   key.Resize(size);
   keys_locked->push_back({key, intent_types});
@@ -130,8 +133,10 @@ struct DetermineKeysToLockResult {
 
 Result<DetermineKeysToLockResult> DetermineKeysToLock(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
+    const google::protobuf::RepeatedPtrField<KeyValuePairPB>& read_pairs,
     IsolationLevel isolation_level,
-    OperationKind operation_kind) {
+    OperationKind operation_kind,
+    bool transactional_table) {
   DetermineKeysToLockResult result;
   boost::container::small_vector<RefCntPrefix, 8> doc_paths;
   boost::container::small_vector<size_t, 32> key_prefix_lengths;
@@ -161,6 +166,13 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
       // We will acquire strong lock on entire doc_path, so remove it from list of weak locks.
       key_prefix_lengths.pop_back();
       auto partial_key = doc_path;
+      // Acquire weak lock on empty key for transactional tables,
+      // unless specified key is already empty.
+      if (doc_path.size() > 0 && transactional_table) {
+        partial_key.Resize(0);
+        RETURN_NOT_OK(ApplyIntent(
+            partial_key, StrongToWeak(strong_intent_types), &result.lock_batch));
+      }
       for (size_t prefix_length : key_prefix_lengths) {
         partial_key.Resize(prefix_length);
         RETURN_NOT_OK(ApplyIntent(
@@ -173,6 +185,18 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
     if (doc_op->RequireReadSnapshot()) {
       result.need_read_snapshot = true;
     }
+  }
+
+  if (!read_pairs.empty()) {
+    RETURN_NOT_OK(EnumerateIntents(
+        read_pairs,
+        [&result](IntentStrength strength, Slice value, KeyBytes* key) {
+          RefCntPrefix prefix(key->data());
+          auto intent_types = strength == IntentStrength::kStrong
+              ? IntentTypeSet({IntentType::kStrongRead})
+              : IntentTypeSet({IntentType::kWeakRead});
+          return ApplyIntent(prefix, intent_types, &result.lock_batch);
+        }));
   }
 
   return result;
@@ -216,14 +240,21 @@ const IndexBound& IndexBound::Empty() {
 
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
+    const google::protobuf::RepeatedPtrField<KeyValuePairPB>& read_pairs,
     const scoped_refptr<Histogram>& write_lock_latency,
     IsolationLevel isolation_level,
     OperationKind operation_kind,
+    bool transactional_table,
     SharedLockManager *lock_manager) {
   PrepareDocWriteOperationResult result;
 
   auto determine_keys_to_lock_result = VERIFY_RESULT(DetermineKeysToLock(
-      doc_write_ops, isolation_level, operation_kind));
+      doc_write_ops, read_pairs, isolation_level, operation_kind, transactional_table));
+  if (determine_keys_to_lock_result.lock_batch.empty()) {
+    LOG(ERROR) << "Empty lock batch, doc_write_ops: " << yb::ToString(doc_write_ops)
+               << ", read pairs: " << yb::ToString(read_pairs);
+    return STATUS(Corruption, "Empty lock batch");
+  }
   result.need_read_snapshot = determine_keys_to_lock_result.need_read_snapshot;
 
   FilterKeysToLock(&determine_keys_to_lock_result.lock_batch);
@@ -333,6 +364,13 @@ Status EnumerateIntents(
     KeyBytes* encoded_key_buffer) {
   auto key_size = DocKey::EncodedSize(key, DocKeyPart::WHOLE_DOC_KEY);
   CHECK_OK(key_size);
+
+  // Add weak intent on empty key, unless specified key is already empty.
+  if (key.size() > 1) {
+    encoded_key_buffer->Clear();
+    encoded_key_buffer->AppendValueType(ValueType::kGroupEnd);
+    functor(IntentStrength::kWeak, Slice(), encoded_key_buffer);
+  }
 
   encoded_key_buffer->Clear();
   encoded_key_buffer->AppendRawBytes(key.cdata(), *key_size);
@@ -1182,8 +1220,9 @@ CHECKED_STATUS IntentToWriteRequest(
 
     // Write id should match to one that were calculated during append of intents.
     // Doing it just for sanity check.
-    DCHECK_EQ(stored_write_id, *write_id)
+    DCHECK_GE(stored_write_id, *write_id)
       << "Value: " << intent_iter->value().ToDebugHexString();
+    *write_id = stored_write_id;
 
     // After strip of prefix and suffix intent_key contains just SubDocKey w/o a hybrid time.
     // Time will be added when writing batch to RocksDB.

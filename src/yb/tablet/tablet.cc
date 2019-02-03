@@ -953,10 +953,18 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
       auto status = write_op->Init(req, resp);
       if (!status.ok()) {
         WriteOperation::StartSynchronization(std::move(operation), status);
+        return;
       }
       doc_ops.emplace_back(std::move(write_op));
     }
   }
+
+  // All operations has wrong schema version
+  if (doc_ops.empty()) {
+    WriteOperation::StartSynchronization(std::move(operation), Status::OK());
+    return;
+  }
+
   auto status = StartDocWriteOperation(operation.get());
   if (operation->restart_read_ht().is_valid()) {
     WriteOperation::StartSynchronization(std::move(operation), Status::OK());
@@ -1247,7 +1255,8 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
   }
 
   if (key_value_write_request->has_write_batch()) {
-    WriteOperation::StartSynchronization(std::move(operation), Status::OK());
+    auto status = StartDocWriteOperation(operation.get());
+    WriteOperation::StartSynchronization(std::move(operation), status);
     return;
   }
 
@@ -1695,9 +1704,10 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
   auto isolation_level = VERIFY_RESULT(GetIsolationLevel(
       *write_batch, transaction_participant_.get()));
 
+  bool transactional_table = metadata_->schema().table_properties().is_transactional();
   auto prepare_result = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
-      operation->doc_ops(), metrics_->write_lock_latency, isolation_level,
-      operation->state()->kind(), &shared_lock_manager_));
+      operation->doc_ops(), write_batch->read_pairs(), metrics_->write_lock_latency,
+      isolation_level, operation->state()->kind(), transactional_table, &shared_lock_manager_));
 
   RequestScope request_scope;
   if (transaction_participant_) {
@@ -1706,7 +1716,7 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
 
   auto read_time = operation->read_time();
 
-  if (metadata_->schema().table_properties().is_transactional()) {
+  if (transactional_table) {
     if (isolation_level == IsolationLevel::NON_TRANSACTIONAL) {
       auto now = clock_->Now();
       auto result = VERIFY_RESULT(docdb::ResolveOperationConflicts(
@@ -1745,7 +1755,7 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
                    "Read time should be specified for NON serializable isolation level");
         auto safe_time = SafeTime(RequireLease::kTrue);
         read_time = ReadHybridTime::FromHybridTimeRange({safe_time, clock_->NowRange().second});
-      } else {
+      } else if (prepare_result.need_read_snapshot) {
         DSCHECK_NE(isolation_level, IsolationLevel::SERIALIZABLE_ISOLATION, InvalidArgument,
                    "Read time should NOT be specified for serializable isolation level");
       }
