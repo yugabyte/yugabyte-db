@@ -127,14 +127,19 @@ class ConflictResolver {
     upperbound_key.AppendValueType(ValueType::kMaxByte);
     intent_key_upperbound_ = upperbound_key.AsSlice();
 
+    size_t original_size = intent_key_prefix->size();
     intent_key_prefix->AppendValueType(ValueType::kIntentTypeSet);
-    BOOST_SCOPE_EXIT(intent_key_prefix, &intent_key_upperbound_) {
-      intent_key_prefix->RemoveValueTypeSuffix(ValueType::kIntentTypeSet);
+    // Have only weak intents, so could skip other weak intents.
+    if (!HasStrong(type)) {
+      char value = 1 << kStrongIntentFlag;
+      intent_key_prefix->AppendRawBytes(&value, 1);
+    }
+    BOOST_SCOPE_EXIT(intent_key_prefix, original_size, &intent_key_upperbound_) {
+      intent_key_prefix->Truncate(original_size);
       intent_key_upperbound_.clear();
     } BOOST_SCOPE_EXIT_END;
-    auto prefix_slice = intent_key_prefix->AsSlice();
-    prefix_slice.remove_suffix(1);
-    intent_iter_->Seek(intent_key_prefix->data());
+    Slice prefix_slice(intent_key_prefix->AsSlice().data(), original_size);
+    intent_iter_->Seek(intent_key_prefix->AsSlice());
     while (intent_iter_->Valid()) {
       auto existing_key = intent_iter_->key();
       auto existing_value = intent_iter_->value();
@@ -148,8 +153,7 @@ class ConflictResolver {
       // kObsoleteIntentType.
       // Actual handling of obsolete intent type is done in ParseIntentKey.
       if (existing_key.size() <= prefix_slice.size() ||
-          (existing_key[prefix_slice.size()] != ValueTypeAsChar::kIntentTypeSet &&
-           existing_key[prefix_slice.size()] != ValueTypeAsChar::kObsoleteIntentType)) {
+          !IntentValueType(existing_key[prefix_slice.size()])) {
         break;
       }
       if (existing_value.empty() || existing_value[0] != ValueTypeAsChar::kTransactionId) {
@@ -626,12 +630,14 @@ Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_sourc
   INTENT_KEY_SCHECK(result.doc_path.size(), GE, doc_ht_size + 3, "key too short");
   result.doc_path.remove_suffix(doc_ht_size + 3);
   auto intent_type_and_doc_ht = result.doc_path.end();
-  if (intent_type_and_doc_ht[0] != ValueTypeAsChar::kObsoleteIntentType) {
+  if (intent_type_and_doc_ht[0] == ValueTypeAsChar::kObsoleteIntentType) {
+    result.types = ObsoleteIntentTypeToSet(intent_type_and_doc_ht[1]);
+  } else if (intent_type_and_doc_ht[0] == ValueTypeAsChar::kObsoleteIntentTypeSet) {
+    result.types = ObsoleteIntentTypeSetToNew(intent_type_and_doc_ht[1]);
+  } else {
     INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, ValueTypeAsChar::kIntentTypeSet,
         "intent type set type expected");
     result.types = IntentTypeSet(intent_type_and_doc_ht[1]);
-  } else {
-    result.types = ObsoleteIntentTypeToSet(intent_type_and_doc_ht[1]);
   }
   INTENT_KEY_SCHECK(intent_type_and_doc_ht[2], EQ, ValueTypeAsChar::kHybridTime,
                     "hybrid time value type expected");

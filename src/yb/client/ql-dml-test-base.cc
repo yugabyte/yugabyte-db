@@ -118,9 +118,7 @@ Result<YBqlWriteOpPtr> KeyValueTableTest::WriteRow(
   RETURN_NOT_OK(session->Apply(op));
   if (flush) {
     RETURN_NOT_OK(session->Flush());
-    if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
-      return STATUS_FORMAT(QLError, "Error writing row: $0", op->response().error_message());
-    }
+    RETURN_NOT_OK(CheckOp(op.get()));
   }
   return op;
 }
@@ -148,17 +146,53 @@ Result<int32_t> KeyValueTableTest::SelectRow(
     }
   }
   RETURN_NOT_OK(status);
-  if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
-    return STATUS(QLError,
-                  op->response().error_message(),
-                  Slice(),
-                  static_cast<int64_t>(ql::QLStatusToErrorCode(op->response().status())));
-  }
+  RETURN_NOT_OK(CheckOp(op.get()));
   auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
   if (rowblock->row_count() == 0) {
     return STATUS_FORMAT(NotFound, "Row not found for key $0", key);
   }
   return rowblock->row(0).column(0).int32_value();
+}
+
+Result<std::map<int32_t, int32_t>> KeyValueTableTest::SelectAllRows(const YBSessionPtr& session) {
+  std::vector<YBqlReadOpPtr> ops;
+  auto partitions = table_.table()->GetPartitions();
+  partitions.push_back(std::string()); // Upper bound for last partition.
+
+  uint16_t prev_code = 0;
+  for (const auto& partition : partitions) {
+    const YBqlReadOpPtr op = table_.NewReadOp();
+    auto* const req = op->mutable_request();
+    table_.AddColumns(table_.AllColumnNames(), req);
+    if (prev_code) {
+      req->set_hash_code(prev_code);
+    }
+    // Partition could be empty, or contain 2 bytes of partition start.
+    if (partition.size() == 2) {
+      uint16_t current_code = BigEndian::Load16(partition.c_str());
+      req->set_max_hash_code(current_code - 1);
+      prev_code = current_code;
+    } else if (!prev_code) {
+      // Partitions contain starts of partition, so we always skip first iteration, because don't
+      // know end of first partition at this point.
+      continue;
+    }
+    ops.push_back(op);
+    RETURN_NOT_OK(session->Apply(op));
+  }
+
+  RETURN_NOT_OK(session->Flush());
+
+  std::map<int32_t, int32_t> result;
+  for (const auto& op : ops) {
+    RETURN_NOT_OK(CheckOp(op.get()));
+    auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
+    for (const auto& row : rowblock->rows()) {
+      result.emplace(row.column(0).int32_value(), row.column(1).int32_value());
+    }
+  }
+
+  return result;
 }
 
 YBSessionPtr KeyValueTableTest::CreateSession(const YBTransactionPtr& transaction,
@@ -169,6 +203,17 @@ YBSessionPtr KeyValueTableTest::CreateSession(const YBTransactionPtr& transactio
   }
   session->SetTimeout(RegularBuildVsSanitizers(15s, 60s));
   return session;
+}
+
+Status CheckOp(YBqlOp* op) {
+  if (!op->succeeded()) {
+    return STATUS(QLError,
+                  op->response().error_message(),
+                  Slice(),
+                  static_cast<int64_t>(ql::QLStatusToErrorCode(op->response().status())));
+  }
+
+  return Status::OK();
 }
 
 } // namespace client

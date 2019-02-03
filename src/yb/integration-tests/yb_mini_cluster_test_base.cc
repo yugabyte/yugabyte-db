@@ -37,7 +37,7 @@ void YBMiniClusterTestBase<T>::TearDown() {
 
 template <class T>
 void YBMiniClusterTestBase<T>::DoBeforeTearDown() {
-  if (cluster_ && verify_cluster_before_next_tear_down_) {
+  if (cluster_ && verify_cluster_before_next_tear_down_ && !testing::Test::HasFailure()) {
     if (cluster_->running()) {
       LOG(INFO) << "Checking cluster consistency...";
       ASSERT_NO_FATALS(ClusterVerifier(cluster_.get()).CheckCluster());

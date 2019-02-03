@@ -108,9 +108,11 @@ struct PrepareDocWriteOperationResult {
 
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
+    const google::protobuf::RepeatedPtrField<KeyValuePairPB>& read_pairs,
     const scoped_refptr<Histogram>& write_lock_latency,
     IsolationLevel isolation_level,
     OperationKind operation_kind,
+    bool transactional_table,
     SharedLockManager *lock_manager);
 
 // This constructs a DocWriteBatch using the given list of DocOperations, reading the previous

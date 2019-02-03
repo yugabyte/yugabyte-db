@@ -65,6 +65,10 @@ inline IntentTypeSet WeakToStrong(IntentTypeSet inp) {
 bool HasStrong(IntentTypeSet inp);
 
 IntentTypeSet ObsoleteIntentTypeToSet(uint8_t obsolete_intent_type);
+IntentTypeSet ObsoleteIntentTypeSetToNew(uint8_t obsolete_intent_type_set);
+
+// Returns true if ch is value type of one of intent types, obsolete or not.
+bool IntentValueType(char ch);
 
 }  // namespace docdb
 }  // namespace yb

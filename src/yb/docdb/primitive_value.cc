@@ -209,6 +209,8 @@ string PrimitiveValue::ToString() const {
       return Format("WriteId($0)", int32_val_);
     case ValueType::kIntentTypeSet:
       return Format("Intents($0)", IntentTypeSet(uint16_val_));
+    case ValueType::kObsoleteIntentTypeSet:
+      return Format("ObsoleteIntents($0)", uint16_val_);
     case ValueType::kObsoleteIntentType:
       return Format("Intent($0)", uint16_val_);
     case ValueType::kMergeFlags: FALLTHROUGH_INTENDED;
@@ -381,6 +383,10 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       key_bytes->AppendIntentTypeSet(ObsoleteIntentTypeToSet(uint16_val_));
       return;
 
+    case ValueType::kObsoleteIntentTypeSet:
+      key_bytes->AppendIntentTypeSet(ObsoleteIntentTypeSetToNew(uint16_val_));
+      return;
+
     case ValueType::kIntentTypeSet:
       key_bytes->AppendIntentTypeSet(IntentTypeSet(uint16_val_));
       return;
@@ -517,6 +523,7 @@ string PrimitiveValue::ToValue() const {
       break;
 
     case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
+    case ValueType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
     case ValueType::kObsoleteIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kMergeFlags: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
@@ -842,6 +849,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
     }
 
     case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
+    case ValueType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
     case ValueType::kObsoleteIntentType: {
       if (out) {
         out->uint16_val_ = static_cast<uint16_t>(*slice->data());
@@ -1066,6 +1074,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     }
 
     case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
+    case ValueType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
     case ValueType::kObsoleteIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
@@ -1263,6 +1272,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kVarIntDescending: FALLTHROUGH_INTENDED;
     case ValueType::kVarInt: return varint_val_ == other.varint_val_;
     case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
+    case ValueType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
     case ValueType::kObsoleteIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kUInt16Hash: return uint16_val_ == other.uint16_val_;
 
@@ -1337,6 +1347,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueType::kVarInt:
       return varint_val_.compare(other.varint_val_);
     case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
+    case ValueType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
     case ValueType::kObsoleteIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kUInt16Hash:
       return CompareUsingLessThan(uint16_val_, other.uint16_val_);
