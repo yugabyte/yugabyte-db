@@ -29,6 +29,7 @@
 using namespace std::literals;
 
 DEFINE_bool(allow_insecure_connections, true, "Whether we should allow insecure connections.");
+DEFINE_bool(dump_certificate_entries, false, "Whether we should dump certificate entries.");
 
 namespace yb {
 namespace rpc {
@@ -496,12 +497,15 @@ Status SecureStream::Handshake() {
     int sys_error = static_cast<int>(ERR_get_error());
     auto pending_after = BIO_ctrl_pending(bio_.get());
 
-    if (ssl_error == SSL_ERROR_SSL) {
-      return STATUS_FORMAT(NetworkError, "Handshake failed: $0", SSLErrorMessage(sys_error));
-    }
-
-    if (ssl_error == SSL_ERROR_SYSCALL) {
-      return STATUS_FORMAT(NetworkError, "Handshake failed: $0", ErrnoToString(sys_error));
+    if (ssl_error == SSL_ERROR_SSL || ssl_error == SSL_ERROR_SYSCALL) {
+      std::string message =
+          ssl_error == SSL_ERROR_SSL ? SSLErrorMessage(sys_error) : ErrnoToString(sys_error);
+      std::string certificate_entries;
+      if (FLAGS_dump_certificate_entries) {
+        certificate_entries = Format(", certificate entries: $0", certificate_entries_);
+      }
+      return STATUS_FORMAT(NetworkError, "Handshake failed: $0, address: $1, hostname: $2$3",
+                           message, Remote().address(), remote_hostname_, certificate_entries);
     }
 
     if (ssl_error == SSL_ERROR_WANT_WRITE || pending_after > pending_before) {
@@ -650,6 +654,9 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
       if (domain->type == V_ASN1_IA5STRING && domain->data && domain->length) {
         Slice domain_slice(domain->data, domain->length);
         VLOG(4) << "Domain: " << domain_slice.ToBuffer() << " vs " << remote_hostname_;
+        if (FLAGS_dump_certificate_entries) {
+          certificate_entries_.push_back(Format("DNS:$0", domain_slice.ToBuffer()));
+        }
         if (MatchPattern(domain_slice, remote_hostname_)) {
           return true;
         }
@@ -662,6 +669,9 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
           memcpy(&bytes, ip_address->data, bytes.size());
           auto allowed_address = boost::asio::ip::address_v4(bytes);
           VLOG(4) << "IPv4: " << allowed_address.to_string() << " vs " << address;
+          if (FLAGS_dump_certificate_entries) {
+            certificate_entries_.push_back(Format("IP Address:$0", allowed_address));
+          }
           if (address == allowed_address) {
             return true;
           }
@@ -670,6 +680,9 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
           memcpy(&bytes, ip_address->data, bytes.size());
           auto allowed_address = boost::asio::ip::address_v6(bytes);
           VLOG(4) << "IPv6: " << allowed_address.to_string() << " vs " << address;
+          if (FLAGS_dump_certificate_entries) {
+            certificate_entries_.push_back(Format("IP Address:$0", allowed_address));
+          }
           if (address == allowed_address) {
             return true;
           }
@@ -689,14 +702,18 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
   }
   if (common_name && common_name->data && common_name->length) {
     Slice common_name_slice(common_name->data, common_name->length);
-    VLOG(4) << "Common name: " << common_name_slice.ToBuffer();
+    VLOG(4) << "Common name: " << common_name_slice.ToBuffer() << " vs "
+            << Remote().address() << "/" << remote_hostname_;
+    if (FLAGS_dump_certificate_entries) {
+      certificate_entries_.push_back(Format("CN:$0", common_name_slice.ToBuffer()));
+    }
     if (common_name_slice == Remote().address().to_string() ||
         MatchPattern(common_name_slice, remote_hostname_)) {
       return true;
     }
   }
 
-  VLOG(4) << "Nothing suitable for " << Remote().address();
+  VLOG(4) << "Nothing suitable for " << Remote().address() << "/" << remote_hostname_;
   return false;
 }
 
