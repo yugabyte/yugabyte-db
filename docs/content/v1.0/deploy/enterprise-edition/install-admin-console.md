@@ -11,13 +11,13 @@ menu:
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#default" class="nav-link active" id="default-tab" data-toggle="tab" role="tab" aria-controls="default" aria-selected="true">
-      <i class="fa fa-cloud"></i>
+      <i class="fas fa-cloud"></i>
       Default
     </a>
   </li>
   <li>
     <a href="#airgapped" class="nav-link" id="airgapped-tab" data-toggle="tab" role="tab" aria-controls="airgapped" aria-selected="true">
-      <i class="fa fa-unlink"></i>
+      <i class="fas fa-unlink"></i>
       Airgapped
     </a>
   </li>

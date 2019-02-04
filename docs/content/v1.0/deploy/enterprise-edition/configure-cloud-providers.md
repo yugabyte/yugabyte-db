@@ -46,13 +46,13 @@ The prerequisites for YugaByte DB Enterprise Edition data nodes are same as that
   </li>
   <li>
     <a href="#configure-k8s" class="nav-link" id="configure-k8s-tab" data-toggle="tab" role="tab" aria-controls="configure-k8s" aria-selected="false">
-      <i class="fa fa-cubes" aria-hidden="true"></i>
+      <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
   <li>
     <a href="#configure-onprem" class="nav-link" id="configure-onprem-tab" data-toggle="tab" role="tab" aria-controls="configure-onprem" aria-selected="false">
-      <i class="fa fa-building"></i>
+      <i class="fas fa-building"></i>
       On-Premises
     </a>
   </li>

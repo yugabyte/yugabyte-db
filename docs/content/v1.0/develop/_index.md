@@ -74,7 +74,7 @@ menu:
   </div>
 <!--  <a class="section-link icon-offset" href="port-existing-apps/">
     <div class="icon">
-      <i class="fa fa-sign-in" aria-hidden="true"></i>
+      <i class="fas fa-sign-in" aria-hidden="true"></i>
     </div>
     <div class="text">
       Port Existing Apps

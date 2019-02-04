@@ -12,7 +12,7 @@ menu:
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#aks" class="nav-link active" id="aks-tab" data-toggle="tab" role="tab" aria-controls="aks" aria-selected="true">
-      <i class="fa fa-cubes" aria-hidden="true"></i>
+      <i class="fas fa-cubes" aria-hidden="true"></i>
       Azure Container Service (AKS)
     </a>
   </li>

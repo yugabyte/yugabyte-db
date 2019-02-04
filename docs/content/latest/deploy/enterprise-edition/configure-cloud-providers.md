@@ -30,13 +30,13 @@ The prerequisites for YugaByte DB Enterprise Edition data nodes are same as that
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#configure-aws" class="nav-link active" id="configure-aws-tab" data-toggle="tab" role="tab" aria-controls="configure-aws" aria-selected="true">
-      <i class="icon-aws"></i>
+      <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
   <li>
     <a href="#configure-gcp" class="nav-link" id="configure-gcp-tab" data-toggle="tab" role="tab" aria-controls="configure-gcp" aria-selected="false">
-      <i class="icon-google" aria-hidden="true"></i>
+      <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
@@ -48,13 +48,13 @@ The prerequisites for YugaByte DB Enterprise Edition data nodes are same as that
   </li>
   <li>
     <a href="#configure-k8s" class="nav-link" id="configure-k8s-tab" data-toggle="tab" role="tab" aria-controls="configure-k8s" aria-selected="false">
-      <i class="fa fa-cubes" aria-hidden="true"></i>
+      <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
   <li>
     <a href="#configure-onprem" class="nav-link" id="configure-onprem-tab" data-toggle="tab" role="tab" aria-controls="configure-onprem" aria-selected="false">
-      <i class="fa fa-building"></i>
+      <i class="fas fa-building"></i>
       On-Premises
     </a>
   </li>

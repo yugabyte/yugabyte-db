@@ -19,19 +19,19 @@ If you haven't installed YugaByte DB yet, do so first by following the [Quick St
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
-      <i class="fa fa-apple" aria-hidden="true"></i>
+      <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
     <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab" role="tab" aria-controls="linux" aria-selected="false">
-      <i class="fa fa-linux" aria-hidden="true"></i>
+      <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
   <li>
     <a href="#docker" class="nav-link" id="docker-tab" data-toggle="tab" role="tab" aria-controls="docker" aria-selected="false">
-      <i class="icon-docker"></i>
+      <i class="fab fa-docker"></i>
       Docker
     </a>
   </li>

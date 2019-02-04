@@ -602,6 +602,7 @@ a {
   padding: 0;
   height: auto;
   max-width: none;
+  display: flex;
 
   @media only screen and (max-width: 767px) {
     overflow: hidden;
@@ -626,6 +627,7 @@ a {
       &:first-child {
         text-align: right;
         a {
+
           &:hover {
             .button {
               i {
@@ -666,6 +668,7 @@ a {
       }
       a {
         display: block;
+        border: none;
         height: 120px;
         background-color: #fff;
         padding: 0 32px;
@@ -751,6 +754,100 @@ a {
             .title {
               opacity: 0.6;
               @include transition(0.35s);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+.footer-links {
+  overflow: visible;
+  width: 100%;
+  padding: 0;
+  height: auto;
+  max-width: none;
+  display: flex;
+
+  @media only screen and (max-width: 767px) {
+    overflow: hidden;
+  }
+  .row {
+    display: flex !important;
+    justify-content: space-between;
+    margin-left: -12px;
+    margin-right: -12px;
+    padding: 0;
+    overflow: visible;
+    flex-grow: 1;
+    width: 100%;
+    @media only screen and (max-width: 767px) {
+      flex-direction: column;
+    }
+
+    .col{
+      padding-left: 12px;
+      padding-right: 12px;
+      margin-bottom: 24px;
+      height: auto;
+
+      @media only screen and (max-width: 767px) {
+        flex-basis: auto;
+      }
+      .tile {
+        &, &:last-child, &:first-child {
+          text-align: center;
+          display: block;
+          border: none;
+          height: 180px;
+          background-color: #fff;
+          padding: 25px 32px;
+          border-radius: 7px;
+          box-shadow: 0 1px 2px rgba(#202951, 0.16);
+
+          @media only screen and (max-width: 767px) {
+            border-radius: 0;
+          }
+
+          .title {
+            font-family: Montserrat, sans-serif;
+            font-size: 18px;
+            display: block;
+            font-weight: 600;
+            color: $YB_DARK;
+            letter-spacing: -0.03em;
+            line-height: 20px;
+            height: 30px;
+          }
+          .body {
+            display: flex !important;
+            justify-content: center;
+            padding: 25px 0;
+
+            a {
+              display: block;
+              width: 120px;
+              height: 80px;
+              border: none;
+              color: $YB_DARK;
+              @include transition(0.15s);
+
+              i {
+                display: block;
+                font-size: 48px;
+                color: $YB_LIGHT_VIOLET;
+                @include transition(0.15s);
+              }
+
+              &:hover {
+                transform: scale(1.05, 1.05) translateY(2px);
+                @include transition(0.35s);
+                i {
+                  transform: translateY(-4px);
+                  @include transition(0.35s);
+                  color: $YB_ORANGE;
+                }
+              }
             }
           }
         }

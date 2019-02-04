@@ -14,7 +14,7 @@ This tutorial will cover how to deploy YugaByte DB on Kubernetes StatefulSets us
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#gke" class="nav-link active" id="gke-tab" data-toggle="tab" role="tab" aria-controls="gke" aria-selected="true">
-      <i class="fa fa-cubes" aria-hidden="true"></i>
+      <i class="fas fa-cubes" aria-hidden="true"></i>
       Google Kubernetes Engine (GKE)
     </a>
   </li>

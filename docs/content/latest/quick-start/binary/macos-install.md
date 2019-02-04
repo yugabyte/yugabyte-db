@@ -1,6 +1,6 @@
 ## Prerequisites
 
-a) <i class="fa fa-apple" aria-hidden="true"></i> macOS 10.12 (Sierra) or higher
+a) <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 (Sierra) or higher
 
 b) Verify that you have python2 installed. Support for python3 is in the works.
 
