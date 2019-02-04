@@ -2732,7 +2732,6 @@ TEST_F(RaftConsensusITest, TestChangeConfigRejectedUnlessNoopReplicated) {
   // because the followers are rejecting UpdateConsensus, and the leader needs to majority-replicate
   // a lease expiration that is in the future in order to establish a leader lease.
   ASSERT_OK(WaitUntilLeader(leader_ts, tablet_id_, timeout, LeaderLeaseCheckMode::DONT_NEED_LEASE));
-
   // Now attempt to do a config change. It should be rejected because there have not been any ops
   // (notably the initial NO_OP) from the leader's term that have been committed yet.
   Status s = itest::RemoveServer(leader_ts,
@@ -2745,6 +2744,87 @@ TEST_F(RaftConsensusITest, TestChangeConfigRejectedUnlessNoopReplicated) {
   ASSERT_TRUE(s.IsLeaderNotReadyToServe()) << s;
   ASSERT_STR_CONTAINS(s.message().ToBuffer(),
                       "Leader not yet replicated NoOp to be ready to serve requests");
+}
+
+TEST_F(RaftConsensusITest, TestChangeConfigBasedOnJepsen) {
+  FLAGS_num_tablet_servers = 4;
+  vector<string> ts_flags = { "--enable_leader_failure_detection=false",
+                              "--log_change_config_every_n=3000" };
+  vector<string> master_flags = { "--catalog_manager_wait_for_new_tablets_to_elect_leader=false" };
+  ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
+  ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
+
+  int leader_idx = -1;
+  int new_node_idx = -1;
+  for (int i = 0; i < 4; i++) {
+    auto& uuid = cluster_->tablet_server(i)->uuid();
+    if (nullptr == GetReplicaWithUuidOrNull(tablet_id_, uuid)) {
+      new_node_idx = i;
+      continue;
+    } else if (leader_idx == -1) {
+      leader_idx = i;
+      continue;
+    }
+  }
+
+  CHECK_NE(new_node_idx, -1) << "Could not find the node not having tablet_id_";
+
+  TServerDetails* leader_ts = tablet_servers_[cluster_->tablet_server(leader_idx)->uuid()].get();
+  MonoDelta timeout = MonoDelta::FromSeconds(30);
+  ASSERT_OK(StartElection(leader_ts, tablet_id_, timeout));
+
+  ASSERT_OK(WaitUntilLeader(leader_ts, tablet_id_, timeout, LeaderLeaseCheckMode::NEED_LEASE));
+
+  vector<TServerDetails*> tservers_list(4);
+  int ts_idx = 0;
+  tservers_list[ts_idx++] = tablet_servers_[cluster_->tablet_server(leader_idx)->uuid()].get();
+  for (int i = 0; i < 4; i++) {
+    if (i == leader_idx || i == new_node_idx) {
+      continue;
+    }
+    ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(i),
+                                "follower_reject_update_consensus_requests", "true"));
+    tservers_list[ts_idx++] = tablet_servers_[cluster_->tablet_server(i)->uuid()].get();
+  }
+  tservers_list[ts_idx++] = tablet_servers_[cluster_->tablet_server(new_node_idx)->uuid()].get();
+
+  // Now attempt to do a config change. It should be rejected because there have not been any ops
+  // (notably the initial NO_OP) from the leader's term that have been committed yet.
+  Status s = itest::AddServer(leader_ts,
+                              tablet_id_,
+                              tablet_servers_[cluster_->tablet_server(new_node_idx)->uuid()].get(),
+                              RaftPeerPB::PRE_VOTER,
+                              boost::none,
+                              timeout,
+                              nullptr /* error_code */,
+                              false /* retry */);
+  LOG(INFO) << "Got status " << yb::ToString(s);
+  const double kSleepDelaySec = 50;
+  SleepFor(MonoDelta::FromSeconds(kSleepDelaySec));
+  LOG(INFO) << "Done Sleeping";
+
+  vector<OpId> committed_op_ids, received_op_ids;
+  GetLastOpIdForEachReplica(tablet_id_, tservers_list, consensus::OpIdType::COMMITTED_OPID,
+      timeout, &committed_op_ids);
+  GetLastOpIdForEachReplica(tablet_id_, tservers_list, consensus::OpIdType::RECEIVED_OPID,
+      timeout, &received_op_ids);
+
+  for(int i = 0; i < 4; i++) {
+    LOG(INFO) << "i = " << i << " Peer " << tservers_list[i]->uuid()
+              << " Committed op id " << yb::ToString(committed_op_ids[i])
+              << " Last received op id " << yb::ToString(received_op_ids[i]);
+  }
+
+  const OpId kLeaderCommittedOpId = committed_op_ids[0];
+  int num_voters_who_received_committed_op_id = 0;
+  for(int i = 0; i < 3; i++) {
+     if (yb::consensus::OpIdCompare(kLeaderCommittedOpId, received_op_ids[i]) <= 0) {
+        num_voters_who_received_committed_op_id++;
+      }
+  }
+  CHECK_GE(num_voters_who_received_committed_op_id, 2)
+      << "At least 2 voters should have received the op id";
 }
 
 // Test that if for some reason none of the transactions can be prepared, that it will come back as
