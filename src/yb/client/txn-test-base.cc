@@ -139,7 +139,7 @@ void TransactionTestBase::WriteData(const WriteOpType op_type, size_t transactio
   auto txn = CreateTransaction();
   WriteRows(CreateSession(txn), transaction, op_type);
   ASSERT_OK(txn->CommitFuture().get());
-  LOG(INFO) << "Committed";
+  LOG(INFO) << "Committed: " << txn->id();
 }
 
 void TransactionTestBase::WriteDataWithRepetition() {

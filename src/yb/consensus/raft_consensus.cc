@@ -274,7 +274,6 @@ RaftConsensus::RaftConsensus(
       queue_(queue.Pass()),
       rng_(GetRandomSeed32()),
       withhold_votes_until_(MonoTime::Min()),
-      withhold_election_start_until_(MonoTime::Min().ToUint64()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
       shutdown_(false),
       follower_memory_pressure_rejections_(metric_entity->FindOrCreateCounter(
@@ -687,7 +686,7 @@ Status RaftConsensus::ElectionLostByProtege(const std::string& election_lost_by_
       LOG_WITH_PREFIX(INFO) << "Our protege " << election_lost_by_uuid
                             << ", lost election. Has leader: "
                             << state_->HasLeaderUnlocked();
-      withhold_election_start_until_.store(MonoTime::Min().ToUint64(), std::memory_order_relaxed);
+      withhold_election_start_until_.store(MonoTime::Min(), std::memory_order_relaxed);
       election_lost_by_protege_at_ = MonoTime::Now();
 
       start_election = !state_->HasLeaderUnlocked();
@@ -715,7 +714,7 @@ void RaftConsensus::WithholdElectionAfterStepDown(const std::string& protege_uui
     timeout *= FLAGS_after_stepdown_delay_election_multiplier;
   }
   auto deadline = MonoTime::Now() + timeout;
-  withhold_election_start_until_.store(deadline.ToUint64(), std::memory_order_release);
+  withhold_election_start_until_.store(deadline, std::memory_order_release);
   election_lost_by_protege_at_ = MonoTime();
 }
 
@@ -736,12 +735,11 @@ void RaftConsensus::RunLeaderElectionResponseRpcCallback(
 
 void RaftConsensus::ReportFailureDetectedTask() {
   MonoTime now;
-  const auto kMinTime = MonoTime::Min().ToUint64();
   for (;;) {
     // Do not start election for an extended period of time if we were recently stepped down.
     auto old_value = withhold_election_start_until_.load(std::memory_order_acquire);
 
-    if (old_value == kMinTime) {
+    if (old_value == MonoTime::Min()) {
       break;
     }
 
@@ -749,7 +747,7 @@ void RaftConsensus::ReportFailureDetectedTask() {
       now = MonoTime::Now();
     }
 
-    if (now < MonoTime::FromUint64(old_value)) {
+    if (now < old_value) {
       LOG(INFO) << "Skipping election due to delayed timeout.";
       return;
     }
@@ -757,7 +755,7 @@ void RaftConsensus::ReportFailureDetectedTask() {
     // If we ever stepped down and then delayed election start did get scheduled, reset that we
     // are out of that extra delay mode.
     if (withhold_election_start_until_.compare_exchange_weak(
-        old_value, kMinTime, std::memory_order_release)) {
+        old_value, MonoTime::Min(), std::memory_order_release)) {
       break;
     }
   }

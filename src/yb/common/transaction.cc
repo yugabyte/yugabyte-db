@@ -19,6 +19,9 @@
 
 using namespace std::literals;
 
+DEFINE_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
+             "Timeout used by transaction related RPCs in milliseconds.");
+
 namespace yb {
 
 const std::string kTransactionsTableName = "transactions";
@@ -99,7 +102,7 @@ std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata)
 }
 
 MonoDelta TransactionRpcTimeout() {
-  return 5s * kTimeMultiplier;
+  return FLAGS_transaction_rpc_timeout_ms * 1ms;
 }
 
 // TODO(dtxn) correct deadline should be calculated and propagated.
