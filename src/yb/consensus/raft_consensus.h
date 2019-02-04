@@ -600,7 +600,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // This is the time (in the MonoTime's uint64 representation) for which election should not start
   // on this peer.
-  std::atomic<uint64_t> withhold_election_start_until_;
+  std::atomic<MonoTime> withhold_election_start_until_{MonoTime::Min()};
 
   // We record the moment at which we discover that an election has been lost by our "protege"
   // during leader stepdown. Then, when the master asks us to step down again in favor of the same
