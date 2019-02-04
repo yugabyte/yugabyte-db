@@ -130,18 +130,26 @@ $(document).ready(() => {
 
   ((document, Clipboard) => {
     const $codes = document.querySelectorAll('code.copy');
+    const $codes2 = document.querySelectorAll('.copy');
 
     const addCopy = element => {
       const contentContainer = element.getElementsByTagName('code')[0];
       const content = contentContainer.textContent;
       let index = 0;
-      if (contentContainer.classList.contains('separator-gt')) index = content.indexOf('> ') + 2;
-      if (contentContainer.classList.contains('separator-dollar')) index = content.indexOf('$ ') + 2;
-      if (contentContainer.classList.contains('separator-hash')) index = content.indexOf('# ') + 2;
+      const appendContainer = contentContainer.parentNode;
+      if (contentContainer.classList.contains('copy')) {
+        if (contentContainer.classList.contains('separator-gt')) index = content.indexOf('> ') + 2;
+        if (contentContainer.classList.contains('separator-dollar')) index = content.indexOf('$ ') + 2;
+        if (contentContainer.classList.contains('separator-hash')) index = content.indexOf('# ') + 2;
+      } else {
+        if (element.classList.contains('separator-gt')) index = content.indexOf('> ') + 2;
+        if (element.classList.contains('separator-dollar')) index = content.indexOf('$ ') + 2;
+        if (element.classList.contains('separator-hash')) index = content.indexOf('# ') + 2;
+      }
 
       const textarea = document.createElement('textarea');
       textarea.value = content.substr(index < 0 ? 0 : index, content.length).trim();
-      element.append(textarea);
+      appendContainer.append(textarea);
 
       const button = document.createElement('button');
       button.className = 'copy unclicked';
@@ -154,11 +162,14 @@ $(document).ready(() => {
             elem.classList.add('unclicked');
           }, 1500);
       });
-      element.append(button);
+      appendContainer.append(button);
     };
 
     for (let i = 0, len = $codes.length; i < len; i++) {
       addCopy($codes[i].parentNode);
+    }
+    for (let i = 0, len = $codes2.length; i < len; i++) {
+      addCopy($codes2[i]);
     }
     const clipboard = new Clipboard('button.copy', {target: trigger => (trigger.previousElementSibling)});
     clipboard.on('error', e => (e.preventDefault()));

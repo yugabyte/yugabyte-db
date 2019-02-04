@@ -41,7 +41,6 @@ a {
     letter-spacing: -.02em;
     line-height: 36px;
     position: relative;
-    z-index: 0;
   }
   h1 {
     padding-top: 0 !important;
@@ -330,7 +329,7 @@ a {
     float: none;
     margin-bottom: 0;
     padding: 0;
-    width: 255px;
+    width: 265px;
     margin-left: -40px;
     flex-basis: auto;
   }
@@ -339,7 +338,7 @@ a {
 .drawer {
   position: relative !important;
   nav {
-    width: 255px;
+    width: 265px;
     .scrollable {
       padding-left: 40px;
     }
@@ -454,14 +453,6 @@ a {
   }
 }
 
-#scrollspy {
-  margin-top: -2px;
-  padding-left: 8px;
-}
-#scrollspy a {
-  border-left: 1px solid $YB_ORANGE;
-}
-
 .drawer .scrollable .wrapper hr {
   width: 100%;
 }
@@ -531,12 +522,14 @@ a {
     width: 5px;
     height: 100%;
   }
-  .admonition-title {
+  .admonition-title, .title {
     margin: 0px 0px 10px 0px;
     color: $YB_DARK_BLUE;
     padding: 0;
     font-family: Montserrat, sans-serif;
     font-weight: 600;
+    display: block;
+    font-size: 20px;
   
     &::before {
       content: none;
@@ -568,11 +561,7 @@ a {
     }
   }
 }
-.article .admonition-title {
-  margin: -4px -20px -15px -14px;
-  padding: 0 10px;
-  font-family: Montserrat, sans-serif;
-  font-weight: 500;
+.article .admonition-title, .article .admonition .title {
 
   &::before {
     position: relative;
@@ -1019,26 +1008,11 @@ a {
       font-size: 36px;
       color: $YB_ORANGE;
 
-      &.fa {
+      &.fab, &.fas {
         top: -3px;
       }
     }
   }
-}
-
-.nav-tabs {
-  position: relative;
-  z-index: 2;
-}
-
-.nav-tabs li:before {
-  content: "" !important;
-}
-
-.nav-tabs li i,
-.nav-tabs li img {
-  font-size: 16px;
-  padding-right: 4px;
 }
 
 table code {
@@ -1057,4 +1031,46 @@ table code {
 .txn-conflict {
   color: $YB_ORANGE;
   background: $YB_LIGHT_GRAY;
+}
+
+.toc-container {
+  font-size: 16px;
+  font-weight: 600;
+  font-family: Montserrat, sans-serif;
+  padding: 0 25px 25px 25px;
+
+  & > ul {
+    & > li {
+      margin-left: 0;
+
+      &:before {
+        content: none;
+      }
+    }
+  }
+  ul {
+    margin-top: 0 !important;
+    font-size: 13px;
+    font-weight: 400;
+    font-family: "Open Sans", sans-serif;
+
+    li {
+      margin-top: 12px !important;
+      line-height: 16px;
+
+      &:before {
+        content: none !important;
+      }
+      a {
+        &, &:focus, &:hover, &:active {
+          text-decoration: none;
+          border: none;
+          color: $YB_DARK;
+          &.active-scroll {
+            color: $YB_ORANGE;
+          }
+        }
+      }
+    }
+  }
 }

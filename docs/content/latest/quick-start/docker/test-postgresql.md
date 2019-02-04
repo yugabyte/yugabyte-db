@@ -1,3 +1,6 @@
+---
+---
+
 - Destroy any existing cluster.
 
 ```{.sh .copy .separator-dollar}

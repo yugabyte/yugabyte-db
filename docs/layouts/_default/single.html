@@ -22,18 +22,31 @@
 		</div>
 
 		<article class="article">
-			<div class="wrapper">
-				{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}	
+			<div class="content-flex-wrapper">
 
-				<h1>{{ .Description }} {{ if .IsDraft }} (Draft){{ end }}{{ if .Page.Params.beta }}<a class="tag-beta" href="{{ .Page.Params.beta }}">Beta</a>{{ end }}</h1>
+				<div class="content-flex-container">
+					<div class="wrapper">
+						{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}
 
-				{{ .TableOfContents }}
-				{{ .Content }}
+						<h1>{{ .Description }} {{ if .IsDraft }} (Draft){{ end }}{{ if .Page.Params.beta }}<a class="tag-beta" href="{{ .Page.Params.beta }}">Beta</a>{{ end }}</h1>
+
+						{{if (.Params.showAsideToc) }}
+						<div id="toc-static">{{ .TableOfContents }}</div>
+						{{ else }}
+						{{ .TableOfContents }}
+						{{ end }}
+						{{ .Content }}
+					</div>			
+					{{ partial "footer_links" . }}
+					<!--{{ partial "pagination" . }}-->
+					<!--{{ partial "feedback" . }}-->
+				</div>
+				{{if (and (.Params.showAsideToc) (ne (print .TableOfContents) "")) }}
+				<div class="menu-flex-container">
+					<div class="toc-container" id="toc-aside">{{ .TableOfContents }}</div>
+				</div>
+				{{ end }}
 			</div>
-
-			{{ partial "footer_links" . }}
-			<!--{{ partial "pagination" . }}-->
-			<!--{{ partial "feedback" . }}-->
 		</article>
 
 		<div class="results" role="status" aria-live="polite">
@@ -49,3 +62,10 @@
 
 {{ partial "footer_content" . }}
 {{ partial "footer_js" . }}
+
+<script>
+	const pageConfig = {
+		isTocNested: {{ .Params.isTocNested }},
+		showAsideToc: {{ .Params.showAsideToc }}
+	}
+</script>

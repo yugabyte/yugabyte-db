@@ -10,9 +10,16 @@
     margin-bottom: 30px;
   }
 
-  h2 {
+  .title {
     margin-top: 0;
     padding-top: 0 !important;
+    font-size: 28px;
+    font-weight: 600;
+    font-family: Montserrat, "Open Sans", sans-serif !important;
+    color: #202951 !important;
+    letter-spacing: -.02em;
+    line-height: 36px;
+    position: relative;
 
     .headerlink, .issuelink {
       display: none;

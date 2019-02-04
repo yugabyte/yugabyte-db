@@ -57,4 +57,4 @@ We do not recommend a local cluster setup on a single host for production deploy
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
     {{% includeMarkdown "kubernetes/create-local-cluster.md" /%}}
   </div>
-</div>
+</div> -->

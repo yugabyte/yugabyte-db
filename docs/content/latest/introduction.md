@@ -11,6 +11,8 @@ menu:
   latest:
     identifier: introduction
     weight: 20
+isTocNested: true
+showAsideToc: true
 ---
 
 ## What is YugaByte DB?
@@ -87,7 +89,7 @@ YugaByte DB feature highlights are listed below.
 
 - [Self-healing database](../explore/cloud-native/fault-tolerance/) that automatically tolerates any failures common in the inherently unreliable modern cloud infrastructure.
 
-### 4. Open Source
+### 5. Open Source
 
 - Fully functional distributed database available under [Apache 2.0 open source license](https://github.com/YugaByte/yugabyte-db/). Upgrade to [Enterprise Edition](https://www.yugabyte.com/product/compare/) anytime.
 

@@ -1,3 +1,6 @@
+---
+---
+
 - Run cqlsh to connect to the service.
 
 ```{.sh .copy .separator-dollar}

@@ -44,19 +44,19 @@ h1 {
   &:before {
     background-color: $YB_DARK_BLUE;
   }
+  & > ul > li > ul > li:before {
+    background-color: transparent;
+  }
 }
 #TableOfContents ul {
   margin-bottom: 6px;
-}
-#TableOfContents ul ul ul {
-  display: none;
 }
 
 pre {
   position: relative;
 }
 
-pre code.copy + textarea + button.copy {
+pre code.copy + textarea + button.copy, .copy pre code + textarea + button.copy {
   position: absolute;
   border: none !important;
   text-transform: uppercase;
@@ -116,7 +116,7 @@ pre code.copy + textarea + button.copy {
   }
 }
 
-pre code.copy + textarea {
+pre code.copy + textarea, .copy pre textarea {
   position: absolute;
   right: 0;
   bottom: 0;
@@ -126,3 +126,69 @@ pre code.copy + textarea {
   padding: 0 0 1px 1px;
   border: none;
 }
+.content-flex-wrapper {
+  display: flex;
+  flex-direction: row;
+  
+  .wrapper {
+    flex-grow: 1;
+    flex-shrink: 1;
+  }
+  .content-flex-container {
+    flex-grow: 1;
+    flex-shrink: 1;
+    width: 1%;
+  }
+  .menu-flex-container {
+    position: relative !important;
+    flex-grow: 0;
+    flex-shrink: 0;
+    width: 265px;
+
+    #toc-aside {
+      nav > ul > li > ul {
+        display: none;
+      }
+      &.ready nav > ul > li > ul {
+        display: block;
+      }
+      #TableOfContents {
+        margin-bottom: 0px;
+        padding: 0;
+        background: transparent;
+
+
+        &:before {
+          font-size: 16px;
+        }
+
+        ul, & > ul > li {
+          margin: 0;
+          font-size: 13px;
+          line-height: 13px;
+        }
+
+        li {
+          margin-bottom: 8px;
+
+          &:before {
+            margin-top: 6px;
+          }
+        }
+        ul li:last-child ul li:last-child {
+          margin-bottom: 0px;
+        }
+      }
+    }
+    @media only screen and (max-width: 1199px) {
+      display: none;
+    }
+  }
+}
+
+#toc-static {
+  @media only screen and (min-width: 1200px) {
+    display: none;
+  }
+}
+

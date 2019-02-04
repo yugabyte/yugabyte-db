@@ -58,12 +58,17 @@
 .longer-buttons .btn {
   min-width: 310px !important; 
   font-size: 18px;
-  }
+}
 
 .nav-tabs {
+  border-bottom: 0.5px solid #CDD0DC;
+}
+
+.nav-tabs, .nav-tabs-alt {
   margin: 1.5em -48px 0;
   padding: 0 28px;
-  border-bottom: 0.5px solid #CDD0DC;
+  position: relative;
+  z-index: 2;
 
   @media only screen and (max-width: 991px) {
     margin: 1.5em -30px 0;
@@ -72,6 +77,11 @@
     margin: 0 20px;
     &:before {
       content: none !important;
+    }
+    i,
+    img {
+      font-size: 16px;
+      padding-right: 4px;
     }
     a.nav-link {
       position: relative;
@@ -106,9 +116,9 @@
   }
 }
 
-.nav-tabs i {
+.nav-tabs i, .nav-tabs-alt i {
   font-size: 24px !important;
-  margin: -2px 0;
+  margin: -4px 0 0 0;
 }
 
 .nav-tabs .fa-docker {
@@ -116,6 +126,37 @@
   vertical-align: middle;
 }
 
+.nav-tabs-alt {
+  padding: 0 45px;
+  li {
+    margin: 0 5px;
+    a.nav-link {
+      padding: 15px 15px 7px 15px !important;
+      height: 60px !important;
+      border-radius: 7px !important;
+      border: 1px solid #CDD0DC;
+      font-size: 16px;
+
+      &, &:focus, &:hover {
+
+      }
+      &:hover {
+        border: 1px solid $YB_ORANGE;
+        //border: 0.5px solid rgba(#323A69, 0.1);
+      }
+      &.active {
+        border: 1px solid rgba(#323A69, 1) !important;
+        background-color: rgba(#7081E4, 0.05);
+        border: 1px solid $YB_ORANGE !important;
+        background-color: rgba($YB_ORANGE, 0.03);
+
+        i {
+          color: #323A69;
+        }
+      }
+    }
+  }
+}
 
 button.small {
   border: none !important;
