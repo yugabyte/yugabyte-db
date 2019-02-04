@@ -85,6 +85,8 @@ DEFINE_test_flag(bool, enable_remote_bootstrap, true,
                  "detects that a follower is out of date or does not have a tablet "
                  "replica.");
 
+DECLARE_int32(log_change_config_every_n);
+
 namespace yb {
 namespace consensus {
 
@@ -257,12 +259,12 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       boost::optional<tserver::TabletServerErrorPB::Code> error_code;
 
       // If another ChangeConfig is being processed, our request will be rejected.
-      LOG(INFO) << "Sending ChangeConfig request";
+      YB_LOG_EVERY_N(INFO, FLAGS_log_change_config_every_n)
+          << "Sending ChangeConfig request to promote peer";
       auto status = consensus_->ChangeConfig(req, &DoNothingStatusCB, &error_code);
       if (PREDICT_FALSE(!status.ok())) {
-        LOG(WARNING) << "Unable to change role for peer "
-                     << uuid << ": "
-                     << status;
+        YB_LOG_EVERY_N(INFO, FLAGS_log_change_config_every_n)
+            << "Unable to change role for peer " << uuid << ": " << status;
         // Since we released the semaphore, we need to call SignalRequest again to send a message
         status = SignalRequest(RequestTriggerMode::kAlwaysSend);
         if (PREDICT_FALSE(!status.ok())) {

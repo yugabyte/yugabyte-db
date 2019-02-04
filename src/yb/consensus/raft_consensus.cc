@@ -176,6 +176,10 @@ DEFINE_test_flag(bool, pause_update_replica, false,
 DEFINE_test_flag(bool, pause_update_majority_replicated, false,
                  "Pause RaftConsensus::UpdateMajorityReplicated.");
 
+DEFINE_test_flag(int32, log_change_config_every_n, 1, "How often to log change config information. "
+                 "Used to reduce the number of lines being printed for change config requests "
+                 "when a test simulates a failure that would generate a log of these requests.");
+
 namespace yb {
 namespace consensus {
 
@@ -1965,7 +1969,8 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
     return STATUS(InvalidArgument, "Must specify 'server' argument to ChangeConfig()",
                                    req.ShortDebugString());
   }
-  LOG(INFO) << "Received ChangeConfig request " << req.ShortDebugString();
+  YB_LOG_EVERY_N(INFO, FLAGS_log_change_config_every_n)
+      << "Received ChangeConfig request " << req.ShortDebugString();
   ChangeConfigType type = req.type();
   bool use_hostport = req.has_use_host() && req.use_host();
 
@@ -2000,8 +2005,9 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
     const string& server_uuid = server.has_permanent_uuid() ? server.permanent_uuid() : "";
     s = IsLeaderReadyForChangeConfigUnlocked(type, server_uuid);
     if (!s.ok()) {
-      LOG(INFO) << "Returning not ready for " << ChangeConfigType_Name(type)
-                << " due to error " << s.ToString();
+      YB_LOG_EVERY_N(INFO, FLAGS_log_change_config_every_n)
+          << "Returning not ready for " << ChangeConfigType_Name(type)
+          << " due to error " << s.ToString();
       *error_code = TabletServerErrorPB::LEADER_NOT_READY_CHANGE_CONFIG;
       return s;
     }
