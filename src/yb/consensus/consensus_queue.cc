@@ -588,6 +588,10 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
       // value of the watermark.
       continue;
     }
+    if (!IsRaftConfigVoter(peer.uuid, *queue_state_.active_config)) {
+      // Only votes from VOTERs in the active config should be taken into consideration
+      continue;
+    }
     if (peer.is_last_exchange_successful) {
       watermarks.push_back(Policy::ExtractValue(peer));
     }
