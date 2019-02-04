@@ -53,6 +53,7 @@ DECLARE_bool(transaction_disable_proactive_cleanup_in_tests);
 DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
 DECLARE_int32(master_inject_latency_on_transactional_tablet_lookups_ms);
+DECLARE_int64(transaction_rpc_timeout_ms);
 
 namespace yb {
 namespace client {
@@ -1212,14 +1213,27 @@ TEST_F(QLTransactionTest, ChangeLeader) {
   constexpr auto kTestTime = 5s;
 
   DisableTransactionTimeout();
+  FLAGS_transaction_rpc_timeout_ms = MonoDelta(1min).ToMicroseconds();
 
   std::vector<std::thread> threads;
   std::atomic<bool> stopped{false};
+  std::atomic<int> successes{0};
+  std::atomic<int> expirations{0};
   for (size_t i = 0; i != kThreads; ++i) {
-    threads.emplace_back([this, i, &stopped] {
+    threads.emplace_back([this, i, &stopped, &successes, &expirations] {
       size_t idx = i;
       while (!stopped) {
-        WriteData(WriteOpType::INSERT, idx);
+        auto txn = CreateTransaction();
+        WriteRows(CreateSession(txn), idx, WriteOpType::INSERT);
+        auto status = txn->CommitFuture().get();
+        if (status.ok()) {
+          ++successes;
+        } else {
+          // We allow expiration on commit, because it means that commit succeed after leader
+          // change. And we just did not receive respose. But rate of such cases should be small.
+          ASSERT_TRUE(status.IsExpired()) << status;
+          ++expirations;
+        }
         idx += kThreads;
       }
     });
@@ -1250,6 +1264,9 @@ TEST_F(QLTransactionTest, ChangeLeader) {
   for (auto& thread : threads) {
     thread.join();
   }
+
+  // Allow expirations to be 5% of successful commits.
+  ASSERT_LE(expirations.load() * 100, successes * 5);
 }
 
 class RemoteBootstrapTest : public QLTransactionTest {
