@@ -100,6 +100,11 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createWaitForTServerHeartBeatsTask()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
+      // Initialize YSQL database if enabled by the user.
+      if (taskParams().getPrimaryCluster().userIntent.enableYSQL) {
+        createInitYSQLTasks(taskParams().getTServers());
+      }
+
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);
 

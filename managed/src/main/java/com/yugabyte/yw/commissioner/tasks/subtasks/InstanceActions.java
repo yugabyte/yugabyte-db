@@ -11,10 +11,20 @@ import org.slf4j.LoggerFactory;
 public class InstanceActions extends NodeTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(InstanceActions.class);
 
+  public NodeManager.NodeCommandType type;
+
   // Additional parameters for this task.
   public static class Params extends NodeTaskParams {
     // CSV of tag keys to be deleted.
     public String deleteTags = "";
+  }
+
+  public InstanceActions(){
+    this(NodeManager.NodeCommandType.Tags);
+  }
+
+  public InstanceActions(NodeManager.NodeCommandType tasktype){
+    type = tasktype;
   }
 
   @Override
@@ -25,8 +35,9 @@ public class InstanceActions extends NodeTaskBase {
   @Override
   public void run() {
     LOG.info("Running {}.", getName());
+
     ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(
-        NodeManager.NodeCommandType.Tags, taskParams());
+        type, taskParams());
     logShellResponse(response);
   }
 }

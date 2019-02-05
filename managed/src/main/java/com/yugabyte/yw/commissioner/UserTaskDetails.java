@@ -133,7 +133,10 @@ public class UserTaskDetails {
     HelmUpgrade,
 
     // Upgrade pod in Kubernetes.
-    KubernetesUpgradePod
+    KubernetesUpgradePod,
+
+    // Run the initdb script in a tserver pod.
+    KubernetesInitYSQL,
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -287,6 +290,10 @@ public class UserTaskDetails {
       case KubernetesUpgradePod:
         title = "Upgrade Kubernetes Pod";
         description = "Upgrade Kubernetes Pod";
+        break;
+      case KubernetesInitYSQL:
+        title = "Initialize YSQL in Kubernetes Universe";
+        description = "Initialize YSQL in Kubernetes Universe";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

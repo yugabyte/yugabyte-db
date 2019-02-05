@@ -43,6 +43,7 @@ const initialState = {
   maxNumNodes: -1,
   assignPublicIP: true,
   useTimeSync: false,
+  enableYSQL: false,
   storageClass: ''
 };
 
@@ -65,6 +66,7 @@ export default class ClusterFields extends Component {
     this.setDeviceInfo = this.setDeviceInfo.bind(this);
     this.toggleAssignPublicIP = this.toggleAssignPublicIP.bind(this);
     this.toggleUseTimeSync = this.toggleUseTimeSync.bind(this);
+    this.toggleEnableYSQL = this.toggleEnableYSQL.bind(this);
     this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
     this.replicationFactorChanged = this.replicationFactorChanged.bind(this);
     this.softwareVersionChanged = this.softwareVersionChanged.bind(this);
@@ -116,6 +118,7 @@ export default class ClusterFields extends Component {
           numNodes: userIntent.numNodes,
           replicationFactor: userIntent.replicationFactor,
           ybSoftwareVersion: userIntent.ybSoftwareVersion,
+          enableYSQL: userIntent.enableYSQL,
           accessKeyCode: userIntent.accessKeyCode,
           deviceInfo: userIntent.deviceInfo,
           storageClass: userIntent.deviceInfo.storageClass,
@@ -151,6 +154,10 @@ export default class ClusterFields extends Component {
           if (formValues[clusterType].useTimeSync) {
             // We would also default to whatever primary cluster's state for this one.
             this.setState({useTimeSync: formValues['primary'].useTimeSync});
+          }
+          if (formValues[clusterType].enableYSQL) {
+            // We would also default to whatever primary cluster's state for this one.
+            this.setState({enableYSQL: formValues['primary'].enableYSQL});
           }
         }
       } else {
@@ -376,6 +383,7 @@ export default class ClusterFields extends Component {
         gflags: formValues[clusterType].gflags,
         instanceTags: formValues[clusterType].instanceTags,
         useTimeSync: formValues[clusterType].useTimeSync,
+        enableYSQL: formValues[clusterType].enableYSQL,
         storageClass: formValues[clusterType].storageClass
       };
     }
@@ -436,6 +444,17 @@ export default class ClusterFields extends Component {
       updateFormField('primary.assignPublicIP', event.target.checked);
       updateFormField('async.assignPublicIP', event.target.checked);
       this.setState({assignPublicIP: event.target.checked});
+    }
+  }
+
+  toggleEnableYSQL(event) {
+    const {updateFormField, clusterType} = this.props;
+    // Right now we only let primary cluster to update this flag, and
+    // keep the async cluster to use the same value as primary.
+    if (clusterType === "primary") {
+      updateFormField('primary.enableYSQL', event.target.checked);
+      updateFormField('async.enableYSQL', event.target.checked);
+      this.setState({enableYSQL: event.target.checked});
     }
   }
 
@@ -550,6 +569,7 @@ export default class ClusterFields extends Component {
       }),
       assignPublicIP: formValues[clusterType].assignPublicIP,
       useTimeSync: formValues[clusterType].useTimeSync,
+      enableYSQL: formValues[clusterType].enableYSQL,
       numNodes: formValues[clusterType].numNodes,
       instanceType: formValues[clusterType].instanceType,
       ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
@@ -795,8 +815,24 @@ export default class ClusterFields extends Component {
 
     let assignPublicIP = <span />;
     let useTimeSync = <span />;
+    let enableYSQL = <span />;
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
 
+    if (isDefinedNotNull(currentProvider) &&
+       (currentProvider.code === "aws" || currentProvider.code === "gcp" ||
+        currentProvider.code === "onprem" || currentProvider.code === "kubernetes")){
+      const disableOnChange = clusterType !== "primary";
+      enableYSQL = (
+        <Field name={`${clusterType}.enableYSQL`}
+                component={YBToggle} isReadOnly={isFieldReadOnly}
+                disableOnChange={disableOnChange}
+                checkedVal={this.state.enableYSQL}
+                onToggle={this.toggleEnableYSQL}
+                label="Enable YSQL"
+                subLabel="Whether or not to enable YSQL."/>
+      );
+    }
+    
     if (isDefinedNotNull(currentProvider) &&
         (currentProvider.code === "aws" || currentProvider.code === "gcp")) {
       // Assign public ip would be only enabled for primary and that same
@@ -1024,6 +1060,7 @@ export default class ClusterFields extends Component {
                 {storageClassField}
                 {assignPublicIP}
                 {useTimeSync}
+                {enableYSQL}
                 <Field name={`${clusterType}.mountPoints`} component={YBTextInput}  type="hidden"/>
               </div>
             </Col>

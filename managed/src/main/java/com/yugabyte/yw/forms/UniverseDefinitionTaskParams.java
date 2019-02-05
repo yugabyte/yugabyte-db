@@ -68,7 +68,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // id. This is used as the prefix of node names in the universe.
   public String nodePrefix = null;
 
-  // This flag represents whether user has chosed to provide placement info
+  // This flag represents whether user has chosen to provide placement info
   // In Edit Universe if this flag is set we go through the NEW_CONFIG_FROM_PLACEMENT_INFO path
   public boolean userAZSelected = false;
 
@@ -250,6 +250,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public boolean useTimeSync = false;
 
+    public boolean enableYSQL = false;
+
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
     // existing nodes' settings.
@@ -285,6 +287,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.tserverGFlags = new HashMap<>(tserverGFlags);
       newUserIntent.assignPublicIP = assignPublicIP;
       newUserIntent.useTimeSync = useTimeSync;
+      newUserIntent.enableYSQL = enableYSQL;
       newUserIntent.instanceTags = instanceTags;
       return newUserIntent;
     }
@@ -449,6 +452,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
                                   universeUUID.toString());
      }
      return Iterables.getOnlyElement(foundClusters, null);
+  }
+
+  @JsonIgnore
+  public Set<NodeDetails> getTServers() {
+    Set<NodeDetails> Tservers = new HashSet<>();
+    for (NodeDetails n : nodeDetailsSet) {
+      if (n.isTserver){
+        Tservers.add(n);
+      }
+    }
+    return Tservers;
   }
 
   /**

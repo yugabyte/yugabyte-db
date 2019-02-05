@@ -58,7 +58,8 @@ public class NodeManager extends DevopsBase {
     Destroy,
     List,
     Control,
-    Tags
+    Tags,
+    InitYSQL
   }
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
@@ -176,8 +177,8 @@ public class NodeManager extends DevopsBase {
 
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
     List<String> subcommand = new ArrayList<String>();
-
-    String masterAddresses = Universe.get(taskParam.universeUUID).getMasterAddresses(false);
+    Universe universe = Universe.get(taskParam.universeUUID);
+    String masterAddresses = universe.getMasterAddresses(false);
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
 
@@ -210,6 +211,12 @@ public class NodeManager extends DevopsBase {
         extra_gflags.put("placement_uuid", String.valueOf(taskParam.placementUuid));
         // Add in the nodeName during configure.
         extra_gflags.put("metric_node_name", taskParam.nodeName);
+        // TODO: add a shared path to massage flags across different flavors of configure.
+        if (taskParam.enableYSQL) {
+          NodeDetails node = universe.getNode(taskParam.nodeName);
+          extra_gflags.put("start_pgsql_proxy", "true");
+          extra_gflags.put("pgsql_proxy_bind_address", String.format("%s:%s", node.cloudInfo.private_ip, node.ysqlServerRpcPort));
+        }
         subcommand.add("--extra_gflags");
         subcommand.add(Json.stringify(Json.toJson(extra_gflags)));
         break;
@@ -283,12 +290,11 @@ public class NodeManager extends DevopsBase {
                                                        NodeTaskParams nodeTaskParam) throws RuntimeException {
     List<String> commandArgs = new ArrayList<>();
     switch (type) {
-      case Provision:
-      {
+      case Provision: {
         if (!(nodeTaskParam instanceof AnsibleSetupServer.Params)) {
           throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
         }
-        AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params)nodeTaskParam;
+        AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
         UserIntent userIntent = getUserIntentFromParams(taskParam);
         Common.CloudType cloudType = userIntent.providerType;
         if (!cloudType.equals(Common.CloudType.onprem)) {
@@ -334,7 +340,7 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--volume_type");
             commandArgs.add(deviceInfo.ebsType.toString().toLowerCase());
             if (deviceInfo.ebsType.equals(PublicCloudConstants.EBSType.IO1) &&
-                deviceInfo.diskIops != null) {
+              deviceInfo.diskIops != null) {
               commandArgs.add("--disk_iops");
               commandArgs.add(Integer.toString(deviceInfo.diskIops));
             }
@@ -348,12 +354,11 @@ public class NodeManager extends DevopsBase {
         }
         break;
       }
-      case Configure:
-      {
+      case Configure: {
         if (!(nodeTaskParam instanceof AnsibleConfigureServers.Params)) {
           throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
         }
-        AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params)nodeTaskParam;
+        AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params) nodeTaskParam;
         commandArgs.addAll(getConfigureSubCommand(taskParam));
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
         if (nodeTaskParam.deviceInfo != null) {
@@ -361,13 +366,11 @@ public class NodeManager extends DevopsBase {
         }
         break;
       }
-      case List:
-      {
+      case List: {
         commandArgs.add("--as_json");
         break;
       }
-      case Destroy:
-      {
+      case Destroy: {
         if (!(nodeTaskParam instanceof AnsibleDestroyServer.Params)) {
           throw new RuntimeException("NodeTaskParams is not AnsibleDestroyServer.Params");
         }
@@ -379,23 +382,21 @@ public class NodeManager extends DevopsBase {
         commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam));
         break;
       }
-      case Control:
-      {
+      case Control: {
         if (!(nodeTaskParam instanceof AnsibleClusterServerCtl.Params)) {
           throw new RuntimeException("NodeTaskParams is not AnsibleClusterServerCtl.Params");
         }
-        AnsibleClusterServerCtl.Params taskParam = (AnsibleClusterServerCtl.Params)nodeTaskParam;
+        AnsibleClusterServerCtl.Params taskParam = (AnsibleClusterServerCtl.Params) nodeTaskParam;
         commandArgs.add(taskParam.process);
         commandArgs.add(taskParam.command);
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
         break;
       }
-      case Tags:
-      {
+      case Tags: {
         if (!(nodeTaskParam instanceof InstanceActions.Params)) {
           throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
         }
-        InstanceActions.Params taskParam = (InstanceActions.Params)nodeTaskParam;
+        InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
         UserIntent userIntent = getUserIntentFromParams(taskParam);
         if (userIntent.providerType.equals(Common.CloudType.aws)) {
           if (userIntent.instanceTags == null || userIntent.instanceTags.isEmpty()) {
@@ -411,11 +412,24 @@ public class NodeManager extends DevopsBase {
         }
         break;
       }
+      case InitYSQL: {
+        if (!(nodeTaskParam instanceof InstanceActions.Params)) {
+          throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
+        }
+        InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
+        String masterAddresses = Universe.get(taskParam.universeUUID).getMasterAddresses();
+        if (masterAddresses == null || masterAddresses.isEmpty()){
+          throw new RuntimeException("Can't run initdb script: No masters found");
+        }
+        commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam));
+        commandArgs.add("--master_addresses");
+        commandArgs.add(masterAddresses);
+        break;
+      }
     }
-
-    commandArgs.add(nodeTaskParam.nodeName);    
+    commandArgs.add(nodeTaskParam.nodeName);
 
     return execCommand(nodeTaskParam.getRegion().uuid, null, null, type.toString().toLowerCase(),
-                       commandArgs, getCloudArgs(nodeTaskParam));
+      commandArgs, getCloudArgs(nodeTaskParam));
   }
 }
