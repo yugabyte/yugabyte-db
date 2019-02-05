@@ -50,6 +50,8 @@
 
 #include "yb/util/logging.h"
 
+DEFINE_int32(memstore_arena_size_kb, 1024, "Size of each arena allocation for the memstore");
+
 namespace rocksdb {
 
 ColumnFamilyHandleImpl::ColumnFamilyHandleImpl(
@@ -172,7 +174,8 @@ ColumnFamilyOptions SanitizeOptions(const DBOptions& db_options,
   // if user sets arena_block_size, we trust user to use this value. Otherwise,
   // calculate a proper value from writer_buffer_size;
   if (result.arena_block_size <= 0) {
-    result.arena_block_size = result.write_buffer_size / 8;
+    result.arena_block_size = std::min(
+        result.write_buffer_size / 8, static_cast<size_t>(FLAGS_memstore_arena_size_kb << 10));
 
     // Align up to 4k
     const size_t align = 4 * 1024;
