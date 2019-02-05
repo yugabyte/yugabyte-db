@@ -4,10 +4,8 @@ languageCode: en-us
 title: YugaByte DB Docs
 metadataformat: yaml
 canonifyurls: false
-googleAnalytics: UA-104956980-3
-algolia:
-  index: docs
-  appID: 4LBMOWH4F9
+googleAnalytics: ''
+
 params:
   author: Team YugaByte
   description: 'YugaByte DB, the transactional, high-performance database for building internet-scale, globally-distributed apps.'
@@ -26,6 +24,12 @@ params:
   font:
     text: Open Sans
     code: Inconsolata
+  algolia:
+    index: docs
+    appID:
+    apiKey:
+  bigpicture:
+    projectId: 
 social: {}
 menu:
   main:

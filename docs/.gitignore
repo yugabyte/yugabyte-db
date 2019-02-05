@@ -16,3 +16,6 @@ static/js/site.js
 .session.vim*
 
 *.sw?
+
+config.yaml
+

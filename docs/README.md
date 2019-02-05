@@ -25,6 +25,13 @@ brew install hugo
 brew install npm
 ```
 
+## Prerequisites ##
+Copy the config.yaml.sample to config.yaml and add any Third-party credentials needed.
+```
+cp config.yaml.sample config.yaml
+```
+
+
 ## To run locally ##
 ```
 npm start
