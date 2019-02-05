@@ -327,7 +327,6 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 			}
 			else
 			{
-
 				rawstr = pstrdup(strVal(elem->arg));
 				if (!string_to_SelectTable(rawstr, ',', &data->filter_tables))
 				{
