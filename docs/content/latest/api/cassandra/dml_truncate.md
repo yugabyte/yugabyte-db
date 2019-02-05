@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/dml_truncate
   - /latest/api/ycql/dml_truncate
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

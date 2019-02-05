@@ -8,6 +8,8 @@ menu:
   latest:
     parent: troubleshoot-nodes
     weight: 842
+isTocNested: true
+showAsideToc: true
 ---
 
 ## 1. Are the YugaByte DB processes running?

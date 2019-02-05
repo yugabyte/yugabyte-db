@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/zrange
   - /latest/api/yedis/zrange
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

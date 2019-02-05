@@ -1,6 +1,6 @@
 ---
-title: EXPLAIN
-description: Show the execution plan for a statement.
+title: Explain Statement
+description: Explain Statement
 summary: EXPLAIN
 menu:
   latest:
@@ -10,6 +10,8 @@ menu:
 aliases:
   - /latest/api/postgresql/explain
   - /latest/api/ysql/explain
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

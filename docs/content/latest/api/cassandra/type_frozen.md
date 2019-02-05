@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/type_frozen
   - /latest/api/ycql/type_frozen
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

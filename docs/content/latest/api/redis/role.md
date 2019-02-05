@@ -9,8 +9,10 @@ menu:
 aliases:
   - /latest/api/redis/role
   - /latest/api/yedis/role
+isTocNested: true
+showAsideToc: true
 ---
-YugaByte DB only has `master` role for the Redis API.
+YEDIS only has `master` role as far as Redis compatibility is concerned.
 
 ## Synopsis
 <b>`ROLE`</b><br>

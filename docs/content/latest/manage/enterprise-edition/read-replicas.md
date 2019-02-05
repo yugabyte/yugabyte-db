@@ -8,6 +8,8 @@ menu:
     identifier: manage-read-replicas
     parent: manage-enterprise-edition
     weight: 745
+isTocNested: true
+showAsideToc: true
 ---
 
 This section will describe how to create a universe with both a primary and [read replica](../../../architecture/concepts/replication/#read-only-replicas) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove, a read replica cluster. In this example, we are first going to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).

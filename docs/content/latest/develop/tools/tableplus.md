@@ -9,6 +9,8 @@ menu:
     identifier: tableplus
     parent: tools
     weight: 547
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Introduction

@@ -8,6 +8,8 @@ menu:
   latest:
     parent: troubleshoot-nodes
     weight: 846
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Host resource usage

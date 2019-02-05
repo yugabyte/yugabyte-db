@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/punsubscribe
   - /latest/api/yedis/punsubscribe
+isTocNested: true
+showAsideToc: true
 ---
 `PUNSUBSCRIBE` 
 

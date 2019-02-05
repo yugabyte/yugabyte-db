@@ -9,6 +9,8 @@ menu:
     identifier: architecture-replication
     parent: architecture-concepts
     weight: 950
+isTocNested: false
+showAsideToc: true
 ---
 
 YugaByte DB replicates data in order to survive failures while continuing to maintain consistency of

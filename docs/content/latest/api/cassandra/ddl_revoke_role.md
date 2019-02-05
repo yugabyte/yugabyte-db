@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/ddl_revoke_role
   - /latest/api/ycql/ddl_revoke_role
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

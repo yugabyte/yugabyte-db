@@ -9,11 +9,11 @@ menu:
     identifier: architecture-universe
     parent: architecture-concepts
     weight: 930
+isTocNested: false
+showAsideToc: true
 ---
 
 ## Universe
-
-### Introduction
 
 A YugaByte universe, is a group of nodes (VMs, physical machines or containers) that collectively function as a highly available and resilient database.
 
@@ -27,13 +27,14 @@ A YugaByte *universe* can consist of one or more keyspaces (a.k.a databases in o
 
 ### Processes
 
-A YugaByte universe comprises of two sets of processes, YB-Master and YB-TServer. These serve different purposes.
-
-- The YB-Master (aka the YugaByte Master Server) processes are responsible for keeping system metadata, coordinating system-wide operations such as create/alter drop tables, and initiating maintenance operations such as load-balancing.
+A YugaByte DB universe comprises of two sets of processes, YB-TServer and YB-Master. These serve different purposes.
 
 - The YB-TServer (aka the YugaByte Tablet Server) processes are responsible for hosting/serving user data (e.g, tables).
 
-YugaByte is architected to not have any single point of failure. The YB-Master and YB-TServer processes use [Raft](https://raft.github.io/), a distributed consensus algorithm, for replicating changes to system metadata or user data respectively across a set of nodes.
+- The YB-Master (aka the YugaByte Master Server) processes are responsible for keeping system metadata, coordinating system-wide operations such as create/alter drop tables, and initiating maintenance operations such as load-balancing.
+
+
+YugaByte DB is architected to not have any single point of failure. The YB-TServer as well YB-Master processes use [Raft](https://raft.github.io/), a distributed consensus algorithm, for replicating changes to user data or system metadata respectively across a set of nodes.
 
 High Availability (HA) of the YB-Master’s functionalities and of the user-tables served by the YB-TServers is achieved by the failure-detection and new-leader election mechanisms that are built into the Raft implementation.
 

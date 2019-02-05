@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/ddl_drop_role
   - /latest/api/ycql/ddl_drop_role
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

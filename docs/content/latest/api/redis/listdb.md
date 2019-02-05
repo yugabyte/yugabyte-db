@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/listdb
   - /latest/api/yedis/listdb
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

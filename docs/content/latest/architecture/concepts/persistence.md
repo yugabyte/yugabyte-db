@@ -9,6 +9,8 @@ menu:
     identifier: architecture-persistence
     parent: architecture-concepts
     weight: 960
+isTocNested: false
+showAsideToc: true
 ---
 
 ## Introduction

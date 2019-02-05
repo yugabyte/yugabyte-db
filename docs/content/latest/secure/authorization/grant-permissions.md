@@ -11,6 +11,8 @@ menu:
     identifier: secure-authorization-grant-permissions
     parent: secure-authorization
     weight: 718
+isTocNested: true
+showAsideToc: true
 ---
 
 In this tutorial, we shall run through a scenario. Assume a company has an engineering organization, with three sub-teams - developers, qa and DB admins. We are going to create a role for each of these entities.

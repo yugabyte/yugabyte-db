@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/tsadd
   - /latest/api/yedis/tsadd
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

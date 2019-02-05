@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/hexists
   - /latest/api/yedis/hexists
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

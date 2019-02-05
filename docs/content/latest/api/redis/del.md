@@ -9,8 +9,10 @@ menu:
 aliases:
   - /latest/api/redis/del
   - /latest/api/yedis/del
+isTocNested: true
+showAsideToc: true
 ---
-Early Releases: Single-key request only. Requests with multiple keys are not yet supported.
+Single-key request only. Requests with multiple keys are not yet supported.
 
 ## Synopsis
 <!-- <b>`DEL key [key ...]`</b><br> -->

@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/incr
   - /latest/api/yedis/incr
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

@@ -13,6 +13,8 @@ menu:
 aliases:
   - /latest/api/ycql/
   - /latest/api/cassandra/
+isTocNested: false
+showAsideToc: true
 ---
 
 ## Introduction

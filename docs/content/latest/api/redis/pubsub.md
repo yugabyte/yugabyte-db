@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/pubsub
   - /latest/api/yedis/pubsub
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

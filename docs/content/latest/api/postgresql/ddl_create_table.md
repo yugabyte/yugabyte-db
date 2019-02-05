@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/postgresql/ddl_create_table
   - /latest/api/ysql/ddl_create_table
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

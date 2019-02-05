@@ -10,6 +10,8 @@ menu:
 aliases:
   - /latest/api/postgresql/ddl
   - /latest/api/ysql/ddl
+isTocNested: true
+showAsideToc: true
 ---
 
 Data definition language (DDL) statements are instructions for the following database operations.

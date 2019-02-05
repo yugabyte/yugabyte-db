@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/postgresql/dml/insert
   - /latest/api/ysql/dml/insert
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

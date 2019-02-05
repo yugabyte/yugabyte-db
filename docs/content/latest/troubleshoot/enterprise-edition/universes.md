@@ -9,6 +9,8 @@ menu:
     identifier: troubleshoot-universes
     parent: troubleshoot-enterprise-edition
     weight: 853
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Metrics Page

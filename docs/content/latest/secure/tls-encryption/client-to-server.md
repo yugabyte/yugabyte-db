@@ -11,6 +11,8 @@ menu:
     identifier: secure-tls-encryption-client-to-server
     parent: secure-tls-encryption
     weight: 723
+isTocNested: true
+showAsideToc: true
 ---
 
 To enable client to server encryption, bring up the YB-TServer processes with the appropriate flags as shown below.

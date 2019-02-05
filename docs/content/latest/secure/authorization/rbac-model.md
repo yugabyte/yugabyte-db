@@ -11,6 +11,8 @@ menu:
     identifier: secure-authorization-rbac-model
     parent: secure-authorization
     weight: 716
+isTocNested: true
+showAsideToc: true
 ---
 
 The role-based access control model in YCQL is a collection of permissions on resources given to roles. Thus, the entire RBAC model is built around **roles**, **resources** and **permissions**. It is essential to understand these concepts in order to understand the RBAC model.

@@ -9,6 +9,8 @@ menu:
     identifier: manage-edit-flags
     parent: manage-enterprise-edition
     weight: 740
+isTocNested: true
+showAsideToc: true
 ---
 
 The config flags for the [yb-masters](../../../admin/yb-master/) and [yb-tservers](../../../admin/yb-tserver/) in a Universe can be upgraded by clicking `Edit GFlags` from the `More` dropdown on the Universe Detail page.

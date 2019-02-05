@@ -1,13 +1,15 @@
 ---
-title: Cassandra Connection Issues
-linkTitle: Cassandra Connection Issues
-description: Cannot Connect to Cassandra-compatible YCQL API
+title: YCQL Connection Issues
+linkTitle: YCQL Connection Issues
+description: Cannot Connect to YCQL API
 aliases:
   - /troubleshoot/cluster/connect-cassandra/
 menu:
   latest:
     parent: troubleshoot-cluster
     weight: 822
+isTocNested: true
+showAsideToc: true
 ---
 
 ## 1. Are YugaByte DB processes running?
@@ -17,9 +19,9 @@ At a minimum, the tserver process needs to be running to be able to connect to t
 Additionally, depending on the setup, you might expect a master process to also be running on this node.
 Follow the instructions on the [Check Processes](../../nodes/check-processes/) page.
 
-## 2. Is the YugaByte DB Cassandra server running?
+## 2. Is the Cassandra-compatible YCQL API running?
 
-If the tserver process is running, make sure the YugaByte CQL server is enabled and listening on the CQL port (default `9042`).
+If the tserver process is running, make sure the YCQL API is enabled and listening on the YCQL port (default `9042`).
 
 ```
 $ lsof -i :9042
@@ -40,7 +42,7 @@ If there is another process using this port you might need to stop that and rest
 Otherwise, if no process is listening but the tserver is running, check the value of the `--cql_proxy_bind_address` flag passed to the 
 tserver process.
 
-## 3. Can the CQL shell connect locally?
+## 3. Can cqlsh connect locally?
 
 Once on the machine where YugaByte DB is running, use `cqlsh` to connect to the local YugaByte DB instance.
 Depending on your installation, you may need to install `cqlsh`, otherwise you can find it in the YugaByte `bin` directory. 

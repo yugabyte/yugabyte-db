@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/dml_update
   - /latest/api/ycql/dml_update
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

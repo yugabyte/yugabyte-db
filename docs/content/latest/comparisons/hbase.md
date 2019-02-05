@@ -8,6 +8,8 @@ menu:
   latest:
     parent: comparisons
     weight: 1130
+isTocNested: false
+showAsideToc: true
 ---
 
 Following are the key areas of differences between YugaByte DB and [Apache HBase](http://hbase.apache.org/).

@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/tscard
   - /latest/api/yedis/tscard
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

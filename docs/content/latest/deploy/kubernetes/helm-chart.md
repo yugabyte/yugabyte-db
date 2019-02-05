@@ -9,6 +9,8 @@ menu:
     identifier: helm-chart
     parent: deploy-kubernetes
     weight: 621
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Introduction

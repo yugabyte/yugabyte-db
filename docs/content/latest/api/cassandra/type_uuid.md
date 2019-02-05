@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/type_uuid
   - /latest/api/ycql/type_uuid
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

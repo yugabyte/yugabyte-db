@@ -8,6 +8,8 @@ menu:
   latest:
     parent: comparisons
     weight: 1101
+isTocNested: false
+showAsideToc: true
 ---
 
 The single most important function of a database is to make application development and deployment easier. FoundationDB misses the mark on this function. The API layer is aimed at solving problems of systems engineers as opposed to that of application developers. The core engine seems to have missed out on key database technology innovations that were introduced to the world after the original implementation started in 2009 - Google’s Spanner for globally distributed transactions (2012), Stanford’s Raft for per-shard distributed consensus (2013), Facebook’s RocksDB for fast key-value LSM-based storage (2012). Assuming the API layer will get strengthened with introduction of new Layers, the core engine limitations can live forever. This will hamper adoption significantly in the context of internet-scale transactional workloads where each individual limitation gets magnified and becomes critical in its own right.

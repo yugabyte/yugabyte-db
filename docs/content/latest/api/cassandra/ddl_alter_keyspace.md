@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/ddl_alter_keyspace
   - /latest/api/ycql/ddl_alter_keyspace
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

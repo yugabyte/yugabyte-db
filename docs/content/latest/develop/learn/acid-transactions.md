@@ -9,6 +9,8 @@ menu:
     identifier: acid-transactions
     parent: learn
     weight: 566
+isTocNested: true
+showAsideToc: true
 ---
 
 A transaction is a sequence of operations performed as a single logical unit of work. A transaction has four key properties - **Atomicity**, **Consistency**, **Isolation** and **Durability** - commonly abbreviated as ACID.
@@ -26,7 +28,7 @@ A transaction is a sequence of operations performed as a single logical unit of 
   <li>
     <a href="#cassandra" class="nav-link active" id="cassandra-tab" data-toggle="tab" role="tab" aria-controls="cassandra" aria-selected="true">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      Cassandra
+      YCQL
     </a>
   </li>
 </ul>

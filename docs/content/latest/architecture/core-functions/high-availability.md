@@ -9,15 +9,13 @@ menu:
     identifier: high-availability
     parent: core-functions
     weight: 1040
+isTocNested: true
+showAsideToc: true
 ---
 
 As discussed before, YugaByte is a CP database (consistent and partition tolerant) but achieves very high availability. It achieves this HA by having an active replica that is ready to take over as a new leader in a matter of seconds after the failure of the current leader and serve requests.
 
 If a node fails, it causes the outage of the processes running on it. These would be a YB-TServer and the YB-Master (if one was running on that node). Let us look at what happens in each of these cases.
-
-## YB-Master failure
-
-The YB-Master is not in the critical path of normal IO operations, so its failure will not affect a functioning universe. Nevertheless, the YB-Master is a part of a RAFT group with the peers running on different nodes. One of these peers is the active master and the others are active stand-bys. If the active master (i.e. the YB-Master leader) fails, these peers detect the leader failure and re-elect a new YB-Master leader which now becomes the active master within seconds of the failure.
 
 ## YB-TServer failure
 
@@ -36,3 +34,7 @@ The tablet-peer followers are not in the critical path. Their failure does not i
 ### Tablet-peer leader failure
 
 The failure of any tablet-peer leader automatically triggers a new RAFT level leader election within seconds, and another tablet-peer on a different YB-TServer takes its place as the new leader. The unavailability window is in the order of a couple of seconds (assuming the default heartbeat interval of 500 ms) in the event of a failure of the tablet-peer leader.
+
+## YB-Master failure
+
+The YB-Master is not in the critical path of normal IO operations, so its failure will not affect a functioning universe. Nevertheless, the YB-Master is a part of a RAFT group with the peers running on different nodes. One of these peers is the active master and the others are active stand-bys. If the active master (i.e. the YB-Master leader) fails, these peers detect the leader failure and re-elect a new YB-Master leader which now becomes the active master within seconds of the failure.

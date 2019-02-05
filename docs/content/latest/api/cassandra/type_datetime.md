@@ -1,7 +1,7 @@
 ---
-title: Date & Time
+title: Date & Time Types
 summary: DATE, TIME and TIMESTAMP
-description: DateTime Types
+description: Date & Time Types
 menu:
   latest:
     parent: api-cassandra
@@ -11,6 +11,8 @@ aliases:
   - /latest/api/cassandra/type_timestamp
   - /latest/api/ycql/type_datetime
   - /latest/api/ycql/type_timestamp
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

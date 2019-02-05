@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/pttl
   - /latest/api/yedis/pttl
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

@@ -9,7 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/ddl_drop_index
   - /latest/api/ycql/ddl_drop_index
-
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

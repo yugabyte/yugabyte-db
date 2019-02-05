@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/pexpireat
   - /latest/api/yedis/pexpireat
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

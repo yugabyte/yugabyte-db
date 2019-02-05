@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/ddl_create_type
   - /latest/api/ycql/ddl_create_type
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

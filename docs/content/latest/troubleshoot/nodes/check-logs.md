@@ -8,6 +8,8 @@ menu:
   latest:
     parent: troubleshoot-nodes
     weight: 844
+isTocNested: true
+showAsideToc: true
 ---
 
 ## YugaByte DB base folder

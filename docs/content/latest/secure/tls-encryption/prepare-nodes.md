@@ -11,6 +11,8 @@ menu:
     identifier: secure-tls-encryption-prepare-nodes
     parent: secure-tls-encryption
     weight: 721
+isTocNested: true
+showAsideToc: true
 ---
 
 This page describes how to prepare each node in a YugaByte DB cluster to enable TLS encryption.

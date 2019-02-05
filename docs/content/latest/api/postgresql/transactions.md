@@ -10,6 +10,8 @@ menu:
 aliases:
   - /latest/api/postgresql/transactions
   - /latest/api/ysql/transactions
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

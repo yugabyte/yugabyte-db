@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/ddl_grant_permission
   - /latest/api/ycql/ddl_grant_permission
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

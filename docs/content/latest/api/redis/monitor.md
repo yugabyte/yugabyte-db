@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/monitor
   - /latest/api/yedis/monitor
+isTocNested: true
+showAsideToc: true
 ---
 `MONITOR` is a debugging tool to see all requests that are being processed by a YugaByte YEDIS API server.
 

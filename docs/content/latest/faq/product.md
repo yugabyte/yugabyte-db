@@ -9,6 +9,8 @@ menu:
     identifier: product
     parent: faq
     weight: 2470
+isTocNested: false
+showAsideToc: true
 ---
 
 ## When is YugaByte DB a good fit?

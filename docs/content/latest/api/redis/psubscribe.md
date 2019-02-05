@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/psubscribe
   - /latest/api/yedis/psubscribe
+isTocNested: true
+showAsideToc: true
 ---
 `PSUBSCRIBE` 
 

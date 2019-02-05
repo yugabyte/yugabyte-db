@@ -9,11 +9,13 @@ menu:
     identifier: retail-analytics
     parent: realworld-apps
     weight: 584
+isTocNested: true
+showAsideToc: true
 ---
 
-## 1. Start Local Cluster with PostgreSQL API Enabled
+## 1. Start Local Cluster with YSQL API Enabled
 
-Follow [Quick Start](../../../quick-start/) instructions to run a local YugaByte DB cluster. Test YugaByte DB's PostgreSQL compatible API as [documented](../../../quick-start/test-postgresql/) so that you can confirm that you have a PostgresSQL compatible service running on `localhost:5433`. 
+Follow [Quick Start](../../../quick-start/) instructions to run a local YugaByte DB cluster. Test YugaByte DB's PostgreSQL compatible YSQL API as [documented](../../../quick-start/test-postgresql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
 
 ## 2. Load Data
 

@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/postgresql/ddl_drop_database
   - /latest/api/ysql/ddl_drop_database
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

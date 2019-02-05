@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/hvals
   - /latest/api/yedis/hvals
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

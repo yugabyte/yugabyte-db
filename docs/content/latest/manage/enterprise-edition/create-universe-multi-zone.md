@@ -9,6 +9,8 @@ menu:
     identifier: manage-create-universe-multi-zone
     parent: manage-enterprise-edition
     weight: 720
+isTocNested: true
+showAsideToc: true
 ---
 
 This section will describe how to create a universe in one geographic region across multiple zones. We will examine the various nodes created by YugaWare, run some workloads against this universe and take a look at the metrics against the running universe.

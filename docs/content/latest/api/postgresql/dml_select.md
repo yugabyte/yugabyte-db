@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/postgresql/dml/select
   - /latest/api/ysql/dml/select
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

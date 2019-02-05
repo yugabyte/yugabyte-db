@@ -9,6 +9,8 @@ menu:
     identifier: deploy-manual-deployment-system-config
     parent: deploy-manual-deployment
     weight: 611
+isTocNested: true
+showAsideToc: true
 ---
 
 Do the following configuration steps on each of the nodes in the cluster.

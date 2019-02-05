@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/sismember
   - /latest/api/yedis/sismember
+isTocNested: true
+showAsideToc: true
 ---
 ## Synopsis
 <b>`SISMEMBER key member_value`</b><br>

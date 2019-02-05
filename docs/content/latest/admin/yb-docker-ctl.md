@@ -9,6 +9,8 @@ menu:
     weight: 2420
 aliases:
   - admin/yb-docker-ctl
+isTocNested: false
+showAsideToc: true
 ---
 
 `yb-docker-ctl` is a simple command line interface for administering local Docker clusters. It manages the [`yb-master`](../yb-master/) and [`yb-tserver`](../yb-tserver/) containers to perform the necessary administration.

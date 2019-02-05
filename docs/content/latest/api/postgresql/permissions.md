@@ -10,6 +10,8 @@ menu:
 aliases:
   - /latest/api/postgresql/permissions
   - /latest/api/ysql/permissions
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis 

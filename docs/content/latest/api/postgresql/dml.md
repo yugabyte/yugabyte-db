@@ -10,6 +10,8 @@ menu:
 aliases:
   - /latest/api/postgresql/dml
   - /latest/api/ysql/dml
+isTocNested: true
+showAsideToc: true
 ---
 
 Data manipulation language (DML) statements are used to read from and write to the existing database objects. Currently, YugaByte DB implicitly commits any updates by DML statements.

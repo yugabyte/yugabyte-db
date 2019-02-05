@@ -13,6 +13,8 @@ menu:
     identifier: api-postgresql
     parent: api
     weight: 3000
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Introduction

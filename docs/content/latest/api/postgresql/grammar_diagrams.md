@@ -1,5 +1,6 @@
 ---
 title: Grammar Diagrams
+description: Grammar Diagrams
 summary: Diagrams of the grammar rules.
 ---
 

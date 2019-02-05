@@ -10,6 +10,8 @@ menu:
 aliases:
   - /latest/api/cassandra/ddl_revoke_permission
   - /latest/api/ycql/ddl_revoke_permission
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

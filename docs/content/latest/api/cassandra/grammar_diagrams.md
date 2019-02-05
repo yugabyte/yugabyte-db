@@ -4,6 +4,8 @@ summary: Diagrams of the grammar rules
 aliases:
   - /latest/api/cassandra/grammar_diagrams
   - /latest/api/ycql/grammar_diagrams
+isTocNested: true
+showAsideToc: true
 ---
 
 ## DDL Statements

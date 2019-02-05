@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/getrange
   - /latest/api/yedis/getrange
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

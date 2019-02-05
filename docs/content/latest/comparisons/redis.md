@@ -8,6 +8,8 @@ menu:
   latest:
     parent: comparisons
     weight: 1100
+isTocNested: false
+showAsideToc: true
 ---
 
 Following are the key areas of differences between YugaByte DB and [Redis In-Memory Store](https://redis.io/).

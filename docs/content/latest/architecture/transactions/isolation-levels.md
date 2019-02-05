@@ -9,17 +9,11 @@ menu:
     identifier: architecture-isolation-levels
     parent: architecture-acid-transactions
     weight: 1051
+isTocNested: false
+showAsideToc: true
 ---
 
-YugaByte DB currently implements [Snapshot
-Isolation](https://en.wikipedia.org/wiki/Snapshot_isolation), also known as SI, which is an
-transaction isolation level that guarantees that all reads made in a transaction will see a
-consistent snapshot of the database, and the transaction itself will successfully commit only if no
-updates it has made conflict with any concurrent updates made by transactions that committed since
-that snapshot.  We are also working on supporting the
-[Serializable](https://en.wikipedia.org/wiki/Isolation_(database_systems)#Serializable) isolation
-level, which would by definition guarantee that transactions run in a way equivalent to a serial
-(sequential) schedule.
+YugaByte DB currently implements [Snapshot Isolation](https://en.wikipedia.org/wiki/Snapshot_isolation), also known as SI, which is an transaction isolation level that guarantees that all reads made in a transaction will see a consistent snapshot of the database, and the transaction itself will successfully commit only if no updates it has made conflict with any concurrent updates made by transactions that committed since that snapshot.  We are also working on supporting the [Serializable](https://en.wikipedia.org/wiki/Isolation_(database_systems)#Serializable) isolation level, which would by definition guarantee that transactions run in a way equivalent to a serial(sequential) schedule.
 
 ## Locks for isolation levels
 

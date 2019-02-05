@@ -10,7 +10,7 @@ aliases:
   <li>
     <a href="#cassandra" class="nav-link active" id="cassandra-tab" data-toggle="tab" role="tab" aria-controls="cassandra" aria-selected="true">
       <i class="icon-java-bold" aria-hidden="true"></i>
-      Cassandra
+      YCQL
     </a>
   </li>
 </ul>

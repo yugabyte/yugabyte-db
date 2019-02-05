@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/incrby
   - /latest/api/yedis/incrby
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

@@ -9,6 +9,8 @@ menu:
     identifier: diagnostics-reporting
     parent: manage
     weight: 706
+isTocNested: true
+showAsideToc: true
 ---
 
 [yb-master](../../admin/yb-master/) and [yb-tserver](../../admin/yb-tserver/) binaries report cluster diagnostics to YugaByte's diagnostics service every time a new cluster gets created and every hour thereafter. User data stored in YugaByte DB as well as any personally identifiable information regarding the user is never collected or reported.

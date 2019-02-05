@@ -9,6 +9,8 @@ menu:
     identifier: faq-architecture
     parent: faq
     weight: 2480
+isTocNested: false
+showAsideToc: true
 ---
 
 ## How can YugaByte DB be both CP and HA at the same time?

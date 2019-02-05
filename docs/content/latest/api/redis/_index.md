@@ -13,6 +13,8 @@ menu:
 aliases:
   - /latest/api/yedis
   - /latest/api/redis
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Introduction

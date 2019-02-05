@@ -9,6 +9,8 @@ menu:
     identifier: cqlsh
     parent: tools
     weight: 546
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Overview
@@ -26,7 +28,7 @@ $ ./bin/cqlsh --execute "select cluster_name, data_center, rack from system.loca
  local cluster | datacenter1 | rack1
 ```
 
-## Command-line Options
+## Command Line Options
 
 Use the **-\-help** option to see all the command-line options supported.
 

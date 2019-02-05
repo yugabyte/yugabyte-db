@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/dml_select
   - /latest/api/ycql/dml_select
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

@@ -9,8 +9,10 @@ menu:
 aliases:
   - /latest/api/redis/exist
   - /latest/api/yedis/exist
+isTocNested: true
+showAsideToc: true
 ---
-Early Releases: Single-key request only. Requests with multiple keys are not yet supported.
+Single-key request only. Requests with multiple keys are not yet supported.
 
 ## Synopsis
 <b>`EXISTS key [key ...]`</b><br>

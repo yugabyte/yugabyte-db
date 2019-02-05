@@ -9,6 +9,8 @@ menu:
     identifier: table-creation
     parent: core-functions
     weight: 1010
+isTocNested: false
+showAsideToc: true
 ---
 
 The user issued table creation is handled by the YB-Master leader, and is an asychronous API. The

@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/ddl_create_index
   - /latest/api/ycql/ddl_create_index
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

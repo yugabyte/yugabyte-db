@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/strlen
   - /latest/api/yedis/strlen
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

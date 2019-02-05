@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/postgresql/type/text
   - /latest/api/ysql/type/text
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

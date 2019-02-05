@@ -9,10 +9,12 @@ menu:
 aliases:
   - /latest/api/redis/config
   - /latest/api/yedis/config
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis
-Early Releases: Not fully supported. YEDIS only supports the <code>CONFIG</code> command to set the required password(s) for client authentication. All other <code>CONFIG</code> requests would be accepted as valid command without further processing.
+YEDIS only supports the <code>CONFIG</code> command to set the required password(s) for client authentication. All other <code>CONFIG</code> requests would be accepted as valid command without further processing.
 
 To enable authentication, one can set a password that would be required for connections to communicate with the redis server. This is done using the following command:
 <b>`CONFIG SET requirepass password[,password2]`</b><br>

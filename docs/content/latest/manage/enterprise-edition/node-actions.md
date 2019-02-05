@@ -9,6 +9,8 @@ menu:
     identifier: manage-node-actions
     parent: manage-enterprise-edition
     weight: 745
+isTocNested: true
+showAsideToc: true
 ---
 
 Each node in a universe has a Status column indicating its current logical state as per the YugaWare layer. This section first describes what each of them means and gives information on when and how these can be modified by the user. The nodes tab on the universe page shows them. When we create a universe, the `Nodes` tab on the universe page provides the phyiscal (such as ip, cloud) and the logical state information (master, status etc) about that node. Note that the `STATUS` for each node is `Live`. This is the steady state value for a normally functioning node.

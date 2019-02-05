@@ -11,6 +11,8 @@ menu:
     identifier: secure-tls-encryption-connect-to-cluster
     parent: secure-tls-encryption
     weight: 724
+isTocNested: true
+showAsideToc: true
 ---
 
 You would need to generate client config files to enable the client to connect to YugaByte DB. The steps are identical to [preparing the per-node configuration](http://localhost:1313/latest/secure/tls-encryption/prepare-nodes/#generate-per-node-config) shown in a previous section.

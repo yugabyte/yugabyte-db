@@ -9,6 +9,8 @@ menu:
     identifier: presto
     parent: ecosystem-integrations
     weight: 575
+isTocNested: true
+showAsideToc: true
 ---
 
 [Presto](http://https://prestodb.io/) is a distributed SQL query engine optimized for ad-hoc analysis at interactive speed. It supports standard ANSI SQL, including complex queries, aggregations, joins, and window functions. It has a connector architecture to query data from many data sources.

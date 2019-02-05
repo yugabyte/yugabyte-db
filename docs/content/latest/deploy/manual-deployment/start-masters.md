@@ -9,13 +9,17 @@ menu:
     identifier: deploy-manual-deployment-start-masters
     parent: deploy-manual-deployment
     weight: 613
+isTocNested: true
+showAsideToc: true
 ---
 
 {{< note title="Note" >}}
 For any cluster, the number of nodes on which the YB-Masters need to be started on **must** equal the replication factor.
 {{< /note >}}
 
-As an example scenario, let us assume the following.
+## Example Scenario
+
+Let us assume the following.
 
 - We want to create a a 4 node cluster with replication factor `3`.
       - We would need to run the YB-Master process on three nodes (`node-a`, `node-b`, `node-c`)
@@ -24,6 +28,7 @@ As an example scenario, let us assume the following.
 
 This section covers deployment for a single region/zone (or a single datacenter/rack). Execute the following steps on each of the instances.
 
+## Run yb-master with command line params
 - Run `yb-master` binary on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. For the full list of flags, see the [yb-master Reference](../../../admin/yb-master/).
 
 ```{.sh .copy .separator-dollar}
@@ -33,7 +38,7 @@ $ ./bin/yb-master \
   >& /home/centos/disk1/yb-master.out &
 ```
 
-
+## Run yb-master with conf file
 - Alternatively, you can also create a `master.conf` file with the following flags and then run the `yb-master` with the `--flagfile` option as shown below.
 
 ```{.sh .copy}
@@ -45,6 +50,7 @@ $ ./bin/yb-master \
 $ ./bin/yb-master --flagfile master.conf >& /home/centos/disk1/yb-master.out &
 ```
 
+## Verify health
 - Make sure all the 3 yb-masters are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
 ```{.sh .copy .separator-dollar}

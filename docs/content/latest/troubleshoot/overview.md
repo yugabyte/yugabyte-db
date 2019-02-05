@@ -9,6 +9,8 @@ menu:
     identifier: troubleshooting-overview
     parent: troubleshoot
     weight: 702
+isTocNested: true
+showAsideToc: true
 ---
 
 ## 1. Check that YugaByte DB is running

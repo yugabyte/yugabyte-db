@@ -9,6 +9,8 @@ menu:
     identifier: docker-swarm
     parent: deploy
     weight: 621
+isTocNested: true
+showAsideToc: true
 ---
 
 Docker includes [swarm](https://docs.docker.com/engine/swarm/) mode for natively managing a cluster of [Docker Engines](https://docs.docker.com/engine/) called a swarm. The Docker CLI can be used create a swarm, deploy application services to a swarm, and manage swarm behavior -- without using any additional orchestration software. Details on how swarm mode works are available [here](https://docs.docker.com/engine/swarm/key-concepts/).
@@ -258,7 +260,7 @@ I0515 19:54:48.953572    39 yb-admin_client.cc:440] Table 'system_redis.redis' c
 
 - Follow the test instructions as noted in [Quick Start](../quick-start/test-redis/).
 
-### PostgreSQL API
+### YSQL API
 
 - Install the `postgresql` client in the yb-tserver container.
 

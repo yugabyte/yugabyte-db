@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/ddl_drop_keyspace
   - /latest/api/ycql/ddl_drop_keyspace
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

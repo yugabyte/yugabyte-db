@@ -11,6 +11,8 @@ menu:
     identifier: secure-authorization-create-roles
     parent: secure-authorization
     weight: 717
+isTocNested: true
+showAsideToc: true
 ---
 
 ## 1. Create roles

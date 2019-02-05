@@ -9,6 +9,8 @@ menu:
     identifier: deploy-manual-deployment-install-software
     parent: deploy-manual-deployment
     weight: 612
+isTocNested: true
+showAsideToc: true
 ---
 
 Install the software on each of the nodes using the steps shown below.

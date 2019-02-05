@@ -9,13 +9,16 @@ menu:
     identifier: deploy-manual-deployment-start-tservers
     parent: deploy-manual-deployment
     weight: 614
+isTocNested: true
+showAsideToc: true
 ---
 
 {{< note title="Note" >}}
 For any cluster, the number of nodes on which the YB-TServers need to be started on **must** equal or exceed the replication factor in order for any table to get created successfully.
 {{< /note >}}
 
-As an example scenario, let us assume the following.
+## Example Scenario
+Let us assume the following.
 
 - We want to create a a 4 node cluster with replication factor `3`.
       - We would need to run the YB-TServer process on the nodes (`node-a`, `node-b`, `node-c`, `node-d`)
@@ -23,6 +26,8 @@ As an example scenario, let us assume the following.
 - We have multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`
 
 This section covers deployment for a single region/zone (or a single datacenter/rack). Execute the following steps on each of the instances.
+
+## Run yb-tserver with command line params
 
 - Run `yb-tserver` as below. Note that all the master addresses have to be provided as a flag. For the full list of flags, see the [yb-tserver Reference](../../../admin/yb-tserver/).
 
@@ -32,6 +37,8 @@ $ ./bin/yb-tserver \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
   >& /home/centos/disk1/yb-tserver.out &
 ```
+
+## Run yb-tserver with conf file
 
 - Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the `--flagfile` option as shown below.
 
@@ -43,6 +50,8 @@ $ ./bin/yb-tserver \
 ```{.sh .copy .separator-dollar}
 $ ./bin/yb-tserver --flagfile tserver.conf >& /home/centos/disk1/yb-tserver.out &
 ```
+
+## Verify health
 
 - Make sure all the 4 yb-tservers are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 

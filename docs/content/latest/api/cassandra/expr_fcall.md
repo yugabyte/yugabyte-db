@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/expr_fcall
   - /latest/api/ycql/expr_fcall
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

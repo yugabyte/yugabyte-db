@@ -9,6 +9,8 @@ menu:
     identifier: pivotal-cloud-foundry
     parent: deploy
     weight: 631
+isTocNested: true
+showAsideToc: true
 ---
 
 This tutorial walks through the steps to create service instance of YugaByte DB in PCF.  

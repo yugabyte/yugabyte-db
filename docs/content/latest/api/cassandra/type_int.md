@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/type_int
   - /latest/api/ycql/type_int
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

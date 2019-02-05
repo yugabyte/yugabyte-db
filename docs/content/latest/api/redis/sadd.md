@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/sadd
   - /latest/api/yedis/sadd
+isTocNested: true
+showAsideToc: true
 ---
 ## Synopsis
 <b>`SADD key value [value ...]`</b><br>

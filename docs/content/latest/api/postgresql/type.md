@@ -10,6 +10,8 @@ menu:
 aliases:
   - /latest/api/postgresql/type
   - /latest/api/ysql/type
+isTocNested: true
+showAsideToc: true
 ---
 
 The following table lists all supported primitive types.

@@ -8,6 +8,8 @@ menu:
   latest:
     parent: comparisons
     weight: 1080
+isTocNested: false
+showAsideToc: true
 ---
 
 Application developers choosing Apache Cassandra as their default operational database understand well that their choice does not support multi-shard (aka distributed) ACID transactions. But they mistakenly believe that they can use Cassandra features such as quorum writes/reads, lightweight transactions and secondary indexes to achieve single-key ACID guarantees. This is because the Cassandra marketing and technical documentation over the years has promoted it as a “consistent-enough” database. This is far from the truth. The only good use of Apache Cassandra is in context of its original intent as a inexpensive, eventually consistent store for large volumes of data. Newer Cassandra compatible databases such as DataStax Enterprise and ScyllaDB suffer from the same problems as Apache Cassandra since they have not changed the design of the eventually consistent core.

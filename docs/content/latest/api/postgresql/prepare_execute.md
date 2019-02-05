@@ -10,6 +10,8 @@ menu:
 aliases:
   - /latest/api/postgresql/prepare
   - /latest/api/ysql/prepare
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

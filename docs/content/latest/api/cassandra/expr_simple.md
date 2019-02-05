@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/expr_simple
   - /latest/api/ycql/expr_simple
+isTocNested: true
+showAsideToc: true
 ---
 
 Simple expression can be either a column, a constant, or NULL.

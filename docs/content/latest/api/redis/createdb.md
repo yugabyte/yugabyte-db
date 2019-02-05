@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/createdb
   - /latest/api/yedis/createdb
+isTocNested: true
+showAsideToc: true
 ---
 
 

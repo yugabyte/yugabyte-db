@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/scard
   - /latest/api/yedis/scard
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

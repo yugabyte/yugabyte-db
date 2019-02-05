@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/deletedb
   - /latest/api/yedis/deletedb
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

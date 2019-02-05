@@ -8,6 +8,8 @@ menu:
   latest:
     parent: comparisons
     weight: 1105
+isTocNested: false
+showAsideToc: true
 ---
 
 ## Astronomical AWS Bills and Slow Releases

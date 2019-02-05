@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/expr_ocall
   - /latest/api/ycql/expr_ocall
+isTocNested: true
+showAsideToc: true
 ---
 
 An expression with operators is a compound expression that combines multiple expressions using builtin operators. The following sections discuss the supported operators in YugaByte.

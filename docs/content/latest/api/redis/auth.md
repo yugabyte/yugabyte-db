@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/auth
   - /latest/api/yedis/auth
+isTocNested: true
+showAsideToc: true
 ---
 `AUTH` authenticates a client connection to YugaByte YEDIS API.
 

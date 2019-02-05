@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/setrange
   - /latest/api/yedis/setrange
+isTocNested: true
+showAsideToc: true
 ---
 ## Synopsis
 <b>`SETRANGE key offset value`</b><br>

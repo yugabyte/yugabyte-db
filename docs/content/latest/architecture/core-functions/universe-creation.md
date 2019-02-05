@@ -9,6 +9,8 @@ menu:
     identifier: universe-creation
     parent: core-functions
     weight: 1000
+isTocNested: false
+showAsideToc: true
 ---
 
 ## Step 1. Start YB-Masters

@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/zrevrange
   - /latest/api/yedis/zrevrange
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/tsrem
   - /latest/api/yedis/tsrem
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

@@ -9,6 +9,8 @@ menu:
     identifier: cassandra-api
     parent: faq
     weight: 2500
+isTocNested: false
+showAsideToc: true
 ---
 
 ## Do INSERTs do “upserts” by default? How do I insert data only if it is absent?

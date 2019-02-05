@@ -9,6 +9,8 @@ menu:
     weight: 1020
 aliases:
   - /architecture/core-functions/write-path/
+isTocNested: false
+showAsideToc: true
 ---
 
 For purposes of simplicity, let us take the case of a single key write. The case of distributed

@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/ddl_use
   - /latest/api/ycql/ddl_use
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

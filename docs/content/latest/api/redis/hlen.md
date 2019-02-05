@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/hlen
   - /latest/api/yedis/hlen
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

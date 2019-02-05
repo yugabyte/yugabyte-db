@@ -9,6 +9,8 @@ menu:
     weight: 2450
 aliases:
   - admin/yb-tserver
+isTocNested: false
+showAsideToc: true
 ---
 
 `yb-tserver`, located in the bin directory of YugaByte home, is the [YB-TServer](../../architecture/concepts/universe/#yb-tserver) binary.
@@ -47,8 +49,8 @@ Flag | Mandatory | Default | Description
 `--cql_proxy_webserver_port` | N | 12000 | YCQL metrics monitoring port
 `--redis_proxy_bind_address` | N | `0.0.0.0:6379` | YEDIS API bind address.
 `--redis_proxy_webserver_port` | N | 11000 | YEDIS metrics monitoring port.
-`--pgsql_proxy_bind_address` | N | `0.0.0.0:5433` | PostgreSQL API bind address.
-`--pgsql_proxy_webserver_port` | N | 13000 | PostgreSQL metrics monitoring port.
+`--pgsql_proxy_bind_address` | N | `0.0.0.0:5433` | YSQL API bind address.
+`--pgsql_proxy_webserver_port` | N | 13000 | YSQL metrics monitoring port.
 `--placement_zone` | N |`rack1` | Name of the availability zone or rack where this instance is deployed.
 `--placement_region` | N |`datacenter1` | Name of the region or datacenter where this instance is deployed.
 `--placement_cloud` | N |`cloud1` | Name of the cloud where this instance is deployed.
@@ -99,5 +101,5 @@ Service | Type | Port
 `ycql` | admin web server | 12000
 `yedis` | rpc | 6379
 `yedis` | admin web server | 11000
-`pgsql` | rpc | 5433
-`pgsql` | admin web server | 13000
+`ysql` | rpc | 5433
+`ysql` | admin web server | 13000

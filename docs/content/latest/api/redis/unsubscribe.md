@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/unsubscribe
   - /latest/api/yedis/unsubscribe
+isTocNested: true
+showAsideToc: true
 ---
 `UNSUBSCRIBE` 
 

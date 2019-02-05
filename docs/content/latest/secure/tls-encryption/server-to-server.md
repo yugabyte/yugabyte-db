@@ -11,6 +11,8 @@ menu:
     identifier: secure-tls-encryption-server-to-server
     parent: secure-tls-encryption
     weight: 722
+isTocNested: true
+showAsideToc: true
 ---
 
 

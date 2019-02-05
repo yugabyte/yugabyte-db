@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/ddl_alter_table
   - /latest/api/ycql/ddl_alter_table
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

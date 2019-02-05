@@ -10,6 +10,8 @@ menu:
     identifier: manage-upgrade-deployment
     parent: manage
     weight: 705
+isTocNested: true
+showAsideToc: true
 ---
 
 The basic flow is to upgrade each yb-master and yb-tserver one at a time, verifying after each step from the yb-master Admin UI that the cluster is healthy and the upgraded process is back online.

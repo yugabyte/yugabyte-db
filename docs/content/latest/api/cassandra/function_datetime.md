@@ -1,7 +1,7 @@
 ---
-title: Date and Time Functions
+title: Date & Time Functions
 summary: Functions that work on data types related to date and time.
-description: Date and Time Functions.
+description: Date & Time Functions
 menu:
   latest:
     parent: api-cassandra
@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/function_datetime
   - /latest/api/ycql/function_datetime
+isTocNested: false
+showAsideToc: true
 ---
 
 This section covers the set of CQL builtin functions that work on the data types related to

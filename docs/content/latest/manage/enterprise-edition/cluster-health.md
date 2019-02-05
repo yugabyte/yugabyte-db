@@ -10,6 +10,8 @@ menu:
     identifier: cluster-health
     parent: manage-enterprise-edition
     weight: 740
+isTocNested: true
+showAsideToc: true
 ---
 
 For staying aware of potential issues with your deployment, YugaWare has the capability to check on each individual universe for several types of issues and proactively send out email alerts when problems arise.

@@ -8,6 +8,8 @@ menu:
   latest:
     parent: quick-start
     weight: 140
+isTocNested: true
+showAsideToc: true
 ---
 
 After [creating a local cluster](../create-local-cluster/), follow the instructions below to test YugaByte DB's Redis-compatible YEDIS API.

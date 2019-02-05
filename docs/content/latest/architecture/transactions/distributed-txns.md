@@ -10,6 +10,8 @@ menu:
 aliases:
   - /architecture/transactions/distributed-txns/
   - /architecture/concepts/transactions/
+isTocNested: false
+showAsideToc: true
 ---
 
 ## Introduction

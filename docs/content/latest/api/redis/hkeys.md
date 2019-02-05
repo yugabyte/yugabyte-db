@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/hkeys
   - /latest/api/yedis/hkeys
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

@@ -9,6 +9,8 @@ menu:
     identifier: enterprise-edition
     parent: faq
     weight: 2490
+isTocNested: false
+showAsideToc: true
 ---
 
 ## What is YugaWare?

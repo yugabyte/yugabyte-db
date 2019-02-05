@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/ddl_grant_role
   - /latest/api/ycql/ddl_grant_role
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

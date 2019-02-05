@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/hgetall
   - /latest/api/yedis/hgetall
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

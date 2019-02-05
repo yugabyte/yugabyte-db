@@ -7,6 +7,8 @@ menu:
     identifier: manage-create-universe-multi-region
     parent: manage-enterprise-edition
     weight: 721
+isTocNested: true
+showAsideToc: true
 ---
 
 This section will describe how to create a universe spanning multiple geographic region. In this example, we are first going to deploy a universe across Oregon (US-West), Northern Virginia (US-East) and Tokyo (Asia-Pacific). Once ready, we are going to connect to each node and perform the following:

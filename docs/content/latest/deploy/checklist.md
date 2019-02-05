@@ -9,6 +9,8 @@ menu:
     identifier: checklist
     parent: deploy
     weight: 605
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Overview

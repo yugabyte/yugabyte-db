@@ -8,6 +8,8 @@ menu:
   latest:
     parent: comparisons
     weight: 1090
+isTocNested: false
+showAsideToc: true
 ---
 
 Even though it has improved its transactional capabilities over the last few years, MongoDB is still architecturally not a good fit for transactional applications with strict guarantees on low latency and high throughput. Using transactions in MongoDB today essentially means giving up on high performance and horizontal scalability. At YugaByte, we believe this is a compromise fast-growing online services should not be forced to make. As shown in the table below, we architected YugaByte DB to simultaneously deliver transactional guarantees, high performance and linear scalability. A 3-node YugaByte DB cluster supports both single-shard and multi-shard transactions and seamlessly scales out on-demand (in single region as well as across multiple regions) to increase write throughput without compromising low latency reads.

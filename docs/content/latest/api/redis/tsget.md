@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/tsget
   - /latest/api/yedis/tsget
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

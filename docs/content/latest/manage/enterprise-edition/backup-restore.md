@@ -7,6 +7,8 @@ menu:
     identifier: manage-ee-backup-restore
     parent: manage-enterprise-edition
     weight: 747
+isTocNested: true
+showAsideToc: true
 ---
 
 This section will describe how to backup and restore tables using the YugaByte Admin Console.

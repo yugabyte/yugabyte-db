@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/smembers
   - /latest/api/yedis/smembers
+isTocNested: true
+showAsideToc: true
 ---
 ## Synopsis
 <b>`SMEMBERS key`</b><br>

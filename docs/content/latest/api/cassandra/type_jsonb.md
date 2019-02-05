@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/cassandra/type_jsonb
   - /latest/api/ycql/type_jsonb
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/set
   - /latest/api/yedis/set
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

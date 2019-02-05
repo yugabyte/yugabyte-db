@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/postgresql/type/number
   - /latest/api/ysql/type/number
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis

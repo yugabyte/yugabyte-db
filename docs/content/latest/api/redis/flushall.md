@@ -9,6 +9,8 @@ menu:
 aliases:
   - /latest/api/redis/flushall
   - /latest/api/yedis/flushall
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Synopsis
