@@ -49,6 +49,8 @@
 #include "yb/util/logging.h"
 #include "yb/util/stopwatch.h"
 
+#include "yb/docdb/consensus_frontier.h"
+
 DEFINE_bool(skip_remove_old_recovery_dir, false,
             "Skip removing WAL recovery dir after startup. (useful for debugging)");
 TAG_FLAG(skip_remove_old_recovery_dir, hidden);
@@ -58,6 +60,12 @@ DEFINE_test_flag(double, fault_crash_during_log_replay, 0.0,
                  "after processing a log entry during log replay.");
 
 DECLARE_uint64(max_clock_sync_error_usec);
+
+DEFINE_bool(force_recover_flushed_frontier, false,
+            "Could be used to ignore the flushed frontier metadata from RocksDB manifest and "
+            "recover it from the log instead.");
+TAG_FLAG(force_recover_flushed_frontier, hidden);
+TAG_FLAG(force_recover_flushed_frontier, advanced);
 
 namespace yb {
 namespace tablet {
@@ -353,6 +361,21 @@ Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
   RETURN_NOT_OK(cmeta_->Flush());
 
   RETURN_NOT_OK(RemoveRecoveryDir());
+
+  if (FLAGS_force_recover_flushed_frontier) {
+    RETURN_NOT_OK(tablet_->Flush(FlushMode::kSync));
+    docdb::ConsensusFrontier new_consensus_frontier;
+    new_consensus_frontier.set_op_id(consensus_info->last_committed_id);
+    new_consensus_frontier.set_hybrid_time(tablet_->mvcc_manager()->LastReplicatedHybridTime());
+    // We don't attempt to recover the history cutoff here because it will be recovered
+    // automatically on the first compaction, and this is a special mode for manual troubleshooting.
+    LOG_WITH_PREFIX(WARNING)
+        << "--force_recover_flushed_frontier specified, forcefully setting "
+        << "flushed frontier after bootstrap: " << new_consensus_frontier.ToString();
+    RETURN_NOT_OK(tablet_->ModifyFlushedFrontier(
+        new_consensus_frontier, rocksdb::FrontierModificationMode::kForce));
+  }
+
   RETURN_NOT_OK(FinishBootstrap("Bootstrap complete.", rebuilt_log, rebuilt_tablet));
 
   return Status::OK();
@@ -727,6 +750,12 @@ void TabletBootstrap::DumpReplayStateToLog(const ReplayState& state) {
 
 Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   auto flushed_op_id = VERIFY_RESULT(tablet_->MaxPersistentOpId());
+  if (FLAGS_force_recover_flushed_frontier) {
+    LOG_WITH_PREFIX(WARNING)
+        << "--force_recover_flushed_frontier specified, ignoring existing flushed frontiers from "
+        << "RocksDB metadata (will replay all log records): " << flushed_op_id.ToString();
+    flushed_op_id = DocDbOpIds();
+  }
 
   consensus::OpId regular_op_id;
   regular_op_id.set_term(flushed_op_id.regular.term);
@@ -737,9 +766,16 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   ReplayState state(regular_op_id, intents_op_id);
   state.max_committed_hybrid_time = VERIFY_RESULT(tablet_->MaxPersistentHybridTime());
 
-  LOG_WITH_PREFIX(INFO) << "Max persistent index in RocksDB's SSTables before bootstrap: "
-                        << state.regular_stored_op_id.ShortDebugString() << "/"
-                        << state.intents_stored_op_id.ShortDebugString();
+  if (FLAGS_force_recover_flushed_frontier) {
+    LOG_WITH_PREFIX(WARNING)
+        << "--force_recover_flushed_frontier specified, ignoring max committed hybrid time from  "
+        << "RocksDB metadata (will replay all log records): " << state.max_committed_hybrid_time;
+    state.max_committed_hybrid_time = HybridTime::kMin;
+  } else {
+    LOG_WITH_PREFIX(INFO) << "Max persistent index in RocksDB's SSTables before bootstrap: "
+                          << state.regular_stored_op_id.ShortDebugString() << "/"
+                          << state.intents_stored_op_id.ShortDebugString();
+  }
 
   log::SegmentSequence segments;
   RETURN_NOT_OK(log_reader_->GetSegmentsSnapshot(&segments));

@@ -291,6 +291,10 @@ CHECKED_STATUS EmitRocksDbMetricsAsPrometheus(
 
 } // namespace
 
+string DocDbOpIds::ToString() const {
+  return Format("{ regular: $0 intents: $1 }", regular, intents);
+}
+
 Tablet::Tablet(
     const scoped_refptr<TabletMetadata>& metadata,
     const std::shared_future<client::YBClientPtr> &client_future,

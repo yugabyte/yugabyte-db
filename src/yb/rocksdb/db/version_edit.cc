@@ -32,6 +32,13 @@
 #include "yb/util/logging.h"
 #include "yb/util/slice.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/flag_tags.h"
+
+DEFINE_bool(use_per_file_metadata_for_flushed_frontier, false,
+            "Allows taking per-file metadata in version edits into account when computing the "
+            "flushed frontier.");
+TAG_FLAG(use_per_file_metadata_for_flushed_frontier, hidden);
+TAG_FLAG(use_per_file_metadata_for_flushed_frontier, advanced);
 
 namespace rocksdb {
 
@@ -312,7 +319,11 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
     // Use the relevant fields in the "largest" frontier to update the "flushed" frontier for this
     // version edit. In practice this will only look at OpId and will discard hybrid time and
     // history cutoff (which probably won't be there anyway) coming from the boundary values.
-    if (meta.largest.user_frontier) {
+    //
+    // This is enabled only if --use_per_file_metadata_for_flushed_frontier is specified, until we
+    // know that we don't have any clusters with wrong per-file flushed frontier metadata in version
+    // edits, such as that restored from old backups from unrelated clusters.
+    if (FLAGS_use_per_file_metadata_for_flushed_frontier && meta.largest.user_frontier) {
       if (!flushed_frontier_) {
         LOG(DFATAL) << "Flushed frontier not present but a file's largest user frontier present: "
                     << meta.largest.user_frontier->ToString()
