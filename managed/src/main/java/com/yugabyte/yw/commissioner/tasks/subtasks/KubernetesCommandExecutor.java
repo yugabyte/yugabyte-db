@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
@@ -52,7 +53,8 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     HELM_DELETE,
     VOLUME_DELETE,
     NAMESPACE_DELETE,
-    POD_INFO;
+    POD_INFO,
+    INIT_YSQL;
 
     public String getSubTaskGroupName() {
       switch (this) {
@@ -76,6 +78,8 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
           return UserTaskDetails.SubTaskGroupType.KubernetesNamespaceDelete.name(); 
         case POD_INFO:
           return UserTaskDetails.SubTaskGroupType.KubernetesPodInfo.name();
+        case INIT_YSQL:
+          return UserTaskDetails.SubTaskGroupType.KubernetesInitYSQL.name();
       }
       return null;
     }
@@ -94,6 +98,9 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
 
   // Added constant to compute CPU burst limit
   static final double burstVal = 1.2;
+
+  @VisibleForTesting
+  static final String YSQL_PORT = "5433";
 
   @Override
   public void initialize(ITaskParams params) {
@@ -165,6 +172,10 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         break; 
       case POD_INFO:
         processNodeInfo();
+        break;
+      case INIT_YSQL:
+        kubernetesManager.initYSQL(taskParams().providerUUID, taskParams().nodePrefix,
+                                   Universe.get(taskParams().universeUUID).getMasterAddresses());
         break;
     }
     if (response != null) {
@@ -450,6 +461,10 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     }
     if (placementUuid != null && tserverOverrides.get("placement_uuid") == null) {
       tserverOverrides.put("placement_uuid", placementUuid.toString());
+    }
+    if (userIntent.enableYSQL) {
+      tserverOverrides.put("start_pgsql_proxy", "true");
+      tserverOverrides.put("pgsql_proxy_bind_address", String.format("$(POD_IP):%s", YSQL_PORT));
     }
     if (!tserverOverrides.isEmpty()) {
       gflagOverrides.put("tserver", tserverOverrides);

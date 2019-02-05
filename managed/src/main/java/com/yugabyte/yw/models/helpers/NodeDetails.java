@@ -92,6 +92,10 @@ public class NodeDetails {
   public int yqlServerHttpPort = 12000;
   public int yqlServerRpcPort = 9042;
 
+  // True if this node is a YSQL server, along with port info.
+  public boolean isYsqlServer = true;
+  public int ysqlServerRpcPort = 5433;
+
   @Override
   public NodeDetails clone() {
     NodeDetails clone = new NodeDetails();
@@ -99,6 +103,7 @@ public class NodeDetails {
     clone.isTserver = this.isTserver;
     clone.isRedisServer = this.isRedisServer;
     clone.isYqlServer = this.isYqlServer;
+    clone.isYsqlServer = this.isYsqlServer;
     clone.state = this.state;
     clone.azUuid = this.azUuid;
     clone.cloudInfo = this.cloudInfo.clone();

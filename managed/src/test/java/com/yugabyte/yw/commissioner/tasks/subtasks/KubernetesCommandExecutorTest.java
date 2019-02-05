@@ -95,6 +95,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.tserverGFlags = new HashMap<>();
     defaultUserIntent.universeName = "demo-universe";
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
+    defaultUserIntent.enableYSQL = true;
     Universe u = Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
     hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
@@ -194,6 +195,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     tserverOverrides.put("placement_zone", defaultAZ.code);
     // tserverOverrides.put("placement_uuid", defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     tserverOverrides.put("placement_uuid", hackPlacementUUID.toString());
+    tserverOverrides.put("start_pgsql_proxy", "true");
+    tserverOverrides.put("pgsql_proxy_bind_address", String.format("$(POD_IP):%s", KubernetesCommandExecutor.YSQL_PORT));
     gflagOverrides.put("tserver", tserverOverrides);
     // Put all the flags together.
     expectedOverrides.put("gflags", gflagOverrides);
@@ -376,6 +379,16 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     kubernetesCommandExecutor.run();
     verify(kubernetesManager, times(1))
         .deleteStorage(defaultProvider.uuid, defaultUniverse.getUniverseDetails().nodePrefix);
+  }
+
+  @Test
+  public void testInitYSQL() {
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+      createExecutor(KubernetesCommandExecutor.CommandType.INIT_YSQL);
+    kubernetesCommandExecutor.run();
+    verify(kubernetesManager, times(1))
+      .initYSQL(defaultProvider.uuid, defaultUniverse.getUniverseDetails().nodePrefix,
+                defaultUniverse.getMasterAddresses());
   }
 
   @Test

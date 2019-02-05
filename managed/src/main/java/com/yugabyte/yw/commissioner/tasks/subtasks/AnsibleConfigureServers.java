@@ -21,6 +21,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     // Optional params
     public boolean isMasterInShellMode = false;
     public boolean isMaster = false;
+    public boolean enableYSQL = false;
     public Map<String, String> gflags = new HashMap<>();
     public boolean updateMasterAddrsOnly = false;
   }
