@@ -143,6 +143,22 @@ class UniverseForm extends Component {
     return null;
   }
 
+  getYSQLstate = () => {
+    const {formValues, universe} = this.props;
+
+    if (isNonEmptyObject(formValues['primary'])) {
+      return formValues['primary'].enableYSQL;
+    }
+
+    const {currentUniverse: {data: {universeDetails}}} = universe;
+    if (isNonEmptyObject(universeDetails)) {
+      const primaryCluster = getPrimaryCluster(universeDetails.clusters);
+      return primaryCluster.userIntent.enableYSQL;
+    }
+    // We shouldn't get here!!!
+    return null;
+  }
+
   getFormPayload = () => {
     const {formValues, universe, type} = this.props;
 
@@ -164,6 +180,7 @@ class UniverseForm extends Component {
         provider: formValues[clusterType].provider,
         assignPublicIP: formValues[clusterType].assignPublicIP,
         useTimeSync: formValues[clusterType].useTimeSync,
+        enableYSQL: self.getYSQLstate(),
         providerType: self.getCurrentProvider(formValues[clusterType].provider).code,
         instanceType: formValues[clusterType].instanceType,
         numNodes: formValues[clusterType].numNodes,
@@ -383,7 +400,7 @@ class PrimaryClusterFields extends Component {
       <Fields names={['primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList', 'primary.replicationFactor',
         'primary.numNodes', 'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.ybSoftwareVersion',
         'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType',
-        'primary.assignPublicIP', 'primary.useTimeSync', 'primary.storageClass']} component={ClusterFields} {...this.props} clusterType={"primary"} />
+        'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.storageClass']} component={ClusterFields} {...this.props} clusterType={"primary"} />
     );
   }
 }
@@ -394,7 +411,7 @@ class ReadOnlyClusterFields extends Component {
       <Fields names={['primary.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
         'async.numNodes', 'async.instanceType', 'async.ybSoftwareVersion', 'async.diskIops',
         'async.numVolumes','async.volumeSize',
-        'async.ebsType', 'async.assignPublicIP', 'async.useTimeSync', 'async.storageClass']}
+        'async.ebsType', 'async.assignPublicIP', 'async.useTimeSync', 'async.enableYSQL', 'async.storageClass']}
               component={ClusterFields} {...this.props} clusterType={"async"}/>
     );
   }

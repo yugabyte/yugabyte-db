@@ -172,4 +172,14 @@ public class KubernetesManagerTest extends FakeDBApplication {
         "yb-tserver-service", "--namespace", "demo-universe", "-o",
         "jsonpath={.spec.clusterIP}|{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}"), command.getValue());
   }
+
+  @Test
+  public void initYSQL() {
+    String masterAddresses = "yb-master-0,yb-master-1,yb-master-2";
+    kubernetesManager.initYSQL(defaultProvider.uuid, "demo-universe", masterAddresses);
+    Mockito.verify(shellProcessHandler, times(1))
+      .run(command.capture(), (Map<String, String>) config.capture());
+    assertEquals(ImmutableList.of("kubectl", "--namespace", "demo-universe", "exec", "yb-tserver-0", "--", "bash", "-c",
+      String.format("YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=%s %s/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres", masterAddresses, kubernetesManager.POSTGRES_BIN_PATH)), command.getValue());
+  }
 }

@@ -283,6 +283,12 @@ public class NodeManagerTest extends FakeDBApplication {
 
         if (configureParams.type == Everything) {
           expectedCommand.add("--extra_gflags");
+          if (configureParams.enableYSQL) {
+            gflags.put("start_pgsql_proxy", "true");
+            gflags.put("pgsql_proxy_bind_address", String.format("%s:%s", configureParams.nodeName,
+              Universe.get(configureParams.universeUUID)
+                .getNode(configureParams.nodeName).ysqlServerRpcPort));
+          }
           expectedCommand.add(Json.stringify(Json.toJson(gflags)));
         } else if (configureParams.type == GFlags) {
           if (!configureParams.gflags.isEmpty()) {
@@ -316,6 +322,11 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add(tagsParams.deleteTags);            
           }
         }
+        break;
+      case InitYSQL:
+        InstanceActions.Params initYSQLParams = (InstanceActions.Params)params;
+        expectedCommand.add("--master_addresses");
+        expectedCommand.add(Universe.get(initYSQLParams.universeUUID).getMasterAddresses());
         break;
     }
     if (params.deviceInfo != null) {
@@ -870,6 +881,25 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEnableYSQLNodeCommand() {
+    for (TestData t : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+        ApiUtils.mockUniverseUpdater(t.cloudType)));
+      params.nodeName = t.node.getNodeName();
+      params.type = Everything;
+      params.ybSoftwareVersion = "0.0.1";
+      params.enableYSQL = true;
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand,
+        t.region.provider.getConfig());
+    }
+  }
+
+
+  @Test
   public void testDestroyNodeCommandWithInvalidParam() {
     for (TestData t : testData) {
       try {
@@ -1032,6 +1062,39 @@ public class NodeManagerTest extends FakeDBApplication {
                 re.getMessage(), allOf(notNullValue(), is("Invalid instance tags")));
           }
         }
+    }
+  }
+
+  @Test
+  public void testInitYSQL() {
+    for (TestData t : testData) {
+      List<String> expectedCommand = t.baseCommand;
+      InstanceActions.Params params = new InstanceActions.Params();
+      UUID univUUID = createUniverse().universeUUID;
+      Universe universe = Universe.saveDetails(univUUID,ApiUtils.mockUniverseUpdater(t.cloudType));
+      buildValidParams(t, params, universe);
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.InitYSQL, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.InitYSQL, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand,
+        t.region.provider.getConfig());
+    }
+  }
+
+  @Test
+  public void testNegativeInitYSQL() {
+    for (TestData t : testData) {
+      List<String> expectedCommand = t.baseCommand;
+      InstanceActions.Params params = new InstanceActions.Params();
+      UUID univUUID = createUniverse().universeUUID;
+      Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdaterWith1TServer0Masters());
+      buildValidParams(t, params, universe);
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.InitYSQL, params, t));
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.InitYSQL, params);
+      } catch (RuntimeException re) {
+        assertThat(
+          re.getMessage(), is("Can't run initdb script: No masters found"));
+      }
     }
   }
 }

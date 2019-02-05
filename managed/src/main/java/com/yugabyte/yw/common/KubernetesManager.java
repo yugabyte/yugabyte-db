@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.models.Provider;
@@ -24,6 +25,9 @@ public class KubernetesManager {
   play.Configuration appConfig;
 
   private static String SERVICE_INFO_JSONPATH="{.spec.clusterIP}|{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}";
+
+  @VisibleForTesting
+  static String POSTGRES_BIN_PATH = "/home/yugabyte/tserver/postgres/bin";
 
   public ShellProcessHandler.ShellResponse createNamespace(UUID providerUUID, String universePrefix) {
     List<String> commandList = ImmutableList.of("kubectl",  "create",
@@ -109,6 +113,13 @@ public class KubernetesManager {
   public ShellProcessHandler.ShellResponse updateNumNodes(UUID providerUUID, String universePrefix, int numNodes) {
     List<String> commandList = ImmutableList.of("kubectl",  "--namespace", universePrefix, "scale", "statefulset",
         "yb-tserver", "--replicas=" + numNodes);
+    return execCommand(providerUUID, commandList);
+  }
+
+  public ShellProcessHandler.ShellResponse initYSQL(UUID providerUUID, String universePrefix, String masterAddresses) {
+    String initDBcommand = String.format("YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=%s %s/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres", masterAddresses, POSTGRES_BIN_PATH);
+    List<String> commandList = ImmutableList.of("kubectl",  "--namespace", universePrefix, "exec", "yb-tserver-0",
+      "--", "bash", "-c", initDBcommand);
     return execCommand(providerUUID, commandList);
   }
 

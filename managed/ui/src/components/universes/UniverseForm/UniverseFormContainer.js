@@ -136,9 +136,10 @@ const formFieldNames =
   ['formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
     'primary.numNodes', 'primary.instanceType', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
     'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes',
-    'primary.volumeSize', 'primary.ebsType', 'primary.assignPublicIP', 'primary.useTimeSync', 'primary.mountPoints',
+    'primary.volumeSize', 'primary.ebsType', 'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.mountPoints',
     'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.numNodes',
-    'async.instanceType', 'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP', 'async.useTimeSync', 'async.mountPoints',
+    'async.instanceType', 'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP', 'async.useTimeSync',
+    'async.enableYSQL', 'async.mountPoints',
     'masterGFlags', 'tserverGFlags', 'instanceTags', 'asyncClusters'];
 
 
@@ -151,6 +152,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].universeName = currentUniverse.data.name;
     data.formType = formType;
     data[clusterType].assignPublicIP = userIntent.assignPublicIP;
+    data[clusterType].enableYSQL = userIntent.enableYSQL;
     data[clusterType].provider = userIntent.provider;
     data[clusterType].numNodes = userIntent.numNodes;
     data[clusterType].replicationFactor = userIntent.replicationFactor;
@@ -192,14 +194,16 @@ function mapStateToProps(state, ownProps) {
       "instanceType": "c4.2xlarge",
       "accessKeyCode": "yugabyte-default",
       "assignPublicIP":  true,
-      "useTimeSync": false
+      "useTimeSync": false,
+      "enableYSQL": false
     },
     "async": {
       "universeName": "",
       "numNodes": 3,
       "isMultiAZ": true,
       "assignPublicIP":  true,
-      "useTimeSync": false
+      "useTimeSync": false,
+      "enableYSQL": false
     }
   };
 
@@ -224,11 +228,11 @@ function mapStateToProps(state, ownProps) {
       'formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
       'primary.numNodes', 'primary.instanceType', 'primary.replicationFactor', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
       'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType',
-      'primary.diskIops', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync', 'primary.storageClass',
+      'primary.diskIops', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.storageClass',
       'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
       'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.ybSoftwareVersion', 'async.accessKeyCode',
-      'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.ebsType', 'async.assignPublicIP', 'async.mountPoints',
-      'async.useTimeSync', 'async.storageClass', 'masterGFlags', 'tserverGFlags', 'instanceTags' )
+      'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.ebsType', 'async.assignPublicIP',
+      'async.enableYSQL','async.mountPoints', 'async.useTimeSync', 'async.storageClass', 'masterGFlags', 'tserverGFlags', 'instanceTags' )
   };
 }
 
