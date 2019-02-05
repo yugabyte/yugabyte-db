@@ -183,6 +183,8 @@ class WriteOperation;
 struct DocDbOpIds {
   OpId regular;
   OpId intents;
+
+  std::string ToString() const;
 };
 
 typedef std::function<Status(const TableInfo&)> AddTableListener;
@@ -516,6 +518,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS TEST_SwitchMemtable();
 
+  // Initialize RocksDB's max persistent op id and hybrid time to that of the operation state.
+  // Necessary for cases like truncate or restore snapshot when RocksDB is reset.
+  CHECKED_STATUS ModifyFlushedFrontier(
+      const docdb::ConsensusFrontier& value,
+      rocksdb::FrontierModificationMode mode);
+
  protected:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -547,12 +555,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Pause any new read/write operations and wait for all pending read/write operations to finish.
   util::ScopedPendingOperationPause PauseReadWriteOperations();
-
-  // Initialize RocksDB's max persistent op id and hybrid time to that of the operation state.
-  // Necessary for cases like truncate or restore snapshot when RocksDB is reset.
-  CHECKED_STATUS ModifyFlushedFrontier(
-      const docdb::ConsensusFrontier& value,
-      rocksdb::FrontierModificationMode mode);
 
   std::string LogPrefix() const;
 
