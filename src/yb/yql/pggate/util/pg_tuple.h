@@ -34,18 +34,13 @@ class PgTuple {
   // Write null value.
   void WriteNull(int index, const PgWireDataHeader& header);
 
-  // Write data in Postgres format.
-  void Write(int index, const PgWireDataHeader& header, bool value);
-  void Write(int index, const PgWireDataHeader& header, int8_t value);
-  void Write(int index, const PgWireDataHeader& header, int16_t value);
-  void Write(int index, const PgWireDataHeader& header, int32_t value);
-  void Write(int index, const PgWireDataHeader& header, int64_t value);
-  void Write(int index, const PgWireDataHeader& header, float value);
-  void Write(int index, const PgWireDataHeader& header, double value);
-  void Write(int index, const PgWireDataHeader& header, const char *value, int64_t bytes);
-  void Write(uint8_t **pgbuf, const PgWireDataHeader& header, const uint8_t *value, int64_t bytes);
-  void Write(int index, const PgWireDataHeader& header, const uint8_t *value, int64_t bytes);
+  // Write datum to tuple slot.
+  void WriteDatum(int index, uint64_t datum);
 
+  // Write data in Postgres format.
+  void Write(uint8_t **pgbuf, const PgWireDataHeader& header, const uint8_t *value, int64_t bytes);
+
+  // Get returning-space for system columns. Tuple writer will save values in this struct.
   PgSysColumns *syscols() {
     return syscols_;
   }

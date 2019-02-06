@@ -35,18 +35,18 @@ TEST_F(PggateTestDelete, TestDelete) {
                                        kDefaultDatabaseOid, tab_oid,
                                        false /* is_shared_table */, true /* if_not_exist */,
                                        false /* add_primary_key */, &pg_stmt));
-  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "hash_key", ++col_count,
-                                             DataType::INT64, true, true));
-  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "id", ++col_count,
-                                             DataType::INT32, false, true));
-  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "dependent_count", ++col_count,
-                                             DataType::INT16, false, false));
-  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "project_count", ++col_count,
-                                             DataType::INT32, false, false));
-  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "salary", ++col_count,
-                                             DataType::FLOAT, false, false));
-  CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(pg_stmt, "job", ++col_count,
-                                             DataType::STRING, false, false));
+  CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "hash_key", ++col_count,
+                                               DataType::INT64, true, true));
+  CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "id", ++col_count,
+                                               DataType::INT32, false, true));
+  CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "dependent_count", ++col_count,
+                                               DataType::INT16, false, false));
+  CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "project_count", ++col_count,
+                                               DataType::INT32, false, false));
+  CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "salary", ++col_count,
+                                               DataType::FLOAT, false, false));
+  CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "job", ++col_count,
+                                               DataType::STRING, false, false));
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
   pg_stmt = nullptr;
@@ -59,18 +59,18 @@ TEST_F(PggateTestDelete, TestDelete) {
   // TODO(neil) We can also allocate expression with bind.
   int seed = 1;
   YBCPgExpr expr_hash;
-  CHECK_YBC_STATUS(YBCPgNewConstantInt8(pg_stmt, seed, false, &expr_hash));
+  CHECK_YBC_STATUS(YBCTestNewConstantInt8(pg_stmt, seed, false, &expr_hash));
   YBCPgExpr expr_id;
-  CHECK_YBC_STATUS(YBCPgNewConstantInt4(pg_stmt, seed, false, &expr_id));
+  CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, seed, false, &expr_id));
   YBCPgExpr expr_depcnt;
-  CHECK_YBC_STATUS(YBCPgNewConstantInt2(pg_stmt, seed, false, &expr_depcnt));
+  CHECK_YBC_STATUS(YBCTestNewConstantInt2(pg_stmt, seed, false, &expr_depcnt));
   YBCPgExpr expr_projcnt;
-  CHECK_YBC_STATUS(YBCPgNewConstantInt4(pg_stmt, 100 + seed, false, &expr_projcnt));
+  CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, 100 + seed, false, &expr_projcnt));
   YBCPgExpr expr_salary;
-  CHECK_YBC_STATUS(YBCPgNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
+  CHECK_YBC_STATUS(YBCTestNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
   YBCPgExpr expr_job;
   string job = strings::Substitute("Job_title_$0", seed);
-  CHECK_YBC_STATUS(YBCPgNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
+  CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
   // Set column value to be inserted.
   int attr_num = 0;
@@ -110,13 +110,14 @@ TEST_F(PggateTestDelete, TestDelete) {
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
   seed = 1;
-  CHECK_YBC_STATUS(YBCPgNewConstantInt8(pg_stmt, seed, false, &expr_hash));
-  CHECK_YBC_STATUS(YBCPgNewConstantInt4(pg_stmt, seed, false, &expr_id));
-  CHECK_YBC_STATUS(YBCPgNewConstantInt2(pg_stmt, 77 + seed, false, &expr_depcnt));
-  CHECK_YBC_STATUS(YBCPgNewConstantInt4(pg_stmt, 77 + 100 + seed, false, &expr_projcnt));
-  CHECK_YBC_STATUS(YBCPgNewConstantFloat4(pg_stmt, 77 + seed + 1.0*seed/10.0, false, &expr_salary));
+  CHECK_YBC_STATUS(YBCTestNewConstantInt8(pg_stmt, seed, false, &expr_hash));
+  CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, seed, false, &expr_id));
+  CHECK_YBC_STATUS(YBCTestNewConstantInt2(pg_stmt, 77 + seed, false, &expr_depcnt));
+  CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, 77 + 100 + seed, false, &expr_projcnt));
+  CHECK_YBC_STATUS(YBCTestNewConstantFloat4(pg_stmt, 77 + seed + 1.0*seed/10.0, false,
+                                            &expr_salary));
   job = strings::Substitute("Job_title_$0", seed + 77);
-  CHECK_YBC_STATUS(YBCPgNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
+  CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
   attr_num = 0;
   // Specify the rows we want to update by binding primary columns.
@@ -159,17 +160,17 @@ TEST_F(PggateTestDelete, TestDelete) {
 
   // Specify the selected expressions.
   YBCPgExpr colref;
-  YBCPgNewColumnRef(pg_stmt, 1, &colref);
+  YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCPgNewColumnRef(pg_stmt, 2, &colref);
+  YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref);
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCPgNewColumnRef(pg_stmt, 3, &colref);
+  YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref);
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCPgNewColumnRef(pg_stmt, 4, &colref);
+  YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref);
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCPgNewColumnRef(pg_stmt, 5, &colref);
+  YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref);
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCPgNewColumnRef(pg_stmt, 6, &colref);
+  YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref);
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Execute select statement.

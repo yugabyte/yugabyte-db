@@ -27,7 +27,7 @@ extern "C" {
 
 // This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
 // functions in this API are called.
-void YBCInitPgGate();
+void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count);
 void YBCDestroyPgGate();
 
 //--------------------------------------------------------------------------------------------------
@@ -115,7 +115,7 @@ YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
-                                    int attr_type, bool is_hash, bool is_range);
+                                    const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range);
 
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
@@ -163,7 +163,7 @@ YBCStatus YBCPgNewCreateIndex(YBCPgSession pg_session,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
-                                    int attr_type, bool is_hash, bool is_range);
+                                    const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range);
 
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle);
 
@@ -257,27 +257,12 @@ YBCPgTxnManager YBCGetPgTxnManager();
 // Expressions.
 
 // Column references.
-YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, const YBCPgTypeEntity *type_entity,
+                            const YBCPgTypeAttrs *type_attrs, YBCPgExpr *expr_handle);
 
 // Constant expressions.
-YBCStatus YBCPgNewConstantBool(YBCPgStatement stmt, bool value, bool is_null,
-                               YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantInt1(YBCPgStatement stmt, int8_t value, bool is_null,
-                               YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantInt2(YBCPgStatement stmt, int16_t value, bool is_null,
-                               YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantInt4(YBCPgStatement stmt, int32_t value, bool is_null,
-                               YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantInt8(YBCPgStatement stmt, int64_t value, bool is_null,
-                               YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantFloat4(YBCPgStatement stmt, float value, bool is_null,
-                                 YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantFloat8(YBCPgStatement stmt, double value, bool is_null,
-                                 YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantText(YBCPgStatement stmt, const char *value, bool is_null,
-                               YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantBinary(YBCPgStatement stmt, const void *value, int64_t bytes,
-                                 bool is_null, YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+                           uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
 
 // The following update functions only work for constants.
 // Overwriting the constant expression with new value.
@@ -290,7 +275,9 @@ YBCStatus YBCPgUpdateConstText(YBCPgExpr expr, const char *value, bool is_null);
 YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value, int64_t bytes, bool is_null);
 
 // Expressions with operators "=", "+", "between", "in", ...
-YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname, YBCPgExpr *op_handle);
+YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname,
+                           const YBCPgTypeEntity *type_entity,
+                           YBCPgExpr *op_handle);
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
 
 bool YBCIsInitDbModeEnvVarSet();

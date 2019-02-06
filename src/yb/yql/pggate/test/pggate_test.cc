@@ -93,7 +93,11 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
 
   // Init PgGate API.
   CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc, PggateTestCStringToTextWithLen));
-  YBCInitPgGate();
+
+  const YBCPgTypeEntity *type_table = nullptr;
+  int count = 0;
+  YBCTestGetTypeTable(&type_table, &count);
+  YBCInitPgGate(type_table, count);
 
   // Setup session.
   CHECK_YBC_STATUS(YBCPgCreateSession(nullptr, "", &pg_session_));

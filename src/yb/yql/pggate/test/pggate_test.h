@@ -27,9 +27,14 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
+#include "postgres/src/interfaces/ecpg/ecpglib/pg_type.h"
+
 namespace yb {
 namespace pggate {
 
+//--------------------------------------------------------------------------------------------------
+// Test base class.
+//--------------------------------------------------------------------------------------------------
 #define CHECK_YBC_STATUS(s) CheckYBCStatus((s), __FILE__, __LINE__)
 
 class PggateTest : public YBTest {
@@ -63,7 +68,6 @@ class PggateTest : public YBTest {
   void ConnectDB(const string& db_name = kDefaultDatabase);
 
  protected:
-
   void CommitTransaction();
 
   //------------------------------------------------------------------------------------------------
@@ -73,6 +77,45 @@ class PggateTest : public YBTest {
   // Session.
   YBCPgSession pg_session_;
 };
+
+//--------------------------------------------------------------------------------------------------
+// Test type table and other variables.
+//--------------------------------------------------------------------------------------------------
+void YBCTestGetTypeTable(const YBCPgTypeEntity **type_table, int *count);
+
+//--------------------------------------------------------------------------------------------------
+// Test API
+//--------------------------------------------------------------------------------------------------
+typedef uint64_t Datum;
+
+// Allocation.
+void *PggateTestAlloc(size_t bytes);
+
+// Add column.
+YBCStatus YBCTestCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
+                                      DataType yb_type, bool is_hash, bool is_range);
+
+// Column ref expression.
+YBCStatus YBCTestNewColumnRef(YBCPgStatement stmt, int attr_num, DataType yb_type,
+                              YBCPgExpr *expr_handle);
+
+// Constant expressions.
+YBCStatus YBCTestNewConstantBool(YBCPgStatement stmt, bool value, bool is_null,
+                                 YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantInt1(YBCPgStatement stmt, int8_t value, bool is_null,
+                                 YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantInt2(YBCPgStatement stmt, int16_t value, bool is_null,
+                                 YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantInt4(YBCPgStatement stmt, int32_t value, bool is_null,
+                                 YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantInt8(YBCPgStatement stmt, int64_t value, bool is_null,
+                                 YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantFloat4(YBCPgStatement stmt, float value, bool is_null,
+                                   YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantFloat8(YBCPgStatement stmt, double value, bool is_null,
+                                   YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantText(YBCPgStatement stmt, const char *value, bool is_null,
+                                 YBCPgExpr *expr_handle);
 
 }  // namespace pggate
 }  // namespace yb

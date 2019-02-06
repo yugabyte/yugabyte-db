@@ -275,10 +275,8 @@ Status PgDml::WritePgTuple(PgTuple *pg_tuple) {
     }
     const auto *col_ref = static_cast<const PgColumnRef *>(target);
     PgWireDataHeader header = PgDocData::ReadDataHeader(&cursor_);
-    CHECK(target->TranslateData) << "Data format translation is not provided";
-    target->TranslateData(&cursor_, header, pg_tuple, col_ref->attr_num() - 1);
+    target->TranslateData(&cursor_, header, col_ref->attr_num() - 1, pg_tuple);
   }
-
   return Status::OK();
 }
 

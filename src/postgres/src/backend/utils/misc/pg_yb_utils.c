@@ -39,6 +39,7 @@
 #include "commands/dbcommands.h"
 
 #include "pg_yb_utils.h"
+#include "catalog/ybctype.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "common/pg_yb_common.h"
@@ -206,7 +207,10 @@ YBInitPostgresBackend(
 	 */
 	if (YBIsEnabledInPostgresEnvVar())
 	{
-		YBCInitPgGate();
+		const YBCPgTypeEntity *type_table;
+		int count;
+		YBCGetTypeTable(&type_table, &count);
+		YBCInitPgGate(type_table, count);
 
 		if (ybc_pg_session != NULL) {
 			YBC_LOG_FATAL("Double initialization of ybc_pg_session");

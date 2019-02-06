@@ -119,7 +119,7 @@
     </testArgLine>
 
     <yb.collect.tests.only>false</yb.collect.tests.only>
-    <yb.forked.test.process.timeout.sec>1200</yb.forked.test.process.timeout.sec>
+    <yb.forked.test.process.timeout.sec>3600</yb.forked.test.process.timeout.sec>
   </properties>
 
   <modules>

@@ -295,6 +295,8 @@ YbScanState ybcBeginScan(Relation rel, List *target_attrs, List *yb_conds)
 		TargetEntry *target = (TargetEntry *) lfirst(lc);
 
 		/* Regular (non-system) attribute. */
+		Oid attr_typid = InvalidOid;
+		int32 attr_typmod = 0;
 		if (target->resno > 0)
 		{
 			Form_pg_attribute attr;
@@ -304,10 +306,13 @@ YbScanState ybcBeginScan(Relation rel, List *target_attrs, List *yb_conds)
 			{
 				continue;
 			}
+			attr_typid = attr->atttypid;
+			attr_typmod = attr->atttypmod;
 		}
-		YBCPgExpr   expr    = YBCNewColumnRef(ybc_state->handle, target->resno);
-		HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
-		                                                 expr),
+
+		YBCPgTypeAttrs type_attrs = { attr_typmod };
+		YBCPgExpr expr = YBCNewColumnRef(ybc_state->handle, target->resno, attr_typid, &type_attrs);
+		HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle, expr),
 		                            ybc_state->handle,
 		                            ybc_state->stmt_owner);
 	}
