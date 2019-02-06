@@ -3,16 +3,8 @@
 import com.google.inject.AbstractModule;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.common.AccessManager;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.HealthManager;
-import com.yugabyte.yw.common.KubernetesManager;
-import com.yugabyte.yw.common.NetworkManager;
-import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ReleaseManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.SwamperHelper;
-import com.yugabyte.yw.common.TemplateManager;
+import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -31,7 +23,6 @@ public class Module extends AbstractModule {
     bind(SwamperHelper.class).asEagerSingleton();
     // Set LocalClientService as the implementation for YBClientService
     bind(YBClientService.class).to(LocalYBClientService.class);
-
     bind(HealthChecker.class).asEagerSingleton();
     bind(HealthManager.class).asEagerSingleton();
     bind(NodeManager.class).asEagerSingleton();
@@ -43,5 +34,6 @@ public class Module extends AbstractModule {
     bind(TemplateManager.class).asEagerSingleton();
     bind(AWSInitializer.class).asEagerSingleton();
     bind(KubernetesManager.class).asEagerSingleton();
+    bind(CallHome.class).asEagerSingleton();
   }
 }

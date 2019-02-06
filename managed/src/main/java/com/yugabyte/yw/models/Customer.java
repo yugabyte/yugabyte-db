@@ -85,6 +85,10 @@ public class Customer extends Model {
   @Column(columnDefinition = "TEXT", nullable = false)
   private String universeUUIDs = "";
 
+  public String getCallHomeLevel(){
+    return "LOW";
+  }
+
   public synchronized void addUniverseUUID(UUID universeUUID) {
     Set<UUID> universes = getUniverseUUIDs();
     universes.add(universeUUID);

@@ -24,7 +24,8 @@ public class ConfigHelper {
     DockerRegionMetadata,
     DockerInstanceTypeMetadata,
     SoftwareReleases,
-    SoftwareVersion;
+    SoftwareVersion,
+    YugawareMetadata;
 
     public String getConfigFile() {
       switch (this) {
@@ -60,6 +61,8 @@ public class ConfigHelper {
           return "Software Releases";
         case SoftwareVersion:
           return "Software Version";
+        case YugawareMetadata:
+          return "Yugaware Metadata";
         default:
           return null;
       }
