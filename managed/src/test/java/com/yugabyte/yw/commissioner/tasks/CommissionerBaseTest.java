@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
+import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.common.AccessManager;
@@ -47,6 +48,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
   protected KubernetesManager mockKubernetesManager;
   protected SwamperHelper mockSwamperHelper;
   protected HealthChecker mockHealthChecker;
+  protected CallHome mockCallHome;
 
   Customer defaultCustomer;
   Provider defaultProvider;
@@ -74,6 +76,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
     mockKubernetesManager = mock(KubernetesManager.class);
     mockSwamperHelper = mock(SwamperHelper.class);
     mockHealthChecker = mock(HealthChecker.class);
+    mockCallHome = mock(CallHome.class);
 
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
@@ -90,6 +93,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
         .overrides(bind(KubernetesManager.class).toInstance(mockKubernetesManager))
         .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper))
         .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
+        .overrides(bind(CallHome.class).toInstance(mockCallHome))
         .build();
   }
 

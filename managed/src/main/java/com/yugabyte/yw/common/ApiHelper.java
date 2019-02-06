@@ -31,10 +31,12 @@ public class ApiHelper {
   WSClient wsClient;
 
   public JsonNode postRequest(String url, JsonNode data)  {
-    CompletionStage<JsonNode> jsonPromise = wsClient.url(url)
-      .post(data)
-      .thenApply(WSResponse::asJson);
+    return postRequest(url, data, new HashMap<>());
+  }
 
+  public JsonNode postRequest(String url, JsonNode data, Map<String, String> headers) {
+    WSRequest request = requestWithHeaders(url, headers);
+    CompletionStage<JsonNode> jsonPromise = request.post(data).thenApply(WSResponse::asJson);
     return handleJSONPromise(jsonPromise);
   }
 
