@@ -57,7 +57,7 @@ class PggateOptions : public yb::server::ServerBaseOptions {
 // Implements support for CAPI.
 class PgApiImpl {
  public:
-  PgApiImpl();
+  PgApiImpl(const YBCPgTypeEntity *YBCDataTypeTable, int count);
   virtual ~PgApiImpl();
 
   //------------------------------------------------------------------------------------------------
@@ -88,6 +88,9 @@ class PgApiImpl {
 
   // Remove all values and expressions that were bound to the given statement.
   CHECKED_STATUS ClearBinds(PgStatement *handle);
+
+  // Search for type_entity.
+  const YBCPgTypeEntity *FindTypeEntity(int type_oid);
 
   //------------------------------------------------------------------------------------------------
   // Connect database. Switch the connected database to the given "database_name".
@@ -149,7 +152,8 @@ class PgApiImpl {
                                 PgStatement **handle);
 
   CHECKED_STATUS CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
-                                      int attr_ybtype, bool is_hash, bool is_range);
+                                      const YBCPgTypeEntity *attr_type, bool is_hash,
+                                      bool is_range);
 
   CHECKED_STATUS ExecCreateTable(PgStatement *handle);
 
@@ -191,10 +195,10 @@ class PgApiImpl {
                                 PgStatement **handle);
 
   CHECKED_STATUS CreateIndexAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
-                                      int attr_ybtype, bool is_hash, bool is_range);
+                                      const YBCPgTypeEntity *attr_type, bool is_hash,
+                                      bool is_range);
 
   CHECKED_STATUS ExecCreateIndex(PgStatement *handle);
-
 
   //------------------------------------------------------------------------------------------------
   // All DML statements
@@ -270,23 +274,15 @@ class PgApiImpl {
   // Expressions.
   //------------------------------------------------------------------------------------------------
   // Column reference.
-  CHECKED_STATUS NewColumnRef(PgStatement *handle, int attr_num, PgExpr **expr_handle);
+  CHECKED_STATUS NewColumnRef(PgStatement *handle, int attr_num, const PgTypeEntity *type_entity,
+                              const PgTypeAttrs *type_attrs, PgExpr **expr_handle);
 
-  // Constant expressions - numeric.
-  template<typename value_type>
-  CHECKED_STATUS NewConstant(PgStatement *stmt, value_type value, bool is_null,
-                             PgExpr **expr_handle) {
-    if (!stmt) {
-      // Invalid handle.
-      return STATUS(InvalidArgument, "Invalid statement handle");
-    }
-    PgExpr::SharedPtr pg_const = std::make_shared<PgConstant>(value, is_null);
-    stmt->AddExpr(pg_const);
+  // Constant expressions.
+  CHECKED_STATUS NewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+                             uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
 
-    *expr_handle = pg_const.get();
-    return Status::OK();
-  }
-
+  // TODO(neil) UpdateConstant should be merged into one.
+  // Update constant.
   template<typename value_type>
   CHECKED_STATUS UpdateConstant(PgExpr *expr, value_type value, bool is_null) {
     if (expr->opcode() != PgExpr::Opcode::PG_EXPR_CONSTANT) {
@@ -296,19 +292,13 @@ class PgApiImpl {
     down_cast<PgConstant*>(expr)->UpdateConstant(value, is_null);
     return Status::OK();
   }
-
-  // Constant expressions - text.
-  CHECKED_STATUS NewConstant(PgStatement *stmt, const char *value, bool is_null,
-                             PgExpr **expr_handle);
   CHECKED_STATUS UpdateConstant(PgExpr *expr, const char *value, bool is_null);
-
-  // Constant expressions - binary.
-  CHECKED_STATUS NewConstant(PgStatement *stmt, const void *value, int64_t bytes, bool is_null,
-                             PgExpr **expr_handle);
   CHECKED_STATUS UpdateConstant(PgExpr *expr, const void *value, int64_t bytes, bool is_null);
 
   // Operators.
-  CHECKED_STATUS NewOperator(PgStatement *stmt, const char *opname, PgExpr **op_handle);
+  CHECKED_STATUS NewOperator(PgStatement *stmt, const char *opname,
+                             const YBCPgTypeEntity *type_entity,
+                             PgExpr **op_handle);
   CHECKED_STATUS OperatorAppendArg(PgExpr *op_handle, PgExpr *arg);
 
  private:
@@ -331,6 +321,9 @@ class PgApiImpl {
 
   scoped_refptr<server::HybridClock> clock_;
   scoped_refptr<PgTxnManager> pg_txn_manager_;
+
+  // Mapping table of YugaByte and PostgreSQL datatypes.
+  std::unordered_map<int, const YBCPgTypeEntity *>type_map_;
 };
 
 }  // namespace pggate

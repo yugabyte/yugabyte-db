@@ -17,6 +17,7 @@
 #define YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
 
 #include <stddef.h>
+#include "yb/util/ybc_util.h"
 
 #ifdef __cplusplus
 
@@ -57,7 +58,8 @@ YB_DEFINE_HANDLE_TYPE(PgTableDesc);
 // Use YugaByte (YQL) datatype numeric representation for now, as provided in common.proto.
 // TODO(neil) This should be change to "PgType *" and convert Postgres's TypeName struct to our
 // class PgType or QLType.
-enum YBCPgDataType {
+typedef enum PgDataType {
+  YB_YQL_DATA_TYPE_NOT_SUPPORTED = -1,
   YB_YQL_DATA_TYPE_UNKNOWN_DATA = 999,
   YB_YQL_DATA_TYPE_NULL_VALUE_TYPE = 0,
   YB_YQL_DATA_TYPE_INT8 = 1,
@@ -89,9 +91,50 @@ enum YBCPgDataType {
   YB_YQL_DATA_TYPE_UINT16 = 101,
   YB_YQL_DATA_TYPE_UINT32 = 102,
   YB_YQL_DATA_TYPE_UINT64 = 103
-};
+} YBCPgDataType;
 
-typedef enum YBCPgDataType YBCPgDataType;
+// Datatype representation:
+// Definition of a datatype is divided into two different sections.
+// - YBCPgTypeEntity is used to keep static information of a datatype.
+// - YBCPgTypeAttrs is used to keep customizable information of a datatype.
+//
+// Example:
+//   For type CHAR(20), its associated YugaByte internal type (YB_YQL_DATA_TYPE_STRING) is
+//   static while its typemod (size 20) can be customized for each usage.
+typedef struct PgTypeAttrs {
+  // Currently, we only need typmod, but we might need more datatype information in the future.
+  // For example, array dimensions might be needed.
+  int32_t typmod;
+} YBCPgTypeAttrs;
+
+// Datatype conversion functions.
+typedef void (*YBCPgDatumToData)(uint64_t datum, void *ybdata, int64_t *bytes);
+typedef uint64_t (*YBCPgDatumFromData)(const void *ybdata, int64_t bytes,
+                                       const YBCPgTypeAttrs *type_attrs);
+typedef struct PgTypeEntity {
+  // Postgres type OID.
+  int type_oid;
+
+  // YugaByte storgate (DocDB) type.
+  YBCPgDataType yb_type;
+
+  // Allow to be used for primary key.
+  bool allow_for_primary_key;
+
+  // Converting Postgres datum to YugaByte expression.
+  YBCPgDatumToData datum_to_yb;
+
+  // Converting YugaByte values to Postgres in-memory-formatted datum.
+  YBCPgDatumFromData yb_to_datum;
+} YBCPgTypeEntity;
+
+// API to read type information.
+const YBCPgTypeEntity *YBCPgFindTypeEntity(int type_oid);
+YBCPgDataType YBCPgGetType(const YBCPgTypeEntity *type_entity);
+bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity);
+
+// PostgreSQL can represent text strings up to 1 GB minus a four-byte header.
+static const int64_t kYBCMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
 
 // Postgres object identifier (OID) defined in Postgres' postgres_ext.h
 typedef unsigned int YBCPgOid;

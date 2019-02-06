@@ -17,6 +17,7 @@
 
 #include <unordered_map>
 
+#include "yb/client/schema.h"
 #include "yb/yql/pggate/pg_dml.h"
 
 #include "postgres/src/include/pg_config_manual.h"
@@ -49,12 +50,30 @@ const std::unordered_map<string, PgExpr::Opcode> kOperatorNames = {
   { "min", PgExpr::Opcode::PG_EXPR_MIN },
 };
 
-PgExpr::PgExpr(PgExpr::Opcode opcode, InternalType internal_type)
-    : opcode_(opcode), internal_type_(internal_type) {
+PgExpr::PgExpr(Opcode opcode, const YBCPgTypeEntity *type_entity)
+    : opcode_(opcode), type_entity_(type_entity) , type_attrs_({0}) {
+  DCHECK(type_entity_) << "Datatype of result must be specified for expression";
+  DCHECK(type_entity_->yb_type != YB_YQL_DATA_TYPE_NOT_SUPPORTED &&
+         type_entity_->yb_type != YB_YQL_DATA_TYPE_UNKNOWN_DATA &&
+         type_entity_->yb_type != YB_YQL_DATA_TYPE_NULL_VALUE_TYPE)
+    << "Invalid datatype for YSQL expressions";
+  DCHECK(type_entity_->datum_to_yb) << "Conversion from datum to YB format not defined";
+  DCHECK(type_entity_->yb_to_datum) << "Conversion from YB to datum format not defined";
 }
 
-PgExpr::PgExpr(const char *opname, InternalType internal_type)
-    : PgExpr(NameToOpcode(opname), internal_type) {
+PgExpr::PgExpr(Opcode opcode, const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs)
+    : opcode_(opcode), type_entity_(type_entity), type_attrs_(*type_attrs) {
+  DCHECK(type_entity_) << "Datatype of result must be specified for expression";
+  DCHECK(type_entity_->yb_type != YB_YQL_DATA_TYPE_NOT_SUPPORTED &&
+         type_entity_->yb_type != YB_YQL_DATA_TYPE_UNKNOWN_DATA &&
+         type_entity_->yb_type != YB_YQL_DATA_TYPE_NULL_VALUE_TYPE)
+    << "Invalid datatype for YSQL expressions";
+  DCHECK(type_entity_->datum_to_yb) << "Conversion from datum to YB format not defined";
+  DCHECK(type_entity_->yb_to_datum) << "Conversion from YB to datum format not defined";
+}
+
+PgExpr::PgExpr(const char *opname, const YBCPgTypeEntity *type_entity)
+    : PgExpr(NameToOpcode(opname), type_entity) {
 }
 
 PgExpr::~PgExpr() {
@@ -85,8 +104,9 @@ Status PgExpr::Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   return Status::OK();
 }
 
-void PgExpr::TranslateText(Slice *yb_cursor, const PgWireDataHeader& header,
-                           PgTuple *pg_tuple, int index) {
+void PgExpr::TranslateText(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                           const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                           PgTuple *pg_tuple) {
   if (header.is_null()) {
     return pg_tuple->WriteNull(index, header);
   }
@@ -95,21 +115,21 @@ void PgExpr::TranslateText(Slice *yb_cursor, const PgWireDataHeader& header,
   size_t read_size = PgDocData::ReadNumber(yb_cursor, &text_size);
   yb_cursor->remove_prefix(read_size);
 
-  pg_tuple->Write(index, header, yb_cursor->cdata(), text_size);
+  pg_tuple->WriteDatum(index, type_entity->yb_to_datum(yb_cursor->cdata(), text_size, type_attrs));
   yb_cursor->remove_prefix(text_size);
 }
 
-void PgExpr::TranslateBinary(Slice *yb_cursor, const PgWireDataHeader& header,
-                             PgTuple *pg_tuple, int index) {
+void PgExpr::TranslateBinary(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                             const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                             PgTuple *pg_tuple) {
   if (header.is_null()) {
     return pg_tuple->WriteNull(index, header);
   }
-
   int64_t data_size;
   size_t read_size = PgDocData::ReadNumber(yb_cursor, &data_size);
   yb_cursor->remove_prefix(read_size);
 
-  pg_tuple->Write(index, header, yb_cursor->data(), data_size);
+  pg_tuple->WriteDatum(index, type_entity->yb_to_datum(yb_cursor->data(), data_size, type_attrs));
   yb_cursor->remove_prefix(data_size);
 }
 
@@ -130,43 +150,51 @@ void PgExpr::TranslateSysCol(Slice *yb_cursor, const PgWireDataHeader& header, P
   yb_cursor->remove_prefix(data_size);
 }
 
-void PgExpr::TranslateCtid(Slice *yb_cursor, const PgWireDataHeader& header,
-                           PgTuple *pg_tuple, int index) {
+void PgExpr::TranslateCtid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                           const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                           PgTuple *pg_tuple) {
   TranslateSysCol<uint64_t>(yb_cursor, header, &pg_tuple->syscols()->ctid);
 }
 
-void PgExpr::TranslateOid(Slice *yb_cursor, const PgWireDataHeader& header,
-                          PgTuple *pg_tuple, int index) {
+void PgExpr::TranslateOid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                          const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                          PgTuple *pg_tuple) {
   TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->oid);
 }
 
-void PgExpr::TranslateTableoid(Slice *yb_cursor, const PgWireDataHeader& header,
-                               PgTuple *pg_tuple, int index) {
+void PgExpr::TranslateTableoid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                               const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                               PgTuple *pg_tuple) {
   TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->tableoid);
 }
 
-void PgExpr::TranslateXmin(Slice *yb_cursor, const PgWireDataHeader& header,
-                           PgTuple *pg_tuple, int index) {
+void PgExpr::TranslateXmin(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                           const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                           PgTuple *pg_tuple) {
   TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->xmin);
 }
 
-void PgExpr::TranslateCmin(Slice *yb_cursor, const PgWireDataHeader& header,
-                           PgTuple *pg_tuple, int index) {
+void PgExpr::TranslateCmin(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                           const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                           PgTuple *pg_tuple) {
   TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->cmin);
 }
 
-void PgExpr::TranslateXmax(Slice *yb_cursor, const PgWireDataHeader& header,
-                           PgTuple *pg_tuple, int index) {
+void PgExpr::TranslateXmax(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                           const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                           PgTuple *pg_tuple) {
   TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->xmax);
 }
 
-void PgExpr::TranslateCmax(Slice *yb_cursor, const PgWireDataHeader& header,
-                           PgTuple *pg_tuple, int index) {
+void PgExpr::TranslateCmax(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                           const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                           PgTuple *pg_tuple) {
   TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->cmax);
 }
 
-void PgExpr::TranslateYBCtid(Slice *yb_cursor, const PgWireDataHeader& header,
-                             PgTuple *pg_tuple, int index) {
+void PgExpr::TranslateYBCtid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                             const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                             PgTuple *pg_tuple) {
   TranslateSysCol(yb_cursor, header, pg_tuple, &pg_tuple->syscols()->ybctid);
 }
 
@@ -179,78 +207,139 @@ Status PgExpr::ReadHashValue(const char *doc_key, int key_size, uint16_t *hash_v
   return Status::OK();
 }
 
+InternalType PgExpr::internal_type() const {
+  DCHECK(type_entity_) << "Type entity is not set up";
+  return client::YBColumnSchema::ToInternalDataType(
+      QLType::Create(static_cast<DataType>(type_entity_->yb_type)));
+}
+
 //--------------------------------------------------------------------------------------------------
 
-PgConstant::PgConstant(bool value, bool is_null)
-    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kBoolValue) {
-  if (!is_null) {
-    ql_value_.set_bool_value(value);
-  }
-  TranslateData = TranslateNumber<bool>;
-}
+PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null)
+    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, type_entity) {
 
-PgConstant::PgConstant(int8_t value, bool is_null)
-    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kInt8Value) {
-  if (!is_null) {
-    ql_value_.set_int8_value(value);
-  }
-  TranslateData = TranslateNumber<int8_t>;
-}
+  switch (type_entity_->yb_type) {
+    case YB_YQL_DATA_TYPE_INT8:
+      if (!is_null) {
+        int8_t value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_int8_value(value);
+      }
+      translate_data_ = TranslateNumber<int8_t>;
+      break;
 
-PgConstant::PgConstant(int16_t value, bool is_null)
-    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kInt16Value) {
-  if (!is_null) {
-    ql_value_.set_int16_value(value);
-  }
-  TranslateData = TranslateNumber<int16_t>;
-}
+    case YB_YQL_DATA_TYPE_INT16:
+      if (!is_null) {
+        int16_t value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_int16_value(value);
+      }
+      translate_data_ = TranslateNumber<int16_t>;
+      break;
 
-PgConstant::PgConstant(int32_t value, bool is_null)
-    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kInt32Value) {
-  if (!is_null) {
-    ql_value_.set_int32_value(value);
-  }
-  TranslateData = TranslateNumber<int32_t>;
-}
+    case YB_YQL_DATA_TYPE_INT32:
+      if (!is_null) {
+        int32_t value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_int32_value(value);
+      }
+      translate_data_ = TranslateNumber<int32_t>;
+      break;
 
-PgConstant::PgConstant(int64_t value, bool is_null)
-    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kInt64Value) {
-  if (!is_null) {
-    ql_value_.set_int64_value(value);
-  }
-  TranslateData = TranslateNumber<int64_t>;
-}
+    case YB_YQL_DATA_TYPE_INT64:
+      if (!is_null) {
+        int64_t value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_int64_value(value);
+      }
+      translate_data_ = TranslateNumber<int64_t>;
+      break;
 
-PgConstant::PgConstant(float value, bool is_null)
-    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kFloatValue) {
-  if (!is_null) {
-    ql_value_.set_float_value(value);
-  }
-  TranslateData = TranslateNumber<float>;
-}
+    case YB_YQL_DATA_TYPE_STRING:
+      if (!is_null) {
+        char *value;
+        int64_t bytes = 0;
+        type_entity_->datum_to_yb(datum, &value, &bytes);
+        ql_value_.set_string_value(value, bytes);
+      }
+      translate_data_ = TranslateText;
+      break;
 
-PgConstant::PgConstant(double value, bool is_null)
-    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kDoubleValue) {
-  if (!is_null) {
-    ql_value_.set_double_value(value);
-  }
-  TranslateData = TranslateNumber<double>;
-}
+    case YB_YQL_DATA_TYPE_BOOL:
+      if (!is_null) {
+        bool value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_bool_value(value);
+      }
+      translate_data_ = TranslateNumber<bool>;
+      break;
 
-PgConstant::PgConstant(const char *value, bool is_null)
-    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kStringValue) {
-  if (!is_null) {
-    ql_value_.set_string_value(value);
-  }
-  TranslateData = TranslateText;
-}
+    case YB_YQL_DATA_TYPE_FLOAT:
+      if (!is_null) {
+        float value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_float_value(value);
+      }
+      translate_data_ = TranslateNumber<float>;
+      break;
 
-PgConstant::PgConstant(const void *value, size_t bytes, bool is_null)
-    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, InternalType::kBinaryValue) {
-  if (!is_null) {
-    ql_value_.set_binary_value(value, bytes);
+    case YB_YQL_DATA_TYPE_DOUBLE:
+      if (!is_null) {
+        double value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_double_value(value);
+      }
+      translate_data_ = TranslateNumber<double>;
+      break;
+
+    case YB_YQL_DATA_TYPE_BINARY:
+      if (!is_null) {
+        uint8_t *value;
+        int64_t bytes;
+        type_entity_->datum_to_yb(datum, &value, &bytes);
+        ql_value_.set_binary_value(value, bytes);
+      }
+      translate_data_ = TranslateBinary;
+      break;
+
+    case YB_YQL_DATA_TYPE_TIMESTAMP:
+      if (!is_null) {
+        int64_t value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_int64_value(value);
+      }
+      translate_data_ = TranslateNumber<int64_t>;
+      break;
+
+    case YB_YQL_DATA_TYPE_DECIMAL:
+      // TODO(Alex)
+      // - Need to setup this assignment
+      //   translate_data_ = TranslateDecimal;
+      // - Define TranslateDecimal() that convert YugaByte internal format to Postgres datum.
+      LOG(FATAL) << "Internal error: Need work on DECIMAL";
+      break;
+
+    case YB_YQL_DATA_TYPE_VARINT:
+    case YB_YQL_DATA_TYPE_INET:
+    case YB_YQL_DATA_TYPE_LIST:
+    case YB_YQL_DATA_TYPE_MAP:
+    case YB_YQL_DATA_TYPE_SET:
+    case YB_YQL_DATA_TYPE_UUID:
+    case YB_YQL_DATA_TYPE_TIMEUUID:
+    case YB_YQL_DATA_TYPE_TUPLE:
+    case YB_YQL_DATA_TYPE_TYPEARGS:
+    case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE:
+    case YB_YQL_DATA_TYPE_FROZEN:
+    case YB_YQL_DATA_TYPE_DATE:
+    case YB_YQL_DATA_TYPE_TIME:
+    case YB_YQL_DATA_TYPE_JSONB:
+    case YB_YQL_DATA_TYPE_UINT8:
+    case YB_YQL_DATA_TYPE_UINT16:
+    case YB_YQL_DATA_TYPE_UINT32:
+    case YB_YQL_DATA_TYPE_UINT64:
+    default:
+      LOG(DFATAL) << "Internal error: unsupported type " << type_entity_->yb_type;
   }
-  TranslateData = TranslateBinary;
 }
 
 PgConstant::~PgConstant() {
@@ -328,8 +417,112 @@ Status PgConstant::Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgColumnRef::PgColumnRef(int attr_num)
-  : PgExpr(PgExpr::Opcode::PG_EXPR_COLREF), attr_num_(attr_num) {
+PgColumnRef::PgColumnRef(int attr_num,
+                         const YBCPgTypeEntity *type_entity,
+                         const PgTypeAttrs *type_attrs)
+    : PgExpr(PgExpr::Opcode::PG_EXPR_COLREF, type_entity, type_attrs), attr_num_(attr_num) {
+
+  if (attr_num_ < 0) {
+    // Setup system columns.
+    switch (attr_num_) {
+      case static_cast<int>(PgSystemAttrNum::kSelfItemPointerAttributeNumber):
+        translate_data_ = TranslateCtid;
+        break;
+      case static_cast<int>(PgSystemAttrNum::kObjectIdAttributeNumber):
+        translate_data_ = TranslateOid;
+        break;
+      case static_cast<int>(PgSystemAttrNum::kMinTransactionIdAttributeNumber):
+        translate_data_ = TranslateXmin;
+        break;
+      case static_cast<int>(PgSystemAttrNum::kMinCommandIdAttributeNumber):
+        translate_data_ = TranslateCmin;
+        break;
+      case static_cast<int>(PgSystemAttrNum::kMaxTransactionIdAttributeNumber):
+        translate_data_ = TranslateXmax;
+        break;
+      case static_cast<int>(PgSystemAttrNum::kMaxCommandIdAttributeNumber):
+        translate_data_ = TranslateCmax;
+        break;
+      case static_cast<int>(PgSystemAttrNum::kTableOidAttributeNumber):
+        translate_data_ = TranslateTableoid;
+        break;
+      case static_cast<int>(PgSystemAttrNum::kYBTupleId):
+        translate_data_ = TranslateYBCtid;
+        break;
+    }
+  } else {
+    // Setup regular columns.
+    switch (type_entity_->yb_type) {
+      case YB_YQL_DATA_TYPE_INT8:
+        translate_data_ = TranslateNumber<int8_t>;
+        break;
+
+      case YB_YQL_DATA_TYPE_INT16:
+        translate_data_ = TranslateNumber<int16_t>;
+        break;
+
+      case YB_YQL_DATA_TYPE_INT32:
+        translate_data_ = TranslateNumber<int32_t>;
+        break;
+
+      case YB_YQL_DATA_TYPE_INT64:
+        translate_data_ = TranslateNumber<int64_t>;
+        break;
+
+      case YB_YQL_DATA_TYPE_STRING:
+        translate_data_ = TranslateText;
+        break;
+
+      case YB_YQL_DATA_TYPE_BOOL:
+        translate_data_ = TranslateNumber<bool>;
+        break;
+
+      case YB_YQL_DATA_TYPE_FLOAT:
+        translate_data_ = TranslateNumber<float>;
+        break;
+
+      case YB_YQL_DATA_TYPE_DOUBLE:
+        translate_data_ = TranslateNumber<double>;
+        break;
+
+      case YB_YQL_DATA_TYPE_BINARY:
+        translate_data_ = TranslateBinary;
+        break;
+
+      case YB_YQL_DATA_TYPE_TIMESTAMP:
+        translate_data_ = TranslateNumber<int64_t>;
+        break;
+
+      case YB_YQL_DATA_TYPE_DECIMAL:
+        // TODO(Alex)
+        // - Need to setup this assignment
+        //   translate_data_ = TranslateDecimal;
+        // - Define TranslateDecimal() that convert YugaByte internal format to Postgres datum.
+        LOG(FATAL) << "Internal error: Need work on DECIMAL";
+        break;
+
+      case YB_YQL_DATA_TYPE_VARINT:
+      case YB_YQL_DATA_TYPE_INET:
+      case YB_YQL_DATA_TYPE_LIST:
+      case YB_YQL_DATA_TYPE_MAP:
+      case YB_YQL_DATA_TYPE_SET:
+      case YB_YQL_DATA_TYPE_UUID:
+      case YB_YQL_DATA_TYPE_TIMEUUID:
+      case YB_YQL_DATA_TYPE_TUPLE:
+      case YB_YQL_DATA_TYPE_TYPEARGS:
+      case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE:
+      case YB_YQL_DATA_TYPE_FROZEN:
+      case YB_YQL_DATA_TYPE_DATE:
+      case YB_YQL_DATA_TYPE_TIME:
+      case YB_YQL_DATA_TYPE_JSONB:
+      case YB_YQL_DATA_TYPE_UINT8:
+      case YB_YQL_DATA_TYPE_UINT16:
+      case YB_YQL_DATA_TYPE_UINT32:
+      case YB_YQL_DATA_TYPE_UINT64:
+      default:
+        LOG(DFATAL) << "Internal error: unsupported type " << type_entity_->yb_type;
+    }
+  }
 }
 
 PgColumnRef::~PgColumnRef() {
@@ -338,96 +531,13 @@ PgColumnRef::~PgColumnRef() {
 Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   const PgColumn *col;
   RETURN_NOT_OK(pg_stmt->PrepareColumnForRead(attr_num_, expr_pb, &col));
-
-  if (attr_num_ < 0) {
-    // Setup system columns.
-    switch (attr_num_) {
-      case static_cast<int>(PgSystemAttrNum::kSelfItemPointerAttributeNumber):
-        TranslateData = TranslateCtid;
-        break;
-      case static_cast<int>(PgSystemAttrNum::kObjectIdAttributeNumber):
-        TranslateData = TranslateOid;
-        break;
-      case static_cast<int>(PgSystemAttrNum::kMinTransactionIdAttributeNumber):
-        TranslateData = TranslateXmin;
-        break;
-      case static_cast<int>(PgSystemAttrNum::kMinCommandIdAttributeNumber):
-        TranslateData = TranslateCmin;
-        break;
-      case static_cast<int>(PgSystemAttrNum::kMaxTransactionIdAttributeNumber):
-        TranslateData = TranslateXmax;
-        break;
-      case static_cast<int>(PgSystemAttrNum::kMaxCommandIdAttributeNumber):
-        TranslateData = TranslateCmax;
-        break;
-      case static_cast<int>(PgSystemAttrNum::kTableOidAttributeNumber):
-        TranslateData = TranslateTableoid;
-        break;
-      case static_cast<int>(PgSystemAttrNum::kYBTupleId):
-        TranslateData = TranslateYBCtid;
-        break;
-    }
-  } else {
-    // Setup regular columns.
-    switch (col->internal_type()) {
-      case QLValue::InternalType::kBoolValue:
-        TranslateData = TranslateNumber<bool>;
-        break;
-      case QLValue::InternalType::kInt8Value:
-        TranslateData = TranslateNumber<int8_t>;
-        break;
-      case QLValue::InternalType::kInt16Value:
-        TranslateData = TranslateNumber<int16_t>;
-        break;
-      case QLValue::InternalType::kInt32Value:
-        TranslateData = TranslateNumber<int32_t>;
-        break;
-      case QLValue::InternalType::kInt64Value:
-        TranslateData = TranslateNumber<int64_t>;
-        break;
-      case QLValue::InternalType::kFloatValue:
-        TranslateData = TranslateNumber<float>;
-        break;
-      case QLValue::InternalType::kDoubleValue:
-        TranslateData = TranslateNumber<double>;
-        break;
-      case QLValue::InternalType::kStringValue:
-        TranslateData = TranslateText;
-        break;
-      case QLValue::InternalType::kBinaryValue:
-        TranslateData = TranslateBinary;
-        break;
-
-      case QLValue::InternalType::kDecimalValue: FALLTHROUGH_INTENDED;
-      case QLValue::InternalType::kTimestampValue: FALLTHROUGH_INTENDED;
-      case QLValue::InternalType::kDateValue: FALLTHROUGH_INTENDED;
-      case QLValue::InternalType::kTimeValue: FALLTHROUGH_INTENDED;
-      case QLValue::InternalType::kInetaddressValue: FALLTHROUGH_INTENDED;
-      case QLValue::InternalType::kJsonbValue: FALLTHROUGH_INTENDED;
-      case QLValue::InternalType::kUuidValue: FALLTHROUGH_INTENDED;
-      case QLValue::InternalType::kTimeuuidValue: FALLTHROUGH_INTENDED;
-      case QLValue::InternalType::kVarintValue:
-        return STATUS_SUBSTITUTE(NotSupported, "Datatype $0 is not yet supported",
-                                 col->internal_type());
-
-      case QLValue::InternalType::kMapValue: FALLTHROUGH_INTENDED;
-      case QLValue::InternalType::kSetValue: FALLTHROUGH_INTENDED;
-      case QLValue::InternalType::kListValue: FALLTHROUGH_INTENDED;
-      case QLValue::InternalType::kFrozenValue:
-        return STATUS_SUBSTITUTE(NotSupported, "CQL type $0 is not supported in Postgres",
-                                 col->internal_type());
-
-      case QLValue::InternalType::VALUE_NOT_SET:
-        return STATUS(Corruption, "Unexpected code path");
-    }
-  }
-
   return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-PgOperator::PgOperator(const char *opname) : PgExpr(opname), opname_(opname) {
+PgOperator::PgOperator(const char *opname, const YBCPgTypeEntity *type_entity)
+  : PgExpr(opname, type_entity), opname_(opname) {
 }
 
 PgOperator::~PgOperator() {
@@ -438,9 +548,12 @@ void PgOperator::AppendArg(PgExpr *arg) {
 }
 
 //--------------------------------------------------------------------------------------------------
+namespace {
+#define POSTGRESQL_BYTEAOID 17
+};
 
 PgGenerateRowId::PgGenerateRowId() :
-    PgExpr(Opcode::PG_EXPR_GENERATE_ROWID, InternalType::kBinaryValue) {
+    PgExpr(Opcode::PG_EXPR_GENERATE_ROWID, YBCPgFindTypeEntity(POSTGRESQL_BYTEAOID)) {
 }
 
 PgGenerateRowId::~PgGenerateRowId() {

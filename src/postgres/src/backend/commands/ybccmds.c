@@ -32,7 +32,7 @@
 #include "commands/dbcommands.h"
 #include "catalog/pg_database.h"
 #include "commands/ybccmds.h"
-#include "commands/ybctype.h"
+#include "catalog/ybctype.h"
 
 #include "catalog/catalog.h"
 #include "access/htup_details.h"
@@ -139,9 +139,7 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 								 errmsg("PRIMARY KEY containing column of type '%s' not yet supported",
 												YBPgTypeOidToStr(att->atttypid))));
 			}
-			YBCPgDataType col_type = YBCDataTypeFromOidMod(att->atttypid,
-																										 att->atttypmod);
-
+			const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(attnum, att->atttypid);
 			HandleYBStmtStatus(YBCPgCreateTableAddColumn(handle,
 			                                             attname,
 			                                             attnum,
@@ -296,8 +294,7 @@ YBCCreateIndex(const char *indexName,
 		Form_pg_attribute att	   = indexTupleDesc->attrs[i];
 		char			  *attname = NameStr(att->attname);
 		AttrNumber		  attnum   = att->attnum;			
-		YBCPgDataType	  col_type = YBCDataTypeFromOidMod(att->atttypid,
-																										 att->atttypmod);
+		const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(attnum, att->atttypid);
 
 		if (!YBCDataTypeIsValidForKey(att->atttypid)) {
 			ereport(ERROR,

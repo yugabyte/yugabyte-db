@@ -31,7 +31,7 @@
 #include "commands/dbcommands.h"
 #include "catalog/pg_database.h"
 #include "commands/ybccmds.h"
-#include "commands/ybctype.h"
+#include "catalog/ybctype.h"
 
 #include "catalog/catalog.h"
 #include "access/htup_details.h"
@@ -56,7 +56,7 @@ void YBCAddSysCatalogColumn(YBCPgStatement yb_stmt,
 
 	ListCell      *lc;
 	bool          is_key    = false;
-	YBCPgDataType col_type  = YBCDataTypeFromOidMod(type_id, typmod);
+	const YBCPgTypeEntity *col_type  = YBCDataTypeFromOidMod(attnum, type_id);
 
 	if (pkey_idx)
 	{

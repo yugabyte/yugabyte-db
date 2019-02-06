@@ -601,6 +601,8 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 		TargetEntry *target = (TargetEntry *) lfirst(lc);
 
 		/* For regular (non-system) attribute check if they were deleted */
+		Oid attr_typid = InvalidOid;
+		int32 attr_typmod = 0;
 		if (target->resno > 0)
 		{
 			Form_pg_attribute attr;
@@ -610,8 +612,12 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 			{
 				continue;
 			}
+			attr_typid = attr->atttypid;
+			attr_typmod = attr->atttypmod;
 		}
-		YBCPgExpr   expr    = YBCNewColumnRef(ybc_state->handle, target->resno);
+
+		YBCPgTypeAttrs type_attrs = { attr_typmod };
+		YBCPgExpr expr = YBCNewColumnRef(ybc_state->handle, target->resno, attr_typid, &type_attrs);
 		HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
 		                                                 expr),
 		                            ybc_state->handle,
@@ -633,7 +639,10 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 			{
 				continue;
 			}
-			YBCPgExpr expr = YBCNewColumnRef(ybc_state->handle, i + 1);
+
+			YBCPgTypeAttrs type_attrs = { tupdesc->attrs[i]->atttypmod };
+			YBCPgExpr expr = YBCNewColumnRef(ybc_state->handle, i + 1, tupdesc->attrs[i]->atttypid,
+																			 &type_attrs);
 			HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
 			                                                 expr),
 			                            ybc_state->handle,

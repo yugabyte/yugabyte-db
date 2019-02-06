@@ -32,10 +32,11 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
+// Construct column reference expression.
+extern YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num, int attr_typid,
+																 const YBCPgTypeAttrs *type_attrs);
+
 // Construct constant expression using the given datatype "type_id" and value "datum".
 extern YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool is_null);
-
-// Construct column reference expression.
-extern YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num);
 
 #endif							/* YBCEXPR_H */

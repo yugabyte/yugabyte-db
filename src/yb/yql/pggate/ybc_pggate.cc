@@ -37,14 +37,14 @@ std::atomic<bool> pgapi_shutdown_done;
 //--------------------------------------------------------------------------------------------------
 extern "C" {
 
-void YBCInitPgGate() {
+void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count) {
   const char* initdb_mode_env_var_value = getenv("YB_PG_INITDB_MODE");
   if (initdb_mode_env_var_value && strcmp(initdb_mode_env_var_value, "1") == 0) {
     YBCSetInitDbMode();
   }
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
   pgapi_shutdown_done.exchange(false);
-  pgapi = new pggate::PgApiImpl();
+  pgapi = new pggate::PgApiImpl(YBCDataTypeTable, count);
   VLOG(1) << "PgGate open";
 }
 
@@ -74,6 +74,24 @@ YBCStatus YBCPgCreateSession(const YBCPgEnv pg_env,
 
 YBCStatus YBCPgDestroySession(YBCPgSession pg_session) {
   return ToYBCStatus(pgapi->DestroySession(pg_session));
+}
+
+const YBCPgTypeEntity *YBCPgFindTypeEntity(int type_oid) {
+  return pgapi->FindTypeEntity(type_oid);
+}
+
+YBCPgDataType YBCPgGetType(const YBCPgTypeEntity *type_entity) {
+  if (type_entity) {
+    return type_entity->yb_type;
+  }
+  return YB_YQL_DATA_TYPE_UNKNOWN_DATA;
+}
+
+bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
+  if (type_entity) {
+    return type_entity->allow_for_primary_key;
+  }
+  return false;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -192,8 +210,8 @@ YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
-                                    int attr_ybtype, bool is_hash, bool is_range) {
-  return ToYBCStatus(pgapi->CreateTableAddColumn(handle, attr_name, attr_num, attr_ybtype,
+                                    const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range) {
+  return ToYBCStatus(pgapi->CreateTableAddColumn(handle, attr_name, attr_num, attr_type,
                                                  is_hash, is_range));
 }
 
@@ -266,8 +284,8 @@ YBCStatus YBCPgNewCreateIndex(YBCPgSession pg_session,
 }
 
 YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
-                                    int attr_ybtype, bool is_hash, bool is_range) {
-  return ToYBCStatus(pgapi->CreateIndexAddColumn(handle, attr_name, attr_num, attr_ybtype,
+                                    const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range) {
+  return ToYBCStatus(pgapi->CreateIndexAddColumn(handle, attr_name, attr_num, attr_type,
                                                  is_hash, is_range));
 }
 
@@ -355,53 +373,14 @@ YBCStatus YBCPgExecSelect(YBCPgStatement handle) {
 // Expression Operations
 //--------------------------------------------------------------------------------------------------
 
-YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, YBCPgExpr *expr_handle) {
-  return ToYBCStatus(pgapi->NewColumnRef(stmt, attr_num, expr_handle));
+YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, const YBCPgTypeEntity *type_entity,
+                            const YBCPgTypeAttrs *type_attrs, YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewColumnRef(stmt, attr_num, type_entity, type_attrs, expr_handle));
 }
 
-YBCStatus YBCPgNewConstantBool(YBCPgStatement stmt, bool value, bool is_null,
-                               YBCPgExpr *expr_handle) {
-  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
-}
-
-YBCStatus YBCPgNewConstantInt1(YBCPgStatement stmt, int8_t value, bool is_null,
-                               YBCPgExpr *expr_handle) {
-  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
-}
-
-YBCStatus YBCPgNewConstantInt2(YBCPgStatement stmt, int16_t value, bool is_null,
-                               YBCPgExpr *expr_handle) {
-  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
-}
-
-YBCStatus YBCPgNewConstantInt4(YBCPgStatement stmt, int32_t value, bool is_null,
-                               YBCPgExpr *expr_handle) {
-  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
-}
-
-YBCStatus YBCPgNewConstantInt8(YBCPgStatement stmt, int64_t value, bool is_null,
-                               YBCPgExpr *expr_handle) {
-  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
-}
-
-YBCStatus YBCPgNewConstantFloat4(YBCPgStatement stmt, float value, bool is_null,
-                                 YBCPgExpr *expr_handle) {
-  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
-}
-
-YBCStatus YBCPgNewConstantFloat8(YBCPgStatement stmt, double value, bool is_null,
-                                 YBCPgExpr *expr_handle) {
-  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
-}
-
-YBCStatus YBCPgNewConstantText(YBCPgStatement stmt, const char *value, bool is_null,
-                               YBCPgExpr *expr_handle) {
-  return ToYBCStatus(pgapi->NewConstant(stmt, value, is_null, expr_handle));
-}
-
-YBCStatus YBCPgNewConstantBinary(YBCPgStatement stmt, const void *value, int64_t bytes,
-                                 bool is_null, YBCPgExpr *expr_handle) {
-  return ToYBCStatus(pgapi->NewConstant(stmt, value, bytes, is_null, expr_handle));
+YBCStatus YBCPgNewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+                           uint64_t datum, bool is_null, YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewConstant(stmt, type_entity, datum, is_null, expr_handle));
 }
 
 // Overwriting the expression's result with any desired values.
@@ -433,8 +412,10 @@ YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value,  int64_t bytes
   return ToYBCStatus(pgapi->UpdateConstant(expr, value, bytes, is_null));
 }
 
-YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname, YBCPgExpr *op_handle) {
-  return ToYBCStatus(pgapi->NewOperator(stmt, opname, op_handle));
+YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname,
+                           const YBCPgTypeEntity *type_entity,
+                           YBCPgExpr *op_handle) {
+  return ToYBCStatus(pgapi->NewOperator(stmt, opname, type_entity, op_handle));
 }
 
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg) {
