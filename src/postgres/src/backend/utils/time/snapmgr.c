@@ -1081,7 +1081,6 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
 	 * dangling pointer.
 	 */
 	if (IsYugaByteEnabled()) {
-		FirstSnapshotSet = false;
 		return;
 	}
 
