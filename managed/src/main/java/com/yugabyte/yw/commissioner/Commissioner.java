@@ -3,7 +3,6 @@
 package com.yugabyte.yw.commissioner;
 
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
@@ -13,7 +12,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
@@ -26,7 +24,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Singleton;
 
-import play.api.Play;
 import play.libs.Json;
 
 @Singleton
@@ -70,14 +67,16 @@ public class Commissioner {
                                namedThreadFactory);
     LOG.info("Started Commissioner TaskPool.");
 
+    // TODO: Conisder replacing simple thread sleep with ScheduledExecutorService
     // Initialize the task manager.
     progressMonitor = new ProgressMonitor();
     progressMonitor.start();
     LOG.info("Started TaskProgressMonitor thread.");
 
+    // Initialize the Health Checker thread.
     healthChecker = new HealthChecker();
     healthChecker.start();
-    LOG.info("Started TaskProgressMonitor thread.");
+    LOG.info("Started HealthChecker thread.");
   }
 
   /**

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import com.avaje.ebean.Ebean;
 import com.google.common.collect.ImmutableMap;
@@ -24,6 +25,7 @@ import play.Logger;
 import play.libs.Yaml;
 
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.SoftwareVersion;
+import static com.yugabyte.yw.common.ConfigHelper.ConfigType.YugawareMetadata;
 
 
 /**
@@ -63,8 +65,15 @@ public class AppInit {
         Ebean.saveAll(all);
       }
 
+      // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
       Object version = Yaml.load(application.resourceAsStream("version.txt"), application.classloader());
       configHelper.loadConfigToDB(SoftwareVersion, ImmutableMap.of("version", version));
+      Map <String, Object> ywMetadata = new HashMap<String, Object>();
+      // Assign a new Yugaware UUID if not already present in the DB i.e. first install
+      Object ywUUID = configHelper.getConfig(YugawareMetadata).getOrDefault("yugaware_uuid", UUID.randomUUID());
+      ywMetadata.put("yugaware_uuid", ywUUID);
+      ywMetadata.put("version", version);
+      configHelper.loadConfigToDB(YugawareMetadata, ywMetadata);
 
       // Initialize AWS if any of its instance types have an empty volumeDetailsList
       List<Provider> providerList = Provider.find.where().findList();
