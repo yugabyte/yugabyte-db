@@ -11,7 +11,11 @@
 # under the License.
 #
 
-add_library(pggate_test pggate_test.cc)
+add_library(pggate_test
+            pggate_test.cc
+            pggate_testvars.cc
+            pggate_testapi.cc)
+
 target_link_libraries(pggate_test
                       yb_pggate
                       yb_client

@@ -37,19 +37,18 @@
 #define YB_TEXTARRAYOID 1009 /* text[] */
 #define YB_ACLITEMARRAYOID 1034 /* aclitem[] */
 
-extern YBCPgDataType YBCDataTypeFromName(TypeName *typeName);
-extern YBCPgDataType YBCDataTypeFromOidMod(Oid type_id, int32 typmod);
-
-/**
- * Returns true if we are using PostgreSQL's own binary serialization for the given type, as given
- * by VARDATA_ANY and VARSIZE_ANY_EXHDR.
- */
-extern bool YBCIsPgBinarySerializedType(Oid type_id);
+extern const YBCPgTypeEntity *YBCDataTypeFromName(TypeName *typeName);
+extern const YBCPgTypeEntity *YBCDataTypeFromOidMod(int attnum, Oid type_id);
 
 /*
  * Returns true if we are allow the given type to be used for key columns such as primary key or
  * indexing key.
  */
 bool YBCDataTypeIsValidForKey(Oid type_id);
+
+/*
+ * Array of all type entities.
+ */
+void YBCGetTypeTable(const YBCPgTypeEntity **type_table, int *count);
 
 #endif

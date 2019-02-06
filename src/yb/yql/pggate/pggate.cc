@@ -72,7 +72,7 @@ PggateOptions::PggateOptions() {
 
 //--------------------------------------------------------------------------------------------------
 
-PgApiImpl::PgApiImpl()
+PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count)
     : pggate_options_(),
       metric_registry_(new MetricRegistry()),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(), "yb.pggate")),
@@ -87,9 +87,23 @@ PgApiImpl::PgApiImpl()
       clock_(new server::HybridClock()),
       pg_txn_manager_(new PgTxnManager(&async_client_init_, clock_)) {
   CHECK_OK(clock_->Init());
+
+  // Setup type mapping.
+  for (int idx = 0; idx < count; idx++) {
+    const YBCPgTypeEntity *type_entity = &YBCDataTypeArray[idx];
+    type_map_[type_entity->type_oid] = type_entity;
+  }
 }
 
 PgApiImpl::~PgApiImpl() {
+}
+
+const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
+  const auto iter = type_map_.find(type_oid);
+  if (iter != type_map_.end()) {
+    return iter->second;
+  }
+  return nullptr;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -255,15 +269,15 @@ Status PgApiImpl::NewCreateTable(PgSession *pg_session,
 }
 
 Status PgApiImpl::CreateTableAddColumn(PgStatement *handle, const char *attr_name,
-                                       int attr_num, int attr_ybtype, bool is_hash,
-                                       bool is_range) {
+                                       int attr_num, const YBCPgTypeEntity *attr_type,
+                                       bool is_hash, bool is_range) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
   PgCreateTable *pg_stmt = down_cast<PgCreateTable*>(handle);
-  return pg_stmt->AddColumn(attr_name, attr_num, attr_ybtype, is_hash, is_range);
+  return pg_stmt->AddColumn(attr_name, attr_num, attr_type, is_hash, is_range);
 }
 
 Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
@@ -351,15 +365,15 @@ Status PgApiImpl::NewCreateIndex(PgSession *pg_session,
 }
 
 Status PgApiImpl::CreateIndexAddColumn(PgStatement *handle, const char *attr_name,
-                                       int attr_num, int attr_ybtype, bool is_hash,
-                                       bool is_range) {
+                                       int attr_num, const YBCPgTypeEntity *attr_type,
+                                       bool is_hash, bool is_range) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
   PgCreateIndex *pg_stmt = down_cast<PgCreateIndex*>(handle);
-  return pg_stmt->AddColumn(attr_name, attr_num, attr_ybtype, is_hash, is_range);
+  return pg_stmt->AddColumn(attr_name, attr_num, attr_type, is_hash, is_range);
 }
 
 Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
@@ -484,32 +498,34 @@ Status PgApiImpl::ExecSelect(PgStatement *handle) {
 
 // Column references -------------------------------------------------------------------------------
 
-Status PgApiImpl::NewColumnRef(PgStatement *stmt, int attr_num, PgExpr **expr_handle) {
+Status PgApiImpl::NewColumnRef(PgStatement *stmt, int attr_num, const PgTypeEntity *type_entity,
+                               const PgTypeAttrs *type_attrs, PgExpr **expr_handle) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  PgColumnRef::SharedPtr colref = make_shared<PgColumnRef>(attr_num);
+  PgColumnRef::SharedPtr colref = make_shared<PgColumnRef>(attr_num, type_entity, type_attrs);
   stmt->AddExpr(colref);
 
   *expr_handle = colref.get();
   return Status::OK();
 }
 
-// Text constant -----------------------------------------------------------------------------------
-
-Status PgApiImpl::NewConstant(PgStatement *stmt, const char *value, bool is_null,
-                              PgExpr **expr_handle) {
+// Constant ----------------------------------------------------------------------------------------
+Status PgApiImpl::NewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+                              uint64_t datum, bool is_null, YBCPgExpr *expr_handle) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  PgExpr::SharedPtr pg_const = make_shared<PgConstant>(value, is_null);
+  PgExpr::SharedPtr pg_const = make_shared<PgConstant>(type_entity, datum, is_null);
   stmt->AddExpr(pg_const);
 
   *expr_handle = pg_const.get();
   return Status::OK();
 }
+
+// Text constant -----------------------------------------------------------------------------------
 
 Status PgApiImpl::UpdateConstant(PgExpr *expr, const char *value, bool is_null) {
   if (expr->opcode() != PgExpr::Opcode::PG_EXPR_CONSTANT) {
@@ -517,19 +533,6 @@ Status PgApiImpl::UpdateConstant(PgExpr *expr, const char *value, bool is_null) 
     return STATUS(InvalidArgument, "Invalid expression handle for constant");
   }
   down_cast<PgConstant*>(expr)->UpdateConstant(value, is_null);
-  return Status::OK();
-}
-
-Status PgApiImpl::NewConstant(PgStatement *stmt, const void *value, int64_t bytes, bool is_null,
-                              PgExpr **expr_handle) {
-  if (!stmt) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  PgExpr::SharedPtr pg_const = make_shared<PgConstant>(value, bytes, is_null);
-  stmt->AddExpr(pg_const);
-
-  *expr_handle = pg_const.get();
   return Status::OK();
 }
 
@@ -544,7 +547,9 @@ Status PgApiImpl::UpdateConstant(PgExpr *expr, const void *value, int64_t bytes,
 
 // Text constant -----------------------------------------------------------------------------------
 
-Status PgApiImpl::NewOperator(PgStatement *stmt, const char *opname, PgExpr **op_handle) {
+Status PgApiImpl::NewOperator(PgStatement *stmt, const char *opname,
+                              const YBCPgTypeEntity *type_entity,
+                              PgExpr **op_handle) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
@@ -552,7 +557,7 @@ Status PgApiImpl::NewOperator(PgStatement *stmt, const char *opname, PgExpr **op
   RETURN_NOT_OK(PgExpr::CheckOperatorName(opname));
 
   // Create operator.
-  PgExpr::SharedPtr pg_op = make_shared<PgOperator>(opname);
+  PgExpr::SharedPtr pg_op = make_shared<PgOperator>(opname, type_entity);
   stmt->AddExpr(pg_op);
 
   *op_handle = pg_op.get();

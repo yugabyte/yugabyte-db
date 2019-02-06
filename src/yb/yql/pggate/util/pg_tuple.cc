@@ -31,74 +31,18 @@ void PgTuple::WriteNull(int index, const PgWireDataHeader& header) {
   datums_[index] = 0;
 }
 
-void PgTuple::Write(int index, const PgWireDataHeader& header, bool value) {
+void PgTuple::WriteDatum(int index, uint64_t datum) {
   isnulls_[index] = false;
-  datums_[index] = value ? 1 : 0;
-}
-
-void PgTuple::Write(int index, const PgWireDataHeader& header, int8_t value) {
-  isnulls_[index] = false;
-  datums_[index] = value;
-}
-
-void PgTuple::Write(int index, const PgWireDataHeader& header, int16_t value) {
-  isnulls_[index] = false;
-  datums_[index] = value;
-}
-
-void PgTuple::Write(int index, const PgWireDataHeader& header, int32_t value) {
-  isnulls_[index] = false;
-  datums_[index] = value;
-}
-
-void PgTuple::Write(int index, const PgWireDataHeader& header, int64_t value) {
-  isnulls_[index] = false;
-  datums_[index] = value;
-}
-
-void PgTuple::Write(int index, const PgWireDataHeader& header, float value) {
-  isnulls_[index] = false;
-  datums_[index] = *reinterpret_cast<uint32_t*>(&value);
-}
-
-void PgTuple::Write(int index, const PgWireDataHeader& header, double value) {
-  isnulls_[index] = false;
-  datums_[index] = *reinterpret_cast<uint64_t*>(&value);
-}
-
-void PgTuple::Write(int index, const PgWireDataHeader& header, const char *value, int64_t bytes) {
-  isnulls_[index] = false;
-  CHECK_LE(bytes, NAMEDATALEN);
-  char* dest = reinterpret_cast<char*>(YBCPAlloc(NAMEDATALEN));
-  datums_[index] = reinterpret_cast<uint64_t>(dest);
-  snprintf(dest, NAMEDATALEN, "%s", value);
+  datums_[index] = datum;
 }
 
 void PgTuple::Write(uint8_t **pgbuf, const PgWireDataHeader& header, const uint8_t *value,
                     int64_t bytes) {
-  // PostgreSQL can represent text strings up to 1 GB minus a four-byte header.
-  const int64_t kMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
-
   // TODO: return a status instead of crashing.
-  CHECK_LE(bytes, kMaxPostgresTextSizeBytes);
+  CHECK_LE(bytes, kYBCMaxPostgresTextSizeBytes);
   CHECK_GE(bytes, 0);
   *pgbuf = static_cast<uint8_t*>(YBCCStringToTextWithLen(reinterpret_cast<const char*>(value),
                                                          static_cast<int>(bytes)));
-}
-
-// TODO(neil) Once we serialize and deserialize binary types on Postgres side, we can implement
-// this function properly. Raise exception for now.
-void PgTuple::Write(int index, const PgWireDataHeader& header, const uint8_t *value,
-                    int64_t bytes) {
-  isnulls_[index] = false;
-
-  // PostgreSQL can represent text strings up to 1 GB minus a four-byte header.
-  const int64_t kMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
-  // TODO: return a status instead of crashing.
-  CHECK_LE(bytes, kMaxPostgresTextSizeBytes);
-  CHECK_GE(bytes, 0);
-  datums_[index] = (uint64_t) YBCCStringToTextWithLen(reinterpret_cast<const char*>(value),
-                                                      static_cast<int>(bytes));
 }
 
 }  // namespace pggate

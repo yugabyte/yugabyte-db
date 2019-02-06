@@ -179,6 +179,10 @@ class PgCreateTable : public PgDdl {
 
   CHECKED_STATUS AddColumn(const char *attr_name, int attr_num, int attr_ybtype,
                            bool is_hash, bool is_range);
+  CHECKED_STATUS AddColumn(const char *attr_name, int attr_num, const YBCPgTypeEntity *attr_type,
+                           bool is_hash, bool is_range) {
+    return AddColumn(attr_name, attr_num, attr_type->yb_type, is_hash, is_range);
+  }
 
   // Execute.
   virtual CHECKED_STATUS Exec();
