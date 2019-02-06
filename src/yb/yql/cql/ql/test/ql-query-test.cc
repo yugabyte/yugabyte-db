@@ -1907,5 +1907,29 @@ TEST_F(TestQLQuery, TestJson) {
                                 ", r1))"));
 }
 
+TEST_F(TestQLQuery, TestJsonUpdate) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  ASSERT_OK(processor->Run("CREATE TABLE test_json (k1 int PRIMARY KEY, data jsonb)"));
+  ASSERT_OK(processor->Run(
+      "INSERT INTO test_json (k1, data) values (1, '{ \"a\" : 1, \"b\" : 2 }')"));
+  ASSERT_OK(processor->Run("SELECT * FROM test_json"));
+  verifyJson(processor->row_block());
+
+  ASSERT_OK(processor->Run("UPDATE test_json SET data->'a' = '100' WHERE k1 = 1"));
+  ASSERT_NOK(processor->Run("UPDATE test_json SET data->'new-field' = '100' WHERE k1 = 1"));
+
+  ASSERT_OK(processor->Run("UPDATE test_json SET data =  '{ \"a\": 2, \"b\": 4 }' WHERE k1 = 2"));
+  ASSERT_NOK(processor->Run("UPDATE test_json SET data->'a' = '3' WHERE k1 = 3"));
+
+  // Setting primitive value in JSON column should work
+  ASSERT_OK(processor->Run("UPDATE test_json SET data='true' WHERE k1 = 1"));
+  // Trying to update primitive value in JSON column using field name should error out
+  ASSERT_NOK(processor->Run("UPDATE test_json SET data->'a' WHERE k1 = 1"));
+}
+
 } // namespace ql
 } // namespace yb

@@ -553,13 +553,15 @@ CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
     *valueit = document->Begin();
     std::advance(*valueit, array_index);
     *last_elem_object = false;
-  } else {
+  } else if (document->IsObject()) {
     const auto& member = column_value.json_args(index).operand().value().string_value().c_str();
     *memberit = document->FindMember(member);
     if (*memberit == document->MemberEnd()) {
       return STATUS_SUBSTITUTE(QLError, "Could not find member: ", member);
     }
     *last_elem_object = true;
+  } else {
+    return STATUS_SUBSTITUTE(QLError, "JSON field is invalid", column_value.ShortDebugString());
   }
   return Status::OK();
 }
@@ -2420,6 +2422,9 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
   // Read the json column value inorder to perform a read modify write.
   QLValue ql_value;
   RETURN_NOT_OK(existing_row->ReadColumn(column_value.column_id(), &ql_value));
+  if (ql_value.IsNull()) {
+    return STATUS_SUBSTITUTE(QLError, "Invalid Json value: ", column_value.ShortDebugString());
+  }
   Jsonb jsonb(std::move(ql_value.jsonb_value()));
   rapidjson::Document document;
   RETURN_NOT_OK(jsonb.ToRapidJson(&document));
