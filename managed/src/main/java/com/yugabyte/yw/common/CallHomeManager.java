@@ -6,17 +6,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.inject.Inject;
-import com.google.inject.Singleton;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import org.asynchttpclient.util.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import java.time.Clock;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 public class CallHomeManager {
 
@@ -32,7 +33,7 @@ public class CallHomeManager {
     this.apiHelper = apiHelper;
   }
   // Email address from YugaByte to which to send diagnostics, if enabled.
-  private final String YB_CALLHOME_URL = "http://yw-diagnostics.yugabyte.com/";
+  private final String YB_CALLHOME_URL = "http://yw-diagnostics.yugabyte.com";
 
   public static final Logger LOG = LoggerFactory.getLogger(CallHomeManager.class);
 
@@ -42,7 +43,9 @@ public class CallHomeManager {
       JsonNode payload = CollectDiagnostics(c);
       LOG.info("Sending collected diagnostics to " + YB_CALLHOME_URL);
       // Api Helper handles exceptions
-      JsonNode response = apiHelper.postRequest(YB_CALLHOME_URL, payload);
+      Map<String, String> headers = new HashMap<>();
+      headers.put("X-AUTH-TOKEN", Base64.encode(c.uuid.toString().getBytes()));
+      JsonNode response = apiHelper.postRequest(YB_CALLHOME_URL, payload, headers);
       LOG.info("Response: " + response.toString());
     }
   }
@@ -55,12 +58,20 @@ public class CallHomeManager {
     payload.put("code", c.code);
     payload.put("email", c.email);
     payload.put("creation_date", c.creationDate.toString());
+    ArrayNode errors = Json.newArray();
+
     // Build universe details json
     ArrayNode universes = Json.newArray();
-    for (Universe u : c.getUniverses()) {
-      universes.add(u.toJson());
+    for (UUID universeUUID : c.getUniverseUUIDs()) {
+      try {
+        Universe u = Universe.get(universeUUID);
+        universes.add(u.toJson());
+      } catch (RuntimeException re) {
+        errors.add(re.getMessage());
+      }
     }
-    payload.put("universes", universes);
+
+    payload.set("universes", universes);
     // Build provider details json
     ArrayNode providers = Json.newArray();
     for (Provider p : Provider.getAll(c.uuid)) {
@@ -72,10 +83,10 @@ public class CallHomeManager {
       for (Region r : p.regions) {
         regions.add(r.name);
       }
-      provider.put("regions", regions);
+      provider.set("regions", regions);
       providers.add(provider);
     }
-    payload.put("providers", providers);
+    payload.set("providers", providers);
     if (c.getCallHomeLevel().equals("MEDIUM") || c.getCallHomeLevel().equals("HIGH")) {
       // Collect More Stuff
     }
@@ -86,6 +97,7 @@ public class CallHomeManager {
     payload.put("yugaware_uuid", ywMetadata.get("yugaware_uuid").toString());
     payload.put("version", ywMetadata.get("version").toString());
     payload.put("timestamp", clock.instant().getEpochSecond());
+    payload.set("errors", errors);
     return payload;
   }
 }

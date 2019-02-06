@@ -61,15 +61,15 @@ public class CallHome {
     }
 
     LOG.info("Running scheduler");
-    try {
-      running.set(true);
-      for (Customer c: Customer.getAll()){
+    running.set(true);
+    for (Customer c : Customer.getAll()) {
+      try {
         callHomeManager.sendDiagnostics(c);
+      } catch (Exception e) {
+        LOG.error("Error sending callhome for customer: " + c.uuid, e);
+
       }
-    } catch (Exception e) {
-      LOG.error("Error running callhome", e);
-    } finally {
-      running.set(false);
     }
+    running.set(false);
   }
 }
