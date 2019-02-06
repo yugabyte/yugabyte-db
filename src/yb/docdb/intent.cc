@@ -158,7 +158,9 @@ IntentTypeSet ObsoleteIntentTypeSetToNew(uint8_t obsolete_intent_type_set) {
   IntentTypeSet result;
   for (size_t idx = 0; idx != 4; ++idx) {
     if (obsolete_intent_type_set & (1 << idx)) {
-      result.Set(static_cast<IntentType>((idx >> 1) | (idx << 1)));
+      // We swap two bits in every index because their meanings have changed places between the
+      // obsolete vs. new format.
+      result.Set(static_cast<IntentType>(((idx >> 1) | (idx << 1)) & 3));
     }
   }
   return result;
