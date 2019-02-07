@@ -6,7 +6,7 @@ import { Field, FieldArray } from 'redux-form';
 import {browserHistory} from 'react-router';
 import _ from 'lodash';
 import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, isEmptyObject,
-         isNonEmptyArray, trimSpecialChars } from 'utils/ObjectUtils';
+         isNonEmptyArray, isEmptyString, trimSpecialChars } from 'utils/ObjectUtils';
 import { YBTextInput, YBTextInputWithLabel, YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
          YBToggle, YBUnControlledNumericInput, YBControlledNumericInputWithLabel } from 'components/common/forms/fields';
 import {getPromiseState} from 'utils/PromiseUtils';
@@ -677,7 +677,7 @@ export default class ClusterFields extends Component {
     if (!isDefinedNotNull(currentProvider) || currentProvider.code !== "kubernetes") {
       return null;
     }
-    if (!isDefinedNotNull(currentProvider.config.KUBECONFIG_STORAGE_CLASSES)) {
+    if (!isDefinedNotNull(currentProvider.config.KUBECONFIG_STORAGE_CLASSES) || !isEmptyString(currentProvider.config.KUBECONFIG_STORAGE_CLASSES)) {
       return ['standard'];
     } else {
       return currentProvider.config.KUBECONFIG_STORAGE_CLASSES.split(",");
