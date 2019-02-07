@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +48,7 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
-      UniverseDefinitionTaskParams.UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
 
       if (taskParams().taskType == UpgradeUniverse.UpgradeTaskType.Software) {
         if (taskParams().ybSoftwareVersion == null ||
@@ -61,15 +62,15 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
         }
       }
 
-      boolean didUpgradeUniverse = false;
       switch (taskParams().taskType) {
         case Software:
           LOG.info("Upgrading software version to {} in universe {}",
                    taskParams().ybSoftwareVersion, universe.name);
 
           createUpgradeTask(userIntent);
-          
-          didUpgradeUniverse = true;
+
+          createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
+              .setSubTaskGroupType(getTaskSubGroupType());
           break;
         case GFlags:
           LOG.info("Upgrading GFlags in universe {}", universe.name);
@@ -77,21 +78,13 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
               .setSubTaskGroupType(getTaskSubGroupType());
 
           createUpgradeTask(userIntent);
-
-          didUpgradeUniverse = true;
           break;
       }
 
-      if (didUpgradeUniverse) {
-        if (taskParams().taskType == UpgradeUniverse.UpgradeTaskType.Software) {
-          // Update the software version on success.
-          createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
-              .setSubTaskGroupType(getTaskSubGroupType());
-        }
-        // Marks update of this universe as a success only if all the tasks before it succeeded.
-        createMarkUniverseUpdateSuccessTasks()
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
+      // Marks update of this universe as a success only if all the tasks before it succeeded.
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
@@ -114,7 +107,7 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
     }
   }
 
-  private void createUpgradeTask(UniverseDefinitionTaskParams.UserIntent userIntent) {
+  private void createUpgradeTask(UserIntent userIntent) {
     String version = null;
     boolean flag = true;
     if (taskParams().taskType == UpgradeUniverse.UpgradeTaskType.Software) {

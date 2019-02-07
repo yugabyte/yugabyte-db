@@ -59,14 +59,14 @@ public class UpgradeUniverse extends UniverseTaskBase {
       List<NodeDetails> tServerNodes = universe.getTServers();
       List<NodeDetails> masterNodes  = universe.getMasters();
 
+      UserIntent primIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
       if (taskParams().taskType == UpgradeTaskType.Software) {
         if (taskParams().ybSoftwareVersion == null ||
             taskParams().ybSoftwareVersion.isEmpty()) {
           throw new IllegalArgumentException("Invalid yugabyte software version: " +
                                              taskParams().ybSoftwareVersion);
         }
-        if (taskParams().ybSoftwareVersion.equals(
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
+        if (taskParams().ybSoftwareVersion.equals(primIntent.ybSoftwareVersion)) {
           throw new IllegalArgumentException("Cluster is already on yugabyte software version: " +
                                              taskParams().ybSoftwareVersion);
         }
@@ -98,7 +98,8 @@ public class UpgradeUniverse extends UniverseTaskBase {
           didUpgradeUniverse = true;
           break;
         case GFlags:
-          if (!taskParams().masterGFlags.isEmpty()) {
+          if (!taskParams().masterGFlags.isEmpty() &&
+              !taskParams().masterGFlags.equals(primIntent.masterGFlags)) {
             LOG.info("Updating Master gflags: {} for {} nodes in universe {}",
                 taskParams().masterGFlags, masterNodes.size(), universe.name);
             if (!taskParams().rollingUpgrade) {
@@ -107,7 +108,8 @@ public class UpgradeUniverse extends UniverseTaskBase {
             createAllUpgradeTasks(masterNodes, ServerType.MASTER);
             didUpgradeUniverse = true;
           }
-          if (!taskParams().tserverGFlags.isEmpty()) {
+          if (!taskParams().tserverGFlags.isEmpty() &&
+              !taskParams().tserverGFlags.equals(primIntent.tserverGFlags)) {
             LOG.info("Updating T-Server gflags: {} for {} nodes in universe {}",
                 taskParams().tserverGFlags, tServerNodes.size(), universe.name);
             if (taskParams().rollingUpgrade) {
