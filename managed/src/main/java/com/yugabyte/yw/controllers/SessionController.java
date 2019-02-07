@@ -12,6 +12,8 @@ import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.models.Customer;
 
 import org.apache.commons.io.input.ReversedLinesFileReader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import play.Configuration;
 import play.data.Form;
@@ -24,6 +26,7 @@ import java.io.IOException;
 import javax.persistence.PersistenceException;
 
 public class SessionController extends Controller {
+  public static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
 
   @Inject
   FormFactory formFactory;
@@ -137,8 +140,8 @@ public class SessionController extends Controller {
 
       return ApiResponse.success(result);
     } catch (IOException ex) {
-      ex.printStackTrace();
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Could not open log file");
+      LOG.error("Log file open failed.", ex);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Could not open log file with error " + ex.getMessage());
     }
   }
 }
