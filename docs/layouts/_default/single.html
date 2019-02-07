@@ -38,7 +38,10 @@
 						{{ .Content }}
 					</div>			
 					{{ partial "footer_links" . }}
-					<!--{{ partial "pagination" . }}-->
+
+					{{if not (.Params.hidePagination) }}
+						{{ partial "pagination" . }}
+					{{ end }}
 					<!--{{ partial "feedback" . }}-->
 				</div>
 				{{if (and (.Params.showAsideToc) (ne (print .TableOfContents) "")) }}

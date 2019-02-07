@@ -31,7 +31,9 @@
 
 					{{ .Content }}
 				{{ end }}
-				<!-- {{ partial "pagination" . }} -->
+				{{if not (.Params.hidePagination) }}
+					{{ partial "pagination" . }}
+				{{ end }}
 			</div>
 		</article>
 
