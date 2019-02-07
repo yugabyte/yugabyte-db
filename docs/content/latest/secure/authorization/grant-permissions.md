@@ -28,16 +28,18 @@ Here is what we want to achieve from an RBAC perspective:
 ## 1. Create role hierarchy
 
 Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](/secure/authentication/#ycql) in YugaByte DB clusters for YCQL. For this article, we are using the default `cassandra` user and connect to the cluster using `cqlsh` as follows:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ cqlsh -u cassandra -p cassandra
 ```
+</div>
 
 Create a keyspace `eng_keyspace`.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> CREATE KEYSPACE IF NOT EXISTS dev_keyspace;
 ```
+</div>
 
 Create the `dev_keyspace.integration_tests` table:
 
@@ -51,26 +53,30 @@ CREATE TABLE dev_keyspace.integration_tests (
 ```
 
 Next, create roles `engineering`, `developer`, `qa` and `db_admin`.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> CREATE ROLE IF NOT EXISTS engineering;
                  CREATE ROLE IF NOT EXISTS developer;
                  CREATE ROLE IF NOT EXISTS qa;
                  CREATE ROLE IF NOT EXISTS db_admin;
 ```
+</div>
 
 Grant the `engineering` role to `developer`, `qa` and `db_admin` roles since they are all a part of the engineering organization.
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> GRANT engineering TO developer;
                  GRANT engineering TO qa;
                  GRANT engineering TO db_admin;
 ```
+</div>
 
 List all the roles.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
+</div>
 
 You should see the following output:
 
@@ -90,10 +96,11 @@ You should see the following output:
 ## 2. List permissions for roles
 
 You can list all permissions granted to the various roles with the following command:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> SELECT * FROM system_auth.role_permissions;
 ```
+</div>
 
 You should see something like the following output:
 
@@ -129,10 +136,11 @@ In this section, we will grant permissions to achieve the following as mentioned
 ### Grant read access
 
 All members of engineering should be able to read data from any keyspace and table. Use the `GRANT SELECT` command to grant `SELECT` (or read) access on `ALL KEYSPACES` to the `engineering` role. This can be done as follows:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> GRANT SELECT ON ALL KEYSPACES TO engineering;
 ```
+</div>
 
 We can now verify that the `engineering` role has `SELECT` permission as follows:
 
@@ -160,17 +168,19 @@ Granting the role `engineering` to any other role will cause all those roles to 
 ### Grant data modify access
 
 Both developers and qa should be able to modify data existing tables in the keyspace `dev_keyspace`. They should be able to execute statements such as `INSERT`, `UPDATE`, `DELETE` or `TRUNCATE` in order to modify data on existing tables. This can be done as follows:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> GRANT MODIFY ON KEYSPACE dev_keyspace TO developer;
                  GRANT MODIFY ON KEYSPACE dev_keyspace TO qa;
 ```
+</div>
 
 We can now verify that the `developer` and `qa` roles have the appropriate `MODIFY` permission by running the following command:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> SELECT * FROM system_auth.role_permissions;
 ```
+</div>
 
 We should see that the `developer` and `qa` roles have `MODIFY` permissions on the keyspace `data/dev_keyspace`.
 
@@ -190,16 +200,18 @@ In the resource hierarchy, `data` represents all keyspaces and `data/dev_keyspac
 ### Grant alter table access
 
 QA should be able to alter the table `integration_tests` in the keyspace `dev_keyspace`. This can be done as follows:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> GRANT ALTER ON TABLE dev_keyspace.integration_tests TO qa;
 ```
+</div>
 
 Once again, run the following command to verify the permissions:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> SELECT * FROM system_auth.role_permissions;
 ```
+</div>
 
 We should see a new row added, which grants the `ALTER` permission on the resource `data/dev_keyspace/integration_tests` to the role `qa`. 
 
@@ -225,16 +237,18 @@ DB admins should be able to perform all operations on any keyspace. There are tw
 1. The DB admins can be granted the superuser privilege. Read more about [granting the superuser privilege to roles](/secure/authentication/#granting-and-removing-superuser-privileges). Note that doing this will give the DB admin all the permissions over all the roles as well.
 
 2. Grant `ALL` privileges to the `db_admin` role. This can be achieved as follows:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> GRANT ALL ON ALL KEYSPACES TO db_admin;
 ```
+</div>
 
 Run the following command to verify the permissions:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> SELECT * FROM system_auth.role_permissions;
 ```
+</div>
 
 We should see the following, which grants the all permissions on the resource `data` to the role `db_admin`. 
 
@@ -253,16 +267,18 @@ We should see the following, which grants the all permissions on the resource `d
 ## 4. Revoke permissions from roles
 
 Let us say we want to revoke the `AUTHORIZE` permission from the DB admins so that they can no longer change permissions for other roles. This can be done as follows:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> REVOKE AUTHORIZE ON ALL KEYSPACES FROM db_admin;
 ```
+</div>
 
 Run the following command to verify the permissions:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> SELECT * FROM system_auth.role_permissions;
 ```
+</div>
 
 We should see the following output: 
 
@@ -278,5 +294,3 @@ We should see the following output:
 ```
 
 The `AUTHORIZE` permission is no longer granted to the `db_admin` role.
-
-

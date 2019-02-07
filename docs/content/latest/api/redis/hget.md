@@ -24,15 +24,21 @@ This command fetches the value for the given `field` in the hash that is specifi
 Returns the value for the given `field`
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ HSET yugahash area1 "America"
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HGET yugahash area1
 ```
+</div>
 ```sh
 "America"
 ```

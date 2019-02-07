@@ -53,17 +53,23 @@ transaction_block ::= START TRANSACTION ';'
 ## Examples
 
 ### Create a table with transactions enabled
-```{.sql .copy .separator-gt} 
+
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TABLE accounts (account_name TEXT,
                                       account_type TEXT,
                                       balance DOUBLE,
                                       PRIMARY KEY ((account_name), account_type))
                WITH transactions = { 'enabled' : true };
 ```
+</div>
 
 ### Insert some data
 
-```{.sql .copy .separator-gt}                                   
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO accounts (account_name, account_type, balance)
                VALUES ('John', 'savings', 1000);
 cqlsh:example> INSERT INTO accounts (account_name, account_type, balance)
@@ -73,9 +79,12 @@ cqlsh:example> INSERT INTO accounts (account_name, account_type, balance)
 cqlsh:example> INSERT INTO accounts (account_name, account_type, balance)
                VALUES ('Smith', 'checking', 50);
 ```
-```{.sql .copy .separator-gt} 
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT account_name, account_type, balance, writetime(balance) FROM accounts;
 ```
+</div>
 ```
  account_name | account_type | balance | writetime(balance)
 --------------+--------------+---------+--------------------
@@ -87,15 +96,20 @@ cqlsh:example> SELECT account_name, account_type, balance, writetime(balance) FR
 
 ### Update 2 rows with the same partition key
 
-```{.sql .copy .separator-gt} 
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> BEGIN TRANSACTION
                  UPDATE accounts SET balance = balance - 200 WHERE account_name = 'John' AND account_type = 'savings';
                  UPDATE accounts SET balance = balance + 200 WHERE account_name = 'John' AND account_type = 'checking';
                END TRANSACTION;
 ```
-```{.sql .copy .separator-gt} 
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT account_name, account_type, balance, writetime(balance) FROM accounts;
 ```
+</div>
 ```
  account_name | account_type | balance | writetime(balance)
 --------------+--------------+---------+--------------------
@@ -107,12 +121,15 @@ cqlsh:example> SELECT account_name, account_type, balance, writetime(balance) FR
 
 ### Update 2 rows with the different partition keys
 
-```{.sql .copy .separator-gt} 
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> BEGIN TRANSACTION
                  UPDATE accounts SET balance = balance - 200 WHERE account_name = 'John' AND account_type = 'checking';
                  UPDATE accounts SET balance = balance + 200 WHERE account_name = 'Smith' AND account_type = 'checking';
                END TRANSACTION;
 ```
+</div>
 ```
 cqlsh:example> SELECT account_name, account_type, balance, writetime(balance) FROM accounts;
 ```

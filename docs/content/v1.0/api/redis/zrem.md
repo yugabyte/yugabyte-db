@@ -19,27 +19,37 @@ If `key` is associated with non sorted-set data, an error is returned.
 The number of `members` removed from the sorted set.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ZADD z_key 1.0 v1 2.0 v2
 ```
+</div>
 ```sh
 (integer) 2
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZREM z_key v2 v3
 ```
+</div>
 ```sh
 (integer) 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZREM z_key v1 v2 v3
 ```
+</div>
 ```sh
 (integer) 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZCARD z_key
 ```
+</div>
 ```sh
 (integer) 0
 ```

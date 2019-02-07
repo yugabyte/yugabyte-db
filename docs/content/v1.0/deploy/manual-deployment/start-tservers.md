@@ -24,12 +24,15 @@ This section covers deployment for a single region/zone (or a single datacenter/
 
 - Run `yb-tserver` as below. Note that all the master addresses have to be provided as a flag. For the full list of flags, see the [yb-tserver Reference](../../../admin/yb-tserver/).
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-tserver \
   --tserver_master_addrs 172.151.17.v1.0:7100,172.151.17.220:7100,172.151.17.v1.0:7100 \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
   >& /home/centos/disk1/yb-tserver.out &
 ```
+</div>
 
 - Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the `--flagfile` option as shown below.
 
@@ -37,16 +40,20 @@ $ ./bin/yb-tserver \
 --tserver_master_addrs=172.151.17.v1.0:7100,172.151.17.220:7100,172.151.17.v1.0:7100
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
 ```
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-tserver --flagfile tserver.conf >& /home/centos/disk1/yb-tserver.out &
 ```
+</div>
 
 - Make sure all the 4 yb-tservers are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ cat /home/centos/disk1/yb-data/tserver/logs/yb-tserver.INFO
 ```
+</div>
 
 In all the 4 yb-tserver logs, you should see log messages similar to the following.
 
@@ -72,4 +79,3 @@ I0912 22:26:41.055996  3162 ts_manager.cc:97] Registered new tablet server { per
 ```
 
 {{< tip title="Tip" >}}Remember to add the command with which you launched `yb-tserver` to a cron to restart it if it goes down.{{< /tip >}}<br>
-

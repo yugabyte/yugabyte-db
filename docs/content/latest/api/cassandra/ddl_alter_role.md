@@ -42,20 +42,27 @@ Where
 
 ## Examples
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE ROLE finance;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> ALTER ROLE finance with LOGIN = true;
 ```
-
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> ALTER ROLE finance with SUPERUSER = true;
 ```
-
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> ALTER ROLE finance with PASSWORD = 'jsfp9ajhufans2' AND SUPERUSER = false;
 ```
+</div>
 
 ## See Also
 

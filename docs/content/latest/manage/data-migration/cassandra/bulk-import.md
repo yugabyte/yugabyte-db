@@ -58,10 +58,11 @@ customer6,0,2017-11-11 12:32:6.000000+0000,"{temp:6, humidity:6}"
 ### Export from Apache Cassandra
 
 If you already had the data in an Apache Cassandra table, then use the following command to create a csv file with the data.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> COPY example.SensorData TO '/path/to/sample.csv';
 ```
+</div>
 
 ### Export from MySQL
 
@@ -80,10 +81,11 @@ These instructions are organized by the size of the input datasets, ranging from
 ### Small Datasets (MBs)
 
 Cassandra’s CQL Shell provides the COPY FROM (see also COPY TO) command which allows importing data from csv files. 
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
 ```
+</div>
 
 ### Medium Datasets (GBs)
 
@@ -91,13 +93,17 @@ cqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
 
 #### Install cassandra-loader
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ wget https://github.com/YugaByte/cassandra-loader/releases/download/v0.0.27-yb-1/cassandra-loader
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ chmod a+x cassandra-loader
 ```
+</div>
 
 #### Run cassandra-loader
 

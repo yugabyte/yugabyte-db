@@ -8,28 +8,31 @@ Prometheus is installed on your local machine. If you have not done so already, 
 ## 1. Setup - create universe
 
 If you have a previously running local universe, destroy it using the following.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl destroy
 ```
+</div>
 
 Start a new local cluster - by default, this will create a 3-node universe with a replication factor of 3. 
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl create
 ```
+</div>
 
 ## 2. Run sample key-value app
 
 Run a simple key-value workload in a separate shell.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ java -jar java/yb-sample-apps.jar \
     --workload CassandraKeyValue \
     --nodes 127.0.0.1:9042 \
     --num_threads_read 1 \
     --num_threads_write 1
 ```
+</div>
 
 
 ## 3. Prepare Prometheus config file
@@ -46,7 +49,7 @@ global:
 scrape_configs:
   - job_name: 'yugabytedb'
     metrics_path: /prometheus-metrics
-  
+
     static_configs:
       - targets: ['127.0.0.1:7000', '127.0.0.2:7000', '127.0.0.3:7000']
         labels:
@@ -55,7 +58,7 @@ scrape_configs:
       - targets: ['127.0.0.1:9000', '127.0.0.2:9000', '127.0.0.3:9000']
         labels:
           group: 'yb-tserver'
-      
+
       - targets: ['127.0.0.1:11000', '127.0.0.2:11000', '127.0.0.3:11000']
         labels:
           group: 'yedis'
@@ -63,7 +66,7 @@ scrape_configs:
       - targets: ['127.0.0.1:12000', '127.0.0.2:12000', '127.0.0.3:12000']
         labels:
           group: 'ycql'
-      
+
       - targets: ['127.0.0.1:13000', '127.0.0.2:13000', '127.0.0.3:13000']
         labels:
           group: 'ypostgresql'
@@ -72,10 +75,11 @@ scrape_configs:
 ## 4. Start Prometheus server
 
 Go to the directory where Prometheus is installed and start the Prometheus server as below.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./prometheus --config.file=yugabytedb.yml
 ```
+</div>
 
 Open the Prometheus UI at http://localhost:9090 and then navigate to the Targets page under Status.
 
@@ -126,9 +130,8 @@ avg(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_sum[1m])) / avg(i
 ## 6. Clean up (optional)
 
 Optionally, you can shutdown the local cluster created in Step 1.
-
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl destroy
 ```
-
+</div>

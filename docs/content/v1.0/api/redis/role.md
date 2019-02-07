@@ -41,9 +41,13 @@ This command provides information of a Redis instance, such as its role, its sta
 Returns an array of values.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ROLE
 ```
+</div>
 ```sh
 1) "master"
 2) 0

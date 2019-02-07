@@ -36,12 +36,17 @@ Where
 
 ## Examples
 
-```{.sql .copy .separator-gt} 
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TABLE users(id INT PRIMARY KEY, name TEXT);
 ```
-```{.sql .copy .separator-gt} 
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DROP TABLE users;
 ```
+</div>
 
 ## See Also
 

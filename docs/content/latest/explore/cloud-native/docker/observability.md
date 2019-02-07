@@ -1,31 +1,35 @@
 ## 1. Setup - create universe
 
 If you have a previously running local universe, destroy it using the following.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./yb-docker-ctl destroy
 ```
+</div>
 
 Start a new local universe with default replication factor 3.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./yb-docker-ctl create  
 ```
+</div>
 ## 2. Run sample key-value app
 
 Run a simple key-value workload in a separate shell.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ docker cp yb-master-n1:/home/yugabyte/java/yb-sample-apps.jar .
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --nodes localhost:9042 \
                                     --num_threads_write 1 \
                                     --num_threads_read 4 \
                                     --value_size 4096
 ```
+</div>
 
 
 ## 3. Prepare Prometheus config file
@@ -42,7 +46,7 @@ global:
 scrape_configs:
   - job_name: 'yugabytedb'
     metrics_path: /prometheus-metrics
-  
+
     static_configs:
       - targets: ['yb-master-n1:7000', 'yb-master-n2:7000', 'yb-master-n3:7000']
         labels:
@@ -51,7 +55,7 @@ scrape_configs:
       - targets: ['yb-tserver-n1:9000', 'yb-tserver-n2:9000', 'yb-tserver-n3:9000']
         labels:
           group: 'yb-tserver'
-      
+
       - targets: ['yb-tserver-n1:11000', 'yb-tserver-n2:11000', 'yb-tserver-n3:11000']
         labels:
           group: 'yedis'
@@ -59,7 +63,7 @@ scrape_configs:
       - targets: ['yb-tserver-n1:12000', 'yb-tserver-n2:12000', 'yb-tserver-n3:12000']
         labels:
           group: 'ycql'
-      
+
       - targets: ['yb-tserver-n1:13000', 'yb-tserver-n2:13000', 'yb-tserver-n3:13000']
         labels:
           group: 'ypostgresql'
@@ -68,14 +72,15 @@ scrape_configs:
 ## 4. Start Prometheus server
 
 Start the Prometheus server as below. The `prom/prometheus` container image will be pulled from the Docker registry if not already present on the localhost.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ docker run \
 	-p 9090:9090 \
 	-v /tmp/yugabytedb.yml:/etc/prometheus/prometheus.yml \
 	--net yb-net \
     prom/prometheus
 ```
+</div>
 
 Open the Prometheus UI at http://localhost:9090 and then navigate to the Targets page under Status.
 
@@ -126,7 +131,7 @@ avg(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_sum[1m])) / avg(i
 ## 6. Clean up (optional)
 
 Optionally, you can shutdown the local cluster created in Step 1.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./yb-docker-ctl destroy
-```
+```</div>

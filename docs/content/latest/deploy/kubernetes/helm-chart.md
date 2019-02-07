@@ -30,10 +30,11 @@ The YugaByte DB Helm chart documented here has been tested with the following so
 - For optimal performance, ensure to set the appropriate [system limits using `ulimit`](../../manual-deployment/system-config/#setting-ulimits/) on each node in your Kubernetes cluster.
 
 Confirm that your `helm` is configured correctly.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm version
 ```
+</div>
 ```sh
 Client: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"}
 Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"}
@@ -44,18 +45,21 @@ Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"
 ### Clone YugaByte DB Project
 
 For creating the cluster, you have to first clone the yugabyte-db project and then create a YugaByte service account in your Kubernetes cluster.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ git clone https://github.com/YugaByte/yugabyte-db.git
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ cd ./yugabyte-db/cloud/kubernetes/helm/
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ kubectl create -f yugabyte-rbac.yaml
 ```
+</div>
 ```sh
 serviceaccount/yugabyte-helm created
 clusterrolebinding.rbac.authorization.k8s.io/yugabyte-helm created
@@ -64,10 +68,11 @@ clusterrolebinding.rbac.authorization.k8s.io/yugabyte-helm created
 ### Initialize Helm
 
 Initialize `helm` with the service account but use the `--upgrade` flag to ensure that you can upgrade any previous initializations you may have made.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm init --service-account yugabyte-helm --upgrade --wait
 ```
+</div>
 ```sh
 $HELM_HOME has been configured at /Users/<user>/.helm.
 
@@ -78,50 +83,57 @@ Happy Helming!
 ### Install YugaByte DB
 
 Install YugaByte DB in the Kubernetes cluster using the command below.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm install yugabyte --namespace yb-demo --name yb-demo --wait
 ```
+</div>
 
 If you are running in a resource-constrained environment or a local environment such as minikube, you will have to change the default resource requirements by using the command below. See next section for a detailed description of these resource requirements.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm install yugabyte --set resource.master.requests.cpu=0.1,resource.master.requests.memory=0.2Gi,resource.tserver.requests.cpu=0.1,resource.tserver.requests.memory=0.2Gi --namespace yb-demo --name yb-demo
 ```
+</div>
 
 ### Installing YugaByte DB with PostgreSQL (beta)
 If you wish to enable PostgreSQL (beta) support, install YugaByte DB with additional parameter as shown below.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm install yugabyte --wait --namespace yb-demo --name yb-demo --set "enablePostgres=true"
 ```
+</div>
 
 If you are running in a resource-constrained environment or a local environment such as minikube, you will have to change the default resource requirements by using the command below. See next section for a detailed description of these resource requirements.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm install yugabyte --set resource.master.requests.cpu=0.1,resource.master.requests.memory=0.2Gi,resource.tserver.requests.cpu=0.1,resource.tserver.requests.memory=0.2Gi --namespace yb-demo --name yb-demo --set "enablePostgres=true"
 ```
+</div>
 
 Initialize the PostgreSQL API (after ensuring that cluster is running - see "Check Cluster Status" below)
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl exec -it -n yb-demo yb-tserver-0 bash -- -c "YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=yb-master-0.yb-masters.yb-demo.svc.cluster.local:7100,yb-master-1.yb-masters.yb-demo.svc.cluster.local:7100,yb-master-2.yb-masters.yb-demo.svc.cluster.local:7100 /home/yugabyte/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres"
 ```
+</div>
 
 Connect using psql client as shown below.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/postgres/bin/psql -- -U postgres -d postgres -h yb-tserver-0.yb-tservers.yb-demo -p 5433
 ```
+</div>
 
 
 ## Check Cluster Status
 
 You can check the status of the cluster using various commands noted below.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm status yb-demo
 ```
+</div>
 ```sh
 LAST DEPLOYED: Fri Oct  5 09:04:46 2018
 NAMESPACE: yb-demo
@@ -150,10 +162,11 @@ yb-tserver-2  0/1    Pending  0         7s
 
 ...
 ```
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl get pods --namespace yb-demo
 ```
+</div>
 ```sh
 NAME           READY     STATUS    RESTARTS   AGE
 yb-master-0    1/1       Running   0          4m
@@ -163,10 +176,11 @@ yb-tserver-0   1/1       Running   0          4m
 yb-tserver-1   1/1       Running   0          4m
 yb-tserver-2   1/1       Running   0          4m
 ```
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl get services --namespace yb-demo
 ```
+</div>
 ```sh
 NAME           TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                               AGE
 yb-master-ui   LoadBalancer   10.111.34.175   <pending>     7000:31418/TCP                        1m
@@ -175,10 +189,11 @@ yb-tservers    ClusterIP      None            <none>        7100/TCP,9000/TCP,63
 ```
 
 You can even check the history of the `yb-demo` helm chart.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm history yb-demo
 ```
+</div>
 ```sh
 REVISION  UPDATED                   STATUS    CHART           DESCRIPTION     
 1         Fri Oct  5 09:04:46 2018  DEPLOYED  yugabyte-latest Install complete
@@ -217,16 +232,18 @@ partition:
 ```
 
 If you want to change the defaults, you can use the command below. You can even do `helm install` instead of `helm upgrade` when you are installing on a Kubernetes cluster with configuration different than the defaults.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm upgrade --set resource.tserver.requests.cpu=8,resource.tserver.requests.memory=15Gi yb-demo ./yugabyte
 ```
+</div>
 
 Replica count can be changed using the command below. Note only the tservers need to be scaled in a Replication Factor 3 cluster which keeps the masters count at 3.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
 ```
+</div>
 
 ### LoadBalancer for Services
 
@@ -234,32 +251,38 @@ By default, the YugaByte DB helm chart exposes only the master ui endpoint via L
 
 
 If you want individual LoadBalancer endpoint for each of the services (YCQL, YEDIS), run the following command.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm install yugabyte -f expose-all.yaml --namespace yb-demo --name yb-demo --wait
 ```
+</div>
 
 If you want to create a shared LoadBalancer endpoint for all the services (YCQL, YEDIS), run the following command.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm install yugabyte -f expose-all-shared.yaml --namespace yb-demo --name yb-demo --wait
 ```
+</div>
 
 ## Upgrade Cluster
 
 You can perform rolling upgrades on the YugaByte DB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugaByte DB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the `latest` Docker image is used for the install.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm upgrade yb-demo yugabyte --set Image.tag=1.1.0.3-b6 --wait
 ```
+</div>
 
 ## Delete Cluster
 
 Deleting the cluster involves purging the helm chart followed by deletion of the PVCs.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm del --purge yb-demo
 ```
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ kubectl delete pvc --namespace yb-demo --all
 ```
+</div>

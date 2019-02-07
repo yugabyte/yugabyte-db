@@ -23,27 +23,37 @@ This command adds `delta` to the number that is associated with the given field 
 Returns the value after addition.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ HSET yugahash f1 5
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HINCRBY yugahash f1 3
 ```
+</div>
 ```sh
 8
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HINCRBY yugahash non-existent-f2 4
 ```
+</div>
 ```sh
 4
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HINCRBY non-existent-yugahash f1 3
 ```
+</div>
 ```sh
 3
 ```

@@ -19,15 +19,21 @@ This command selects all the values in the hash that is associated with the give
 Returns list of values in the specified hash.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ HMSET yugahash area1 "America" area2 "Africa"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HVALS yugahash
 ```
+</div>
 ```sh
 1) "America"
 2) "Africa"

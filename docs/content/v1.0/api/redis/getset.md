@@ -19,15 +19,21 @@ This command is an atomic read and write operation that gets the existing value 
 Returns the old value of the given `key`.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ SET yugakey 1
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ GETSET yugakey 2
 ```
+</div>
 ```sh
 1
 ```

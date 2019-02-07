@@ -54,9 +54,12 @@ Where
 
 ## Examples
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> REVOKE CREATE ON KEYSPACE qa FROM fred;
 ```
+</div>
 
 ## See Also
 

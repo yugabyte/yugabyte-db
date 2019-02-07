@@ -12,13 +12,16 @@ YugaByte DB supports a number of standard aggregation functions. Let us go throu
 
 
 Let us create this table with `ProductID` as the primary hash key.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> CREATE KEYSPACE store;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh> CREATE TABLE store.products (ProductID BIGINT PRIMARY KEY, ProductName VARCHAR, SupplierID INT, CategoryID INT, Unit TEXT, Price FLOAT, Quantity INT);
 ```
+</div>
 
 Now let us populate the sample data.
 
@@ -35,9 +38,12 @@ INSERT INTO store.products (ProductID, ProductName, SupplierID, CategoryID, Unit
 
 - Finding the number of item types in the store can be done as follows.
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT COUNT(ProductID) FROM store.products;
 ```
+</div>
 ```sh
  count(productid)
 ------------------
@@ -48,9 +54,12 @@ cqlsh> SELECT COUNT(ProductID) FROM store.products;
 
 - We can give an alias name to the count column as follows.
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT COUNT(ProductID) as num_products FROM store.products;
 ```
+</div>
 ```sh
  num_products
 --------------
@@ -62,9 +71,12 @@ cqlsh> SELECT COUNT(ProductID) as num_products FROM store.products;
 
 - Finding the number of item types for supplier 1 can be done as follows.
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT COUNT(ProductID) as supplier1_num_products FROM store.products WHERE SupplierID=1;
 ```
+</div>
 ```sh
  supplier1_num_products
 ------------------------
@@ -80,9 +92,12 @@ The standard aggregate functions of min, max, sum and count are built-in functio
 
 - To find the total number of items in the store, run the following query.
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT SUM(Quantity) FROM store.products;
 ```
+</div>
 ```sh
  sum(quantity)
 ---------------
@@ -93,9 +108,12 @@ cqlsh> SELECT SUM(Quantity) FROM store.products;
 
 - To find the price of the cheapest and the most expensive item, run the following.
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT MIN(Price), MAX(Price) FROM store.products;
 ```
+</div>
 ```sh
  min(price) | max(price)
 ------------+------------

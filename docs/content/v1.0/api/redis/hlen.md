@@ -18,21 +18,29 @@ This command fetches the number of fields in the hash that is associated with th
 Returns number of fields in the specified hash.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ HSET yugahash area1 "Africa"
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HSET yugahash area2 "America"
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HLEN yugahash
 ```
+</div>
 ```sh
 2
 ```

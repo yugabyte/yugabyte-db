@@ -48,7 +48,7 @@ Where
  - The `where_expression` must specify conditions for all primary-key columns.
  - The `where_expression` must not specify conditions for any regular columns.
  - The `where_expression` can only apply `AND` and `=` operators. Other operators are not yet supported.
- 
+
 ### IF Clause
 
  - The `if_expression` can only apply to non-key columns (regular columns).
@@ -65,24 +65,35 @@ Where
 
 ### Delete a row from a table
 
-```{.sql .copy .separator-gt} 
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TABLE employees(department_id INT, 
                                       employee_id INT, 
                                       name TEXT, 
                                       PRIMARY KEY(department_id, employee_id));
 ```
-```{.sql .copy .separator-gt} 
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 2, 'Jane');
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe');
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM employees;
 ```
+</div>
 ```
  department_id | employee_id | name
 ---------------+-------------+------
@@ -91,16 +102,22 @@ cqlsh:example> SELECT * FROM employees;
              2 |           1 |  Joe
 ```
 Delete statements identify rows by the primary key columns.
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DELETE FROM employees WHERE department_id = 1 AND employee_id = 1;
 ```
+</div>
 Deletes on non-existent rows are no-ops.
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DELETE FROM employees WHERE department_id = 3 AND employee_id = 1;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM employees;
 ```
+</div>
 ```
  department_id | employee_id | name
 ---------------+-------------+------
@@ -110,25 +127,31 @@ cqlsh:example> SELECT * FROM employees;
 ### Conditional delete using the `IF` clause
 
 'IF' clause conditions will return whether they were applied or not.
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DELETE FROM employees WHERE department_id = 2 AND employee_id = 1 IF name = 'Joe';
 ```
+</div>
 ```
  [applied]
 -----------
       True
 ```
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DELETE FROM employees WHERE department_id = 3 AND employee_id = 1 IF EXISTS;
 ```
+</div>
 ```
  [applied]
 -----------
      False
 ```
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM employees;
 ```
+</div>
 ```
  department_id | employee_id | name
 ---------------+-------------+------
@@ -137,18 +160,27 @@ cqlsh:example> SELECT * FROM employees;
 
 ### Delete several rows with the same partition key
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe');
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 2, 'Jack');
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM employees;
 ```
+</div>
 ```
  department_id | employee_id | name
 ---------------+-------------+------
@@ -159,12 +191,16 @@ cqlsh:example> SELECT * FROM employees;
 ```
 
 Delete all entries for a partition key.
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DELETE FROM employees WHERE department_id = 1;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM employees;
 ```
+</div>
 ```
  department_id | employee_id | name
 ---------------+-------------+------
@@ -172,12 +208,16 @@ cqlsh:example> SELECT * FROM employees;
              2 |           2 | Jack
 ```
 Delete a range of entries within a partition key.
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DELETE FROM employees WHERE department_id = 2 AND employee_id >= 2 AND employee_id < 4;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM employees;
 ```
+</div>
 ```
  department_id | employee_id | name
 ---------------+-------------+------
@@ -185,7 +225,10 @@ cqlsh:example> SELECT * FROM employees;
 ```
 
 ### Delete with the `USING TIMESTAMP` clause
-```{.sql .copy .separator-gt}
+
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (4, 4, 'Ted') USING TIMESTAMP 1000;
 cqlsh:foo> SELECT * FROM employees;
 
@@ -213,6 +256,7 @@ cqlsh:foo> SELECT * FROM employees;
 
 (1 rows)
 ```
+</div>
 
 ## See Also
 

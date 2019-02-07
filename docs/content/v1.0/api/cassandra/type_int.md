@@ -47,24 +47,37 @@ integer_literal ::= [ + | - ] digit [ { digit | , } ... ]
 
 ### Using integer datatypes
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TABLE items(id INT PRIMARY KEY, item_count BIGINT);
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO items(id, item_count) VALUES(1, 1);
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO items(id, item_count) VALUES(2, 2);
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> UPDATE items SET item_count = 5 WHERE id = 1;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> UPDATE items SET item_count = item_count + 1 WHERE id = 2;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM items;
 ```
+</div>
 ```sh
  id | item_count
 ----+------------
@@ -74,16 +87,23 @@ cqlsh:example> SELECT * FROM items;
 
 ### Using `COUNTER` datatype
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TABLE item_counters(id INT PRIMARY KEY, item_counter COUNTER);
 ```
+</div>
 For counter type, null values are treated as 0.
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> UPDATE item_counters SET item_counter = item_counter + 1 WHERE id = 1;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM item_counters;
 ```
+</div>
 ```sh
  id | item_counter
 ----+--------------

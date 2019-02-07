@@ -21,16 +21,18 @@ Create a role with a password. You can do this with the [CREATE ROLE](/api/cassa
 
 
 As an example, let us create a role `engineering` for an engineering team in an organization. Note that we add the `IF NOT EXISTS` clause in case the role already exists.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> CREATE ROLE IF NOT EXISTS engineering;
 ```
+</div>
 
 Roles that have `LOGIN` privileges are users. As an example, you can create a user `john` as follows:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;
 ```
+</div>
 
 Read about [how to create users in YugaByte DB](/secure/authentication/) in the authentication section.
 
@@ -40,10 +42,11 @@ Read about [how to create users in YugaByte DB](/secure/authentication/) in the 
 You can grant a role to another role (which can be a user), or revoke a role that has already been granted. Executing the `GRANT` and the `REVOKE` operations requires the `AUTHORIZE` permission on the role being granted or revoked.
 
 As an example, you can grant the `engineering` role we created above to the user `john` as follows:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> GRANT engineering TO john;
 ```
+</div>
 
 Read more about [granting roles](/api/cassandra/ddl_grant_role/).
 
@@ -55,25 +58,28 @@ In YCQL, you can create a hierarchy of roles. The permissions of any role in the
 As an example, let us say that in the above example, we want to create a `developer` role that inherits all the permissions from the `engineering` role. You can achieve this as follows.
 
 First, create the `developer` role.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> CREATE ROLE IF NOT EXISTS developer;
 ```
+</div>
 
 Next, `GRANT` the `engineering` role to the `developer` role.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> GRANT engineering TO developer;
 ```
+</div>
 
 
 ## 3. List roles
 
 You can list all the roles by running the following command:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
+</div>
 
 You should see the following output:
 ```
@@ -100,10 +106,11 @@ In the table above, note the following:
 Roles can be revoked using the [REVOKE ROLE](/api/cassandra/ddl_revoke_role/) command.
 
 In the above example, we can revoke the `engineering` role from the user `john` as follows:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> REVOKE engineering FROM john;
 ```
+</div>
 
 Listing all the roles now shows that `john` no longer inherits from the `engineering` role:
 
@@ -126,10 +133,11 @@ cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_aut
 Roles can be dropped with the [DROP ROLE](/api/cassandra/ddl_drop_role/) command.
 
 In the above example, we can drop the `developer` role with the following command:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> DROP ROLE IF EXISTS developer;
 ```
+</div>
 
 The `developer` role would no longer be present upon listing all the roles:
 ```{.sql}
@@ -143,4 +151,3 @@ cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_aut
 
 (3 rows)
 ```
-

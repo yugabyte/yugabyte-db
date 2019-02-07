@@ -15,10 +15,13 @@ Use the popular [docker-compose](https://docs.docker.com/compose/overview/) util
 
 ### Pull the container
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 # pull the container from docker hub registry
 $ docker pull yugabytedb/yugabyte
 ```
+</div>
 
 ### Create a docker-compose.yaml file
 
@@ -60,15 +63,21 @@ services:
 
 ### Start the cluster
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ docker-compose up -d
 ```
+</div>
 
 ## 2. Setup the YEDIS API
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ docker exec -it yb-master-n1 /home/yugabyte/bin/yb-admin --master_addresses yb-master-n1:7100 setup_redis_table
 ```
+</div>
 
 Clients can now connect to the YCQL service at localhost:9042, to the YEDIS API at localhost:6379, and to the PostgreSQL(Beta) service at localhost:5433. The yb-master admin service is available at http://localhost:7000.
 
@@ -86,6 +95,9 @@ Follow the instructions in the Quick Start section with Docker using the links b
 
 ## 4. Stop the cluster
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ docker-compose down
 ```
+</div>

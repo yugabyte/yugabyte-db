@@ -15,9 +15,12 @@ menu:
 
 ## Example
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/cqlsh --execute "select cluster_name, data_center, rack from system.local" 127.0.0.1
 ```
+</div>
 ```
  cluster_name  | data_center | rack
 ---------------+-------------+-------
@@ -75,20 +78,22 @@ To inspect the current consistency level, use `CONSISTENCY` with no arguments.
 
 ### SHOW VERSION
 Prints the `cqlsh`, Cassandra, CQL, and native protocol versions in use. Example:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> SHOW VERSION
 ```
+</div>
 ```
 [cqlsh 5.0.1 | Cassandra 3.8 | CQL spec 3.4.2 | Native protocol v4]
 ```
 
 ### SHOW HOST
 Prints the IP address and port of the YB-TServer node that `cqlsh` is connected to in addition to the cluster name. Example:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> SHOW HOST
 ```
+</div>
 ```
 Connected to local cluster at 127.0.0.1:9042.
 ```
@@ -101,10 +106,11 @@ SOURCE '<file>'
 ```
 
 Example usage:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> SOURCE '/home/yugabyte/commands.cql'
 ```
+</div>
 
 ### CAPTURE
 Begins capturing command output and appending it to a specified file. Output will not be shown at the console while it is captured.
@@ -189,10 +195,11 @@ DESCRIBE TYPE <type name>
 In any of the commands, `DESC` may be used in place of `DESCRIBE`.
 
 The `DESCRIBE CLUSTER` command prints the cluster namer:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> DESCRIBE CLUSTER
 ```
+</div>
 ```
 Cluster: local cluster
 ```

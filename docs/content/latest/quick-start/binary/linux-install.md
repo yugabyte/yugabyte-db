@@ -7,10 +7,11 @@ a) One of the following operating systems
 <i class="icon-ubuntu"></i> Ubuntu 16.04+
 
 b) Verify thatyou have python2 installed. Support for python3 is in the works.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ python --version
 ```
+</div>
 ```sh
 Python 2.7.10
 ```
@@ -18,17 +19,22 @@ Python 2.7.10
 ## Download
 
 Download the YugaByte DB CE package as shown below.
-
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ wget https://downloads.yugabyte.com/yugabyte-ce-1.1.12.0-linux.tar.gz
 ```
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ tar xvfz yugabyte-ce-1.1.12.0-linux.tar.gz && cd yugabyte-1.1.12.0/
 ```
+</div>
 
 ## Configure
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/post_install.sh
 ```
+</div>

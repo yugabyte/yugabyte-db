@@ -33,33 +33,41 @@ The number of new `members` added to the sorted set, unless the `CH` option is s
 ## Examples
 
 Add two elements into the sorted set.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZADD z_key 1.0 v1 2.0 v2
 ```
+</div>
 ```sh
 (integer) 2
 ```
 
 Update an element in the set. Note the return value is 0, since we do not add a new member.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZADD z_key 3.0 v1
 ```
+</div>
 ```sh
 (integer) 0
 ```
 
 Now we add a new member with an existing score. This is fine, since multiple members can have the same score.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZADD z_key 3.0 v3
 ```
+</div>
 ```sh
 (integer) 1
 ```
 
 Let us now see the members in the sorted set. Note the sort order by score. Since both v1 and v3 have the same score, we use comparison on the members themselves to determine order.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZRANGEBYSCORE z_key -inf +inf WITHSCORES
 ```
+</div>
 ```sh
 1) "v2"
 2) "2.0"
@@ -70,38 +78,48 @@ $ ZRANGEBYSCORE z_key -inf +inf WITHSCORES
 ```
 
 With the XX option specified, only update exiting members. Here, only v1 is modified.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZADD z_key XX 1.0 v1 4.0 v4
 ```
+</div>
 ```sh
 (integer) 0
 ```
 
 With the NX option specified, only add new members. Here only v4 is added.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZADD z_key NX 0.0 v1 4.0 v4
 ```
+</div>
 ```sh
 (integer) 1
 ```
 
 With the CH option specified, return number of new and updated members.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZADD z_key CH 0.0 v1 5.0 v5
 ```
+</div>
 ```sh
 (integer) 2
 ```
 
 With the INCR option specified, increment by score. Score of v5 should now be 6.0.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZADD z_key INCR 1.0 v5
 ```
+</div>
 
 Let us now see the updated sorted set.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZRANGEBYSCORE z_key -inf +inf
 ```
+</div>
 ```sh
 1) "v1"
 2) "0.0"

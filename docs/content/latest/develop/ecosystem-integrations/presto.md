@@ -23,37 +23,49 @@ Follow [Quick Start](../../../quick-start/) instructions to run a local YugaByte
 ## 2. Download and Configure Presto
 Detailed steps are documented [here](https://prestodb.io/docs/current/installation/deployment.html).
 The following are the minimal setup steps for getting started.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ wget https://repo1.maven.org/maven2/com/facebook/presto/presto-server/0.212/presto-server-0.212.tar.gz
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ tar xvf presto-server-0.212.tar.gz
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ cd presto-server-0.212
 ```
+</div>
 
 ### Create the “etc”, “etc/catalog”, and “data” directory inside the installation directory.
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ mkdir etc
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ mkdir etc/catalog
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ mkdir data
 ```
+</div>
 
 ### Create node.properties file - replace &lt;username&gt; below
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ cat > etc/node.properties
 ```
+</div>
 ```sh
 node.environment=test
 node.id=ffffffff-ffff-ffff-ffff-ffffffffffff
@@ -61,9 +73,13 @@ node.data-dir=/Users/<username>/presto-server-0.212/data
 ```
 
 ### Create jvm.config file
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ cat > etc/jvm.config
 ```
+</div>
 ```sh
 -server
 -Xmx6G
@@ -76,9 +92,13 @@ $ cat > etc/jvm.config
 ```
 
 ### Create config.properties file
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ cat > etc/config.properties
 ```
+</div>
 ```sh
 coordinator=true
 node-scheduler.include-coordinator=true
@@ -90,9 +110,13 @@ discovery.uri=http://localhost:8080
 ```
 
 ### Create log.properties file
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ cat > etc/log.properties
 ```
+</div>
 ```sh
 com.facebook.presto=INFO
 ```
@@ -101,10 +125,11 @@ com.facebook.presto=INFO
 
 Create the cassandra catalog properties file in etc/catalog directory.
 Detailed instructions are [here](https://prestodb.io/docs/current/connector/cassandra.html).
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ cat > etc/catalog/cassandra.properties
 ```
+</div>
 ```sh
 connector.name=cassandra
 cassandra.contact-points=127.0.0.1
@@ -112,58 +137,74 @@ cassandra.contact-points=127.0.0.1
 
 ## 3. Download Presto CLI
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ cd ~/presto-server-0.212/bin
 ```
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ wget https://repo1.maven.org/maven2/com/facebook/presto/presto-cli/0.212/presto-cli-0.212-executable.jar
 ```
+</div>
 
 Rename jar to ‘presto’. It is meant to be a self-running binary.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ mv presto-cli-0.212-executable.jar presto && chmod +x presto
 ```
+</div>
 
 
 ## 4. Launch Presto server
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ cd presto-server-0.212
 ```
+</div>
 
 To run in foreground mode.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/launcher run       
 ```
+</div>
 
 To run in background mode.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/launcher start  
 ```
+</div>
 
 ## 5. Test Presto queries
 
 Use the presto CLI to run ad-hoc queries. 
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/presto --server localhost:8080 --catalog cassandra --schema default
 ```
+</div>
 
 Start using `myapp`.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 presto:default> use myapp;
 ```
+</div>
 ```sh
 USE
 ```
 
 Show the tables available.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 presto:myapp> show tables;
 ```
+</div>
 ```
  Table
 -------
@@ -172,10 +213,11 @@ presto:myapp> show tables;
 ```
 
 Describe a particular table.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 presto:myapp> describe stock_market;
 ```
+</div>
 ```sh
     Column     |  Type   | Extra | Comment 
 ---------------+---------+-------+---------
@@ -187,9 +229,12 @@ presto:myapp> describe stock_market;
 
 ### Query with filter
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 presto:myapp> select * from stock_market where stock_symbol = 'AAPL';
 ```
+</div>
 ```sh
  stock_symbol |         ts          | current_price 
 --------------+---------------------+---------------
@@ -200,9 +245,12 @@ presto:myapp> select * from stock_market where stock_symbol = 'AAPL';
 
 ### Query with aggregates
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 presto:myapp> select stock_symbol, avg(current_price) from stock_market group by stock_symbol;
 ```
+</div>
 ```sh
  stock_symbol |  _col1  
 --------------+---------
@@ -211,4 +259,3 @@ presto:myapp> select stock_symbol, avg(current_price) from stock_market group by
  FB           | 170.365 
 (3 rows)
 ```
-

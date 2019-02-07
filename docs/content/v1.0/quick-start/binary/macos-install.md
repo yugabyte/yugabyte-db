@@ -3,10 +3,11 @@
 a) <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 (Sierra) or higher
 
 b) Verify that you have python2 installed. Support for python3 is in the works.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ python --version
 ```
+</div>
 ```sh
 Python 2.7.10
 ```
@@ -17,14 +18,16 @@ c) Make sure that your file limits for kern.maxfiles and kern.maxfilesperproc ar
 ## Download
 
 Download the YugaByte DB CE package as shown below.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ wget https://downloads.yugabyte.com/yugabyte-ce-1.0.7.0-darwin.tar.gz
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ tar xvfz yugabyte-ce-1.0.7.0-darwin.tar.gz && cd yugabyte-1.0.7.0/
 ```
+</div>
 
 ## Configure
 

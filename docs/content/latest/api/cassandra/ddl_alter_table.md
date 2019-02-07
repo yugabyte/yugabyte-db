@@ -52,15 +52,22 @@ Where
 
 ### Add a column to a table
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TABLE employees (id INT, name TEXT, salary FLOAT, PRIMARY KEY((id), name));
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> ALTER TABLE employees ADD title TEXT;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DESCRIBE TABLE employees;
 ```
+</div>
 Following result would be shown.
 ```
 CREATE TABLE example.employees (
@@ -74,12 +81,17 @@ CREATE TABLE example.employees (
 
 ### Remove a column from a table
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> ALTER TABLE employees DROP salary;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DESCRIBE TABLE employees;
 ```
+</div>
 Following result would be shown.
 ```
 CREATE TABLE example.employees (
@@ -92,12 +104,17 @@ CREATE TABLE example.employees (
 
 ### Rename a column in a table
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> ALTER TABLE employees RENAME title TO job_title;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DESCRIBE TABLE employees;
 ```
+</div>
 Following result would be shown.
 ```
 CREATE TABLE example.employees (
@@ -110,12 +127,17 @@ CREATE TABLE example.employees (
 
 ### Update a table property
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> ALTER TABLE employees WITH default_time_to_live = 5;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DESCRIBE TABLE employees;
 ```
+</div>
 Following result would be shown.
 ```
 CREATE TABLE example.employees (

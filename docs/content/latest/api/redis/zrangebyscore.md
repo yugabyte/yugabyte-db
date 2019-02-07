@@ -30,24 +30,32 @@ Returns a list of `members` found in the range specified by `min`, `max`, unless
 elements, where `offset` is 0 indexed.</li>
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ZADD z_key 1.0 v1 2.0 v2
 ```
+</div>
 ```sh
 (integer) 2
 ```
 Retrieve all members.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZRANGEBYSCORE z_key -inf +inf
 ```
+</div>
 ```sh
 1) "v1"
 2) "v2"
 ```
 Retrieve all member score pairs.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZRANGEBYSCORE z_key -inf +inf WITHSCORES
 ```
+</div>
 ```sh
 1) "v1"
 2) "1.0"
@@ -55,24 +63,30 @@ $ ZRANGEBYSCORE z_key -inf +inf WITHSCORES
 4) "2.0"
 ```
 Bounds are inclusive.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZRANGEBYSCORE z_key 1.0 2.0
 ```
+</div>
 ```sh
 1) "v1"
 2) "v2"
 ```
 Bounds are exclusive.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZRANGEBYSCORE z_key (1.0 (2.0
 ```
+</div>
 ```sh
 (empty list or set)
 ```
 Enforce a limit.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 ZRANGEBYSCORE z_key -inf +inf LIMIT 1 1
 ```
+</div>
 ```sh
 1) "v2"
 ```

@@ -1,22 +1,25 @@
 ## 1. Setup - create universe and table
 
 If you have a previously running local universe, destroy it using the following.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl destroy
 ```
+</div>
 
 Start a new local universe with replication factor 5.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl --replication_factor 5 create
 ```
+</div>
 
 Connect to cqlsh on node 1.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/cqlsh 127.0.0.1
 ```
+</div>
 ```sh
 Connected to local cluster at 127.0.0.1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
@@ -25,40 +28,47 @@ cqlsh>
 ```
 
 Create a CQL keyspace and a table.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> CREATE KEYSPACE users;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
 	                               email text,
 	                               password text,
 	                               profile frozen<map<text, text>>);
 ```
+</div>
 
 
 ## 2. Insert data through node 1
 
 Now insert some data by typing the following into cqlsh shell we joined above.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
   (1000, 'james.bond@yugabyte.com', 'licensed2Kill',
    {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
   );
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
   (2000, 'sherlock.holmes@yugabyte.com', 'itsElementary',
    {'firstname': 'Sherlock', 'lastname': 'Holmes'}
   );
 ```
+</div>
 
 Query all the rows.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT email, profile FROM users.profile;
 ```
+</div>
 ```sql
  email                        | profile
 ------------------------------+---------------------------------------------------------------
@@ -72,13 +82,16 @@ cqlsh> SELECT email, profile FROM users.profile;
 ## Step 3. Read data through another node
 
 Let us now query the data from node 5.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/cqlsh 127.0.0.5
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT email, profile FROM users.profile;
 ```
+</div>
 ```sql
  email                        | profile
 ------------------------------+---------------------------------------------------------------
@@ -91,10 +104,11 @@ cqlsh> SELECT email, profile FROM users.profile;
 ## 4. Verify that one node failure has no impact
 
 We have 5 nodes in this universe. You can verify this by running the following.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl status
 ```
+</div>
 ```sh
 ...
 2017-11-19 23:20:35,029 INFO: Server is running: type=tserver, node_id=1, ...
@@ -105,16 +119,18 @@ $ ./bin/yb-ctl status
 ```
 
 Let us simulate a node failure by removing node 5.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl remove_node 5
 ```
+</div>
 
 Now running the status command should show only 4 nodes:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl status
 ```
+</div>
 ```sh
 ...
 2017-11-19 23:20:35,029 INFO: Server is running: type=tserver, node_id=1, ...
@@ -125,24 +141,27 @@ $ ./bin/yb-ctl status
 ```
 
 Now connect to node 4.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/cqlsh 127.0.0.4
 ```
+</div>
 
 Let us insert some data.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES 
   (3000, 'austin.powers@yugabyte.com', 'imGroovy',
    {'firstname': 'Austin', 'lastname': 'Powers'});
 ```
+</div>
 
 Now query the data.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT email, profile FROM users.profile;
 ```
+</div>
 ```sql
  email                        | profile
 ------------------------------+---------------------------------------------------------------
@@ -157,16 +176,18 @@ cqlsh> SELECT email, profile FROM users.profile;
 ## 5. Verify that second node failure has no impact
 
 This cluster was created with replication factor 5 and hence needs only 3 replicas to make consensus. Therefore, it is resilient to 2 failures without any data loss. Let us simulate another node failure.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl remove_node 1
 ```
+</div>
 
 We can check the status to verify:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl status
 ```
+</div>
 ```sh
 ...
 2017-11-19 23:31:02,183 INFO: Server type=tserver node_id=1 is not running
@@ -177,24 +198,27 @@ $ ./bin/yb-ctl status
 ```
 
 Now let us connect to node 2.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/cqlsh 127.0.0.2
 ```
+</div>
 
 Insert some data.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
   (4000, 'superman@yugabyte.com', 'iCanFly',
    {'firstname': 'Clark', 'lastname': 'Kent'});
 ```
+</div>
 
 Run the query.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT email, profile FROM users.profile;
 ```
+</div>
 ```sh
  email                        | profile
 ------------------------------+---------------------------------------------------------------
@@ -210,7 +234,8 @@ cqlsh> SELECT email, profile FROM users.profile;
 ## 6. Clean up (optional)
 
 Optionally, you can shutdown the local cluster created in Step 1.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl destroy
 ```
+</div>

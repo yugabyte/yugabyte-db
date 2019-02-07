@@ -8,10 +8,11 @@ This tutorial assumes that you have:
 ## Install Go Redis Driver
 
 To install the driver locally run:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ go get github.com/go-redis/redis
 ```
+</div>
 
 ## Writing a HelloWorld Redis app
 
@@ -57,10 +58,11 @@ func main() {
 ## Running the app
 
 To execute the file, run the following command:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ go run ybredis_hello_world.go
 ```
+</div>
 
 You should see the following as the output.
 

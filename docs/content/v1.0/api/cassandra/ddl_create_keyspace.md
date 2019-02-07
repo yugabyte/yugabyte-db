@@ -43,21 +43,27 @@ Where
 ``` {.sql .copy .separator-gt}
 cqlsh> CREATE KEYSPACE example;
 ```
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> DESCRIBE KEYSPACES;
 ```
+</div>
 ```
 example  system_schema  system_auth  system
 ```
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> DESCRIBE example;
 ```
+</div>
 ```
 CREATE KEYSPACE example WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': '3'} AND DURABLE_WRITES = true;
 ```
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> CREATE SCHEMA example;
 ```
+</div>
 ```
 SQL error: Keyspace Already Exists
 CREATE SCHEMA example;

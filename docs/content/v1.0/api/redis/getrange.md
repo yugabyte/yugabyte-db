@@ -18,21 +18,29 @@ This command fetches a substring of the string value that is associated with the
 Returns a string value.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ SET yugakey "YugaByte"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ GETRANGE yugakey 0 3
 ```
+</div>
 ```sh
 "Yuga"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ GETRANGE yugakey -4 -1
 ```
+</div>
 ```sh
 "Byte"
 ```

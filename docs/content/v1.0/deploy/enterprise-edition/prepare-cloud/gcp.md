@@ -78,15 +78,19 @@ Create an instance to run YugaWare. In order to do so, go to `Compute Engine` ->
 - Open the `Management, disks, networking, SSH keys` -> `Networking` tab. Add `yugaware-server` as the network tag (or the custom name you chose when setting up the firewall rules).
 - Switch to the `SSH Keys` tab and add a custom public key and login user to this instance. First create a key-pair.
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ssh-keygen -t rsa -f ~/.ssh/yugaware-1-gcp -C centos
 ```
+</div>
 
 Set the appropriate credentials for the ssh key.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ chmod 400 ~/.ssh/yugaware-1-gcp
 ```
+</div>
 
 Now enter the contents of `yugaware-1-gcp.pub` as the value for this field.
 
@@ -111,8 +115,8 @@ Finally, click `Create` to launch the YugaWare server.
 From the GCP web management console, find the public ip address of the instance we just launched.
 
 You can connect to this machine by running the following command (remember to replace `XX.XX.XX.XX` below with the ip address, and also to enter the appropriate ssh key instead of `yugaware-1-gcp`).
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ssh -i ~/.ssh/yugaware-1-gcp centos@XX.XX.XX.XX
 ```
-
+</div>

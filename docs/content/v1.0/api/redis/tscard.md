@@ -19,34 +19,46 @@ This command returns the number of entires in the given time series.
 Returns the number of entries in the given time series.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ TSADD ts_key 10 v1 20 v2 30 v3 40 v4 50 v5
 ```
+</div>
 ```sh
 OK
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSCARD ts_key
 ```
+</div>
 ```sh
 (integer) 5
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSADD ts_key1 10 v1 20 v2 30 v3
 ```
+</div>
 ```sh
 OK
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSCARD ts_key1
 ```
+</div>
 ```sh
 (integer) 3
 ```
 Non-existent key returns 0.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSCARD ts_key2
 ```
+</div>
 ```sh
 (integer) 0
 ```

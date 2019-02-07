@@ -21,21 +21,29 @@ Returns the remaining time to live of a key that has a timeout, in seconds.
 Returns TTL in seconds, encoded as integer response.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ SET yugakey "YugaByte"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ EXPIRE yugakey 10
 ```
+</div>
 ```sh
 (integer) 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TTL yugakey
 ```
+</div>
 ```sh
 (integer) 10
 ```

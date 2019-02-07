@@ -21,21 +21,29 @@ This command works exactly like EXPIRE but the time to live of the key is specif
 Returns integer reply, specifically 1 if the timeout was set and 0 if key does not exist.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ SET yugakey "YugaByte"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ PEXPIRE yugakey 10000
 ```
+</div>
 ```sh
 (integer) 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ PTTL yugakey
 ```
+</div>
 ```sh
 (integer) 9995
 ```

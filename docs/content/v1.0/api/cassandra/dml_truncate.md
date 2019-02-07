@@ -31,24 +31,35 @@ Where
 
 ### Truncate a table
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TABLE employees(department_id INT, 
                                       employee_id INT, 
                                       name TEXT, 
                                       PRIMARY KEY(department_id, employee_id));
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 2, 'Jane');
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe');
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM employees;
 ```
+</div>
 ```sh
  department_id | employee_id | name
 ---------------+-------------+------
@@ -57,12 +68,16 @@ cqlsh:example> SELECT * FROM employees;
              1 |           2 | Jane
 ```             
 Remove all rows from the table.
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> TRUNCATE employees;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM employees;
 ```
+</div>
 ```sh
  department_id | employee_id | name
 ---------------+-------------+------

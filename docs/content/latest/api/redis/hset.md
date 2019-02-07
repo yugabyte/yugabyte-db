@@ -34,42 +34,54 @@ If `emulate_redis_responses` is false, returns
 
 ## Examples
 <li> `emulate_redis_responses` is `true`.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HSET yugahash area1 "America"
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HSET yugahash area1 "North America"
 ```
+</div>
 ```sh
 0
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HGET yugahash area1
 ```
+</div>
 ```sh
 "North America"
 ```
 </li>
 
 <li> `emulate_redis_responses` is `false`.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HSET yugahash area1 "America"
 ```
+</div>
 ```sh
 OK
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HSET yugahash area1 "North America"
 ```
+</div>
 ```sh
 OK
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HGET yugahash area1
 ```
+</div>
 ```sh
 "North America"
 ```

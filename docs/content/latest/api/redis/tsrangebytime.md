@@ -28,15 +28,21 @@ exclusive.</li>
 Returns a list of timestamp, value pairs found in the range specified by `low_ts`, `high_ts`
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 TSADD ts 1 one 2 two 3 three 4 four 5 five 6 six
 ```
+</div>
 ```sh
 OK
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSRANGEBYTIME ts_key 2 4
 ```
+</div>
 ```sh
 1) "2"
 2) "two"
@@ -46,9 +52,11 @@ TSRANGEBYTIME ts_key 2 4
 6) "four"
 ```
 2 is exclusive
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSRANGEBYTIME ts_key (2 4
 ```
+</div>
 ```sh
 1) "3"
 2) "three"
@@ -56,16 +64,20 @@ TSRANGEBYTIME ts_key (2 4
 4) "four"
 ```
 2 and 4 are exclusive
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSRANGEBYTIME ts_key (2 (4
 ```
+</div>
 ```sh
 1) "3"
 2) "three"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSRANGEBYTIME ts_key -inf 3
 ```
+</div>
 ```sh
 1) "1"
 2) "one"
@@ -74,9 +86,11 @@ TSRANGEBYTIME ts_key -inf 3
 5) "3"
 6) "three"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSRANGEBYTIME ts_key 2 +inf
 ```
+</div>
 ```sh
  1) "2"
  2) "two"

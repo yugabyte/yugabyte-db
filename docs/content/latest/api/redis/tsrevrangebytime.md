@@ -31,15 +31,21 @@ Returns a list of timestamp, value pairs found in the range specified by `low_ts
 `LIMIT` is specified, at most `limit` pairs will be fetched.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 TSADD ts_key 1 one 2 two 3 three 4 four 5 five 6 six
 ```
+</div>
 ```sh
 OK
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSREVRANGEBYTIME ts_key 2 4
 ```
+</div>
 ```sh
 1) "4"
 2) "four"
@@ -49,9 +55,11 @@ TSREVRANGEBYTIME ts_key 2 4
 6) "two"
 ```
 2 is exclusive
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSREVRANGEBYTIME ts_key (2 4
 ```
+</div>
 ```sh
 1) "4"
 2) "four"
@@ -59,16 +67,20 @@ TSREVRANGEBYTIME ts_key (2 4
 4) "three"
 ```
 2 and 4 are exclusive
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSREVRANGEBYTIME ts_key (2 (4
 ```
+</div>
 ```sh
 1) "3"
 2) "three"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSREVRANGEBYTIME ts_key -inf 3
 ```
+</div>
 ```sh
 1) "3"
 2) "three"
@@ -77,9 +89,11 @@ TSREVRANGEBYTIME ts_key -inf 3
 5) "1"
 6) "one"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSREVRANGEBYTIME ts_key 2 +inf
 ```
+</div>
 ```sh
  1) "6"
  2) "six"
@@ -92,18 +106,22 @@ TSREVRANGEBYTIME ts_key 2 +inf
  9) "2"
 10) "two"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSREVRANGEBYTIME ts_key -inf 3 LIMIT 2
 ```
+</div>
 ```sh
 1) "3"
 2) "three"
 3) "2"
 4) "two"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSREVRANGEBYTIME ts_key -inf 3 LIMIT 10
 ```
+</div>
 ```sh
 1) "3"
 2) "three"

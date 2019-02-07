@@ -17,21 +17,27 @@ showAsideToc: true
 
 ## Download
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ mkdir ~/yugabyte && cd ~/yugabyte
 ```
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ wget https://downloads.yugabyte.com/yb-docker-ctl && chmod +x yb-docker-ctl
 ```
+</div>
 
 
 ## Help command
 
 Use the **-\-help** option to see all the commands supported.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./yb-docker-ctl -h
 ```
+</div>
 ```sh
 usage: yb-docker-ctl [-h] {create,status,destroy,add_node,remove_node} ...
 
@@ -57,10 +63,11 @@ optional arguments:
 Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal to the replication factor for the cluster to be considered as operating normally and the number of yb-tservers is equal to be the number of nodes.
 
 Note that the create command pulls the latest `yugabytedb/yugabyte` image at the outset in case the image is not yet downloaded or is not the latest.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./yb-docker-ctl create
 ```
+</div>
 ```sh
 docker run --name yb-master-n1 --privileged -p 7000:7000 --net yb-net --detach yugabytedb/yugabyte:latest /home/yugabyte/yb-master --fs_data_dirs=/mnt/disk0,/mnt/disk1 --master_addresses=yb-master-n1:7100,yb-master-n2:7100,yb-master-n3:7100 --rpc_bind_addresses=yb-master-n1:7100
 Adding node yb-master-n1
@@ -86,18 +93,20 @@ PID        Type       Node                 URL                       Status     
 - Create a 5 node local cluster with replication factor 5. 
 
 The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. With the [add_node](#add-a-node) and [remove_node](#remove-a-node) commands the size of the cluster can thereafter be expanded or shrinked as necessary. 
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./yb-docker-ctl create --rf 5
 ```
+</div>
 
 ## Check cluster status
 
 Get the status of the local cluster including the URLs for the admin UIs for the YB-Master and YB-TServer.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./yb-docker-ctl status
 ```
+</div>
 ```sh
 PID        Type       Node                 URL                       Status          Started At          
 11818      tserver    yb-tserver-n3        http://172.19.0.7:9000    Running         2017-11-28T23:33:00.369124907Z
@@ -112,10 +121,11 @@ PID        Type       Node                 URL                       Status     
 
 
 Add a new node to the cluster. This will start a new yb-tserver process and give it a new `node_id` for tracking purposes.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./yb-docker-ctl add_node
 ```
+</div>
 ```sh
 docker run --name yb-tserver-n4 --net yb-net --detach yugabytedb/yugabyte:latest /home/yugabyte/yb-tserver --fs_data_dirs=/mnt/disk0,/mnt/disk1 --tserver_master_addrs=04:7100,04:7100,04:7100 --rpc_bind_addresses=yb-tserver-n4:9100
 Adding node yb-tserver-n4
@@ -127,9 +137,12 @@ Remove a node from the cluster by executing the following command. The command t
 
 ### Help
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./yb-docker-ctl remove_node --help
 ```
+</div>
 ```sh
 usage: yb-docker-ctl remove_node [-h] node
 
@@ -142,9 +155,12 @@ optional arguments:
 
 ### Example
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./yb-docker-ctl remove_node 3
 ```
+</div>
 ```sh
 Stopping node :yb-tserver-n3
 ```
@@ -152,15 +168,16 @@ Stopping node :yb-tserver-n3
 ## Destroy cluster
 
 The command below destroys the cluster which includes deleting the data directories.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./yb-docker-ctl destroy
 ```
+</div>
 
 ## Upgrade container image
 
 The command below upgrades the YugaByte DB image to the latest version.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ docker pull yugabytedb/yugabyte
-```
+```</div>

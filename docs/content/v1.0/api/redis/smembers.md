@@ -17,21 +17,29 @@ This command selects all members of the set that is associated with the given `k
 Returns all members of the given set.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ SADD yuga_world "Africa"
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ SADD yuga_world "America"
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ SMEMBERS yuga_world
 ```
+</div>
 ```sh
 1) "Africa"
 2) "America"

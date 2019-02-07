@@ -39,12 +39,16 @@ Where
 
 ## Examples
 Collection types must be frozen to be used inside a user-defined type.
-```{.sql .copy .separator-gt} 
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TYPE person(first_name TEXT, last_name TEXT, emails FROZEN<LIST<TEXT>>);
 ```
-```{.sql .copy .separator-gt} 
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DESCRIBE TYPE person;
 ```
+</div>
 ```
 CREATE TYPE example.person (
     first_name text,
@@ -52,16 +56,22 @@ CREATE TYPE example.person (
     emails frozen<list<text>>
 );
 ```
-```{.sql .copy .separator-gt} 
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TABLE employees(employee_id INT PRIMARY KEY, employee person);
 ```
-```{.sql .copy .separator-gt} 
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO employees(employee_id, employee)
                    VALUES (1, {first_name : 'John', last_name : 'Doe', emails : ['jdoe@example.com']});
 ```
-```{.sql .copy .separator-gt} 
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM employees;
 ```
+</div>
 ```
  employee_id | employee
 -------------+---------------------------------------------------------------------------

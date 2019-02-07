@@ -18,21 +18,29 @@ This command finds the length of the string value that is associated with the gi
 Returns length of the specified string.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ SET yugakey "string value"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ STRLEN yugakey
 ```
+</div>
 ```sh
 12
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ STRLEN undefined_key
 ```
+</div>
 ```sh
 0
 ```

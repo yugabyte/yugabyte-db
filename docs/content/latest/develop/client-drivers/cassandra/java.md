@@ -80,10 +80,11 @@ Create a maven build file `pom.xml` and add the following content into it.
 
 
 Create the appropriate directory structure as expected by maven.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ mkdir -p src/main/java/com/yugabyte/sample/apps
 ```
+</div>
 
 Copy the following contents into the file `src/main/java/com/yugabyte/sample/apps/YBCqlHelloWorld.java`.
 
@@ -148,10 +149,11 @@ public class YBCqlHelloWorld {
 ### Building and running the app
 
 To build the application, just run the following command.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ mvn package
 ```
+</div>
 
 To run the program, do the following.
 

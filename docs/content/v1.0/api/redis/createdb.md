@@ -20,34 +20,46 @@ This is required before issuing a `SELECT` command to start using the database.
 Returns a status string, if creating the database was successful. Returns an error message upon error.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ LISTDB
 ```
+</div>
 ```sh
 1) "0"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ CREATEDB "second"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ LISTDB
 ```
+</div>
 ```sh
 1) "0"
 2) "second"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ CREATEDB "3.0"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ LISTDB
 ```
+</div>
 ```sh
 1) "0"
 2) "3.0"

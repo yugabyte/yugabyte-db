@@ -3,19 +3,26 @@
 
 -  Install the psql client inside the container
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ kubectl exec -it yb-tserver-2 yum install postgresql
 ```
+</div>
 
 - Run psql to connect to the service.
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ kubectl exec -it yb-tserver-2 bash 
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ psql --host localhost --port 5433 
 ```
+</div>
 
 ```sh
 Database 'username' does not exist

@@ -3,9 +3,12 @@
 
 - Run redis-cli to connect to the service.
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ docker exec -it yb-tserver-n3 /home/yugabyte/bin/redis-cli
 ```
+</div>
 ```sh
 127.0.0.1:6379> 
 ```

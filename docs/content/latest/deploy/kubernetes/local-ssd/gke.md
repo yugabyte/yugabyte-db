@@ -6,10 +6,11 @@ Each cluster brings up 3 nodes each of the type `n1-standard-1` for the Kubernet
 - Choose the zone
 
 First, choose the zone in which you want to run the cluster in. In this tutorial, we are going to deploy the Kubernetes masters using the default machine type `n1-standard-1` in the zone `us-west1-a`, and add a node pool with the desired node type and node count in order to deploy the YugaByte DB universe. You can view the list of zones by running the following command:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ gcloud compute zones list
 ```
+</div>
 ```
 NAME                       REGION                   STATUS
 ...
@@ -22,18 +23,20 @@ us-west1-a                 us-west1                 UP
 - Create the glcoud container cluster
 
 Create a Kubernetes cluster on GKE by running the following in order to create a cluster in the desired zone.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ gcloud container clusters create yugabyte --zone us-west1-b
 ```
+</div>
 
 - List gcloud container clusters
 
 You can list the available cluster by running the following command.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ gcloud container clusters list
 ```
+</div>
 ```
 NAME      LOCATION    MASTER_VERSION  MASTER_IP       MACHINE_TYPE   NODE_VERSION  NUM_NODES  STATUS
 yugabyte  us-west1-b  1.8.7-gke.1     35.199.164.253  n1-standard-1  1.8.7-gke.1   3          RUNNING
@@ -46,8 +49,8 @@ Created [https://container.googleapis.com/v1/projects/yugabyte/zones/us-west1-b/
 
 
 Create a node pool with 3 nodes, each having 8 cpus and 2 local SSDs.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ gcloud container node-pools create node-pool-8cpu-2ssd \
       --cluster=yugabyte \
       --local-ssd-count=2 \
@@ -55,6 +58,7 @@ $ gcloud container node-pools create node-pool-8cpu-2ssd \
       --num-nodes=3 \
       --zone=us-west1-b
 ```
+</div>
 ```
 Created
 NAME                 MACHINE_TYPE   DISK_SIZE_GB  NODE_VERSION
@@ -64,10 +68,11 @@ node-pool-8cpu-2ssd  n1-standard-8  100           1.8.7-gke.1
 Note the `--local-ssd-count` option above, which tells gcloud to mount the nodes with 2 local SSDs each.
 
 We can list all the node pools by doing the following.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ gcloud container node-pools list --cluster yugabyte --zone=us-west1-b
 ```
+</div>
 ```
 NAME                 MACHINE_TYPE   DISK_SIZE_GB  NODE_VERSION
 default-pool         n1-standard-1  100           1.8.7-gke.1
@@ -75,10 +80,11 @@ node-pool-8cpu-2ssd  n1-standard-8  100           1.8.7-gke.1
 ```
 
 You can view details of the node-pool just created by running the following command:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ gcloud container node-pools describe node-pool-8cpu-2ssd --cluster yugabyte --zone=us-west1-b
 ```
+</div>
 ```
 config:
   diskSizeGb: 100
@@ -92,20 +98,22 @@ name: node-pool-8cpu-2ssd
 ## 3. Create a YugaByte DB universe
 
 If this is your only container cluster, `kubectl` automatically points to this cluster. However, if you have multiple clusters, you should switch `kubectl` to point to this cluster by running the following command:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ gcloud container clusters get-credentials yugabyte --zone us-west1-b
 ```
+</div>
 ```
 Fetching cluster endpoint and auth data.
 kubeconfig entry generated for yugabyte.
 ```
 
 You can launch a universe on this node pool to run on local SSDs by running the following command.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl apply -f https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml
 ```
+</div>
 ```
 service "yb-masters" created
 service "yb-master-ui" created
@@ -145,10 +153,11 @@ Also, note that we instruct the scheduler to place the various pods in the `yb-m
 ## 4. View the universe
 
 You can verify that the YugaByte DB pods are running by doing the following:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl get pods
 ```
+</div>
 ```
 NAME           READY     STATUS    RESTARTS   AGE
 yb-master-0    1/1       Running   0          49s
@@ -160,10 +169,11 @@ yb-tserver-2   1/1       Running   0          48s
 ```
 
 You can check all the services that are running by doing the following:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl get services
 ```
+</div>
 ```
 NAME           TYPE           CLUSTER-IP    EXTERNAL-IP     PORT(S)                               AGE
 kubernetes     ClusterIP      10.7.240.1    <none>          443/TCP                               11m
@@ -180,10 +190,11 @@ Note the `yb-master-ui` service above. It is a loadbalancer service, which expos
 ## 5. Connect to the universe
 
 You can connect to one of the tserver pods and verify that the local disk is mounted into the pods.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl exec -it yb-tserver-0 bash
 ```
+</div>
 
 We can observe the local disks by running the following command.
 
@@ -197,10 +208,11 @@ Filesystem      Size  Used Avail Use% Mounted on
 ```
 
 You can connect to the `cqlsh` shell on this universe by running the following command.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl exec -it yb-tserver-0 bin/cqlsh
 ```
+</div>
 ```
 Connected to local cluster at 127.0.0.1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
@@ -214,20 +226,22 @@ system_schema  system_auth  system
 ## 6. Destroy the cluster (optional)
 
 You can destroy the YugaByte DB universe by running the following. Note that this does not destroy the data, and you may not be able to respawn the cluster because there is data left behind on the persistent disks.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl delete -f https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml
 ```
+</div>
 
 You can destroy the node-pool we created by running the following command:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ gcloud container node-pools delete node-pool-8cpu-2ssd --cluster yugabyte --zone=us-west1-b
 ```
+</div>
 
 Finally, you can destroy the entire gcloud container cluster by running the following:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ gcloud beta container clusters delete yugabyte --zone us-west1-b
 ```
-
+</div>

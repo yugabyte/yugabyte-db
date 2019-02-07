@@ -36,15 +36,22 @@ Where
 
 ## Examples
 
-```{.sql .copy .separator-gt} 
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TABLE users(id INT PRIMARY KEY, name TEXT) WITH transactions = { 'enabled' : true };
 ```
-```{.sql .copy .separator-gt} 
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE INDEX users_by_name ON users(name);
 ```
-```{.sql .copy .separator-gt} 
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DROP INDEX users_by_name;
 ```
+</div>
 
 ## See Also
 

@@ -37,15 +37,23 @@ Where
 - An error is raised if the specified keyspace is non-empty (contains tables or types).
 
 ## Examples
-```{.sql .copy .separator-gt} 
+
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> CREATE KEYSPACE example;
 ```
-```{.sql .copy .separator-gt} 
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh> DROP KEYSPACE example;
 ```
-```{.sql .copy .separator-gt} 
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh> DROP KEYSPACE IF EXISTS example;
 ```
+</div>
 
 ## See Also
 [`ALTER KEYSPACE`](../ddl_alter_keyspace)

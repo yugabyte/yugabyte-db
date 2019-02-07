@@ -23,62 +23,80 @@ Returns the value for the given `timestamp`
 ## Examples
 
 The timestamp can be arbitrary integers used just for sorting values in a certain order.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSADD cpu_usage 10 "70"
 ```
+</div>
 ```sh
 OK
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSADD cpu_usage 20 "80" 30 "60" 40 "90"
 ```
+</div>
 ```sh
 OK
 ```
 
 We could also encode the timestamp as “yyyymmddhhmm”, since this would still produce integers that are sortable by the actual timestamp.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSADD cpu_usage 201710311100 "50"
 ```
+</div>
 ```sh
 OK
 ```
 
 A more common option would be to specify the timestamp as the unix timestamp.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSADD cpu_usage 1509474505 "75"
 ```
+</div>
 ```sh
 OK
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSGET cpu_usage 10
 ```
+</div>
 ```sh
 "70"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSGET cpu_usage 100
 ```
+</div>
 ```sh
 (nil)
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSGET cpu_usage 201710311100
 ```
+</div>
 ```sh
 "50"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSGET cpu_usage 1509474505
 ```
+</div>
 ```sh
 "75"
 ```
 An error is returned when the timestamp is not an int64.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSGET cpu_usage xyz
 ```
+</div>
 ```sh
 (error) Request was unable to be processed from server.
 ```

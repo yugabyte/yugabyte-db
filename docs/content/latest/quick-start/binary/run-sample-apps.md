@@ -1,31 +1,39 @@
 ## 1. Create cluster and initialize YEDIS API.
 
 Create a cluster.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl create
 ``` 
+</div>
 
 Setup the redis_keyspace keyspace and the .redis table so that this cluster becomes ready for redis clients. Detailed output for the setup_redis command is available in the [yb-ctl Reference](../../admin/yb-ctl/#setup-redis).
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl setup_redis
 ```
+</div>
 
 Clients can now connect to the YCQL API at `localhost:9042` and to the YEDIS API at  `localhost:6379`.
 
 ## 2. Install Yugastore
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ git clone https://github.com/YugaByte/yugastore.git
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ cd yugastore
 ```
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ npm install
 ```
+</div>
 
 Note that the `config.json` in the `yugastore` directory stores the connection parameters for YugaByte DB. If you are running YugaByte DB in a different configuration, then you will need to change these parameters.
 
@@ -38,28 +46,35 @@ Note that the `config.json` in the `yugastore` directory stores the connection p
 ```
 
 Load the initial data of the Yugastore app into YugaByte DB.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 node models/yugabyte/db_init.js
 ```
+</div>
 
 Start the REST API server.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ npm start
 ```
+</div>
 
 Start the web server.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ cd ./ui
 ```
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ npm install
 ```
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ npm start
 ```
+</div>
 
 You can see the Yugastore app at http://localhost:3001.
 
@@ -67,9 +82,12 @@ You can see the Yugastore app at http://localhost:3001.
 
 ## 3. Run a load tester
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ node test/sample-user.js
 ```
+</div>
 
 ## 4. Observe effects of load on YugaByte DB Admin UI
 
@@ -85,5 +103,3 @@ Details of Yugastore architecture are documented [here](../../develop/realworld-
 ## 6. Run IoT Fleet Management app
 
 After running Yugastore, we recommend running the [IoT Fleet Management](../../develop/realworld-apps/iot-spark-kafka-ksql/) app. This app is built on top of YugaByte DB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
-
-

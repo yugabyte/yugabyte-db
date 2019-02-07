@@ -22,27 +22,37 @@ This command is a predicate to check whether or not the given `key` exists.
 Returns the number of existing keys.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ SET yuga1 "Africa"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ SET yuga2 "America"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ EXISTS yuga1
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ EXISTS yuga1 yuga2 not_a_key
 ```
+</div>
 ```sh
 2
 ```

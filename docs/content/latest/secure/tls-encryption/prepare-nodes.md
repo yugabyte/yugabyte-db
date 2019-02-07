@@ -23,18 +23,20 @@ This page describes how to prepare each node in a YugaByte DB cluster to enable 
 ### Create a secure data directory
 
 We will generate and store the secure info such as the root certificate in the `secure-data` directory. Once the setup is done, we will copy this data in a secure location and delete this directory.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ mkdir secure-data
 ```
+</div>
 
 ### Prepare a IP_ADDRESSES env variable
 
 In this example, we assume a 3 node cluster, with the variables `ip1`, `ip2` and `ip3` representing the ip addresses for the three nodes. Create a variable `IP_ADDRESSES` is a space-separated list of the IP addresses of the various nodes. We will use this variable to loop over all the nodes when needed.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ export IP_ADDRESSES="$ip1 $ip2 $ip3 ..."
 ```
+</div>
 
 {{< tip title="Tip" >}}
 Add the desired set of IP addresses or node names into the `IP_ADDRESSES` variable as shown above. Remember to add exactly one entry for each node in the cluster.
@@ -44,21 +46,23 @@ Add the desired set of IP addresses or node names into the `IP_ADDRESSES` variab
 ### Create a directory for config data of each node
 
 We will create one directory per node and put all the required data in that directory. This directory will eventually be copied into the respective nodes.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ for node in $IP_ADDRESSES;
 do
   mkdir $node
 done
 ```
+</div>
 
 ### Create the OpenSSL CA configuration
 
 Create the file ca.conf in the secure-data directory with the OpenSSL CA configuration.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ cat > secure-data/ca.conf
 ```
+</div>
 
 Paste the following example config into the file.
 
@@ -113,16 +117,18 @@ basicConstraints = critical,CA:true,pathlen:1
 ### Setup the necessary files
 
 Delete the existing index and database files.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ rm -f index.txt serial.txt
 ```
+</div>
 
 Create the index and database file.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ touch index.txt ; echo '01' > serial.txt
 ```
+</div>
 
 
 ## Generate root config
@@ -130,17 +136,22 @@ $ touch index.txt ; echo '01' > serial.txt
 In this section, we will generate the root key file `ca.key` and the root certificate `ca.crt`.
 
 We will generate the root private key file `ca.key` in the `secure-data` directory using the `openssl genrsa` command as shown below.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ openssl genrsa -out secure-data/ca.key 2048
 ```
+</div>
 
 Change the permissions of the generated private key as follows.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 chmod 400 secure-data/ca.key
 ```
+</div>
 
 Now generate the root certificate.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 openssl req -new                         \
             -x509                        \
             -config secure-data/ca.conf  \
@@ -148,12 +159,14 @@ openssl req -new                         \
             -out secure-data/ca.crt
 
 ```
+</div>
 
 You can verify the root certificate by doing the following:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ openssl x509 -in secure-data/ca.crt -text -noout
 ```
+</div>
 
 You should see output that looks as follows:
 
@@ -186,12 +199,14 @@ Certificate:
 ```
 
 Copy the generated root certificate file `ca.crt` to all the node directories.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ for node in $IP_ADDRESSES;
 do
   cp secure-data/ca.crt $node/;
 done
 ```
+</div>
 
 ## Generate per-node config
 
@@ -206,10 +221,11 @@ The IP address of each node is denoted by the variable `$NODE_IP_ADDRESS` below.
 {{< /tip >}}
 
 Generate a config file named `node.conf` for each node in the appropriate node directory as shown below. 
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ cat > $NODE_IP_ADDRESS/node.conf
 ```
+</div>
 
 There is a sample config below that you can use. You can customize this file as needed. Move the resulting `node.conf` file into the appropriate node directory.
 
@@ -239,20 +255,21 @@ You can generate the private key for each of the nodes as follows.
 {{< note title="Note" >}}
 The file names must be of the format `node.<commonName>.key` for YugaByte DB to recognize the file.
 {{< /note >}}
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ for node in $IP_ADDRESSES;
 do
   openssl genrsa -out $node/node.$node.key 2048
   chmod 400 $node/node.$node.key
 done
 ```
+</div>
 
 ### Generate the node certificates
 
 Next, we need to generate the node certificate. This has two steps. First, create the certificate signing request (CSR) for each node.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ for node in $IP_ADDRESSES;
 do
   openssl req -new                       \
@@ -261,10 +278,11 @@ do
               -out $node/node.csr
 done
 ```
+</div>
 
 Sign the node CSR with ca.key and ca.crt
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ for node in $IP_ADDRESSES;
 do
   openssl ca -config secure-data/ca.conf   \
@@ -278,16 +296,18 @@ do
              -batch
 done
 ```
+</div>
 
 {{< note title="Note" >}}
 The node key and crt should have `node.<name>.[crt | key]` naming format.
 {{< /note >}}
 
 You can verify the signed certificate for each of the nodes by doing the following:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ openssl verify -CAfile secure-data/ca.crt $node/node.$node.crt
 ```
+</div>
 
 You should see the following output:
 ```
@@ -305,8 +325,8 @@ The files needed for each node are:
 You can remove all other files in the node directories as they are unnecessary.
 
 Upload the necessary information to the target node.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ for node in $IP_ADDRESSES;
 do
   # Create the directory that will contain the config files.
@@ -318,7 +338,6 @@ do
   scp $node/node.$node.key <user>@$node:~/yugabyte-tls-config/$NODE_IP
 done
 ```
+</div>
 
 You can now delete or appropriately secure the directories we created for the various nodes on the local machine.
-
-

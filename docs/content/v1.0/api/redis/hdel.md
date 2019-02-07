@@ -28,42 +28,54 @@ If `emulate_redis_responses` is `false`, returns OK.
 
 ## Examples
 <li> `emulate_redis_responses` is `true`.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HSET yugahash moon "Moon"
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HDEL yugahash moon
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HDEL yugahash moon
 ```
+</div>
 ```sh
 0
 ```
 </li>
 
 <li> `emulate_redis_responses` is `false`.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HSET yugahash moon "Moon"
 ```
+</div>
 ```sh
 OK
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HDEL yugahash moon
 ```
+</div>
 ```sh
 OK
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HDEL yugahash moon
 ```
+</div>
 ```sh
 OK
 ```

@@ -112,4 +112,3 @@ The graphs above, also taken from the EE, show that the average read latencies f
 It is possible to easily configure YugaByte DB EE to work with multiple public clouds as well as private datacenters in just a few minutes.
 
 ![Geo-distributed](/images/develop/learn/yb-multi-cloud-ready.png)
-

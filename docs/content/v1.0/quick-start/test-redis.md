@@ -60,56 +60,66 @@ After [creating a local cluster](../create-local-cluster/), follow the instructi
 ## 2. Simple key-value types
 
 Insert a key and a value.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 127.0.0.1:6379> set mykey somevalue
 ```
+</div>
 ```sh
 OK
 ```
 
 Query the value by the key.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 127.0.0.1:6379> get mykey
 ```
+</div>
 ```sh
 "somevalue"
 ```
 
 Check if the key exists.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 127.0.0.1:6379> exists mykey
 ```
+</div>
 ```sh
 (integer) 1
 ```
 
 
 If the value is a number, it can be incremented.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 127.0.0.1:6379> set counter 100
 ```
+</div>
 ```sh
 OK
 ```
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 127.0.0.1:6379> incr counter
 ```
+</div>
 ```sh
 (integer) 101
 ```
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 127.0.0.1:6379> incr counter
 ```
+</div>
 ```sh
 (integer) 102
 ```
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 127.0.0.1:6379> get counter
 ```
+</div>
 ```sh
 "102"
 ```
@@ -118,34 +128,39 @@ OK
 ## 3. Hash data types
 
 You can create a Redis Hash data type as follows. This models the data for user id 1000 with the following attributes {username : john, birthyear : 1977, verified : 1}.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 127.0.0.1:6379> hmset user:1000 username john birthyear 1977 verified 1
 ```
+</div>
 ```sh
 OK
 ```
 
 You can retrieve specific attributes for user id 1000 as follows.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 127.0.0.1:6379> hget user:1000 username
 ```
+</div>
 ```sh
 "john"
 ```
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 127.0.0.1:6379> hget user:1000 birthyear
 ```
+</div>
 ```sh
 "1977"
 ```
 
 You can fetch multiple attributes with a single command as follows.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 127.0.0.1:6379> hmget user:1000 username birthyear no-such-field
 ```
+</div>
 ```sh
 1) "john"
 2) "1977"
@@ -153,10 +168,11 @@ You can fetch multiple attributes with a single command as follows.
 ```
 
 You can fetch all attributes by using the `hgetall` command.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 127.0.0.1:6379> hgetall user:1000
 ```
+</div>
 ```sh
 1) "birthyear"
 2) "1977"
@@ -165,4 +181,3 @@ You can fetch all attributes by using the `hgetall` command.
 5) "verified"
 6) "1"
 ```
-

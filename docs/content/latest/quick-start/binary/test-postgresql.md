@@ -3,21 +3,30 @@
 
 - Destroy any existing cluster.
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl destroy
 ```
+</div>
 
 - Create a new cluster with PostgreSQL API enabled. Note the additional option `enable_postgres` passed to the create cluster command.
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl create --enable_postgres
 ```
+</div>
 
 - Check status of the cluster and confirm that the special `postgres` node is now running. This is the node we will connect postgres clients to. Internally, this node will use the various tserver nodes to distribute the data across the entire cluster.
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl status
 ```
+</div>
 ```sh
 2019-01-15 22:18:40,387 INFO: Server is running: type=master, node_id=1, PID=12818, admin service=http://127.0.0.1:7000
 2019-01-15 22:18:40,394 INFO: Server is running: type=master, node_id=2, PID=12821, admin service=http://127.0.0.2:7000
@@ -29,13 +38,15 @@ $ ./bin/yb-ctl status
 
 - Run psql to connect to the service.
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/psql -h 127.0.0.1 -p 5433 -U postgres
 ```
+</div>
 ```sh
 psql (10.3, server 10.4)
 Type "help" for help.
 
 postgres=#
 ```
-

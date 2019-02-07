@@ -59,27 +59,36 @@ Upgrades to Replicated are as simple as rerunning the Replicated install command
 ## Uninstall
 
 Stop and remove the YugaWare application on Replicated first.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 # stop the yugaware application on replicated
 $ /usr/local/bin/replicated apps
 ```
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 # replace <appid> with the application id of yugaware from the command above
 $ /usr/local/bin/replicated app <appid> stop
 ```
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 # remove yugaware app
 $ /usr/local/bin/replicated app <appid> rm
 ```
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 # remove all yugaware containers
 $ docker images | grep "yuga" | awk '{print $3}' | xargs docker rmi -f
 ```
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 # delete the mapped directory
 $ rm -rf /opt/yugabyte
 ```
+</div>
 
 And then uninstall Replicated itself by following instructions documented [here](https://www.replicated.com/docs/distributing-an-application/installing-via-script/#removing-replicated).
 
@@ -106,18 +115,21 @@ sudo firewall-cmd --zone=public --add-port=9874-9879/tcp
 ### Unable to perform passwordless ssh into the data nodes
 
 If your YugaWare host is not able to do passwordless ssh to the data nodes, follow the steps below.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 # Generate key pair
 $ ssh-keygen -t rsa
 ```
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 # Setup passwordless ssh to the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152
 $ for IP in 10.1.13.150 10.1.13.151 10.1.13.152; do
   ssh $IP mkdir -p .ssh;
   cat ~/.ssh/id_rsa.pub | ssh $IP 'cat >> .ssh/authorized_keys';
 done
 ```
+</div>
 
 ### Check host resources on the data nodes
 heck resources on the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152

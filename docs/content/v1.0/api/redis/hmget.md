@@ -19,15 +19,21 @@ This command fetches one or more values for the given fields of the hash that is
 Returns list of string values of the fields in the same order that was requested.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ HMSET yugahash area1 "Africa" area2 "America"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HMGET yugahash area1 area2 area_none
 ```
+</div>
 ```sh
 1) "Africa"
 2) "America"

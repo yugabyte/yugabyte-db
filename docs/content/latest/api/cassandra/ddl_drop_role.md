@@ -41,13 +41,17 @@ Where
 
 ## Examples
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DROP ROLE role1;
 ```
-
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DROP ROLE IF EXISTS role2;
 ```
+</div>
 
 ## See Also
 

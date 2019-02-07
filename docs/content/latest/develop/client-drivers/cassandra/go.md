@@ -8,10 +8,11 @@ This tutorial assumes that you have:
 ## Install Go Cassandra Driver
 
 To install the driver locally run:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ go get github.com/gocql/gocql
 ```
+</div>
 
 ## Writing a HelloWorld CQL app
 
@@ -57,7 +58,7 @@ func main() {
         log.Fatal(err)
     }
     fmt.Println("Created table ybdemo.employee")
-    
+
     // Insert into the table.
     var insertStmt string = "INSERT INTO ybdemo.employee(id, name, age, language)" + 
         " VALUES (1, 'John', 35, 'Go')";
@@ -85,9 +86,11 @@ func main() {
 ## Running the app
 
 To execute the file, run the following command:
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ go run ybcql_hello_world.go
 ```
+</div>
 
 You should see the following as the output.
 

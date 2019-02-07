@@ -3,18 +3,20 @@
 ## Restore the schema
 
 In order to restore the schema, run the following command.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ cqlsh -e "source 'schema.cql'"
 ```
+</div>
 
 ### Restoring data from a backup
 
 In order to restore data from a backup, run the following command.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ cqlsh -e "COPY <keyspace name>.<table name> FROM 'data.csv' WITH HEADER = TRUE ;"
 ```
+</div>
 
 You can restore data from a backup that has a subset of columns as well.
 
@@ -55,22 +57,27 @@ Let us restore the backup we had performed in the [example section of backing up
 where we had walked through how to create the `myapp_schema.cql` schema backup and the `myapp_data.csv` data backup files. 
 
 If you have created the keyspace and the table with the data, remember to drop them using cqlsh. You can drop the table by running the following query:
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> DROP TABLE myapp.stock_market;
 ```
+</div>
 
 You can drop the keyspace by running the following:
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> DROP KEYSPACE myapp;
 ```
+</div>
 
 ### Restore the table schema
 
 You can import the schema from the `myapp_schema.cql` schema backup file by running the following:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ cqlsh -f myapp_schema.cql
 ```
+</div>
 
 The schema backup file `myapp_schema.cql` should look as show below:
 
@@ -105,9 +112,11 @@ CREATE TABLE myapp.stock_market (
 ### Restore the data
 
 You can restore the data from the `myapp_data.csv` data backup file as follows:
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ cqlsh -e "COPY myapp.stock_market FROM 'myapp_data.csv' WITH HEADER = TRUE ;"
 ```
+</div>
 
 The data backup file `myapp_data.csv` should look as follows:
 
@@ -139,5 +148,3 @@ cqlsh> SELECT * FROM myapp.stock_market;
 
 (6 rows)
 ```
-
-

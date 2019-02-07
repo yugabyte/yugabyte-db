@@ -22,42 +22,54 @@ Returns a list of members found in the range specified by `start`, `stop`, unles
 <li> WITHSCORES: Makes the command return both the `member` and its `score`.</li>
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ZADD z_key 1.0 v1 2.0 v2 3.0 v3
 ```
+</div>
 ```sh
 (integer) 3
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZRANGE z_key 0 2
 ```
+</div>
 ```sh
 1) "v1"
 2) "v2"
 3) "v3"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 # With negative indices.
 $ ZRANGE z_key -2 -1
 ```
+</div>
 ```sh
 1) "v2"
 2) "v3" 
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 # Both positive and negative indices.
 $ ZRANGE z_key 1 -1 WITHSCORES
 ```
+</div>
 ```sh
 1) "v2"
 2) "2.0"
 3) "v3"
 4) "3.0"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 # Empty list returned if key doesn't exist.
 $ ZRANGE z_key_no_exist 0 2  WITHSCORES
 ```
+</div>
 ```sh
 (empty list or set)
 ```

@@ -24,22 +24,30 @@ This command fetches the value that is associated with the given `key`.
 Returns string value of the given `key`.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ GET yugakey
 ```
+</div>
 ```sh
 (null)
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ SET yugakey "YugaByte"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ GET yugakey
 "YugaByte"
 ```
+</div>
 
 ## See Also
 [`append`](../append/), [`getrange`](../getrange/), [`getset`](../getset/), [`incr`](../incr/), [`incrby`](../incrby/), [`set`](../set/), [`setrange`](../setrange/), [`strlen`](../strlen/)

@@ -18,21 +18,29 @@ This command is a predicate for whether or not a value is a member of a set that
 Returns 1 if the specified member exists. Returns 0 otherwise.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ SADD yuga_world "America"
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ SISMEMBER yuga_world "America"
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ SISMEMBER yuga_world "Moon"
 ```
+</div>
 ```sh
 0
 ```

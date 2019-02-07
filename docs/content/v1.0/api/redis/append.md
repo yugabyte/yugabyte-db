@@ -19,21 +19,29 @@ This command appends a value to the end of the string that is associated with th
 Returns the length of the resulted string after appending.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ GET yugakey
 ```
+</div>
 ```sh
 "Yuga"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ APPEND yugakey "Byte"
 ```
+</div>
 ```sh
 8
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ GET yugakey
 ```
+</div>
 ```sh
 "YugaByte"
 ```

@@ -18,41 +18,55 @@ A client can issue the `DELETEDB` command through the redis-cli.
 Returns a status string upon success.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ LISTDB
 ```
+</div>
 ```sh
 1) "0"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ CREATEDB "second"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ CREATEDB "3.0"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ LISTDB
 ```
+</div>
 ```sh
 1) "0"
 2) "3.0"
 3) "second"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ DELETEDB "3.0"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ LISTDB
 ```
+</div>
 ```sh
 1) "0"
 2) "second"

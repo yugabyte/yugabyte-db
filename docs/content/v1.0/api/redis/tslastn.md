@@ -20,24 +20,32 @@ The elements are returned in ascending order of timestamps.
 Returns a list of timestamp, value pairs for the latest N entries in the time series.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ TSADD ts_key 10 v1 20 v2 30 v3 40 v4 50 v5
 ```
+</div>
 ```sh
 OK
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSLASTN ts_key 2
 ```
+</div>
 ```sh
 1) "40"
 2) "v4"
 3) "50"
 4) "v5"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSLASTN ts_key 3
 ```
+</div>
 ```sh
 1) "30"
 2) "v3"
@@ -46,21 +54,27 @@ $ TSLASTN ts_key 3
 5) "50"
 6) "v5"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSLASTN ts_key 9999999999
 ```
+</div>
 ```sh
 (error) ERR tslastn: limit field 9999999999 is not within valid bounds
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSLASTN ts_key 0
 ```
+</div>
 ```sh
 (error) ERR tslastn: limit field 0 is not within valid bounds
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSLASTN ts_key -1
 ```
+</div>
 ```sh
 (error) ERR tslastn: limit field -1 is not within valid bounds
 ```

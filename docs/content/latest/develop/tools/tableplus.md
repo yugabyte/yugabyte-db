@@ -31,10 +31,11 @@ Install TablePlus after the download completes.
 ## Start a Local Cluster
 
 Follow the instructions in the [Quick Start](../../../quick-start/install) to create a local YugaByte DB cluster. We will use the macOS install instructions for the rest of this tutorial.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl create --enable_postgres
 ```
+</div>
 
 At this point, we have YSQL running on 127.0.0.1:5433, YCQL on 127.0.0.1:9042 and YEDIS on 127.0.0.1:6379. We are now ready to connect these API endpoints with TablePlus.
 
@@ -73,7 +74,3 @@ Follow the instructions from [TablePlus Getting Started](https://tableplus.io/bl
 Following is a known issue that we hope to address soon. You can track the issue directly on GitHub.
 
 [tableplus integration: redis metadata commands should gracefully error for redis compatible yedis](https://github.com/YugaByte/yugabyte-db/issues/503)
-
-
-
-

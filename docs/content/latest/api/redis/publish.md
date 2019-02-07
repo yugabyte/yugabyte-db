@@ -23,9 +23,13 @@ across all the YugaByte YEDIS API server(s) in the cluster will receive the mess
 Returns, as an integer value, the number of subscribers that the message was forwarded to.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ PUBLISH channel message
 ```
+</div>
 ```sh
 2
 ```

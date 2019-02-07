@@ -21,9 +21,13 @@ This command outputs the given `message`.
 Returns the message.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ECHO "Yuga Yuga"
 ```
+</div>
 ```sh
 "Yuga Yuga"
 ```

@@ -17,20 +17,24 @@ showAsideToc: true
 
 ## Example
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-master \
 --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
 --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
 --replication_factor=3 &
 ```
+</div>
 
 ## Help 
 
 Use the **-\-help** option to see all the commands supported.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-master --help
 ```
+</div>
 
 ## Config flags
 

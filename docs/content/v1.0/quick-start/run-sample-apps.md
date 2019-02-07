@@ -16,9 +16,12 @@ We will show how to run a sample key-value workload against both the YCQL and YE
 
 - Verify that Java is installed on your localhost. You need Java 1.8 installed on your system in order to run sample applications. You can install Java 1.8 from [here](http://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html).
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ java -version
 ```
+</div>
 
 - Make sure you have `yb-sample-apps.jar` in a convenient location.
 
@@ -27,16 +30,18 @@ The YugaByte DB install comes pre-packaged with the sample apps and the correspo
 For binary installs, this is located in the `java` subdirectory of the install. 
 
 For docker based installs, you can copy it from one of the YB containers into the `yugabyte` install directory.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ docker cp yb-master-n1:/home/yugabyte/java/yb-sample-apps.jar .
 ```
+</div>
 
 For Kubernetes based installs, you can copy it from one of the YB pods into the `yugabyte` install directory.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl cp yb-master-0:/home/yugabyte/java/yb-sample-apps.jar .
 ```
+</div>
 
 
 ## Key-Value Workload using YCQL API
@@ -44,10 +49,11 @@ $ kubectl cp yb-master-0:/home/yugabyte/java/yb-sample-apps.jar .
 ### 1. Run the app
 
 You can run the CQL `CassandraKeyValue` sample app using the following command.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ java -jar yb-sample-apps.jar --workload CassandraKeyValue --nodes 127.0.0.1:9042
 ```
+</div>
 
 It first creates a keyspace `ybdemo_keyspace` and a table `CassandraKeyValue`, then starts multiple writer and reader threads to generate the load. The read/write ops count and latency metrics observed should not be used for performance testing purposes. Below is a short description of the output logs, which will help in understanding what the workload is doing.
 
@@ -113,13 +119,16 @@ Uptime: 15013 ms | maxWrittenKey: 6220 | maxGeneratedKey: 6225
 ### 6. Verify using cqlsh
 
 You can inspect the table created by the sample app using cqlsh. Connect to the local cluster [as before](../test-cassandra/). The sample app creates the `cassandrakeyvalue` table in the keyspace `ybdemo_keyspace`.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> use ybdemo_keyspace;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:ybdemo_keyspace> DESCRIBE cassandrakeyvalue;
 ```
+</div>
 ```sql
 cqlsh:ybdemo_keyspace> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
     k text PRIMARY KEY,
@@ -129,10 +138,11 @@ cqlsh:ybdemo_keyspace> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
 
 
 You can select a few rows and examine what gets written.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh:ybdemo_keyspace> SELECT * FROM cassandrakeyvalue LIMIT 5;
 ```
+</div>
 ```sql
  k                                         | v
 -------------------------------------------+--------------------
@@ -151,10 +161,11 @@ cqlsh:ybdemo_keyspace> SELECT * FROM cassandrakeyvalue LIMIT 5;
 ### 1. Run the app
 
 You can run the Redis sample app `RedisKeyValue` using the following command.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ java -jar yb-sample-apps.jar --workload RedisKeyValue --nodes localhost:6379 --nouuid --num_threads_read 24 --num_threads_write 1
 ```
+</div>
 
 
 It starts multiple writer and reader threads to generate the load. Below is a short description of the output logs, which will help in understanding what the workload is doing.
@@ -195,9 +206,12 @@ Write: 129.13 ops/sec (7.72 ms/op), 2454 total ops
 
 ### 4. Verify using redis-cli
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/redis-cli
 ```
+</div>
 ```{.sh .copy .separator-gt}
 127.0.0.1:6379> get key:1  
 ```

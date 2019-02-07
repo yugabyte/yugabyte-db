@@ -37,14 +37,20 @@ Where
 ## Examples
 ### Create and use keyspaces
 
-```{.sql .copy .separator-gt} 
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> CREATE KEYSPACE example;
 ```
-```{.sql .copy .separator-gt} 
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh> CREATE KEYSPACE other_keyspace;
-```{.sql .copy .separator-gt} 
+<div class='copy separator-gt'>
+```sql
 cqlsh> USE example;
 ```
+</div>
 
 ### Create a table in the current keyspace
 

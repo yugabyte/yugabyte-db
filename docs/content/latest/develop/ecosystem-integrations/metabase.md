@@ -23,32 +23,43 @@ Follow [Quick Start](../../../quick-start/) instructions to run a local YugaByte
 
 ### Download the Sample Schema
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ wget https://raw.githubusercontent.com/YugaByte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
 ```
+</div>
 
 ### Download the Sample Data
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ wget https://github.com/YugaByte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ tar zxvf sample-data.tgz
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ ls data/
 ```
+</div>
 ```sh
 orders.sql	products.sql	reviews.sql	users.sql
 ```
 
 ### Connect to YugaByte DB using psql
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/psql -p 5433 -U postgres
 ```
+</div>
 ```sh
 psql (10.3, server 10.4)
 Type "help" for help.
@@ -57,47 +68,67 @@ postgres=#
 ```
 
 ### Create a Database
-```{.sql .copy .separator-gt}
+
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 postgres=> CREATE DATABASE yb_demo;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 postgres=> GRANT ALL ON DATABASE yb_demo to postgres;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 postgres=> \c yb_demo;
 ```
+</div>
 
 ### Create Schema and Load Data
 
 First create the 4 tables necessary to store the data.
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 postgres=> \i 'schema.sql';
 ```
+</div>
 
 Now load the data into the tables.
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 postgres=> \i 'data/products.sql'
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 postgres=> \i 'data/users.sql'
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 postgres=> \i 'data/orders.sql'
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 postgres=> \i 'data/reviews.sql'
 ```
+</div>
 ## 3. Download and Configure Metabase
 
 Detailed steps for setting up Metabase are available [here](https://www.metabase.com/docs/latest/setting-up-metabase.html). The following are the minimal setup steps for getting started.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ wget http://downloads.metabase.com/v0.30.4/metabase.jar
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ java -jar metabase.jar
 ```
+</div>
 
 Go to http://localhost:3000 to configure your Metabase server and point it to the YugaByte DB PostgreSQL API endpoint at `localhost:5433`.
 

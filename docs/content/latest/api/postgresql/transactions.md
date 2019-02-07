@@ -59,13 +59,17 @@ show ::= SHOW TRANSACTION ISOLATION LEVEL
 - Restart the YugaByte cluster and set the flag to enable transactions for the PostgreSQL API. 
 
 For Mac/Linux: 
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ export YB_PG_TRANSACTIONS_ENABLED=1; ./bin/yb-ctl destroy; ./bin/yb-ctl create --enable_postgres
 ```
+</div>
 or (for docker)
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ export YB_PG_TRANSACTIONS_ENABLED=1; ./bin/yb-docker-ctl destroy; ./bin/yb-docker-ctl create --enable_postgres
 ```
+</div>
 
 - Create a sample table.
 

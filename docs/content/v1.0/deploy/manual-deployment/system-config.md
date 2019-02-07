@@ -19,10 +19,11 @@ Do the following configuration steps on each of the nodes in the cluster.
 - ntp
 
 Here's the command to install these packages.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ sudo yum install -y epel-release ntp
 ```
+</div>
 
 ## Setting ulimits
 
@@ -31,10 +32,11 @@ In Linux, `ulimit` is used to limit and control the usage of system resources (t
 ### Checking ulimits
 
 Run the following command to check the ulimit settings.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ulimit -a
 ```
+</div>
 
 The following settings are recommended when running YugaByte DB.
 
@@ -79,6 +81,3 @@ ulimit -n <value>
 - After changing a ulimit setting, the YB-Master and YB-TServer processes must be restarted in order for the new settings to take effect. Check the `/proc/<process pid>` file to see the current settings.
 - Changes made using ulimit may revert following a system restart depending on the system configuration.
 {{< /note >}}
-
-
-

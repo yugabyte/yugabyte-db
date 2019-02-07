@@ -21,21 +21,29 @@ Similar to TTL this command returns the remaining time to live of a key that has
 Returns TTL in milliseconds, encoded as integer response.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ SET yugakey "YugaByte"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ EXPIRE yugakey 10
 ```
+</div>
 ```sh
 (integer) 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ PTTL yugakey
 ```
+</div>
 ```sh
 (integer) 9995
 ```

@@ -24,21 +24,29 @@ This command fetches the full content of all fields and all values of the hash t
 Returns list of fields and values.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ HSET yugahash area1 "Africa"
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HSET yugahash area2 "America"
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HGETALL yugahash
 ```
+</div>
 ```sh
 1) area1
 2) "Africa"

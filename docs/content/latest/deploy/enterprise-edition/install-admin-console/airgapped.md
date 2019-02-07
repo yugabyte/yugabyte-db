@@ -18,52 +18,61 @@ A supported version of docker-engine (currently 1.7.1 to 17.03.1-ce) needs to be
 ## Step 1. Install Replicated
 
 On a machine connected to the Internet, perform the following steps.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 # make a directory for downloading the binaries
 $ sudo mkdir /opt/downloads
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 # change the owner user for the directory
 $ sudo chown -R ubuntu:ubuntu /opt/downloads
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 # change to the directory
 $ cd /opt/downloads
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 # get the replicated binary
 $ wget https://downloads.yugabyte.com/replicated.tar.gz
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 # get the yugaware binary where the 1.1.0.2 refers to the version of the binary. change this number as needed.
 $ wget https://downloads.yugabyte.com/yugaware-1.1.0.2.airgap
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 # change to the directory
 $ cd /opt/downloads
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 # expand the replicated binary
 $ ar xzvf replicated.tar.gz
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 # install replicated (yugaware will be installed via replicated ui after replicated install completes)
 # pick eth0 network interface in case multiple ones show up
 $ cat ./install.sh | sudo bash -s airgap
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 # after replicated install completes, make sure it is running
 $ sudo docker ps
 ```
+</div>
 
 You should see an output similar to the following.
 

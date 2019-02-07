@@ -10,10 +10,11 @@ The YugaWare Helm chart documented here has been tested with the following softw
 - Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to YugaWare.
 
 Confirm that your `helm` is configured correctly.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm version
 ```
+</div>
 ```sh
 Client: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"}
 Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"}
@@ -23,10 +24,11 @@ Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"
 
 ### Create a service account with cluster admin access
 For deploying a YugaWare helm chart we need have a service account which has cluster admin access, if the user in context already has that access you can skip this step.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl apply -f https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/cloud/kubernetes/helm/yugabyte-rbac.yaml
 ```
+</div>
 
 ```sh
 serviceaccount/yugabyte-helm created
@@ -36,10 +38,11 @@ clusterrolebinding.rbac.authorization.k8s.io/yugabyte-helm created
 ### Initialize Helm
 
 Initialize `helm` with the service account but use the `--upgrade` flag to ensure that you can upgrade any previous initializations you may have made.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm init --service-account yugabyte-helm --upgrade --wait
 ```
+</div>
 ```sh
 $HELM_HOME has been configured at /Users/<user>/.helm.
 
@@ -48,26 +51,32 @@ Happy Helming!
 ```
 
 ### Download YugaWare Helm Chart
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ wget https://downloads.yugabyte.com/kubernetes/yugaware-1.0.0.tgz
 ```
+</div>
 
 ### Install YugaWare
 
 Install YugaWare in the Kubernetes cluster using the command below.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm install yugaware-1.0.0.tgz --name yb --set=image.tag=1.1.10.0-b3 --wait
 ```
+</div>
 
 
 ### Check Cluster Status
 
 You can check the status of the cluster using various commands noted below.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm status yb
 ```
+</div>
 ```sh
 LAST DEPLOYED: Wed Jan  2 14:12:27 2019
 NAMESPACE: default
@@ -104,31 +113,41 @@ yb-yugaware  14d
 NAME           READY  STATUS   RESTARTS  AGE
 yb-yugaware-0  5/5    Running  0         14d
 ```
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl get svc -lapp=yb-yugaware
 ```
+</div>
 ```sh
 NAME             TYPE           CLUSTER-IP    EXTERNAL-IP      PORT(S)                       AGE
 yb-yugaware-ui   LoadBalancer   10.102.9.91   10.200.300.400   80:32495/TCP,9090:30087/TCP   15d
 ```
 
 You can even check the history of the `yb` helm chart.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ helm history yb
 ```
+</div>
 ```sh
 REVISION	UPDATED                 	STATUS  	CHART         	DESCRIPTION
 1       	Wed Jan  2 14:12:27 2019	DEPLOYED	yugaware-1.0.0	Install complete
 ```
 
 ### Upgrade YugaWare
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ helm upgrade yb yugaware-1.0.0.tgz --set=image.tag=<new-tag> --wait
 ```
+</div>
 
 ### Delete YugaWare
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ helm delete yb --purge
 ```
+</div>

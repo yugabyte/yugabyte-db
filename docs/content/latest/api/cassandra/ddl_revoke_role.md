@@ -41,9 +41,12 @@ Where
 
 ## Examples
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> REVOKE ROLE project_y from diana;
 ```
+</div>
 
 ## See Also
 

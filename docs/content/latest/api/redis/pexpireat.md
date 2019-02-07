@@ -21,21 +21,29 @@ PEXPIREAT has the same effect as EXPIREAT, but the Unix timestamp at which the k
 Returns integer reply, specifically 1 if the timeout was set and 0 if key does not exist.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ SET yugakey "YugaByte"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ PEXPIREAT yugakey 1555555555005
 ```
+</div>
 ```sh
 (integer) 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ PTTL yugakey
 ```
+</div>
 ```sh
 (integer) 18674452994
 ```

@@ -66,16 +66,18 @@ Follow the instructions below to test YugaByte DB's PostgreSQL-compatible YSQL A
 ## 2. Create a table
 
 Create a database called 'sample'.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 postgres=> CREATE DATABASE sample;
 ```
+</div>
 
 Connect to the database we just created.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 postgres=> \c sample
 ```
+</div>
 ```
 You are now connected to database "sample" as user "postgres".
 sample=>
@@ -83,8 +85,8 @@ sample=>
 
 
 Create a table named 'stock_market' which can store stock prices at various timestamps for different stock ticker symbols.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 sample=> CREATE TABLE stock_market (
   stock_symbol text,
   ts text,
@@ -92,6 +94,7 @@ sample=> CREATE TABLE stock_market (
   PRIMARY KEY (stock_symbol, ts)
 );
 ```
+</div>
 
 
 
@@ -111,10 +114,11 @@ INSERT INTO stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10
 ## 4. Query the table
 
 Query all the values we have inserted into the table.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 sample=> SELECT * FROM stock_market ORDER BY stock_symbol ASC, ts DESC;
 ```
+</div>
 ```sql
  stock_symbol |         ts          | current_price
 --------------+---------------------+---------------
@@ -126,4 +130,3 @@ sample=> SELECT * FROM stock_market ORDER BY stock_symbol ASC, ts DESC;
  GOOG         | 2017-10-26 09:00:00 |        972.56
 (6 rows)
 ```
-

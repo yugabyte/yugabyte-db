@@ -59,7 +59,7 @@ Where
  - The `where_expression` must specify conditions for all primary-key columns.
  - The `where_expression` must not specifiy conditions for any regular columns.
  - The `where_expression` can only apply `AND` and `=` operators. Other operators are not yet supported.
- 
+
 ### `IF` Clause
 
  - The `if_expression` can only apply to non-key columns (regular columns).
@@ -73,27 +73,38 @@ Where
 
 ### Update a value in a table
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TABLE employees(department_id INT, 
                                       employee_id INT, 
                                       name TEXT, 
                                       age INT, 
                                       PRIMARY KEY(department_id, employee_id));
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name, age) VALUES (1, 1, 'John', 30);
 ```
+</div>
 Update the value of a non primary-key column.
-```{.sql .copy .separator-gt} 
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> UPDATE employees SET name = 'Jack' WHERE department_id = 1 AND employee_id = 1;
 ```
+</div>
 Using upsert semantics to update a non-existent row (i.e. insert the row).
-```{.sql .copy .separator-gt} 
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> UPDATE employees SET name = 'Jane', age = 40 WHERE department_id = 1 AND employee_id = 2;
 ```
-```{.sql .copy .separator-gt} 
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM employees;
 ```
+</div>
 ```sh
  department_id | employee_id | name | age
 ---------------+-------------+------+-----
@@ -106,26 +117,32 @@ cqlsh:example> SELECT * FROM employees;
 
 
 The supported expressions are allowed in the 'SET' assignment targets.
-```{.sql .copy .separator-gt} 
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> UPDATE employees SET age = age + 1 WHERE department_id = 1 AND employee_id = 1 IF name = 'Jack';
 ```
+</div>
 ```sh
  [applied]
 -----------
       True
 ```
 Using upsert semantics to add a row, age is not set so will be 'null'.
-```{.sql .copy .separator-gt} 
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> UPDATE employees SET name = 'Joe' WHERE department_id = 2 AND employee_id = 1 IF NOT EXISTS;
 ```
+</div>
 ```sh
  [applied]
 -----------
       True
 ```
-```{.sql .copy .separator-gt} 
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM employees;
 ```
+</div>
 ```sh
  department_id | employee_id | name | age
 ---------------+-------------+------+------
@@ -137,21 +154,27 @@ cqlsh:example> SELECT * FROM employees;
 ### Update with expiration time using the `USING TTL` clause.
 
 The updated value(s) will persist for the TTL duration.
-```{.sql .copy .separator-gt} 
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> UPDATE employees USING TTL 10 SET age = 32 WHERE department_id = 1 AND employee_id = 1;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id = 1;
 ```
+</div>
 ```sh
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              1 |           1 | Jack |   32
 ```
 11 seconds after the update (value will have expired).
-```{.sql .copy .separator-gt} 
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id = 1;
 ```
+</div>
 ```sh
  department_id | employee_id | name | age
 ---------------+-------------+------+------
@@ -160,7 +183,9 @@ cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id =
 
 ### Update row with the `USING TIMESTAMP` clause.
 
-```{.sql .copy .separator-gt} 
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:foo> INSERT INTO employees(department_id, employee_id, name, age) VALUES (1, 4, 'Jeff', 20) USING TIMESTAMP 1000;
 cqlsh:foo> SELECT * FROM employees;
 
@@ -197,6 +222,7 @@ cqlsh:foo> SELECT * FROM employees;
 (4 rows)
 
 ```
+</div>
 
 ## See Also
 

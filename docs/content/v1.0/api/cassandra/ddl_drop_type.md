@@ -31,12 +31,17 @@ Where
 
 ## Examples
 
-```{.sql .copy .separator-gt} 
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TYPE person(first_name TEXT, last_name TEXT, email TEXT);
 ```
-```{.sql .copy .separator-gt} 
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> DROP TYPE person;
 ```
+</div>
 
 ## See Also
 [`CREATE TABLE`](../ddl_create_table)

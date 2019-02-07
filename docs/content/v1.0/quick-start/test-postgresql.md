@@ -63,16 +63,18 @@ After [creating a local cluster](../create-local-cluster/), follow the instructi
 ## 2. Create a table
 
 Create a database called 'sample'.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 username=> CREATE DATABASE sample;
 ```
+</div>
 
 Connect to the database we just created.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 username=> \c sample
 ```
+</div>
 ```
 psql (10.3, server 0.0.0)
 You are now connected to database "sample" as user "username".
@@ -81,8 +83,8 @@ sample=>
 
 
 Create a table named 'stock_market' which can store stock prices at various timestamps for different stock ticker symbols.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 sample=> CREATE TABLE sample.stock_market (
   stock_symbol text,
   ts text,
@@ -90,6 +92,7 @@ sample=> CREATE TABLE sample.stock_market (
   PRIMARY KEY (stock_symbol, ts)
 );
 ```
+</div>
 
 
 
@@ -109,10 +112,11 @@ INSERT INTO sample.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','
 ## 4. Query the table
 
 Query all the values we have inserted into the table.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 sample=> SELECT * FROM sample.stock_market;
 ```
+</div>
 ```sql
  stock_symbol |         ts          | current_price
 --------------+---------------------+---------------
@@ -124,4 +128,3 @@ sample=> SELECT * FROM sample.stock_market;
  GOOG         | 2017-10-26 10:00:00 |    971.909973
 (6 rows)
 ```
-

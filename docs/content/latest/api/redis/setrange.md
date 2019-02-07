@@ -24,23 +24,31 @@ This command overwrites the string that is associated with the given `key` with 
 Returns the length of the resulted string after overwriting.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ SET yugakey "YugaKey"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 ```sh
 $ SETRANGE yugakey 4 "Byte"
 ```
+</div>
 ```sh
 8
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 ```sh
 $ GET yugakey
 ```
+</div>
 ```sh
 "YugaByte"
 ```

@@ -64,15 +64,16 @@ After [creating a local cluster](../create-local-cluster/), follow the instructi
 ## 2. Create a table
 
 Create a keyspace called 'myapp'.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> CREATE KEYSPACE myapp;
 ```
+</div>
 
 
 Create a table named 'stock_market' which can store stock prices at various timestamps for different stock ticker symbols.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> CREATE TABLE myapp.stock_market (
   stock_symbol text,
   ts text,
@@ -80,33 +81,40 @@ cqlsh> CREATE TABLE myapp.stock_market (
   PRIMARY KEY (stock_symbol, ts)
 );
 ```
+</div>
 
 
 
 ## 3. Insert data
 
 Let us insert some data for a few stock symbols into our newly created 'stock_market' table. You can copy-paste these values directly into your cqlsh shell.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 10:00:00',157);
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 09:00:00',170.63);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 10:00:00',170.1);
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 09:00:00',972.56);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 10:00:00',971.91);
 ```
+</div>
 
 ## 4. Query the table
 
 Query all the values we have inserted into the database for the stock symbol 'AAPL' as follows.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol = 'AAPL';
 ```
+</div>
 ```sql
  stock_symbol | ts                  | current_price
 --------------+---------------------+---------------
@@ -118,10 +126,11 @@ cqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol = 'AAPL';
 
 
 Query all the values for 'FB' and 'GOOG' as follows.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 ```
+</div>
 ```sql
  stock_symbol | ts                  | current_price
 --------------+---------------------+---------------

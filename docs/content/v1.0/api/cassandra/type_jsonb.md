@@ -51,13 +51,17 @@ type.
 
 - Create table with a JSONB column
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> CREATE KEYSPACE store;
 ```
-
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh> CREATE TABLE store.books ( id int PRIMARY KEY, details jsonb );
 ```
+</div>
 
 - Insert JSONB documents
 
@@ -76,9 +80,12 @@ INSERT INTO store.books (id, details) VALUES
 
 - Select from JSONB column
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT * FROM store.books;
 ```
+</div>
 
 ```
  id | details
@@ -92,9 +99,12 @@ cqlsh> SELECT * FROM store.books;
 
 - Select with condition on JSONB object value
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT * FROM store.books WHERE details->'author'->>'first_name' = 'William' AND details->'author'->>'last_name' = 'Shakespeare';
 ```
+</div>
 ```
  id | details
 ----+----------------------------------------------------------------------------------------------------------------------------------
@@ -104,9 +114,12 @@ cqlsh> SELECT * FROM store.books WHERE details->'author'->>'first_name' = 'Willi
 
 - Select with condition on JSONB array element
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
 ```
+</div>
 ```
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------
@@ -115,9 +128,12 @@ cqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
 
 - Select with condition using on JSONB element
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
 ```
+</div>
 ```
  id | details
 ----+--------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -126,12 +142,17 @@ cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
 
 - Update entire JSONB document
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> UPDATE store.books SET details = '{"author":{"first_name":"Carl","last_name":"Sagan"},"editors":["Ann","Rob","Neil"],"genre":"science","name":"Cosmos","year":1980}' WHERE id = 1;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT * FROM store.books WHERE id = 1;
 ```
+</div>
 ```
  id | details
 ----+-----------------------------------------------------------------------------------------------------------------------------------
@@ -140,12 +161,17 @@ cqlsh> SELECT * FROM store.books WHERE id = 1;
 
 - Update a JSONB object value.
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> UPDATE store.books SET details->'author'->>'first_name' = '"Steve"' WHERE id = 4;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT * FROM store.books WHERE id = 4;
 ```
+</div>
 ```
  id | details
 ----+------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -154,12 +180,17 @@ cqlsh> SELECT * FROM store.books WHERE id = 4;
 
 - Update a JSONB array element.
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> UPDATE store.books SET details->'editors'->>1 = '"Jack"' WHERE id = 4;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT * FROM store.books WHERE id = 4;
 ```
+</div>
 ```
  id | details
 ----+------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -168,12 +199,17 @@ cqlsh> SELECT * FROM store.books WHERE id = 4;
 
 - Update a JSONB subdocument.
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh> UPDATE store.books SET details->'author' = '{"first_name":"John", "last_name":"Doe"}' WHERE id = 4;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh> SELECT * FROM store.books WHERE id = 4;
 ```
+</div>
 ```
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------

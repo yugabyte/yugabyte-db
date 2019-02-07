@@ -51,21 +51,30 @@ Where
 ## Examples
 ### Create a simple role with no properties.
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE ROLE role1;
 ```
+</div>
 
 ### Create a `SUPERUSER` role.
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE ROLE role2 WITH SUPERUSER = true;
 ```
+</div>
 
 ### Create a role used to connect to YQL.
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE ROLE role3 WITH SUPERUSER = false AND LOGIN = true AND PASSWORD = 'aid8134'
 ```
+</div>
 
 ## See Also
 

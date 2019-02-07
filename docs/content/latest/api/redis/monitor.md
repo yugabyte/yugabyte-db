@@ -21,9 +21,13 @@ showAsideToc: true
 Returns a status string, followed by an unending stream of commands that are being executed by the YEDIS server. To exit, the client is expected to `Control-C` out.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ MONITOR
 ```
+</div>
 ```sh
 "OK"
 ```

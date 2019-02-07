@@ -21,32 +21,43 @@ Follow [Quick Start](../../../quick-start/) instructions to run a local YugaByte
 
 ### Download the Sample Schema
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ wget https://raw.githubusercontent.com/YugaByte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
 ```
+</div>
 
 ### Download the Sample Data
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ wget https://github.com/YugaByte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ tar zxvf sample-data.tgz
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ ls data/
 ```
+</div>
 ```sh
 orders.sql  products.sql  reviews.sql users.sql
 ```
 
 ### Connect to YugaByte DB using psql
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/psql -p 5433 -U postgres
 ```
+</div>
 ```sh
 psql (10.3, server 10.4)
 Type "help" for help.
@@ -55,44 +66,65 @@ postgres=#
 ```
 
 ### Create a Database
-```{.sql .copy .separator-gt}
+
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 postgres=> CREATE DATABASE yb_demo;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 postgres=> GRANT ALL ON DATABASE yb_demo to postgres;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 postgres=> \c yb_demo;
 ```
+</div>
 
 ### Load Data
 
 First create the 4 tables necessary to store the data.
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 postgres=> \i 'schema.sql';
 ```
+</div>
 
 Now load the data into the tables.
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 postgres=> \i 'data/products.sql'
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 postgres=> \i 'data/users.sql'
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 postgres=> \i 'data/orders.sql'
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 postgres=> \i 'data/reviews.sql'
 ```
+</div>
 
 ## 3. Run Queries
 
 ### How are users signing up for my site?
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 yb_demo=> SELECT DISTINCT(source) FROM users;
 ```
+</div>
 ```sh
 source
 -----------
@@ -105,12 +137,16 @@ source
 ```
 
 ### What is the most effective channel for user signups?
-```{.sql .copy .separator-gt}
+
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 yb_demo=> SELECT source, count(*) AS num_user_signups
           FROM users
           GROUP BY source
           ORDER BY num_user_signups DESC;
 ```
+</div>
 ```sh
 source   | num_user_signups
 -----------+------------------
@@ -124,12 +160,15 @@ source   | num_user_signups
 
 ### What are the most effective channels for product sales by revenue?
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 yb_demo=> SELECT source, ROUND(SUM(orders.total)) AS total_sales
           FROM users, orders WHERE users.id=orders.user_id
           GROUP BY source
           ORDER BY total_sales DESC;
 ```
+</div>
 ```sh
 source   | total_sales
 -----------+-------------
@@ -142,9 +181,13 @@ source   | total_sales
 ```
 
 ### What is the min, max and average price of products in the store?
-```{.sql .copy .separator-gt}
+
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 yb_demo=> SELECT MIN(price), MAX(price), AVG(price) FROM products;
 ```
+</div>
 ```sh
 min        |       max        |       avg
 ------------------+------------------+------------------
@@ -154,7 +197,9 @@ min        |       max        |       avg
 
 ### What percentage of the total sales is from the Facebook channel?
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 yb_demo=> CREATE VIEW channel AS
             (SELECT source, ROUND(SUM(orders.total)) AS total_sales
              FROM users, orders
@@ -162,12 +207,14 @@ yb_demo=> CREATE VIEW channel AS
              GROUP BY source
              ORDER BY total_sales DESC);
 ```
+</div>
 
 Now that the view is created, we can see it in our list of relations.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 yb_demo=> \d
 ```
+</div>
 ```sh
 List of relations
  Schema |   Name   | Type  |  Owner
@@ -179,12 +226,12 @@ List of relations
  public | users    | table | postgres
 (5 rows)
 ```
-
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 yb_demo=> SELECT source, total_sales * 100.0 / (SELECT SUM(total_sales) FROM channel) AS percent_sales
           FROM channel WHERE source='Facebook';
 ```
+</div>
 ```sh
 source  |  percent_sales
 ----------+------------------

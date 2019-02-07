@@ -74,15 +74,21 @@ On each of the terminals, do the following.
 
 - **Install Java**
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ sudo yum install java-1.8.0-openjdk.x86_64 -y
 ```
+</div>
 
 - **Switch to the `yugabyte` user**
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ sudo su - yugabyte
 ```
+</div>
 
 - **Export the `YCQL_ENDPOINTS` env variable**
 
@@ -91,16 +97,17 @@ Export an environment variable telling us the IP addresses for nodes in the clus
 ![YCQL end points](/images/ee/multi-zone-universe-ycql-endpoints.png)
 
 Export this into a shell variable on the database node `yb-dev-helloworld1-n1` we had connected to. Remember to replace the ip addresses below with those shown by YugaWare.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ export YCQL_ENDPOINTS="10.138.0.3:9042,10.138.0.4:9042,10.138.0.5:9042"
 ```
+</div>
 
 ### Run the workload
 
 Run the following command on each of the nodes. Remember to substitute `<REGION>` with the region code for each node.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --workload CassandraKeyValue \
             --nodes $YCQL_ENDPOINTS \
@@ -110,6 +117,7 @@ $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --local_reads \
             --with_local_dc <REGION>
 ```
+</div>
 
 You can find the region codes for each of the nodes by browsing to the nodes tab for this universe in YugaWare. A screenshot is shown below. In this example, the value for `<REGION>` is:
 

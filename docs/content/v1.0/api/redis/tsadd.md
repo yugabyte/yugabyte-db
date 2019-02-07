@@ -26,61 +26,79 @@ Returns the appropriate status string.
 
 ## Examples
 The timestamp can be arbitrary integers used just for sorting values in a certain order.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSADD cpu_usage 10 "70"
 ```
+</div>
 ```sh
 OK
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSADD cpu_usage 20 "80" 30 "60" 40 "90"
 ```
+</div>
 ```sh
 OK
 ```
 We could also encode the timestamp as “yyyymmddhhmm”, since this would still produce integers that are sortable by the actual timestamp.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSADD cpu_usage 201710311100 "50"
 ```
+</div>
 ```sh
 OK
 ```
 A more common option would be to specify the timestamp as the unix timestamp
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSADD cpu_usage 1509474505 "75"
 ```
+</div>
 ```sh
 OK
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSGET cpu_usage 10
 ```
+</div>
 ```sh
 "70"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSGET cpu_usage 201710311100
 ```
+</div>
 ```sh
 "50"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSGET cpu_usage 1509474505
 ```
+</div>
 ```sh
 "75"
 ```
 Set a TTL of 3600 seconds (1 hour) for an entry that we add.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSADD cpu_usage 60 "70" EXPIRE_IN 3600
 ```
+</div>
 ```sh
 OK
 ```
 Ensure that the entry we're adding would expire at the unix_timestamp 3513642307.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ TSADD cpu_usage 70 "80" EXPIRE_AT 3513642307
 ```
+</div>
 ```sh
 OK
 ```

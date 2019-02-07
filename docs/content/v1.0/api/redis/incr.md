@@ -18,15 +18,21 @@ This command adds 1 to the number that is associated with the given `key`. The n
 Returns the value after addition.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ SET yugakey 7
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ INCR yugakey
 ```
+</div>
 ```sh
 8
 ```

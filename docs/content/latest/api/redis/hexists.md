@@ -24,21 +24,29 @@ This is a predicate to check whether or not the given `field` exists in the hash
 Returns existence status as integer, either 1 or 0.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ HSET yugahash area1 "America"
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HEXISTS yugahash area1
 ```
+</div>
 ```sh
 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HEXISTS yugahash area_none
 ```
+</div>
 ```sh
 0
 ```

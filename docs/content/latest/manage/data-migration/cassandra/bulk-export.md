@@ -73,13 +73,17 @@ python ./gen_csv.py file04.csv 5120 &
 
 ### Install cassandra-loader
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ wget https://github.com/YugaByte/cassandra-loader/releases/download/v0.0.27-yb-1/cassandra-loader
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ chmod a+x cassandra-loader
 ```
+</div>
 
 ### Run cassandra-loader
 
@@ -104,13 +108,17 @@ For additional options to cassandra-loader, see [here](https://github.com/YugaBy
 
 ### Install cassandra-unloader
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ wget https://github.com/brianmhess/cassandra-loader/releases/download/v0.0.27/cassandra-unloader
 ```
-
-```{.sh .copy .separator-dollar}
+</div>
+<div class='copy separator-dollar'>
+```sh
 $ chmod a+x cassandra-unloader
 ```
+</div>
 
 ### Run cassandra-unloader
 
@@ -123,4 +131,3 @@ $ chmod a+x cassandra-unloader
 ```
 
 For additional options to cassandra-unloader, see [here](https://github.com/YugaByte/cassandra-loader#cassandra-unloader).
-

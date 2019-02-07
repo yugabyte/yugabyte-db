@@ -11,10 +11,11 @@ The tutorial assumes that you have:
 ## Installing the C/C++ Driver
 
 To get the C/C++ driver run: 
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ git clone https://github.com/YugaByte/cassandra-cpp-driver.git
 ```
+</div>
 
 ### Dependencies
 
@@ -130,7 +131,7 @@ CassError execute_and_log_select(CassSession* session, const char* stmt) {
     cass_result_free(result);
     cass_iterator_free(iterator);
   }
-  
+
   cass_future_free(future);
   cass_statement_free(statement);
 
@@ -145,9 +146,9 @@ int main() {
   CassSession* session = cass_session_new();
   CassFuture* close_future = NULL;
   char* hosts = "127.0.0.1";
-  
+
   cluster = create_cluster(hosts);
-  
+
   if (connect_session(session, cluster) != CASS_OK) {
     cass_cluster_free(cluster);
     cass_session_free(session);
@@ -169,7 +170,7 @@ int main() {
                                               language varchar)");
   if (rc != CASS_OK) return -1;
   printf("Created table ybdemo.employee\n");
-  
+
   const char* insert_stmt = "INSERT INTO ybdemo.employee (id, name, age, language) VALUES (1, 'John', 35, 'C/C++')";
   rc = execute_query(session, insert_stmt);
   if (rc != CASS_OK) return -1;
@@ -194,15 +195,18 @@ int main() {
 
 You can compile the file using gcc or clang. 
 For clang, you can use:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ clang ybcql_hello_world.c -lcassandra -Iinclude -o yb_cql_hello_world
 ```
+</div>
 
 Run with:
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./yb_cql_hello_world
 ```
+</div>
 
 You should see the following output:
 

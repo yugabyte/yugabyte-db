@@ -21,12 +21,18 @@ Subscripted expression allows access to an element in a multi-element value such
 <li>Apache Cassandra does not allow subscripted expression in the select list of the SELECT statement.</li>
 
 ## Examples
-```{.sql .copy .separator-gt}
+
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:yugaspace> CREATE TABLE t(id INT PRIMARY KEY,yugamap MAP<TEXT, TEXT>);
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:yugaspace> UPDATE yugatab SET map_value['key_value'] = 'yuga_string' WHERE id = 7;
 ```
+</div>
 
 ## See Also
 [All Expressions](..##expressions)

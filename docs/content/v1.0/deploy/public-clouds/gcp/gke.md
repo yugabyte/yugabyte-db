@@ -7,39 +7,47 @@
 - Install `kubectl`
 
 After installing Cloud SDK, install the kubectl command-line tool by running the following command:
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ gcloud components install kubectl
 ```
+</div>
 
 - Configure defaults for gcloud
 
 Set the project id as `yugabyte`. You can change this as per your need.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ gcloud config set project yugabyte
 ```
+</div>
 
 Set the defaut compute zone as `us-west1-b`. You can change this as per your need.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 gcloud config set compute/zone us-west1-b
 ```
+</div>
 
 
 ## 1. Create a GKE cluster
 
 Create a Kubernetes cluster if you have not already done so by running the following command.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ gcloud container clusters create yugabyte
 ```
+</div>
 
 
 ## 2. Create a YugaByte DB cluster
 
 Create a YugaByte DB cluster by running the following.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl create -f https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
 ```
+</div>
 ```sh
 service "yb-masters" created
 statefulset "yb-master" created
@@ -50,10 +58,11 @@ statefulset "yb-tserver" created
 ## 3. Check the cluster
 
 You should see the following pods running.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl get pods
 ```
+</div>
 ```sh
 NAME           READY     STATUS    RESTARTS   AGE
 yb-master-0    1/1       Running   0          3m
@@ -65,10 +74,11 @@ yb-tserver-2   1/1       Running   0          3m
 ```
 
 You can view the persistent volumes.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl get persistentvolumes
 ```
+</div>
 ```sh
 NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS    CLAIM                          STORAGECLASS   REASON    AGE
 pvc-f3301c41-1110-11e8-8231-42010a8a0083   1Gi       RWO            Delete           Bound     default/datadir-yb-master-0    standard                 5m
@@ -80,10 +90,11 @@ pvc-f36d2892-1110-11e8-8231-42010a8a0083   1Gi       RWO            Delete      
 ```
 
 You can view all the services by running the following command.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl get services
 ```
+</div>
 ```sh
 NAME          TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                               AGE
 kubernetes    ClusterIP   XX.XX.XX.X   <none>        443/TCP                               23m
@@ -94,10 +105,11 @@ yb-tservers   ClusterIP   None         <none>        9000/TCP,9100/TCP,9042/TCP,
 ## 4. Connect to the cluster
 
 You can connect to the YCQL API by running the following.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl exec -it yb-tserver-0 bin/cqlsh
 ```
+</div>
 ```
 Connected to local cluster at 127.0.0.1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
@@ -111,10 +123,11 @@ system_schema  system_auth  system
 ## 5. Destroy cluster (optional)
 
 Destroy the YugaByte DB cluster we created above by running the following.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ kubectl delete -f https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
 ```
+</div>
 ```sh
 service "yb-masters" deleted
 statefulset "yb-master" deleted
@@ -132,10 +145,11 @@ kubectl delete pvc -l app=yb-tserver
 ## 6. Destroy the GKE cluster (optional)
 
 To destroy the machines we created for the gcloud cluster, run the following.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ gcloud container clusters delete yugabyte
 ```
+</div>
 
 ## Advanced Kubernetes Deployment
 

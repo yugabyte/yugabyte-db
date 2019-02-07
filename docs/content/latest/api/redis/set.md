@@ -24,15 +24,21 @@ This command inserts `string_value` to be hold at `key`, where `EX seconds` sets
 Returns status string.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ SET yugakey "YugaByte"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ GET yugakey
 ```
+</div>
 ```sh
 "YugaByte"
 ```

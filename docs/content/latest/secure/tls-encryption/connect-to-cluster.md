@@ -42,11 +42,11 @@ $ export SSL_USERKEY=<path to file>/node.<name>.key
 ```
 
 Next connect using the `--ssl` flag.
-
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/cqlsh --ssl
 ```
+</div>
 
 You should see the following output:
 ```
@@ -59,5 +59,3 @@ system_schema  system_auth  system
 
 cqlsh>
 ```
-
-

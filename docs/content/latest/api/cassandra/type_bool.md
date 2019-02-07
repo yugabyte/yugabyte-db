@@ -33,21 +33,32 @@ boolean_literal ::= TRUE | FALSE
 
 ## Examples
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TABLE tasks (id INT PRIMARY KEY, finished BOOLEAN);
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO tasks (id, finished) VALUES (1, false);
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO tasks (id, finished) VALUES (2, false);
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> UPDATE tasks SET finished = true WHERE id = 2;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM tasks;
 ```
+</div>
 ```sh
 id | finished
 ----+----------

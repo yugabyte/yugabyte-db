@@ -23,27 +23,35 @@ Returns the appropriate status string.
 ## Examples
 
 The timestamp can be arbitrary integers used just for sorting values in a certain order.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSADD ts_key 1 one 2 two 3 three 4 four 5 five 6 six
 ```
+</div>
 ```sh
 OK
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSGET ts_key 2
 ```
+</div>
 ```sh
 "two"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSGET ts_key 3
 ```
+</div>
 ```sh
 "three"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSRANGEBYTIME ts_key 1 4
 ```
+</div>
 ```sh
 1) "1"
 2) "one"
@@ -54,30 +62,38 @@ TSRANGEBYTIME ts_key 1 4
 7) "4"
 8) "four"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSREM ts_key 2 3
 ```
+</div>
 ```sh
 OK
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSRANGEBYTIME ts_key 1 4
 ```
+</div>
 ```sh
 1) "1"
 2) "one"
 3) "4"
 4) "four"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSGET ts_key 2
 ```
+</div>
 ```sh
 (nil)
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 TSGET ts_key 3
 ```
+</div>
 ```sh
 (nil)
 ```

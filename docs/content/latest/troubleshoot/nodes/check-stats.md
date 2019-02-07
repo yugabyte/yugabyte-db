@@ -15,10 +15,11 @@ showAsideToc: true
 ## Host resource usage
 
 To check the CPU, Memory and Disk usage on a Linux machine you can run:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ sudo echo -n "CPUs: ";cat /proc/cpuinfo | grep processor | wc -l; echo -n "Mem: ";free -h | grep Mem | tr -s " " | cut -d" " -f 2; echo -n "Disk: "; df -h / | grep -v Filesystem; 
 ```
+</div>
 ```
 CPUs: 72
 Mem: 251G
@@ -37,15 +38,19 @@ Generally, common tools like `top` or `iostat` may be useful.
 ### Auditd
 If `top` reports high CPU usage for the `auditd` process, it may have some rules auditing some system calls frequently used YugaByte which can significantly affect performance. 
 You can try temporarily disabling `audit` by running (on each YugaByte node):
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ auditctl -e 0
 ```
+</div>
 and check if this improves peformance.
 
 To re-enable it afterwards run:
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ auditctl -e 1
 ```
+</div>
 
 ## YugaByte processes state
 

@@ -96,15 +96,21 @@ YugaWare comes with a pre-packaged set of sample applications. We will run a sim
 
 - **Install Java**
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ sudo yum install java-1.8.0-openjdk.x86_64 -y
 ```
+</div>
 
 - **Switch to the `yugabyte` user**
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ sudo su - yugabyte
 ```
+</div>
 
 - **Export the `YCQL_ENDPOINTS` env variable**
 
@@ -113,10 +119,11 @@ Export an environment variable telling us the IP addresses for nodes in the clus
 ![YCQL end points](/images/ee/multi-zone-universe-ycql-endpoints.png)
 
 Export this into a shell variable on the database node `yb-dev-helloworld1-n1` we had connected to. Remember to replace the ip addresses below with those shown by YugaWare.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ export YCQL_ENDPOINTS="10.138.0.3:9042,10.138.0.4:9042,10.138.0.5:9042"
 ```
+</div>
 
 - **Export the `YEDIS_ENDPOINTS` env variable**
 
@@ -125,17 +132,18 @@ Repeat the same process for the YEDIS endpoints.
 ![YCQL end points](/images/ee/multi-zone-universe-yedis-endpoints.png)
 
 Export an environment variable for the YEDIS endpoints.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ export YEDIS_ENDPOINTS="10.138.0.3:6379,10.138.0.4:6379,10.138.0.5:6379"
 ```
+</div>
 
 
 ### Run the CassandraKeyValue workload
 
 To start the workload, run the following command.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --workload CassandraKeyValue \
             --nodes $YCQL_ENDPOINTS \
@@ -145,6 +153,7 @@ $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --num_unique_keys 10000000 \
             --nouuid
 ```
+</div>
 
 The sample app will print some output and settle into reporting some stats in the steady state.
 
@@ -169,8 +178,8 @@ Let us stop the load tester and run a yedis workload.
 ### Run the RedisKeyValue workload
 
 To start the workload, run the following command.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --workload RedisKeyValue \
             --nodes $YEDIS_ENDPOINTS \
@@ -180,6 +189,7 @@ $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --num_unique_keys 10000000 \
             --nouuid
 ```
+</div>
 
 The sample app will print some output and settle into reporting some stats in the steady state.
 

@@ -1,33 +1,37 @@
 ## 1. Setup - create universe
 
 If you have a previously running local universe, destroy it using the following.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl destroy
 ```
+</div>
 
 Start a new local cluster - by default, this will create a 3-node universe with a replication factor of 3. 
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl create --enable_postgres
 ```
+</div>
 
 ## 2. Run sample key-value app
 
 Download the sample app jar.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ wget https://github.com/YugaByte/yb-sql-workshop/blob/master/running-sample-apps/yb-sample-apps.jar
 ```
+</div>
 
 Run the `SqlInserts` sample key-value app against the local universe by typing the following command.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
                                     --nodes 127.0.0.1:5433 \
                                     --num_threads_write 1 \
                                     --num_threads_read 4
 ```
+</div>
 
 The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](../../../quick-start/run-sample-apps/).
 
@@ -45,10 +49,11 @@ You can check a lot of the per-node stats by browsing to the <a href='http://127
 ## 4. Remove a node and observe continuous write availability
 
 Remove a node from the universe.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl remove_node 3
 ```
+</div>
 Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. The `Time since heartbeat` value for that node will keep increasing. Once that number reaches 60s (i.e. 1 minute), YugaByte DB will change the status of that node from ALIVE to DEAD. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
 
 ![Read and write IOPS with 3rd node dead](/images/ce/pgsql-fault-tolerance-1-node-dead.png)
@@ -57,10 +62,11 @@ Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">table
 ## 4. Remove another node and observe write unavailability
 
 Remove another node from the universe.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl remove_node 2
 ```
+</div>
 Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. Writes are now unavailable but reads can continue to be served for whichever tablets available on the remaining node.
 
 ![Read and write IOPS with 2nd node removed](/images/ce/pgsql-fault-tolerance-2-nodes-dead.png)
@@ -68,7 +74,8 @@ Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">table
 ## 6. Clean up (optional)
 
 Optionally, you can shutdown the local cluster created in Step 1.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-ctl destroy
 ```
+</div>

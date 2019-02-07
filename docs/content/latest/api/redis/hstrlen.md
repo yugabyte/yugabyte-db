@@ -23,15 +23,21 @@ This command seeks the length of a string value that is associated with the give
 Returns the length of the specified string.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ HMSET yugahash L1 America L2 Europe
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HSTRLEN yugahash L1
 ```
+</div>
 ```sh
 7
 ```

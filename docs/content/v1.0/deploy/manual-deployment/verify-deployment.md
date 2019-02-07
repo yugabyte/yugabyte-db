@@ -19,10 +19,11 @@ If you want this cluster to be able to support Redis clients, you **must** perfo
 {{< /note >}}
 
 While the YCQL and PostgreSQL (Beta) services are turned on by default after all the yb-tservers start, the Redis-compatible YEDIS service is off by default. If you want this cluster to be able to support Redis clients, run the following command from any of the 4 instances. The command below will add the special Redis table into the DB and also start the YEDIS server on port 6379 on all instances.
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-admin --master_addresses 172.151.17.v1.0:7100,172.151.17.220:7100,172.151.17.v1.0:7100 setup_redis_table
 ```
+</div>
 
 ## View the master UI dashboard
 
@@ -68,4 +69,3 @@ Service | Type | Port
 `yedis` | admin web server | 11000
 `pgsql` | rpc | 5433
 `pgsql` | admin web server | 13000
-

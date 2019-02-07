@@ -44,20 +44,29 @@ Where
 
 ## Examples
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TABLE sensor_data (sensor_id INT PRIMARY KEY, float_val FLOAT, dbl_val DOUBLE, dec_val DECIMAL);
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO sensor_data(sensor_id, float_val, dbl_val, dec_val) 
                   VALUES (1, 321.0456789, 321.0456789, 321.0456789);
 ```
+</div>
 Integers literals can also be used (Using upsert semantics to update a non-existent row).
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> UPDATE sensor_data SET float_val = 1, dbl_val = 1, dec_val = 1 WHERE sensor_id = 2;
 ```
-```{.sql .copy .separator-gt}
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT * FROM sensor_data;
 ```
+</div>
 ```sh
  sensor_id | float_val | dbl_val   | dec_val
 -----------+-----------+-----------+-------------

@@ -3,21 +3,30 @@
 
 - Destroy any existing cluster.
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./yb-docker-ctl destroy
 ```
+</div>
 
 - Create a new cluster with PostgreSQL API enabled. Note the additional option `enable_postgres` passed to the create cluster command. Also note that this requires at least version `1.1.2.0-b10` of YugaByte DB.
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./yb-docker-ctl create --enable_postgres
 ```
+</div>
 
 - Check status of the cluster
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./yb-docker-ctl status
 ```
+</div>
 ```sh
 ID             PID        Type       Node                 URL                       Status          Started At
 ca16705b20bd   5861       tserver    yb-tserver-n3        http://192.168.64.7:9000  Running         2018-10-18T22:02:52.12697026Z
@@ -30,9 +39,12 @@ feea0823209a   5039       master     yb-master-n1         http://192.168.64.2:70
 
 - Run psql to connect to the service.
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ docker exec -it yb-tserver-n1 /home/yugabyte/postgres/bin/psql -h yb-tserver-n1 -p 5433 -U postgres
 ```
+</div>
 
 ```sh
 psql (10.4)

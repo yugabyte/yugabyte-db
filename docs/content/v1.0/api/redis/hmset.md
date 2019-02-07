@@ -19,15 +19,21 @@ This command sets the data for the given `field` with the given `value` in the h
 Returns status string.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ HMSET yugahash area1 "America" area2 "Africa"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ HGET yugahash area1
 ```
+</div>
 ```sh
 "America"
 ```

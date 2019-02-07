@@ -31,12 +31,15 @@ This section covers deployment for a single region/zone (or a single datacenter/
 ## Run yb-master with command line params
 - Run `yb-master` binary on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. For the full list of flags, see the [yb-master Reference](../../../admin/yb-master/).
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-master \
   --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
   >& /home/centos/disk1/yb-master.out &
 ```
+</div>
 
 ## Run yb-master with conf file
 - Alternatively, you can also create a `master.conf` file with the following flags and then run the `yb-master` with the `--flagfile` option as shown below.
@@ -45,17 +48,21 @@ $ ./bin/yb-master \
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2 
 ```
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ./bin/yb-master --flagfile master.conf >& /home/centos/disk1/yb-master.out &
 ```
+</div>
 
 ## Verify health
 - Make sure all the 3 yb-masters are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
-```{.sh .copy .separator-dollar}
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ cat /home/centos/disk1/yb-data/master/logs/yb-master.INFO
 ```
+</div>
 
 You can see that the 3 yb-masters were able to discover each other and were also able to elect a Raft leader among themselves (the remaining two act as Raft followers).
 

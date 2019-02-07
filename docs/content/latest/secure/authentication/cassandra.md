@@ -23,10 +23,11 @@ You can read more about bringing up the YB-TServers for a deployment in the sect
 ## 2. Connect with the default admin credentials
 
 A new YugaByte DB cluster with authentication enabled comes up with a default admin user, the default username/password for this admin user is `cassandra`/`cassandra`. Note that this default user has `SUPERUSER` privilege. You can connect to this cluster using `cqlsh` as follows:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ cqlsh -u cassandra -p cassandra
 ```
+</div>
 
 You should see the cluster connect and the following prompt:
 ```{.sql}
@@ -45,16 +46,18 @@ Use the [CREATE ROLE statement](/api/cassandra/ddl_create_role/) to create a new
 ### Creating a user
 
 For example, to create a regular user `john` with the password `PasswdForJohn` and grant login privileges, run the following command.
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;
 ```
+</div>
 
 If the role `john` already existed, the above statement will not error out since we have added the `IF NOT EXISTS` clause. To verify the user account just created, run the following query:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
+</div>
 
 You should see the following output:
 ```
@@ -75,16 +78,18 @@ The `SUPERUSER` status should be given only to a limited number of users. Applic
 **NOTE** Only a role with the `SUPERUSER` privilege can create a new role with the `SUPERUSER` privilege, or grant it to an existing role.
 
 To create a superuser `admin` with the `LOGIN` privilege, run the following command using a superuser account:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> CREATE ROLE admin WITH PASSWORD = 'PasswdForAdmin' AND LOGIN = true AND SUPERUSER = true;
 ```
+</div>
 
 To verify the admin account just created, run the following query:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
 ```
+</div>
 
 You should see the following output:
 ```
@@ -109,16 +114,18 @@ $ cqlsh -u <username> -p <password>
 Alternatively, you can omit the `-p <password>` above and you will be prompted for a password.
 
 As an example of connecting as a user, we can login with the credentials of the user `john` that we created above by running the following command and entering the password when prompted:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ cqlsh -u john
 ```
+</div>
 
 As an example of connecting as the `admin` user, we can run the following command:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ cqlsh -u admin -p PasswdForAdmin
 ```
+</div>
 
 ## 5. Edit user accounts
 
@@ -127,10 +134,11 @@ You can edit existing user accounts using the [ALTER ROLE](/api/cassandra/ddl_al
 ### Changing password for a user
 
 To change the password for `john` above, you can do:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> ALTER ROLE john WITH PASSWORD = 'new-password';
 ```
+</div>
 
 ### Granting and removing superuser privileges
 
@@ -148,10 +156,11 @@ cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_aut
 
 
 To grant superuser privileges to `john`, run the following command:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> ALTER ROLE john WITH SUPERUSER = true;
 ```
+</div>
 We can now verify that john is now a superuser:
 
 ```{.sql}
@@ -165,10 +174,11 @@ cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_aut
 ```
 
 Similarly, you can revoke superuser privileges by running:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> ALTER ROLE john WITH SUPERUSER = false;
 ```
+</div>
 
 
 ### Enable and disable login privileges
@@ -186,10 +196,11 @@ cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_aut
 ```
 
 To disable login privileges for `john`, run the following command:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> ALTER ROLE john WITH LOGIN = false;
 ```
+</div>
 
 You can verify this as follows:
 
@@ -213,10 +224,11 @@ Connection error:
 ```
 
 To re-enable login privileges for `john`, run the following command:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh>  ALTER ROLE john WITH LOGIN = true;
 ```
+</div>
 
 
 ## 6. Change default admin credentials
@@ -225,10 +237,11 @@ It is highly recommended to change at least the default password for the superad
 
 
 As an example, let us say we want to change the `cassandra` user's password from `cassandra` to `new_password`. You can do that as follows:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> ALTER ROLE cassandra WITH PASSWORD = 'new_password';
 ```
+</div>
 
 Connecting to the cluster with the default password would no longer work:
 ```
@@ -238,20 +251,22 @@ Connection error:
 ```
 
 You can now connect to the cluster using the new password:
-
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ cqlsh -u cassandra -p new_password
 ```
+</div>
 
 ## 7. Deleting a user
 
 You can delete a user with the [DROP ROLE](/api/cassandra/ddl_drop_role/) command.
 
 For example, to drop the user `john` in the above example, run the following command as a superuser:
-
-```{.sql .copy .separator-gt}
+<div class='copy separator-gt'>
+```sql
 cassandra@cqlsh> DROP ROLE IF EXISTS john;
 ```
+</div>
 
 You can verify that the `john` role was dropped as follows:
 
@@ -265,4 +280,3 @@ cassandra@cqlsh> SELECT role, can_login, is_superuser, member_of FROM system_aut
 
 (2 rows)
 ```
-

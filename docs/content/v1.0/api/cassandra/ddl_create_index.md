@@ -83,7 +83,10 @@ Where
 
 ## Examples
 ### Create a table to be indexed
-```{.sql .copy .separator-gt}
+
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> -- 'customer_id' is the partitioning column and 'order_date' is the clustering column.
 cqlsh:example> CREATE TABLE orders (customer_id INT,
                                     order_date TIMESTAMP,
@@ -92,21 +95,31 @@ cqlsh:example> CREATE TABLE orders (customer_id INT,
                                     PRIMARY KEY ((customer_id), order_date))
                WITH transactions = { 'enabled' : true };
 ```
+</div>
 
 ### Create an index for query by the `order_date` column
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE INDEX orders_by_date ON orders (order_date) INCLUDE (amount);
 ```
+</div>
 
 ### Create an index for query by the `warehouse_id` column
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE INDEX orders_by_warehouse ON orders (warehouse_id, order_date) INCLUDE (amount);
 ```
+</div>
 
 ### Insert some data
-```{.sql .copy .separator-gt}
+
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO orders (customer_id, order_date, warehouse_id, amount)
                VALUES (1001, '2018-01-10', 107, 100.30);
 cqlsh:example> INSERT INTO orders (customer_id, order_date, warehouse_id, amount)
@@ -116,12 +129,16 @@ cqlsh:example> INSERT INTO orders (customer_id, order_date, warehouse_id, amount
 cqlsh:example> INSERT INTO orders (customer_id, order_date, warehouse_id, amount)
                VALUES (1003, '2018-04-09', 108, 200.80);
 ```
+</div>
 
 ### Query by the partition column `customer_id` in the table
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT SUM(amount) FROM orders WHERE customer_id = 1001 AND order_date >= '2018-01-01';
 ```
+</div>
 ```
   sum(amount)
 -------------
@@ -130,9 +147,12 @@ cqlsh:example> SELECT SUM(amount) FROM orders WHERE customer_id = 1001 AND order
 
 ### Query by the partition column `order_date` in the index `orders_by_date`
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT SUM(amount) FROM orders WHERE order_date = '2018-04-09';
 ```
+</div>
 ```
  sum(amount)
 -------------
@@ -141,9 +161,12 @@ cqlsh:example> SELECT SUM(amount) FROM orders WHERE order_date = '2018-04-09';
 
 ### Query by the partition column `warehouse_id` column in the index `orders_by_warehouse`
 
-```{.sql .copy .separator-gt}
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> SELECT SUM(amount) FROM orders WHERE warehouse_id = 102 AND order_date >= '2018-01-01';
 ```
+</div>
 ```
  sum(amount)
 -------------
@@ -151,7 +174,10 @@ cqlsh:example> SELECT SUM(amount) FROM orders WHERE warehouse_id = 102 AND order
 ```
 
 ### Create a table with a unique index
-```{.sql .copy .separator-gt}
+
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TABLE emp (enum INT primary key,
                                  lastname VARCHAR,
                                  firstname VARCHAR,
@@ -159,9 +185,13 @@ cqlsh:example> CREATE TABLE emp (enum INT primary key,
                WITH transactions = { 'enabled' : true };
 cqlsh:example> CREATE UNIQUE INDEX emp_by_userid ON emp (userid);
 ```
+</div>
 
 ### Insert values into the table and verify no duplicate `userid` is inserted
-```{.sql .copy .separator-gt}
+
+You can do this as shown below.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
                VALUES (1001, 'Smith', 'John', 'jsmith');
 cqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
@@ -174,6 +204,7 @@ VALUES (1002, 'Smith', 'Jason', 'jsmith');
 cqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
                VALUES (1002, 'Smith', 'Jason', 'jasmith');
 ```
+</div>
 ```
 cqlsh:example> SELECT * FROM emp;
 ```

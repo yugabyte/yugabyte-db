@@ -21,21 +21,29 @@ Set a timeout on key (in seconds). After the timeout has expired, the key will a
 Returns integer reply, specifically 1 if the timeout was set and 0 if key does not exist.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ SET yugakey "YugaByte"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ EXPIRE yugakey 10
 ```
+</div>
 ```sh
 (integer) 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ EXPIRE non-existent-key 10
 ```
+</div>
 ```sh
 (integer) 0
 ```

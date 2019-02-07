@@ -21,21 +21,29 @@ EXPIREAT has the same effect as EXPIRE, but instead of specifying the number of 
 Returns integer reply, specifically 1 if the timeout was set and 0 if key does not exist.
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ SET yugakey "YugaByte"
 ```
+</div>
 ```sh
 "OK"
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ EXPIREAT yugakey 1293840000
 ```
+</div>
 ```sh
 (integer) 1
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ EXISTS yugakey
 ```
+</div>
 ```sh
 (integer) 0
 ```

@@ -27,32 +27,42 @@ Returns a list of members found in the range specified by `start`, `stop`, unles
 <li> WITHSCORES: Makes the command return both the `member` and its `score`.</li>
 
 ## Examples
-```{.sh .copy .separator-dollar}
+
+You can do this as shown below.
+<div class='copy separator-dollar'>
+```sh
 $ ZADD z_key 1.0 v1 2.0 v2 3.0 v3
 ```
+</div>
 ```sh
 (integer) 3
 ```
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZREVRANGE z_key 0 2
 ```
+</div>
 ```sh
 1) "v3"
 2) "v2"
 3) "v1"
 ```
 With negative indices.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZREVRANGE z_key -2 -1
 ```
+</div>
 ```sh
 1) "v2"
 2) "v1"
 ```
 Both positive and negative indices.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZREVRANGE z_key 1 -1 WITHSCORES
 ```
+</div>
 ```sh
 1) "v2"
 2) "2.0"
@@ -60,16 +70,20 @@ $ ZREVRANGE z_key 1 -1 WITHSCORES
 4) "1.0"
 ```
 (0 and (2 are exclusive bounds.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZREVRANGE z_key (0 (2
 ```
+</div>
 ```sh
 (empty list or set)
 ```
 Empty list returned if key doesn't exist.
-```{.sh .copy .separator-dollar}
+<div class='copy separator-dollar'>
+```sh
 $ ZREVRANGE z_key_no_exist 0 2  WITHSCORES
 ```
+</div>
 ```sh
 (empty list or set)
 ```
