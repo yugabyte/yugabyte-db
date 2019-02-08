@@ -41,10 +41,15 @@
 # Portions Copyright (c) YugaByte, Inc.
 
 set -euo pipefail
+readonly YB_COMPLETED_TEST_FLAG_DIR=/tmp/yb_completed_tests
 
 cleanup() {
   local exit_code=$?
   kill_stuck_processes
+  if [[ -n ${YB_TEST_INVOCATION_ID:-} ]]; then
+    mkdir -p /tmp/yb_completed_tests
+    touch "$YB_COMPLETED_TEST_FLAG_DIR/$YB_TEST_INVOCATION_ID"
+  fi
   if [[ $exit_code -eq 0 ]] && "$killed_stuck_processes"; then
     exit_code=1
   fi
