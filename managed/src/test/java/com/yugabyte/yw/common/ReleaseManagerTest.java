@@ -2,6 +2,7 @@
 package com.yugabyte.yw.common;
 
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.apache.commons.io.FileUtils;
@@ -15,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.Configuration;
+import play.libs.Json;
 
 import java.io.File;
 import java.io.IOException;
@@ -23,6 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.SoftwareReleases;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -105,8 +108,20 @@ public class ReleaseManagerTest {
 
   @Test
   public void testLoadReleasesWithoutReleasePath() {
-    releaseManager.loadReleasesToDB();
+    releaseManager.importLocalReleases();
     Mockito.verify(configHelper, times(0)).loadConfigToDB(any(), anyMap());
+  }
+
+  private void assertReleases(Map expectedMap, HashMap releases) {
+    assertEquals(expectedMap.size(), releases.size());
+    for (Object version : releases.keySet()) {
+      assertTrue(expectedMap.containsKey(version));
+      Object expectedFile = expectedMap.get(version);
+      JsonNode releaseJson = Json.toJson(releases.get(version));
+      assertValue(releaseJson, "filePath", expectedFile.toString());
+      assertValue(releaseJson, "imageTag", "quay.io/yugabyte/yugabyte:" + version);
+      assertValue(releaseJson, "state", "ACTIVE");
+    }
   }
 
   @Test
@@ -114,16 +129,16 @@ public class ReleaseManagerTest {
     when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     List<String> versions = ImmutableList.of("0.0.1");
     createDummyReleases(versions, false, false);
-    releaseManager.loadReleasesToDB();
+    releaseManager.importLocalReleases();
 
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
     ArgumentCaptor<HashMap> releaseMap;
     configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
     releaseMap = ArgumentCaptor.forClass(HashMap.class);
     Mockito.verify(configHelper, times(1)).loadConfigToDB(configType.capture(), releaseMap.capture());
-    Map expectedMap = ImmutableMap.of("0.0.1", TMP_STORAGE_PATH + "/0.0.1/yugabyte-ee-0.0.1-centos-x86_64.tar.gz");
-    assertEquals(releaseMap.getValue(), expectedMap);
-    assertEquals(configType.getValue(), SoftwareReleases);
+    Map expectedMap = ImmutableMap.of(
+        "0.0.1", TMP_STORAGE_PATH + "/0.0.1/yugabyte-ee-0.0.1-centos-x86_64.tar.gz");
+    assertReleases(expectedMap, releaseMap.getValue());
   }
 
   @Test
@@ -134,7 +149,7 @@ public class ReleaseManagerTest {
     createDummyReleases(versions, false, false);
     List<String> dockerVersions = ImmutableList.of("0.0.2-b2");
     createDummyReleases(dockerVersions, false, true);
-    releaseManager.loadReleasesToDB();
+    releaseManager.importLocalReleases();
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
     ArgumentCaptor<HashMap> releaseMap;
     configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
@@ -143,9 +158,9 @@ public class ReleaseManagerTest {
     Map expectedMap = ImmutableMap.of(
         "0.0.1", TMP_STORAGE_PATH + "/0.0.1/yugabyte-ee-0.0.1-centos-x86_64.tar.gz",
         "0.0.2-b2", TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-ee-0.0.2-b2-centos-x86_64.tar.gz");
-    assertEquals(expectedMap, releaseMap.getValue());
-    assertEquals(SoftwareReleases, configType.getValue());
 
+    assertEquals(SoftwareReleases, configType.getValue());
+    assertReleases(expectedMap, releaseMap.getValue());
     File dockerStoragePath = new File(TMP_DOCKER_STORAGE_PATH);
     File[] files = dockerStoragePath.listFiles();
     assertEquals(0, files.length);
@@ -159,7 +174,7 @@ public class ReleaseManagerTest {
     createDummyReleases(versions, false, false);
     List<String> dockerVersions = ImmutableList.of("0.0.2-b2");
     createDummyReleases(dockerVersions, false, true);
-    releaseManager.loadReleasesToDB();
+    releaseManager.importLocalReleases();
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
     ArgumentCaptor<HashMap> releaseMap;
     configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
@@ -167,7 +182,7 @@ public class ReleaseManagerTest {
     Mockito.verify(configHelper, times(1)).loadConfigToDB(configType.capture(), releaseMap.capture());
     Map expectedMap = ImmutableMap.of(
         "0.0.2-b2", TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-ee-0.0.2-b2-centos-x86_64.tar.gz");
-    assertEquals(expectedMap, releaseMap.getValue());
+    assertReleases(expectedMap, releaseMap.getValue());
     assertEquals(SoftwareReleases, configType.getValue());
 
     File dockerStoragePath = new File(TMP_DOCKER_STORAGE_PATH);
@@ -179,7 +194,7 @@ public class ReleaseManagerTest {
   public void testLoadReleasesWithInvalidDockerPath() {
     when(appConfig.getString("yb.docker.release")).thenReturn("foo");
     try {
-      releaseManager.loadReleasesToDB();
+      releaseManager.importLocalReleases();
     } catch (RuntimeException re) {
       assertEquals("Unable to look up release files in foo", re.getMessage());
     }
@@ -187,17 +202,57 @@ public class ReleaseManagerTest {
 
   @Test
   public void testGetReleaseByVersionWithConfig() {
+    ReleaseManager.ReleaseMetadata metadata =
+        ReleaseManager.ReleaseMetadata.fromLegacy("0.0.1", "/path/to/yugabyte-0.0.1.tar.gz");
     when(configHelper.getConfig(SoftwareReleases))
-        .thenReturn(ImmutableMap.of("0.0.1", "/path/to/yugabyte-0.0.1.tar.gz"));
-    String release = releaseManager.getReleaseByVersion("0.0.1");
-    assertThat(release, allOf(notNullValue(),
+        .thenReturn(ImmutableMap.of("0.0.1", metadata));
+    ReleaseManager.ReleaseMetadata release = releaseManager.getReleaseByVersion("0.0.1");
+    assertThat(release.filePath, allOf(notNullValue(),
         equalTo("/path/to/yugabyte-0.0.1.tar.gz")));
   }
 
   @Test
   public void testGetReleaseByVersionWithoutConfig() {
     when(configHelper.getConfig(SoftwareReleases)).thenReturn(Collections.emptyMap());
-    String release = releaseManager.getReleaseByVersion("0.0.1");
+    ReleaseManager.ReleaseMetadata release = releaseManager.getReleaseByVersion("0.0.1");
     assertNull(release);
+  }
+
+  @Test
+  public void testGetReleaseByVersionWithLegacyConfig() {
+    HashMap releases = new HashMap();
+    releases.put("0.0.1", "/path/to/yugabyte-0.0.1.tar.gz");
+    when(configHelper.getConfig(SoftwareReleases)).thenReturn(releases);
+    ReleaseManager.ReleaseMetadata release = releaseManager.getReleaseByVersion("0.0.1");
+    assertThat(release.filePath, allOf(notNullValue(),
+        equalTo("/path/to/yugabyte-0.0.1.tar.gz")));
+  }
+
+
+  @Test
+  public void testAddRelease() {
+    releaseManager.addRelease("0.0.1");
+    ArgumentCaptor<ConfigHelper.ConfigType> configType;
+    ArgumentCaptor<HashMap> releaseMap;
+    configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
+    releaseMap = ArgumentCaptor.forClass(HashMap.class);
+    Mockito.verify(configHelper, times(1)).loadConfigToDB(configType.capture(), releaseMap.capture());
+    Map releaseInfo = releaseMap.getValue();
+    assertTrue(releaseInfo.containsKey("0.0.1"));
+    JsonNode releaseMetadata = Json.toJson(releaseInfo.get("0.0.1"));
+    assertValue(releaseMetadata, "imageTag", "quay.io/yugabyte/yugabyte:0.0.1");
+  }
+
+  @Test
+  public void testAddExistingRelease() {
+    ReleaseManager.ReleaseMetadata metadata =
+        ReleaseManager.ReleaseMetadata.fromLegacy("0.0.1", "/path/to/yugabyte-0.0.1.tar.gz");
+    when(configHelper.getConfig(SoftwareReleases))
+        .thenReturn(ImmutableMap.of("0.0.1", metadata));
+    try {
+      releaseManager.addRelease("0.0.1");
+    } catch (RuntimeException re) {
+      assertEquals("Release already exists: 0.0.1", re.getMessage());
+    }
   }
 }

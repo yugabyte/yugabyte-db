@@ -26,6 +26,12 @@ public class ApiResponse {
     return Results.status(OK, Json.toJson(message));
   }
 
+  public static Result success() {
+    ObjectNode responseJson = Json.newObject();
+    responseJson.put("success", true);
+    return success(responseJson);
+  }
+
   public static JsonNode errorJSON(Object message) {
     ObjectNode jsonMsg = Json.newObject();
 
