@@ -34,6 +34,7 @@ ttl_or_timestamp_expression = 'TTL' ttl_expression | 'TIMESTAMP' timestamp_expre
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="305" height="65" viewbox="0 0 305 65"><path class="connector" d="M0 22h25m41 0h10m104 0h120m-290 0q5 0 5 5v20q0 5 5 5h5m90 0h10m155 0h5q5 0 5-5v-20q0-5 5-5m5 0h5"/><rect class="literal" x="25" y="5" width="41" height="25" rx="7"/><text class="text" x="35" y="22">TTL</text><a xlink:href="../grammar_diagrams#ttl-expression"><rect class="rule" x="76" y="5" width="104" height="25"/><text class="text" x="86" y="22">ttl_expression</text></a><rect class="literal" x="25" y="35" width="90" height="25" rx="7"/><text class="text" x="35" y="52">TIMESTAMP</text><a xlink:href="../grammar_diagrams#timestamp-expression"><rect class="rule" x="125" y="35" width="155" height="25"/><text class="text" x="135" y="52">timestamp_expression</text></a></svg>
 
+```
 update ::= UPDATE table_name
               [ USING using_expression ]
               SET assignment [, assignment ...]
@@ -120,7 +121,6 @@ cqlsh:example> SELECT * FROM employees;
 
 ### Conditional update using the `IF` clause
 
-
 The supported expressions are allowed in the 'SET' assignment targets.
 <div class='copy separator-gt'>
 ```sql
@@ -192,8 +192,14 @@ You can do this as shown below.
 <div class='copy separator-gt'>
 ```sql
 cqlsh:foo> INSERT INTO employees(department_id, employee_id, name, age) VALUES (1, 4, 'Jeff', 20) USING TIMESTAMP 1000;
+```
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:foo> SELECT * FROM employees;
-
+```
+</div>
+```sh
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              1 |           1 | Jack | null
@@ -202,9 +208,19 @@ cqlsh:foo> SELECT * FROM employees;
              2 |           1 |  Joe | null
 
 (4 rows)
+```
+Now update the employees table.
+<div class='copy separator-gt'>
+```sql
 cqlsh:foo> UPDATE employees USING TIMESTAMP 500 SET age = 30 WHERE department_id = 1 AND employee_id = 4; -- not applied since timestamp is lower than 1000.
+```
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:foo> SELECT * FROM employees;
-
+```
+</div>
+```
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              1 |           1 | Jack | null
@@ -213,10 +229,18 @@ cqlsh:foo> SELECT * FROM employees;
              2 |           1 |  Joe | null
 
 (4 rows)
+```
+<div class='copy separator-gt'>
+```sql
 cqlsh:foo> UPDATE employees USING TIMESTAMP 1500 SET age = 30 WHERE department_id = 1 AND employee_id = 4;  -- applied since timestamp is higher than 1000.
-
+```
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:foo> SELECT * FROM employees;
-
+```
+</div>
+```
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              1 |           1 | Jack | null
@@ -225,10 +249,7 @@ cqlsh:foo> SELECT * FROM employees;
              2 |           1 |  Joe | null
 
 (4 rows)
-
 ```
-</div>
-
 ## See Also
 
 [`CREATE TABLE`](../ddl_create_table)

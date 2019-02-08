@@ -180,4 +180,5 @@ The command below upgrades the YugaByte DB image to the latest version.
 <div class='copy separator-dollar'>
 ```sh
 $ docker pull yugabytedb/yugabyte
-```</div>
+```
+</div>

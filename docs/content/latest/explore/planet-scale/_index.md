@@ -1,7 +1,7 @@
 ---
 title: Explore Planet-Scale Features
-linkTitle: Planet-Scale
-description: Planet-Scale
+linkTitle: Planet Scale
+description: Planet Scale
 headcontent:
 image: /images/section_icons/explore/planet_scale.png
 aliases:

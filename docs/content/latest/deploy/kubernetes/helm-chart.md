@@ -96,8 +96,8 @@ $ helm install yugabyte --set resource.master.requests.cpu=0.1,resource.master.r
 ```
 </div>
 
-### Installing YugaByte DB with PostgreSQL (beta)
-If you wish to enable PostgreSQL (beta) support, install YugaByte DB with additional parameter as shown below.
+### Installing YugaByte DB with YSQL (beta)
+If you wish to enable YSQL (beta) support, install YugaByte DB with additional parameter as shown below.
 <div class='copy separator-dollar'>
 ```sh
 $ helm install yugabyte --wait --namespace yb-demo --name yb-demo --set "enablePostgres=true"
@@ -111,7 +111,7 @@ $ helm install yugabyte --set resource.master.requests.cpu=0.1,resource.master.r
 ```
 </div>
 
-Initialize the PostgreSQL API (after ensuring that cluster is running - see "Check Cluster Status" below)
+Initialize the YSQL API (after ensuring that cluster is running - see "Check Cluster Status" below)
 <div class='copy separator-dollar'>
 ```sh
 $ kubectl exec -it -n yb-demo yb-tserver-0 bash -- -c "YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=yb-master-0.yb-masters.yb-demo.svc.cluster.local:7100,yb-master-1.yb-masters.yb-demo.svc.cluster.local:7100,yb-master-2.yb-masters.yb-demo.svc.cluster.local:7100 /home/yugabyte/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres"
@@ -162,6 +162,7 @@ yb-tserver-2  0/1    Pending  0         7s
 
 ...
 ```
+Check the pods.
 <div class='copy separator-dollar'>
 ```sh
 $ kubectl get pods --namespace yb-demo
@@ -176,6 +177,7 @@ yb-tserver-0   1/1       Running   0          4m
 yb-tserver-1   1/1       Running   0          4m
 yb-tserver-2   1/1       Running   0          4m
 ```
+Check the services.
 <div class='copy separator-dollar'>
 ```sh
 $ kubectl get services --namespace yb-demo

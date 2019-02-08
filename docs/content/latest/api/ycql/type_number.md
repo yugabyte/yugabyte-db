@@ -1,7 +1,7 @@
 ---
-title: Non-integer
+title: Non-Integer
 summary: FLOAT, DOUBLE, and DECIMAL
-description: Non-integer Numbers
+description: Non-Integer Numbers
 menu:
   latest:
     parent: api-cassandra

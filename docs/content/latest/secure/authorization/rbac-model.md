@@ -66,4 +66,4 @@ Permission  | Objects                      | Operations                         
 The `ALTER` permission on the base table is required in order to `CREATE` or `DROP` indexes on it.
 {{< /note >}}
 
-Read more about [YCQL permissions](/api/cassandra/ddl_grant_permission/#permissions).
+Read more about [YCQL permissions](../../api/ycql/ddl_grant_permission/#permissions).

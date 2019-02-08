@@ -74,7 +74,7 @@ List of tables present in the cluster.
 
 ![master-tables](/images/admin/master-tables.png)
 
-### Tablet servers 
+### Tablet Servers 
 
 List of all nodes (aka yb-tservers) present in the cluster.
 

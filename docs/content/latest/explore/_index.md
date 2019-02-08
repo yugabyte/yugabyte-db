@@ -56,7 +56,7 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" /> 
        <div class="articles">3 articles</div>
-        <div class="title">Planet-Scale</div>
+        <div class="title">Planet Scale</div>
       </div>
       <div class="body">
         Global data distribution, auto-sharding and auto-rebalancing.

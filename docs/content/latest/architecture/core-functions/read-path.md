@@ -17,16 +17,14 @@ Let us take the case of a single key read.
 
 ## Step 1. Identify Tablet Leader
 
-The user-issued read request first hits the YQL query layer on a port with the appropriate protocol
-(Cassandra, Redis, PostgreSQL(beta), etc). This user request is translated by the YQL layer into an internal key. The
+The user-issued read request first hits the YQL query layer on a port with the appropriate API, which is either YCQL or YEDIS or YSQL(beta). This user request is translated by the YQL layer into an internal key. The
 YQL layer then finds this tablet as well as the YB-TServers hosting it by making an RPC call to the
 YB-Master, and caches the response for future. The YQL layer then issues the read to the YB-TServer
 that hosts the leader tablet-peer. The read is handled by the leader of the RAFT group of the tablet
 owning the internal key. The leader of the tablet RAFT group which handles the read request performs
 the read from its DocDB and returns the result to the user.
 
-As mentioned before in the [write IO path
-section](../write-path/#step-1-identify-tablet-leader), the YugaByte smart
+As mentioned before in the [write IO path section](../write-path/#step-1-identify-tablet-leader), the YugaByte DB smart
 client can route the application requests directly to the correct YB-TServer avoiding any extra
 network hops or master lookups.
 

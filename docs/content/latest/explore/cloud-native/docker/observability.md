@@ -66,7 +66,7 @@ scrape_configs:
 
       - targets: ['yb-tserver-n1:13000', 'yb-tserver-n2:13000', 'yb-tserver-n3:13000']
         labels:
-          group: 'ypostgresql'
+          group: 'ysql'
 ```
 
 ## 4. Start Prometheus server
@@ -134,4 +134,5 @@ Optionally, you can shutdown the local cluster created in Step 1.
 <div class='copy separator-dollar'>
 ```sh
 $ ./yb-docker-ctl destroy
-```</div>
+```
+</div>

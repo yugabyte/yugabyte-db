@@ -156,7 +156,7 @@ records will have strictly higher hybrid times.
 However, with this conservative timestamp assignment approach, **ht_read** can stay the same if
 there is no write workload on this particular tablet. This will result in a client-observed anomaly
 if [TTL
-(time-to-live)](../../../api/cassandra/dml_insert/#insert-a-row-with-expiration-time-using-the-using-ttl-clause)
+(time-to-live)](../../../api/ycql/dml_insert/#insert-a-row-with-expiration-time-using-the-using-ttl-clause)
 is being used: no expired values will disappear, as far as the client is concerned, until a new
 record is written to the tablet. Then, a lot of old expired values could suddenly disappear. To
 prevent this anomaly, we need to assign the read timestamp to be close to the current hybrid time

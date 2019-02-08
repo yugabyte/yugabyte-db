@@ -28,7 +28,7 @@ These can be loosely defined as the high-level concerns when choosing a database
 | Database Characteristics  | SQL | NoSQL | YugaByte DB |
 | --------------- | ---------------- | ------------------ | ------------------ |
 | Data model | Well-defined schema (tables, rows, columns)  | Schemaless | Both |
-| API    | SQL | Various | Goal -  PostgreSQL + Cassandra + Redis |
+| API    | SQL | Various | SQL + Flexible-Schema NoSQL + Key-Value NoSQL |
 | Consistency | Strong consistency | Eventual consistency | Strong consistency |
 | Transactions | ACID transactions | No transactions | ACID transactions |
 | High Write Throughput | No | Sometimes | Yes

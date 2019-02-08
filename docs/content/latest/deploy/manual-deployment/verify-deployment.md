@@ -51,7 +51,7 @@ You should now be able to view the master dashboard on the ip address of any mas
 172.151.17.130:6379,172.151.17.220:6379,172.151.17.140:6379,172.151.17.150:6379
 ```
 
-- Clients can connect to YugaByte DB's PostgreSQL (Beta) API at
+- Clients can connect to YugaByte DB's YSQL (Beta) API at
 ```{.sh .copy}
 172.151.17.130:5433,172.151.17.220:5433,172.151.17.140:5433,172.151.17.150:5433
 ```

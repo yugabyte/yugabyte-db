@@ -4,6 +4,7 @@ linkTitle: YCQL Connection Issues
 description: Cannot Connect to YCQL API
 aliases:
   - /troubleshoot/cluster/connect-cassandra/
+  - /latest/troubleshoot/cluster/connect-ycql/
 menu:
   latest:
     parent: troubleshoot-cluster

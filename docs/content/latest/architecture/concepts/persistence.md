@@ -128,7 +128,7 @@ out useful/hot data.
 ## Encoding Details
 
 DocDB is the storage layer that acts as the common backbone of different APIs that are supported by
-YugaByte (currently CQL, Redis, and PostgreSQL(beta)).
+YugaByte DB (currently YCQL, YEDIS, and YSQL(beta)).
 
 ### Mapping Documents to Key-Value Store
 

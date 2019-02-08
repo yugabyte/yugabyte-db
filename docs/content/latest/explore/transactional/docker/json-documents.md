@@ -165,6 +165,7 @@ cqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------
   3 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
 ```
+Select from the table.
 <div class='copy separator-gt'>
 ```sql
 cqlsh> SELECT * FROM store.books WHERE details->'editors'->>2 = 'Jeff';
@@ -195,6 +196,7 @@ cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) > 1700;
   4 |      {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
   3 |             {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
 ```
+Select from the table.
 <div class='copy separator-gt'>
 ```sql
 cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
@@ -205,6 +207,7 @@ cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
 ----+--------------------------------------------------------------------------------------------------------------------------------------------------------
   4 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
 ```
+Select from the table.
 <div class='copy separator-gt'>
 ```sql
 cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) > 1600 AND CAST(details->>'year' AS integer) <= 1900;
@@ -229,6 +232,7 @@ You can do this as shown below.
 cqlsh> UPDATE store.books SET details = '{"author":{"first_name":"Carl","last_name":"Sagan"},"editors":["Ann","Rob","Neil"],"genre":"science","name":"Cosmos","year":1980}' WHERE id = 1;
 ```
 </div>
+Select from the table.
 <div class='copy separator-gt'>
 ```sql
 cqlsh> SELECT * FROM store.books WHERE id = 1;
@@ -248,6 +252,7 @@ You can do this as shown below.
 cqlsh> UPDATE store.books SET details->'author'->>'first_name' = '"Steve"' WHERE id = 4;
 ```
 </div>
+Run another query.
 <div class='copy separator-gt'>
 ```sql
 cqlsh> SELECT * FROM store.books WHERE id = 4;
@@ -267,6 +272,7 @@ You can do this as shown below.
 cqlsh> UPDATE store.books SET details->'editors'->>1 = '"Jack"' WHERE id = 4;
 ```
 </div>
+Run another query.
 <div class='copy separator-gt'>
 ```sql
 cqlsh> SELECT * FROM store.books WHERE id = 4;
@@ -286,6 +292,7 @@ You can do this as shown below.
 cqlsh> UPDATE store.books SET details->'author' = '{"first_name":"John", "last_name":"Doe"}' WHERE id = 4;
 ```
 </div>
+Run another query.
 <div class='copy separator-gt'>
 ```sql
 cqlsh> SELECT * FROM store.books WHERE id = 4;

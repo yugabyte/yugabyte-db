@@ -15,13 +15,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-You would need to generate client config files to enable the client to connect to YugaByte DB. The steps are identical to [preparing the per-node configuration](http://localhost:1313/latest/secure/tls-encryption/prepare-nodes/#generate-per-node-config) shown in a previous section.
+You would need to generate client config files to enable the client to connect to YugaByte DB. The steps are identical to [preparing the per-node configuration](../prepare-nodes/#generate-per-node-config) shown in a previous section.
 
 You would need the following files on the client node:
 
-* `ca.crt` as described in the [prepare config](../../../secure/tls-encryption/prepare-nodes/#generate-root-config) section
-* `node.<name>.crt` as described in the [node config](../../../secure/tls-encryption/prepare-nodes/#generate-private-key-for-each-node) section
-* `node.<name>.key` as shown in the [node config](../../../secure/tls-encryption/prepare-nodes/#generate-private-key-for-each-node) section
+* `ca.crt` as described in the [prepare config](../prepare-nodes/#generate-root-config) section
+* `node.<name>.crt` as described in the [node config](../prepare-nodes/#generate-private-key-for-each-node) section
+* `node.<name>.key` as shown in the [node config](../prepare-nodes/#generate-private-key-for-each-node) section
 
 
 To enable cqlsh to connect, set the following environment variables:

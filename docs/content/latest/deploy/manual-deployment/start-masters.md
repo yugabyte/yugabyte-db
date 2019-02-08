@@ -22,7 +22,7 @@ For any cluster, the number of nodes on which the YB-Masters need to be started 
 Let us assume the following.
 
 - We want to create a a 4 node cluster with replication factor `3`.
-      - We would need to run the YB-Master process on three nodes (`node-a`, `node-b`, `node-c`)
+      - We would need to run the YB-Master process on only three of the nodes say `node-a`, `node-b`, `node-c`
       - Let us assume their IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140`
 - We have multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`
 

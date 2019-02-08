@@ -1,4 +1,4 @@
-This page documents backups for YugaByte DB’s [Cassandra compatible YCQL API](../../../api/cassandra).
+This page documents backups for YugaByte DB’s [Cassandra compatible YCQL API](../../../api/ycql).
 
 ## Schema backup
 

@@ -20,8 +20,7 @@ and heavily relies on the single-tablet write path described here.
 
 ## Step 1. YQL layer processes the write operation
 
-The user-issued write request first hits the YQL query layer on a port with the appropriate protocol
-(Cassandra, Redis, PostgreSQL(beta), etc). This user request is translated by the YQL layer into an internal key.
+The user-issued write request first hits the YQL query layer on a port with the appropriate API, which is either YCQL or YEDIS or YSQL(beta). This user request is translated by the YQL layer into an internal key.
 Recall from the [sharding](../../concepts/sharding/) section that each key is owned
 by exactly one tablet. This tablet as well as the YB-TServers hosting it can easily be determined by
 making an RPC call to the YB-Master. The YQL layer makes this RPC call to determine the

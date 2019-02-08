@@ -47,7 +47,7 @@ We do not recommend a local multi-node cluster setup on a single host for produc
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="test-cassandra/">
+    <a class="section-link icon-offset" href="test-ycql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/test_cql.png" aria-hidden="true" />
         <div class="title">3. Test YCQL API</div>
@@ -59,7 +59,7 @@ We do not recommend a local multi-node cluster setup on a single host for produc
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="test-redis/">
+    <a class="section-link icon-offset" href="test-yedis/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/test_redis.png" aria-hidden="true" />
         <div class="title">4. Test YEDIS API</div>
@@ -71,7 +71,7 @@ We do not recommend a local multi-node cluster setup on a single host for produc
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="test-postgresql/">
+    <a class="section-link icon-offset" href="test-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
         <div class="title">5. Test YSQL API</div>

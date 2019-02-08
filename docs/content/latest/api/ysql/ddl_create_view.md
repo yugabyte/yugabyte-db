@@ -37,29 +37,34 @@ Where
 
 ## Examples
 
-- Create a sample table.
+Create a sample table.
 
-```{.sql .copy .separator-hash}
+<div class='copy separator-hash'>
+```sql
 postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
+</div>
+Insert some rows.
 
-- Insert some rows.
-
-```{.sql .copy .separator-hash}
+<div class='copy separator-hash'>
+```sql
 postgres=# INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
+</div>
+Create a view on the `sample` table.
 
-- Create a view on the `sample` table.
-
-```{.sql .copy .separator-hash}
+<div class='copy separator-hash'>
+```sql
 postgres=# CREATE VIEW sample_view AS SELECT * FROM sample WHERE v2 != 'b' ORDER BY k1 DESC;
 ```
+</div>
+Select from the view.
 
-- Select from the view.
-
-```{.sql .copy .separator-hash}
+<div class='copy separator-hash'>
+```sql
 postgres=# SELECT * FROM sample_view;
 ```
+</div>
 ```
  k1 | k2 | v1 | v2
 ----+----+----+----

@@ -76,6 +76,7 @@ postgres=>  SELECT * FROM t1_and_t2;
  1 | 3.5 | def | 
 (2 rows)
 ```
+Run another query.
 <div class='copy separator-gt'>
 ```sql
 postgres=>  SELECT * FROM t1_and_t2 WHERE r >= 3;

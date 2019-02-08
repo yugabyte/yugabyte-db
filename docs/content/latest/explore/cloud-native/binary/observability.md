@@ -69,7 +69,7 @@ scrape_configs:
 
       - targets: ['127.0.0.1:13000', '127.0.0.2:13000', '127.0.0.3:13000']
         labels:
-          group: 'ypostgresql'
+          group: 'ysql'
 ```
 
 ## 4. Start Prometheus server

@@ -113,6 +113,7 @@ yb-yugaware  14d
 NAME           READY  STATUS   RESTARTS  AGE
 yb-yugaware-0  5/5    Running  0         14d
 ```
+Get service details.
 <div class='copy separator-dollar'>
 ```sh
 $ kubectl get svc -lapp=yb-yugaware

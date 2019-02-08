@@ -1,6 +1,4 @@
----
----
-
+## 1. Connect with redis-cli
 - Run redis-cli to connect to the service.
 
 You can do this as shown below.

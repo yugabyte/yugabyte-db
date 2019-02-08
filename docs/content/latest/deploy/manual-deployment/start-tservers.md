@@ -21,7 +21,7 @@ For any cluster, the number of nodes on which the YB-TServers need to be started
 Let us assume the following.
 
 - We want to create a a 4 node cluster with replication factor `3`.
-      - We would need to run the YB-TServer process on the nodes (`node-a`, `node-b`, `node-c`, `node-d`)
+      - We would need to run the YB-TServer process on all the 4 nodes say `node-a`, `node-b`, `node-c`, `node-d`
       - Let us assume the master IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140` (`node-a`, `node-b`, `node-c`)
 - We have multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`
 

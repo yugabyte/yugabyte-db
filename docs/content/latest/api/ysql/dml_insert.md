@@ -52,23 +52,27 @@ Where
 
 ## Examples
 
-- Create a sample table.
-
-```{.sql .copy .separator-hash}
+Create a sample table.
+<div class='copy separator-hash'>
+```sql
 postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
+</div>
 
-- Insert some rows.
-
-```{.sql .copy .separator-hash}
+Insert some rows.
+<div class='copy separator-hash'>
+```sql
 postgres=# INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
+</div>
 
-- Check the inserted rows.
+Check the inserted rows.
 
-```{.sql .copy .separator-hash}
+<div class='copy separator-hash'>
+```sql
 postgres=# SELECT * FROM sample ORDER BY k1;
 ```
+</div>
 ```
  k1 | k2 | v1 | v2
 ----+----+----+----

@@ -29,7 +29,9 @@ $ docker pull yugabytedb/yugabyte
 
 ### Create a docker-compose.yaml file
 
-```{.sh .copy}
+You can do this as shown below.
+<div class='copy'>
+```sh
 version: '2'
 
 services:
@@ -64,6 +66,7 @@ services:
       depends_on:
       - yb-master
 ```
+</div>
 
 ### Start the cluster
 

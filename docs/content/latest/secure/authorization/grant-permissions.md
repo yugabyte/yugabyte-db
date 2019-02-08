@@ -27,7 +27,7 @@ Here is what we want to achieve from an RBAC perspective:
 
 ## 1. Create role hierarchy
 
-Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](/secure/authentication/#ycql) in YugaByte DB clusters for YCQL. For this article, we are using the default `cassandra` user and connect to the cluster using `cqlsh` as follows:
+Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../authentication/#ycql) in YugaByte DB clusters for YCQL. For this article, we are using the default `cassandra` user and connect to the cluster using `cqlsh` as follows:
 <div class='copy separator-dollar'>
 ```sh
 $ cqlsh -u cassandra -p cassandra
@@ -234,7 +234,7 @@ All Keyspaces (`data`) > keyspace (`dev_keyspace`) > table (`integration_tests`)
 
 DB admins should be able to perform all operations on any keyspace. There are two ways to achieve this:
 
-1. The DB admins can be granted the superuser privilege. Read more about [granting the superuser privilege to roles](/secure/authentication/#granting-and-removing-superuser-privileges). Note that doing this will give the DB admin all the permissions over all the roles as well.
+1. The DB admins can be granted the superuser privilege. Read more about [granting the superuser privilege to roles](../authentication/#ycql). Note that doing this will give the DB admin all the permissions over all the roles as well.
 
 2. Grant `ALL` privileges to the `db_admin` role. This can be achieved as follows:
 <div class='copy separator-gt'>

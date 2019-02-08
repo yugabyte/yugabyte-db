@@ -18,7 +18,7 @@ showAsideToc: true
 ---
 
 ## Introduction
-YCQL is a transactional flexible-schema API that is compatible with the Cassandra Query Language (CQL). It supports the following features.
+YCQL is a transactional flexible-schema API that is compatible with the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). It supports the following features.
 
 - Data definition language (DDL) statements.
 - Data manipulation language (DML) statements.

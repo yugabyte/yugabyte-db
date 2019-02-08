@@ -1,5 +1,5 @@
 
-This page documents data modeling with YugaByte DB’s [Cassandra compatible YCQL API](../../../api/cassandra).
+This page documents data modeling with YugaByte DB’s [Cassandra compatible YCQL API](../../../api/ycql).
 
 ## Keyspaces, Tables, Rows and Columns
 
@@ -101,7 +101,7 @@ Note that if we had made both `author` and `book_title` partition key columns, w
 
 ## Secondary Indexes
 
-A database index is a data structure that improves the speed of data retrieval operations on a database table. Typically, databases are very efficient at looking up data by the primary key. A secondary index can be created using one or more columns of a database table, and provides the basis for both rapid random lookups and efficient access of ordered records when querying by those columns. To achieve this, secondary indexes require additional writes and storage space to maintain the index data structure. YugaByte DB's secondary index support is documented in detail [here](../../../api/cassandra/ddl_create_index/).
+A database index is a data structure that improves the speed of data retrieval operations on a database table. Typically, databases are very efficient at looking up data by the primary key. A secondary index can be created using one or more columns of a database table, and provides the basis for both rapid random lookups and efficient access of ordered records when querying by those columns. To achieve this, secondary indexes require additional writes and storage space to maintain the index data structure. YugaByte DB's secondary index support is documented in detail [here](../../../api/ycql/ddl_create_index/).
 
 ### Benefits of Secondary Indexes
 

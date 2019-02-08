@@ -1,7 +1,7 @@
 ---
-title: Backup Restore
-linkTitle: Backup Restore
-description: Backup Restore
+title: Backup & Restore
+linkTitle: Backup & Restore
+description: Backup & Restore
 menu:
   latest:
     identifier: manage-ee-backup-restore

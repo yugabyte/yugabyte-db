@@ -153,7 +153,7 @@ of these two properties of the snapshot we have to choose:
 
 ### 1. Client's request handling and read transaction initialization
 
-The client's request (Cassandra, Redis, or PostgreSQL(beta)) arrives at the YQL engine of a tablet server. The YQL engine
+The client's request to either the YCQL or YEDIS or YSQL API arrives at the YQL engine of a tablet server. The YQL engine
 detects that the query requests rows from multiple tablets and starts a read-only transaction.  A
 hybrid time **ht_read** is selected for the request, which could be either the current hybrid time
 on the YQL engine's tablet server, or the [safe time](../single-row-transactions/#safe-timestamp-assignment-for-a-read-request) on one of
@@ -205,8 +205,7 @@ As each participating tablet reads from its local DocDB, it might encounter prov
 which it does not yet know the final transaction status and commit time. In these cases, it would
 send a transaction status request to the transaction status tablet. If a transaction is committed,
 it is treated as if DocDB already contained permanent records with hybrid time equal to the
-transaction's commit time. The
-[cleanup](../transactional-io-path/#6-asynchronously-applying-and-cleaning-up-provisional-records)
+transaction's commit time. The [cleanup](../transactional-io-path/#6-asynchronously-applying-and-cleaning-up-provisional-records)
 of provisional records happens independently and asynchronously.
 
 ### 4. Tablets respond to the YQL engine
@@ -222,7 +221,7 @@ Each tablet's response to the YQL engine contains the following:
 
 As soon as all read operations from all participating tablets succeed and it has been determined
 that there is no need to restart the read transaction, a response is sent to the client using the
-appropriate wire protocol (e.g. Cassandra, Redis, or PostgreSQL(beta)).
+appropriate wire protocol.
 
 ## See also
 

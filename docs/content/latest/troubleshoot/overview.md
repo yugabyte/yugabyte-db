@@ -31,5 +31,5 @@ Inspect the YugaByte logs for more details on your issue. See [this](../nodes/ch
 
 ## 4. File an issue
 
-If you could not find a solution to your problem in these docs, please reach out to us on our [forum](https://forum.yugabyte.com/) or file a [GitHub issue](https://github.com/YugaByte/yugabyte-db/issues) describing your specific problem.
+If you could not find a solution to your problem in these docs, please file a [GitHub issue](https://github.com/YugaByte/yugabyte-db/issues) describing your specific problem.
 

@@ -4,6 +4,7 @@ linkTitle: YEDIS Connection Issues
 description: Cannot Connect to YEDIS API
 aliases:
   - /troubleshoot/cluster/connect-redis/
+  - /latest/troubleshoot/cluster/connect-yedis/
 menu:
   latest:
     parent: troubleshoot-cluster

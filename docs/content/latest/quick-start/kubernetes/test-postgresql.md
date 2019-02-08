@@ -1,4 +1,6 @@
-## Destroy any existing cluster.
+ ## 1. Create a new cluster
+
+- Destroy any existing cluster.
 
 You can do this as shown below.
 <div class='copy separator-dollar'>
@@ -7,22 +9,22 @@ $ kubectl delete -f yugabyte-statefulset.yaml
 ```
 </div>
 
-## Create new cluster 
-Create a new cluster with PostgreSQL API enabled by uncommenting the following flags in the YAML file and recreating the cluster. 
-<div class='copy separator-dollar'>
+- Create a new cluster with YSQL API enabled. 
+
+First uncomment the following flags in the YAML file. 
 ```sh
          # To support postgres functionality, uncomment the following flags.
          #  - "--start_pgsql_proxy"
          #  - "--pgsql_proxy_bind_address=$(POD_IP):5433"
 ```
-</div>
+Recreate the cluster.
 <div class='copy separator-dollar'>
 ```sh
 $ kubectl apply -f yugabyte-statefulset.yaml
 ```
 </div>
 
-## Check cluster status
+- Check cluster status
 
 Run the command below to see that we now have two services with 3 pods each - 3 `yb-master` pods (yb-master-1,yb-master-2,yb-master-3) and 3 `yb-tserver` pods (yb-tserver-1,yb-tserver-2,yb-tserver-3) running. Roles played by these pods in a YugaByte DB cluster (aka Universe) is explained in detail [here](../../architecture/concepts/universe/).
 <div class='copy separator-dollar'>
@@ -55,8 +57,7 @@ yb-tserver-0   1/1       Running   1          12s
 yb-tserver-1   1/1       Running   1          12s
 yb-tserver-2   1/1       Running   1          12s
 ```
-
-## Initialize the PostgreSQL API
+- Initialize the YSQL API
 
 You can do this as shown below.
 <div class='copy separator-dollar'>
@@ -65,7 +66,7 @@ $ kubectl exec -it yb-tserver-0 bash --  -c "YB_ENABLED_IN_POSTGRES=1 FLAGS_pgga
 ```
 </div>
 
-## Run psql to connect to the service.
+- Run psql to connect to the service.
 
 You can do this as shown below.
 <div class='copy separator-dollar'>
@@ -73,7 +74,6 @@ You can do this as shown below.
 $ kubectl exec -it yb-tserver-0 /home/yugabyte/postgres/bin/psql -- -U postgres -d postgres -h yb-tserver-0 -p 5433
 ```
 </div>
-
 ```sh
 psql (10.4)
 Type "help" for help.

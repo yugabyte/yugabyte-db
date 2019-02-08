@@ -59,6 +59,7 @@ h |  r  | vi |      vs
  1 | 1.5 |  3 | YugaByte
 (2 rows)
 ```
+Run another query.
 <div class='copy separator-gt'>
 ```sql
 postgres=> SELECT avg(vi), sum(h + r) FROM multi_types;

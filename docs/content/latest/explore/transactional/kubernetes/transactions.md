@@ -73,17 +73,17 @@ where keyspace_name='banking' AND table_name = 'accounts';
 (1 rows)
 ```
 
-
 ## 3. Insert sample data
 
 Let us seed this table with some sample data.
-
-```{.sql .copy}
+<div class='copy'>
+```sql
 INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('John', 'savings', 1000);
 INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('John', 'checking', 100);
 INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('Smith', 'savings', 2000);
 INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('Smith', 'checking', 50);
 ```
+</div>
 
 Here are the balances for John and Smith.
 <div class='copy separator-gt'>
@@ -99,6 +99,7 @@ cqlsh> select * from banking.accounts;
         Smith |     checking |      50
         Smith |      savings |    2000
 ```
+Check John's balance.
 <div class='copy separator-gt'>
 ```sql
 cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
@@ -109,6 +110,7 @@ cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_
 ---------------
           1100
 ```
+Check Smith's balance.
 <div class='copy separator-gt'>
 ```sql
 cqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';
@@ -126,14 +128,15 @@ cqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account
 
 Here are a couple of examples of executing transactions.
 
-- Let us say John transfers $200 from his savings account to his checking account. This has to be a transactional operation. This can be achieved as follows.
-
-```{.sql .copy}
+Let us say John transfers $200 from his savings account to his checking account. This has to be a transactional operation. This can be achieved as follows.
+<div class='copy'>
+```sql
 BEGIN TRANSACTION
   UPDATE banking.accounts SET balance = balance - 200 WHERE account_name='John' AND account_type='savings';
   UPDATE banking.accounts SET balance = balance + 200 WHERE account_name='John' AND account_type='checking';
 END TRANSACTION;
 ```
+</div>
 
 If we now selected the value of John's account, we should see the amounts reflected. The total balance should be the same $1100 as before.
 <div class='copy separator-gt'>
@@ -147,6 +150,7 @@ cqlsh> select * from banking.accounts where account_name='John';
          John |     checking |     300
          John |      savings |     800
 ```
+Check John's balance.
 <div class='copy separator-gt'>
 ```sql
 cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
@@ -173,14 +177,15 @@ from banking.accounts where account_name='John';
 ```
 
 
-- Now let us say John transfers the $200 from his checking account to Smith's checking account. We can accomplish that with the following transaction.
-
-```{.sql .copy}
+Now let us say John transfers the $200 from his checking account to Smith's checking account. We can accomplish that with the following transaction.
+<div class='copy'>
+```sql
 BEGIN TRANSACTION
   UPDATE banking.accounts SET balance = balance - 200 WHERE account_name='John' AND account_type='checking';
   UPDATE banking.accounts SET balance = balance + 200 WHERE account_name='Smith' AND account_type='checking';
 END TRANSACTION;
 ```
+</div>
 
 We can verify the transfer was made as we intended, and also verify that the time at which the two accounts were updated are identical by performing the following query.
 <div class='copy separator-gt'>
@@ -208,6 +213,7 @@ cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_
 ---------------
            900
 ```
+Check Smith's balance.
 <div class='copy separator-gt'>
 ```sql
 cqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';

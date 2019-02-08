@@ -1,6 +1,6 @@
 An “airgapped” host has either no or a restricted path to inbound/outbound Internet traffic at all. 
 
-## Pre-requisites
+## Prerequisites
 
 ### 1. Whitelist Endpoints
 

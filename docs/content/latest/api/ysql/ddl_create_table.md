@@ -79,18 +79,24 @@ Where
 - Each row in a table is uniquely identified by its primary key. 
 
 ## Examples
-
-```{.sql .copy .separator-hash}
+Example 1
+<div class='copy separator-hash'>
+```sql
 postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
-```{.sql .copy .separator-hash}
+</div>
+Example 2
+<div class='copy separator-hash'>
+```sql
 postgres=# CREATE TABLE student_grade (student_id int, class_id int, term_id int, grade int CHECK (grade >= 0 AND grade <= 10), PRIMARY KEY (student_id, class_id, term_id));
 ```
-
-```{.sql .copy .separator-hash}
+</div>
+Example 3
+<div class='copy separator-hash'>
+```sql
 postgres=# CREATE TABLE cars (id int PRIMARY KEY, brand text CHECK (brand in ('X', 'Y', 'Z')), model text NOT NULL, color text NOT NULL DEFAULT 'WHITE' CHECK (color in ('RED', 'WHITE', 'BLUE')));
 ```
-
+</div>
 ## See Also
 [`DROP TABLE`](../ddl_drop_table)
 [`INSERT`](../dml_insert)

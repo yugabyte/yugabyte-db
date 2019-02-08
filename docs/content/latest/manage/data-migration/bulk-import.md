@@ -18,7 +18,7 @@ Depending on the data volume imported, various bulk import tools can be used to 
   <li>
     <a href="#cassandra" class="nav-link active" id="cassandra-tab" data-toggle="tab" role="tab" aria-controls="cassandra" aria-selected="true">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      Cassandra
+      YCQL
     </a>
   </li>
 </ul>

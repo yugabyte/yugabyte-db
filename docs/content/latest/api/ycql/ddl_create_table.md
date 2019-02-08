@@ -94,16 +94,15 @@ Where
 
 ## Examples
 ### Use column constraint to define primary key
-``` sql
-cqlsh:example> -- 'user_id' is the partitioning column and there are no clustering columns.
+ 'user_id' is the partitioning column and there are no clustering columns.
+<div class='copy separator-gt'>
+```sql
 cqlsh:example> CREATE TABLE users(user_id INT PRIMARY KEY, full_name TEXT);
 ```
+</div>
 
 ### Use table constraint to define primary key
-
-```sql
-cqlsh:example> -- 'supplier_id' and 'device_id' are the partitioning columns and 'model_year' is the clustering column.
-```
+'supplier_id' and 'device_id' are the partitioning columns and 'model_year' is the clustering column.
 <div class='copy separator-gt'>
 ```sql
 cqlsh:example> CREATE TABLE devices(supplier_id INT,
@@ -152,8 +151,7 @@ cqlsh:example> SELECT * FROM devices;
 
 ### Use table property to define the order (ascending or descending) for clustering columns
 
-``` sql
-cqlsh:example> -- timestmap column 'ts' will be stored in descending order (latest values first).
+Timestmap column 'ts' will be stored in descending order (latest values first).
 <div class='copy separator-gt'>
 ```sql
 cqlsh:example> CREATE TABLE user_actions(user_id INT,

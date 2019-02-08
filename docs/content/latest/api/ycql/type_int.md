@@ -1,7 +1,7 @@
 ---
-title: Integer
+title: Integer & Counter
 summary: Signed integers of different ranges
-description: Integer Types
+description: Integer & Counter Types
 menu:
   latest:
     parent: api-cassandra

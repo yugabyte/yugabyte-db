@@ -1,6 +1,4 @@
----
----
-
+## 1. Create a new cluster
 - Destroy any existing cluster.
 
 You can do this as shown below.
@@ -10,7 +8,7 @@ $ ./bin/yb-ctl destroy
 ```
 </div>
 
-- Create a new cluster with PostgreSQL API enabled. Note the additional option `enable_postgres` passed to the create cluster command.
+- Create a new cluster with YSQL API enabled. Note the additional option `enable_postgres` passed to the create cluster command.
 
 You can do this as shown below.
 <div class='copy separator-dollar'>

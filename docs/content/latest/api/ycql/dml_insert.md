@@ -108,8 +108,7 @@ cqlsh:example> SELECT * FROM employees;
 ```
 
 ### Conditional insert using the `IF` clause
-
-You can do this as shown below.
+Example 1
 <div class='copy separator-gt'>
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe') IF name = null;
@@ -120,6 +119,8 @@ cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2
 -----------
       True
 ```
+
+Example 2
 <div class='copy separator-gt'>
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Jack') IF NOT EXISTS;
@@ -129,8 +130,15 @@ cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2
  [applied]
 -----------
      False
-cqlsh:example> SELECT * FROM employees;
+```
 
+Example 3
+<div class='copy separator-gt'>
+```sql
+cqlsh:example> SELECT * FROM employees;
+```
+</div>
+```
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe
@@ -146,6 +154,8 @@ You can do this as shown below.
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 2, 'Jack') USING TTL 10;
 ```
 </div>
+
+Now query the employees table.
 <div class='copy separator-gt'>
 ```sql
 cqlsh:example> SELECT * FROM employees;
@@ -159,6 +169,8 @@ cqlsh:example> SELECT * FROM employees;
              1 |           1 | John
              1 |           2 | Jane
 ```
+
+Again query the employees table after 11 seconds or more.
 <div class='copy separator-gt'>
 ```sql
 cqlsh:example> SELECT * FROM employees; -- 11 seconds after the insert. 
@@ -180,8 +192,16 @@ You can do this as shown below.
 <div class='copy separator-gt'>
 ```sql
 cqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 3, 'Jeff') USING TIMESTAMP 1000;
-cqlsh:foo> SELECT * FROM employees;
+```
+</div>
 
+Now query the employees table.
+<div class='copy separator-gt'>
+```sql
+cqlsh:foo> SELECT * FROM employees;
+```
+</div>
+```
  department_id | employee_id | name
 ---------------+-------------+------
              1 |           1 | John
@@ -191,7 +211,6 @@ cqlsh:foo> SELECT * FROM employees;
 
 (4 rows)
 ```
-</div>
 
 #### Overwrite the row with a higher timestamp.
 
@@ -199,8 +218,14 @@ You can do this as shown below.
 <div class='copy separator-gt'>
 ```sql
 cqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 3, 'Jerry') USING TIMESTAMP 2000;
+```
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:foo> SELECT * FROM employees;
-
+```
+</div>
+```
  department_id | employee_id | name
 ---------------+-------------+-------
              1 |           1 |  John
@@ -211,7 +236,6 @@ cqlsh:foo> SELECT * FROM employees;
 (4 rows)
 
 ```
-</div>
 
 #### Try to overwrite the row with a lower timestamp.
 
@@ -219,8 +243,14 @@ You can do this as shown below.
 <div class='copy separator-gt'>
 ```sql
 cqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 3, 'James') USING TIMESTAMP 1500;
+```
+</div>
+<div class='copy separator-gt'>
+```sql
 cqlsh:foo> SELECT * FROM employees;
-
+```
+</div>
+```
  department_id | employee_id | name
 ---------------+-------------+-------
              1 |           1 |  John
@@ -230,7 +260,6 @@ cqlsh:foo> SELECT * FROM employees;
 
 (4 rows)
 ```
-</div>
 
 ## See Also
 
