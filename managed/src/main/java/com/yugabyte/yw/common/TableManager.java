@@ -100,7 +100,13 @@ public class TableManager extends DevopsBase {
         break;
       case BULK_IMPORT:
         BulkImportParams bulkImportParams = (BulkImportParams) taskParams;
-        String ybServerPackage = releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);
+        ReleaseManager.ReleaseMetadata metadata =
+            releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);
+        if (metadata == null) {
+          throw new RuntimeException("Unable to fetch yugabyte release for version: " +
+              userIntent.ybSoftwareVersion);
+        }
+        String ybServerPackage = metadata.filePath;
         if (bulkImportParams.instanceCount == 0) {
           bulkImportParams.instanceCount = userIntent.numNodes * EMR_MULTIPLE;
         }

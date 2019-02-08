@@ -7,7 +7,10 @@ import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_RESPONSE,
          FETCH_CUSTOMER_COUNT, FETCH_YUGAWARE_VERSION, FETCH_YUGAWARE_VERSION_RESPONSE,
          UPDATE_PROFILE, UPDATE_PROFILE_SUCCESS, UPDATE_PROFILE_FAILURE, ADD_CUSTOMER_CONFIG,
          ADD_CUSTOMER_CONFIG_RESPONSE, FETCH_CUSTOMER_CONFIGS, FETCH_CUSTOMER_CONFIGS_RESPONSE,
-         DELETE_CUSTOMER_CONFIG, DELETE_CUSTOMER_CONFIG_RESPONSE, GET_LOGS, GET_LOGS_SUCCESS, GET_LOGS_FAILURE } from '../actions/customers';
+         DELETE_CUSTOMER_CONFIG, DELETE_CUSTOMER_CONFIG_RESPONSE, GET_LOGS, GET_LOGS_SUCCESS, GET_LOGS_FAILURE,
+         GET_RELEASES, GET_RELEASES_RESPONSE, REFRESH_RELEASES, REFRESH_RELEASES_RESPONSE, IMPORT_RELEASE, IMPORT_RELEASE_RESPONSE,
+         UPDATE_RELEASE, UPDATE_RELEASE_RESPONSE
+       } from '../actions/customers';
 import {sortVersionStrings} from '../utils/ObjectUtils';
 import { getInitialState, setLoadingState, setSuccessState, setFailureState, setPromiseResponse }  from '../utils/PromiseUtils';
 
@@ -25,7 +28,11 @@ const INITIAL_STATE = {
   profile: getInitialState({}),
   addConfig: getInitialState({}),
   configs: getInitialState([]),
-  deleteConfig: getInitialState({})
+  deleteConfig: getInitialState({}),
+  releases: getInitialState([]),
+  refreshReleases: getInitialState({}),
+  importRelease: getInitialState({}),
+  updateRelease: getInitialState({})
 };
 
 export default function(state = INITIAL_STATE, action) {
@@ -97,6 +104,23 @@ export default function(state = INITIAL_STATE, action) {
       return {...state, yugaware_logs: action.payload.data.lines.reverse()};
     case GET_LOGS_FAILURE:
       return {...state, yugaware_logs: null };
+    case GET_RELEASES:
+      return setLoadingState(state, "releases", []);
+    case GET_RELEASES_RESPONSE:
+      return setPromiseResponse(state, "releases", action);
+    case REFRESH_RELEASES:
+      return setLoadingState(state, "refreshReleases", {});
+    case REFRESH_RELEASES_RESPONSE:
+      return setPromiseResponse(state, "refreshReleases", action);
+    case IMPORT_RELEASE:
+      return setLoadingState(state, "importRelease", {});
+    case IMPORT_RELEASE_RESPONSE:
+      return setPromiseResponse(state, "importRelease", action);
+    case UPDATE_RELEASE:
+      return setLoadingState(state, "updateRelease", {});
+    case UPDATE_RELEASE_RESPONSE:
+      return setPromiseResponse(state, "updateRelease", action);
+
     default:
       return state;
   }

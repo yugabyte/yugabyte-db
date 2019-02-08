@@ -41,7 +41,12 @@ export default class TopNavBar extends Component {
             </LinkContainer>
             <LinkContainer to="/logs">
               <MenuItem eventKey="2.2">
-                <i className="fa fa-user fa-fw"></i>Logs
+                <i className="fa fa-file fa-fw"></i>Logs
+              </MenuItem>
+            </LinkContainer>
+            <LinkContainer to="/releases">
+              <MenuItem eventKey="2.2">
+                <i className="fa fa-code-fork fa-fw"></i>Releases
               </MenuItem>
             </LinkContainer>
             <LinkContainer to="/login">
