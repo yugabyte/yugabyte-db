@@ -4,6 +4,7 @@
 import glob
 import os
 import shutil
+import subprocess
 
 VERSIONS_TO_KEEP = 3
 
@@ -48,3 +49,5 @@ def delete_last_n(glob_pattern, n=None):
 
 for g in ALL_GLOBS:
     delete_last_n(g)
+
+subprocess.check_call(["docker", "system", "prune", "-a", "-f", "--volumes"])
