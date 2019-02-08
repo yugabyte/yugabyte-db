@@ -54,6 +54,18 @@ export const GET_LOGS = 'GET_LOGS';
 export const GET_LOGS_SUCCESS = 'GET_LOGS_SUCCESS';
 export const GET_LOGS_FAILURE = 'GET_LOGS_FAILURE';
 
+export const GET_RELEASES = 'GET_RELEASES';
+export const GET_RELEASES_RESPONSE = 'GET_RELEASES_RESPONSE';
+
+export const REFRESH_RELEASES = 'REFRESH_RELEASES';
+export const REFRESH_RELEASES_RESPONSE = 'REFRESH_RELEASES_RESPONSE';
+
+export const IMPORT_RELEASE = 'IMPORT_RELEASE';
+export const IMPORT_RELEASE_RESPONSE = 'IMPORT_RELEASE_RESPONSE';
+
+export const UPDATE_RELEASE = 'UPDATE_RELEASE';
+export const UPDATE_RELEASE_RESPONSE = 'UPDATE_RELEASE_RESPONSE';
+
 export function validateToken(tokenFromStorage) {
   const cUUID = localStorage.getItem("customer_id");
   const auth_token = localStorage.getItem("customer_token");
@@ -289,5 +301,69 @@ export function getLogsFailure(error) {
   return {
     type: GET_LOGS_FAILURE,
     payload: error
+  };
+}
+
+export function getYugaByteReleases() {
+  const cUUID = localStorage.getItem("customer_id");
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/releases?includeMetadata=true`);
+  return {
+    type: GET_RELEASES,
+    payload: request
+  };
+}
+
+export function getYugaByteReleasesResponse(response) {
+  return {
+    type: GET_RELEASES_RESPONSE,
+    payload: response
+  };
+}
+
+export function refreshYugaByteReleases() {
+  const cUUID = localStorage.getItem("customer_id");
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/releases`);
+  return {
+    type: REFRESH_RELEASES,
+    payload: request
+  };
+}
+
+export function refreshYugaByteReleasesResponse(response) {
+  return {
+    type: REFRESH_RELEASES_RESPONSE,
+    payload: response
+  };
+}
+
+export function importYugaByteRelease(payload) {
+  const cUUID = localStorage.getItem("customer_id");
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/releases`, payload);
+  return {
+    type: IMPORT_RELEASE,
+    payload: request
+  };
+}
+
+export function importYugaByteReleaseResponse(response) {
+  return {
+    type: IMPORT_RELEASE_RESPONSE,
+    payload: response
+  };
+}
+
+export function updateYugaByteRelease(version, payload) {
+  const cUUID = localStorage.getItem("customer_id");
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/releases/${version}`, payload);
+  return {
+    type: UPDATE_RELEASE,
+    payload: request
+  };
+}
+
+export function updateYugaByteReleaseResponse(response) {
+  return {
+    type: UPDATE_RELEASE_RESPONSE,
+    payload: response
   };
 }

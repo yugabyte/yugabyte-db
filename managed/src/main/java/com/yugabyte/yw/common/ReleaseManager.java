@@ -6,6 +6,7 @@ import com.google.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Configuration;
+import play.libs.Json;
 
 import javax.inject.Singleton;
 import java.io.File;
@@ -15,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +24,6 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
@@ -35,7 +36,40 @@ public class ReleaseManager {
   @Inject
   Configuration appConfig;
 
+  public enum ReleaseState {
+    ACTIVE,
+    DISABLED,
+    DELETED
+  }
+
   final ConfigHelper.ConfigType CONFIG_TYPE = ConfigHelper.ConfigType.SoftwareReleases;
+  static final String DEFAULT_DOCKER_REGISTRY = "quay.io/yugabyte/yugabyte";
+
+  public static class ReleaseMetadata {
+    public ReleaseState state = ReleaseState.ACTIVE;
+    public List<String> notes;
+    // File path where the release binary is stored
+    public String filePath;
+    // Docker image tag corresponding to the release
+    public String imageTag;
+
+    public static ReleaseMetadata fromLegacy(String version, Object metadata) {
+      // Legacy release metadata would have name and release path alone
+      // convert those to new format.
+      ReleaseMetadata rm = create(version);
+      rm.filePath = (String) metadata;
+      return rm;
+    }
+
+    public static ReleaseMetadata create(String version) {
+      ReleaseMetadata rm = new ReleaseMetadata();
+      rm.state = ReleaseState.ACTIVE;
+      // TODO: change this to read from registry config.
+      rm.imageTag = DEFAULT_DOCKER_REGISTRY + ":" + version;
+      rm.notes = new ArrayList<>();
+      return rm;
+    }
+  }
 
   public static final Logger LOG = LoggerFactory.getLogger(ReleaseManager.class);
   final PathMatcher ybPackageMatcher =
@@ -61,13 +95,54 @@ public class ReleaseManager {
     return releaseMap;
   }
 
-  public void loadReleasesToDB() {
-    // TODO: also have way to pull S3 based releases based on a flag.
+  public Map<String, Object> getReleaseMetadata() {
+    Map<String, Object> releases = configHelper.getConfig(CONFIG_TYPE);
+    if (releases == null || releases.isEmpty()) {
+      return new HashMap<>();
+    }
+    releases.forEach((version, metadata) -> {
+      if (metadata instanceof String) {
+        releases.put(version, ReleaseMetadata.fromLegacy(version, metadata));
+      }
+    });
+    
+    return releases;
+  }
+
+  public void addRelease(String version) {
+    ReleaseMetadata metadata = ReleaseMetadata.create(version);
+    addReleaseWithMetadata(version, metadata);
+  }
+
+  public void addReleaseWithMetadata(String version, ReleaseMetadata metadata) {
+    Map<String, Object> currentReleases = getReleaseMetadata();
+    if (currentReleases.containsKey(version)) {
+      throw new RuntimeException("Release already exists: " + version);
+    }
+    currentReleases.put(version, metadata);
+    configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
+  }
+
+  public void importLocalReleases() {
     String ybReleasesPath = appConfig.getString("yb.releases.path");
     if (ybReleasesPath != null && !ybReleasesPath.isEmpty()) {
       moveDockerReleaseFile(ybReleasesPath);
-      Map<String, String> releaseMap = getLocalReleases(ybReleasesPath);
-      configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, (Map) releaseMap);
+      Map<String, String> localReleases = getLocalReleases(ybReleasesPath);
+      Map<String, Object> currentReleases = getReleaseMetadata();
+      localReleases.keySet().removeAll(currentReleases.keySet());
+      if (!localReleases.isEmpty()) {
+        localReleases.forEach((version, releaseFile) ->
+            currentReleases.put(version, ReleaseMetadata.fromLegacy(version, releaseFile)));
+        configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
+      }
+    }
+  }
+
+  public void updateReleaseMetadata(String version, ReleaseMetadata newData) {
+    Map<String, Object> currentReleases = getReleaseMetadata();
+    if (currentReleases.containsKey(version)) {
+      currentReleases.put(version, newData);
+      configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
     }
   }
 
@@ -107,8 +182,12 @@ public class ReleaseManager {
     }
   }
 
-  public String getReleaseByVersion(String version) {
-    return getReleases().get(version);
+  public ReleaseMetadata getReleaseByVersion(String version) {
+    Object metadata = getReleaseMetadata().get(version);
+    if (metadata == null) {
+      return null;
+    }
+    return Json.fromJson(Json.toJson(metadata), ReleaseMetadata.class);
   }
 
   public Map<String, String> getReleases() {

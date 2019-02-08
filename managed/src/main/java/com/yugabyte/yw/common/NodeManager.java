@@ -193,7 +193,11 @@ public class NodeManager extends DevopsBase {
 
     String ybServerPackage = null;
     if (taskParam.ybSoftwareVersion != null) {
-      ybServerPackage = releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
+      ReleaseManager.ReleaseMetadata releaseMetadata =
+          releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
+      if (releaseMetadata != null) {
+        ybServerPackage = releaseMetadata.filePath;
+      }
     }
 
     switch(taskParam.type) {

@@ -30,6 +30,7 @@ import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManager.PY_WRAPPER;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -71,6 +72,10 @@ import static org.mockito.Mockito.when;
   }
 
   private void setupUniverse(Provider p) {
+    setupUniverse(p, "0.0.1");
+  }
+
+  private void setupUniverse(Provider p, String softwareVersion) {
     testProvider = p;
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.privateKey = pkPath;
@@ -82,7 +87,7 @@ import static org.mockito.Mockito.when;
     uniParams.nodePrefix = "yb-1-" + testUniverse.name;
     UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.accessKeyCode = keyCode;
-    userIntent.ybSoftwareVersion = "0.0.1";
+    userIntent.ybSoftwareVersion = softwareVersion;
     userIntent.numNodes = 3;
     userIntent.replicationFactor = 3;
     userIntent.regionList = getMockRegionUUIDs(3);
@@ -193,7 +198,9 @@ import static org.mockito.Mockito.when;
     testCustomer.addUniverseUUID(testUniverse.universeUUID);
     testCustomer.save();
     when(mockAppConfig.getString("yb.devops.home")).thenReturn("/my/devops");
-    when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn("/yb/release.tar.gz");
+    ReleaseManager.ReleaseMetadata metadata = new ReleaseManager.ReleaseMetadata();
+    metadata.filePath = "/yb/release.tar.gz";
+    when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(metadata);
   }
 
   @Test
@@ -308,5 +315,16 @@ import static org.mockito.Mockito.when;
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+  }
+
+  @Test
+  public void testBulkImportWithIncorrectYBVersion() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer), "0.0.2");
+    BulkImportParams bulkImportParams = getBulkImportParams();
+    try {
+      tableManager.bulkImport(bulkImportParams);
+    } catch (RuntimeException re) {
+      assertEquals("Unable to fetch yugabyte release for version: 0.0.2", re.getMessage());
+    }
   }
 }

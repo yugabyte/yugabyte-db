@@ -424,66 +424,6 @@ public class CustomerControllerTest extends WithApplication {
     assertThat(nodeName, allOf(notNullValue(), equalTo("host-n1")));
   }
 
-  private Result getReleases(UUID customerUUID) {
-    String uri = "/api/customers/" + customerUUID + "/releases";
-    return FakeApiHelper.doRequestWithAuthToken("GET", uri, customer.createAuthToken());
-  }
-
-  private Result putReleases(UUID customerUUID) {
-    String uri = "/api/customers/" + customerUUID + "/releases";
-    return FakeApiHelper.doRequestWithAuthToken("PUT", uri, customer.createAuthToken());
-  }
-
-  @Test
-  public void testCustomerReleases() {
-    ConfigHelper configHelper = new ConfigHelper();
-    configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases,
-      ImmutableMap.of("0.0.1", "yugabyte-0.0.1.tar.gz"));
-    Result result = getReleases(customer.uuid);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(OK, result.status());
-    assertEquals(1, json.size());
-    assertEquals("0.0.1", json.get(0).asText());
-  }
-
-  @Test
-  public void testCustomerUpdateReleases() {
-    ConfigHelper configHelper = new ConfigHelper();
-    configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases,
-      ImmutableMap.of("0.0.1", "yugabyte-0.0.1.tar.gz"));
-    Result result = getReleases(customer.uuid);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(OK, result.status());
-    assertEquals(1, json.size());
-    assertEquals("0.0.1", json.get(0).asText());
-
-    configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases,
-       ImmutableMap.of("0.0.1", "yugabyte-0.0.1.tar.gz", "0.0.2", "yugabyte-0.0.2.tar.gz"));
-    result = putReleases(customer.uuid);
-    json = Json.parse(contentAsString(result));
-    assertEquals(OK, result.status());
-
-    result = getReleases(customer.uuid);
-    json = Json.parse(contentAsString(result));
-    assertEquals(OK, result.status());
-    assertEquals(2, json.size());
-  }
-
-  @Test
-  public void testCustomerReleasesWithoutConfig() {
-    Result result = getReleases(customer.uuid);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(OK, result.status());
-    assertEquals(0, json.size());
-  }
-
-  @Test
-  public void testCustomerReleasesWithInvalidCustomer() {
-    UUID randomUUID = UUID.randomUUID();
-    Result result = getReleases(randomUUID);
-    assertBadRequest(result, "Invalid Customer UUID: " + randomUUID);
-  }
-
   private Result getHostInfo(UUID customerUUID) {
     String uri = "/api/customers/" + customerUUID + "/host_info";
     return FakeApiHelper.doRequestWithAuthToken("GET", uri, customer.createAuthToken());
