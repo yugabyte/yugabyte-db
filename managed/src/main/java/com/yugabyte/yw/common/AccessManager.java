@@ -62,9 +62,13 @@ public class AccessManager extends DevopsBase {
 
   private String getOrCreateKeyFilePath(UUID providerUUID) {
     File keyBasePathName = new File(appConfig.getString("yb.storage.path"), "/keys");
-    if (!keyBasePathName.exists() && !keyBasePathName.mkdirs()) {
-      throw new RuntimeException("Key path " +
-          keyBasePathName.getAbsolutePath() + " doesn't exists.");
+    // Protect against multi-threaded access and validate that we only error out if mkdirs fails
+    // correctly, by NOT creating the final dir path.
+    synchronized(this) {
+      if (!keyBasePathName.exists() && !keyBasePathName.mkdirs() && !keyBasePathName.exists()) {
+        throw new RuntimeException("Key path " +
+            keyBasePathName.getAbsolutePath() + " doesn't exist.");
+      }
     }
 
     File keyFilePath = new File(keyBasePathName.getAbsoluteFile(), providerUUID.toString());
