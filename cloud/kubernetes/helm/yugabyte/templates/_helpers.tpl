@@ -38,3 +38,19 @@ Create chart name and version as used by the chart label.
 {{- define "yugabyte.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
+
+
+{{/*
+
+*/}}
+{{- define "yugabyte.rootCert" -}}
+{{- if .Values.tls.rootCA.Cert -}}
+{{- $ca := buildCustomCert .Values.tls.rootCA.cert .Values.tls.rootCA.key }}
+ca.crt: {{ $ca.Cert | b64enc }}
+ca.key: {{ $ca.Key | b64enc }}
+{{- else -}}
+{{- $ca := genCA "default-ca" 365 }}
+ca.crt: {{ $ca.Cert | b64enc }}
+ca.key: {{ $ca.Key | b64enc }}
+{{- end -}}
+{{- end -}}
