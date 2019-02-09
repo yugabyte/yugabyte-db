@@ -143,6 +143,7 @@
 #include "utils/sortsupport.h"
 #include "utils/tuplesort.h"
 
+#include "pg_yb_utils.h"
 
 /* sort-type codes for sort__start probes */
 #define HEAP_SORT		0
@@ -4154,23 +4155,30 @@ comparetup_index_btree(const SortTuple *a, const SortTuple *b,
 	}
 
 	/*
-	 * If key values are equal, we sort on ItemPointer.  This does not affect
-	 * validity of the finished index, but it may be useful to have index
-	 * scans in physical order.
+	 * Skip this for YugaByte-based table. In YugaByte, tuples do not have block number
+	 * and offset.
 	 */
+	if (!IsYugaByteEnabled())
 	{
-		BlockNumber blk1 = ItemPointerGetBlockNumber(&tuple1->t_tid);
-		BlockNumber blk2 = ItemPointerGetBlockNumber(&tuple2->t_tid);
+		/*
+		 * If key values are equal, we sort on ItemPointer.  This does not affect
+		 * validity of the finished index, but it may be useful to have index
+		 * scans in physical order.
+		 */
+		{
+			BlockNumber blk1 = ItemPointerGetBlockNumber(&tuple1->t_tid);
+			BlockNumber blk2 = ItemPointerGetBlockNumber(&tuple2->t_tid);
 
-		if (blk1 != blk2)
-			return (blk1 < blk2) ? -1 : 1;
-	}
-	{
-		OffsetNumber pos1 = ItemPointerGetOffsetNumber(&tuple1->t_tid);
-		OffsetNumber pos2 = ItemPointerGetOffsetNumber(&tuple2->t_tid);
+			if (blk1 != blk2)
+				return (blk1 < blk2) ? -1 : 1;
+		}
+		{
+			OffsetNumber pos1 = ItemPointerGetOffsetNumber(&tuple1->t_tid);
+			OffsetNumber pos2 = ItemPointerGetOffsetNumber(&tuple2->t_tid);
 
-		if (pos1 != pos2)
-			return (pos1 < pos2) ? -1 : 1;
+			if (pos1 != pos2)
+				return (pos1 < pos2) ? -1 : 1;
+		}
 	}
 
 	return 0;

@@ -423,7 +423,7 @@ class QLReadOperation : public DocExprExecutor {
                          MonoTime deadline,
                          const ReadHybridTime& read_time,
                          const Schema& schema,
-                         const Schema& query_schema,
+                         const Schema& projection,
                          QLResultSet* result_set,
                          HybridTime* restart_read_ht);
 
@@ -470,6 +470,8 @@ class PgsqlWriteOperation :
   const PgsqlWriteRequestPB& request() const { return request_; }
   PgsqlResponsePB* response() const { return response_; }
 
+  const PgsqlResultSet& resultset() const { return resultset_; }
+
   // Execute write.
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
 
@@ -491,6 +493,8 @@ class PgsqlWriteOperation :
   // Reading current row before operating on it.
   CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
                              const QLTableRow::SharedPtr& table_row);
+
+  CHECKED_STATUS PopulateResultSet();
 
   // Reading path to operate on.
   CHECKED_STATUS GetDocPaths(
@@ -518,6 +522,9 @@ class PgsqlWriteOperation :
   // present or table does not have range columns).
   boost::optional<DocKey> range_doc_key_;
   RefCntPrefix encoded_range_doc_key_;
+
+  // Rows result requested.
+  PgsqlResultSet resultset_;
 };
 
 class PgsqlReadOperation : public DocExprExecutor {
@@ -535,7 +542,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                          MonoTime deadline,
                          const ReadHybridTime& read_time,
                          const Schema& schema,
-                         const Schema& query_schema,
+                         const Schema *index_schema,
                          PgsqlResultSet *result_set,
                          HybridTime *restart_read_ht);
 
@@ -554,7 +561,8 @@ class PgsqlReadOperation : public DocExprExecutor {
   const PgsqlReadRequestPB& request_;
   const TransactionOperationContextOpt txn_op_context_;
   PgsqlResponsePB response_;
-  common::YQLRowwiseIteratorIf::UniPtr current_tuple_;
+  common::YQLRowwiseIteratorIf::UniPtr table_iter_;
+  common::YQLRowwiseIteratorIf::UniPtr index_iter_;
 };
 
 }  // namespace docdb

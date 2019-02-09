@@ -58,14 +58,7 @@ class QLRocksDBStorage : public common::YQLStorageIf {
                              const TransactionOperationContextOpt& txn_op_context,
                              MonoTime deadline,
                              const ReadHybridTime& read_time,
-                             const common::PgsqlScanSpec& spec,
                              common::YQLRowwiseIteratorIf::UniPtr* iter) const override;
-
-  CHECKED_STATUS BuildYQLScanSpec(const PgsqlReadRequestPB& request,
-                                  const ReadHybridTime& read_time,
-                                  const Schema& schema,
-                                  std::unique_ptr<common::PgsqlScanSpec>* spec,
-                                  ReadHybridTime* req_read_time) const override;
 
  private:
   const DocDB doc_db_;

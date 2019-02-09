@@ -23,15 +23,15 @@ PgColumn::PgColumn() {
 
 void PgColumn::Init(PgSystemAttrNum attr_num) {
   switch (attr_num) {
-    case PgSystemAttrNum::kSelfItemPointerAttributeNumber:
-    case PgSystemAttrNum::kObjectIdAttributeNumber:
-    case PgSystemAttrNum::kMinTransactionIdAttributeNumber:
-    case PgSystemAttrNum::kMinCommandIdAttributeNumber:
-    case PgSystemAttrNum::kMaxTransactionIdAttributeNumber:
-    case PgSystemAttrNum::kMaxCommandIdAttributeNumber:
-    case PgSystemAttrNum::kTableOidAttributeNumber:
-    case PgSystemAttrNum::kYBRowIdAttributeNumber:
-    case PgSystemAttrNum::kYBBaseTupleIdAttributeNumber:
+    case PgSystemAttrNum::kSelfItemPointer:
+    case PgSystemAttrNum::kObjectId:
+    case PgSystemAttrNum::kMinTransactionId:
+    case PgSystemAttrNum::kMinCommandId:
+    case PgSystemAttrNum::kMaxTransactionId:
+    case PgSystemAttrNum::kMaxCommandId:
+    case PgSystemAttrNum::kTableOid:
+    case PgSystemAttrNum::kYBRowId:
+    case PgSystemAttrNum::kYBBaseTupleId:
       break;
 
     case PgSystemAttrNum::kYBTupleId: {
@@ -111,8 +111,16 @@ PgsqlExpressionPB *PgColumn::AllocPartitionBindPB(PgsqlReadRequestPB *read_req) 
 }
 
 PgsqlExpressionPB *PgColumn::AllocBindPB(PgsqlReadRequestPB *read_req) {
-  DCHECK(bind_pb_) << "Binds for partition columns should have already been allocated, "
-                   << "and binding other columns are not allowed";
+  if (bind_pb_ == nullptr) {
+    DCHECK(!desc_.is_partition() && !desc_.is_primary())
+      << "Binds for primary columns should have already been allocated by AllocPrimaryBindPB()";
+
+    if (id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
+      bind_pb_ = read_req->mutable_ybctid_column_value();
+    } else {
+      DLOG(FATAL) << "Binds for other columns are not allowed";
+    }
+  }
   return bind_pb_;
 }
 

@@ -135,9 +135,9 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 		{
 			if (is_primary && !YBCDataTypeIsValidForKey(att->atttypid)) {
 				ereport(ERROR,
-								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("PRIMARY KEY containing column of type '%s' not yet supported",
-												YBPgTypeOidToStr(att->atttypid))));
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("PRIMARY KEY containing column of type '%s' not yet supported",
+								YBPgTypeOidToStr(att->atttypid))));
 			}
 			const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(attnum, att->atttypid);
 			HandleYBStmtStatus(YBCPgCreateTableAddColumn(handle,

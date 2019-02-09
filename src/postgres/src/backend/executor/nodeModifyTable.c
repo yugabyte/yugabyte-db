@@ -70,6 +70,7 @@
 #include "utils/tqual.h"
 
 /*  YB includes. */
+#include "access/sysattr.h"
 #include "catalog/pg_database.h"
 #include "executor/ybcModifyTable.h"
 #include "pg_yb_utils.h"
@@ -417,9 +418,15 @@ ExecInsert(ModifyTableState *mtstate,
 
 		if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
 		{
-			newId = YBCExecuteInsert(resultRelationDesc,
-									 slot->tts_tupleDescriptor,
-									 tuple);
+			newId = YBCExecuteInsert(resultRelationDesc, slot->tts_tupleDescriptor, tuple);
+
+			if (resultRelInfo->ri_NumIndices > 0)
+			{
+				/* insert index entries for tuple */
+				recheckIndexes = ExecInsertIndexTuples(slot, tuple,
+													   estate, false, NULL,
+													   arbiterIndexes);
+			}
 		}
 		else {
 			if (onconflict != ONCONFLICT_NONE && resultRelInfo->ri_NumIndices > 0)
@@ -497,9 +504,9 @@ ExecInsert(ModifyTableState *mtstate,
 									NULL);
 
 				/* insert index entries for tuple */
-				recheckIndexes = ExecInsertIndexTuples(slot, &(tuple->t_self),
-														 estate, true, &specConflict,
-														 arbiterIndexes);
+				recheckIndexes = ExecInsertIndexTuples(slot, tuple,
+													   estate, true, &specConflict,
+													   arbiterIndexes);
 
 				/* adjust the tuple's state accordingly */
 				if (!specConflict)
@@ -543,9 +550,9 @@ ExecInsert(ModifyTableState *mtstate,
 
 				/* insert index entries for tuple */
 				if (resultRelInfo->ri_NumIndices > 0)
-					recheckIndexes = ExecInsertIndexTuples(slot, &(tuple->t_self),
-															 estate, false, NULL,
-															 arbiterIndexes);
+					recheckIndexes = ExecInsertIndexTuples(slot, tuple,
+														   estate, false, NULL,
+														   arbiterIndexes);
 			}
 		}
 	}
@@ -684,6 +691,17 @@ ExecDelete(ModifyTableState *mtstate,
 	else if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
 	{
 		YBCExecuteDelete(resultRelationDesc, resultRelInfo, planSlot);
+
+		if (resultRelInfo->ri_NumIndices > 0)
+		{
+			/*
+			 * Store the old tuple in plan slot, compute the old index entries
+			 * to delete and delete them from the indexes.
+			 */
+			planSlot = ExecStoreTuple(oldtuple, planSlot, InvalidBuffer, false);
+
+			ExecDeleteIndexTuples(planSlot, estate);
+		}
 	}
 	else
 	{
@@ -961,15 +979,26 @@ ExecUpdate(ModifyTableState *mtstate,
 		 */
 		tuple->t_tableOid = RelationGetRelid(resultRelationDesc);
 	}
-	else if (IsYugaByteEnabled())
+	else if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
 	{
-		if (!IsYBRelation(resultRelationDesc))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("This relational object does not exist in YugaByte database")));
-		}
 		YBCExecuteUpdate(resultRelationDesc, resultRelInfo, planSlot, tuple);
+
+		if (resultRelInfo->ri_NumIndices > 0)
+		{
+			/*
+			 * Store the old tuple in plan slot, compute the old index entries
+			 * to delete and delete them from the indexes.
+			 */
+			planSlot = ExecStoreTuple(oldtuple, planSlot, InvalidBuffer, false);
+
+			ExecDeleteIndexTuples(planSlot, estate);
+
+			/* Insert new index entries for tuple */
+			recheckIndexes = ExecInsertIndexTuples(slot, tuple,
+												   estate, false, NULL,
+												   NIL);
+		}
+
 		if (resultRelInfo->ri_projectReturning)
 			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
 	}
@@ -1110,7 +1139,7 @@ lreplace:;
 		 * If it's a HOT update, we mustn't insert new index entries.
 		 */
 		if (resultRelInfo->ri_NumIndices > 0 && !HeapTupleIsHeapOnly(tuple))
-			recheckIndexes = ExecInsertIndexTuples(slot, &(tuple->t_self),
+			recheckIndexes = ExecInsertIndexTuples(slot, tuple,
 												   estate, false, NULL, NIL);
 	}
 
@@ -1763,9 +1792,47 @@ ExecModifyTable(PlanState *pstate)
 				char		relkind;
 				Datum		datum;
 				bool		isNull;
+				AttrNumber  resno;
 
 				relkind = resultRelInfo->ri_RelationDesc->rd_rel->relkind;
-				if (relkind == RELKIND_RELATION || relkind == RELKIND_MATVIEW)
+
+				/*
+				 * For YugaByte table with indexes, extract the old row from
+				 * wholerow junk attribute with the ybctid for removing old
+				 * index entries for UPDATE and DELETE.
+				 */
+				if (IsYugaByteEnabled() &&
+					IsYBRelation(resultRelInfo->ri_RelationDesc) &&
+					(resultRelInfo->ri_NumIndices > 0))
+				{
+					resno = ExecFindJunkAttribute(junkfilter, "wholerow");
+					datum = ExecGetJunkAttribute(slot, resno, &isNull);
+
+					/* shouldn't ever get a null result... */
+					if (isNull)
+						elog(ERROR, "wholerow is NULL");
+
+					oldtupdata.t_data = DatumGetHeapTupleHeader(datum);
+					oldtupdata.t_len =
+						HeapTupleHeaderGetDatumLength(oldtupdata.t_data);
+					ItemPointerSetInvalid(&(oldtupdata.t_self));
+					/* Historically, view triggers see invalid t_tableOid. */
+					oldtupdata.t_tableOid =
+							(relkind == RELKIND_VIEW) ? InvalidOid :
+							RelationGetRelid(resultRelInfo->ri_RelationDesc);
+
+					resno = ExecFindJunkAttribute(junkfilter, "ybctid");
+					datum = ExecGetJunkAttribute(slot, resno, &isNull);
+
+					/* shouldn't ever get a null result... */
+					if (isNull)
+						elog(ERROR, "ybctid is NULL");
+
+					oldtupdata.t_ybctid = datum;
+					
+					oldtuple = &oldtupdata;
+				}
+				else if (relkind == RELKIND_RELATION || relkind == RELKIND_MATVIEW)
 				{
 					datum = ExecGetJunkAttribute(slot,
 												 junkfilter->jf_junkAttNo,

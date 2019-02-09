@@ -1318,15 +1318,33 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 	if (IsYugaByteEnabled() && IsYBRelation(target_relation))
 	{
 		/*
-		 * Emit YB_CTID so that executor can find the row to update or delete from YugaByte tables.
+		 * If there are indexes on the target table, return the whole row also.
+		 */	
+		if (target_relation->rd_rel->relhasindex)
+		{
+			var = makeWholeRowVar(target_rte,
+								  parsetree->resultRelation,
+								  0,
+								  false);
+			attrname = "wholerow";
+
+			tle = makeTargetEntry((Expr *) var,
+								  list_length(parsetree->targetList) + 1,
+								  pstrdup(attrname),
+								  true);
+			parsetree->targetList = lappend(parsetree->targetList, tle);
+		}
+
+		/*
+		 * Emit ybctid so that executor can find the row to update or delete from YugaByte tables.
 		 */
 		var = makeVar(parsetree->resultRelation,
-									YBTupleIdAttributeNumber,
-									BYTEAOID,
-									-1,
-									InvalidOid,
-									0);
-		attrname = "ybctid";
+					  YBTupleIdAttributeNumber,
+					  BYTEAOID,
+					  -1,
+					  InvalidOid,
+					  0);
+		attrname = "ybctid";			
 	}
 	else if (target_relation->rd_rel->relkind == RELKIND_RELATION ||
 		target_relation->rd_rel->relkind == RELKIND_MATVIEW ||

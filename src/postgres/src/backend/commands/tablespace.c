@@ -459,7 +459,7 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	/*
 	 * Remove the pg_tablespace tuple (this will roll back if we fail below)
 	 */
-	CatalogTupleDelete(rel, &tuple->t_self);
+	CatalogTupleDelete(rel, tuple);
 
 	heap_endscan(scandesc);
 

@@ -109,7 +109,8 @@ Status PgDml::PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_
   return Status::OK();
 }
 
-void PgDml::AddColumnRefIds(PgTableDesc::ScopedRefPtr table_desc, PgsqlColumnRefsPB *column_refs) {
+void PgDml::SetColumnRefIds(PgTableDesc::ScopedRefPtr table_desc, PgsqlColumnRefsPB *column_refs) {
+  column_refs->Clear();
   for (const PgColumn& col : table_desc->columns()) {
     if (col.read_requested() || col.write_requested()) {
       column_refs->add_ids(col.id());
@@ -138,8 +139,7 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
     bind_pb = AllocColumnBindPB(col);
   } else {
     if (expr_binds_.find(bind_pb) != expr_binds_.end()) {
-      return STATUS_SUBSTITUTE(InvalidArgument,
-                               "Column $0 is already bound to another value", attr_num);
+      LOG(WARNING) << strings::Substitute("Column $0 is already bound to another value.", attr_num);
     }
   }
 
@@ -236,7 +236,9 @@ Status PgDml::Fetch(int32_t natts,
                     bool *has_data) {
   // Each isnulls and values correspond (in order) to columns from the table schema.
   // Initialize to nulls for any columns not present in result.
-  memset(isnulls, true, natts * sizeof(bool));
+  if (isnulls) {
+    memset(isnulls, true, natts * sizeof(bool));
+  }
   if (syscols) {
     memset(syscols, 0, sizeof(PgSysColumns));
   }
@@ -246,7 +248,7 @@ Status PgDml::Fetch(int32_t natts,
     int64_t row_count = 0;
     // Keep reading untill we either reach the end or get some rows.
     while (row_count == 0) {
-      if (doc_op_->EndOfResult()) {
+      if (VERIFY_RESULT(doc_op_->EndOfResult())) {
         // To be compatible with Postgres code, memset output array with 0.
         *has_data = false;
         return Status::OK();

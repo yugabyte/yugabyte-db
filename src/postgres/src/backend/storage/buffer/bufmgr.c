@@ -52,6 +52,7 @@
 #include "utils/resowner_private.h"
 #include "utils/timestamp.h"
 
+#include "pg_yb_utils.h"
 
 /* Note: these two macros only work on shared buffers, not local ones! */
 #define BufHdrGetBlock(bufHdr)	((Block) (BufferBlocks + ((Size) (bufHdr)->buf_id) * BLCKSZ))
@@ -2787,6 +2788,11 @@ FlushBuffer(BufferDesc *buf, SMgrRelation reln)
 BlockNumber
 RelationGetNumberOfBlocksInFork(Relation relation, ForkNumber forkNum)
 {
+	if (IsYugaByteEnabled())
+	{
+		return 0;
+	}
+
 	/* Open it at the smgr level if not already done */
 	RelationOpenSmgr(relation);
 

@@ -75,6 +75,23 @@ typedef bool (*aminsert_function) (Relation indexRelation,
 								   IndexUniqueCheck checkUnique,
 								   struct IndexInfo *indexInfo);
 
+/* alternate insert callback for YugaByte-based index that passs ybctid instead of ctid */
+typedef bool (*yb_aminsert_function) (Relation indexRelation,
+									  Datum *values,
+									  bool *isnull,
+									  Datum ybctid,
+									  Relation heapRelation,
+									  IndexUniqueCheck checkUnique,
+									  struct IndexInfo *indexInfo);
+
+/* delete this tuple for YugaByte-based index */
+typedef void (*yb_amdelete_function) (Relation indexRelation,
+									  Datum *values,
+									  bool *isnull,
+									  Datum ybctid,
+									  Relation heapRelation,
+									  struct IndexInfo *indexInfo);
+
 /* bulk delete */
 typedef IndexBulkDeleteResult *(*ambulkdelete_function) (IndexVacuumInfo *info,
 														 IndexBulkDeleteResult *stats,
@@ -217,6 +234,10 @@ typedef struct IndexAmRoutine
 	amestimateparallelscan_function amestimateparallelscan; /* can be NULL */
 	aminitparallelscan_function aminitparallelscan; /* can be NULL */
 	amparallelrescan_function amparallelrescan; /* can be NULL */
+
+	yb_aminsert_function yb_aminsert;
+	yb_amdelete_function yb_amdelete;
+
 } IndexAmRoutine;
 
 

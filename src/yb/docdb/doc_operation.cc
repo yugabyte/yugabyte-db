@@ -2962,7 +2962,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
                                 MonoTime deadline,
                                 const ReadHybridTime& read_time,
                                 const Schema& schema,
-                                const Schema& query_schema,
+                                const Schema& projection,
                                 QLResultSet* resultset,
                                 HybridTime* restart_read_ht) {
   SimulateTimeoutIfTesting(&deadline);
@@ -2995,7 +2995,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   RETURN_NOT_OK(ql_storage.BuildYQLScanSpec(
       request_, read_time, schema, read_static_columns, static_projection, &spec,
       &static_row_spec, &req_read_time));
-  RETURN_NOT_OK(ql_storage.GetIterator(request_, query_schema, schema, txn_op_context_,
+  RETURN_NOT_OK(ql_storage.GetIterator(request_, projection, schema, txn_op_context_,
                                        deadline, req_read_time, *spec, &iter));
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
@@ -3203,26 +3203,20 @@ Status QLReadOperation::AddRowToResult(const std::unique_ptr<common::QLScanSpec>
 
 namespace {
 
-CHECKED_STATUS CreateProjections(const Schema& schema,
-                                 const PgsqlColumnRefsPB& column_refs,
-                                 Schema* column_projection) {
-  // The projection schemas are used to scan docdb. Keep the columns to fetch in sorted order for
-  // more efficient scan in the iterator.
-  set<ColumnId> regular_columns;
-
-  // Add regular columns.
+CHECKED_STATUS CreateProjection(const Schema& schema,
+                                const PgsqlColumnRefsPB& column_refs,
+                                Schema* projection) {
+  // Create projection of non-primary key columns. Primary key columns are implicitly read by DocDB.
+  // It will also sort the columns before scanning.
+  vector<ColumnId> column_ids;
+  column_ids.reserve(column_refs.ids_size());
   for (int32_t id : column_refs.ids()) {
     const ColumnId column_id(id);
     if (!schema.is_key_column(column_id)) {
-      regular_columns.insert(column_id);
+      column_ids.emplace_back(column_id);
     }
   }
-
-  RETURN_NOT_OK(schema.CreateProjectionByIdsIgnoreMissing(
-      vector<ColumnId>(regular_columns.begin(), regular_columns.end()),
-      column_projection));
-
-  return Status::OK();
+  return schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection);
 }
 
 } // namespace
@@ -3241,7 +3235,7 @@ Status PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* 
     CHECK(request_.ybctid_column_value().has_value() &&
           request_.ybctid_column_value().value().has_binary_value())
       << "ERROR: Unexpected value for ybctid column";
-    string ybctid_value = request_.ybctid_column_value().value().binary_value();
+    const string& ybctid_value = request_.ybctid_column_value().value().binary_value();
     Slice key_value(ybctid_value.data(), ybctid_value.size());
 
     // The following code assumes that ybctid is the key of exactly one row, so the hash_doc_key_
@@ -3299,7 +3293,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
   QLTableRow::SharedPtr table_row = make_shared<QLTableRow>();
   RETURN_NOT_OK(ReadColumns(data, table_row));
   if (!table_row->IsEmpty()) {
-    return STATUS(QLError, "Primary key already exists");
+    // Primary key or unique index value found.
+    return STATUS(QLError, "Duplicate key found in primary key or unique index");
   }
 
   const MonoDelta ttl = Value::kMaxTtl;
@@ -3339,6 +3334,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
         sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id(), ttl, user_timestamp));
   }
+
+  RETURN_NOT_OK(PopulateResultSet());
 
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
@@ -3410,6 +3407,8 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     }
   }
 
+  RETURN_NOT_OK(PopulateResultSet());
+
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }
@@ -3424,20 +3423,21 @@ Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
   // Otherwise, delete the referenced row (all columns).
   RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(DocPath(
       encoded_range_doc_key_.as_slice()), data.read_time, data.deadline));
+
+  RETURN_NOT_OK(PopulateResultSet());
+
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }
 
 Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
                                         const QLTableRow::SharedPtr& table_row) {
-  // Create projections to scan docdb.
-  Schema column_projection;
-  RETURN_NOT_OK(CreateProjections(schema_, request_.column_refs(), &column_projection));
-
   // Filter the columns using primary key.
   if (range_doc_key_) {
-    DocPgsqlScanSpec spec(column_projection, request_.stmt_id(), *range_doc_key_);
-    DocRowwiseIterator iterator(column_projection,
+    Schema projection;
+    RETURN_NOT_OK(CreateProjection(schema_, request_.column_refs(), &projection));
+    DocPgsqlScanSpec spec(projection, request_.stmt_id(), *range_doc_key_);
+    DocRowwiseIterator iterator(projection,
                                 schema_,
                                 txn_op_context_,
                                 data.doc_write_batch->doc_db(),
@@ -3452,6 +3452,23 @@ Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
     data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
   }
 
+  return Status::OK();
+}
+
+Status PgsqlWriteOperation::PopulateResultSet() {
+  if (!request_.targets().empty()) {
+    PgsqlRSRow *rsrow = resultset_.AllocateRSRow(request_.targets().size());
+    int rscol_index = 0;
+    for (const PgsqlExpressionPB& expr : request_.targets()) {
+      if (expr.has_column_id() &&
+          expr.column_id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
+        rsrow->rscol(rscol_index)->set_binary_value(encoded_range_doc_key_.data(),
+                                                    encoded_range_doc_key_.size());
+        continue;
+      }
+      return STATUS(NotSupported, "unsupported returning expression");
+    }
+  }
   return Status::OK();
 }
 
@@ -3480,7 +3497,7 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
                                    MonoTime deadline,
                                    const ReadHybridTime& read_time,
                                    const Schema& schema,
-                                   const Schema& query_schema,
+                                   const Schema *index_schema,
                                    PgsqlResultSet *resultset,
                                    HybridTime *restart_read_ht) {
   VLOG(4) << "Read, read time: " << read_time << ", txn: " << txn_op_context_;
@@ -3498,56 +3515,87 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   // projection only to scan sub-documents. The query schema is used to select only referenced
   // columns and key columns.
   Schema projection;
-  RETURN_NOT_OK(CreateProjections(schema, request_.column_refs(), &projection));
+  Schema index_projection;
+  common::YQLRowwiseIteratorIf *iter;
 
-  // Construct scan specification and iterator.
-  current_tuple_ = nullptr;
-  common::PgsqlScanSpec::UniPtr spec;
-  ReadHybridTime req_read_time;
-  RETURN_NOT_OK(ql_storage.BuildYQLScanSpec(request_, read_time, schema, &spec, &req_read_time));
-  RETURN_NOT_OK(ql_storage.GetIterator(request_, query_schema, schema, txn_op_context_,
-                                       deadline, req_read_time, *spec, &current_tuple_));
+  RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
+  RETURN_NOT_OK(ql_storage.GetIterator(request_, projection, schema, txn_op_context_,
+                                       deadline, read_time, &table_iter_));
+
+  ColumnId ybbasectid_id;
+  if (request_.has_index_request()) {
+    const PgsqlReadRequestPB& index_request = request_.index_request();
+    RETURN_NOT_OK(CreateProjection(*index_schema, index_request.column_refs(), &index_projection));
+    RETURN_NOT_OK(ql_storage.GetIterator(index_request, index_projection, *index_schema,
+                                         txn_op_context_, deadline, read_time, &index_iter_));
+    iter = index_iter_.get();
+    const size_t idx = index_schema->find_column("ybbasectid");
+    if (idx == Schema::kColumnNotFound) {
+      return STATUS(Corruption, "Column ybbasectid not found in index");
+    }
+    ybbasectid_id = index_schema->column_id(idx);
+  } else {
+    iter = table_iter_.get();
+  }
+
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
   }
 
   // Fetching data.
   int match_count = 0;
-  QLTableRow::SharedPtr selected_row = make_shared<QLTableRow>();
-  while (resultset->rsrow_count() < row_count_limit && current_tuple_->HasNext()) {
+  QLTableRow::SharedPtr row = make_shared<QLTableRow>();
+  while (resultset->rsrow_count() < row_count_limit && iter->HasNext()) {
     // The filtering process runs in the following order.
     // <hash_code><hash_components><range_components><regular_column_id> -> value;
-    selected_row->Clear();
-    RETURN_NOT_OK(current_tuple_->NextRow(projection, selected_row.get()));
+    row->Clear();
+
+    if (request_.has_index_request()) {
+      QLValue row_key;
+      RETURN_NOT_OK(iter->NextRow(row.get()));
+      RETURN_NOT_OK(row->GetValue(ybbasectid_id, &row_key));
+      RETURN_NOT_OK(table_iter_->Seek(row_key.binary_value()));
+      if (!table_iter_->HasNext() ||
+          VERIFY_RESULT(table_iter_->GetRowKey()) != row_key.binary_value()) {
+        DocKey doc_key;
+        RETURN_NOT_OK(doc_key.DecodeFrom(Slice(row_key.binary_value())));
+        LOG(WARNING) << "Row key " << doc_key << " missing in indexed table";
+        continue;
+      }
+      row->Clear();
+      RETURN_NOT_OK(table_iter_->NextRow(projection, row.get()));
+    } else {
+      RETURN_NOT_OK(iter->NextRow(projection, row.get()));
+    }
 
     // Match the row with the where condition before adding to the row block.
     bool is_match = true;
     if (request_.has_where_expr()) {
       QLValue match;
-      RETURN_NOT_OK(EvalExpr(request_.where_expr(), selected_row, &match));
+      RETURN_NOT_OK(EvalExpr(request_.where_expr(), row, &match));
       is_match = match.bool_value();
     }
     if (is_match) {
       match_count++;
       if (request_.is_aggregate()) {
-        RETURN_NOT_OK(EvalAggregate(selected_row));
+        RETURN_NOT_OK(EvalAggregate(row));
       } else {
-        RETURN_NOT_OK(PopulateResultSet(selected_row, resultset));
+        RETURN_NOT_OK(PopulateResultSet(row, resultset));
       }
     }
   }
 
   if (request_.is_aggregate() && match_count > 0) {
-    RETURN_NOT_OK(PopulateAggregate(selected_row, resultset));
+    RETURN_NOT_OK(PopulateAggregate(row, resultset));
   }
 
   if (FLAGS_trace_docdb_calls) {
     TRACE("Fetched $0 rows.", resultset->rsrow_count());
   }
-  *restart_read_ht = current_tuple_->RestartReadHt();
+  *restart_read_ht = iter->RestartReadHt();
 
   if (resultset->rsrow_count() >= row_count_limit && !request_.is_aggregate()) {
-    RETURN_NOT_OK(current_tuple_->SetPagingStateIfNecessary(request_, &response_));
+    RETURN_NOT_OK(iter->SetPagingStateIfNecessary(request_, &response_));
   }
 
   return Status::OK();
@@ -3555,15 +3603,12 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
 
 Status PgsqlReadOperation::PopulateResultSet(const QLTableRow::SharedPtr& table_row,
                                              PgsqlResultSet *resultset) {
-  int column_count = request_.targets().size();
-  PgsqlRSRow *rsrow = resultset->AllocateRSRow(column_count);
-
+  PgsqlRSRow *rsrow = resultset->AllocateRSRow(request_.targets().size());
   int rscol_index = 0;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
     RETURN_NOT_OK(EvalExpr(expr, table_row, rsrow->rscol(rscol_index)));
     rscol_index++;
   }
-
   return Status::OK();
 }
 
@@ -3572,7 +3617,7 @@ Status PgsqlReadOperation::GetTupleId(QLValue *result) const {
   // TODO(neil) Check if we need to append a table_id and other info to TupleID. For example, we
   // might need info to make sure the TupleId by itself is a valid reference to a specific row of
   // a valid table.
-  result->set_binary_value(VERIFY_RESULT(current_tuple_->GetRowKey()));
+  result->set_binary_value(VERIFY_RESULT(table_iter_->GetRowKey()));
   return Status::OK();
 }
 

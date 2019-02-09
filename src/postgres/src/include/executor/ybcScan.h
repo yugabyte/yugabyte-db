@@ -73,8 +73,9 @@ typedef YbScanStateData *YbScanState;
 
 void ybcFreeScanState(YbScanState ybc_state);
 extern YbScanState ybcBeginScan(Relation rel,
-		                        List *target_attrs,
-		                        List *yb_conds);
+								Relation index,
+								List *target_attrs,
+								List *yb_conds);
 extern HeapTuple ybcFetchNext(YbScanState ybc_state);
 extern void ybcEndScan(YbScanState ybc_handle);
 

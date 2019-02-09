@@ -60,7 +60,6 @@
 #include "catalog/storage_xlog.h"
 #include "commands/tablecmds.h"
 #include "commands/typecmds.h"
-#include "executor/ybcModifyTable.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/var.h"
@@ -892,16 +891,6 @@ AddNewRelationTuple(Relation pg_class_desc,
 			break;
 	}
 
-	/*
-	 * In YB mode, set the fact the views have (rewrite) rules.
-	 * TODO this should be removed once we have update (as this is normally set
-	 * later -- i.e. after the rule is created -- in Postgres).
-	 */
-	if (IsYugaByteEnabled() && relkind == RELKIND_VIEW)
-	{
-		new_rel_reltup->relhasrules = 1;
-	}
-
 	/* Initialize relfrozenxid and relminmxid */
 	if (relkind == RELKIND_RELATION ||
 		relkind == RELKIND_MATVIEW ||
@@ -1092,10 +1081,8 @@ heap_create_with_catalog(const char *relname,
 		existing_relid = get_relname_relid(relname, relnamespace);
 		if (existing_relid != InvalidOid)
 			ereport(ERROR,
-			        (errcode(ERRCODE_DUPLICATE_TABLE), errmsg(
-					        "relation \"%s\" already exists",
-					        relname)));
-
+			        (errcode(ERRCODE_DUPLICATE_TABLE),
+					 errmsg("relation \"%s\" already exists", relname)));
 
 		/*
 		 * Since we are going to create a rowtype as well, also check for
@@ -1449,7 +1436,7 @@ RelationRemoveInheritance(Oid relid)
 							  NULL, 1, &key);
 
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
-		CatalogTupleDelete(catalogRelation, &tuple->t_self);
+		CatalogTupleDelete(catalogRelation, tuple);
 
 	systable_endscan(scan);
 	heap_close(catalogRelation, RowExclusiveLock);
@@ -1477,15 +1464,7 @@ DeleteRelationTuple(Oid relid)
 		elog(ERROR, "cache lookup failed for relation %u", relid);
 
 	/* delete the relation tuple from pg_class, and finish up */
-	if (IsYugaByteEnabled())
-	{
-		Bitmapset *pkey = bms_make_singleton(
-				ObjectIdAttributeNumber - FirstLowInvalidHeapAttributeNumber);
-		YBCDeleteSysCatalogTuple(pg_class_desc, tup, pkey);
-		bms_free(pkey);
-	}
-	else
-		CatalogTupleDelete(pg_class_desc, &tup->t_self);
+	CatalogTupleDelete(pg_class_desc, tup);
 
 	ReleaseSysCache(tup);
 
@@ -1522,22 +1501,7 @@ DeleteAttributeTuples(Oid relid)
 
 	/* Delete all the matching tuples */
 	while ((atttup = systable_getnext(scan)) != NULL)
-	{
-		if (IsYugaByteEnabled())
-		{
-			Bitmapset *pkey = NULL;
-			pkey = bms_add_member(pkey,
-			                      Anum_pg_attribute_attrelid -
-			                      FirstLowInvalidHeapAttributeNumber);
-			pkey = bms_add_member(pkey,
-			                      Anum_pg_attribute_attname -
-			                      FirstLowInvalidHeapAttributeNumber);
-			YBCDeleteSysCatalogTuple(attrel, atttup, pkey);
-			bms_free(pkey);
-		}
-		else
-			CatalogTupleDelete(attrel, &atttup->t_self);
-	}
+		CatalogTupleDelete(attrel, atttup);
 
 	/* Clean up after the scan */
 	systable_endscan(scan);
@@ -1578,7 +1542,7 @@ DeleteSystemAttributeTuples(Oid relid)
 
 	/* Delete all the matching tuples */
 	while ((atttup = systable_getnext(scan)) != NULL)
-		CatalogTupleDelete(attrel, &atttup->t_self);
+		CatalogTupleDelete(attrel, atttup);
 
 	/* Clean up after the scan */
 	systable_endscan(scan);
@@ -1625,7 +1589,7 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 	{
 		/* System attribute (probably OID) ... just delete the row */
 
-		CatalogTupleDelete(attr_rel, &tuple->t_self);
+		CatalogTupleDelete(attr_rel, tuple);
 	}
 	else
 	{
@@ -1770,7 +1734,7 @@ RemoveAttrDefaultById(Oid attrdefId)
 	myrel = relation_open(myrelid, AccessExclusiveLock);
 
 	/* Now we can delete the pg_attrdef row */
-	CatalogTupleDelete(attrdef_rel, &tuple->t_self);
+	CatalogTupleDelete(attrdef_rel, tuple);
 
 	systable_endscan(scan);
 	heap_close(attrdef_rel, RowExclusiveLock);
@@ -1869,7 +1833,7 @@ heap_drop_with_catalog(Oid relid)
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for foreign table %u", relid);
 
-		CatalogTupleDelete(rel, &tuple->t_self);
+		CatalogTupleDelete(rel, tuple);
 
 		ReleaseSysCache(tuple);
 		heap_close(rel, RowExclusiveLock);
@@ -2830,7 +2794,7 @@ RemoveStatistics(Oid relid, AttrNumber attnum)
 
 	/* we must loop even when attnum != 0, in case of inherited stats */
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
-		CatalogTupleDelete(pgstatistic, &tuple->t_self);
+		CatalogTupleDelete(pgstatistic, tuple);
 
 	systable_endscan(scan);
 
@@ -3264,7 +3228,7 @@ RemovePartitionKeyByRelId(Oid relid)
 		elog(ERROR, "cache lookup failed for partition key of relation %u",
 			 relid);
 
-	CatalogTupleDelete(rel, &tuple->t_self);
+	CatalogTupleDelete(rel, tuple);
 
 	ReleaseSysCache(tuple);
 	heap_close(rel, RowExclusiveLock);

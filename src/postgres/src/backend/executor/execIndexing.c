@@ -114,6 +114,8 @@
 #include "storage/lmgr.h"
 #include "utils/tqual.h"
 
+#include "executor/ybcModifyTable.h"
+
 /* waitMode argument to check_exclusion_or_unique_constraint() */
 typedef enum
 {
@@ -269,7 +271,7 @@ ExecCloseIndices(ResultRelInfo *resultRelInfo)
  */
 List *
 ExecInsertIndexTuples(TupleTableSlot *slot,
-					  ItemPointer tupleid,
+					  HeapTuple tuple,
 					  EState *estate,
 					  bool noDupErr,
 					  bool *specConflict,
@@ -387,7 +389,8 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
 			index_insert(indexRelation, /* index relation */
 						 values,	/* array of index Datums */
 						 isnull,	/* null flags */
-						 tupleid,	/* tid of heap tuple */
+						 &(tuple->t_self),	/* tid of heap tuple */
+						 tuple,		/* heap tuple */
 						 heapRelation,	/* heap relation */
 						 checkUnique,	/* type of uniqueness check to do */
 						 indexInfo);	/* index AM may need this */
@@ -430,7 +433,7 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
 			satisfiesConstraint =
 				check_exclusion_or_unique_constraint(heapRelation,
 													 indexRelation, indexInfo,
-													 tupleid, values, isnull,
+													 &(tuple->t_self), values, isnull,
 													 estate, false,
 													 waitMode, violationOK, NULL);
 		}
@@ -452,6 +455,106 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
 	}
 
 	return result;
+}
+
+/* ----------------------------------------------------------------
+ *		ExecDeleteIndexTuples
+ *
+ *		This routine takes care of deleting index tuples
+ *		from all the relations indexing the result relation
+ *		when a heap tuple is updated or deleted in the result relation.
+ *      This is used only for relations and indexes backed by YugaByte DB.
+ * ----------------------------------------------------------------
+ */
+void
+ExecDeleteIndexTuples(TupleTableSlot *slot, EState *estate)
+{
+	ResultRelInfo *resultRelInfo;
+	int			i;
+	int			numIndices;
+	RelationPtr relationDescs;
+	Relation	heapRelation;
+	IndexInfo **indexInfoArray;
+	ExprContext *econtext;
+	Datum		values[INDEX_MAX_KEYS];
+	bool		isnull[INDEX_MAX_KEYS];
+	Datum		ybctid = YBCGetYBTupleIdFromSlot(slot);
+
+	/*
+	 * Get information from the result relation info structure.
+	 */
+	resultRelInfo = estate->es_result_relation_info;
+	numIndices = resultRelInfo->ri_NumIndices;
+	relationDescs = resultRelInfo->ri_IndexRelationDescs;
+	indexInfoArray = resultRelInfo->ri_IndexRelationInfo;
+	heapRelation = resultRelInfo->ri_RelationDesc;
+
+	/*
+	 * We will use the EState's per-tuple context for evaluating predicates
+	 * and index expressions (creating it if it's not already there).
+	 */
+	econtext = GetPerTupleExprContext(estate);
+
+	/* Arrange for econtext's scan tuple to be the tuple under test */
+	econtext->ecxt_scantuple = slot;
+
+	/*
+	 * For each index, form the index tuple to delete and delete it from
+	 * the index.
+	 */
+	for (i = 0; i < numIndices; i++)
+	{
+		Relation	indexRelation = relationDescs[i];
+		IndexInfo  *indexInfo;
+
+		if (indexRelation == NULL)
+			continue;
+
+		indexInfo = indexInfoArray[i];
+
+		/* If the index is marked as read-only, ignore it */
+		if (!indexInfo->ii_ReadyForInserts)
+			continue;
+
+		/* Check for partial index */
+		if (indexInfo->ii_Predicate != NIL)
+		{
+			ExprState  *predicate;
+
+			/*
+			 * If predicate state not set up yet, create it (in the estate's
+			 * per-query context)
+			 */
+			predicate = indexInfo->ii_PredicateState;
+			if (predicate == NULL)
+			{
+				predicate = ExecPrepareQual(indexInfo->ii_Predicate, estate);
+				indexInfo->ii_PredicateState = predicate;
+			}
+
+			/* Skip this index-update if the predicate isn't satisfied */
+			if (!ExecQual(predicate, econtext))
+				continue;
+		}
+
+		/*
+		 * FormIndexDatum fills in its values and isnull parameters with the
+		 * appropriate values for the column(s) of the index.
+		 */
+		FormIndexDatum(indexInfo,
+					   slot,
+					   estate,
+					   values,
+					   isnull);
+
+		index_delete(indexRelation, /* index relation */
+					 values,	/* array of index Datums */
+					 isnull,	/* null flags */
+					 ybctid,	/* ybctid */
+					 heapRelation,	/* heap relation */
+					 indexInfo);	/* index AM may need this */
+
+	}
 }
 
 /* ----------------------------------------------------------------

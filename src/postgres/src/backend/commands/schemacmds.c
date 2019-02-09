@@ -250,7 +250,7 @@ RemoveSchemaById(Oid schemaOid)
 	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for namespace %u", schemaOid);
 
-	CatalogTupleDelete(relation, &tup->t_self);
+	CatalogTupleDelete(relation, tup);
 
 	ReleaseSysCache(tup);
 

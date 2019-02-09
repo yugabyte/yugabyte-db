@@ -66,8 +66,8 @@ IsYBRelation(Relation relation)
 {
 	const char relkind = relation->rd_rel->relkind;
 
-	/* Currently only support regular tables */
-	return relkind == RELKIND_RELATION;
+	/* Currently only support regular tables and indexes */
+	return (relkind == RELKIND_RELATION || relkind == RELKIND_INDEX);
 }
 
 bool

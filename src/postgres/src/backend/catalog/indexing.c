@@ -141,9 +141,89 @@ CatalogIndexInsert(CatalogIndexState indstate, HeapTuple heapTuple)
 					 values,	/* array of index Datums */
 					 isnull,	/* is-null flags */
 					 &(heapTuple->t_self),	/* tid of heap tuple */
+					 heapTuple,	/* heap tuple */
 					 heapRelation,
 					 relationDescs[i]->rd_index->indisunique ?
 					 UNIQUE_CHECK_YES : UNIQUE_CHECK_NO,
+					 indexInfo);
+	}
+
+	ExecDropSingleTupleTableSlot(slot);
+}
+
+/*
+ * CatalogIndexDelete - delete index entries for one catalog tuple
+ *
+ * This should be called for each updated or deleted catalog tuple.
+ *
+ * This is effectively a cut-down version of ExecDeleteIndexTuples.
+ */
+static void
+CatalogIndexDelete(CatalogIndexState indstate, HeapTuple heapTuple)
+{
+	int			i;
+	int			numIndexes;
+	RelationPtr relationDescs;
+	Relation	heapRelation;
+	TupleTableSlot *slot;
+	IndexInfo **indexInfoArray;
+	Datum		values[INDEX_MAX_KEYS];
+	bool		isnull[INDEX_MAX_KEYS];
+
+	/*
+	 * Get information from the state structure.  Fall out if nothing to do.
+	 */
+	numIndexes = indstate->ri_NumIndices;
+	if (numIndexes == 0)
+		return;
+	relationDescs = indstate->ri_IndexRelationDescs;
+	indexInfoArray = indstate->ri_IndexRelationInfo;
+	heapRelation = indstate->ri_RelationDesc;
+
+	/* Need a slot to hold the tuple being examined */
+	slot = MakeSingleTupleTableSlot(RelationGetDescr(heapRelation));
+	ExecStoreTuple(heapTuple, slot, InvalidBuffer, false);
+
+	/*
+	 * for each index, form and delete the index tuple
+	 */
+	for (i = 0; i < numIndexes; i++)
+	{
+		IndexInfo  *indexInfo;
+
+		indexInfo = indexInfoArray[i];
+
+		/* If the index is marked as read-only, ignore it */
+		if (!indexInfo->ii_ReadyForInserts)
+			continue;
+
+		/*
+		 * Expressional and partial indexes on system catalogs are not
+		 * supported, nor exclusion constraints, nor deferred uniqueness
+		 */
+		Assert(indexInfo->ii_Expressions == NIL);
+		Assert(indexInfo->ii_Predicate == NIL);
+		Assert(indexInfo->ii_ExclusionOps == NULL);
+		Assert(relationDescs[i]->rd_index->indimmediate);
+
+		/*
+		 * FormIndexDatum fills in its values and isnull parameters with the
+		 * appropriate values for the column(s) of the index.
+		 */
+		FormIndexDatum(indexInfo,
+					   slot,
+					   NULL,	/* no expression eval to do */
+					   values,
+					   isnull);
+
+		/*
+		 * The index AM does the rest.
+		 */
+		index_delete(relationDescs[i],	/* index relation */
+					 values,	/* array of index Datums */
+					 isnull,	/* is-null flags */
+					 heapTuple->t_ybctid,	/* heap tuple */
+					 heapRelation,
 					 indexInfo);
 	}
 
@@ -173,12 +253,13 @@ CatalogTupleInsert(Relation heapRel, HeapTuple tup)
 		oid = YBCExecuteInsert(heapRel, RelationGetDescr(heapRel), tup);
 		/* Update the local cache automatically */
 		SetSysCacheTuple(heapRel, tup);
-		return oid;
+	}
+	else
+	{
+		oid = simple_heap_insert(heapRel, tup);
 	}
 
 	indstate = CatalogOpenIndexes(heapRel);
-
-	oid = simple_heap_insert(heapRel, tup);
 
 	CatalogIndexInsert(indstate, tup);
 	CatalogCloseIndexes(indstate);
@@ -205,10 +286,11 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 		oid = YBCExecuteInsert(heapRel, RelationGetDescr(heapRel), tup);
 		/* Update the local cache automatically */
 		SetSysCacheTuple(heapRel, tup);
-		return oid;
 	}
-
-	oid = simple_heap_insert(heapRel, tup);
+	else
+	{
+		oid = simple_heap_insert(heapRel, tup);
+	}
 
 	CatalogIndexInsert(indstate, tup);
 
@@ -235,6 +317,9 @@ CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 		YBCUpdateSysCatalogTuple(heapRel, tup);
 		/* Update the local cache automatically */
 		SetSysCacheTuple(heapRel, tup);
+
+		if (heapRel->rd_rel->relhasindex)
+			YBC_LOG_WARNING("Skipping index update for %s", RelationGetRelationName(heapRel));
 		return;
 	}
 
@@ -264,6 +349,9 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 		YBCUpdateSysCatalogTuple(heapRel, tup);
 		/* Update the local cache automatically */
 		SetSysCacheTuple(heapRel, tup);
+
+		if (heapRel->rd_rel->relhasindex)
+			YBC_LOG_WARNING("Skipping index update for %s", RelationGetRelationName(heapRel));
 		return;
 	}
 
@@ -288,14 +376,24 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
  * it might be better to do something about caching CatalogIndexState.
  */
 void
-CatalogTupleDelete(Relation heapRel, ItemPointer tid)
+CatalogTupleDelete(Relation heapRel, HeapTuple tup)
 {
 	if (IsYugaByteEnabled())
 	{
-		YBC_LOG_WARNING("Ignoring unsupported tuple delete for rel %s",
-		                RelationGetRelationName(heapRel));
-		return;
-	}
+		Bitmapset *pkey = YBSysTablePrimaryKey(RelationGetRelid(heapRel));
 
-	simple_heap_delete(heapRel, tid);
+		Assert(pkey != NULL);
+
+		YBCDeleteSysCatalogTuple(heapRel, tup, pkey);
+		bms_free(pkey);
+
+		CatalogIndexState indstate = CatalogOpenIndexes(heapRel);
+
+		CatalogIndexDelete(indstate, tup);
+		CatalogCloseIndexes(indstate);
+	}
+	else
+	{
+		simple_heap_delete(heapRel, &tup->t_self);
+	}
 }

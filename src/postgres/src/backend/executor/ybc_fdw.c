@@ -45,6 +45,7 @@
 #include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
+#include "optimizer/paths.h"
 #include "optimizer/planmain.h"
 #include "optimizer/restrictinfo.h"
 #include "optimizer/var.h"
@@ -365,6 +366,11 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	/* Save the output-rows estimate for the planner */
 	baserel->rows = DEFAULT_YB_NUM_ROWS;
 	baserel->fdw_private = ybc_plan;
+
+	/*
+	 * Test any indexes of rel for applicability also.
+	 */
+	check_index_predicates(root, baserel);
 }
 
 /*
@@ -390,7 +396,7 @@ ybcGetForeignPaths(PlannerInfo *root,
 	total_cost    = startup_cost + seq_page_cost * baserel->pages +
 	                cpu_per_tuple * baserel->rows;
 
-	/* Create a ForeignPath node and add it as only possible path. */
+	/* Create a ForeignPath node and it as the scan path */
 	/* TODO Can add YB order guarantees to pathkeys (if hash key is fixed). */
 	add_path(baserel,
 	         (Path *) create_foreignscan_path(root,
@@ -403,6 +409,9 @@ ybcGetForeignPaths(PlannerInfo *root,
 	                                          NULL,    /* no outer rel either */
 	                                          NULL,    /* no extra plan */
 	                                          NULL /* no options yet */ ));
+
+	/* Add secondary index paths also */
+	create_index_paths(root, baserel);
 }
 
 /*
@@ -487,15 +496,20 @@ ybcGetForeignPlan(PlannerInfo *root,
 
 	/* Set scan targets. */
 	List *target_attrs = NULL;
-	for (AttrNumber i = baserel->min_attr; i <= baserel->max_attr; i++)
+	bool wholerow = false;
+	for (AttrNumber attnum = baserel->min_attr; attnum <= baserel->max_attr; attnum++)
 	{
-		int bms_idx = i - baserel->min_attr + 1;
-		if (bms_is_member(bms_idx, yb_plan_state->target_attrs))
+		int bms_idx = attnum - baserel->min_attr + 1;
+		if (wholerow || bms_is_member(bms_idx, yb_plan_state->target_attrs))
 		{
-			switch (i)
+			switch (attnum)
 			{
 				case InvalidAttrNumber:
-					/* Nothing to do in YugaByte: Skip invalid attributes. */
+					/*
+					 * Postgres repurposes InvalidAttrNumber to represent the "wholerow"
+					 * junk attribute.
+					 */
+					wholerow = true;
 					break;
 				case SelfItemPointerAttributeNumber:
 				case MinTransactionIdAttributeNumber:
@@ -505,7 +519,7 @@ ybcGetForeignPlan(PlannerInfo *root,
 					ereport(ERROR,
 					        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
 							        "System column with id %d is not supported yet",
-							        i)));
+							        attnum)));
 					break;
 				case TableOidAttributeNumber:
 					/* Nothing to do in YugaByte: Postgres will handle this. */
@@ -515,15 +529,14 @@ ybcGetForeignPlan(PlannerInfo *root,
 				default: /* Regular column: attrNum > 0*/
 				{
 					TargetEntry *target = makeNode(TargetEntry);
-					target->resno = i;
+					target->resno = attnum;
 					target_attrs = lappend(target_attrs, target);
 				}
 			}
 		}
 	}
 
-	List *yb_conds = list_concat(yb_plan_state->yb_hconds,
-	                             yb_plan_state->yb_rconds);
+	List *yb_conds = list_concat(yb_plan_state->yb_hconds, yb_plan_state->yb_rconds);
 
 	/* Create the ForeignScan node */
 	fdw_private = list_make2(target_attrs, yb_conds);
@@ -562,7 +575,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	Relation    relation     = node->ss.ss_currentRelation;
 	TupleDesc   tupdesc      = RelationGetDescr(relation);
 
-  /* Planning function above should ensure both target and conds are set */
+	/* Planning function above should ensure both target and conds are set */
 	Assert(foreignScan->fdw_private->length == 2);
 	List *target_attrs = linitial(foreignScan->fdw_private);
 	List *yb_conds     = lsecond(foreignScan->fdw_private);
@@ -579,10 +592,11 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 	node->fdw_state = (void *) ybc_state;
 	HandleYBStatus(YBCPgNewSelect(ybc_pg_session,
-								                YBCGetDatabaseOid(relation),
-								                RelationGetRelid(relation),
-	                              &ybc_state->handle,
-	                              node->ss.ps.state ? &node->ss.ps.state->es_yb_read_ht : 0));
+								  YBCGetDatabaseOid(relation),
+								  RelationGetRelid(relation),
+								  InvalidOid /* index_oid */,
+								  &ybc_state->handle,
+								  node->ss.ps.state ? &node->ss.ps.state->es_yb_read_ht : 0));
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
 	ybc_state->stmt_owner = CurrentResourceOwner;
@@ -618,8 +632,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 		YBCPgTypeAttrs type_attrs = { attr_typmod };
 		YBCPgExpr expr = YBCNewColumnRef(ybc_state->handle, target->resno, attr_typid, &type_attrs);
-		HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
-		                                                 expr),
+		HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle, expr),
 		                            ybc_state->handle,
 		                            ybc_state->stmt_owner);
 		has_targets = true;
@@ -642,9 +655,8 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 			YBCPgTypeAttrs type_attrs = { tupdesc->attrs[i]->atttypmod };
 			YBCPgExpr expr = YBCNewColumnRef(ybc_state->handle, i + 1, tupdesc->attrs[i]->atttypid,
-																			 &type_attrs);
-			HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle,
-			                                                 expr),
+											 &type_attrs);
+			HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybc_state->handle, expr),
 			                            ybc_state->handle,
 			                            ybc_state->stmt_owner);
 			break;
@@ -672,17 +684,16 @@ ybcIterateForeignScan(ForeignScanState *node)
 	/* Clear tuple slot before starting */
 	ExecClearTuple(slot);
 
-	TupleDesc tupdesc = slot->tts_tupleDescriptor;
-
-	Datum           *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
-	bool            *nulls  = (bool *) palloc(tupdesc->natts * sizeof(bool));
+	TupleDesc       tupdesc = slot->tts_tupleDescriptor;
+	Datum           *values = slot->tts_values;
+	bool            *isnull = slot->tts_isnull;
 	YBCPgSysColumns syscols;
 
 	/* Fetch one row. */
 	HandleYBStmtStatusWithOwner(YBCPgDmlFetch(ybc_state->handle,
 	                                          tupdesc->natts,
 	                                          (uint64_t *) values,
-	                                          nulls,
+	                                          isnull,
 	                                          &syscols,
 	                                          &has_data),
 	                            ybc_state->handle,
@@ -691,7 +702,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 	/* If we have result(s) update the tuple slot. */
 	if (has_data)
 	{
-		HeapTuple tuple = heap_form_tuple(tupdesc, values, nulls);
+		HeapTuple tuple = heap_form_tuple(tupdesc, values, isnull);
 		if (syscols.oid != InvalidOid)
 		{
 			HeapTupleSetOid(tuple, syscols.oid);

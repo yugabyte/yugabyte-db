@@ -1860,7 +1860,7 @@ RemoveExtensionById(Oid extId)
 
 	/* We assume that there can be at most one matching tuple */
 	if (HeapTupleIsValid(tuple))
-		CatalogTupleDelete(rel, &tuple->t_self);
+		CatalogTupleDelete(rel, tuple);
 
 	systable_endscan(scandesc);
 

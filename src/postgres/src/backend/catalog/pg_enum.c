@@ -160,7 +160,7 @@ EnumValuesDelete(Oid enumTypeOid)
 
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
-		CatalogTupleDelete(pg_enum, &tup->t_self);
+		CatalogTupleDelete(pg_enum, tup);
 	}
 
 	systable_endscan(scan);

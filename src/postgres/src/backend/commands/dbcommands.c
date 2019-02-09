@@ -929,7 +929,7 @@ dropdb(const char *dbname, bool missing_ok)
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for database %u", db_id);
 
-	CatalogTupleDelete(pgdbrel, &tup->t_self);
+	CatalogTupleDelete(pgdbrel, tup);
 
 	ReleaseSysCache(tup);
 

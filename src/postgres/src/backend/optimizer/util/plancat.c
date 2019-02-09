@@ -383,10 +383,20 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 					info->tuples = rel->tuples;
 			}
 
-			if (info->relam == BTREE_AM_OID && !IsYugaByteEnabled())
+			if (info->relam == BTREE_AM_OID)
 			{
-				/* For btrees, get tree height while we have the index open */
-				info->tree_height = _bt_getrootheight(indexRelation);
+				/*
+				 * For YugaByte-based index, set the tree height to "unknown".
+				 */
+				if (IsYugaByteEnabled())
+				{
+					info->tree_height = -1;
+				}
+				else
+				{
+					/* For btrees, get tree height while we have the index open */
+					info->tree_height = _bt_getrootheight(indexRelation);
+				}
 			}
 			else
 			{

@@ -72,4 +72,15 @@ extern HeapScanDesc ybc_heap_beginscan(Relation relation,
 extern HeapTuple ybc_heap_getnext(HeapScanDesc scanDesc);
 extern void ybc_heap_endscan(HeapScanDesc scanDesc);
 
+/*
+ * Access to YB-stored index (mirroring API from indexam.c)
+ * We will do a YugaByte scan instead of a heap scan.
+ */
+extern void ybc_index_beginscan(Relation relation,
+								IndexScanDesc scan_desc,
+								int nkeys,
+								ScanKey key);
+extern HeapTuple ybc_index_getnext(IndexScanDesc scan_desc);
+extern void ybc_index_endscan(IndexScanDesc scan_desc);
+
 #endif							/* YBCAM_H */

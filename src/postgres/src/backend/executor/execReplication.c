@@ -410,7 +410,7 @@ ExecSimpleRelationInsert(EState *estate, TupleTableSlot *slot)
 		simple_heap_insert(rel, tuple);
 
 		if (resultRelInfo->ri_NumIndices > 0)
-			recheckIndexes = ExecInsertIndexTuples(slot, &(tuple->t_self),
+			recheckIndexes = ExecInsertIndexTuples(slot, tuple,
 												   estate, false, NULL,
 												   NIL);
 
@@ -477,7 +477,7 @@ ExecSimpleRelationUpdate(EState *estate, EPQState *epqstate,
 
 		if (resultRelInfo->ri_NumIndices > 0 &&
 			!HeapTupleIsHeapOnly(slot->tts_tuple))
-			recheckIndexes = ExecInsertIndexTuples(slot, &(tuple->t_self),
+			recheckIndexes = ExecInsertIndexTuples(slot, tuple,
 												   estate, false, NULL,
 												   NIL);
 

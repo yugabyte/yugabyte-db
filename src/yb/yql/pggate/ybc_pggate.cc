@@ -305,6 +305,10 @@ YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }
 
+YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
+  return ToYBCStatus(pgapi->DmlBindIndexColumn(handle, attr_num, attr_value));
+}
+
 YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
                                int attr_num,
                                YBCPgExpr attr_value) {
@@ -359,10 +363,12 @@ YBCStatus YBCPgExecDelete(YBCPgStatement handle) {
 YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
+                         const YBCPgOid index_oid,
                          YBCPgStatement *handle,
                          uint64_t* read_time) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewSelect(pg_session, table_id, handle, read_time));
+  const PgObjectId index_id(database_oid, index_oid);
+  return ToYBCStatus(pgapi->NewSelect(pg_session, table_id, index_id, handle, read_time));
 }
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle) {

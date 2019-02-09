@@ -30,6 +30,8 @@
 #include "access/relscan.h"
 #include "access/sysattr.h"
 #include "commands/dbcommands.h"
+#include "catalog/index.h"
+#include "catalog/indexing.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_operator.h"
@@ -49,19 +51,57 @@
 
 static YbSysScanDesc
 setup_ybcscan_from_scankey(Relation relation,
+						   Relation index,
 						   int nkeys,
 						   ScanKey key)
 {
-	TupleDesc tupdesc       = RelationGetDescr(relation);
-	List      *where_cond   = NIL;
-	List      *target_attrs = NIL;
+	TupleDesc  tupdesc       = RelationGetDescr(relation);
+	TupleDesc  where_tupdesc = NULL;
+	List       *where_cond   = NIL;
+	List       *target_attrs = NIL;
+	AttrNumber index_attno[CATCACHE_MAXKEYS];
+
+	/*
+	 * If the scan uses an index, change attribute numbers to be index column numbers.
+	 */
+	if (index)
+	{
+		/*
+		 * Scan with index is only used in sys catalog cache currently. Make sure the
+		 * number of scan keys does not exceed the allocated size.
+		 */
+		Assert(nkeys <= CATCACHE_MAXKEYS);
+
+		int	i, j;
+
+		for (i = 0; i < nkeys; i++)
+		{
+			for (j = 0; j < index->rd_index->indnatts; j++)
+			{
+				if (key[i].sk_attno == index->rd_index->indkey.values[j])
+				{
+					index_attno[i] = j + 1;
+					break;
+				}
+			}
+			if (j == index->rd_index->indnatts)
+				elog(ERROR, "column is not in index");
+		}
+		where_tupdesc = RelationGetDescr(index);
+	}
+	else
+	{
+		where_tupdesc = RelationGetDescr(relation);
+	}
 
 	/*
 	 * Set up the where clause condition (for the YB scan).
 	 */
 	for (int i = 0; i < nkeys; i++)
 	{
-		if (key[i].sk_attno == InvalidOid)
+		AttrNumber sk_attno = index ? index_attno[i] : key[i].sk_attno;
+
+		if (sk_attno == InvalidOid)
 			break;
 
 		OpExpr *cond = makeNode(OpExpr);
@@ -81,11 +121,11 @@ setup_ybcscan_from_scankey(Relation relation,
 
 		/* Set up column (lhs) */
 		Var *lhs = makeNode(Var);
-		lhs->varattno = key[i].sk_attno;
+		lhs->varattno = sk_attno;
 		if (lhs->varattno > 0)
 		{
 			/* Get the type from the description */
-			lhs->vartype = tupdesc->attrs[lhs->varattno - 1]->atttypid;
+			lhs->vartype = where_tupdesc->attrs[lhs->varattno - 1]->atttypid;
 		}
 		else
 		{
@@ -119,9 +159,18 @@ setup_ybcscan_from_scankey(Relation relation,
 		target_attrs = lappend(target_attrs, target);
 	}
 
+	/*
+	 * If it is an index, select the ybbasectid for index scan. Otherwise,
+	 * include ybctid column also for building indexes.
+	 */
+	TargetEntry *target = makeNode(TargetEntry);
+	target->resno = (relation->rd_index != NULL) ? YBBaseTupleIdAttributeNumber
+			                                     : YBTupleIdAttributeNumber;
+	target_attrs = lappend(target_attrs, target);
+
 	/* Set up YugaByte system table description */
 	YbSysScanDesc ybScan = (YbSysScanDesc) palloc0(sizeof(YbSysScanDescData));
-	ybScan->state = ybcBeginScan(relation, target_attrs, where_cond);
+	ybScan->state = ybcBeginScan(relation, index, target_attrs, where_cond);
 	ybScan->key = key;
 	ybScan->nkeys = nkeys;
 	return ybScan;
@@ -161,7 +210,7 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
                                 ScanKey key,
 								bool temp_snap)
 {
-	YbSysScanDesc ybScan = setup_ybcscan_from_scankey(relation, nkeys, key);
+	YbSysScanDesc ybScan = setup_ybcscan_from_scankey(relation, NULL /* index */, nkeys, key);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
@@ -181,7 +230,18 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
                                    int nkeys,
                                    ScanKey key)
 {
-	YbSysScanDesc ybScan = setup_ybcscan_from_scankey(relation, nkeys, key);
+	Relation index = NULL;
+
+	/*
+	 * Look up the index to scan with if we can.
+	 */
+	if (indexOK && !IgnoreSystemIndexes && !ReindexIsProcessingIndex(indexId) &&
+		indexId != YBSysTablePrimaryKeyOid(RelationGetRelid(relation)))
+	{
+		index = RelationIdGetRelation(indexId);
+	}
+
+	YbSysScanDesc ybScan = setup_ybcscan_from_scankey(relation, index, nkeys, key);
 
 	/* Set up Postgres sys table scan description */
 	SysScanDesc scan_desc = (SysScanDesc) palloc0(sizeof(SysScanDescData));
@@ -189,7 +249,28 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 	scan_desc->snapshot   = snapshot;
 	scan_desc->ybscan     = ybScan;
 
+	if (index)
+	{
+		RelationClose(index);
+	}
+
 	return scan_desc;
+}
+
+void ybc_index_beginscan(Relation relation,
+						 IndexScanDesc scan_desc,
+						 int nkeys,
+						 ScanKey key)
+{
+	/*
+	 * For rescan, end the previous scan.
+	 */
+	if (scan_desc->opaque)
+	{
+		ybc_index_endscan(scan_desc);
+		scan_desc->opaque = NULL;
+	}
+	scan_desc->opaque = setup_ybcscan_from_scankey(relation, NULL /* index */, nkeys, key);
 }
 
 HeapTuple ybc_scan_getnext(YbScanState scan_state,
@@ -234,6 +315,18 @@ HeapTuple ybc_systable_getnext(SysScanDesc scan_desc)
 	return ybc_scan_getnext(scan_state, nkeys, key);
 }
 
+HeapTuple ybc_index_getnext(IndexScanDesc scan_desc)
+{
+	YbSysScanDesc ybscan = (YbSysScanDesc) scan_desc->opaque;
+	Assert(PointerIsValid(ybscan));
+
+	YbScanState scan_state = ybscan->state;
+	int nkeys = ybscan->nkeys;
+	ScanKey key = ybscan->key;
+
+	return ybc_scan_getnext(scan_state, nkeys, key);
+}
+
 void ybc_heap_endscan(HeapScanDesc scan_desc)
 {
 	Assert(PointerIsValid(scan_desc->ybscan));
@@ -250,4 +343,12 @@ void ybc_systable_endscan(SysScanDesc scan_desc)
 	ybcEndScan(scan_desc->ybscan->state);
 	pfree(scan_desc->ybscan);
 	pfree(scan_desc);
+}
+
+void ybc_index_endscan(IndexScanDesc scan_desc)
+{
+	YbSysScanDesc ybscan = (YbSysScanDesc) scan_desc->opaque;
+	Assert(PointerIsValid(ybscan));
+	ybcEndScan(ybscan->state);
+	pfree(ybscan);
 }

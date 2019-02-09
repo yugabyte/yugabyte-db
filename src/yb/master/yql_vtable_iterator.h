@@ -25,6 +25,7 @@ namespace master {
 class YQLVTableIterator : public common::YQLRowwiseIteratorIf {
  public:
   explicit YQLVTableIterator(const std::unique_ptr<QLRowBlock> vtable);
+  virtual ~YQLVTableIterator();
 
   void SkipRow() override;
 
@@ -35,8 +36,6 @@ class YQLVTableIterator : public common::YQLRowwiseIteratorIf {
   const Schema &schema() const override;
 
   HybridTime RestartReadHt() override { return HybridTime::kInvalid; }
-
-  virtual ~YQLVTableIterator();
 
  private:
   CHECKED_STATUS DoNextRow(const Schema& projection, QLTableRow* table_row) override;

@@ -392,7 +392,7 @@ RemoveStatisticsById(Oid statsOid)
 
 	CacheInvalidateRelcacheByRelid(relid);
 
-	CatalogTupleDelete(relation, &tup->t_self);
+	CatalogTupleDelete(relation, tup);
 
 	ReleaseSysCache(tup);
 

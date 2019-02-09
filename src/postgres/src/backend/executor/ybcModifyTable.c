@@ -126,6 +126,33 @@ static Bitmapset *GetTablePrimaryKey(Relation rel)
 }
 
 /*
+ * Get the ybctid from a YB scan slot for UPDATE/DELETE.
+ */
+Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot)
+{
+	/*
+	 * Look for ybctid in the tuple first if the slot contains a tuple packed with ybctid.
+	 * Otherwise, look for it in the attribute list as a junk attribute.
+	 */
+	if (slot->tts_tuple != NULL && slot->tts_tuple->t_ybctid != 0)
+	{
+		return slot->tts_tuple->t_ybctid;
+	}
+
+	for (int idx = 0; idx < slot->tts_nvalid; idx++)
+	{
+		Form_pg_attribute att = TupleDescAttr(slot->tts_tupleDescriptor, idx);
+		if (strcmp(NameStr(att->attname), "ybctid") == 0 && !slot->tts_isnull[idx])
+		{
+			Assert(att->atttypid == BYTEAOID);
+			return slot->tts_values[idx];
+		}
+	}
+
+	return 0;
+}
+
+/*
  * Insert a tuple into the a relation's backing YugaByte table.
  */
 Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
@@ -156,7 +183,7 @@ Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 		}
 
 		Oid   type_id = GetTypeId(attnum, tupleDesc);
-		Datum datum   = heap_getattr(tuple, attnum, tupleDesc, &is_null);
+		Datum datum = heap_getattr(tuple, attnum, tupleDesc, &is_null);
 
 		/* Check not-null constraint on primary key early */
 		if (is_null && bms_is_member(attnum - minattr, pkey))
@@ -172,12 +199,86 @@ Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 		HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, attnum, ybc_expr), ybc_stmt);
 	}
 
+	/*
+	 * If the relation has indexes, request ybctid of the inserted row to update the indexes.
+	 */
+	if (rel->rd_rel->relhasindex)
+	{
+		YBCPgTypeAttrs type_attrs = { 0 };
+		YBCPgExpr ybc_expr = YBCNewColumnRef(ybc_stmt, YBTupleIdAttributeNumber, InvalidOid,
+											 &type_attrs);
+		HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_stmt, ybc_expr), ybc_stmt);
+	}
+
 	/* Execute the insert and clean up. */
 	HandleYBStmtStatus(YBCPgExecInsert(ybc_stmt), ybc_stmt);
+
+	/*
+	 * If the relation has indexes, save ybctid to insert the new row into the indexes.
+	 */
+	if (rel->rd_rel->relhasindex)
+	{
+		YBCPgSysColumns syscols;
+		bool            has_data = false;
+
+		HandleYBStmtStatus(YBCPgDmlFetch(ybc_stmt,
+										 0 /* natts */,
+										 NULL /* values */,
+										 NULL /* isnulls */,
+										 &syscols,
+										 &has_data),
+						   ybc_stmt);
+		if (has_data && syscols.ybctid != NULL)
+		{
+			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+		}
+	}
+
 	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
 	ybc_stmt = NULL;
 
 	return HeapTupleGetOid(tuple);
+}
+
+/*
+ * Insert a tuple into the an index's backing YugaByte index table.
+ */
+void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum ybctid)
+{
+	Oid            dboid    = YBCGetDatabaseOid(index);
+	Oid            relid    = RelationGetRelid(index);
+	TupleDesc      tupdesc  = RelationGetDescr(index);
+	int            natts    = RelationGetNumberOfAttributes(index);
+	YBCPgStatement ybc_stmt = NULL;
+
+	Assert(index->rd_rel->relkind == RELKIND_INDEX);
+
+	/* Create the INSERT request and add the values from the tuple. */
+	HandleYBStatus(YBCPgNewInsert(ybc_pg_session, dboid, relid, &ybc_stmt));
+	for (AttrNumber attnum = 1; attnum <= natts; attnum++)
+	{
+		Oid   type_id = GetTypeId(attnum, tupdesc);
+		Datum value   = values[attnum - 1];
+		bool  is_null = isnull[attnum - 1];
+
+		/* Add the column value to the insert request */
+		YBCPgExpr ybc_expr = YBCNewConstant(ybc_stmt, type_id, value, is_null);
+		HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, attnum, ybc_expr), ybc_stmt);
+	}
+
+	/*
+	 * Bind the ybctid from the base table to the ybbasectid column.
+	 */
+	Assert(ybctid != 0);
+	YBCPgExpr ybc_expr = YBCNewConstant(ybc_stmt, BYTEAOID, ybctid, false /* is_null */);
+	HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, YBBaseTupleIdAttributeNumber, ybc_expr),
+					   ybc_stmt);
+
+	/* Execute the insert and clean up. */
+	HandleYBStmtStatus(YBCPgExecInsert(ybc_stmt), ybc_stmt);
+
+	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
+	ybc_stmt = NULL;
 }
 
 void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot *slot)
@@ -186,21 +287,8 @@ void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot
 	Oid            relid       = RelationGetRelid(rel);
 	YBCPgStatement delete_stmt = NULL;
 
-	// Find ybctid value.
-	int               idx;
-	Datum             ybctid   = 0;
-	Form_pg_attribute *attrs   = slot->tts_tupleDescriptor->attrs;
-	for (idx = 0; idx < slot->tts_nvalid; idx++)
-	{
-		if (strcmp(NameStr(attrs[idx]->attname), "ybctid") == 0 &&
-		    !slot->tts_isnull[idx])
-		{
-			Assert(attrs[idx]->atttypid == BYTEAOID);
-			ybctid = slot->tts_values[idx];
-		}
-	}
-
-	// Raise error if ybctid is not found.
+	/* Find ybctid value. Raise error if ybctid is not found. */
+	Datum  ybctid = YBCGetYBTupleIdFromSlot(slot);
 	if (ybctid == 0)
 	{
 		ereport(ERROR,
@@ -208,7 +296,7 @@ void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot
 				        "Missing column ybctid in DELETE request to YugaByte database")));
 	}
 
-	// Execute DELETE.
+	/* Execute DELETE. */
 	HandleYBStatus(YBCPgNewDelete(ybc_pg_session, dboid, relid, &delete_stmt));
 
 	/* Bind ybctid to identify the current row. */
@@ -221,6 +309,57 @@ void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot
 	/* Complete execution */
 	HandleYBStatus(YBCPgDeleteStatement(delete_stmt));
 	delete_stmt = NULL;
+}
+
+/*
+ * Delete a tuple into the an index's backing YugaByte index table.
+ */
+void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum ybctid)
+{
+	Oid            dboid    = YBCGetDatabaseOid(index);
+	Oid            relid    = RelationGetRelid(index);
+	TupleDesc      tupdesc  = RelationGetDescr(index);
+	int            natts    = RelationGetNumberOfAttributes(index);
+	YBCPgStatement ybc_stmt = NULL;
+
+	Assert(index->rd_rel->relkind == RELKIND_INDEX);
+
+	/* Create the DELETE request and add the values from the tuple. */
+	HandleYBStatus(YBCPgNewDelete(ybc_pg_session, dboid, relid, &ybc_stmt));
+	for (AttrNumber attnum = 1; attnum <= natts; attnum++)
+	{
+		Oid   type_id = GetTypeId(attnum, tupdesc);
+		Datum value   = values[attnum - 1];
+		bool  is_null = isnull[attnum - 1];
+
+		/* Add the column value to the delete request */
+		YBCPgExpr ybc_expr = YBCNewConstant(ybc_stmt, type_id, value, is_null);
+		HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, attnum, ybc_expr), ybc_stmt);
+	}
+
+	if (!index->rd_index->indisunique)
+	{
+		/*
+		 * Bind the ybctid from the base table to the ybbasectid column.
+		 */
+		if (ybctid == 0)
+		{
+			YBC_LOG_WARNING("Skipping index deletion in %s", RelationGetRelationName(index));
+
+			HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
+			return;
+		}
+
+		YBCPgExpr ybc_expr = YBCNewConstant(ybc_stmt, BYTEAOID, ybctid, false /* is_null */);
+		HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, YBBaseTupleIdAttributeNumber, ybc_expr),
+						   ybc_stmt);
+	}
+
+	/* Execute the delete and clean up. */
+	HandleYBStmtStatus(YBCPgExecDelete(ybc_stmt), ybc_stmt);
+
+	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
+	ybc_stmt = NULL;
 }
 
 void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple, Bitmapset *pkey)
@@ -270,21 +409,8 @@ void YBCExecuteUpdate(Relation rel,
 	Oid            relid       = RelationGetRelid(rel);
 	YBCPgStatement update_stmt = NULL;
 
-	/* Look for ybctid. */
-	int idx;
-	Datum ybctid = 0;
-	Form_pg_attribute *attrs = tupleDesc->attrs;
-
-	for (idx = 0; idx < slot->tts_nvalid; idx++)
-	{
-		if (strcmp(NameStr(attrs[idx]->attname), "ybctid") == 0 &&	!slot->tts_isnull[idx])
-		{
-			Assert(attrs[idx]->atttypid == BYTEAOID);
-			ybctid = slot->tts_values[idx];
-		}
-	}
-
-	/* Raise error if ybctid is not found. */
+	/* Look for ybctid. Raise error if ybctid is not found. */
+	Datum ybctid = YBCGetYBTupleIdFromSlot(slot);
 	if (ybctid == 0)
 	{
 		ereport(ERROR,
@@ -303,7 +429,7 @@ void YBCExecuteUpdate(Relation rel,
 
 	/* Assign new values to columns for updating the current row. */
 	Form_pg_attribute *table_attrs = rel->rd_att->attrs;
-	for (idx = 0; idx < rel->rd_att->natts; idx++)
+	for (int idx = 0; idx < rel->rd_att->natts; idx++)
 	{
 		AttrNumber attnum = table_attrs[idx]->attnum;
 
@@ -317,6 +443,14 @@ void YBCExecuteUpdate(Relation rel,
 	HandleYBStmtStatus(YBCPgExecUpdate(update_stmt), update_stmt);
 	HandleYBStatus(YBCPgDeleteStatement(update_stmt));
 	update_stmt = NULL;
+
+	/*
+	 * If the relation has indexes, save the ybctid to insert the updated row into the indexes.
+	 */
+	if (rel->rd_rel->relhasindex)
+	{
+		tuple->t_ybctid = ybctid;
+	}
 }
 
 void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple tuple)

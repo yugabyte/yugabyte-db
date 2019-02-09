@@ -2781,15 +2781,18 @@ CopyFrom(CopyState cstate)
 					List	   *recheckIndexes = NIL;
 
 					/* OK, store the tuple and create index entries for it */
-					if (IsYugaByteEnabled()){
+					if (IsYugaByteEnabled())
+					{
 						YBCExecuteInsert(cstate->rel, tupDesc, tuple);
-					} else {
+					}
+					else
+					{
 						heap_insert(resultRelInfo->ri_RelationDesc, tuple, mycid,
-								hi_options, bistate);
+									hi_options, bistate);
 					}
 					if (resultRelInfo->ri_NumIndices > 0)
 						recheckIndexes = ExecInsertIndexTuples(slot,
-															   &(tuple->t_self),
+															   tuple,
 															   estate,
 															   false,
 															   NULL,
@@ -2947,7 +2950,7 @@ CopyFromInsertBatch(CopyState cstate, EState *estate, CommandId mycid,
 			cstate->cur_lineno = firstBufferedLineNo + i;
 			ExecStoreTuple(bufferedTuples[i], myslot, InvalidBuffer, false);
 			recheckIndexes =
-				ExecInsertIndexTuples(myslot, &(bufferedTuples[i]->t_self),
+				ExecInsertIndexTuples(myslot, bufferedTuples[i],
 									  estate, false, NULL, NIL);
 			ExecARInsertTriggers(estate, resultRelInfo,
 								 bufferedTuples[i],

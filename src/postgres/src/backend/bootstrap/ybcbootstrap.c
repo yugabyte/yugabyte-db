@@ -45,13 +45,13 @@
 
 #include "parser/parser.h"
 
-void YBCAddSysCatalogColumn(YBCPgStatement yb_stmt,
-                            IndexStmt *pkey_idx,
-                            const char *attname,
-                            int attnum,
-                            Oid type_id,
-                            int32 typmod,
-                            bool key)
+static void YBCAddSysCatalogColumn(YBCPgStatement yb_stmt,
+								   IndexStmt *pkey_idx,
+								   const char *attname,
+								   int attnum,
+								   Oid type_id,
+								   int32 typmod,
+								   bool key)
 {
 
 	ListCell      *lc;
@@ -85,10 +85,10 @@ void YBCAddSysCatalogColumn(YBCPgStatement yb_stmt,
 	}
 }
 
-void YBCAddSysCatalogColumns(YBCPgStatement yb_stmt,
-                             TupleDesc tupdesc,
-                             IndexStmt *pkey_idx,
-                             const bool key)
+static void YBCAddSysCatalogColumns(YBCPgStatement yb_stmt,
+									TupleDesc tupdesc,
+									IndexStmt *pkey_idx,
+									const bool key)
 {
 	if (tupdesc->tdhasoid)
 	{
