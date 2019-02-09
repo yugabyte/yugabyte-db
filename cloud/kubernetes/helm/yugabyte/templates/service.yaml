@@ -28,7 +28,6 @@ data:
   node.{{$node}}.crt: {{ $server.Cert | b64enc }}
   node.{{$node}}.key: {{ $server.Key | b64enc }}
 {{- end }}
-  ca.key: {{ $rootCA.Key | b64enc }}
   ca.crt: {{ $rootCA.Cert | b64enc }}
 {{- end }}
 
@@ -230,7 +229,7 @@ spec:
           - "--fs_data_dirs={{range $index := until (int ($storageInfo.count))}}{{if ne $index 0}},{{end}}/mnt/disk{{ $index }}{{end}}"
           - "--server_broadcast_addresses=$(HOSTNAME).yb-tservers.$(NAMESPACE):9100"
           - "--rpc_bind_addresses=$(HOSTNAME).yb-tservers.$(NAMESPACE).svc.cluster.local"
-          - "--cql_proxy_bind_address=$(HOSTNAME).yb-tservers.$(NAMESPACE).svc.cluster.local"          
+          - "--cql_proxy_bind_address=$(HOSTNAME).yb-tservers.$(NAMESPACE).svc.cluster.local"
           {{ if $root.Values.enablePostgres }}
           - "--start_pgsql_proxy"
           - "--pgsql_proxy_bind_address=$(POD_IP):5433"
