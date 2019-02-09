@@ -73,6 +73,7 @@
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/thread.h"
 #include "yb/util/version_info.h"
+#include "yb/gutil/sysinfo.h"
 
 DEFINE_int32(num_reactor_threads, -1,
              "Number of libev reactor threads to start. If -1, the value is automatically set.");
@@ -193,7 +194,7 @@ Status RpcServerBase::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   if (FLAGS_num_reactor_threads == -1) {
     // Auto set the number of reactors based on the number of cores.
     FLAGS_num_reactor_threads =
-        std::min(16, static_cast<int>(std::thread::hardware_concurrency()));
+        std::min(16, static_cast<int>(base::NumCPUs()));
     LOG(INFO) << "Auto setting FLAGS_num_reactor_threads to " << FLAGS_num_reactor_threads;
   }
 

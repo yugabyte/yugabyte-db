@@ -90,6 +90,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
+#include "yb/gutil/sysinfo.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -397,7 +398,7 @@ Status TSTabletManager::Init() {
   // FsManager isn't initialized until this point.
   int max_bootstrap_threads = FLAGS_num_tablets_to_open_simultaneously;
   if (max_bootstrap_threads == 0) {
-    size_t num_cpus = std::thread::hardware_concurrency();
+    size_t num_cpus = base::NumCPUs();
     if (num_cpus <= 2) {
       max_bootstrap_threads = 2;
     } else {
