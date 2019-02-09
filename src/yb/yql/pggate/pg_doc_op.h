@@ -53,7 +53,7 @@ class PgDocOp {
   Status exec_status() {
     return exec_status_;
   }
-  bool EndOfResult() const;
+  Result<bool> EndOfResult() const;
 
  protected:
   virtual void InitUnlocked(std::unique_lock<std::mutex>* lock);

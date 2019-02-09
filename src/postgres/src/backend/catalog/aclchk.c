@@ -1488,7 +1488,7 @@ RemoveDefaultACLById(Oid defaclOid)
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "could not find tuple for default ACL %u", defaclOid);
 
-	CatalogTupleDelete(rel, &tuple->t_self);
+	CatalogTupleDelete(rel, tuple);
 
 	systable_endscan(scan);
 	heap_close(rel, RowExclusiveLock);
@@ -5781,7 +5781,7 @@ recordExtensionInitPrivWorker(Oid objoid, Oid classoid, int objsubid, Acl *new_a
 		else
 		{
 			/* new_acl is NULL, so delete the entry we found. */
-			CatalogTupleDelete(relation, &oldtuple->t_self);
+			CatalogTupleDelete(relation, oldtuple);
 		}
 	}
 	else

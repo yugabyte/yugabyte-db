@@ -83,8 +83,8 @@ class PgDml : public PgStatement {
   // Update set values.
   CHECKED_STATUS UpdateAssignPBs();
 
-  // Indicate in the protobuf that the given column must be read before the statement is processed.
-  static void AddColumnRefIds(PgTableDesc::ScopedRefPtr table_desc, PgsqlColumnRefsPB *column_refs);
+  // Indicate in the protobuf what columns must be read before the statement is processed.
+  static void SetColumnRefIds(PgTableDesc::ScopedRefPtr table_desc, PgsqlColumnRefsPB *column_refs);
 
   // -----------------------------------------------------------------------------------------------
   // Data members that define the DML statement.
@@ -111,8 +111,8 @@ class PgDml : public PgStatement {
   //
   // * Bind values are used to identify the selected rows to be operated on.
   // * Set values are used to hold columns' new values in the selected rows.
-  std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
   string ybctid_bind_;
+  std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
   std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_assigns_;
 
   // DML Operator.

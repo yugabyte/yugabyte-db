@@ -526,9 +526,10 @@ extern int	ExecCleanTargetListLength(List *targetlist);
  */
 extern void ExecOpenIndices(ResultRelInfo *resultRelInfo, bool speculative);
 extern void ExecCloseIndices(ResultRelInfo *resultRelInfo);
-extern List *ExecInsertIndexTuples(TupleTableSlot *slot, ItemPointer tupleid,
+extern List *ExecInsertIndexTuples(TupleTableSlot *slot, HeapTuple tuple,
 					  EState *estate, bool noDupErr, bool *specConflict,
 					  List *arbiterIndexes);
+extern void ExecDeleteIndexTuples(TupleTableSlot *slot, EState *estate);
 extern bool ExecCheckIndexConstraints(TupleTableSlot *slot, EState *estate,
 						  ItemPointer conflictTid, List *arbiterIndexes);
 extern void check_exclusion_constraint(Relation heap, Relation index,

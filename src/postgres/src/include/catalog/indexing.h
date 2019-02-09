@@ -38,7 +38,7 @@ extern void CatalogTupleUpdate(Relation heapRel, ItemPointer otid,
 extern void CatalogTupleUpdateWithInfo(Relation heapRel,
 						   ItemPointer otid, HeapTuple tup,
 						   CatalogIndexState indstate);
-extern void CatalogTupleDelete(Relation heapRel, ItemPointer tid);
+extern void CatalogTupleDelete(Relation heapRel, HeapTuple tup);
 
 
 /*

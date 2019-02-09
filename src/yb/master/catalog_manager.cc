@@ -1943,12 +1943,23 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
     table_req.set_is_pg_catalog_table(true);
     table_req.set_table_id(table_id);
 
+    TableId indexed_table_id;
+    if (!l->data().pb.indexed_table_id().empty()) {
+      const uint32_t indexed_table_oid =
+          VERIFY_RESULT(GetPgsqlTableOid(l->data().pb.indexed_table_id()));
+      indexed_table_id = GetPgsqlTableId(database_oid, indexed_table_oid);
+      table_req.set_indexed_table_id(indexed_table_id);
+      table_req.set_is_local_index(l->data().pb.is_local_index());
+      table_req.set_is_unique_index(l->data().pb.is_unique_index());
+    }
+
     const Status s = CreatePgsqlSysTable(&table_req, &table_resp, rpc);
     if (!s.ok()) {
       return SetupError(resp->mutable_error(), table_resp.error().code(), s);
     }
 
-    RETURN_NOT_OK(sys_catalog_->CopyPgsqlTable(table->id(), table_id, leader_ready_term_));
+    RETURN_NOT_OK(sys_catalog_->CopyPgsqlTable(table->id(), table_id, indexed_table_id,
+                                               leader_ready_term_));
   }
   return Status::OK();
 }
@@ -4281,6 +4292,8 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
       metadata->set_database_type(req->database_type());
     }
 
+    // For namespace created for a Postgres database, save the list of tables and indexes for
+    // for the database that need to be copied.
     if (req->database_type() == YQL_DATABASE_PGSQL) {
       if (req->source_namespace_id().empty()) {
         metadata->set_next_pg_oid(req->next_pg_oid());
@@ -4291,9 +4304,12 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                             source_oid.status());
         }
         for (const auto& iter : table_ids_map_) {
-          if (IsPgsqlId(iter.first) &&
-              CHECK_RESULT(GetPgsqlDatabaseOid(iter.first)) == *source_oid) {
-            pgsql_tables.push_back(iter.second);
+          const auto& table_id = iter.first;
+          const auto& table = iter.second;
+          if (IsPgsqlId(table_id) && CHECK_RESULT(GetPgsqlDatabaseOid(table_id)) == *source_oid) {
+            // Since indexes have dependencies on the base tables, put the tables in the front.
+            const bool is_table = table->indexed_table_id().empty();
+            pgsql_tables.insert(is_table ? pgsql_tables.begin() : pgsql_tables.end(), table);
           }
         }
 
@@ -4343,10 +4359,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
   }
 
   if (req->database_type() == YQL_DATABASE_PGSQL && !pgsql_tables.empty()) {
-    s = CopyPgsqlSysTables(ns->id(), pgsql_tables, resp, rpc);
-    if (!s.ok()) {
-      return s;
-    }
+    RETURN_NOT_OK(CopyPgsqlSysTables(ns->id(), pgsql_tables, resp, rpc));
   }
 
   return Status::OK();

@@ -1,0 +1,10 @@
+--
+-- COPY
+--
+-- CLASS POPULATION
+--	(any resemblance to real life is purely coincidental)
+--
+COPY onek FROM '@abs_srcdir@/data/onek.data';
+COPY onek TO '@abs_builddir@/results/onek.data';
+DELETE FROM onek;
+COPY onek FROM '@abs_builddir@/results/onek.data';

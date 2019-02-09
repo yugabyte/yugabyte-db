@@ -194,6 +194,7 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 //     contain bind-variables (placeholders) and contants whose values can be updated for each
 //     execution of the same allocated statement.
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
+YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 
 // API for SET clause.
 YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
@@ -245,6 +246,7 @@ YBCStatus YBCPgExecDelete(YBCPgStatement handle);
 YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
                          YBCPgOid database_oid,
                          YBCPgOid table_oid,
+                         YBCPgOid index_oid,
                          YBCPgStatement *handle,
                          uint64_t* read_time);
 

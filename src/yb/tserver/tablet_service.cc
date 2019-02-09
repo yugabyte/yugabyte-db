@@ -83,6 +83,8 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/tserver/service_util.h"
 
+#include "yb/yql/pggate/util/pg_doc_data.h"
+
 using namespace std::literals;  // NOLINT
 
 DEFINE_int32(scanner_default_batch_size_bytes, 64 * 1024,
@@ -272,10 +274,27 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
       int rows_data_sidecar_idx = 0;
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
           context_->AddRpcSidecar(RefCntBuffer(rows_data), &rows_data_sidecar_idx),
-          response_,
-          context_.get());
+          response_, context_.get());
       ql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
     }
+
+    // Retrieve the resultset returned from the PGSQL write operations and return them as RPC
+    // sidecars.
+    for (const auto& pgsql_write_op : *state_->pgsql_write_ops()) {
+      auto* pgsql_write_resp = pgsql_write_op->response();
+      const PgsqlResultSet& resultset = pgsql_write_op->resultset();
+      if (resultset.rsrow_count() > 0) {
+        faststring rows_data;
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+            pggate::PgDocData::WriteTuples(resultset, &rows_data), response_, context_.get());
+        int rows_data_sidecar_idx = 0;
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+            context_->AddRpcSidecar(RefCntBuffer(rows_data), &rows_data_sidecar_idx),
+            response_, context_.get());
+        pgsql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
+      }
+    }
+
     if (include_trace_ && Trace::CurrentTrace() != nullptr) {
       response_->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
     }

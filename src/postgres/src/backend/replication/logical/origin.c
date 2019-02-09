@@ -413,7 +413,7 @@ restart:
 		elog(ERROR, "cache lookup failed for replication origin with oid %u",
 			 roident);
 
-	CatalogTupleDelete(rel, &tuple->t_self);
+	CatalogTupleDelete(rel, tuple);
 	ReleaseSysCache(tuple);
 
 	CommandCounterIncrement();

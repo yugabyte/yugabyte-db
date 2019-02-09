@@ -398,6 +398,14 @@ Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
 }
 
+Status PgApiImpl::DmlBindIndexColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  return down_cast<PgSelect*>(handle)->BindIndexColumn(attr_num, attr_value);
+}
+
 CHECKED_STATUS PgApiImpl::DmlAssignColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
   return down_cast<PgDml*>(handle)->AssignColumn(attr_num, attr_value);
 }
@@ -474,11 +482,15 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
 
 Status PgApiImpl::NewSelect(PgSession *pg_session,
                             const PgObjectId& table_id,
+                            const PgObjectId& index_id,
                             PgStatement **handle,
                             uint64_t* read_time) {
   DCHECK(pg_session) << "Invalid session handle";
   *handle = nullptr;
   auto stmt = make_scoped_refptr<PgSelect>(pg_session, table_id);
+  if (index_id.IsValid()) {
+    stmt->UseIndex(index_id);
+  }
   RETURN_NOT_OK(stmt->Prepare(read_time));
   *handle = stmt.detach();
   return Status::OK();

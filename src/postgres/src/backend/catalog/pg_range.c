@@ -129,7 +129,7 @@ RangeDelete(Oid rangeTypeOid)
 
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
-		CatalogTupleDelete(pg_range, &tup->t_self);
+		CatalogTupleDelete(pg_range, tup);
 	}
 
 	systable_endscan(scan);

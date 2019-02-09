@@ -187,27 +187,42 @@ Datum YBCCharToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_a
 }
 
 /*
- * CSTRING conversion.
+ * NAME/CSTRING conversion.
  */
 void YBCDatumToStr(Datum datum, char **data, int64 *bytes) {
 	*data = DatumGetCString(datum);
 	*bytes = strlen(*data);
 }
 
-Datum YBCStrToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
-  /* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
-  if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
+Datum YBCStrToNameDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+	/* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
+	if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
 		ereport(ERROR, (errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-										errmsg("Invalid data size")));
+						errmsg("Invalid data size")));
+	}
+
+	/* Allocate Postgres's buffer, copy data from YugaByte, and null-terminate the name.
+	 * We use palloc0 here to ensure result is zero-padded
+	 */
+	if (bytes >= NAMEDATALEN)
+		bytes = pg_mbcliplen(data, bytes, NAMEDATALEN - 1);
+	NameData *result = palloc0(sizeof(NameData));
+	memcpy(NameStr(*result), data, bytes);
+	return NameGetDatum(result);
+}
+
+Datum YBCStrToCStringDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+	/* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
+	if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
+		ereport(ERROR, (errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+						errmsg("Invalid data size")));
 	}
 
 	/* Allocate Postgres's buffer, copy data from YugaByte, and null-terminate the cstring.
-	 * We use palloc0 here to ensure result is zero-padded
 	 */
-	if (bytes >= type_attrs->typmod)
-		bytes = pg_mbcliplen(data, bytes, type_attrs->typmod - 1);
-	char *result = palloc0(type_attrs->typmod);
+	char *result = palloc(bytes + 1);
 	memcpy(result, data, bytes);
+	result[bytes] = '\0';
 	return CStringGetDatum(result);
 }
 
@@ -303,7 +318,7 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 
 	{ NAMEOID, YB_YQL_DATA_TYPE_STRING, true,
 		(YBCPgDatumToData)YBCDatumToStr,
-		(YBCPgDatumFromData)YBCStrToDatum },
+		(YBCPgDatumFromData)YBCStrToNameDatum },
 
 	{ INT8OID, YB_YQL_DATA_TYPE_INT64, true,
 		(YBCPgDatumToData)YBCDatumToInt64,
@@ -611,7 +626,7 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 
 	{ CSTRINGOID, YB_YQL_DATA_TYPE_STRING, true,
 		(YBCPgDatumToData)YBCDatumToStr,
-		(YBCPgDatumFromData)YBCStrToDatum },
+		(YBCPgDatumFromData)YBCStrToCStringDatum },
 
 	{ ANYOID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, false,
 		(YBCPgDatumToData)NULL,

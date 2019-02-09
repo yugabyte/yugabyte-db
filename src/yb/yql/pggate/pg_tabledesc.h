@@ -50,15 +50,15 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
     return columns_;
   }
 
-  const int32_t num_hash_key_columns() const {
+  const size_t num_hash_key_columns() const {
     return table_->schema().num_hash_key_columns();
   }
 
-  const int32_t num_key_columns() const {
+  const size_t num_key_columns() const {
     return table_->schema().num_key_columns();
   }
 
-  const int32_t num_columns() const {
+  const size_t num_columns() const {
     return table_->schema().num_columns();
   }
 

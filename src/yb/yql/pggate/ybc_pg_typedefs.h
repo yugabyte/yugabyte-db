@@ -153,6 +153,7 @@ typedef struct PgSysColumns {
 
   // Yugabyte system columns.
   uint8_t *ybctid;
+  uint8_t *ybbasectid;
 } YBCPgSysColumns;
 
 #ifdef __cplusplus

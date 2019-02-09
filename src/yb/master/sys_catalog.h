@@ -161,6 +161,7 @@ class SysCatalogTable {
   // Copy the content of a co-located table in sys catalog.
   CHECKED_STATUS CopyPgsqlTable(const TableId& source_table_id,
                                 const TableId& target_table_id,
+                                const TableId& target_indexed_table_id,
                                 int64_t leader_term);
 
  private:

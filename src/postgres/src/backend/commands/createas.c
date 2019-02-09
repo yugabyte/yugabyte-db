@@ -603,9 +603,12 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 	if (myState->rel->rd_rel->relhasoids)
 		HeapTupleSetOid(tuple, InvalidOid);
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		YBCExecuteInsert(myState->rel, RelationGetDescr(myState->rel), tuple);
-	} else {
+	}
+	else
+	{
 		heap_insert(myState->rel,
 								tuple,
 								myState->output_cid,

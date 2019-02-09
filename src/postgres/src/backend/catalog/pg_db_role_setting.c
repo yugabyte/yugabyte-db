@@ -91,7 +91,7 @@ AlterSetting(Oid databaseid, Oid roleid, VariableSetStmt *setstmt)
 				CatalogTupleUpdate(rel, &tuple->t_self, newtuple);
 			}
 			else
-				CatalogTupleDelete(rel, &tuple->t_self);
+				CatalogTupleDelete(rel, tuple);
 		}
 	}
 	else if (HeapTupleIsValid(tuple))
@@ -129,7 +129,7 @@ AlterSetting(Oid databaseid, Oid roleid, VariableSetStmt *setstmt)
 			CatalogTupleUpdate(rel, &tuple->t_self, newtuple);
 		}
 		else
-			CatalogTupleDelete(rel, &tuple->t_self);
+			CatalogTupleDelete(rel, tuple);
 	}
 	else if (valuestr)
 	{
@@ -199,7 +199,7 @@ DropSetting(Oid databaseid, Oid roleid)
 	scan = heap_beginscan_catalog(relsetting, numkeys, keys);
 	while (HeapTupleIsValid(tup = heap_getnext(scan, ForwardScanDirection)))
 	{
-		CatalogTupleDelete(relsetting, &tup->t_self);
+		CatalogTupleDelete(relsetting, tup);
 	}
 	heap_endscan(scan);
 

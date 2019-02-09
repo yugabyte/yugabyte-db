@@ -204,13 +204,13 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
 
     QLRowBlock row_block(schema, vector<ColumnId> ({ColumnId(0), ColumnId(1), ColumnId(2),
                                                         ColumnId(3)}));
-    const Schema& query_schema = row_block.schema();
+    const Schema& projection = row_block.schema();
     QLRSRowDescPB *rsrow_desc_pb = ql_read_req.mutable_rsrow_desc();
     for (int32_t i = 0; i <= 3 ; i++) {
       ql_read_req.add_selected_exprs()->set_column_id(i);
       ql_read_req.mutable_column_refs()->add_ids(i);
 
-      auto col = query_schema.column_by_id(ColumnId(i));
+      auto col = projection.column_by_id(ColumnId(i));
       EXPECT_OK(col);
       QLRSColDescPB *rscol_desc = rsrow_desc_pb->add_rscol_descs();
       rscol_desc->set_name(col->name());
@@ -225,7 +225,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     HybridTime read_restart_ht;
     EXPECT_OK(read_op.Execute(
         ql_storage, MonoTime::Max() /* deadline */, ReadHybridTime::SingleTime(read_time),
-        schema, query_schema, &resultset, &read_restart_ht));
+        schema, projection, &resultset, &read_restart_ht));
     EXPECT_FALSE(read_restart_ht.is_valid());
 
     // Transfer the column values from result set to rowblock.

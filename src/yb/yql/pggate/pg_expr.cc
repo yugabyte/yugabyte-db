@@ -198,6 +198,12 @@ void PgExpr::TranslateYBCtid(Slice *yb_cursor, const PgWireDataHeader& header, i
   TranslateSysCol(yb_cursor, header, pg_tuple, &pg_tuple->syscols()->ybctid);
 }
 
+void PgExpr::TranslateYBBasectid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                                 const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                                 PgTuple *pg_tuple) {
+  TranslateSysCol(yb_cursor, header, pg_tuple, &pg_tuple->syscols()->ybbasectid);
+}
+
 Status PgExpr::ReadHashValue(const char *doc_key, int key_size, uint16_t *hash_value) {
   // Because DocDB is using its own encoding for the key, we hack the system to read hash_value.
   if (doc_key == NULL || key_size < sizeof(hash_value) + 1) {
@@ -425,29 +431,32 @@ PgColumnRef::PgColumnRef(int attr_num,
   if (attr_num_ < 0) {
     // Setup system columns.
     switch (attr_num_) {
-      case static_cast<int>(PgSystemAttrNum::kSelfItemPointerAttributeNumber):
+      case static_cast<int>(PgSystemAttrNum::kSelfItemPointer):
         translate_data_ = TranslateCtid;
         break;
-      case static_cast<int>(PgSystemAttrNum::kObjectIdAttributeNumber):
+      case static_cast<int>(PgSystemAttrNum::kObjectId):
         translate_data_ = TranslateOid;
         break;
-      case static_cast<int>(PgSystemAttrNum::kMinTransactionIdAttributeNumber):
+      case static_cast<int>(PgSystemAttrNum::kMinTransactionId):
         translate_data_ = TranslateXmin;
         break;
-      case static_cast<int>(PgSystemAttrNum::kMinCommandIdAttributeNumber):
+      case static_cast<int>(PgSystemAttrNum::kMinCommandId):
         translate_data_ = TranslateCmin;
         break;
-      case static_cast<int>(PgSystemAttrNum::kMaxTransactionIdAttributeNumber):
+      case static_cast<int>(PgSystemAttrNum::kMaxTransactionId):
         translate_data_ = TranslateXmax;
         break;
-      case static_cast<int>(PgSystemAttrNum::kMaxCommandIdAttributeNumber):
+      case static_cast<int>(PgSystemAttrNum::kMaxCommandId):
         translate_data_ = TranslateCmax;
         break;
-      case static_cast<int>(PgSystemAttrNum::kTableOidAttributeNumber):
+      case static_cast<int>(PgSystemAttrNum::kTableOid):
         translate_data_ = TranslateTableoid;
         break;
       case static_cast<int>(PgSystemAttrNum::kYBTupleId):
         translate_data_ = TranslateYBCtid;
+        break;
+      case static_cast<int>(PgSystemAttrNum::kYBBaseTupleId):
+        translate_data_ = TranslateYBBasectid;
         break;
     }
   } else {
