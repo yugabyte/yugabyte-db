@@ -194,7 +194,8 @@ class ThreadSafeObjectPool {
 
   explicit ThreadSafeObjectPool(Factory factory, Deleter deleter = std::default_delete<T>())
       : factory_(std::move(factory)), deleter_(std::move(deleter)) {
-    auto num_cpus = base::NumCPUs();
+    // Need the actual number of CPUs, so we do not use the Gflag value
+    auto num_cpus = base::RawNumCPUs();
     pools_.reserve(num_cpus);
     while (pools_.size() != num_cpus) {
       pools_.emplace_back(50);

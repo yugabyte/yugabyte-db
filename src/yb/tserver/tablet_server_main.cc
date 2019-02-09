@@ -124,6 +124,8 @@ static int TabletServerMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(TabletServerOptions::kServerType, argv[0]));
 
+  LOG(INFO) << "NumCPUs determined to be: " << base::NumCPUs();
+
 #ifdef TCMALLOC_ENABLED
   LOG(INFO) << "Setting tcmalloc max thread cache bytes to: " <<
     FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes;

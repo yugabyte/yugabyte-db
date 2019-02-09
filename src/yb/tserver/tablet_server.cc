@@ -56,6 +56,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/gutil/strings/split.h"
+#include "yb/gutil/sysinfo.h"
 
 using std::make_shared;
 using std::shared_ptr;
@@ -242,7 +243,7 @@ Status TabletServer::WaitInited() {
 }
 
 void TabletServer::AutoInitServiceFlags() {
-  const int32 num_cores = std::thread::hardware_concurrency();
+  const int32 num_cores = base::NumCPUs();
 
   if (FLAGS_tablet_server_svc_num_threads == -1) {
     // Auto select number of threads for the TS service based on number of cores.

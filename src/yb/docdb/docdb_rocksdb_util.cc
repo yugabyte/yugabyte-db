@@ -27,6 +27,7 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/trace.h"
+#include "yb/gutil/sysinfo.h"
 
 using namespace yb::size_literals;  // NOLINT.
 
@@ -373,10 +374,10 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
 namespace {
 
 std::mutex rocksdb_flags_mutex;
-const int kNumCpus = std::thread::hardware_concurrency();
 
 // Auto initialize some of the RocksDB flags that are defaulted to -1.
 void AutoInitRocksDBFlags(rocksdb::Options* options) {
+  const int kNumCpus = base::NumCPUs();
   std::unique_lock<std::mutex> lock(rocksdb_flags_mutex);
 
   if (FLAGS_rocksdb_max_background_flushes == -1) {
