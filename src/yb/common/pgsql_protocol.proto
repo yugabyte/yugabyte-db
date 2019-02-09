@@ -220,6 +220,11 @@ message PgsqlReadRequestPB {
   optional uint32 hash_code = 4;
   repeated PgsqlExpressionPB partition_column_values = 5;
   repeated PgsqlExpressionPB range_column_values = 18;
+  optional PgsqlExpressionPB ybctid_column_value = 20;
+
+  // For select using local secondary index: this request selects the ybbasectids to fetch the rows
+  // in place of the primary key above.
+  optional PgsqlReadRequestPB index_request = 21;
 
   //------------------------------------------------------------------------------------------------
   // Tuple descriptor.

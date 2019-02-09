@@ -595,7 +595,19 @@ void DocRowwiseIterator::GoToScanTarget(const DocKey &new_target) const {
 }
 
 Result<string> DocRowwiseIterator::GetRowKey() const {
+  if (!status_.ok()) {
+    return status_;
+  }
   return std::move(*row_key_.Encode().mutable_data());
+}
+
+Status DocRowwiseIterator::Seek(const std::string& row_key) {
+  DocKey doc_key;
+  RETURN_NOT_OK(doc_key.DecodeFrom(Slice(row_key)));
+  db_iter_->Seek(doc_key);
+  iter_key_.Clear();
+  row_ready_ = false;
+  return Status::OK();
 }
 
 }  // namespace docdb

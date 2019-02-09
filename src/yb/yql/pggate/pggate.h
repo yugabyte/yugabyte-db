@@ -222,6 +222,7 @@ class PgApiImpl {
   //     contain bind-variables (placeholders) and contants whose values can be updated for each
   //     execution of the same allocated statement.
   CHECKED_STATUS DmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
+  CHECKED_STATUS DmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 
   // API for SET clause.
   CHECKED_STATUS DmlAssignColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
@@ -261,8 +262,8 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Select.
-  CHECKED_STATUS NewSelect(
-      PgSession *pg_session, const PgObjectId& table_id, PgStatement **handle, uint64_t* read_time);
+  CHECKED_STATUS NewSelect(PgSession *pg_session, const PgObjectId& table_id,
+                           const PgObjectId& index_id, PgStatement **handle, uint64_t* read_time);
 
   CHECKED_STATUS ExecSelect(PgStatement *handle);
 

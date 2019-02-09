@@ -164,7 +164,7 @@ unique_key_recheck(PG_FUNCTION_ARGS)
 		 * correct even if t_self is now dead, because that is the TID the
 		 * index will know about.
 		 */
-		index_insert(indexRel, values, isnull, &(new_row->t_self),
+		index_insert(indexRel, values, isnull, &(new_row->t_self), new_row,
 					 trigdata->tg_relation, UNIQUE_CHECK_EXISTING,
 					 indexInfo);
 	}

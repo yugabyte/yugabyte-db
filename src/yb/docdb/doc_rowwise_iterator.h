@@ -107,6 +107,9 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   virtual Result<std::string> GetRowKey() const override;
 
+  // Seek to the given key.
+  virtual CHECKED_STATUS Seek(const std::string& row_key) override;
+
  private:
 
   // Retrieves the next key to read after the iterator finishes for the given page.

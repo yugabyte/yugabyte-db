@@ -104,8 +104,8 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(
-      pg_session_, kDefaultDatabaseOid, tab_oid, &pg_stmt, nullptr /* read_time */));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt,
+                                  nullptr /* read_time */));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -173,8 +173,8 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(
-      pg_session_, kDefaultDatabaseOid, tab_oid, &pg_stmt, nullptr /* read_time */));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt,
+                                  nullptr /* read_time */));
 
   // Specify the selected expressions.
   YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
@@ -280,8 +280,8 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table";
-  CHECK_YBC_STATUS(YBCPgNewSelect(
-      pg_session_, kDefaultDatabaseOid, tab_oid, &pg_stmt, nullptr /* read_time */));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt,
+                                  nullptr /* read_time */));
 
   // Specify the selected expressions.
   YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
@@ -412,8 +412,8 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Select from from test table in the new database";
-  CHECK_YBC_STATUS(YBCPgNewSelect(
-      pg_session_, copy_db_oid, tab_oid, &pg_stmt, nullptr /* read_time */));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, copy_db_oid, tab_oid, kInvalidOid, &pg_stmt,
+                                  nullptr /* read_time */));
 
   // Specify the selected expressions.
   YBCPgExpr colref;

@@ -128,7 +128,7 @@ RemoveAccessMethodById(Oid amOid)
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for access method %u", amOid);
 
-	CatalogTupleDelete(relation, &tup->t_self);
+	CatalogTupleDelete(relation, tup);
 
 	ReleaseSysCache(tup);
 

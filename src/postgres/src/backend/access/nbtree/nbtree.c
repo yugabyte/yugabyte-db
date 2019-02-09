@@ -148,7 +148,7 @@ bthandler(PG_FUNCTION_ARGS)
 
 		amroutine->ambuild = ybcinbuild;
 		amroutine->ambuildempty = ybcinbuildempty;
-		amroutine->aminsert = ybcininsert;
+		amroutine->aminsert = NULL; /* use yb_aminsert below instead */
 		amroutine->ambulkdelete = ybcinbulkdelete;
 		amroutine->amvacuumcleanup = ybcinvacuumcleanup;
 		amroutine->amcanreturn = ybcincanreturn;
@@ -166,6 +166,8 @@ bthandler(PG_FUNCTION_ARGS)
 		amroutine->amestimateparallelscan = NULL; /* TODO: support parallel scan */
 		amroutine->aminitparallelscan = NULL;
 		amroutine->amparallelrescan = NULL;
+		amroutine->yb_aminsert = ybcininsert;
+		amroutine->yb_amdelete = ybcindelete;
 	}
 	else
 	{

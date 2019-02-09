@@ -1066,7 +1066,7 @@ DropRole(DropRoleStmt *stmt)
 		/*
 		 * Remove the role from the pg_authid table
 		 */
-		CatalogTupleDelete(pg_authid_rel, &tuple->t_self);
+		CatalogTupleDelete(pg_authid_rel, tuple);
 
 		ReleaseSysCache(tuple);
 
@@ -1086,7 +1086,7 @@ DropRole(DropRoleStmt *stmt)
 
 		while (HeapTupleIsValid(tmp_tuple = systable_getnext(sscan)))
 		{
-			CatalogTupleDelete(pg_auth_members_rel, &tmp_tuple->t_self);
+			CatalogTupleDelete(pg_auth_members_rel, tmp_tuple);
 		}
 
 		systable_endscan(sscan);
@@ -1101,7 +1101,7 @@ DropRole(DropRoleStmt *stmt)
 
 		while (HeapTupleIsValid(tmp_tuple = systable_getnext(sscan)))
 		{
-			CatalogTupleDelete(pg_auth_members_rel, &tmp_tuple->t_self);
+			CatalogTupleDelete(pg_auth_members_rel, tmp_tuple);
 		}
 
 		systable_endscan(sscan);
@@ -1628,7 +1628,7 @@ DelRoleMems(const char *rolename, Oid roleid,
 		if (!admin_opt)
 		{
 			/* Remove the entry altogether */
-			CatalogTupleDelete(pg_authmem_rel, &authmem_tuple->t_self);
+			CatalogTupleDelete(pg_authmem_rel, authmem_tuple);
 		}
 		else
 		{

@@ -2307,17 +2307,12 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 		attrno = attnameAttNum(pstate->p_target_relation,
 							   origTarget->name, true);
 		if (attrno == InvalidAttrNumber)
-		{
-			YBC_LOG_FATAL("column \"%s\" of relation \"%s\" does not exist",
-						  origTarget->name,
-						  RelationGetRelationName(pstate->p_target_relation));
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
 					 errmsg("column \"%s\" of relation \"%s\" does not exist",
 							origTarget->name,
 							RelationGetRelationName(pstate->p_target_relation)),
 					 parser_errposition(pstate, origTarget->location)));
-		}
 
 		if (IsYugaByteEnabled())
 		{

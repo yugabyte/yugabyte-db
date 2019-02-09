@@ -26,15 +26,14 @@ QLRocksDBStorage::QLRocksDBStorage(const DocDB& doc_db)
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS QLRocksDBStorage::GetIterator(
-    const QLReadRequestPB& request,
-    const Schema& projection,
-    const Schema& schema,
-    const TransactionOperationContextOpt& txn_op_context,
-    MonoTime deadline,
-    const ReadHybridTime& read_time,
-    const common::QLScanSpec& spec,
-    std::unique_ptr<common::YQLRowwiseIteratorIf> *iter) const {
+Status QLRocksDBStorage::GetIterator(const QLReadRequestPB& request,
+                                     const Schema& projection,
+                                     const Schema& schema,
+                                     const TransactionOperationContextOpt& txn_op_context,
+                                     MonoTime deadline,
+                                     const ReadHybridTime& read_time,
+                                     const common::QLScanSpec& spec,
+                                     std::unique_ptr<common::YQLRowwiseIteratorIf> *iter) const {
 
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
       projection, schema, txn_op_context, doc_db_, deadline, read_time);
@@ -43,15 +42,15 @@ CHECKED_STATUS QLRocksDBStorage::GetIterator(
   return Status::OK();
 }
 
-CHECKED_STATUS QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request,
-                                                  const ReadHybridTime& read_time,
-                                                  const Schema& schema,
-                                                  const bool include_static_columns,
-                                                  const Schema& static_projection,
-                                                  std::unique_ptr<common::QLScanSpec>* spec,
-                                                  std::unique_ptr<common::QLScanSpec>*
-                                                  static_row_spec,
-                                                  ReadHybridTime* req_read_time) const {
+Status QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request,
+                                          const ReadHybridTime& read_time,
+                                          const Schema& schema,
+                                          const bool include_static_columns,
+                                          const Schema& static_projection,
+                                          std::unique_ptr<common::QLScanSpec>* spec,
+                                          std::unique_ptr<common::QLScanSpec>*
+                                          static_row_spec,
+                                          ReadHybridTime* req_read_time) const {
   // Populate dockey from QL key columns.
   auto hash_code = request.has_hash_code() ?
       boost::make_optional<int32_t>(request.hash_code()) : boost::none;
@@ -102,29 +101,15 @@ CHECKED_STATUS QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS QLRocksDBStorage::GetIterator(
-    const PgsqlReadRequestPB& request,
-    const Schema& projection,
-    const Schema& schema,
-    const TransactionOperationContextOpt& txn_op_context,
-    MonoTime deadline,
-    const ReadHybridTime& read_time,
-    const common::PgsqlScanSpec& spec,
-    common::YQLRowwiseIteratorIf::UniPtr* iter) const {
+Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
+                                     const Schema& projection,
+                                     const Schema& schema,
+                                     const TransactionOperationContextOpt& txn_op_context,
+                                     MonoTime deadline,
+                                     const ReadHybridTime& read_time,
+                                     common::YQLRowwiseIteratorIf::UniPtr* iter) const {
+  std::unique_ptr<DocRowwiseIterator> doc_iter;
 
-  auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, schema, txn_op_context, doc_db_, deadline, read_time);
-  RETURN_NOT_OK(doc_iter->Init(spec));
-
-  *iter = std::move(doc_iter);
-  return Status::OK();
-}
-
-CHECKED_STATUS QLRocksDBStorage::BuildYQLScanSpec(const PgsqlReadRequestPB& request,
-                                                  const ReadHybridTime& read_time,
-                                                  const Schema& schema,
-                                                  common::PgsqlScanSpec::UniPtr* spec,
-                                                  ReadHybridTime* req_read_time) const {
   // Populate dockey from QL key columns.
   auto hash_code = request.has_hash_code() ?
       boost::make_optional<int32_t>(request.hash_code()) : boost::none;
@@ -136,44 +121,61 @@ CHECKED_STATUS QLRocksDBStorage::BuildYQLScanSpec(const PgsqlReadRequestPB& requ
                                              0,
                                              &hashed_components));
 
-  *req_read_time = read_time;
-  if (request.range_column_values().size() > 0) {
+  if (request.has_ybctid_column_value()) {
+    CHECK(!request.has_paging_state()) << "Optimization failure due to wrong assumption";
+    const string& ybctid_value = request.ybctid_column_value().value().binary_value();
+    Slice key_value(ybctid_value.data(), ybctid_value.size());
+    DocKey range_doc_key;
+    RETURN_NOT_OK(range_doc_key.DecodeFrom(key_value));
+    doc_iter = std::make_unique<DocRowwiseIterator>(
+        projection, schema, txn_op_context, doc_db_, deadline, read_time);
+    RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(schema,
+                                                  request.stmt_id(),
+                                                  range_doc_key)));
+  } else if (request.range_column_values().size() > 0) {
     CHECK(!request.has_paging_state()) << "Optimization failure due to wrong assumption";
     vector<PrimitiveValue> range_components;
     RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request.range_column_values(),
                                                schema,
                                                schema.num_hash_key_columns(),
                                                &range_components));
-    spec->reset(new DocPgsqlScanSpec(schema,
-                                     request.stmt_id(),
-                                     hashed_components.empty()
-                                     ? DocKey(schema, range_components)
-                                     : DocKey(schema,
-                                              request.hash_code(),
-                                              hashed_components,
-                                              range_components)));
+    doc_iter = std::make_unique<DocRowwiseIterator>(
+        projection, schema, txn_op_context, doc_db_, deadline, read_time);
+    RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(schema,
+                                                  request.stmt_id(),
+                                                  hashed_components.empty()
+                                                  ? DocKey(schema, range_components)
+                                                  : DocKey(schema,
+                                                           request.hash_code(),
+                                                           hashed_components,
+                                                           range_components))));
   } else {
     SubDocKey start_sub_doc_key;
+    ReadHybridTime req_read_time = read_time;
     // Decode the start SubDocKey from the paging state and set scan start key and hybrid time.
     if (request.has_paging_state() &&
         request.paging_state().has_next_row_key() &&
         !request.paging_state().next_row_key().empty()) {
       KeyBytes start_key_bytes(request.paging_state().next_row_key());
       RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
-      req_read_time->read = start_sub_doc_key.hybrid_time();
+      req_read_time.read = start_sub_doc_key.hybrid_time();
     }
 
     // Construct the scan spec basing on the WHERE condition.
-    spec->reset(new DocPgsqlScanSpec(schema,
-                                     request.stmt_id(),
-                                     hashed_components,
-                                     hash_code,
-                                     max_hash_code,
-                                     request.has_where_expr() ? &request.where_expr() : nullptr,
-                                     start_sub_doc_key.doc_key(),
-                                     request.is_forward_scan()));
+    doc_iter = std::make_unique<DocRowwiseIterator>(
+        projection, schema, txn_op_context, doc_db_, deadline, req_read_time);
+    RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(schema,
+                                                  request.stmt_id(),
+                                                  hashed_components,
+                                                  hash_code,
+                                                  max_hash_code,
+                                                  request.has_where_expr() ? &request.where_expr()
+                                                  : nullptr,
+                                                  start_sub_doc_key.doc_key(),
+                                                  request.is_forward_scan())));
   }
 
+  *iter = std::move(doc_iter);
   return Status::OK();
 }
 

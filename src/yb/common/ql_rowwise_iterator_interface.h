@@ -80,6 +80,10 @@ class YQLRowwiseIteratorIf {
     return STATUS(NotSupported, "This iterator does not provide row key");
   }
 
+  virtual CHECKED_STATUS Seek(const std::string& row_key) {
+    return STATUS(NotSupported, "This iterator cannot seek by row key");
+  }
+
   //------------------------------------------------------------------------------------------------
   // Common API methods.
   //------------------------------------------------------------------------------------------------

@@ -9420,7 +9420,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 			  foundDep->refobjid == attTup->attcollation))
 			elog(ERROR, "found unexpected dependency for column");
 
-		CatalogTupleDelete(depRel, &depTup->t_self);
+		CatalogTupleDelete(depRel, depTup);
 	}
 
 	systable_endscan(scan);
@@ -11673,7 +11673,7 @@ RemoveInheritance(Relation child_rel, Relation parent_rel)
 		inhparent = ((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhparent;
 		if (inhparent == RelationGetRelid(parent_rel))
 		{
-			CatalogTupleDelete(catalogRelation, &inheritsTuple->t_self);
+			CatalogTupleDelete(catalogRelation, inheritsTuple);
 			found = true;
 			break;
 		}
@@ -11868,7 +11868,7 @@ drop_parent_dependency(Oid relid, Oid refclassid, Oid refobjid,
 			dep->refobjid == refobjid &&
 			dep->refobjsubid == 0 &&
 			dep->deptype == deptype)
-			CatalogTupleDelete(catalogRelation, &depTuple->t_self);
+			CatalogTupleDelete(catalogRelation, depTuple);
 	}
 
 	systable_endscan(scan);

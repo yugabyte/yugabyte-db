@@ -1585,7 +1585,7 @@ index_drop(Oid indexId, bool concurrent)
 
 	hasexprs = !heap_attisnull(tuple, Anum_pg_index_indexprs);
 
-	CatalogTupleDelete(indexRelation, &tuple->t_self);
+	CatalogTupleDelete(indexRelation, tuple);
 
 	ReleaseSysCache(tuple);
 	heap_close(indexRelation, RowExclusiveLock);
@@ -2315,39 +2315,46 @@ IndexBuildHeapRangeScan(Relation heapRelation,
 		CHECK_FOR_INTERRUPTS();
 
 		/*
-		 * When dealing with a HOT-chain of updated tuples, we want to index
-		 * the values of the live tuple (if any), but index it under the TID
-		 * of the chain's root tuple.  This approach is necessary to preserve
-		 * the HOT-chain structure in the heap. So we need to be able to find
-		 * the root item offset for every tuple that's in a HOT-chain.  When
-		 * first reaching a new page of the relation, call
-		 * heap_get_root_tuples() to build a map of root item offsets on the
-		 * page.
-		 *
-		 * It might look unsafe to use this information across buffer
-		 * lock/unlock.  However, we hold ShareLock on the table so no
-		 * ordinary insert/update/delete should occur; and we hold pin on the
-		 * buffer continuously while visiting the page, so no pruning
-		 * operation can occur either.
-		 *
-		 * Also, although our opinions about tuple liveness could change while
-		 * we scan the page (due to concurrent transaction commits/aborts),
-		 * the chain root locations won't, so this info doesn't need to be
-		 * rebuilt after waiting for another transaction.
-		 *
-		 * Note the implied assumption that there is no more than one live
-		 * tuple per HOT-chain --- else we could create more than one index
-		 * entry pointing to the same root tuple.
+		 * Skip handling of HOT-chained tuples which does not apply to YugaByte-based
+		 * tables.
 		 */
-		if (scan->rs_cblock != root_blkno)
+		if (!IsYugaByteEnabled())
 		{
-			Page		page = BufferGetPage(scan->rs_cbuf);
+			/*
+			 * When dealing with a HOT-chain of updated tuples, we want to index
+			 * the values of the live tuple (if any), but index it under the TID
+			 * of the chain's root tuple.  This approach is necessary to preserve
+			 * the HOT-chain structure in the heap. So we need to be able to find
+			 * the root item offset for every tuple that's in a HOT-chain.  When
+			 * first reaching a new page of the relation, call
+			 * heap_get_root_tuples() to build a map of root item offsets on the
+			 * page.
+			 *
+			 * It might look unsafe to use this information across buffer
+			 * lock/unlock.  However, we hold ShareLock on the table so no
+			 * ordinary insert/update/delete should occur; and we hold pin on the
+			 * buffer continuously while visiting the page, so no pruning
+			 * operation can occur either.
+			 *
+			 * Also, although our opinions about tuple liveness could change while
+			 * we scan the page (due to concurrent transaction commits/aborts),
+			 * the chain root locations won't, so this info doesn't need to be
+			 * rebuilt after waiting for another transaction.
+			 *
+			 * Note the implied assumption that there is no more than one live
+			 * tuple per HOT-chain --- else we could create more than one index
+			 * entry pointing to the same root tuple.
+			 */
+			if (scan->rs_cblock != root_blkno)
+			{
+				Page		page = BufferGetPage(scan->rs_cbuf);
 
-			LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
-			heap_get_root_tuples(page, root_offsets);
-			LockBuffer(scan->rs_cbuf, BUFFER_LOCK_UNLOCK);
+				LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
+				heap_get_root_tuples(page, root_offsets);
+				LockBuffer(scan->rs_cbuf, BUFFER_LOCK_UNLOCK);
 
-			root_blkno = scan->rs_cblock;
+				root_blkno = scan->rs_cblock;
+			}
 		}
 
 		if (snapshot == SnapshotAny)
@@ -3026,6 +3033,52 @@ validate_index_heapscan(Relation heapRelation,
 	 */
 	while ((heapTuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
+		/*
+		 * For YugaByte tables, there is no need to find the root tuple. Just
+		 * insert the fetched tuple.
+		 */
+		if (IsYugaByteEnabled())
+		{
+			MemoryContextReset(econtext->ecxt_per_tuple_memory);
+
+			/* Set up for predicate or expression evaluation */
+			ExecStoreTuple(heapTuple, slot, InvalidBuffer, false);
+
+			/*
+			 * In a partial index, discard tuples that don't satisfy the
+			 * predicate.
+			 */
+			if (predicate != NULL)
+			{
+				if (!ExecQual(predicate, econtext))
+					continue;
+			}
+
+			/*
+			 * For the current heap tuple, extract all the attributes we use
+			 * in this index, and note which are null.  This also performs
+			 * evaluation of any expressions needed.
+			 */
+			FormIndexDatum(indexInfo,
+						   slot,
+						   estate,
+						   values,
+						   isnull);
+
+			index_insert(indexRelation,
+						 values,
+						 isnull,
+						 NULL,
+						 heapTuple,
+						 heapRelation,
+						 indexInfo->ii_Unique ?
+						 UNIQUE_CHECK_YES : UNIQUE_CHECK_NO,
+						 indexInfo);
+
+			state->tups_inserted += 1;
+			continue;
+		}
+
 		ItemPointer heapcursor = &heapTuple->t_self;
 		ItemPointerData rootTuple;
 		OffsetNumber root_offnum;
@@ -3174,6 +3227,7 @@ validate_index_heapscan(Relation heapRelation,
 						 values,
 						 isnull,
 						 &rootTuple,
+						 NULL /* heap tuple */,
 						 heapRelation,
 						 indexInfo->ii_Unique ?
 						 UNIQUE_CHECK_YES : UNIQUE_CHECK_NO,

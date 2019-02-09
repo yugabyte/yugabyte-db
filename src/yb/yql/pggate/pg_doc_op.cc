@@ -35,8 +35,9 @@ PgDocOp::~PgDocOp() {
   }
 }
 
-bool PgDocOp::EndOfResult() const {
+Result<bool> PgDocOp::EndOfResult() const {
   std::lock_guard<std::mutex> lock(mtx_);
+  RETURN_NOT_OK(exec_status_);
   return !has_cached_data_ && end_of_data_;
 }
 

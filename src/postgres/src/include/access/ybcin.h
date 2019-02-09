@@ -30,8 +30,9 @@
  */
 extern IndexBuildResult *ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo);
 extern void ybcinbuildempty(Relation index);
-extern bool ybcininsert(Relation rel, Datum *values, bool *isnull, ItemPointer ht_ctid,
-						Relation heapRel, IndexUniqueCheck checkUnique,
+extern bool ybcininsert(Relation rel, Datum *values, bool *isnull, Datum ybctid, Relation heapRel,
+						IndexUniqueCheck checkUnique, struct IndexInfo *indexInfo);
+extern void ybcindelete(Relation rel, Datum *values, bool *isnull, Datum ybctid, Relation heapRel,
 						struct IndexInfo *indexInfo);
 extern IndexBulkDeleteResult *ybcinbulkdelete(IndexVacuumInfo *info,
 											  IndexBulkDeleteResult *stats,
@@ -55,7 +56,6 @@ extern bool ybcinproperty(Oid index_oid, int attno,
 						  bool *res, bool *isnull);
 extern bool ybcinvalidate(Oid opclassoid);
 
-
 extern IndexScanDesc ybcinbeginscan(Relation rel, int nkeys, int norderbys);
 extern void ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 						ScanKey orderbys, int norderbys);
@@ -65,5 +65,7 @@ extern void ybcinendscan(IndexScanDesc scan);
 
 extern void ybcinmarkpos(IndexScanDesc scan);
 extern void ybcinrestrpos(IndexScanDesc scan);
+
+extern HeapTuple YBCIndexExecuteSelect(Relation relation, Datum ybctid);
 
 #endif							/* YBCINDEX_H */

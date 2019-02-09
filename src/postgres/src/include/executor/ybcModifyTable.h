@@ -28,7 +28,11 @@
 
 extern Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple);
 
+extern void YBCExecuteInsertIndex(Relation rel, Datum *values, bool *isnull, Datum ybctid);
+
 extern void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot *slot);
+
+extern void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum ybctid);
 
 extern void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple, Bitmapset *pkey);
 
@@ -36,5 +40,7 @@ extern void YBCExecuteUpdate(Relation rel, ResultRelInfo *resultRelInfo, TupleTa
 							 HeapTuple tuple);
 
 extern void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple tuple);
+
+extern Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot);
 
 #endif							/* YBCMODIFYTABLE_H */

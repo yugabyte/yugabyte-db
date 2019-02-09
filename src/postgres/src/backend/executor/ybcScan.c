@@ -86,8 +86,7 @@ static void ybcLoadTableInfo(Relation rel, YbScanPlan scan_plan)
 		}
 		if (is_primary)
 		{
-			scan_plan->primary_key = bms_add_member(scan_plan->primary_key,
-			                                       bms_idx);
+			scan_plan->primary_key = bms_add_member(scan_plan->primary_key, bms_idx);
 		}
 	}
 	HandleYBStatus(YBCPgDeleteTableDesc(ybc_table_desc));
@@ -120,11 +119,11 @@ static void analyzeOperator(OpExpr* opExpr, bool *is_eq, bool *is_ineq)
 	char *opname = NameStr(form->oprname);
 	*is_eq   = strcmp(opname, "=") == 0;
 	/* Note: the != operator is converted to <> in the parser stage */
-	*is_ineq = strcmp(opname, ">") == 0 ||
-	               strcmp(opname, ">=") == 0 ||
-	               strcmp(opname, "<") == 0 ||
-	               strcmp(opname, "<=") == 0 ||
-	               strcmp(opname, "<>") == 0;
+	*is_ineq = (strcmp(opname, ">") == 0  ||
+				strcmp(opname, ">=") == 0 ||
+				strcmp(opname, "<") == 0  ||
+				strcmp(opname, "<=") == 0 ||
+				strcmp(opname, "<>") == 0);
 
 	ReleaseSysCache(tuple);
 }
@@ -139,7 +138,6 @@ static void ybClassifyWhereExpr(Expr *expr, bool is_supported_rel, YbScanPlan yb
 	/* YugaByte only supports base relations (e.g. no joins or child rels) */
 	if (is_supported_rel)
 	{
-
 		/* YugaByte only supports operator expressions (e.g. no functions) */
 		if (IsA(expr, OpExpr))
 		{
@@ -167,12 +165,11 @@ static void ybClassifyWhereExpr(Expr *expr, bool is_supported_rel, YbScanPlan yb
 				    (IsA(left, Const) && IsA(right, Var)))
 				{
 					AttrNumber attnum = IsA(left, Var) ? ((Var *) left)->varattno
-					                                  : ((Var *) right)->varattno;
+					                                   : ((Var *) right)->varattno;
 
 					int  bms_idx = attnum - FirstLowInvalidHeapAttributeNumber;
-					bool is_primary = bms_is_member(bms_idx,
-					                                yb_plan->primary_key);
-					bool is_hash = bms_is_member(bms_idx, yb_plan->hash_key);
+					bool is_primary = bms_is_member(bms_idx, yb_plan->primary_key);
+					bool is_hash    = bms_is_member(bms_idx, yb_plan->hash_key);
 
 					/*
 					 * TODO Once we support WHERE clause in pggate, these
@@ -180,15 +177,13 @@ static void ybClassifyWhereExpr(Expr *expr, bool is_supported_rel, YbScanPlan yb
 					 */
 					if (is_hash && is_eq)
 					{
-						yb_plan->yb_cols   = bms_add_member(yb_plan->yb_cols,
-						                                    bms_idx);
+						yb_plan->yb_cols   = bms_add_member(yb_plan->yb_cols, bms_idx);
 						yb_plan->yb_hconds = lappend(yb_plan->yb_hconds, expr);
 						return;
 					}
 					else if (is_primary && is_eq)
 					{
-						yb_plan->yb_cols   = bms_add_member(yb_plan->yb_cols,
-						                                    bms_idx);
+						yb_plan->yb_cols   = bms_add_member(yb_plan->yb_cols, bms_idx);
 						yb_plan->yb_rconds = lappend(yb_plan->yb_rconds, expr);
 						return;
 					}
@@ -206,7 +201,7 @@ static void ybClassifyWhereExpr(Expr *expr, bool is_supported_rel, YbScanPlan yb
  * statement. Assumes the expression can be evaluated by YugaByte
  * (i.e. ybcIsYbExpression returns true).
  */
-static void ybcAddWhereCond(Expr *expr, YBCPgStatement yb_stmt)
+static void ybcAddWhereCond(Expr *expr, YBCPgStatement yb_stmt, bool useIndex)
 {
 	OpExpr *opExpr = (OpExpr *) expr;
 
@@ -226,28 +221,36 @@ static void ybcAddWhereCond(Expr *expr, YBCPgStatement yb_stmt)
 	                                     col_desc->vartype,
 	                                     col_val->constvalue,
 	                                     col_val->constisnull);
-	HandleYBStatus(YBCPgDmlBindColumn(yb_stmt, col_desc->varattno, ybc_expr));
+	if (useIndex)
+	{
+		HandleYBStatus(YBCPgDmlBindIndexColumn(yb_stmt, col_desc->varattno, ybc_expr));
+	}
+	else
+	{
+		HandleYBStatus(YBCPgDmlBindColumn(yb_stmt, col_desc->varattno, ybc_expr));
+	}
 }
 
-YbScanState ybcBeginScan(Relation rel, List *target_attrs, List *yb_conds)
+YbScanState ybcBeginScan(Relation rel, Relation index, List *target_attrs, List *yb_conds)
 {
 	Oid         dboid     = YBCGetDatabaseOid(rel);
 	Oid         relid     = RelationGetRelid(rel);
+	Oid         index_id  = index ? RelationGetRelid(index) : InvalidOid;
 	YbScanState ybc_state = NULL;
 	ListCell    *lc;
 
 	/* Allocate and initialize YB scan state. */
 	ybc_state = (YbScanState) palloc0(sizeof(YbScanStateData));
 
-	HandleYBStatus(YBCPgNewSelect(
-	    ybc_pg_session, dboid, relid, &ybc_state->handle, NULL /* read_time */));
+	HandleYBStatus(YBCPgNewSelect(ybc_pg_session, dboid, relid, index_id, &ybc_state->handle,
+								  NULL /* read_time */));
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
 	ybc_state->stmt_owner = CurrentResourceOwner;
 	ybc_state->tupleDesc  = RelationGetDescr(rel);
 
 	YbScanPlan ybc_plan = (YbScanPlan) palloc0(sizeof(YbScanPlanData));
-	ybcLoadTableInfo(rel, ybc_plan);
+	ybcLoadTableInfo(index ? index : rel, ybc_plan);
 
 	foreach(lc, yb_conds)
 	{
@@ -258,35 +261,76 @@ YbScanState ybcBeginScan(Relation rel, List *target_attrs, List *yb_conds)
 	/*
 	 * If hash key is not fully set, we must do a full-table scan in YugaByte
 	 * and defer all filtering to Postgres.
-	 * Else, if primary key is not fully set we need to remove all range
-	 * key conds and defer filtering for range column conds to Postgres.
+	 * Else, if primary key is set only partially, we need to defer all range
+	 * key conds after the first missing cond to Postgres.
 	 */
 	if (!bms_is_subset(ybc_plan->hash_key, ybc_plan->yb_cols))
 	{
-		ybc_plan->pg_conds  = list_concat(ybc_plan->pg_conds,
-		                                  ybc_plan->yb_hconds);
-		ybc_plan->pg_conds  = list_concat(ybc_plan->pg_conds,
-		                                  ybc_plan->yb_rconds);
+		ybc_plan->pg_conds  = list_concat(ybc_plan->pg_conds, ybc_plan->yb_hconds);
+		ybc_plan->pg_conds  = list_concat(ybc_plan->pg_conds, ybc_plan->yb_rconds);
 		ybc_plan->yb_hconds = NIL;
 		ybc_plan->yb_rconds = NIL;
 	}
-	else if (!bms_is_subset(ybc_plan->primary_key, ybc_plan->yb_cols))
+	else
 	{
-		ybc_plan->pg_conds  = list_concat(ybc_plan->pg_conds,
-		                                  ybc_plan->yb_rconds);
-		ybc_plan->yb_rconds = NIL;
+		AttrNumber attnum;
+		TupleDesc  tupleDesc = index ? RelationGetDescr(index) : RelationGetDescr(rel);
+
+		/*
+		 * TODO: We scan the range columns by increasing attribute number to look for the first
+		 * missing condition. Currently, this works because there is a bug where the range columns
+		 * of the primary key in YugaByte follows the same order as the attribute number. When the
+		 * bug is fixed, this scan needs to be updated.
+		 */
+		for (attnum = 1; attnum <= tupleDesc->natts; attnum++)
+		{
+			int  bms_idx = attnum - FirstLowInvalidHeapAttributeNumber;
+			if ( bms_is_member(bms_idx, ybc_plan->primary_key) &&
+				!bms_is_member(bms_idx, ybc_plan->yb_cols))
+			{
+				/* Move the rest of the range key conds to Postgres */
+				for (attnum = attnum + 1; attnum <= tupleDesc->natts; attnum++)
+				{
+					bms_idx = attnum - FirstLowInvalidHeapAttributeNumber;
+					if (!bms_is_member(bms_idx, ybc_plan->primary_key))
+						continue;
+
+					ListCell   *prev = NULL;
+					ListCell   *next = NULL;
+					for (lc = list_head(ybc_plan->yb_rconds); lc; lc = next)
+					{
+						next = lnext(lc);
+
+						OpExpr *opExpr = (OpExpr *) lfirst(lc);
+						Expr   *left  = linitial(opExpr->args);
+						Expr   *right = lsecond(opExpr->args);
+						Var    *col_desc = IsA(left, Var) ? (Var *) left : (Var *) right;
+
+						if (col_desc->varattno == attnum)
+						{
+							ybc_plan->yb_rconds = list_delete_cell(ybc_plan->yb_rconds, lc, prev);
+							lappend(ybc_plan->pg_conds, opExpr);
+						}
+						else
+							prev = lc;
+					}
+				}
+				break;
+			}
+		}
 	}
 
 	/* Set WHERE clause values (currently only primary key). */
+	bool useIndex = (index != NULL);
 	foreach(lc, ybc_plan->yb_hconds)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
-		ybcAddWhereCond(expr, ybc_state->handle);
+		ybcAddWhereCond(expr, ybc_state->handle, useIndex);
 	}
 	foreach(lc, ybc_plan->yb_rconds)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
-		ybcAddWhereCond(expr, ybc_state->handle);
+		ybcAddWhereCond(expr, ybc_state->handle, useIndex);
 	}
 
 	/* Set scan targets. */
@@ -351,6 +395,14 @@ HeapTuple ybcFetchNext(YbScanState ybc_state)
 		if (syscols.oid != InvalidOid)
 		{
 			HeapTupleSetOid(tuple, syscols.oid);
+		}
+		if (syscols.ybctid != NULL)
+		{
+			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+		}
+		if (syscols.ybbasectid != NULL)
+		{
+			tuple->t_ybctid = PointerGetDatum(syscols.ybbasectid);
 		}
 	}
 	pfree(values);

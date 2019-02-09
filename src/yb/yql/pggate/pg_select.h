@@ -39,6 +39,8 @@ class PgSelect : public PgDml {
 
   StmtOp stmt_op() const override { return StmtOp::STMT_SELECT; }
 
+  void UseIndex(const PgObjectId& index_id);
+
   // Prepare SELECT before execution.
   // read_time points to place where read_time for whole postgres statement is stored.
   // It is available while statement is executed.
@@ -47,15 +49,23 @@ class PgSelect : public PgDml {
   // Setup internal structures for binding values during prepare.
   void PrepareColumns();
 
+  // Find the index column associated with the given "attr_num".
+  CHECKED_STATUS FindIndexColumn(int attr_num, PgColumn **col);
+
+  // Bind an index column with an expression.
+  CHECKED_STATUS BindIndexColumn(int attnum, PgExpr *attr_value);
+
   // Execute.
   CHECKED_STATUS Exec();
 
  private:
   // Allocate column protobuf.
   PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
+  PgsqlExpressionPB *AllocIndexColumnBindPB(PgColumn *col);
 
   // Allocate protobuf for target.
   PgsqlExpressionPB *AllocTargetPB() override;
+  PgsqlExpressionPB *AllocIndexTargetPB();
 
   // Allocate column expression.
   PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
@@ -63,9 +73,16 @@ class PgSelect : public PgDml {
   // Delete allocated target for columns that have no bind-values.
   CHECKED_STATUS DeleteEmptyPrimaryBinds();
 
+  // Load index.
+  CHECKED_STATUS LoadIndex();
+
+  PgObjectId index_id_;
+  PgTableDesc::ScopedRefPtr index_desc_;
+
   // Protobuf instruction.
   std::shared_ptr<client::YBPgsqlReadOp> read_op_;
   PgsqlReadRequestPB *read_req_ = nullptr;
+  PgsqlReadRequestPB *index_req_ = nullptr;
 };
 
 }  // namespace pggate
