@@ -41,22 +41,6 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-//
-// The following only applies to changes made to this file as part of YugaByte development.
-//
-// Portions Copyright (c) YugaByte, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
-// in compliance with the License.  You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software distributed under the License
-// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
-// or implied.  See the License for the specific language governing permissions and limitations
-// under the License.
-//
-// Portions Copyright (c) YugaByte, Inc.
 
 #if (defined(_WIN32) || defined(__MINGW32__)) && !defined(__CYGWIN__) && !defined(__CYGWIN32)
 # define PLATFORM_WINDOWS 1
@@ -85,6 +69,8 @@
 #endif
 
 #include <mutex>
+#include <thread>
+#include <gflags/gflags.h>
 
 #include <glog/logging.h>
 
@@ -92,6 +78,9 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
+#include "yb/util/logging.h"
+
+DEFINE_int32(num_cpus, 0, "Number of CPU cores used in calculations");
 
 // This isn't in the 'base' namespace in tcmallc. But, tcmalloc
 // exports these functions, so we need to namespace them to avoid
@@ -416,7 +405,10 @@ static void InitializeSystemInfo() {
   // Generic cycles per second counter
   cpuinfo_cycles_per_second = EstimateCyclesPerSecond(1000);
 #endif
-
+  int std_num_cpus = std::thread::hardware_concurrency();
+  if (std_num_cpus > 0) {
+    cpuinfo_num_cpus = std_num_cpus;
+  }
   // On platforms where we can't determine the max CPU index, just use the
   // number of CPUs. This might break if CPUs are taken offline, but
   // better than a wild guess.
@@ -433,6 +425,16 @@ double CyclesPerSecond(void) {
 }
 
 int NumCPUs(void) {
+  std::call_once(init_sys_info_flag, &InitializeSystemInfo);
+
+  if (FLAGS_num_cpus != 0) {
+    return FLAGS_num_cpus;
+  } else {
+    return cpuinfo_num_cpus;
+  }
+}
+
+int RawNumCPUs(void) {
   std::call_once(init_sys_info_flag, &InitializeSystemInfo);
   return cpuinfo_num_cpus;
 }

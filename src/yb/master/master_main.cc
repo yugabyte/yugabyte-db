@@ -42,6 +42,8 @@
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
+#include "yb/gutil/sysinfo.h"
+
 
 DECLARE_bool(callhome_enabled);
 DECLARE_bool(evict_failed_followers);
@@ -81,6 +83,7 @@ static int MasterMain(int argc, char** argv) {
   }
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(MasterOptions::kServerType, argv[0]));
+  LOG(INFO) << "NumCPUs determined to be: " << base::NumCPUs();
 
   CHECK_OK(GetPrivateIpMode());
 

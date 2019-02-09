@@ -18,6 +18,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/tsan_util.h"
+#include "yb/gutil/sysinfo.h"
 
 // Note that this is used by the client or master only, not by tserver.
 DEFINE_int32(yb_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
@@ -31,7 +32,7 @@ void InitCommonFlags() {
     int value = 8;
     if (IsTsan()) {
       value = 2;
-    } else if (std::thread::hardware_concurrency() <= 2) {
+    } else if (base::NumCPUs() <= 2) {
       value = 4;
     }
     VLOG(1) << "Auto setting FLAGS_yb_num_shards_per_tserver to " << value;

@@ -51,7 +51,7 @@
 #include "yb/gutil/synchronization_profiling.h"
 #include "yb/gutil/spinlock_internal.h"
 #include "yb/gutil/walltime.h"
-#include "yb/gutil/sysinfo.h"   /* for NumCPUs() */
+#include "yb/gutil/sysinfo.h"
 
 namespace base {
 
@@ -76,7 +76,9 @@ struct SpinLock_InitHelper {
   SpinLock_InitHelper() {
     // On multi-cpu machines, spin for longer before yielding
     // the processor or sleeping.  Reduces idle time significantly.
-    if (base::NumCPUs() > 1) {
+    // We use the default num CPU value because gflags are initialized after
+    // the static call to this class.
+    if (base::RawNumCPUs() > 1) {
       adaptive_spin_count = 1000;
     }
   }

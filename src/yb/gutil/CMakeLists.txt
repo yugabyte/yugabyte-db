@@ -69,6 +69,7 @@ set(GUTIL_SRCS
 
 set(GUTIL_LIBS
   glog
+  gflags
   protobuf)
 
 if (NOT APPLE)
@@ -83,6 +84,8 @@ ADD_YB_LIBRARY(gutil
   # Disable warnings which trigger a lot in the Google code:
   COMPILE_FLAGS "-funsigned-char -Wno-deprecated -Wno-char-subscripts")
 cotire(gutil)
+
+ADD_YB_TEST(sysinfo-test)
 
 add_yb_test(strings/string_util-test)
 add_yb_test(hash/jenkins-test)
