@@ -43,18 +43,7 @@ YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num, int attr_ty
 													const YBCPgTypeAttrs *type_attrs) {
 	YBCPgExpr expr = NULL;
 	const YBCPgTypeEntity *type_entity = YBCDataTypeFromOidMod(attr_num, attr_typid);
-	switch (attr_typid)
-	{
-		case NAMEOID: {
-			/* We are converting NAMEOID to STRING, so typmod must be modified */
-			YBCPgTypeAttrs tattrs = { NAMEDATALEN };
-			HandleYBStatus(YBCPgNewColumnRef(ybc_stmt, attr_num, type_entity, &tattrs, &expr));
-			break;
-		}
-		default:
-			HandleYBStatus(YBCPgNewColumnRef(ybc_stmt, attr_num, type_entity, type_attrs, &expr));
-			break;
-	}
+	HandleYBStatus(YBCPgNewColumnRef(ybc_stmt, attr_num, type_entity, type_attrs, &expr));
 	return expr;
 }
 
