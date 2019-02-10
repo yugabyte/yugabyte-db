@@ -175,8 +175,7 @@ Datum YBCBinaryToDatum(const void *data, int64 bytes, const YBCPgTypeAttrs *type
 }
 
 /*
- * CHAR conversion.
- * Fixed size: Ignore the "bytes" data size.
+ * CHAR type conversion.
  */
 void YBCDatumToChar(Datum datum, char *data, int64 *bytes) {
 	*data = DatumGetChar(datum);
@@ -187,43 +186,117 @@ Datum YBCCharToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_a
 }
 
 /*
- * NAME/CSTRING conversion.
+ * CHAR-based type conversion.
  */
-void YBCDatumToStr(Datum datum, char **data, int64 *bytes) {
+void YBCDatumToBPChar(Datum datum, char **data, int64 *bytes) {
+	int size;
+	*data = TextDatumGetCString(datum);
+
+	/*
+	 * Right trim all spaces on the right. For CHAR(n) - BPCHAR - datatype, Postgres treats space
+	 * characters at tail-end the same as '\0' characters.
+	 *   "abc  " == "abc"
+	 * Left spaces don't have this special behaviors.
+	 *   "  abc" != "abc"
+	 */
+	size = strlen(*data);
+	while (size > 0 && isspace((*data)[size - 1])) {
+		size--;
+	}
+	*bytes = size;
+}
+
+Datum YBCBPCharToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+  /* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
+  if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
+		ereport(ERROR, (errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+										errmsg("Invalid data size")));
+	}
+
+	/* Convert YugaByte cstring to Postgres internal representation */
+	FunctionCallInfoData fargs;
+	FunctionCallInfo fcinfo = &fargs;
+	PG_GETARG_DATUM(0) = CStringGetDatum(data);
+	PG_GETARG_DATUM(2) = Int32GetDatum(type_attrs->typmod);
+	return bpcharin(fcinfo);
+}
+
+void YBCDatumToVarchar(Datum datum, char **data, int64 *bytes) {
+	*data = TextDatumGetCString(datum);
+	*bytes = strlen(*data);
+}
+
+Datum YBCVarcharToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+  /* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
+  if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
+		ereport(ERROR, (errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+										errmsg("Invalid data size")));
+	}
+
+	/* Convert YugaByte cstring to Postgres internal representation */
+	FunctionCallInfoData fargs;
+	FunctionCallInfo fcinfo = &fargs;
+	PG_GETARG_DATUM(0) = CStringGetDatum(data);
+	PG_GETARG_DATUM(2) = Int32GetDatum(type_attrs->typmod);
+	return varcharin(fcinfo);
+}
+
+Datum YBCTextToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+  /* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
+  if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
+		ereport(ERROR, (errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+										errmsg("Invalid data size")));
+	}
+
+	return PointerGetDatum(cstring_to_text(data));
+}
+
+/*
+ * NAME conversion.
+ */
+void YBCDatumToName(Datum datum, char **data, int64 *bytes) {
 	*data = DatumGetCString(datum);
 	*bytes = strlen(*data);
 }
 
-Datum YBCStrToNameDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
-	/* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
-	if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
+Datum YBCNameToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+  /* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
+  if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
 		ereport(ERROR, (errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
 						errmsg("Invalid data size")));
 	}
 
-	/* Allocate Postgres's buffer, copy data from YugaByte, and null-terminate the name.
-	 * We use palloc0 here to ensure result is zero-padded
-	 */
+	/* Truncate oversize input */
 	if (bytes >= NAMEDATALEN)
 		bytes = pg_mbcliplen(data, bytes, NAMEDATALEN - 1);
-	NameData *result = palloc0(sizeof(NameData));
+
+	/* We use palloc0 here to ensure result is zero-padded */
+	Name result = (Name)palloc0(NAMEDATALEN);
 	memcpy(NameStr(*result), data, bytes);
 	return NameGetDatum(result);
 }
 
-Datum YBCStrToCStringDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
-	/* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
-	if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
+/*
+ * PSEUDO-type cstring conversion.
+ * Not a type that is used by users.
+ */
+void YBCDatumToCStr(Datum datum, char **data, int64 *bytes) {
+	*data = DatumGetCString(datum);
+	*bytes = strlen(*data);
+}
+
+Datum YBCCStrToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+  /* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
+  if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
 		ereport(ERROR, (errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
 						errmsg("Invalid data size")));
 	}
 
-	/* Allocate Postgres's buffer, copy data from YugaByte, and null-terminate the cstring.
-	 */
-	char *result = palloc(bytes + 1);
-	memcpy(result, data, bytes);
-	result[bytes] = '\0';
-	return CStringGetDatum(result);
+	/* Convert YugaByte cstring to Postgres internal representation */
+	FunctionCallInfoData fargs;
+	FunctionCallInfo fcinfo = &fargs;
+	PG_GETARG_DATUM(0) = CStringGetDatum(data);
+	return cstring_in(fcinfo);
 }
 
 /*
@@ -317,8 +390,8 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumFromData)YBCCharToDatum },
 
 	{ NAMEOID, YB_YQL_DATA_TYPE_STRING, true,
-		(YBCPgDatumToData)YBCDatumToStr,
-		(YBCPgDatumFromData)YBCStrToNameDatum },
+		(YBCPgDatumToData)YBCDatumToName,
+		(YBCPgDatumFromData)YBCNameToDatum },
 
 	{ INT8OID, YB_YQL_DATA_TYPE_INT64, true,
 		(YBCPgDatumToData)YBCDatumToInt64,
@@ -340,6 +413,9 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToInt32,
 		(YBCPgDatumFromData)YBCInt32ToDatum },
 
+	/*
+	 * TODO(neil) We need to change TEXT to char-based datatype to be the same with PostgreSQL.
+	 */
 	{ TEXTOID, YB_YQL_DATA_TYPE_BINARY, true,
 		(YBCPgDatumToData)YBCDatumToBinary,
 		(YBCPgDatumFromData)YBCBinaryToDatum },
@@ -496,13 +572,13 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)NULL,
 		(YBCPgDatumFromData)NULL },
 
-	{ BPCHAROID, YB_YQL_DATA_TYPE_BINARY, true,
-		(YBCPgDatumToData)YBCDatumToBinary,
-		(YBCPgDatumFromData)YBCBinaryToDatum },
+	{ BPCHAROID, YB_YQL_DATA_TYPE_STRING, true,
+		(YBCPgDatumToData)YBCDatumToBPChar,
+		(YBCPgDatumFromData)YBCBPCharToDatum },
 
-	{ VARCHAROID, YB_YQL_DATA_TYPE_BINARY, true,
-		(YBCPgDatumToData)YBCDatumToBinary,
-		(YBCPgDatumFromData)YBCBinaryToDatum },
+	{ VARCHAROID, YB_YQL_DATA_TYPE_STRING, true,
+		(YBCPgDatumToData)YBCDatumToVarchar,
+		(YBCPgDatumFromData)YBCVarcharToDatum },
 
 	{ DATEOID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, false,
 		(YBCPgDatumToData)NULL,
@@ -625,8 +701,8 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumFromData)NULL },
 
 	{ CSTRINGOID, YB_YQL_DATA_TYPE_STRING, true,
-		(YBCPgDatumToData)YBCDatumToStr,
-		(YBCPgDatumFromData)YBCStrToCStringDatum },
+		(YBCPgDatumToData)YBCDatumToCStr,
+		(YBCPgDatumFromData)YBCCStrToDatum },
 
 	{ ANYOID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, false,
 		(YBCPgDatumToData)NULL,
