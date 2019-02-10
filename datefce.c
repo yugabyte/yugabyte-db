@@ -4,7 +4,6 @@
 #include "mb/pg_wchar.h"
 #include "utils/date.h"
 #include "utils/builtins.h"
-#include "utils/nabstime.h"
 #include "utils/numeric.h"
 #include "utils/formatting.h"
 #include <sys/time.h>
