@@ -44,7 +44,7 @@ enhancements or customizations to RocksDB are described below:
     penalty of the entire row or collection
   * deleting/overwriting a row or collection/object at an arbitrary nesting level without incurring a
     read penalty to determine what specific set of KVs need to be deleted
-  * enforcing row/object level TTL based expiry
+  * enforcing row/object level TTL based expiry:
   a tighter coupling into the “read/compaction” layers of the underlying KV store (RocksDB) is needed.
   We use RocksDB as an append-only store and operations such as row or collection delete are modeled
   as an insert of a special “delete marker”.  This allows deleting an entire subdocument efficiently
