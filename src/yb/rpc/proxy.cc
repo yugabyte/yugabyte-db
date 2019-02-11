@@ -115,11 +115,13 @@ void Proxy::AsyncRequest(const RemoteMethod* method,
                                           outbound_call_metrics_,
                                           resp,
                                           controller,
+                                          &context_->rpc_metrics(),
                                           std::move(callback)) :
       std::make_shared<OutboundCall>(method,
                                      outbound_call_metrics_,
                                      resp,
                                      controller,
+                                     &context_->rpc_metrics(),
                                      std::move(callback));
   auto call = controller->call_.get();
   Status s = call->SetRequestParam(req);

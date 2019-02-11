@@ -47,6 +47,7 @@
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
+#include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/serialization.h"
 
 #include "yb/util/concurrent_value.h"
@@ -169,6 +170,7 @@ OutboundCall::OutboundCall(
     const RemoteMethod* remote_method,
     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     google::protobuf::Message* response_storage, RpcController* controller,
+    RpcMetrics* rpc_metrics,
     ResponseCallback callback)
     : hostname_(&kEmptyString),
       start_(MonoTime::Now()),
@@ -179,7 +181,8 @@ OutboundCall::OutboundCall(
       callback_(std::move(callback)),
       trace_(new Trace),
       outbound_call_metrics_(outbound_call_metrics),
-      remote_method_pool_(RemoteMethodsCache::Instance().Find(*remote_method_)) {
+      remote_method_pool_(RemoteMethodsCache::Instance().Find(*remote_method_)),
+      rpc_metrics_(rpc_metrics) {
   // Avoid expensive conn_id.ToString() in production.
   TRACE_TO_WITH_TIME(trace_, start_, "Outbound Call initiated.");
 
@@ -190,6 +193,9 @@ OutboundCall::OutboundCall(
   DVLOG(4) << "OutboundCall " << this << " constructed with state_: " << StateName(state_)
            << " and RPC timeout: "
            << (controller_->timeout().Initialized() ? controller_->timeout().ToString() : "none");
+
+  IncrementCounter(rpc_metrics_->outbound_calls_created);
+  IncrementGauge(rpc_metrics_->outbound_calls_alive);
 }
 
 OutboundCall::~OutboundCall() {
@@ -202,6 +208,8 @@ OutboundCall::~OutboundCall() {
               << "us. Trace:";
     trace_->Dump(&LOG(INFO), true);
   }
+
+  DecrementGauge(rpc_metrics_->outbound_calls_alive);
 }
 
 void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {

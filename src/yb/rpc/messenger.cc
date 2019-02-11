@@ -58,6 +58,7 @@
 #include "yb/rpc/constants.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_header.pb.h"
+#include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/rpc_service.h"
 #include "yb/rpc/tcp_stream.h"
 #include "yb/rpc/yb_rpc.h"
@@ -471,7 +472,8 @@ Messenger::Messenger(const MessengerBuilder &bld)
       retain_self_(this),
       io_thread_pool_(name_, FLAGS_io_thread_pool_size),
       scheduler_(&io_thread_pool_.io_service()),
-      normal_thread_pool_(new rpc::ThreadPool(name_, bld.queue_limit_, bld.workers_limit_)) {
+      normal_thread_pool_(new rpc::ThreadPool(name_, bld.queue_limit_, bld.workers_limit_)),
+      rpc_metrics_(new RpcMetrics(bld.metric_entity_)) {
 #ifndef NDEBUG
   creation_stack_trace_.Collect(/* skip_frames */ 1);
 #endif

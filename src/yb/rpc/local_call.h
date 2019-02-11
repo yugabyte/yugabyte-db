@@ -30,7 +30,7 @@ class LocalOutboundCall : public OutboundCall {
   LocalOutboundCall(const RemoteMethod* remote_method,
                     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                     google::protobuf::Message* response_storage,
-                    RpcController* controller, ResponseCallback callback);
+                    RpcController* controller, RpcMetrics* rpc_metrics, ResponseCallback callback);
 
   CHECKED_STATUS SetRequestParam(const google::protobuf::Message& req) override;
 
@@ -52,7 +52,7 @@ class LocalOutboundCall : public OutboundCall {
 // A short-circuited YB inbound call.
 class LocalYBInboundCall : public YBInboundCall {
  public:
-  LocalYBInboundCall(const RemoteMethod& remote_method,
+  LocalYBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method,
                      std::weak_ptr<LocalOutboundCall> outbound_call,
                      const MonoTime& deadline);
 

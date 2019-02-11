@@ -59,6 +59,16 @@ METRIC_DEFINE_histogram(
     "RPC requests",
     60000000LU, 2);
 
+METRIC_DEFINE_gauge_int64(server, cql_processors_alive,
+                          "Number of alive CQL Processors.",
+                          yb::MetricUnit::kUnits,
+                          "Number of alive CQL Processors.");
+
+METRIC_DEFINE_counter(server, cql_processors_created,
+                      "Number of created CQL Processors.",
+                      yb::MetricUnit::kUnits,
+                      "Number of created CQL Processors.");
+
 DECLARE_bool(use_cassandra_authentication);
 
 namespace yb {
@@ -115,6 +125,8 @@ CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
       METRIC_handler_latency_yb_cqlserver_CQLServerService_Any.Instantiate(metric_entity);
   num_errors_parsing_cql_ =
       METRIC_yb_cqlserver_CQLServerService_ParsingErrors.Instantiate(metric_entity);
+  cql_processors_alive_ = METRIC_cql_processors_alive.Instantiate(metric_entity, 0);
+  cql_processors_created_ = METRIC_cql_processors_created.Instantiate(metric_entity);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -127,9 +139,12 @@ CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl, const CQLProcessorListP
       cql_metrics_(service_impl->cql_metrics()),
       pos_(pos),
       statement_executed_cb_(Bind(&CQLProcessor::StatementExecuted, Unretained(this))) {
+  IncrementCounter(cql_metrics_->cql_processors_created_);
+  IncrementGauge(cql_metrics_->cql_processors_alive_);
 }
 
 CQLProcessor::~CQLProcessor() {
+  DecrementGauge(cql_metrics_->cql_processors_alive_);
 }
 
 void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {

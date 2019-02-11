@@ -27,8 +27,8 @@ LocalOutboundCall::LocalOutboundCall(
     const RemoteMethod* remote_method,
     const shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     google::protobuf::Message* response_storage, RpcController* controller,
-    ResponseCallback callback)
-    : OutboundCall(remote_method, outbound_call_metrics, response_storage, controller,
+    RpcMetrics* rpc_metrics, ResponseCallback callback)
+    : OutboundCall(remote_method, outbound_call_metrics, response_storage, controller, rpc_metrics,
                    std::move(callback)) {
 }
 
@@ -46,7 +46,8 @@ const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInbound
   const MonoDelta timeout = controller()->timeout();
   const MonoTime deadline = timeout.Initialized() ? start_ + timeout : MonoTime::Max();
   auto outbound_call = std::static_pointer_cast<LocalOutboundCall>(shared_from(this));
-  inbound_call_ = InboundCall::Create<LocalYBInboundCall>(remote_method(), outbound_call, deadline);
+  inbound_call_ = InboundCall::Create<LocalYBInboundCall>(
+      &rpc_metrics(), remote_method(), outbound_call, deadline);
   return inbound_call_;
 }
 
@@ -61,9 +62,12 @@ Status LocalOutboundCall::GetSidecar(int idx, Slice* sidecar) const {
 }
 
 LocalYBInboundCall::LocalYBInboundCall(
-    const RemoteMethod& remote_method, std::weak_ptr<LocalOutboundCall> outbound_call,
+    RpcMetrics* rpc_metrics,
+    const RemoteMethod& remote_method,
+    std::weak_ptr<LocalOutboundCall> outbound_call,
     const MonoTime& deadline)
-    : YBInboundCall(remote_method), outbound_call_(outbound_call), deadline_(deadline) {
+    : YBInboundCall(rpc_metrics, remote_method), outbound_call_(outbound_call),
+      deadline_(deadline) {
 }
 
 const Endpoint& LocalYBInboundCall::remote_address() const {
