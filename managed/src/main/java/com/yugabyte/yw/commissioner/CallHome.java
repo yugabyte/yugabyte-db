@@ -4,15 +4,16 @@ package com.yugabyte.yw.commissioner;
 
 
 import akka.actor.ActorSystem;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CallHomeManager;
 import com.yugabyte.yw.models.Customer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import play.Environment;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
 
@@ -28,7 +29,9 @@ public class CallHome {
 
   private final ExecutionContext executionContext;
 
-  private final CallHomeManager callHomeManager;
+  private CallHomeManager callHomeManager;
+
+  private final Environment environment;
 
   // Interval at which to send callhome diagnostics in minutes
   private final int YB_CALLHOME_INTERVAL = 60;
@@ -36,13 +39,21 @@ public class CallHome {
   private AtomicBoolean running = new AtomicBoolean(false);
 
   @Inject
-  public CallHome(ActorSystem actorSystem, ExecutionContext executionContext, ApiHelper apiHelper) {
+  public CallHome(ActorSystem actorSystem, ExecutionContext executionContext,
+                  CallHomeManager callHomeManager,
+                  Environment environment) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
-    this.callHomeManager = new CallHomeManager(apiHelper);
-    this.initialize();
+    this.environment = environment;
+    this.callHomeManager = callHomeManager;
 
-    LOG.info("Starting scheduling service");
+    // We don't want to start callhome on dev environments
+    if (this.environment.isDev()) {
+      LOG.info("Skip callhome scheduling");
+    } else {
+      LOG.info("Initialize callhome service");
+      this.initialize();
+    }
   }
 
   private void initialize() {
@@ -54,7 +65,8 @@ public class CallHome {
     );
   }
 
-  public void scheduleRunner() {
+  @VisibleForTesting
+  void scheduleRunner() {
     if (running.get()) {
       LOG.info("Previous scheduler still running");
       return;
