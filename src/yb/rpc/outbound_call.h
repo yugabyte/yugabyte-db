@@ -202,7 +202,7 @@ class OutboundCall : public RpcCall {
   OutboundCall(const RemoteMethod* remote_method,
                const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                google::protobuf::Message* response_storage,
-               RpcController* controller, ResponseCallback callback);
+               RpcController* controller, RpcMetrics* rpc_metrics, ResponseCallback callback);
   virtual ~OutboundCall();
 
   // Serialize the given request PB into this call's internal storage.
@@ -271,6 +271,10 @@ class OutboundCall : public RpcCall {
 
   Trace* trace() {
     return trace_.get();
+  }
+
+  RpcMetrics& rpc_metrics() {
+    return *rpc_metrics_;
   }
 
  protected:
@@ -350,6 +354,8 @@ class OutboundCall : public RpcCall {
   std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
 
   RemoteMethodPool* remote_method_pool_;
+
+  RpcMetrics* rpc_metrics_;
 
   DISALLOW_COPY_AND_ASSIGN(OutboundCall);
 };

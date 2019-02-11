@@ -47,6 +47,9 @@ class CQLMetrics : public ql::QLMetrics {
   scoped_refptr<yb::Counter> num_errors_parsing_cql_;
   // Rpc level metrics
   yb::rpc::RpcMethodMetrics rpc_method_metrics_;
+
+  scoped_refptr<AtomicGauge<int64_t>> cql_processors_alive_;
+  scoped_refptr<Counter> cql_processors_created_;
 };
 
 

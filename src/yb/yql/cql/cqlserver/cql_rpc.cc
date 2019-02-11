@@ -113,7 +113,7 @@ void CQLConnectionContext::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
 CQLInboundCall::CQLInboundCall(rpc::ConnectionPtr conn,
                                CallProcessedListener call_processed_listener,
                                ql::QLSession::SharedPtr ql_session)
-    : InboundCall(std::move(conn), std::move(call_processed_listener)),
+    : InboundCall(std::move(conn), nullptr /* rpc_metrics */, std::move(call_processed_listener)),
       ql_session_(std::move(ql_session)) {
 }
 

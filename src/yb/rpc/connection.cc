@@ -47,6 +47,7 @@
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_metrics.h"
 
 #include "yb/util/trace.h"
 #include "yb/util/string_util.h"
@@ -73,18 +74,24 @@ namespace rpc {
 Connection::Connection(Reactor* reactor,
                        std::unique_ptr<Stream> stream,
                        Direction direction,
+                       RpcMetrics* rpc_metrics,
                        std::unique_ptr<ConnectionContext> context)
     : reactor_(reactor),
       stream_(std::move(stream)),
       direction_(direction),
       last_activity_time_(CoarseMonoClock::Now()),
+      rpc_metrics_(rpc_metrics),
       context_(std::move(context)) {
   const auto metric_entity = reactor->messenger()->metric_entity();
   handler_latency_outbound_transfer_ = metric_entity ?
       METRIC_handler_latency_outbound_transfer.Instantiate(metric_entity) : nullptr;
+  IncrementCounter(rpc_metrics_->connections_created);
+  IncrementGauge(rpc_metrics_->connections_alive);
 }
 
-Connection::~Connection() {}
+Connection::~Connection() {
+  DecrementGauge(rpc_metrics_->connections_alive);
+}
 
 void UpdateIdleReason(const char* message, bool* result, std::string* reason) {
   *result = false;

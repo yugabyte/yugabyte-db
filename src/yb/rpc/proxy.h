@@ -81,6 +81,8 @@ class ProxyContext {
 
   virtual IoService& io_service() = 0;
 
+  virtual RpcMetrics& rpc_metrics() = 0;
+
   virtual ~ProxyContext() {}
 };
 

@@ -104,6 +104,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   Connection(Reactor* reactor,
              std::unique_ptr<Stream> stream,
              Direction direction,
+             RpcMetrics* rpc_metrics,
              std::unique_ptr<ConnectionContext> context);
 
   ~Connection();
@@ -179,6 +180,10 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
   void Close();
 
+  RpcMetrics& rpc_metrics() {
+    return *rpc_metrics_;
+  }
+
  private:
   CHECKED_STATUS DoWrite();
 
@@ -245,6 +250,9 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   std::vector<OutboundDataPtr> outbound_data_being_processed_;
 
   std::shared_ptr<ReactorTask> process_response_queue_task_;
+
+  // RPC related metrics.
+  RpcMetrics* rpc_metrics_;
 
   // Connection is responsible for sending and receiving bytes.
   // Context is responsible for what to do with them.
