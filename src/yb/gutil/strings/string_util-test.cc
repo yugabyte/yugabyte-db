@@ -73,6 +73,16 @@ TEST(StringUtilTest, MatchPatternTest) {
                            "He********************************o"));
 }
 
+TEST(StringUtilTest, TestEqualsIgnoreCase) {
+  ASSERT_TRUE(EqualsIgnoreCase(string("abcd"), string("ABCD")));
+  ASSERT_TRUE(EqualsIgnoreCase(string("AbCd"), string("aBCD")));
+  ASSERT_TRUE(EqualsIgnoreCase(string(""), string("")));
+  ASSERT_FALSE(EqualsIgnoreCase(string("ABCD"), string("ABC")));
+  ASSERT_FALSE(EqualsIgnoreCase(string("ABC"), string("ABCD")));
+  ASSERT_FALSE(EqualsIgnoreCase(string("ABCD"), string("ABC")));
+  ASSERT_FALSE(EqualsIgnoreCase(string("ABC"), string("ABE")));
+}
+
 TEST(StringUtilTest, TestAppendWithSeparator) {
   string s;
   AppendWithSeparator("foo", &s);

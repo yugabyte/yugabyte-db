@@ -1136,9 +1136,9 @@ void ProcessDumpEntry(Slice key, Slice value, IncludeBinary include_binary, Stor
   Result<std::string> value_str = DocDBValueToDebugStr(key_type, *key_str, value);
   if (!value_str.ok()) {
     *out << value_str.status().CloneAndAppend(Substitute(". Key: $0", *key_str)) << endl;
-    return;
+  } else {
+    *out << *key_str << " -> " << *value_str << endl;
   }
-  *out << *key_str << " -> " << *value_str << endl;
   if (include_binary) {
     *out << FormatRocksDBSliceAsStr(key) << " -> "
          << FormatRocksDBSliceAsStr(value) << endl << endl;

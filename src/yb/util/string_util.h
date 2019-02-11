@@ -44,6 +44,14 @@ inline std::string VectorToString(const std::vector<T>& vec) {
   return ToString(vec);
 }
 
+
+// Whether or not content of two strings is equal ignoring case
+// Examples:
+// - abcd == ABCD
+// - AbCd == aBCD
+bool EqualsIgnoreCase(const std::string &string1,
+                      const std::string &string2);
+
 std::string RightPadToWidth(const std::string& s, int w);
 
 // Returns true if s ends with substring end, and s has at least one more character before

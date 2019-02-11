@@ -92,6 +92,7 @@ class QLValue {
     CHECK(pb_.has_double_value()) << "Value: " << pb_.ShortDebugString();
     return pb_.double_value();
   }
+  // Returns a serialized binary representation of a decimal, not a plaintext
   virtual const std::string& decimal_value() const {
     CHECK(pb_.has_decimal_value()) << "Value: " << pb_.ShortDebugString();
     return pb_.decimal_value();
@@ -210,9 +211,11 @@ class QLValue {
   virtual void set_double_value(double val) {
     pb_.set_double_value(val);
   }
+  // val is a serialized binary representation of a decimal, not a plaintext
   virtual void set_decimal_value(const std::string& val) {
     pb_.set_decimal_value(val);
   }
+  // val is a serialized binary representation of a decimal, not a plaintext
   virtual void set_decimal_value(std::string&& val) {
     pb_.set_decimal_value(std::move(val));
   }

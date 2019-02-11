@@ -71,6 +71,7 @@
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
 #include "utils/syscache.h"
+#include "utils/numeric.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -349,19 +350,24 @@ Datum YBCFloat8ToDatum(const double *data, int64 bytes, const YBCPgTypeAttrs *ty
 
 /*
  * DECIMAL / NUMERIC conversion.
- * TODO(Alex) Implement these functions instead of raising error.
+ * We're using plaintext c-string as an intermediate step between PG and YB numerics.
  */
-void YBCDatumToNumeric(Datum datum, void *data, int64 *bytes) {
-	ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("NUMERIC and DECIMAL is not yet supported")));
+void YBCDatumToNumeric(Datum datum, char *plaintext[], int64 *bytes) {
+	Numeric num = DatumGetNumeric(datum);
+	*plaintext = numeric_normalize(num);
+	// NaN support will be added in ENG-4645
+	if (strncmp(*plaintext, "NaN", 3) == 0) {
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("DECIMAL does not support NaN yet")));
+	}
 }
 
-Datum YBCNumericToDatum(const void *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
-	ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("NUMERIC and DECIMAL is not yet supported")));
-	return 0;
+Datum YBCNumericToDatum(const char plaintext[], int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+	FunctionCallInfoData fargs;
+	FunctionCallInfo fcinfo = &fargs;
+	PG_GETARG_DATUM(0) = CStringGetDatum(plaintext);
+	PG_GETARG_DATUM(2) = Int32GetDatum(type_attrs->typmod);
+	return numeric_in(fcinfo);
 }
 
 /*
@@ -612,11 +618,7 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)NULL,
 		(YBCPgDatumFromData)NULL },
 
-	/* TODO(Alex)
-	 * - Change YB_YQL_DATA_TYPE_NOT_SUPPORTED to YB_YQL_DATA_TYPE_DECIMAL for Numeric.
-	 * - Change primary_support from "false" to "true".
-	 */
-	{ NUMERICOID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, false,
+	{ NUMERICOID, YB_YQL_DATA_TYPE_DECIMAL, true,
 		(YBCPgDatumToData)YBCDatumToNumeric,
 		(YBCPgDatumFromData)YBCNumericToDatum },
 

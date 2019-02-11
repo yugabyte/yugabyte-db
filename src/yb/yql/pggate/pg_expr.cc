@@ -13,12 +13,12 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/pggate/pg_expr.h"
-
 #include <unordered_map>
 
 #include "yb/client/schema.h"
+#include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_dml.h"
+#include "yb/util/string_util.h"
 
 #include "postgres/src/include/pg_config_manual.h"
 
@@ -131,6 +131,32 @@ void PgExpr::TranslateBinary(Slice *yb_cursor, const PgWireDataHeader& header, i
 
   pg_tuple->WriteDatum(index, type_entity->yb_to_datum(yb_cursor->data(), data_size, type_attrs));
   yb_cursor->remove_prefix(data_size);
+}
+
+
+// Expects a serialized string representation of YB Decimal.
+void PgExpr::TranslateDecimal(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                              const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                              PgTuple *pg_tuple) {
+  if (header.is_null()) {
+    return pg_tuple->WriteNull(index, header);
+  }
+
+  int64_t data_size;
+  size_t read_size = PgDocData::ReadNumber(yb_cursor, &data_size);
+  yb_cursor->remove_prefix(read_size);
+
+  std::string serialized_decimal = yb_cursor->ToBuffer();
+  yb_cursor->remove_prefix(data_size);
+
+  util::Decimal yb_decimal;
+  if (!yb_decimal.DecodeFromComparable(serialized_decimal).ok()) {
+    LOG(FATAL) << "Failed to deserialize DECIMAL from " << serialized_decimal;
+    return;
+  }
+  auto plaintext = yb_decimal.ToString();
+
+  pg_tuple->WriteDatum(index, type_entity->yb_to_datum(plaintext.c_str(), data_size, type_attrs));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -318,11 +344,18 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool 
       break;
 
     case YB_YQL_DATA_TYPE_DECIMAL:
-      // TODO(Alex)
-      // - Need to setup this assignment
-      //   translate_data_ = TranslateDecimal;
-      // - Define TranslateDecimal() that convert YugaByte internal format to Postgres datum.
-      LOG(FATAL) << "Internal error: Need work on DECIMAL";
+      if (!is_null) {
+        char* plaintext;
+        // Calls YBCDatumToNumeric in ybctype.c
+        type_entity_->datum_to_yb(datum, &plaintext, nullptr);
+        // NaN support will be added in ENG-4645
+        if (EqualsIgnoreCase(std::string(plaintext), "NaN")) {
+          break; // Client-side error was already returned by YBCDatumToNumeric
+        }
+        util::Decimal yb_decimal(plaintext);
+        ql_value_.set_decimal_value(yb_decimal.EncodeToComparable());
+      }
+      translate_data_ = TranslateDecimal;
       break;
 
     case YB_YQL_DATA_TYPE_VARINT:
@@ -503,11 +536,7 @@ PgColumnRef::PgColumnRef(int attr_num,
         break;
 
       case YB_YQL_DATA_TYPE_DECIMAL:
-        // TODO(Alex)
-        // - Need to setup this assignment
-        //   translate_data_ = TranslateDecimal;
-        // - Define TranslateDecimal() that convert YugaByte internal format to Postgres datum.
-        LOG(FATAL) << "Internal error: Need work on DECIMAL";
+        translate_data_ = TranslateDecimal;
         break;
 
       case YB_YQL_DATA_TYPE_VARINT:
