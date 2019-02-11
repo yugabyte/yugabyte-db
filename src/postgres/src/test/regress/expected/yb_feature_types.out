@@ -10,12 +10,7 @@ CREATE TABLE feature_tab_bigint (feature_col BIGINT);
 CREATE TABLE feature_tab_real (feature_col REAL);
 CREATE TABLE feature_tab_double_precision (feature_col DOUBLE PRECISION);
 CREATE TABLE feature_tab_decimal (feature_col DECIMAL);
-ERROR:  DECIMAL not supported yet
-LINE 1: CREATE TABLE feature_tab_decimal (feature_col DECIMAL);
-                                                      ^
-HINT:  Please contact YugaByte for its release schedule.
 CREATE TABLE feature_tab_numeric (feature_col NUMERIC);
-ERROR:  Type not yet supported in YugaByte: 1700 (NUMERIC)
 CREATE TABLE feature_tab_smallserial (feature_col SMALLSERIAL);
 ERROR:  could not open file "base/18373/0": No such file or directory
 CREATE TABLE feature_tab_serial (feature_col SERIAL);

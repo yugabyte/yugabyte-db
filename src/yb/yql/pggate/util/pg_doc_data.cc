@@ -17,6 +17,8 @@
 
 #include "yb/client/client.h"
 
+#include "yb/util/decimal.h"
+
 namespace yb {
 namespace pggate {
 
@@ -86,11 +88,14 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
     case InternalType::kBinaryValue:
       WriteBinary(col_value.binary_value(), buffer);
       break;
-
+    case InternalType::kDecimalValue: {
+      // Passing a serialized form of YB Decimal, decoding will be done in pg_expr.cc
+      WriteText(col_value.decimal_value(), buffer);
+      break;
+    }
     case InternalType::kTimestampValue:
     case InternalType::kDateValue:
     case InternalType::kTimeValue:
-    case InternalType::kDecimalValue:
     case InternalType::kVarintValue:
     case InternalType::kInetaddressValue:
     case InternalType::kJsonbValue:

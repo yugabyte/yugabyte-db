@@ -20,8 +20,7 @@
 
 #include "yb/util/string_util.h"
 
-#include <sstream>
-
+#include "yb/util/string_case.h"
 #include "yb/util/logging.h"
 
 using std::vector;
@@ -38,6 +37,17 @@ vector<string> StringSplit(const string& arg, char delim) {
     splits.push_back(item);
   }
   return splits;
+}
+
+bool EqualsIgnoreCase(const std::string &string1,
+                      const std::string &string2) {
+  if (string1.size() != string2.size())
+    return false;
+  for (int i = 0; i < string1.size(); ++i) {
+    if (tolower(string1[i]) != tolower(string2[i]))
+      return false;
+  }
+  return true;
 }
 
 std::string RightPadToWidth(const string& s, int w) {
