@@ -6314,7 +6314,7 @@ Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocat
   Status s = BuildLocationsForTablet(tablet_info, locs_pb);
 
   int num_replicas = 0;
-  if (GetReplicationFactor(&num_replicas).ok() && num_replicas > 0 &&
+  if (GetReplicationFactorForTablet(tablet_info, &num_replicas).ok() && num_replicas > 0 &&
       locs_pb->replicas().size() != num_replicas) {
     YB_LOG_EVERY_N(WARNING, 100) << "Expected replicas " << num_replicas << " but found "
         << locs_pb->replicas().size() << " for tablet " << tablet_id;
@@ -6675,6 +6675,18 @@ Status CatalogManager::GetReplicationFactor(int* num_replicas) {
   const ReplicationInfoPB& replication_info = l->data().pb.replication_info();
   *num_replicas = GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
   return Status::OK();
+}
+
+Status CatalogManager::GetReplicationFactorForTablet(const scoped_refptr<TabletInfo>& tablet,
+    int* num_replicas) {
+  // For system tables, the set of replicas is always the set of masters.
+  if (system_tablets_.find(tablet->id()) != system_tablets_.end()) {
+    consensus::ConsensusStatePB master_consensus;
+    RETURN_NOT_OK(GetCurrentConfig(&master_consensus));
+    *num_replicas = master_consensus.config().peers().size();
+    return Status::OK();
+  }
+  return GetReplicationFactor(num_replicas);
 }
 
 string CatalogManager::placement_uuid() const {
