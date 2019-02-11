@@ -14,6 +14,8 @@ import org.asynchttpclient.util.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+
+import javax.inject.Inject;
 import java.time.Clock;
 import java.util.HashMap;
 import java.util.Map;
@@ -22,15 +24,17 @@ import java.util.UUID;
 public class CallHomeManager {
 
   // Used to get software version from yugaware_property table in DB
-  ConfigHelper configHelper = new ConfigHelper();
+  ConfigHelper configHelper;
 
   // Get timestamp from clock to make testing easier
   Clock clock = Clock.systemUTC();
 
   ApiHelper apiHelper;
 
-  public CallHomeManager(ApiHelper apiHelper){
+  @Inject
+  public CallHomeManager(ApiHelper apiHelper, ConfigHelper configHelper){
     this.apiHelper = apiHelper;
+    this.configHelper = configHelper;
   }
   // Email address from YugaByte to which to send diagnostics, if enabled.
   private final String YB_CALLHOME_URL = "http://yw-diagnostics.yugabyte.com";
