@@ -224,7 +224,7 @@ class ClusterOptions:
         self.node_type = DAEMON_TYPE_TSERVER
         self.is_shell_master = False
         self.is_startup_command = False
-        self.enable_postgres = False
+        self.enable_ysql = False
 
     def parse_flag_args(self, flag_args):
         flags = [] if flag_args is None else flag_args.split(",")
@@ -267,8 +267,8 @@ class ClusterOptions:
         if hasattr(args, "master") and args.master:
             self.node_type = DAEMON_TYPE_MASTER
 
-        if hasattr(args, "enable_postgres"):
-            self.enable_postgres = args.enable_postgres
+        if hasattr(args, "enable_ysql"):
+            self.enable_ysql = args.enable_ysql
 
     def validate_daemon_type(self, daemon_type):
         if daemon_type not in DAEMON_TYPES:
@@ -362,7 +362,8 @@ class ClusterControl:
             json.dump(self.cluster_config, config_file)
 
     def is_postgres_enabled(self):
-        return self.cluster_config.get("enable_postgres") or self.options.enable_postgres
+        return self.cluster_config.get("enable_postgres")\
+               or self.cluster_config.get("enable_ysql") or self.options.enable_ysql
 
     @staticmethod
     def add_extra_flags_arguments(subparser):
@@ -449,9 +450,9 @@ class ClusterControl:
                                          help="If specified, this flag will be "
                                          "passed down to tservers as true.")
 
-            subparsers[cmd].add_argument("--enable_postgres",
+            subparsers[cmd].add_argument("--enable_ysql", "--enable_postgres",
                                          action='store_true',
-                                         help="Enable PostgreSQL API.")
+                                         help="Enable YugaByte PostgreSQL API.")
             ClusterControl.add_extra_flags_arguments(subparsers[cmd])
             self.options.is_startup_command = True
 
@@ -808,7 +809,7 @@ class ClusterControl:
         server_counts = self.options.replication_factor
         self.set_master_addresses()
         self.cluster_config = {
-            "enable_postgres": self.options.enable_postgres
+            "enable_ysql": self.options.enable_ysql
         }
 
         server_counts_map = {
