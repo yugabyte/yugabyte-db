@@ -12857,14 +12857,12 @@ Numeric:	INT_P
 				}
 			| DECIMAL_P opt_type_modifiers
 				{
-					parser_ybc_not_support(@1, "DECIMAL");
 					$$ = SystemTypeName("numeric");
 					$$->typmods = $2;
 					$$->location = @1;
 				}
 			| DEC opt_type_modifiers
 				{
-					parser_ybc_not_support(@1, "DECIMAL");
 					$$ = SystemTypeName("numeric");
 					$$->typmods = $2;
 					$$->location = @1;

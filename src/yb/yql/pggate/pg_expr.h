@@ -121,6 +121,11 @@ class PgExpr {
                               const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
                               PgTuple *pg_tuple);
 
+  // Translate DocDB-decimal datatype.
+  static void TranslateDecimal(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                               const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                               PgTuple *pg_tuple);
+
   // Translate system column.
   template<typename data_type>
   static void TranslateSysCol(Slice *yb_cursor, const PgWireDataHeader& header, data_type *value) {

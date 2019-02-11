@@ -1919,6 +1919,8 @@ void Tablet::ForceRocksDBCompactInTest() {
 }
 
 std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
+  if (!regular_db_) return "";
+
   if (!include_intents) {
     return docdb::DocDBDebugDumpToStr(regular_db_.get());
   }
@@ -1927,6 +1929,7 @@ std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
 }
 
 size_t Tablet::TEST_CountRocksDBRecords() {
+  if (!regular_db_) return 0;
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = rocksdb::kDefaultQueryId;
   std::unique_ptr<rocksdb::Iterator> iter(regular_db_->NewIterator(read_opts));
