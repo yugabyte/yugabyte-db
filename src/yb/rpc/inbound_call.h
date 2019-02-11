@@ -86,7 +86,8 @@ class InboundCall : public RpcCall {
  public:
   typedef std::function<void(InboundCall*)> CallProcessedListener;
 
-  InboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener);
+  InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
+              CallProcessedListener call_processed_listener);
   virtual ~InboundCall();
 
   // Return the serialized request parameter protobuf.
@@ -175,6 +176,7 @@ class InboundCall : public RpcCall {
  private:
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.
   ConnectionPtr conn_ = nullptr;
+  RpcMetrics* rpc_metrics_;
   const std::function<void(InboundCall*)> call_processed_listener_;
 
   DISALLOW_COPY_AND_ASSIGN(InboundCall);

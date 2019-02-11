@@ -257,6 +257,10 @@ class Messenger : public ProxyContext {
 
   rpc::ThreadPool& ThreadPool(ServicePriority priority = ServicePriority::kNormal);
 
+  RpcMetrics& rpc_metrics() override {
+    return *rpc_metrics_;
+  }
+
  private:
   FRIEND_TEST(TestRpc, TestConnectionKeepalive);
   friend class DelayedTask;
@@ -369,6 +373,8 @@ class Messenger : public ProxyContext {
 
   // This could be used for high-priority services such as Consensus.
   AtomicUniquePtr<rpc::ThreadPool> high_priority_thread_pool_;
+
+  std::unique_ptr<RpcMetrics> rpc_metrics_;
 
   #ifndef NDEBUG
   // This is so we can log where exactly a Messenger was instantiated to better diagnose a CHECK

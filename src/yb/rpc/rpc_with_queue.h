@@ -30,7 +30,7 @@ class QueueableInboundCall : public InboundCall {
  public:
   QueueableInboundCall(ConnectionPtr conn, size_t weight_in_bytes,
                        CallProcessedListener call_processed_listener)
-      : InboundCall(std::move(conn), std::move(call_processed_listener)),
+      : InboundCall(std::move(conn), nullptr /* rpc_metrics */, std::move(call_processed_listener)),
         weight_in_bytes_(weight_in_bytes) {}
 
   void SetHasReply() {

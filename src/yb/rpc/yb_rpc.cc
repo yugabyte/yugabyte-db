@@ -140,10 +140,10 @@ void YBInboundConnectionContext::Connected(const ConnectionPtr& connection) {
 }
 
 YBInboundCall::YBInboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener)
-    : InboundCall(std::move(conn), std::move(call_processed_listener)) {}
+    : InboundCall(std::move(conn), nullptr /* rpc_metrics */, std::move(call_processed_listener)) {}
 
-YBInboundCall::YBInboundCall(const RemoteMethod& remote_method)
-    : YBInboundCall(nullptr /* conn */, nullptr /* call_processed_listener */) {
+YBInboundCall::YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method)
+    : InboundCall(nullptr /* conn */, rpc_metrics, nullptr /* call_processed_listener */) {
   remote_method_ = remote_method;
 }
 

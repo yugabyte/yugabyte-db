@@ -67,6 +67,7 @@ class ThreadPool;
 class ThreadPoolTask;
 
 struct RpcMethodMetrics;
+struct RpcMetrics;
 
 class RpcCommand;
 typedef std::shared_ptr<RpcCommand> RpcCommandPtr;

@@ -558,6 +558,7 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
       this,
       std::move(stream),
       ConnectionDirection::CLIENT,
+      &messenger()->rpc_metrics(),
       std::move(context));
 
   RETURN_NOT_OK(connection->Start(&loop_));
@@ -848,6 +849,7 @@ void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote,
   auto conn = std::make_shared<Connection>(this,
                                            std::move(*stream),
                                            ConnectionDirection::SERVER,
+                                           &messenger()->rpc_metrics(),
                                            std::move(connection_context));
   ScheduleReactorFunctor([conn = std::move(conn)](Reactor* reactor) {
     reactor->RegisterConnection(conn);

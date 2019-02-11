@@ -947,6 +947,20 @@ class AtomicGauge : public Gauge {
   DISALLOW_COPY_AND_ASSIGN(AtomicGauge);
 };
 
+template <class T>
+void IncrementGauge(const scoped_refptr<AtomicGauge<T>>& gauge) {
+  if (gauge) {
+    gauge->Increment();
+  }
+}
+
+template <class T>
+void DecrementGauge(const scoped_refptr<AtomicGauge<T>>& gauge) {
+  if (gauge) {
+    gauge->Decrement();
+  }
+}
+
 // Utility class to automatically detach FunctionGauges when a class destructs.
 //
 // Because FunctionGauges typically access class instance state, it's important to ensure
@@ -1114,6 +1128,12 @@ class Counter : public Metric {
   LongAdder value_;
   DISALLOW_COPY_AND_ASSIGN(Counter);
 };
+
+inline void IncrementCounter(const scoped_refptr<Counter>& counter) {
+  if (counter) {
+    counter->Increment();
+  }
+}
 
 class HistogramPrototype : public MetricPrototype {
  public:
