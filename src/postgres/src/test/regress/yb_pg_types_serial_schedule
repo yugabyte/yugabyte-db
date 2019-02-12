@@ -20,3 +20,4 @@ test: yb_numeric
 test: yb_numeric_big
 test: yb_timestamp
 test: yb_jsonb
+test: yb_uuid
