@@ -72,6 +72,7 @@
 #include "utils/builtins.h"
 #include "utils/syscache.h"
 #include "utils/numeric.h"
+#include "utils/uuid.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -371,6 +372,29 @@ Datum YBCNumericToDatum(const char plaintext[], int64 bytes, const YBCPgTypeAttr
 }
 
 /*
+ * UUID Datatype.
+ */
+void YBCDatumToUuid(Datum datum, unsigned char **data, int64 *bytes) {
+	// Postgres store uuid as hex string.
+	*data = (DatumGetUUIDP(datum))->data;
+	*bytes = UUID_LEN;
+}
+
+Datum YBCUuidToDatum(const unsigned char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+	// We have to make a copy for data because the "data" pointer belongs to YugaByte cache memory
+	// which can be cleared at any time.
+	pg_uuid_t *uuid;
+	if (bytes != UUID_LEN) {
+		ereport(ERROR, (errcode(ERRCODE_DATA_CORRUPTED),
+										errmsg("Unexpected size for UUID (%ld)", bytes)));
+	}
+
+	uuid = (pg_uuid_t *)palloc(sizeof(pg_uuid_t));
+	memcpy(uuid->data, data, UUID_LEN);
+	return UUIDPGetDatum(uuid);
+}
+
+/*
  * Other conversions.
  */
 
@@ -658,9 +682,9 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToBinary,
 		(YBCPgDatumFromData)YBCBinaryToDatum },
 
-	{ UUIDOID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, false,
-		(YBCPgDatumToData)NULL,
-		(YBCPgDatumFromData)NULL },
+	{ UUIDOID, YB_YQL_DATA_TYPE_STRING, true,
+		(YBCPgDatumToData)YBCDatumToUuid,
+		(YBCPgDatumFromData)YBCUuidToDatum },
 
 	{ LSNOID, YB_YQL_DATA_TYPE_BINARY, false,
 		(YBCPgDatumToData)YBCDatumToBinary,
