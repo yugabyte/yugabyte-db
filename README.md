@@ -12,7 +12,7 @@ YugaByte Database is the open source, transactional, high-performance database f
 
 ## Table of Contents
 
-- [About YugaByte DB](#about-yugabyte)
+- [About YugaByte DB](#about-yugabyte-db)
 - [Architecture](#architecture)
 - [Getting Started](#getting-started)
 - [Developing Apps](#developing-apps)
@@ -31,10 +31,12 @@ YugaByte Database is the open source, transactional, high-performance database f
 
 ## About YugaByte DB
 
-Built using a unique combination of log-structured merge document store, auto-sharding, per-shard distributed consensus replication and multi-shard ACID transactions (inspired by Google Spanner), YugaByte DB is world's only distributed database that is both non-relational (supports Redis-compatible key-value & Cassandra-compatible flexible schema APIs) and relational (PostgreSQL-compatible distributed SQL API) at the same time. It is purpose-built to power fast-growing online services on public, private and hybrid clouds with transactional integrity, low latency, high throughput and multi-region scalability while also providing unparalleled data modeling freedom to application architects. Enterprises gain more functional depth and agility without any cloud lock-in when compared to proprietary cloud databases such as Amazon DynamoDB, Microsoft Azure Cosmos DB and Google Cloud Spanner. Enterprises also benefit from stronger data integrity guarantees and higher performance than those offered by legacy open source NoSQL databases such as MongoDB and Apache Cassandra. 
+Built using a unique combination of high-performance storage engine, auto sharding, per-shard distributed consensus replication and multi-shard ACID transactions (inspired by Google Spanner), YugaByte DB is world's only distributed database that is both non-relational and relational at the same time. It supports two transactional NoSQL (Redis-compatible key value & Cassandra-compatible flexible schema) APIs as well as a distributed SQL (PostgreSQL-compatible) API on a common massively scalable document store.
 
-* See how YugaByte DB [compares with other databases](https://docs.yugabyte.com/comparisons/).
-* Read more about YugaByte DB in our [docs](https://docs.yugabyte.com/introduction/overview/).
+YugaByte DB is purpose-built to power internet-scale online services on public, private and hybrid clouds with transactional integrity, high availability, low latency, high throughput and multi-region scalability while also providing unparalleled data modeling freedom to application architects. Enterprises gain more functional depth and agility without any cloud lock-in when compared to proprietary cloud databases such as Amazon DynamoDB, Microsoft Azure Cosmos DB and Google Cloud Spanner. Enterprises also benefit from stronger data integrity guarantees, more reliable scaling and higher performance than those offered by legacy open source NoSQL databases such as MongoDB and Apache Cassandra. 
+
+* See how YugaByte DB [compares with other databases](https://docs.yugabyte.com/latest/comparisons/).
+* Read more about YugaByte DB in our [docs](https://docs.yugabyte.com/latest/introduction/).
 
 ## Architecture
 
@@ -43,9 +45,9 @@ YugaByte DB architecture has 2 layers. At the core is DocDB, YugaByte DB's distr
 ### YugaByte DB APIs
 
 YugaByte DB supports both Transactional NoSQL and Distributed SQL APIs.
-* [YugaByte Dictionary Service (YEDIS)](https://docs.yugabyte.com/api/redis/) - A Redis-compatible Key-Value API with support for hash, sorted sets, pub/sub and time series data structures.
-* [YugaByte Cloud Query Language (YCQL)](https://docs.yugabyte.com/api/cassandra/) - A Cassandra-compatible Flexible Schema API with strong consistency, distributed ACID transactions, globally consistent secondary indexes and a native JSONB data type.
-* [YugaByte Structured Query Language (YSQL)](https://docs.yugabyte.com/api/postgresql/) - A PostgreSQL-compatible Distributed SQL API (currently in beta) with linear write scalability and extreme fault tolerance against infrastructure failures.
+* [YugaByte Dictionary Service (YEDIS)](https://docs.yugabyte.com/latest/api/redis/) - A Redis-compatible Key-Value API with support for hash, sorted sets, pub/sub and time series data structures.
+* [YugaByte Cloud Query Language (YCQL)](https://docs.yugabyte.com/latest/api/cassandra/) - A Cassandra-compatible Flexible Schema API with strong consistency, distributed ACID transactions, globally consistent secondary indexes and a native JSONB column type.
+* [YugaByte Structured Query Language (YSQL)](https://docs.yugabyte.com/latest/api/postgresql/) - A PostgreSQL-compatible Distributed SQL API (currently in beta) with linear write scalability and extreme fault tolerance against infrastructure failures.
 
 For transactional, internet-scale workloads, the question of which API to choose is a trade-off between data modeling richness and query performance. On one end of the spectrum is the YEDIS API that is completely optimized for single key access patterns, has simpler data modeling constructs and provides blazing-fast (sub-ms) query performance. On the other end of the spectrum is the YSQL API that supports complex multi-key relationships (through JOINS and foreign keys) and provides normal (single-digit ms) query performance. This is expected since multiple keys can be located on multiple shards hosted on multiple nodes, resulting in higher latency than a key-value API that accesses only a single key at any time. At the middle of the spectrum is the YCQL API that is still optimized for majority single-key workloads but has richer data modeling features such as globally consistent secondary indexes (powered by distributed ACID transactions) that can accelerate internet-scale application development significantly.
 
@@ -57,30 +59,27 @@ For transactional, internet-scale workloads, the question of which API to choose
 
 Here are a few resources for getting started with YugaByte DB:
 
-* [Quick start guide](http://docs.yugabyte.com/quick-start/) - install, create a local cluster and read/write from YugaByte DB.
-* [Explore core features](https://docs.yugabyte.com/explore/) - automatic sharding & re-balancing, linear scalability, fault tolerance, tunable reads etc.
+* [Quick start guide](http://docs.yugabyte.com/latest/quick-start/) - install, create a local cluster and read/write from YugaByte DB.
+* [Explore core features](https://docs.yugabyte.com/latest/explore/) - automatic sharding & re-balancing, linear scalability, fault tolerance, tunable reads etc.
 * [Ecosystem integrations](https://docs.yugabyte.com/latest/develop/ecosystem-integrations/) - integrations with Apache Kafka/KSQL, Apache Spark, JanusGraph, KairosDB, Presto and more.
-* [Real world apps](https://docs.yugabyte.com/develop/realworld-apps/) - sample real-world, end-to-end applications built using YugaByte DB.
-* [Architecture docs](https://docs.yugabyte.com/architecture/) - to understand how YugaByte DB was designed and how it works
+* [Real world apps](https://docs.yugabyte.com/latest/develop/realworld-apps/) - sample real-world, end-to-end applications built using YugaByte DB.
+* [Architecture docs](https://docs.yugabyte.com/latest/architecture/) - to understand how YugaByte DB is designed and how it works
 
 Cannot find what you are looking for? Have a question? We love to hear from you - please [file a GitHub issue](https://github.com/YugaByte/yugabyte-db/issues).
 
 ## Developing Apps
 
 Here is a tutorial on implementing a simple Hello World application for YugaByte DB's YCQL and YEDIS APIs in different languages:
-* [Java](https://docs.yugabyte.com/develop/client-drivers/java/) using Maven
-* [NodeJS](https://docs.yugabyte.com/develop/client-drivers/nodejs/)
-* [Python](https://docs.yugabyte.com/develop/client-drivers/python/)
+* [Java](https://docs.yugabyte.com/latest/develop/client-drivers/java/) using Maven
+* [NodeJS](https://docs.yugabyte.com/latest/develop/client-drivers/nodejs/)
+* [Python](https://docs.yugabyte.com/latest/develop/client-drivers/python/)
 * [Go](https://docs.yugabyte.com/latest/develop/client-drivers/go/)
 * [C#](https://docs.yugabyte.com/latest/develop/client-drivers/csharp/)
 * [C/C++](https://docs.yugabyte.com/latest/develop/client-drivers/cpp/)
 
-We are constantly adding documentation on how to build apps using the client drivers in various
-languages, as well as the ecosystem integrations we support. Please see [our app-development
-docs](https://docs.yugabyte.com/develop/) for the latest information.
+We are constantly adding documentation on how to build apps using the client drivers in various languages, as well as the ecosystem integrations we support. Please see [our app-development docs](https://docs.yugabyte.com/latest/develop/) for the latest information.
 
-Once again, please post your questions or comments as a [GitHub issue
-](https://github.com/YugaByte/yugabyte-db/issues) if you need something.
+Once again, please post your questions or comments as a [GitHub issue](https://github.com/YugaByte/yugabyte-db/issues) if you need something.
 
 ## Building YugaByte code
 
