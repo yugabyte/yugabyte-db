@@ -20,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -181,6 +182,16 @@ public class TestPgWrapper extends BasePgSQLTest {
         assertEquals(1, rs.getInt("v2"));
         assertEquals(i, rs.getInt("v3"));
       }
+    }
+    Connection connection2 = createConnection();
+    try (Statement statement = connection2.createStatement()) {
+      statement.execute("INSERT INTO testdefaultvaluetable(k, v3) VALUES(1000, 3)");
+      ResultSet rs = statement.executeQuery("SELECT * FROM testdefaultvaluetable WHERE k = 1000");
+      assertTrue(rs.next());
+      assertEquals(1000, rs.getInt("k"));
+      assertEquals(3, rs.getInt("v3"));
+      assertEquals("abc", rs.getString("v1"));
+      assertEquals(1, rs.getInt("v2"));
     }
   }
 
