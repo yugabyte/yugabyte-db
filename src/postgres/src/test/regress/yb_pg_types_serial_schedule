@@ -21,3 +21,4 @@ test: yb_numeric_big
 test: yb_timestamp
 test: yb_jsonb
 test: yb_uuid
+test: yb_money

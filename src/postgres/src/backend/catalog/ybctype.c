@@ -70,6 +70,7 @@
 #include "parser/parse_type.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
+#include "utils/cash.h"
 #include "utils/syscache.h"
 #include "utils/numeric.h"
 #include "utils/uuid.h"
@@ -353,7 +354,7 @@ Datum YBCFloat8ToDatum(const double *data, int64 bytes, const YBCPgTypeAttrs *ty
  * DECIMAL / NUMERIC conversion.
  * We're using plaintext c-string as an intermediate step between PG and YB numerics.
  */
-void YBCDatumToNumeric(Datum datum, char *plaintext[], int64 *bytes) {
+void YBCDatumToDecimalText(Datum datum, char *plaintext[], int64 *bytes) {
 	Numeric num = DatumGetNumeric(datum);
 	*plaintext = numeric_normalize(num);
 	// NaN support will be added in ENG-4645
@@ -363,12 +364,24 @@ void YBCDatumToNumeric(Datum datum, char *plaintext[], int64 *bytes) {
 	}
 }
 
-Datum YBCNumericToDatum(const char plaintext[], int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+Datum YBCDecimalTextToDatum(const char plaintext[], int64 bytes, const YBCPgTypeAttrs *type_attrs) {
 	FunctionCallInfoData fargs;
 	FunctionCallInfo fcinfo = &fargs;
 	PG_GETARG_DATUM(0) = CStringGetDatum(plaintext);
 	PG_GETARG_DATUM(2) = Int32GetDatum(type_attrs->typmod);
 	return numeric_in(fcinfo);
+}
+
+/*
+ * MONEY conversion.
+ * We're using int64 as a representation, just like Postgres does.
+ */
+void YBCDatumToMoneyInt64(Datum datum, int64 *data, int64 *bytes) {
+	*data = DatumGetCash(datum);
+}
+
+Datum YBCMoneyInt64ToDatum(const int64 *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+	return CashGetDatum(*data);
 }
 
 /*
@@ -546,9 +559,10 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)NULL,
 		(YBCPgDatumFromData)NULL },
 
-	{ CASHOID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, false,
-		(YBCPgDatumToData)NULL,
-		(YBCPgDatumFromData)NULL },
+	// We're using int64 to represent monetary type, just like Postgres does.
+	{ CASHOID, YB_YQL_DATA_TYPE_INT64, true,
+		(YBCPgDatumToData)YBCDatumToMoneyInt64,
+		(YBCPgDatumFromData)YBCMoneyInt64ToDatum },
 
 	{ MACADDROID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, false,
 		(YBCPgDatumToData)NULL,
@@ -643,8 +657,8 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumFromData)NULL },
 
 	{ NUMERICOID, YB_YQL_DATA_TYPE_DECIMAL, true,
-		(YBCPgDatumToData)YBCDatumToNumeric,
-		(YBCPgDatumFromData)YBCNumericToDatum },
+		(YBCPgDatumToData)YBCDatumToDecimalText,
+		(YBCPgDatumFromData)YBCDecimalTextToDatum },
 
 	{ REFCURSOROID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, false,
 		(YBCPgDatumToData)NULL,
