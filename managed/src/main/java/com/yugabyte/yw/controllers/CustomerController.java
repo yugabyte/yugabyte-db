@@ -12,6 +12,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.CallHomeManager;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
@@ -20,6 +21,8 @@ import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
@@ -27,6 +30,8 @@ import play.mvc.Result;
 
 
 public class CustomerController extends AuthenticatedController {
+
+  public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
 
   @Inject
   FormFactory formFactory;
@@ -53,6 +58,7 @@ public class CustomerController extends AuthenticatedController {
     if (config != null) {
       responseJson.set("alertingData", config.data);
     }
+    responseJson.put("callhomeLevel", CustomerConfig.getOrCreateCallhomeLevel(customerUUID).toString());
 
     return ok(responseJson);
   }
@@ -75,7 +81,7 @@ public class CustomerController extends AuthenticatedController {
 
     boolean hasPassword = formData.get().password != null && !formData.get().password.isEmpty();
     boolean hasConfirmPassword = formData.get().confirmPassword != null &&
-        !formData.get().confirmPassword.isEmpty();
+            !formData.get().confirmPassword.isEmpty();
     if (hasPassword && hasConfirmPassword) {
       if (!formData.get().password.equals(formData.get().confirmPassword)) {
         String errorMsg = "Both passwords must match!";
@@ -99,13 +105,15 @@ public class CustomerController extends AuthenticatedController {
     }
 
     CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
-    if (config == null) {
+    if (config == null && formData.get().alertingData != null) {
       config = CustomerConfig.createAlertConfig(
-          customerUUID, Json.toJson(formData.get().alertingData));
-    } else {
+              customerUUID, Json.toJson(formData.get().alertingData));
+    } else if (config != null) {
       config.data = Json.toJson(formData.get().alertingData);
       config.update();
     }
+
+    CustomerConfig.upsertCallhomeConfig(customerUUID, formData.get().callhomeLevel);
 
     customer.name = formData.get().name;
     customer.update();

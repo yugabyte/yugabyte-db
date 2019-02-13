@@ -43,4 +43,7 @@ public class CustomerRegisterFormData {
   }
 
   public AlertingData alertingData;
+
+  @Constraints.Pattern(message="Must be one of NONE, LOW, MEDIUM, HIGH", value="\\b(?:NONE|LOW|MEDIUM|HIGH)\\b")
+  public String callhomeLevel = "MEDIUM";
 }

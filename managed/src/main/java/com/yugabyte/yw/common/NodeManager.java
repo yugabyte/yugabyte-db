@@ -17,11 +17,11 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
-
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
@@ -220,6 +220,12 @@ public class NodeManager extends DevopsBase {
           NodeDetails node = universe.getNode(taskParam.nodeName);
           extra_gflags.put("start_pgsql_proxy", "true");
           extra_gflags.put("pgsql_proxy_bind_address", String.format("%s:%s", node.cloudInfo.private_ip, node.ysqlServerRpcPort));
+        }
+        if(taskParam.callhomeLevel != null){
+          extra_gflags.put("callhome_collection_level", taskParam.callhomeLevel.toLowerCase());
+          if(taskParam.callhomeLevel.equals("NONE")){
+            extra_gflags.put("callhome_enabled", "false");
+          }
         }
         subcommand.add("--extra_gflags");
         subcommand.add(Json.stringify(Json.toJson(extra_gflags)));

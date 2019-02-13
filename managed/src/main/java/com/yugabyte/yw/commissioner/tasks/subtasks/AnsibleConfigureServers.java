@@ -24,6 +24,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean enableYSQL = false;
     public Map<String, String> gflags = new HashMap<>();
     public boolean updateMasterAddrsOnly = false;
+    public String callhomeLevel;
   }
 
   @Override

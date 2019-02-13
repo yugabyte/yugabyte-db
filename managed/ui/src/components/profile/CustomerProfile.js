@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import {YBInputField, YBButton, YBToggle} from '../common/forms/fields';
+import {YBInputField, YBButton, YBToggle, YBSelect} from '../common/forms/fields';
 import { Field } from 'redux-form';
 import _ from 'lodash';
 import { isDefinedNotNull } from 'utils/ObjectUtils';
@@ -27,13 +27,12 @@ export default class CustomerProfile extends Component {
             nextProps.customer.alertingData.alertingEmail);
         this.props.change("alertingData.sendAlertsToYb",
             nextProps.customer.alertingData.sendAlertsToYb);
-
         this.props.change("alertingData.checkIntervalMs",
             nextProps.customer.alertingData.checkIntervalMs || CHECK_INTERVAL_MS);
-
         this.props.change("alertingData.statusUpdateIntervalMs",
             nextProps.customer.alertingData.statusUpdateIntervalMs || STATUS_UPDATE_INTERVAL_MS);
       }
+      this.props.change("callhomeLevel", nextProps.customer.callhomeLevel);
     }
   }
 
@@ -49,6 +48,13 @@ export default class CustomerProfile extends Component {
     } else if (customerProfile.error) {
       profileUpdateStatus = <span className="pull-right yb-fail-color">Profile Update Failed</span>;
     }
+
+    const callhomeOptions = [
+      <option value="NONE" key={0}>None</option>,
+      <option value="LOW" key={1}>Low</option>,
+      <option value="MEDIUM" key={2}>Medium</option>,
+      <option value="HIGH" key={3}>High</option>
+    ];
 
     return (
       <div className="bottom-bar-padding">
@@ -76,6 +82,7 @@ export default class CustomerProfile extends Component {
                      onToggle={this.toggleSendAlertsToYb}
                      label="Send alert emails to YugaByte team"
                      subLabel="Whether or not to send alerting emails to the YugaByte team."/>
+              <Field name="callhomeLevel" component={YBSelect} isReadOnly={false} label="Callhome Level" options={callhomeOptions}/>
               <Field name="alertingData.checkIntervalMs" type="text" component={YBInputField} label="Health check interval" placeHolder="Miliseconds to check universe status"/>
               <Field name="alertingData.statusUpdateIntervalMs" type="text" component={YBInputField} label="Report email interval" placeHolder="Miliseconds to send a status report email"/>
             </Col>

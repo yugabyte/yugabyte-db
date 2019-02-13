@@ -7,9 +7,9 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
-
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 
 import org.asynchttpclient.util.Base64;
 import org.junit.Before;
@@ -89,16 +89,6 @@ public class CallHomeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testNoSendDiagnostics() {
-    Customer mockCust = mock(Customer.class);
-    when(mockCust.getCallHomeLevel()).thenReturn("NONE");
-    // Need to save customer with the new universe or else Customer.getUniverses() won't find any.
-    callHomeManager.sendDiagnostics(mockCust);
-    verifyZeroInteractions(apiHelper);
-  }
-
-
-  @Test
   public void testSendDiagnostics() {
     when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
         .thenReturn(ImmutableMap.of("yugaware_uuid", "0146179d-a623-4b2a-a095-bfb0062eae9f",
@@ -134,7 +124,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
     // Need to save customer with the new universe or else Customer.getUniverses() won't find any.
     defaultCustomer.save();
     JsonNode expectedPayload = callHomePayload(u);
-    JsonNode actualPayload = callHomeManager.CollectDiagnostics(defaultCustomer);
+    JsonNode actualPayload = callHomeManager.CollectDiagnostics(defaultCustomer, CollectionLevel.MEDIUM);
     assertEquals(expectedPayload, actualPayload);
   }
 
@@ -153,8 +143,14 @@ public class CallHomeManagerTest extends FakeDBApplication {
     defaultCustomer.save();
     ObjectNode expectedPayload = (ObjectNode) callHomePayload(u1);
     expectedPayload.set("errors", Json.newArray().add("Cannot find universe " + unknownUniverse));
-    JsonNode actualPayload = callHomeManager.CollectDiagnostics(defaultCustomer);
+    JsonNode actualPayload = callHomeManager.CollectDiagnostics(defaultCustomer, CollectionLevel.MEDIUM);
     assertEquals(expectedPayload, actualPayload);
+  }
 
+  @Test
+  public void testNoSendDiagnostics() {
+    ModelFactory.setCallhomeLevel(defaultCustomer, "NONE");
+    callHomeManager.sendDiagnostics(defaultCustomer);
+    verifyZeroInteractions(apiHelper);
   }
 }

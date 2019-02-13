@@ -21,6 +21,10 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Universe;
 import org.apache.commons.lang3.StringUtils;
 import com.yugabyte.yw.common.NodeManager;
 import org.slf4j.Logger;
@@ -44,8 +48,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -603,6 +605,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
+      params.callhomeLevel = CustomerConfig.getCallhomeLevel(Customer.get(Universe.get(taskParams().universeUUID)
+              .customerId).uuid).toString();
       // Set if updating master addresses only.
       params.updateMasterAddrsOnly = updateMasterAddrsOnly;
       if (updateMasterAddrsOnly) {
