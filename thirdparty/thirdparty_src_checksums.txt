@@ -29,3 +29,9 @@ f94c0f816510a95d7521c725e9ddf48bfd600a0f6623d33c9a6a92ec824d8c12  snappy-1.1.3.t
 d8af5ead5add8a69c513ddc347b5c88daaf8dc85dbb615023a40d2c9da3a8105  squeasel-8ac777a122fccf0358cb8562e900f8e9edd9ed11.tar.gz
 c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1  zlib-1.2.11.tar.gz
 d7cb878f268b171e7a33ddd052f7810e4af609f092a6c67c13264d7ffb17e7aa  include-what-you-use-0.11.tar.gz
+# LLVM 6 support -- needed for DXR (https://github.com/mozilla/dxr) integration
+7c243f1485bddfdfedada3cd402ff4792ea82362ff91fbdac2dae67c6026b667  cfe-6.0.1.tar.xz
+f4cd1e15e7d5cb708f9931d4844524e4904867240c306b06a4287b22ac1c99b9  compiler-rt-6.0.1.tar.xz
+7654fbc810a03860e6f01a54c2297a0b9efb04c0b9aa0409251d9bdb3726fc67  libcxx-6.0.1.tar.xz
+209f2ec244a8945c891f722e9eda7c54a5a7048401abd62c62199f3064db385f  libcxxabi-6.0.1.tar.xz
+b6d6c324f9c71494c0ccaf3dac1f16236d970002b42bb24a6c9e1634f7d0f4e2  llvm-6.0.1.tar.xz
