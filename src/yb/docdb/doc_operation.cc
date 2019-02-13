@@ -3344,6 +3344,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
 Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   QLTableRow::SharedPtr table_row = make_shared<QLTableRow>();
   RETURN_NOT_OK(ReadColumns(data, table_row));
+  // skipped is set to false if this operation produces some data to write.
+  bool skipped = true;
 
   if (request_.has_ybctid_column_value()) {
     for (const auto& column_value : request_.column_new_values()) {
@@ -3375,6 +3377,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         DocPath sub_path(encoded_range_doc_key_.as_slice(), PrimitiveValue(column_id));
         RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
             sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
+        skipped = false;
       }
     }
   } else {
@@ -3404,11 +3407,15 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
       DocPath sub_path(encoded_range_doc_key_.as_slice(), PrimitiveValue(column_id));
       RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
           sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
+      skipped = false;
     }
   }
 
   RETURN_NOT_OK(PopulateResultSet());
 
+  if (skipped) {
+    response_->set_skipped(true);
+  }
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }
@@ -3642,6 +3649,27 @@ Status PgsqlReadOperation::PopulateAggregate(const QLTableRow::SharedPtr& table_
   for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
     *rsrow->rscol(rscol_index) = aggr_result_[rscol_index];
   }
+  return Status::OK();
+}
+
+Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* out) {
+  auto pair = out->mutable_read_pairs()->Add();
+
+  if (request_.partition_column_values().empty()) {
+    // Empty components mean that we don't have primary key at all, but request
+    // could still contain hash_code as part of tablet routing.
+    // So we should ignore it.
+    pair->set_key(std::string(1, ValueTypeAsChar::kGroupEnd));
+  } else {
+    std::vector<PrimitiveValue> hashed_components;
+    RETURN_NOT_OK(InitKeyColumnPrimitiveValues(
+        request_.partition_column_values(), schema, 0 /* start_idx */, &hashed_components));
+
+    DocKey doc_key(request_.hash_code(), hashed_components);
+    pair->set_key(doc_key.Encode().data());
+  }
+
+  pair->set_value(std::string(1, ValueTypeAsChar::kNull));
   return Status::OK();
 }
 

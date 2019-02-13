@@ -1217,6 +1217,12 @@ Status Tablet::KeyValueBatchFromPgsqlWriteBatch(WriteOperation* operation) {
       doc_ops.emplace_back(std::move(write_op));
     }
   }
+
+  // All operations have wrong schema version.
+  if (doc_ops.empty()) {
+    return Status::OK();
+  }
+
   RETURN_NOT_OK(StartDocWriteOperation(operation));
   if (operation->restart_read_ht().is_valid()) {
     return Status::OK();
@@ -2002,13 +2008,24 @@ TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
   }
 }
 
-Status Tablet::ConvertReadToWrite(
-    const TransactionMetadataPB& transaction_metadata, const QLReadRequestPB& inp,
-    docdb::KeyValueWriteBatchPB* out) {
+Status Tablet::CreateReadIntents(
+    const TransactionMetadataPB& transaction_metadata,
+    const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
+    const google::protobuf::RepeatedPtrField<PgsqlReadRequestPB>& pgsql_batch,
+    docdb::KeyValueWriteBatchPB* write_batch) {
   auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(transaction_metadata));
 
-  docdb::QLReadOperation doc_op(inp, txn_op_ctx);
-  return doc_op.GetIntents(SchemaRef(), out);
+  for (const auto& ql_read : ql_batch) {
+    docdb::QLReadOperation doc_op(ql_read, txn_op_ctx);
+    RETURN_NOT_OK(doc_op.GetIntents(SchemaRef(), write_batch));
+  }
+
+  for (const auto& pgsql_read : pgsql_batch) {
+    docdb::PgsqlReadOperation doc_op(pgsql_read, txn_op_ctx);
+    RETURN_NOT_OK(doc_op.GetIntents(SchemaRef(), write_batch));
+  }
+
+  return Status::OK();
 }
 
 // ------------------------------------------------------------------------------------------------

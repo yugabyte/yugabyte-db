@@ -546,7 +546,9 @@ class PgsqlReadOperation : public DocExprExecutor {
                          PgsqlResultSet *result_set,
                          HybridTime *restart_read_ht);
 
-  virtual CHECKED_STATUS GetTupleId(QLValue *result) const override;
+  CHECKED_STATUS GetTupleId(QLValue *result) const override;
+
+  CHECKED_STATUS GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
 
  private:
   CHECKED_STATUS PopulateResultSet(const QLTableRow::SharedPtr& table_row,
