@@ -101,7 +101,11 @@ public class ModelFactory {
 
   public static CustomerConfig createNfsStorageConfig(Customer customer) {
     JsonNode formData = Json.parse("{\"name\": \"NFS\", \"type\": \"STORAGE\", \"data\": " +
-        "{\"NFS_PATH\": \"/foo/bar\"}}");
+      "{\"NFS_PATH\": \"/foo/bar\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
+  }
+
+  public static CustomerConfig setCallhomeLevel(Customer customer, String level) {
+    return CustomerConfig.createCallHomeConfig(customer.uuid, level);
   }
 }
