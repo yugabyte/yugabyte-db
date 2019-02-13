@@ -20,7 +20,6 @@ ERROR:  could not open file "base/18373/0": No such file or directory
 --
 -- Monetary Types
 CREATE TABLE feature_tab_money (feature_col MONEY);
-ERROR:  Type not yet supported in YugaByte: 790 (CASH)
 --
 -- Character Types
 CREATE TABLE feature_tab_character_varying (feature_col CHARACTER VARYING(10));
@@ -107,7 +106,6 @@ ERROR:  Type not yet supported in YugaByte: 3615 (TSQUERY)
 --
 -- UUID Type
 CREATE TABLE feature_tab_uuid (feature_col UUID);
-ERROR:  Type not yet supported in YugaByte: 2950 (UUID)
 --
 -- XML Type
 CREATE TABLE feature_tab_xml (feature_col XML);

@@ -346,12 +346,8 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool 
     case YB_YQL_DATA_TYPE_DECIMAL:
       if (!is_null) {
         char* plaintext;
-        // Calls YBCDatumToNumeric in ybctype.c
+        // Calls YBCDatumToDecimalText in ybctype.c
         type_entity_->datum_to_yb(datum, &plaintext, nullptr);
-        // NaN support will be added in ENG-4645
-        if (EqualsIgnoreCase(std::string(plaintext), "NaN")) {
-          break; // Client-side error was already returned by YBCDatumToNumeric
-        }
         util::Decimal yb_decimal(plaintext);
         ql_value_.set_decimal_value(yb_decimal.EncodeToComparable());
       }
