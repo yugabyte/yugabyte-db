@@ -1208,13 +1208,12 @@ void YBCInitializeRelCache()
 	 */
 	Relation pg_class_desc = heap_open(RelationRelationId, AccessShareLock);
 
-
 	SysScanDesc scandesc = systable_beginscan(pg_class_desc,
 											  RelationRelationId,
-	                                          false /* indexOk */,
-	                                          NULL,
-	                                          0,
-	                                          NULL);
+											  false /* indexOk */,
+											  NULL,
+											  0,
+											  NULL);
 
 	/*
 	 * Must copy tuple before releasing buffer.
@@ -1372,7 +1371,7 @@ void YBCInitializeRelCache()
 	Relation	pg_attribute_desc;
 	int			need = 0;
 	int			ndef = 0;
-	HeapTuple	pg_attribute_tuple;
+	HeapTuple	pg_attribute_tuple = NULL;
 
 	relation = NULL;
 
@@ -1384,22 +1383,122 @@ void YBCInitializeRelCache()
 	pg_attribute_desc = heap_open(AttributeRelationId, AccessShareLock);
 
 	scandesc = systable_beginscan(pg_attribute_desc,
-	                              AttributeRelationId,
-	                              false /* indexOk */,
-	                              NULL,
-	                              0,
-	                              NULL);
+								  AttributeRelationId,
+								  false /* indexOk */,
+								  NULL,
+								  0,
+								  NULL);
 
-	while (HeapTupleIsValid(pg_attribute_tuple = systable_getnext(scandesc)))
+	bool finish_processing_relation = false;
+
+	/*
+	 * We are scanning through the entire pg_attribute table to get all the attributes (columns)
+	 * for all the relations. All the attributes for a relation are contiguous, so we maintain the
+	 * current relation and, when we finish processing its attributes (detected when we read a
+	 * different relation_id which is first range key of pg_attribute), we load up the retrieved
+	 * info into the Relation entry, which among other things, sets up then constraint and default
+	 * info.
+	 */
+	while (true)
 	{
-		Form_pg_attribute attp;
+		if (!finish_processing_relation)
+			pg_attribute_tuple = systable_getnext(scandesc);
 
-		attp = (Form_pg_attribute) GETSTRUCT(pg_attribute_tuple);
-		if (relation && relation->rd_id != attp->attrelid)
+		if (!HeapTupleIsValid(pg_attribute_tuple)) {
+			if (!relation) {
+				break;
+			} else {
+				/* If the tuple is not valid, then we are done processing this relation */
+				finish_processing_relation = true;
+			}
+		}
+		else
+		{
+			Form_pg_attribute attp = (Form_pg_attribute) GETSTRUCT(pg_attribute_tuple);
+
+			if (!relation) {
+				/*
+				 * New (or first) relation, set up the needed variables before reading its
+				 * attributes.
+				 */
+
+				/* This will guarantee that the next tuple is read */
+				finish_processing_relation = false;
+
+				RelationIdCacheLookup(attp->attrelid, relation);
+				if (!relation) {
+					continue;
+				}
+				need = relation->rd_rel->relnatts;
+				ndef = 0;
+				attrdef = NULL;
+				constr = (TupleConstr*) MemoryContextAlloc(CacheMemoryContext, sizeof(TupleConstr));
+				constr->has_not_null = false;
+			}
+
+			/*
+			 * relation->rd_id == attp->attrelid means that we are still reading attributes for
+			 * the current relation.
+			 */
+			if (relation->rd_id == attp->attrelid)
+			{
+				/* Skip system attributes */
+				if (attp->attnum <= 0)
+					continue;
+
+				if (attp->attnum > relation->rd_rel->relnatts)
+					elog(ERROR,
+						 "invalid attribute number %d for %s",
+						 attp->attnum,
+						 RelationGetRelationName(relation));
+
+				memcpy(relation->rd_att->attrs[attp->attnum - 1],
+					   attp,
+					   ATTRIBUTE_FIXED_PART_SIZE);
+
+				/* Update constraint/default info */
+				if (attp->attnotnull)
+					constr->has_not_null = true;
+
+				if (attp->atthasdef)
+				{
+					if (attrdef == NULL)
+						attrdef = (AttrDefault*) MemoryContextAllocZero(
+								CacheMemoryContext,
+								relation->rd_rel->relnatts * sizeof(AttrDefault));
+					attrdef[ndef].adnum = attp->attnum;
+					attrdef[ndef].adbin = NULL;
+					ndef++;
+				}
+				need--;
+			}
+			/*
+			 * When relation->rd_id != attp->attrelid, it means that we have read an attribute
+			 * for a different table.
+			 */
+			else if (relation->rd_id != attp->attrelid)
+			{
+				if (need != 0)
+					elog(ERROR, "catalog is missing %d attribute(s) for relid %u",
+						 need, RelationGetRelid(relation));
+				/*
+				 * By setting finish_processing_relation to true, we will avoid reading the next
+				 * tuple because we were not able to use the tuple since it belongs to a different
+				 * relation.
+				 */
+				finish_processing_relation = true;
+			}
+		}
+
+		/*
+		 * Load up the retrieved info into the Relation entry.
+		 * We only execute this after having processed all the attributes for a relation
+		 */
+		if (relation && finish_processing_relation)
 		{
 			if (need != 0)
 				elog(ERROR, "catalog is missing %d attribute(s) for relid %u",
-				     need, RelationGetRelid(relation));
+					 need, RelationGetRelid(relation));
 			/*
 			 * initialize the tuple descriptor (relation->rd_att).
 			 */
@@ -1427,8 +1526,8 @@ void YBCInitializeRelCache()
 				{
 					if (ndef < relation->rd_rel->relnatts)
 						constr->defval = (AttrDefault *) repalloc(attrdef,
-						                                          ndef *
-						                                          sizeof(AttrDefault));
+																  ndef *
+																  sizeof(AttrDefault));
 					else
 						constr->defval = attrdef;
 					constr->num_defval = ndef;
@@ -1477,50 +1576,8 @@ void YBCInitializeRelCache()
 
 			// Reset relation.
 			relation = NULL;
+			need = 0;
 		}
-
-		if (!relation)
-		{
-			// set up new rel and continue.
-			RelationIdCacheLookup(attp->attrelid, relation);
-			if (!relation)
-				continue;
-			need = relation->rd_rel->relnatts;
-			ndef = 0;
-			constr = (TupleConstr *) MemoryContextAlloc(CacheMemoryContext,
-			                                            sizeof(TupleConstr));
-			constr->has_not_null = false;
-		}
-
-		/* Skip system attributes */
-		if (attp->attnum <= 0)
-			continue;
-
-		if (attp->attnum > relation->rd_rel->relnatts)
-			elog(ERROR,
-			     "invalid attribute number %d for %s",
-			     attp->attnum,
-			     RelationGetRelationName(relation));
-
-		memcpy(relation->rd_att->attrs[attp->attnum - 1],
-		       attp,
-		       ATTRIBUTE_FIXED_PART_SIZE);
-
-		/* Update constraint/default info */
-		if (attp->attnotnull)
-			constr->has_not_null = true;
-
-		if (attp->atthasdef)
-		{
-			if (attrdef == NULL)
-				attrdef = (AttrDefault *) MemoryContextAllocZero(
-						CacheMemoryContext,
-						relation->rd_rel->relnatts * sizeof(AttrDefault));
-			attrdef[ndef].adnum = attp->attnum;
-			attrdef[ndef].adbin = NULL;
-			ndef++;
-		}
-		need--;
 	}
 
 	/*
