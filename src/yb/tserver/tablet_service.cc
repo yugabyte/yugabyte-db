@@ -1079,15 +1079,12 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     // TODO(dtxn) write request id
 
     auto* write_batch = write_req.mutable_write_batch();
-    // TODO(dtxn) support not only CQL
-    for (const auto& ql_read : req->ql_batch()) {
-      auto status = leader_peer.peer->tablet()->ConvertReadToWrite(
-          req->transaction(), ql_read, write_batch);
-      if (!status.ok()) {
-        SetupErrorAndRespond(
-            resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, &context);
-        return;
-      }
+    auto status = leader_peer.peer->tablet()->CreateReadIntents(
+        req->transaction(), req->ql_batch(), req->pgsql_batch(), write_batch);
+    if (!status.ok()) {
+      SetupErrorAndRespond(
+          resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, &context);
+      return;
     }
 
     auto operation_state = std::make_unique<WriteOperationState>(

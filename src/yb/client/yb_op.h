@@ -100,6 +100,8 @@ class YBOperation {
   virtual bool succeeded() = 0;
   virtual bool returns_sidecar() = 0;
 
+  virtual bool wrote_data() { return succeeded() && !read_only(); }
+
   virtual void SetHashCode(uint16_t hash_code) = 0;
 
   const scoped_refptr<internal::RemoteTablet>& tablet() const {
@@ -417,9 +419,11 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
   // TODO check for e.g. returning clause.
   bool returns_sidecar() override { return true; }
 
-  virtual void SetHashCode(uint16_t hash_code) override;
+  void SetHashCode(uint16_t hash_code) override;
 
-  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+  CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+
+  bool wrote_data() override { return succeeded() && !read_only() && !response().skipped(); }
 
  protected:
   virtual Type type() const override {

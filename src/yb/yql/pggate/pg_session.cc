@@ -218,9 +218,7 @@ Status PgSession::CombineErrorsToStatus(client::CollectedErrors errors, Status s
 Result<YBSession*> PgSession::GetSession(bool transactional, bool read_only_op) {
   if (transactional) {
     YBSession* txn_session = VERIFY_RESULT(pg_txn_manager_->GetTransactionalSession());
-    if (!read_only_op) {
-      pg_txn_manager_->BeginWriteTransactionIfNecessary();
-    }
+    pg_txn_manager_->BeginWriteTransactionIfNecessary(read_only_op);
     VLOG(2) << __PRETTY_FUNCTION__
             << ": read_only_op=" << read_only_op << ", returning transactional session";
     return txn_session;

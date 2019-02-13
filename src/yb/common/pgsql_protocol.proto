@@ -287,6 +287,10 @@ message PgsqlResponsePB {
 
   // Status and error message
   optional RequestStatus status = 1 [ default = PGSQL_STATUS_OK ]; // required
+
+  // True if this operation was not actually applied, for instance update to the same value.
+  optional bool skipped = 6;
+
   optional string error_message = 2;
 
   // Sidecar of rows data returned
