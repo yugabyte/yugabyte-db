@@ -34,8 +34,8 @@ sys.path = [os.path.join(os.path.dirname(__file__), '..', 'python')] + sys.path
 
 from yb.linuxbrew import get_linuxbrew_dir
 
-CLOUDFRONT_URL = 'http://d3dr9sfxru4sde.cloudfront.net/{}'
 CHECKSUM_FILE_NAME = 'thirdparty_src_checksums.txt'
+CLOUDFRONT_URL = 'http://d3dr9sfxru4sde.cloudfront.net/{}'
 
 
 def hashsum_file(hash, filename, block_size=65536):
@@ -108,15 +108,21 @@ class Builder:
         ]
 
         if is_linux():
+            llvm_major_version = self.get_llvm_major_version()
+            if llvm_major_version == '6':
+                self.dependencies.append(build_definitions.llvm6.LLVM6Dependency())
+            else:
+                self.dependencies.append(build_definitions.llvm.LLVMDependency())
+
             self.dependencies += [
-                build_definitions.llvm.LLVMDependency(),
                 build_definitions.libcxx.LibCXXDependency(),
 
                 build_definitions.libunwind.LibUnwindDependency(),
                 build_definitions.libbacktrace.LibBacktraceDependency(),
-
-                build_definitions.include_what_you_use.IncludeWhatYouUseDependency()
             ]
+
+            if llvm_major_version == '7':
+                build_definitions.include_what_you_use.IncludeWhatYouUseDependency()
 
         self.dependencies += [
             build_definitions.protobuf.ProtobufDependency(),
@@ -144,6 +150,40 @@ class Builder:
 
         self.detect_linuxbrew()
         self.load_expected_checksums()
+
+    def get_llvm_major_version(self):
+        """
+        Decide what major version of LLVM to use, and persist that in a file so only allow setting
+        it once.
+        """
+        version_from_file = None
+        version_file_path = os.path.join(self.tp_build_dir, 'llvm_major_version')
+        if os.path.exists(version_file_path):
+            with open(version_file_path) as version_file:
+                version_from_file = version_file.read().strip()
+
+        env_var_name = 'YB_LLVM_MAJOR_VERSION'
+        version_from_env = os.environ.get(env_var_name)
+        if (version_from_file is not None and
+            version_from_env is not None and
+            version_from_file != version_from_env):
+            raise RuntimeError(
+                "LLVM major version from {} is '{}', but the {} env var specifies '{}'".format(
+                    version_file_path, version_from_file, env_var_name, version_from_env
+                ))
+        version = version_from_env or version_from_file
+        if version is None:
+            version = '7'
+        if version not in ['6', '7']:
+            raise RuntimeError(
+                "LLVM major version should be either 6 or 7, found: {}".format(version))
+        if version_from_file != version:
+            version_file_dir = os.path.dirname(os.path.abspath(version_file_path))
+            if not os.path.isdir(version_file_dir):
+                os.makedirs(version_file_dir)
+            with open(version_file_path, 'wt') as version_file:
+                version_file.write(version)
+        return version
 
     def set_compiler(self, compiler_type):
         if is_mac():
@@ -302,6 +342,9 @@ class Builder:
         download_url = dep.download_url
         if download_url is None:
             download_url = CLOUDFRONT_URL.format(dep.archive_name)
+            log("Using legacy download URL: {} (we should consider moving this to GitHub)".format(
+                download_url))
+
         archive_path = self.archive_path(dep)
 
         remove_path(src_path)
