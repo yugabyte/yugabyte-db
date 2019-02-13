@@ -31,15 +31,14 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
+
 using yb::master::FlushTablesRequestPB;
 using yb::master::FlushTablesResponsePB;
 using yb::master::IsFlushTablesDoneRequestPB;
 using yb::master::IsFlushTablesDoneResponsePB;
 using yb::master::MasterServiceProxy;
 using yb::StatusFromPB;
-
-DECLARE_int64(retryable_rpc_single_call_timeout_ms);
-DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 using std::string;
 using std::vector;
@@ -59,48 +58,8 @@ namespace pgwrapper {
 
 YB_DEFINE_ENUM(FlushOrCompaction, (kFlush)(kCompaction));
 
-class PgWrapperTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
+class PgWrapperTest : public PgWrapperTestBase {
  protected:
-  virtual void SetUp() override {
-    YBMiniClusterTestBase::SetUp();
-
-    ExternalMiniClusterOptions opts;
-    opts.start_pgsql_proxy = true;
-
-    // TODO Increase the rpc timeout (from 2500) to not time out for long master queries (i.e. for
-    // Postgres system tables). Should be removed once the long lock issue is fixed.
-    int rpc_timeout = NonTsanVsTsan(10000, 30000);
-    string rpc_flag = "--retryable_rpc_single_call_timeout_ms=";
-    opts.extra_tserver_flags.emplace_back(rpc_flag + std::to_string(rpc_timeout));
-
-    // With 3 tservers we'll be creating 3 tables per table, which is enough.
-    opts.extra_tserver_flags.emplace_back("--yb_num_shards_per_tserver=1");
-    opts.extra_tserver_flags.emplace_back("--pg_transactions_enabled");
-
-    // Collect old records very aggressively to catch bugs with old readpoints.
-    opts.extra_tserver_flags.emplace_back("--timestamp_history_retention_interval_sec=0");
-
-    opts.extra_master_flags.emplace_back("--hide_pg_catalog_table_creation_logs");
-
-    FLAGS_retryable_rpc_single_call_timeout_ms = rpc_timeout; // needed by cluster-wide initdb
-
-    if (IsTsan()) {
-      // Increase timeout for admin ops to account for create database with copying during initdb
-      FLAGS_yb_client_admin_operation_timeout_sec = 120;
-    }
-
-    // Test that we can start PostgreSQL servers on non-colliding ports within each tablet server.
-    opts.num_tablet_servers = 3;
-
-    cluster_.reset(new ExternalMiniCluster(opts));
-    ASSERT_OK(cluster_->Start());
-
-    pg_ts = cluster_->tablet_server(0);
-
-    // TODO: fix cluster verification for PostgreSQL tables.
-    DontVerifyClusterBeforeNextTearDown();
-  }
-
   void RunPsqlCommand(const std::string& statement, const std::string& expected_output) {
     std::string tmp_dir;
     ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
@@ -202,9 +161,6 @@ class PgWrapperTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
   static string TrimSqlOutput(string output) {
     return TrimStr(TrimTrailingWhitespaceFromEveryLine(LeftShiftTextBlock(output)));
   }
-
-  // Tablet server to use to perform PostgreSQL operations.
-  ExternalTabletServer* pg_ts = nullptr;
 };
 
 TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(TestStartStop)) {

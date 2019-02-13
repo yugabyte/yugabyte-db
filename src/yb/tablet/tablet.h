@@ -482,8 +482,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   size_t TEST_CountRocksDBRecords();
 
-  CHECKED_STATUS ConvertReadToWrite(
-      const TransactionMetadataPB& transaction_metadata, const QLReadRequestPB& inp,
+  CHECKED_STATUS CreateReadIntents(
+      const TransactionMetadataPB& transaction_metadata,
+      const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
+      const google::protobuf::RepeatedPtrField<PgsqlReadRequestPB>& pgsql_batch,
       docdb::KeyValueWriteBatchPB* out);
 
   // Returns last committed write index.

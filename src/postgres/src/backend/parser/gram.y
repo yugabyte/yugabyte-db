@@ -10173,13 +10173,9 @@ transaction_mode_list:
 
 transaction_mode_list_or_empty:
 			transaction_mode_list
-				{
-					parser_ybc_not_support(@1, "Transaction mode");
-				}
 			| /* EMPTY */
 					{ $$ = NIL; }
 		;
-
 
 /*****************************************************************************
  *

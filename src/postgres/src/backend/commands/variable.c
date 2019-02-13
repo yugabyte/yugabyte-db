@@ -33,6 +33,8 @@
 #include "utils/varlena.h"
 #include "mb/pg_wchar.h"
 
+#include "pg_yb_utils.h"
+
 /*
  * DATESTYLE
  */
@@ -586,6 +588,9 @@ void
 assign_XactIsoLevel(const char *newval, void *extra)
 {
 	XactIsoLevel = *((int *) extra);
+	if (YBTransactionsEnabled()) {
+    YBCPgTxnManager_SetIsolationLevel(YBCGetPgTxnManager(), XactIsoLevel);
+  }
 }
 
 const char *

@@ -406,10 +406,6 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 {
 	PGXACT	   *pgxact = &allPgXact[proc->pgprocno];
 
-	if (IsYugaByteEnabled()) {
-		return;
-	}
-
 	if (TransactionIdIsValid(latestXid))
 	{
 		/*
