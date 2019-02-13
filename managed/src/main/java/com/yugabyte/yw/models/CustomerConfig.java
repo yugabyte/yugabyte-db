@@ -9,6 +9,7 @@ import com.avaje.ebean.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -22,10 +23,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
+
 @Entity
 public class CustomerConfig extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfig.class);
   public static final String ALERTS_PREFERENCES = "preferences";
+  public static final String CALLHOME_PREFERENCES = "callhome level";
 
   public enum ConfigType {
     @EnumValue("STORAGE")
@@ -33,6 +37,9 @@ public class CustomerConfig extends Model {
 
     @EnumValue("ALERTS")
     ALERTS,
+
+    @EnumValue("CALLHOME")
+    CALLHOME,
 
     // TODO: move metric and other configs to this table as well.
     @EnumValue("OTHER")
@@ -116,5 +123,49 @@ public class CustomerConfig extends Model {
       .eq("type", ConfigType.ALERTS.toString())
       .eq("name", ALERTS_PREFERENCES)
       .findUnique();
+  }
+
+  public static CustomerConfig createCallHomeConfig(UUID customerUUID) {
+    return createCallHomeConfig(customerUUID, "MEDIUM");
+  }
+
+  public static CustomerConfig createCallHomeConfig(UUID customerUUID, String level) {
+    CustomerConfig customerConfig = new CustomerConfig();
+    customerConfig.type = ConfigType.CALLHOME;
+    customerConfig.name = CALLHOME_PREFERENCES;
+    customerConfig.customerUUID = customerUUID;
+    ObjectNode callhome_json = Json.newObject().put("callhomeLevel", level);
+    customerConfig.data = callhome_json;
+    customerConfig.save();
+    return customerConfig;
+  }
+
+  public static CustomerConfig getCallhomeConfig(UUID customerUUID) {
+    return CustomerConfig.find.where()
+      .eq("customer_uuid", customerUUID)
+      .eq("type", ConfigType.CALLHOME.toString())
+      .eq("name", CALLHOME_PREFERENCES)
+      .findUnique();
+  }
+
+  public static CollectionLevel getOrCreateCallhomeLevel(UUID customerUUID){
+    CustomerConfig callhomeConfig = CustomerConfig.getCallhomeConfig(customerUUID);
+    if (callhomeConfig == null) CustomerConfig.createCallHomeConfig(customerUUID);
+    return CustomerConfig.getCallhomeLevel(customerUUID);
+  }
+
+  public static CollectionLevel getCallhomeLevel(UUID customerUUID) {
+    return CollectionLevel.valueOf(getCallhomeConfig(customerUUID).getData().get("callhomeLevel").textValue());
+  }
+
+  public static CustomerConfig upsertCallhomeConfig(UUID customerUUID, String callhomeLevel) {
+    CustomerConfig callhomeConfig = CustomerConfig.getCallhomeConfig(customerUUID);
+    if (callhomeConfig == null) {
+      callhomeConfig = CustomerConfig.createCallHomeConfig(customerUUID, callhomeLevel);
+    } else {
+      callhomeConfig.data = Json.newObject().put("callhomeLevel", callhomeLevel);
+      callhomeConfig.update();
+    }
+    return callhomeConfig;
   }
 }

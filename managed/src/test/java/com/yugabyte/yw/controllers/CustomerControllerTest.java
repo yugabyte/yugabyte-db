@@ -12,10 +12,12 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 
+import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
 import org.junit.Before;
 import org.junit.Test;
@@ -109,12 +111,32 @@ public class CustomerControllerTest extends WithApplication {
     ObjectNode alertingData = Json.newObject();
     alertingData.put("sendAlertsToYb", true);
     params.put("alertingData", alertingData);
-
+    params.put("callhomeLevel", "LOW");
     Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid).cookie(validCookie).bodyJson(params));
     assertEquals(OK, result.status());
+    CustomerConfig callhomeConfig = CustomerConfig.getCallhomeConfig(customer.uuid);
+    CollectionLevel callhomeLevel = CustomerConfig.getCallhomeLevel(customer.uuid);
+    assertEquals(CollectionLevel.LOW, callhomeLevel);
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("uuid").asText(), is(equalTo(customer.uuid.toString())));
     assertThat(json.get("name").asText(), is(equalTo("Test Customer")));
+  }
+
+  @Test
+  public void testCustomerPUTWithDefaultCallhome() {
+    String authToken = customer.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+    params.put("code", "tc");
+    params.put("email", "foo@bar.com");
+    params.put("name", "Test Customer");
+    params.put("password", "new-password");
+    params.put("confirmPassword", "new-password");
+    Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid).cookie(validCookie).bodyJson(params));
+    assertEquals(OK, result.status());
+    CustomerConfig callhomeConfig = CustomerConfig.getCallhomeConfig(customer.uuid);
+    CollectionLevel callhomeLevel = CustomerConfig.getCallhomeLevel(customer.uuid);
+    assertEquals(CollectionLevel.MEDIUM, callhomeLevel);
   }
 
   @Test
@@ -127,7 +149,6 @@ public class CustomerControllerTest extends WithApplication {
     Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid).cookie(validCookie).bodyJson(params));
     assertEquals(BAD_REQUEST, result.status());
     JsonNode json = Json.parse(contentAsString(result));
-
     assertThat(contentAsString(result), is(containsString("\"name\":[\"This field is required\"]")));
     assertThat(contentAsString(result), is(containsString("\"email\":[\"This field is required\"]")));
   }

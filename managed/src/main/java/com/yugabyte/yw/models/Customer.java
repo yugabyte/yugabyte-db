@@ -30,6 +30,7 @@ import play.data.validation.Constraints;
 
 @Entity
 public class Customer extends Model {
+
   public static final Logger LOG = LoggerFactory.getLogger(Customer.class);
   // A globally unique UUID for the customer.
   @Column(nullable = false, unique = true)
@@ -84,10 +85,6 @@ public class Customer extends Model {
 
   @Column(columnDefinition = "TEXT", nullable = false)
   private String universeUUIDs = "";
-
-  public String getCallHomeLevel(){
-    return "LOW";
-  }
 
   public synchronized void addUniverseUUID(UUID universeUUID) {
     Set<UUID> universes = getUniverseUUIDs();
@@ -163,7 +160,6 @@ public class Customer extends Model {
     cust.code = code;
     cust.name = name;
     cust.creationDate = new Date();
-
     cust.save();
     return cust;
   }

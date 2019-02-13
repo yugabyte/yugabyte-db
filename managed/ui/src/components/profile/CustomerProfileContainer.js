@@ -50,7 +50,7 @@ const mapDispatchToProps = (dispatch) => {
 
 const editCustomerProfile = reduxForm({
   form: 'EditCustomerProfile',
-  fields: ['email', 'password', 'name'],
+  fields: ['email', 'password', 'name', 'callhomeLevel'],
   validate
 });
 

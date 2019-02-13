@@ -280,7 +280,6 @@ public class NodeManagerTest extends FakeDBApplication {
           gflags.put("placement_uuid", String.valueOf(params.placementUuid));
         }
         gflags.put("metric_node_name", params.nodeName);
-
         if (configureParams.type == Everything) {
           expectedCommand.add("--extra_gflags");
           if (configureParams.enableYSQL) {
@@ -288,6 +287,12 @@ public class NodeManagerTest extends FakeDBApplication {
             gflags.put("pgsql_proxy_bind_address", String.format("%s:%s", configureParams.nodeName,
               Universe.get(configureParams.universeUUID)
                 .getNode(configureParams.nodeName).ysqlServerRpcPort));
+          }
+          if (configureParams.callhomeLevel != null) {
+            gflags.put("callhome_collection_level", configureParams.callhomeLevel.toLowerCase());
+            if (configureParams.callhomeLevel == "NONE") {
+              gflags.put("callhome_enabled", "false");
+            }
           }
           expectedCommand.add(Json.stringify(Json.toJson(gflags)));
         } else if (configureParams.type == GFlags) {
@@ -895,6 +900,24 @@ public class NodeManagerTest extends FakeDBApplication {
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand,
         t.region.provider.getConfig());
+    }
+  }
+
+  @Test
+  public void testGlobalDefaultCallhome() {
+    for (TestData t : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+              ApiUtils.mockUniverseUpdater(t.cloudType)));
+      params.nodeName = t.node.getNodeName();
+      params.type = Everything;
+      params.ybSoftwareVersion = "0.0.1";
+      params.callhomeLevel = "NONE";
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand,
+              t.region.provider.getConfig());
     }
   }
 

@@ -11,8 +11,11 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import org.asynchttpclient.util.Base64;
+
+import com.yugabyte.yw.models.CustomerConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.api.Play;
 import play.libs.Json;
 
 import javax.inject.Inject;
@@ -22,7 +25,6 @@ import java.util.Map;
 import java.util.UUID;
 
 public class CallHomeManager {
-
   // Used to get software version from yugaware_property table in DB
   ConfigHelper configHelper;
 
@@ -30,6 +32,26 @@ public class CallHomeManager {
   Clock clock = Clock.systemUTC();
 
   ApiHelper apiHelper;
+
+  public enum CollectionLevel{
+    NONE,
+    LOW,
+    MEDIUM,
+    HIGH;
+
+    public Boolean isDisabled(){
+      return toString().equals("NONE");
+    }
+
+    public Boolean collectMore(){
+      return ordinal() >= MEDIUM.ordinal();
+    }
+
+    public Boolean collectAll(){
+      return ordinal() == HIGH.ordinal();
+    }
+
+  }
 
   @Inject
   public CallHomeManager(ApiHelper apiHelper, ConfigHelper configHelper){
@@ -42,9 +64,10 @@ public class CallHomeManager {
   public static final Logger LOG = LoggerFactory.getLogger(CallHomeManager.class);
 
   public void sendDiagnostics(Customer c){
-    if (!c.getCallHomeLevel().equals("NONE")) {
+    CollectionLevel callhomeLevel = CustomerConfig.getOrCreateCallhomeLevel(c.uuid);
+    if (!callhomeLevel.isDisabled()) {
       LOG.info("Starting collecting diagnostics");
-      JsonNode payload = CollectDiagnostics(c);
+      JsonNode payload = CollectDiagnostics(c, callhomeLevel);
       LOG.info("Sending collected diagnostics to " + YB_CALLHOME_URL);
       // Api Helper handles exceptions
       Map<String, String> headers = new HashMap<>();
@@ -55,7 +78,7 @@ public class CallHomeManager {
   }
 
   @VisibleForTesting
-  JsonNode CollectDiagnostics(Customer c) {
+  JsonNode CollectDiagnostics(Customer c, CollectionLevel callhomeLevel) {
     ObjectNode payload = Json.newObject();
     // Build customer details json
     payload.put("customer_uuid", c.uuid.toString());
@@ -91,10 +114,10 @@ public class CallHomeManager {
       providers.add(provider);
     }
     payload.set("providers", providers);
-    if (c.getCallHomeLevel().equals("MEDIUM") || c.getCallHomeLevel().equals("HIGH")) {
+    if (callhomeLevel.collectMore()) {
       // Collect More Stuff
     }
-    if (c.getCallHomeLevel().equals("HIGH")) {
+    if (callhomeLevel.collectAll()) {
       // Collect Even More Stuff
     }
     Map<String, Object> ywMetadata = configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata);
