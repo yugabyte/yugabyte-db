@@ -113,6 +113,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     IsolationLevel isolation_level,
     OperationKind operation_kind,
     bool transactional_table,
+    CoarseTimePoint deadline,
     SharedLockManager *lock_manager);
 
 // This constructs a DocWriteBatch using the given list of DocOperations, reading the previous
@@ -125,7 +126,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
 // operation that happens after Raft replication.
 CHECKED_STATUS ExecuteDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-    MonoTime deadline,
+    CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const DocDB& doc_db,
     KeyValueWriteBatchPB* write_batch,
@@ -447,7 +448,7 @@ yb::Status GetSubDocument(
     const GetSubDocumentData& data,
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& txn_op_context,
-    MonoTime deadline,
+    CoarseTimePoint deadline,
     const ReadHybridTime& read_time = ReadHybridTime::Max());
 
 // This retrieves the TTL for a key.

@@ -225,7 +225,7 @@ class CleanupAbortsTask : public rpc::ThreadPoolTask {
     // The calls to RequestStatusAt would have updated the local clock of the participant.
     // Wait for the propagated time to reach the current hybrid time.
     const MonoDelta kMaxTotalSleep = 10s;
-    auto safetime = applier_->ApplierSafeTime(now, MonoTime::Now() + kMaxTotalSleep);
+    auto safetime = applier_->ApplierSafeTime(now, CoarseMonoClock::now() + kMaxTotalSleep);
     if (!safetime) {
       LOG(WARNING) << "Tablet application did not catch up in: " << kMaxTotalSleep;
       return;

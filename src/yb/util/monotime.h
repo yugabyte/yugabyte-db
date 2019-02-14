@@ -297,6 +297,8 @@ inline double ToSeconds(MonoDelta delta) {
 
 std::string ToString(CoarseMonoClock::TimePoint value);
 
+CoarseTimePoint ToCoarse(MonoTime monotime);
+
 } // namespace yb
 
 #endif // YB_UTIL_MONOTIME_H

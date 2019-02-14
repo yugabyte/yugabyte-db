@@ -132,7 +132,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2000));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
     ASSERT_OK(iter.Init());
 
     ASSERT_TRUE(iter.HasNext());
@@ -172,7 +172,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(5000));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000));
     ASSERT_OK(iter.Init());
 
     ASSERT_TRUE(iter.HasNext());
@@ -245,7 +245,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2500));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2500));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -302,7 +302,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 1 }]
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2800));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -360,7 +360,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2800));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -410,7 +410,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2800));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -494,7 +494,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, read_time);
+        CoarseTimePoint::max() /* deadline */, read_time);
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -555,7 +555,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2800));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -609,7 +609,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2800));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -760,7 +760,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
   {
     DocRowwiseIterator iter(
         projection, schema, txn_context, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2000));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -804,7 +804,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
   {
     DocRowwiseIterator iter(
         projection, schema, txn_context, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(5000));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000));
     ASSERT_OK(iter.Init());
     QLTableRow row;
     QLValue value;
@@ -846,7 +846,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
   {
     DocRowwiseIterator iter(
         projection, schema, txn_context, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(6000));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(6000));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -926,7 +926,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 2 } -> \
   // Create a new IntentAwareIterator and seek to an empty DocKey. Verify that it returns the
   // first non-intent key.
   IntentAwareIterator iter(
-      doc_db(), rocksdb::ReadOptions(), MonoTime::Max() /* deadline */,
+      doc_db(), rocksdb::ReadOptions(), CoarseTimePoint::max() /* deadline */,
       ReadHybridTime::FromMicros(1000), boost::none);
   iter.Seek(DocKey());
   ASSERT_TRUE(iter.valid());
@@ -971,7 +971,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 2 } -> \
       )#");
 
   IntentAwareIterator iter(
-      doc_db(), rocksdb::ReadOptions(), MonoTime::Max() /* deadline */,
+      doc_db(), rocksdb::ReadOptions(), CoarseTimePoint::max() /* deadline */,
       ReadHybridTime::FromMicros(1000), TransactionOperationContext(*txn, &txn_status_manager));
   for (int i = 1; i <= 2; ++i) {
     iter.Seek(DocKey());
@@ -1002,7 +1002,7 @@ TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
 
   DocRowwiseIterator iter(
       projection, kSchemaForIteratorTests, txn_context, doc_db(),
-      MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(1000));
+      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(1000));
   ASSERT_OK(iter.Init());
 
   QLTableRow row;

@@ -564,7 +564,8 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
       tablet_peer()->tablet(), &writer->req(), &resp);
   operation_state->set_completion_callback(std::move(txn_callback));
 
-  tablet_peer()->WriteAsync(std::move(operation_state), writer->leader_term(), MonoTime::Max());
+  tablet_peer()->WriteAsync(
+      std::move(operation_state), writer->leader_term(), CoarseTimePoint::max() /* deadline */);
 
   {
     int num_iterations = 0;

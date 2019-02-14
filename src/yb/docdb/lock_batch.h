@@ -53,7 +53,8 @@ typedef std::vector<LockBatchEntry> LockBatchEntries;
 class LockBatch {
  public:
   LockBatch() {}
-  LockBatch(SharedLockManager* lock_manager, LockBatchEntries&& key_to_intent_type);
+  LockBatch(SharedLockManager* lock_manager, LockBatchEntries&& key_to_intent_type,
+            CoarseTimePoint deadline);
   LockBatch(LockBatch&& other) { MoveFrom(&other); }
   LockBatch& operator=(LockBatch&& other) { MoveFrom(&other); return *this; }
   ~LockBatch();
@@ -68,6 +69,8 @@ class LockBatch {
   // @return whether the batch is empty. This is also used for checking if the batch is locked.
   bool empty() const { return key_to_type_.empty(); }
 
+  const Status& status() const { return status_; }
+
   // Unlocks this batch if it is non-empty.
   void Reset();
 
@@ -79,6 +82,8 @@ class LockBatch {
   // A LockBatch is associated with a SharedLockManager instance the moment it is locked, and this
   // field is set back to nullptr when the batch is unlocked.
   SharedLockManager* shared_lock_manager_ = nullptr;
+
+  Status status_;
 };
 
 }  // namespace docdb

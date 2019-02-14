@@ -342,4 +342,8 @@ std::string ToString(CoarseMonoClock::TimePoint time_point) {
   return MonoDelta(time_point.time_since_epoch()).ToString();
 }
 
+CoarseTimePoint ToCoarse(MonoTime monotime) {
+  return CoarseTimePoint(monotime.ToSteadyTimePoint().time_since_epoch());
+}
+
 } // namespace yb

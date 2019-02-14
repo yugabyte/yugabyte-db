@@ -207,7 +207,7 @@ class TestRandomAccess : public YBTabletTest {
     TransactionMetadataPB transaction;
     QLAddColumns(schema_, {}, &req);
     EXPECT_OK(tablet()->HandleQLReadRequest(
-        MonoTime::Max() /* deadline */, read_time, req, transaction, &result));
+        CoarseTimePoint::max() /* deadline */, read_time, req, transaction, &result));
 
     EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status());
 

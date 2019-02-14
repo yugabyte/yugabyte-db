@@ -95,7 +95,7 @@ class CQLInboundCall : public rpc::InboundCall {
   std::string ToString() const override;
   bool DumpPB(const rpc::DumpRunningRpcsRequestPB& req, rpc::RpcCallInProgressPB* resp) override;
 
-  MonoTime GetClientDeadline() const override;
+  CoarseTimePoint GetClientDeadline() const override;
 
   // Return the response message buffer.
   RefCntBuffer& response_msg_buf() {

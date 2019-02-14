@@ -128,7 +128,7 @@ class InboundCall : public RpcCall {
   // Return an upper bound on the client timeout deadline. This does not
   // account for transmission delays between the client and the server.
   // If the client did not specify a deadline, returns MonoTime::Max().
-  virtual MonoTime GetClientDeadline() const = 0;
+  virtual CoarseTimePoint GetClientDeadline() const = 0;
 
   // Returns the time spent in the service queue -- from the time the call was received, until
   // it gets handled.

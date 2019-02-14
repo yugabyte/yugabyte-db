@@ -36,6 +36,7 @@
 #include <unistd.h>
 
 #include <condition_variable>
+#include <thread>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
@@ -215,6 +216,19 @@ TEST(TestMonoTimePerf, TestMonoTimePerfFine) {
   alarm(360);
   DoTestMonoTimePerf("MonoTime", [] { return MonoTime::Now(); });
   alarm(0);
+}
+
+TEST(TestMonoTime, ToCoarse) {
+  for (int i = 0; i != 1000; ++i) {
+    auto before = CoarseMonoClock::Now();
+    auto converted = ToCoarse(MonoTime::Now());
+    auto after = CoarseMonoClock::Now();
+
+    // Coarse mono clock has 1ms precision, so we add it to bounds.
+    const auto kPrecision = 2ms;
+    ASSERT_GE(converted, before);
+    ASSERT_LE(converted, after + kPrecision);
+  }
 }
 
 TEST(TestMonoTime, TestOverFlow) {

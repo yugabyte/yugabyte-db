@@ -19,7 +19,7 @@
 namespace yb {
 namespace tablet {
 
-Status AbstractTablet::HandleQLReadRequest(MonoTime deadline,
+Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
                                            const ReadHybridTime& read_time,
                                            const QLReadRequestPB& ql_read_request,
                                            const TransactionOperationContextOpt& txn_op_context,
@@ -65,7 +65,7 @@ Status AbstractTablet::HandleQLReadRequest(MonoTime deadline,
   return Status::OK();
 }
 
-Status AbstractTablet::HandlePgsqlReadRequest(MonoTime deadline,
+Status AbstractTablet::HandlePgsqlReadRequest(CoarseTimePoint deadline,
                                               const ReadHybridTime& read_time,
                                               const PgsqlReadRequestPB& pgsql_read_request,
                                               const TransactionOperationContextOpt& txn_op_context,

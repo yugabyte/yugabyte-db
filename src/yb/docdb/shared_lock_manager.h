@@ -42,7 +42,9 @@ class SharedLockManager {
   // Attempt to lock a batch of keys. The call may be blocked waiting for other locks to be
   // released. If the entries don't exist, they are created. The lock batch gets associated with
   // this lock manager, which makes it auto-unlock on destruction.
-  void Lock(LockBatchEntries* key_to_intent_type);
+  //
+  // Returns false if was not able to acquire lock until deadline.
+  MUST_USE_RESULT bool Lock(LockBatchEntries* key_to_intent_type, CoarseTimePoint deadline);
 
   // Release the batch of locks. Requires that the locks are held.
   void Unlock(const LockBatchEntries& key_to_intent_type);

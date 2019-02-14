@@ -293,9 +293,9 @@ bool CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
   return true;
 }
 
-MonoTime CQLInboundCall::GetClientDeadline() const {
+CoarseTimePoint CQLInboundCall::GetClientDeadline() const {
   // TODO(Robert) - fill in CQL timeout
-  return MonoTime::Max();
+  return CoarseTimePoint::max();
 }
 
 } // namespace cqlserver
