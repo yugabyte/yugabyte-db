@@ -10,8 +10,7 @@ menu:
   latest:
     parent: quick-start
     weight: 140
-isTocNested: true
-showAsideToc: true
+type: page
 ---
 
 After [creating a local cluster](../create-local-cluster/), follow the instructions below to test YugaByte DB's Redis-compatible [YEDIS](../../api/yedis/) API.
@@ -19,6 +18,7 @@ After [creating a local cluster](../create-local-cluster/), follow the instructi
 [**redis-cli**](https://redis.io/topics/rediscli) is a command line interface to interact with a Redis server. For ease of use, YugaByte DB ships with the 4.0.1 version of redis-cli in its bin directory.
 
 
+## 1. Connect with redis-cli
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">

@@ -1,4 +1,5 @@
-## 1. Connect with redis-cli
+---
+---
 - Initialize YugaByte DB's YEDIS API.
 
 Setup the redis_keyspace keyspace and the .redis table so that this cluster becomes ready for redis clients. Detailed output for the setup_redis command is available in the [yb-ctl Reference](../../admin/yb-ctl/#setup-redis).

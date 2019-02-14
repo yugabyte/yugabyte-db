@@ -10,14 +10,14 @@ menu:
   latest:
     parent: quick-start
     weight: 130
-isTocNested: true
-showAsideToc: true
+type: page
 ---
 
 After [creating a local cluster](../create-local-cluster/), follow the instructions below to test YugaByte DB's Cassandra-compatible [YCQL](../../api/ycql/) API.
 
 [**cqlsh**](http://cassandra.apache.org/doc/latest/tools/cqlsh.html) is a command line shell for interacting with Apache Cassandra through [CQL (the Cassandra Query Language)](http://cassandra.apache.org/doc/latest/cql/index.html). It uses the Python CQL driver, and connects to the single node specified on the command line. For ease of use, YugaByte DB ships with the 3.10 version of cqlsh in its bin directory.
 
+## 1. Connect with cqlsh
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

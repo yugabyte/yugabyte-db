@@ -1,4 +1,7 @@
-## 1. Create a new cluster
+---
+---
+
+
 - Destroy any existing cluster.
 
 ```sh

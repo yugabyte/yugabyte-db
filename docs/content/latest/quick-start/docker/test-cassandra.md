@@ -1,4 +1,5 @@
-## 1. Connect with cqlsh
+---
+---
 
 - Run cqlsh to connect to the service.
 

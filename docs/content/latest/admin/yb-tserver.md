@@ -20,6 +20,7 @@ showAsideToc: true
 ```sh
 $ ./bin/yb-tserver \
 --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
+--rpc_bind_addresses 172.151.17.130 \
 --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
 ```
 
@@ -49,6 +50,7 @@ Flag | Mandatory | Default | Description
 `--cql_proxy_webserver_port` | N | 12000 | YCQL metrics monitoring port
 `--redis_proxy_bind_address` | N | `0.0.0.0:6379` | YEDIS API bind address.
 `--redis_proxy_webserver_port` | N | 11000 | YEDIS metrics monitoring port.
+`--start_pgsql_proxy` | N | N/A | Enable YSQL API.
 `--pgsql_proxy_bind_address` | N | `0.0.0.0:5433` | YSQL API bind address.
 `--pgsql_proxy_webserver_port` | N | 13000 | YSQL metrics monitoring port.
 `--placement_zone` | N |`rack1` | Name of the availability zone or rack where this instance is deployed.

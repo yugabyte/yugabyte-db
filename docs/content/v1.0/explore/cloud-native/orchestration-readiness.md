@@ -36,7 +36,7 @@ Instructions for running YugaByte DB on AWS using Terraform are available [here]
 [YugaByte DB Enterprise](../../../deploy/enterprise-edition/) has a built-in orchestration engine that manages multiple YugaByte DB universes (including Read Replicas) on the infrastructure layer and platform of your choice.
 
 {{< note title="Note" >}}
-Reach out to us on [Gitter](https://gitter.im/YugaByte/Lobby), [GitHub](https://github.com/YugaByte/yugabyte-db/issues) or [Forum](https://forum.yugabyte.com/) if you need orchestration using a new system.
+Reach out to us on [Slack](https://www.yugabyte.com/slack) or [GitHub](https://github.com/YugaByte/yugabyte-db/issues)if you need orchestration using a new system.
 {{< /note >}}
 
 

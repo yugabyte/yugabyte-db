@@ -1,4 +1,5 @@
-## 1. Connect with redis-cli
+---
+---
 - Run redis-cli to connect to the service.
 
 ```sh

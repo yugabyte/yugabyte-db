@@ -11,13 +11,15 @@ menu:
   latest:
     parent: quick-start
     weight: 145
-isTocNested: true
-showAsideToc: true
+type: page
 ---
 
 Follow the instructions below to test YugaByte DB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
 
 [**psql**](https://www.postgresql.org/docs/9.3/static/app-psql.html) is a command line shell for interacting with PostgreSQL. For ease of use, YugaByte DB ships with a version of psql in its bin directory.
+
+
+## 1. Create a new cluster
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
