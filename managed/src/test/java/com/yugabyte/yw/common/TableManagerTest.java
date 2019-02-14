@@ -188,6 +188,9 @@ import static org.mockito.Mockito.when;
     }
     cmd.add("--no_auto_name");
     cmd.add(backupTableParams.actionType.name().toLowerCase());
+    if (backupTableParams.enableVerboseLogs) {
+      cmd.add("--verbose");
+    }
     return cmd;
   }
 
@@ -230,17 +233,29 @@ import static org.mockito.Mockito.when;
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
   }
 
-  @Test
-  public void testCreateS3Backup() {
+  private void testCreateS3BackupHelper(boolean enableVerbose) {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    if (enableVerbose) {
+      backupTableParams.enableVerboseLogs = true;
+    }
     Backup.create(testCustomer.uuid, backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+  }
+
+  @Test
+  public void testCreateS3Backup() {
+    testCreateS3BackupHelper(false);
+  }
+
+  @Test
+  public void testCreateS3BackupVerbose() {
+    testCreateS3BackupHelper(true);
   }
 
   @Test

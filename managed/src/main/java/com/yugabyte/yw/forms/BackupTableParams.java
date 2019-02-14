@@ -28,4 +28,7 @@ public class BackupTableParams extends TableManagerParams {
   // Specifies the time before deleting the backup from the storage
   // bucket.
   public long timeBeforeDelete = 0L;
+
+  // Should backup script enable verbose logging.
+  public boolean enableVerboseLogs = false;
 }
