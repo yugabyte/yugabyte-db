@@ -605,8 +605,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
-      params.callhomeLevel = CustomerConfig.getCallhomeLevel(Customer.get(Universe.get(taskParams().universeUUID)
-              .customerId).uuid).toString();
+      UUID custUUID = Customer.get(Universe.get(taskParams().universeUUID).customerId).uuid;
+      params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
       // Set if updating master addresses only.
       params.updateMasterAddrsOnly = updateMasterAddrsOnly;
       if (updateMasterAddrsOnly) {

@@ -221,9 +221,9 @@ public class NodeManager extends DevopsBase {
           extra_gflags.put("start_pgsql_proxy", "true");
           extra_gflags.put("pgsql_proxy_bind_address", String.format("%s:%s", node.cloudInfo.private_ip, node.ysqlServerRpcPort));
         }
-        if(taskParam.callhomeLevel != null){
-          extra_gflags.put("callhome_collection_level", taskParam.callhomeLevel.toLowerCase());
-          if(taskParam.callhomeLevel.equals("NONE")){
+        if (taskParam.callhomeLevel != null){
+          extra_gflags.put("callhome_collection_level", taskParam.callhomeLevel.toString().toLowerCase());
+          if(taskParam.callhomeLevel.toString().equals("NONE")){
             extra_gflags.put("callhome_enabled", "false");
           }
         }

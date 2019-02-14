@@ -369,7 +369,7 @@ import static org.mockito.Mockito.when;
     try {
       runCommand(defaultRegion.uuid, "add-key", false);
     } catch (RuntimeException re) {
-      assertThat(re.getMessage(), allOf(notNullValue(), equalTo("Key path /foo/keys doesn't exists.")));
+      assertThat(re.getMessage(), allOf(notNullValue(), equalTo("Key path /foo/keys doesn't exist.")));
     }
   }
 
