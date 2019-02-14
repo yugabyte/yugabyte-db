@@ -22,9 +22,8 @@ export default class ListKubernetesConfigurations extends Component {
   }
 
   deleteProviderEnabled = (providerUUID) => {
-    return getPromiseState(this.props.universeList).isSuccess()
-      && isDefinedNotNull(this.props.providers)
-      && isDefinedNotNull(providerUUID)
+    return isDefinedNotNull(providerUUID)
+      && (getPromiseState(this.props.universeList).isSuccess() || getPromiseState(this.props.universeList).isEmpty())
       && !this.props.universeList.data.some(universe => universe.universeDetails.clusters && universe.universeDetails.clusters.some(cluster => cluster.userIntent.provider === providerUUID));
   }
 
@@ -57,9 +56,9 @@ export default class ListKubernetesConfigurations extends Component {
       );
     };
     const actionList = (item, row) => {
-      const enabled = this.deleteProviderEnabled(row.uuid);
+      const disabled = !this.deleteProviderEnabled(row.uuid);
       return (
-        <Button disabled={enabled ? false : true} title={enabled ? "Delete provider" : "Cannot delete provider with associated clusters" } bsClass="btn btn-default btn-config pull-right" onClick={this.props.deleteProviderConfig.bind(this, row.uuid)}>
+        <Button disabled={disabled} title={disabled ? "Cannot delete provider with associated clusters" : "Delete provider" } bsClass="btn btn-default btn-config pull-right" onClick={this.props.deleteProviderConfig.bind(this, row.uuid)}>
           Delete Configuration
         </Button>
       );
