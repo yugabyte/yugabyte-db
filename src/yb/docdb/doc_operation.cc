@@ -568,9 +568,9 @@ CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
 
 // If test_tserver_timeout is true, set the deadline to now and sleep for 100ms to simulate a
 // tserver timeout.
-void SimulateTimeoutIfTesting(MonoTime* deadline) {
+void SimulateTimeoutIfTesting(CoarseTimePoint* deadline) {
   if (PREDICT_FALSE(FLAGS_test_tserver_timeout)) {
-    *deadline = MonoTime::Now() - 100ms;
+    *deadline = CoarseMonoClock::now() - 100ms;
   }
 }
 
@@ -2798,7 +2798,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
 }
 
 Status QLWriteOperation::DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
-                                   const ReadHybridTime& read_ht, const MonoTime deadline) {
+                                   const ReadHybridTime& read_ht, const CoarseTimePoint deadline) {
   if (request_.has_user_timestamp_usec()) {
     // If user_timestamp is provided, we need to add a tombstone for each individual
     // column in the schema since we don't want to analyze this on the read path.
@@ -2959,7 +2959,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
 }
 
 Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
-                                MonoTime deadline,
+                                CoarseTimePoint deadline,
                                 const ReadHybridTime& read_time,
                                 const Schema& schema,
                                 const Schema& projection,
@@ -3501,7 +3501,7 @@ Status PgsqlWriteOperation::GetDocPaths(
 //--------------------------------------------------------------------------------------------------
 
 Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
-                                   MonoTime deadline,
+                                   CoarseTimePoint deadline,
                                    const ReadHybridTime& read_time,
                                    const Schema& schema,
                                    const Schema *index_schema,

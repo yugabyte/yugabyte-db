@@ -201,7 +201,7 @@ class WriteOperationContext {
 class WriteOperation : public Operation {
  public:
   WriteOperation(std::unique_ptr<WriteOperationState> operation_state, int64_t term,
-                 MonoTime deadline, WriteOperationContext* context);
+                 CoarseTimePoint deadline, WriteOperationContext* context);
 
   WriteOperationState* state() override {
     return down_cast<WriteOperationState*>(Operation::state());
@@ -265,7 +265,7 @@ class WriteOperation : public Operation {
     restart_read_ht_ = value;
   }
 
-  const MonoTime deadline() const {
+  CoarseTimePoint deadline() const {
     return deadline_;
   }
 
@@ -286,7 +286,7 @@ class WriteOperation : public Operation {
 
   WriteOperationContext& context_;
   const int64_t term_;
-  const MonoTime deadline_;
+  const CoarseTimePoint deadline_;
 
   // this transaction's start time
   MonoTime start_time_;

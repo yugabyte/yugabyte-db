@@ -257,8 +257,8 @@ const std::string& RedisInboundCall::method_name() const {
   return result;
 }
 
-MonoTime RedisInboundCall::GetClientDeadline() const {
-  return MonoTime::Max();  // No timeout specified in the protocol for Redis.
+CoarseTimePoint RedisInboundCall::GetClientDeadline() const {
+  return CoarseTimePoint::max();  // No timeout specified in the protocol for Redis.
 }
 
 void RedisInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const {

@@ -90,7 +90,7 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
 
   // Since TransactionStatusResult does not have default ctor we should init it somehow.
   TransactionStatusResult txn_status(TransactionStatus::ABORTED, HybridTime());
-  BackoffWaiter waiter(deadline_.ToSteadyTimePoint(), 50ms /* max_wait */);
+  CoarseBackoffWaiter waiter(deadline_, 50ms /* max_wait */);
   static const std::string kRequestReason = "get commit time"s;
   for(;;) {
     std::promise<Result<TransactionStatusResult>> txn_status_promise;
@@ -229,7 +229,7 @@ bool DebugHasHybridTime(const Slice& subdoc_key_encoded) {
 IntentAwareIterator::IntentAwareIterator(
     const DocDB& doc_db,
     const rocksdb::ReadOptions& read_opts,
-    MonoTime deadline,
+    CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const TransactionOperationContextOpt& txn_op_context)
     : read_time_(read_time),

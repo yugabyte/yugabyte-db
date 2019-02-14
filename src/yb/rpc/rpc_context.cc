@@ -187,7 +187,7 @@ std::string RpcContext::requestor_string() const {
   return yb::ToString(call_->remote_address());
 }
 
-MonoTime RpcContext::GetClientDeadline() const {
+CoarseTimePoint RpcContext::GetClientDeadline() const {
   return call_->GetClientDeadline();
 }
 

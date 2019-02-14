@@ -245,6 +245,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     IsolationLevel isolation_level,
     OperationKind operation_kind,
     bool transactional_table,
+    CoarseTimePoint deadline,
     SharedLockManager *lock_manager) {
   PrepareDocWriteOperationResult result;
 
@@ -258,9 +259,11 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   result.need_read_snapshot = determine_keys_to_lock_result.need_read_snapshot;
 
   FilterKeysToLock(&determine_keys_to_lock_result.lock_batch);
-
   const MonoTime start_time = (write_lock_latency != nullptr) ? MonoTime::Now() : MonoTime();
-  result.lock_batch = LockBatch(lock_manager, std::move(determine_keys_to_lock_result.lock_batch));
+  result.lock_batch = LockBatch(
+      lock_manager, std::move(determine_keys_to_lock_result.lock_batch), deadline);
+  RETURN_NOT_OK_PREPEND(
+      result.lock_batch.status(), Format("Timeout: $0", deadline - ToCoarse(start_time)));
   if (write_lock_latency != nullptr) {
     const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
     write_lock_latency->Increment(elapsed_time.ToMicroseconds());
@@ -292,7 +295,7 @@ Status SetDocOpQLErrorResponse(DocOperation* doc_op, std::string err_msg) {
 }
 
 Status ExecuteDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
-                                MonoTime deadline,
+                                CoarseTimePoint deadline,
                                 const ReadHybridTime& read_time,
                                 const DocDB& doc_db,
                                 KeyValueWriteBatchPB* write_batch,
@@ -846,7 +849,7 @@ yb::Status GetSubDocument(
     const GetSubDocumentData& data,
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& txn_op_context,
-    MonoTime deadline,
+    CoarseTimePoint deadline,
     const ReadHybridTime& read_time) {
   auto iter = CreateIntentAwareIterator(
       doc_db, BloomFilterMode::USE_BLOOM_FILTER, data.subdocument_key, query_id,

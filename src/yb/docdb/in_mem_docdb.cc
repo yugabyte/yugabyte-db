@@ -144,7 +144,7 @@ void InMemDocDbState::CaptureAt(const DocDB& doc_db, HybridTime hybrid_time,
     GetSubDocumentData data = { encoded_subdoc_key, &subdoc, &doc_found };
     const Status get_doc_status = yb::docdb::GetSubDocument(
         doc_db, data, query_id, kNonTransactionalOperationContext,
-        MonoTime::Max() /* deadline */, ReadHybridTime::SingleTime(hybrid_time));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::SingleTime(hybrid_time));
     if (!get_doc_status.ok()) {
       // This will help with debugging the GetSubDocument failure.
       LOG(WARNING)

@@ -148,7 +148,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // MvccManager.
   // The operation_state is deallocated after use by this function.
   void WriteAsync(
-      std::unique_ptr<WriteOperationState> operation_state, int64_t term, MonoTime deadline);
+      std::unique_ptr<WriteOperationState> operation_state, int64_t term, CoarseTimePoint deadline);
 
   void Submit(std::unique_ptr<Operation> operation, int64_t term) override;
 

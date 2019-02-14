@@ -16,6 +16,7 @@
 #include <vector>
 
 #include <boost/range/adaptor/reversed.hpp>
+#include <boost/scope_exit.hpp>
 #include <glog/logging.h>
 
 #include "yb/util/bytes_formatter.h"
@@ -115,14 +116,14 @@ struct LockedBatchEntry {
 
   std::atomic<size_t> num_waiters{0};
 
-  void Lock(IntentTypeSet lock);
+  MUST_USE_RESULT bool Lock(IntentTypeSet lock, CoarseTimePoint deadline);
 
   void Unlock(IntentTypeSet lock);
 };
 
 class SharedLockManager::Impl {
  public:
-  void Lock(LockBatchEntries* key_to_intent_type);
+  MUST_USE_RESULT bool Lock(LockBatchEntries* key_to_intent_type, CoarseTimePoint deadline);
   void Unlock(const LockBatchEntries& key_to_intent_type);
 
  private:
@@ -167,7 +168,7 @@ std::string SharedLockManager::ToString(const LockState& state) {
   return result;
 }
 
-void LockedBatchEntry::Lock(IntentTypeSet lock_type) {
+bool LockedBatchEntry::Lock(IntentTypeSet lock_type, CoarseTimePoint deadline) {
   size_t type_idx = lock_type.ToUIntPtr();
   auto& num_holding = this->num_holding;
   auto old_value = num_holding.load(std::memory_order_acquire);
@@ -176,19 +177,25 @@ void LockedBatchEntry::Lock(IntentTypeSet lock_type) {
     if ((old_value & kIntentTypeSetConflicts[type_idx]) == 0) {
       auto new_value = old_value + add;
       if (num_holding.compare_exchange_weak(old_value, new_value, std::memory_order_acq_rel)) {
-        return;
+        return true;
       }
       continue;
     }
     num_waiters.fetch_add(1, std::memory_order_release);
-    {
-      std::unique_lock<std::mutex> lock(mutex);
-      old_value = num_holding.load(std::memory_order_acquire);
-      if ((old_value & kIntentTypeSetConflicts[type_idx]) != 0) {
+    BOOST_SCOPE_EXIT(this_) {
+      this_->num_waiters.fetch_sub(1, std::memory_order_release);
+    } BOOST_SCOPE_EXIT_END;
+    std::unique_lock<std::mutex> lock(mutex);
+    old_value = num_holding.load(std::memory_order_acquire);
+    if ((old_value & kIntentTypeSetConflicts[type_idx]) != 0) {
+      if (deadline != CoarseTimePoint::max()) {
+        if (cond_var.wait_until(lock, deadline) == std::cv_status::timeout) {
+          return false;
+        }
+      } else {
         cond_var.wait(lock);
       }
     }
-    num_waiters.fetch_sub(1, std::memory_order_release);
   }
 }
 
@@ -232,16 +239,25 @@ void LockedBatchEntry::Unlock(IntentTypeSet lock_types) {
   cond_var.notify_all();
 }
 
-void SharedLockManager::Impl::Lock(LockBatchEntries* key_to_intent_type) {
+bool SharedLockManager::Impl::Lock(LockBatchEntries* key_to_intent_type, CoarseTimePoint deadline) {
   TRACE("Locking a batch of $0 keys", key_to_intent_type->size());
   Reserve(key_to_intent_type);
-  for (const auto& key_and_intent_type : *key_to_intent_type) {
+  for (auto it = key_to_intent_type->begin(); it != key_to_intent_type->end(); ++it) {
+    const auto& key_and_intent_type = *it;
     const auto intent_types = key_and_intent_type.intent_types;
     VLOG(4) << "Locking " << yb::ToString(intent_types) << ": "
             << key_and_intent_type.key.as_slice().ToDebugHexString();
-    key_and_intent_type.locked->Lock(intent_types);
+    if (!key_and_intent_type.locked->Lock(intent_types, deadline)) {
+      while (it != key_to_intent_type->begin()) {
+        --it;
+        it->locked->Unlock(it->intent_types);
+      }
+      return false;
+    }
   }
   TRACE("Acquired a lock batch of $0 keys", key_to_intent_type->size());
+
+  return true;
 }
 
 void SharedLockManager::Impl::Reserve(LockBatchEntries* key_to_intent_type) {
@@ -287,8 +303,8 @@ SharedLockManager::SharedLockManager() : impl_(new Impl) {
 
 SharedLockManager::~SharedLockManager() {}
 
-void SharedLockManager::Lock(LockBatchEntries* key_to_intent_type) {
-  impl_->Lock(key_to_intent_type);
+bool SharedLockManager::Lock(LockBatchEntries* key_to_intent_type, CoarseTimePoint deadline) {
+  return impl_->Lock(key_to_intent_type, deadline);
 }
 
 void SharedLockManager::Unlock(const LockBatchEntries& key_to_intent_type) {

@@ -32,7 +32,7 @@ CHECKED_STATUS YQLVirtualTable::GetIterator(
     const Schema& projection,
     const Schema& schema,
     const TransactionOperationContextOpt& txn_op_context,
-    MonoTime deadline,
+    CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const common::QLScanSpec& spec,
     std::unique_ptr<common::YQLRowwiseIteratorIf>* iter)

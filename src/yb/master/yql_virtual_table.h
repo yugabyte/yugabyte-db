@@ -49,7 +49,7 @@ class YQLVirtualTable : public common::YQLStorageIf {
                              const Schema& projection,
                              const Schema& schema,
                              const TransactionOperationContextOpt& txn_op_context,
-                             MonoTime deadline,
+                             CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
                              const common::QLScanSpec& spec,
                              std::unique_ptr<common::YQLRowwiseIteratorIf>* iter) const override;
@@ -71,7 +71,7 @@ class YQLVirtualTable : public common::YQLStorageIf {
                              const Schema& projection,
                              const Schema& schema,
                              const TransactionOperationContextOpt& txn_op_context,
-                             MonoTime deadline,
+                             CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
                              common::YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";

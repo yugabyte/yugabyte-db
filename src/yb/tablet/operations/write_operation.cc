@@ -76,7 +76,7 @@ using tserver::WriteResponsePB;
 using strings::Substitute;
 
 WriteOperation::WriteOperation(
-    std::unique_ptr<WriteOperationState> state, int64_t term, MonoTime deadline,
+    std::unique_ptr<WriteOperationState> state, int64_t term, CoarseTimePoint deadline,
     WriteOperationContext* context)
     : Operation(std::move(state), OperationType::kWrite),
       context_(*context), term_(term), deadline_(deadline), start_time_(MonoTime::Now()) {

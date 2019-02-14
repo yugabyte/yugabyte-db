@@ -49,7 +49,8 @@ class SharedLockManagerTest : public YBTest {
   LockBatch TestLockBatch() {
     return LockBatch(&lm_, {
         {kKey1, IntentTypeSet({IntentType::kStrongWrite, IntentType::kStrongRead})},
-        {kKey2, IntentTypeSet({IntentType::kStrongWrite, IntentType::kStrongRead})}});
+        {kKey2, IntentTypeSet({IntentType::kStrongWrite, IntentType::kStrongRead})}},
+        CoarseTimePoint::max());
   }
 };
 
@@ -114,7 +115,8 @@ TEST_F(SharedLockManagerTest, QuickLockUnlock) {
       while (!stop_requested.load(std::memory_order_acquire)) {
         RefCntPrefix key(Format("key_$0_$1", pair_idx, i));
         LockBatch lb(&lm_,
-                     {{key, IntentTypeSet({IntentType::kStrongWrite, IntentType::kStrongRead})}});
+                     {{key, IntentTypeSet({IntentType::kStrongWrite, IntentType::kStrongRead})}},
+                     CoarseTimePoint::max());
         ++i;
       }
       finished_threads.fetch_add(1, std::memory_order_acq_rel);
@@ -149,7 +151,7 @@ TEST_F(SharedLockManagerTest, LockConflicts) {
     virtual ~ThreadPoolTask() {}
 
     void Run() override {
-      LockBatch lb(lock_manager_, {{kKey1, set_}});
+      LockBatch lb(lock_manager_, {{kKey1, set_}}, CoarseTimePoint::max() /* deadline */);
     }
 
     void Done(const Status& status) override {
@@ -172,7 +174,7 @@ TEST_F(SharedLockManagerTest, LockConflicts) {
     for (size_t idx2 = 0; idx2 != kIntentTypeSetMapSize; ++idx2) {
       IntentTypeSet set2(idx2);
       SCOPED_TRACE(Format("Set2: $0", set2));
-      LockBatch lb(&lm_, {{kKey1, set1}});
+      LockBatch lb(&lm_, {{kKey1, set1}}, CoarseTimePoint::max());
       ThreadPoolTask task(&lm_, set2);
       auto future = task.GetFuture();
       tp.Enqueue(&task);

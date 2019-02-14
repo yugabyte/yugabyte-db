@@ -160,9 +160,9 @@ void MvccTest::RunRandomizedTest(bool use_ht_lease) {
   std::thread safetime_query_thread([this, &stopped, &ht_lease_provider, &is_leader]() {
     while (!stopped.load(std::memory_order_acquire)) {
       if (is_leader.load(std::memory_order_acquire)) {
-        manager_.SafeTime(HybridTime::kMin, MonoTime::kMax, ht_lease_provider());
+        manager_.SafeTime(HybridTime::kMin, CoarseTimePoint::max(), ht_lease_provider());
       } else {
-        manager_.SafeTimeForFollower(HybridTime::kMin, MonoTime::kMax);
+        manager_.SafeTimeForFollower(HybridTime::kMin, CoarseTimePoint::max());
       }
       std::this_thread::yield();
     }
@@ -290,12 +290,12 @@ TEST_F(MvccTest, WaitForSafeTime) {
   manager_.AddPending(&ht2);
   std::atomic<bool> t1_done(false);
   std::thread t1([this, ht2, &t1_done] {
-    manager_.SafeTime(ht2.Decremented(), MonoTime::kMax, HybridTime::kMax);
+    manager_.SafeTime(ht2.Decremented(), CoarseTimePoint::max(), HybridTime::kMax);
     t1_done = true;
   });
   std::atomic<bool> t2_done(false);
   std::thread t2([this, ht2, &t2_done] {
-    manager_.SafeTime(AddLogical(ht2, 1), MonoTime::kMax, HybridTime::kMax);
+    manager_.SafeTime(AddLogical(ht2, 1), CoarseTimePoint::max(), HybridTime::kMax);
     t2_done = true;
   });
   std::this_thread::sleep_for(100ms);
@@ -317,7 +317,7 @@ TEST_F(MvccTest, WaitForSafeTime) {
 
   HybridTime ht3;
   manager_.AddPending(&ht3);
-  ASSERT_FALSE(manager_.SafeTime(ht3, MonoTime::Now() + 100ms, HybridTime::kMax));
+  ASSERT_FALSE(manager_.SafeTime(ht3, CoarseMonoClock::now() + 100ms, HybridTime::kMax));
 }
 
 } // namespace tablet

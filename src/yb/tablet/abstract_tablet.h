@@ -50,7 +50,7 @@ class AbstractTablet {
   //------------------------------------------------------------------------------------------------
   // Redis support.
   virtual CHECKED_STATUS HandleRedisReadRequest(
-      MonoTime deadline,
+      CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) = 0;
@@ -58,7 +58,7 @@ class AbstractTablet {
   //------------------------------------------------------------------------------------------------
   // CQL support.
   virtual CHECKED_STATUS HandleQLReadRequest(
-      MonoTime deadline,
+      CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
@@ -81,13 +81,13 @@ class AbstractTablet {
   // a timeout.
   HybridTime SafeTime(RequireLease require_lease = RequireLease::kTrue,
                       HybridTime min_allowed = HybridTime::kMin,
-                      MonoTime deadline = MonoTime::kMax) const {
+                      CoarseTimePoint deadline = CoarseTimePoint::max()) const {
     return DoGetSafeTime(require_lease, min_allowed, deadline);
   }
 
  protected:
   CHECKED_STATUS HandleQLReadRequest(
-      MonoTime deadline,
+      CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionOperationContextOpt& txn_op_context,
@@ -98,7 +98,7 @@ class AbstractTablet {
   // PGSQL support.
  public:
   virtual CHECKED_STATUS HandlePgsqlReadRequest(
-      MonoTime deadline,
+      CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const PgsqlReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
@@ -108,14 +108,14 @@ class AbstractTablet {
                                                   const size_t row_count,
                                                   PgsqlResponsePB* response) const = 0;
 
-  CHECKED_STATUS HandlePgsqlReadRequest(MonoTime deadline,
+  CHECKED_STATUS HandlePgsqlReadRequest(CoarseTimePoint deadline,
                                         const ReadHybridTime& read_time,
                                         const PgsqlReadRequestPB& pgsql_read_request,
                                         const TransactionOperationContextOpt& txn_op_context,
                                         PgsqlReadRequestResult* result);
  private:
   virtual HybridTime DoGetSafeTime(
-      RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const = 0;
+      RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const = 0;
 };
 
 }  // namespace tablet

@@ -223,7 +223,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
     GetSubDocumentData data = { encoded_subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb };
     EXPECT_OK(GetSubDocument(
         doc_db(), data, rocksdb::kDefaultQueryId,
-        kNonTransactionalOperationContext, MonoTime::Max() /* deadline */,
+        kNonTransactionalOperationContext, CoarseTimePoint::max() /* deadline */,
         ReadHybridTime::SingleTime(ht)));
     if (subdoc_string.empty()) {
       EXPECT_FALSE(subdoc_found_in_rocksdb);
@@ -456,7 +456,7 @@ void DocDBTest::CheckExpectedLatestDBState() {
   GetSubDocumentData data = { encoded_subdoc_key, &subdoc, &doc_found };
   ASSERT_OK(GetSubDocument(
       doc_db(), data, rocksdb::kDefaultQueryId,
-      kNonTransactionalOperationContext, MonoTime::Max() /* deadline */));
+      kNonTransactionalOperationContext, CoarseTimePoint::max() /* deadline */));
   ASSERT_TRUE(doc_found);
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       R"#(
@@ -2496,7 +2496,7 @@ TEST_F(DocDBTest, BloomFilterTest) {
     GetSubDocumentData data = { encoded_subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb };
     ASSERT_OK(GetSubDocument(
         doc_db(), data, rocksdb::kDefaultQueryId,
-        boost::none /* txn_op_context */, MonoTime::Max() /* deadline */));
+        boost::none /* txn_op_context */, CoarseTimePoint::max() /* deadline */));
   };
 
   ASSERT_NO_FATALS(CheckBloom(0, &total_bloom_useful, 0, &total_table_iterators));
@@ -2620,7 +2620,7 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
   auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
   GetSubDocumentData data = { encoded_subdoc_key, &subdoc, &doc_found };
   GetSubDocument(doc_db(), data, rocksdb::kDefaultQueryId,
-                 kNonTransactionalOperationContext, MonoTime::Max() /* deadline */);
+                 kNonTransactionalOperationContext, CoarseTimePoint::max() /* deadline */);
   ASSERT_FALSE(doc_found);
 
   CaptureLogicalSnapshot();
@@ -2631,7 +2631,7 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
     // TODO(dtxn) - check both transaction and non-transaction path?
     FullyCompactHistoryBefore(HybridTime::FromMicros(cutoff_time_ms));
     GetSubDocument(doc_db(), data, rocksdb::kDefaultQueryId,
-                   kNonTransactionalOperationContext, MonoTime::Max() /* deadline */);
+                   kNonTransactionalOperationContext, CoarseTimePoint::max() /* deadline */);
     ASSERT_FALSE(doc_found);
     ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ("");
   }
@@ -2648,7 +2648,7 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
   auto encoded_subdoc_key2 = subdoc_key2.EncodeWithoutHt();
   data.subdocument_key = encoded_subdoc_key2;
   GetSubDocument(doc_db(), data, rocksdb::kDefaultQueryId,
-                 kNonTransactionalOperationContext, MonoTime::Max() /* deadline */);
+                 kNonTransactionalOperationContext, CoarseTimePoint::max() /* deadline */);
   ASSERT_TRUE(doc_found);
 
   // The row should still exist after a compaction. The deletion marker should be compacted away.
@@ -2658,7 +2658,7 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
     FullyCompactHistoryBefore(HybridTime::FromMicros(cutoff_time_ms));
     // TODO(dtxn) - check both transaction and non-transaction path?
     GetSubDocument(doc_db(), data, rocksdb::kDefaultQueryId,
-                   kNonTransactionalOperationContext, MonoTime::Max() /* deadline */);
+                   kNonTransactionalOperationContext, CoarseTimePoint::max() /* deadline */);
     ASSERT_TRUE(doc_found);
     ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 w: 1 }]) -> "value2"
@@ -2924,7 +2924,7 @@ void QueryBounds(const DocKey& doc_key, int lower, int upper, int base, const Do
   data.high_subkey = &upper_bound;
   EXPECT_OK(GetSubDocument(
       doc_db, data, rocksdb::kDefaultQueryId,
-      kNonTransactionalOperationContext, MonoTime::Max() /* deadline */,
+      kNonTransactionalOperationContext, CoarseTimePoint::max() /* deadline */,
       ReadHybridTime::SingleTime(ht)));
 }
 
@@ -3025,7 +3025,7 @@ TEST_F(DocDBTest, TestCompactionForCollectionsWithTTL) {
   GetSubDocumentData data = { subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb };
   EXPECT_OK(GetSubDocument(
       doc_db(), data, rocksdb::kDefaultQueryId,
-      kNonTransactionalOperationContext, MonoTime::Max() /* deadline */,
+      kNonTransactionalOperationContext, CoarseTimePoint::max() /* deadline */,
       ReadHybridTime::FromMicros(1200)));
   ASSERT_TRUE(subdoc_found_in_rocksdb);
 

@@ -21,12 +21,12 @@ namespace docdb {
 
 class DeadlineInfo {
  public:
-  explicit DeadlineInfo(const MonoTime& deadline);
+  explicit DeadlineInfo(CoarseTimePoint deadline);
   bool CheckAndSetDeadlinePassed();
   std::string ToString() const;
 
  private:
-  MonoTime deadline_;
+  CoarseTimePoint deadline_;
   uint32_t counter_ = 0;
   bool deadline_passed_ = false;
 };

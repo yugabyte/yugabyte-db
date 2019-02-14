@@ -41,7 +41,7 @@ DocRowwiseIterator::DocRowwiseIterator(
     const Schema &schema,
     const TransactionOperationContextOpt& txn_op_context,
     const DocDB& doc_db,
-    MonoTime deadline,
+    CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     yb::util::PendingOperationCounter* pending_op_counter)
     : projection_(projection),
