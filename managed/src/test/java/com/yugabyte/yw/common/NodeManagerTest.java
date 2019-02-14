@@ -289,8 +289,8 @@ public class NodeManagerTest extends FakeDBApplication {
                 .getNode(configureParams.nodeName).ysqlServerRpcPort));
           }
           if (configureParams.callhomeLevel != null) {
-            gflags.put("callhome_collection_level", configureParams.callhomeLevel.toLowerCase());
-            if (configureParams.callhomeLevel == "NONE") {
+            gflags.put("callhome_collection_level", configureParams.callhomeLevel.toString().toLowerCase());
+            if (configureParams.callhomeLevel.toString() == "NONE") {
               gflags.put("callhome_enabled", "false");
             }
           }
@@ -912,7 +912,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.nodeName = t.node.getNodeName();
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
-      params.callhomeLevel = "NONE";
+      params.callhomeLevel = CallHomeManager.CollectionLevel.valueOf("NONE");
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);

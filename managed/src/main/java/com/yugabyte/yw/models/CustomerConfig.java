@@ -155,7 +155,11 @@ public class CustomerConfig extends Model {
   }
 
   public static CollectionLevel getCallhomeLevel(UUID customerUUID) {
-    return CollectionLevel.valueOf(getCallhomeConfig(customerUUID).getData().get("callhomeLevel").textValue());
+    CustomerConfig config = getCallhomeConfig(customerUUID);
+    if (config != null){
+      return CollectionLevel.valueOf(config.getData().get("callhomeLevel").textValue());
+    }
+    return null;
   }
 
   public static CustomerConfig upsertCallhomeConfig(UUID customerUUID, String callhomeLevel) {

@@ -3,6 +3,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
@@ -24,7 +25,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean enableYSQL = false;
     public Map<String, String> gflags = new HashMap<>();
     public boolean updateMasterAddrsOnly = false;
-    public String callhomeLevel;
+    public CollectionLevel callhomeLevel;
   }
 
   @Override
