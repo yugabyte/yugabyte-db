@@ -166,12 +166,11 @@ void InboundCall::RecordHandlingCompleted(scoped_refptr<Histogram> handler_run_t
 
 bool InboundCall::ClientTimedOut() const {
   auto deadline = GetClientDeadline();
-  if (deadline.Equals(MonoTime::Max())) {
+  if (deadline == CoarseTimePoint::max()) {
     return false;
   }
 
-  MonoTime now = MonoTime::Now();
-  return deadline.ComesBefore(now);
+  return deadline < CoarseMonoClock::now();
 }
 
 void InboundCall::QueueResponse(bool is_success) {

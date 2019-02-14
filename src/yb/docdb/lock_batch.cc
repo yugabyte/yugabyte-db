@@ -20,11 +20,14 @@
 namespace yb {
 namespace docdb {
 
-LockBatch::LockBatch(SharedLockManager* lock_manager, LockBatchEntries&& key_to_intent_type)
+LockBatch::LockBatch(SharedLockManager* lock_manager, LockBatchEntries&& key_to_intent_type,
+                     CoarseTimePoint deadline)
     : key_to_type_(std::move(key_to_intent_type)),
       shared_lock_manager_(lock_manager) {
-  if (!empty()) {
-    lock_manager->Lock(&key_to_type_);
+  if (!empty() && !lock_manager->Lock(&key_to_type_, deadline)) {
+    shared_lock_manager_ = nullptr;
+    key_to_type_.clear();
+    status_ = STATUS_FORMAT(TimedOut, "Failed to obtain locks until deadline: $0", deadline);
   }
 }
 
@@ -35,7 +38,7 @@ LockBatch::~LockBatch() {
 void LockBatch::Reset() {
   if (!empty()) {
     VLOG(1) << "Auto-unlocking a LockBatch with " << size() << " keys";
-    shared_lock_manager_->Unlock(key_to_type_);
+    DCHECK_NOTNULL(shared_lock_manager_)->Unlock(key_to_type_);
     key_to_type_.clear();
   }
 }

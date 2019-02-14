@@ -199,7 +199,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // until a hybrid time leader lease with at least the given microsecond component is acquired
   // (first argument), or a timeout occurs (second argument). HybridTime::kInvalid is returned
   // in case of a timeout.
-  using HybridTimeLeaseProvider = std::function<HybridTime(MicrosTime, MonoTime)>;
+  using HybridTimeLeaseProvider = std::function<HybridTime(MicrosTime, CoarseTimePoint)>;
   using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
 
   // Create a new tablet.
@@ -248,7 +248,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS RemoveIntents(const TransactionIdSet& transactions) override;
 
-  HybridTime ApplierSafeTime(HybridTime min_allowed, MonoTime deadline) override;
+  HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
 
   // Finish the Prepare phase of a write transaction.
   //
@@ -306,7 +306,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS KeyValueBatchFromRedisWriteBatch(WriteOperation* operation);
 
   CHECKED_STATUS HandleRedisReadRequest(
-      MonoTime deadline,
+      CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) override;
@@ -314,7 +314,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //------------------------------------------------------------------------------------------------
   // CQL Request Processing.
   CHECKED_STATUS HandleQLReadRequest(
-      MonoTime deadline,
+      CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
@@ -330,7 +330,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //------------------------------------------------------------------------------------------------
   // Postgres Request Processing.
   CHECKED_STATUS HandlePgsqlReadRequest(
-      MonoTime deadline,
+      CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const PgsqlReadRequestPB& pgsql_read_request,
       const TransactionMetadataPB& transaction_metadata,
@@ -693,7 +693,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
  private:
   HybridTime DoGetSafeTime(
-      RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const override;
+      RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
   void UpdateQLIndexes(std::unique_ptr<WriteOperation> operation);
   void CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, const Status& status);

@@ -1214,7 +1214,7 @@ MonoDelta ReplicaState::RemainingOldLeaderLeaseDuration(CoarseTimePoint* now) co
 }
 
 MicrosTime ReplicaState::MajorityReplicatedHtLeaseExpiration(
-    MicrosTime min_allowed, MonoTime deadline) const {
+    MicrosTime min_allowed, CoarseTimePoint deadline) const {
   if (FLAGS_ht_lease_duration_ms == 0) {
     return kMaxHybridTimePhysicalMicros;
   }
@@ -1230,9 +1230,9 @@ MicrosTime ReplicaState::MajorityReplicatedHtLeaseExpiration(
     result = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
     return result >= min_allowed;
   };
-  if (deadline.IsMax()) {
+  if (deadline == CoarseTimePoint::max()) {
     cond_.wait(l, predicate);
-  } else if (!cond_.wait_until(l, deadline.ToSteadyTimePoint(), predicate)) {
+  } else if (!cond_.wait_until(l, deadline, predicate)) {
     return 0;
   }
   return result;

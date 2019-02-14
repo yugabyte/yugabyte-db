@@ -303,7 +303,7 @@ Status DocDBRocksDBUtil::InsertSubDocument(
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
   RETURN_NOT_OK(dwb.InsertSubDocument(doc_path, value, read_ht,
-                                      MonoTime::kMax, rocksdb::kDefaultQueryId, ttl));
+                                      CoarseTimePoint::max(), rocksdb::kDefaultQueryId, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -315,7 +315,7 @@ Status DocDBRocksDBUtil::ExtendSubDocument(
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
   RETURN_NOT_OK(dwb.ExtendSubDocument(doc_path, value, read_ht,
-                                      MonoTime::kMax, rocksdb::kDefaultQueryId, ttl));
+                                      CoarseTimePoint::max(), rocksdb::kDefaultQueryId, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -325,7 +325,7 @@ Status DocDBRocksDBUtil::ExtendList(
     HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.ExtendList(doc_path, value, read_ht, MonoTime::kMax));
+  RETURN_NOT_OK(dwb.ExtendList(doc_path, value, read_ht, CoarseTimePoint::max()));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -341,7 +341,7 @@ Status DocDBRocksDBUtil::ReplaceInList(
     UserTimeMicros user_timestamp) {
   auto dwb = MakeDocWriteBatch();
   RETURN_NOT_OK(dwb.ReplaceCqlInList(
-      doc_path, indexes, values, read_ht, MonoTime::kMax, query_id, default_ttl, ttl));
+      doc_path, indexes, values, read_ht, CoarseTimePoint::max(), query_id, default_ttl, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 

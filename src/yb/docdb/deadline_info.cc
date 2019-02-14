@@ -23,7 +23,7 @@ DECLARE_bool(test_tserver_timeout);
 namespace yb {
 namespace docdb {
 
-DeadlineInfo::DeadlineInfo(const MonoTime& deadline) : deadline_(deadline) {}
+DeadlineInfo::DeadlineInfo(CoarseTimePoint deadline) : deadline_(deadline) {}
 
 // Every 1024 iterations, check whether the deadline passed and if so, change deadline_passed_
 // before returning.
@@ -32,14 +32,15 @@ bool DeadlineInfo::CheckAndSetDeadlinePassed() {
     return true;
   }
   if ((PREDICT_FALSE(FLAGS_test_tserver_timeout) || (++counter_ & 1023) == 0)
-      && MonoTime::Now() > deadline_) {
+      && CoarseMonoClock::now() > deadline_) {
     deadline_passed_ = true;
   }
   return deadline_passed_;
 }
 
 std::string DeadlineInfo::ToString() const {
-  return Format("{ now: $0 deadline: $1 counter: $2 }", MonoTime::Now(), deadline_, counter_);
+  return Format("{ now: $0 deadline: $1 counter: $2 }",
+                CoarseMonoClock::now(), deadline_, counter_);
 }
 
 } // namespace docdb

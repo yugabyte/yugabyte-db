@@ -22,6 +22,7 @@
 #include "yb/yql/pggate/pg_select.h"
 #include "yb/util/flag_tags.h"
 #include "yb/client/client_fwd.h"
+#include "yb/rpc/messenger.h"
 
 DEFINE_int32(pgsql_rpc_keepalive_time_ms, 0,
              "If an RPC connection from a client is idle for this amount of time, the server "
@@ -96,6 +97,7 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count)
 }
 
 PgApiImpl::~PgApiImpl() {
+  client()->messenger()->Shutdown();
 }
 
 const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {

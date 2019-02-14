@@ -132,7 +132,7 @@ class YBInboundCall : public InboundCall {
   std::string ToString() const override;
   bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
 
-  MonoTime GetClientDeadline() const override;
+  CoarseTimePoint GetClientDeadline() const override;
 
   const std::string& method_name() const override {
     return remote_method_.method_name();

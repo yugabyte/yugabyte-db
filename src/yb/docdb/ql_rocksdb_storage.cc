@@ -30,7 +30,7 @@ Status QLRocksDBStorage::GetIterator(const QLReadRequestPB& request,
                                      const Schema& projection,
                                      const Schema& schema,
                                      const TransactionOperationContextOpt& txn_op_context,
-                                     MonoTime deadline,
+                                     CoarseTimePoint deadline,
                                      const ReadHybridTime& read_time,
                                      const common::QLScanSpec& spec,
                                      std::unique_ptr<common::YQLRowwiseIteratorIf> *iter) const {
@@ -105,7 +105,7 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
                                      const Schema& projection,
                                      const Schema& schema,
                                      const TransactionOperationContextOpt& txn_op_context,
-                                     MonoTime deadline,
+                                     CoarseTimePoint deadline,
                                      const ReadHybridTime& read_time,
                                      common::YQLRowwiseIteratorIf::UniPtr* iter) const {
   std::unique_ptr<DocRowwiseIterator> doc_iter;

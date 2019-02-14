@@ -32,6 +32,7 @@
 
 using google::protobuf::io::CodedInputStream;
 using yb::operator"" _MB;
+using namespace std::literals;
 
 DECLARE_bool(rpc_dump_all_traces);
 // Maximum size of RPC should be larger than size of consensus batch
@@ -149,13 +150,11 @@ YBInboundCall::YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote
 
 YBInboundCall::~YBInboundCall() {}
 
-MonoTime YBInboundCall::GetClientDeadline() const {
+CoarseTimePoint YBInboundCall::GetClientDeadline() const {
   if (!header_.has_timeout_millis() || header_.timeout_millis() == 0) {
-    return MonoTime::Max();
+    return CoarseTimePoint::max();
   }
-  MonoTime deadline = timing_.time_received;
-  deadline.AddDelta(MonoDelta::FromMilliseconds(header_.timeout_millis()));
-  return deadline;
+  return ToCoarse(timing_.time_received) + header_.timeout_millis() * 1ms;
 }
 
 Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, std::vector<char>* call_data) {

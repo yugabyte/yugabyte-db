@@ -45,7 +45,7 @@ class TransactionStatusCache {
  public:
   TransactionStatusCache(TransactionStatusManager* txn_status_manager,
                          const ReadHybridTime& read_time,
-                         MonoTime deadline)
+                         CoarseTimePoint deadline)
       : txn_status_manager_(txn_status_manager), read_time_(read_time), deadline_(deadline) {}
 
   // Returns transaction commit time if already committed by the specified time or HybridTime::kMin
@@ -58,7 +58,7 @@ class TransactionStatusCache {
 
   TransactionStatusManager* txn_status_manager_;
   ReadHybridTime read_time_;
-  MonoTime deadline_;
+  CoarseTimePoint deadline_;
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> cache_;
 };
 
@@ -83,7 +83,7 @@ class IntentAwareIterator {
   IntentAwareIterator(
       const DocDB& doc_db,
       const rocksdb::ReadOptions& read_opts,
-      MonoTime deadline,
+      CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const TransactionOperationContextOpt& txn_op_context);
 

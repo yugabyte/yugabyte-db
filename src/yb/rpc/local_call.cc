@@ -44,7 +44,8 @@ void LocalOutboundCall::Serialize(boost::container::small_vector_base<RefCntBuff
 const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInboundCall() {
   DCHECK(inbound_call_.get() == nullptr);
   const MonoDelta timeout = controller()->timeout();
-  const MonoTime deadline = timeout.Initialized() ? start_ + timeout : MonoTime::Max();
+  const CoarseTimePoint deadline =
+      timeout.Initialized() ? ToCoarse(start_) + timeout : CoarseTimePoint::max();
   auto outbound_call = std::static_pointer_cast<LocalOutboundCall>(shared_from(this));
   inbound_call_ = InboundCall::Create<LocalYBInboundCall>(
       &rpc_metrics(), remote_method(), outbound_call, deadline);
@@ -65,7 +66,7 @@ LocalYBInboundCall::LocalYBInboundCall(
     RpcMetrics* rpc_metrics,
     const RemoteMethod& remote_method,
     std::weak_ptr<LocalOutboundCall> outbound_call,
-    const MonoTime& deadline)
+    CoarseTimePoint deadline)
     : YBInboundCall(rpc_metrics, remote_method), outbound_call_(outbound_call),
       deadline_(deadline) {
 }

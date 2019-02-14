@@ -360,7 +360,7 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& txn_op_context,
-    MonoTime deadline,
+    CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
     const Slice* iterate_upper_bound) {

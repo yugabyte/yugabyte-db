@@ -1132,7 +1132,7 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
       down_cast<Tablet*>(read_context->tablet.get())->metrics()->restart_read_requests->Increment();
       break;
     }
-    if (MonoTime::Now() > read_context->context->GetClientDeadline()) {
+    if (CoarseMonoClock::now() > read_context->context->GetClientDeadline()) {
       TRACE("Read timed out");
       SetupErrorAndRespond(read_context->resp->mutable_error(), STATUS(TimedOut, ""),
                            TabletServerErrorPB::UNKNOWN_ERROR, read_context->context);
@@ -1150,7 +1150,7 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
 
 void HandleRedisReadRequestAsync(
     tablet::AbstractTablet* tablet,
-    MonoTime deadline,
+    CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const RedisReadRequestPB& redis_read_request,
     RedisResponsePB* response,

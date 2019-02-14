@@ -340,7 +340,7 @@ class Consensus {
   //
   // Returns 0 if timeout happened.
   virtual MicrosTime MajorityReplicatedHtLeaseExpiration(
-      MicrosTime min_allowed, MonoTime deadline) const = 0;
+      MicrosTime min_allowed, CoarseTimePoint deadline) const = 0;
 
   // This includes heartbeats too.
   virtual MonoTime TimeSinceLastMessageFromLeader() = 0;

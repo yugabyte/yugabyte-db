@@ -110,7 +110,7 @@ class CompositePushdownTest : public YBTabletTest {
     TransactionMetadataPB transaction;
     QLAddColumns(schema_, {}, req);
     EXPECT_OK(tablet()->HandleQLReadRequest(
-        MonoTime::Max() /* deadline */, read_time, *req, transaction, &result));
+        CoarseTimePoint::max() /* deadline */, read_time, *req, transaction, &result));
 
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status())
         << "Error: " << result.response.error_message();

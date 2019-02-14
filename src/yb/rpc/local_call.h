@@ -54,13 +54,13 @@ class LocalYBInboundCall : public YBInboundCall {
  public:
   LocalYBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method,
                      std::weak_ptr<LocalOutboundCall> outbound_call,
-                     const MonoTime& deadline);
+                     CoarseTimePoint deadline);
 
   bool IsLocalCall() const override { return true; }
 
   const Endpoint& remote_address() const override;
   const Endpoint& local_address() const override;
-  MonoTime GetClientDeadline() const override { return deadline_; }
+  CoarseTimePoint GetClientDeadline() const override { return deadline_; }
 
   CHECKED_STATUS ParseParam(google::protobuf::Message* message) override;
 
@@ -80,7 +80,7 @@ class LocalYBInboundCall : public YBInboundCall {
   // Weak pointer back to the outbound call owning this inbound call to avoid circular reference.
   std::weak_ptr<LocalOutboundCall> outbound_call_;
 
-  const MonoTime deadline_;
+  const CoarseTimePoint deadline_;
 };
 
 } // namespace rpc

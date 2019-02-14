@@ -639,7 +639,7 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   auto result = std::make_unique<DocRowwiseIterator>(
       std::move(mapped_projection), schema, txn_op_ctx,
       docdb::DocDB{regular_db_.get(), intents_db_.get()},
-      MonoTime::Max() /* deadline */, read_time, &pending_op_counter_);
+      CoarseTimePoint::max() /* deadline */, read_time, &pending_op_counter_);
   RETURN_NOT_OK(result->Init());
   return std::move(result);
 }
@@ -841,7 +841,7 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(WriteOperation* operation) {
   return Status::OK();
 }
 
-Status Tablet::HandleRedisReadRequest(MonoTime deadline,
+Status Tablet::HandleRedisReadRequest(CoarseTimePoint deadline,
                                       const ReadHybridTime& read_time,
                                       const RedisReadRequestPB& redis_read_request,
                                       RedisResponsePB* response) {
@@ -861,7 +861,7 @@ Status Tablet::HandleRedisReadRequest(MonoTime deadline,
 //--------------------------------------------------------------------------------------------------
 // CQL Request Processing.
 Status Tablet::HandleQLReadRequest(
-    MonoTime deadline,
+    CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const QLReadRequestPB& ql_read_request,
     const TransactionMetadataPB& transaction_metadata,
@@ -1136,7 +1136,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
 //--------------------------------------------------------------------------------------------------
 // PGSQL Request Processing.
 Status Tablet::HandlePgsqlReadRequest(
-    MonoTime deadline,
+    CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const PgsqlReadRequestPB& pgsql_read_request,
     const TransactionMetadataPB& transaction_metadata,
@@ -1373,7 +1373,7 @@ CHECKED_STATUS Tablet::RemoveIntents(const TransactionIdSet& transactions) {
   return intents_db_->Write(write_options, &intents_write_batch);
 }
 
-HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, MonoTime deadline) {
+HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) {
   // We could not use mvcc_ directly, because correct lease should be passed to it.
   return SafeTime(RequireLease::kFalse, min_allowed, deadline);
 }
@@ -1719,7 +1719,8 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
   bool transactional_table = metadata_->schema().table_properties().is_transactional();
   auto prepare_result = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
       operation->doc_ops(), write_batch->read_pairs(), metrics_->write_lock_latency,
-      isolation_level, operation->state()->kind(), transactional_table, &shared_lock_manager_));
+      isolation_level, operation->state()->kind(), transactional_table, operation->deadline(),
+      &shared_lock_manager_));
 
   RequestScope request_scope;
   if (transaction_participant_) {
@@ -1830,7 +1831,7 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
 }
 
 HybridTime Tablet::DoGetSafeTime(
-    tablet::RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const {
+    tablet::RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
   HybridTime ht_lease;
   if (!require_lease) {
     return mvcc_.SafeTimeForFollower(min_allowed, deadline);

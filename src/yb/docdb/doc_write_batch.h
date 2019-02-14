@@ -90,7 +90,7 @@ class DocWriteBatch {
       const DocPath& doc_path,
       const Value& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const MonoTime deadline = MonoTime::kMax,
+      const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId);
 
   CHECKED_STATUS SetPrimitive(
@@ -106,7 +106,7 @@ class DocWriteBatch {
       const DocPath& doc_path,
       const PrimitiveValue& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const MonoTime deadline = MonoTime::kMax,
+      const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp) {
     return SetPrimitive(doc_path, Value(value, Value::kMaxTtl, user_timestamp),
@@ -121,7 +121,7 @@ class DocWriteBatch {
       const DocPath& doc_path,
       const SubDocument& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const MonoTime deadline = MonoTime::kMax,
+      const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = Value::kMaxTtl,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
@@ -130,7 +130,7 @@ class DocWriteBatch {
       const DocPath& doc_path,
       const SubDocument& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const MonoTime deadline = MonoTime::kMax,
+      const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = Value::kMaxTtl,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp,
@@ -140,7 +140,7 @@ class DocWriteBatch {
       const DocPath& doc_path,
       const SubDocument& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const MonoTime deadline = MonoTime::kMax,
+      const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = Value::kMaxTtl,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
@@ -151,7 +151,7 @@ class DocWriteBatch {
       const std::vector<int>& indices,
       const std::vector<SubDocument>& values,
       const ReadHybridTime& read_ht,
-      const MonoTime deadline,
+      const CoarseTimePoint deadline,
       const rocksdb::QueryId query_id,
       const Direction dir = Direction::kForward,
       const int64_t start_index = 0,
@@ -165,7 +165,7 @@ class DocWriteBatch {
       const std::vector<int>& indices,
       const std::vector<SubDocument>& values,
       const ReadHybridTime& read_ht,
-      const MonoTime deadline,
+      const CoarseTimePoint deadline,
       const rocksdb::QueryId query_id,
       MonoDelta default_ttl = Value::kMaxTtl,
       MonoDelta write_ttl = Value::kMaxTtl) {
@@ -177,7 +177,7 @@ class DocWriteBatch {
   CHECKED_STATUS DeleteSubDoc(
       const DocPath& doc_path,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const MonoTime deadline = MonoTime::kMax,
+      const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp) {
     return SetPrimitive(doc_path, PrimitiveValue::kTombstone,

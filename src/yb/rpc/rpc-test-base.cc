@@ -207,8 +207,8 @@ class CalculatorService: public CalculatorServiceIf {
     // Respond w/ error if the RPC specifies that the client deadline is set,
     // but it isn't.
     if (req->client_timeout_defined()) {
-      MonoTime deadline = context.GetClientDeadline();
-      if (deadline.Equals(MonoTime::Max())) {
+      auto deadline = context.GetClientDeadline();
+      if (deadline == CoarseTimePoint::max()) {
         CalculatorError my_error;
         my_error.set_extra_error_data("Timeout not set");
         context.RespondApplicationError(CalculatorError::app_error_ext.number(),

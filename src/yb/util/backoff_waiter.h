@@ -16,18 +16,41 @@
 
 #include <chrono>
 
+#include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
+
 namespace yb {
 
 // Utility class for waiting.
 // It tracks number of attempts and exponentially increase sleep timeout.
-class BackoffWaiter {
+template <class Clock>
+class GenericBackoffWaiter {
  public:
-  explicit BackoffWaiter(
-      std::chrono::steady_clock::time_point deadline,
-      std::chrono::steady_clock::duration max_wait = std::chrono::steady_clock::duration::max())
+  typedef typename Clock::time_point TimePoint;
+  typedef typename Clock::duration Duration;
+
+  explicit GenericBackoffWaiter(
+      TimePoint deadline, Duration max_wait = Duration::max())
       : deadline_(deadline), max_wait_(max_wait) {}
 
-  bool Wait();
+  bool Wait() {
+    auto now = Clock::now();
+    if (now >= deadline_) {
+      return false;
+    }
+
+    ++attempt_;
+
+    auto max_wait = std::min(deadline_ - now, max_wait_);
+    int64_t base_delay_ms = attempt_ >= 29
+        ? std::numeric_limits<int32_t>::max()
+        : 1LL << (attempt_ + 3); // 1st retry delayed 2^4 ms, 2nd 2^5, etc..
+    int64_t jitter_ms = RandomUniformInt(0, 50);
+    auto delay = std::min<decltype(max_wait)>(
+        std::chrono::milliseconds(base_delay_ms + jitter_ms), max_wait);
+    std::this_thread::sleep_for(delay);
+    return true;
+  }
 
   size_t attempt() const {
     return attempt_;
@@ -39,10 +62,13 @@ class BackoffWaiter {
   }
 
  private:
+  TimePoint deadline_;
   size_t attempt_ = 0;
-  std::chrono::steady_clock::time_point deadline_;
-  std::chrono::steady_clock::duration max_wait_;
+  Duration max_wait_;
 };
+
+typedef GenericBackoffWaiter<std::chrono::steady_clock> BackoffWaiter;
+typedef GenericBackoffWaiter<CoarseMonoClock> CoarseBackoffWaiter;
 
 } // namespace yb
 

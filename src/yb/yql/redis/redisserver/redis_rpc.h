@@ -117,7 +117,7 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
   std::string ToString() const override;
   bool DumpPB(const rpc::DumpRunningRpcsRequestPB& req, rpc::RpcCallInProgressPB* resp) override;
 
-  MonoTime GetClientDeadline() const override;
+  CoarseTimePoint GetClientDeadline() const override;
 
   RedisClientBatch& client_batch() { return client_batch_; }
   RedisConnectionContext& connection_context() const;

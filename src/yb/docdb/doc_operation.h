@@ -89,7 +89,7 @@ struct Expiration {
 
 struct DocOperationApplyData {
   DocWriteBatch* doc_write_batch;
-  MonoTime deadline;
+  CoarseTimePoint deadline;
   ReadHybridTime read_time;
   HybridTime* restart_read_ht;
 };
@@ -214,7 +214,7 @@ class RedisReadOperation {
  public:
   explicit RedisReadOperation(const yb::RedisReadRequestPB& request,
                               const DocDB& doc_db,
-                              MonoTime deadline,
+                              CoarseTimePoint deadline,
                               const ReadHybridTime& read_time)
       : request_(request), doc_db_(doc_db), deadline_(deadline), read_time_(read_time) {}
 
@@ -261,7 +261,7 @@ class RedisReadOperation {
   const RedisReadRequestPB& request_;
   RedisResponsePB response_;
   const DocDB doc_db_;
-  MonoTime deadline_;
+  CoarseTimePoint deadline_;
   ReadHybridTime read_time_;
   // TODO: Move iterator_ to a superclass of RedisWriteOperation RedisReadOperation
   // Make these two classes similar in terms of how rocksdb state is passed to them.
@@ -363,7 +363,7 @@ class QLWriteOperation :
   Result<bool> DuplicateUniqueIndexValue(const DocOperationApplyData& data);
 
   CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
-                           const ReadHybridTime& read_ht, const MonoTime deadline);
+                           const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
   bool IsRowDeleted(const QLTableRow& current_row, const QLTableRow& new_row) const;
 
@@ -420,7 +420,7 @@ class QLReadOperation : public DocExprExecutor {
       : request_(request), txn_op_context_(txn_op_context) {}
 
   CHECKED_STATUS Execute(const common::YQLStorageIf& ql_storage,
-                         MonoTime deadline,
+                         CoarseTimePoint deadline,
                          const ReadHybridTime& read_time,
                          const Schema& schema,
                          const Schema& projection,
@@ -488,7 +488,7 @@ class PgsqlWriteOperation :
   CHECKED_STATUS ApplyDelete(const DocOperationApplyData& data);
 
   CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
-                           const ReadHybridTime& read_ht, const MonoTime deadline);
+                           const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
   // Reading current row before operating on it.
   CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
@@ -539,7 +539,7 @@ class PgsqlReadOperation : public DocExprExecutor {
   PgsqlResponsePB& response() { return response_; }
 
   CHECKED_STATUS Execute(const common::YQLStorageIf& ql_storage,
-                         MonoTime deadline,
+                         CoarseTimePoint deadline,
                          const ReadHybridTime& read_time,
                          const Schema& schema,
                          const Schema *index_schema,

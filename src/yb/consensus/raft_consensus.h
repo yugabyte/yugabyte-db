@@ -215,7 +215,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   CHECKED_STATUS GetLastOpId(OpIdType type, OpId* id) override;
 
   MicrosTime MajorityReplicatedHtLeaseExpiration(
-      MicrosTime min_allowed, MonoTime deadline) const override;
+      MicrosTime min_allowed, CoarseTimePoint deadline) const override;
 
   // The on-disk size of the consensus metadata.
   uint64_t OnDiskSize() const;

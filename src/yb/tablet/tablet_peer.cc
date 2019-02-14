@@ -239,7 +239,7 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
         raft_pool,
         retryable_requests);
     has_consensus_.store(true, std::memory_order_release);
-    auto ht_lease_provider = [this](MicrosTime min_allowed, MonoTime deadline) {
+    auto ht_lease_provider = [this](MicrosTime min_allowed, CoarseTimePoint deadline) {
       MicrosTime lease_micros {
           consensus_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline) };
       if (!lease_micros) {
@@ -256,7 +256,7 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
     auto* mvcc_manager = tablet_->mvcc_manager();
     consensus_->SetPropagatedSafeTimeProvider([mvcc_manager, ht_lease_provider] {
       // Get the current majority-replicated HT leader lease without any waiting.
-      auto ht_lease = ht_lease_provider(/* min_allowed */ 0, /* deadline */ MonoTime::kMax);
+      auto ht_lease = ht_lease_provider(/* min_allowed */ 0, /* deadline */ CoarseTimePoint::max());
       if (!ht_lease) {
         return HybridTime::kInvalid;
       }
@@ -266,7 +266,7 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
     prepare_thread_ = std::make_unique<Preparer>(consensus_.get(), tablet_prepare_pool);
 
     consensus_->SetMajorityReplicatedListener([mvcc_manager, ht_lease_provider] {
-      auto ht_lease = ht_lease_provider(/* min_allowed */ 0, /* deadline */ MonoTime::kMax);
+      auto ht_lease = ht_lease_provider(/* min_allowed */ 0, /* deadline */ CoarseTimePoint::max());
       if (ht_lease) {
         mvcc_manager->UpdatePropagatedSafeTimeOnLeader(ht_lease);
       }
@@ -455,7 +455,7 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
 }
 
 void TabletPeer::WriteAsync(
-    std::unique_ptr<WriteOperationState> state, int64_t term, MonoTime deadline) {
+    std::unique_ptr<WriteOperationState> state, int64_t term, CoarseTimePoint deadline) {
   if (term == yb::OpId::kUnknownTerm) {
     state->CompleteWithStatus(STATUS(IllegalState, "Write while not leader"));
     return;
@@ -715,8 +715,8 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
       DCHECK(replicate_msg->has_write_request()) << "WRITE_OP replica"
           " operation must receive a WriteRequestPB";
       return std::make_unique<WriteOperation>(
-          std::make_unique<WriteOperationState>(tablet()), yb::OpId::kUnknownTerm, MonoTime::Max(),
-          this);
+          std::make_unique<WriteOperationState>(tablet()), yb::OpId::kUnknownTerm,
+          CoarseTimePoint::max(), this);
 
     case consensus::CHANGE_METADATA_OP:
       DCHECK(replicate_msg->has_change_metadata_request()) << "CHANGE_METADATA_OP replica"
@@ -898,7 +898,7 @@ consensus::LeaderStatus TabletPeer::LeaderStatus() const {
 }
 
 HybridTime TabletPeer::HtLeaseExpiration() const {
-  HybridTime result(consensus_->MajorityReplicatedHtLeaseExpiration(0, MonoTime::kMax), 0);
+  HybridTime result(consensus_->MajorityReplicatedHtLeaseExpiration(0, CoarseTimePoint::max()), 0);
   return std::max(result, tablet_->mvcc_manager()->LastReplicatedHybridTime());
 }
 
