@@ -23,25 +23,23 @@ This function generates a new unique version 1 UUID (`TIMEUUID`).
 #### Insert values using now()
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE test_now (k INT PRIMARY KEY, v TIMEUUID);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO test_now (k, v) VALUES (1, now());
 ```
-</div>
 
 #### Select using now()
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT now() FROM test_now;
 ```
-</div>
+
 ```
  now()
 ---------------------------------------
@@ -51,11 +49,11 @@ cqlsh:example> SELECT now() FROM test_now;
 #### Comparison using now()
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT v FROM test_now WHERE v < now();
 ```
-</div>
+
 ```
  v
 ---------------------------------------
@@ -74,26 +72,24 @@ This function converts a TIMEUUID to the corresponding timestamp.
 #### Insert values using totimestamp()
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE test_totimestamp (k INT PRIMARY KEY, v TIMESTAMP);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO test_totimestamp (k, v) VALUES (1, totimestamp(now()));
 ```
-</div>
 
 #### Select using totimestamp()
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT totimestamp(now()) FROM test_totimestamp;
 ```
-</div>
-```{.text}
+
+```
  totimestamp(now())
 ---------------------------------
  2018-05-04 22:32:56.966000+0000
@@ -102,12 +98,12 @@ cqlsh:example> SELECT totimestamp(now()) FROM test_totimestamp;
 #### Comparison using totimestamp()
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT v FROM test_totimestamp WHERE v < totimestamp(now());
 ```
-</div>
-```{.text}
+
+```
  v
 ---------------------------------
  2018-05-04 22:32:46.199000+0000
@@ -125,26 +121,24 @@ This function converts a TIMEUUID to the corresponding timestamp.
 #### Insert values using dateof()
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE test_dateof (k INT PRIMARY KEY, v TIMESTAMP);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO test_dateof (k, v) VALUES (1, dateof(now()));
 ```
-</div>
 
 #### Select using dateof()
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT dateof(now()) FROM test_dateof;
 ```
-</div>
-```{.nohighlight}
+
+```
  dateof(now())
 ---------------------------------
  2018-05-04 22:43:28.440000+0000
@@ -152,12 +146,12 @@ cqlsh:example> SELECT dateof(now()) FROM test_dateof;
 #### Comparison using dateof()
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT v FROM test_dateof WHERE v < dateof(now());
 ```
-</div>
-```{.nohighlight}
+
+```
  v
 ---------------------------------
  2018-05-04 22:43:18.626000+0000
@@ -176,25 +170,23 @@ equal to the number of millisecond since epoch Thursday, 1 January 1970).
 #### Insert values using tounixtimestamp()
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE test_tounixtimestamp (k INT PRIMARY KEY, v BIGINT);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO test_tounixtimestamp (k, v) VALUES (1, tounixtimestamp(now()));
 ```
-</div>
 
 #### Select using tounixtimestamp()
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT tounixtimestamp(now()) FROM test_tounixtimestamp;
 ```
-</div>
+
 ```
  tounixtimestamp(now())
 ------------------------
@@ -204,11 +196,11 @@ cqlsh:example> SELECT tounixtimestamp(now()) FROM test_tounixtimestamp;
 #### Comparison using tounixtimestamp()
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT v from test_tounixtimestamp WHERE v < tounixtimestamp(now());
 ```
-</div>
+
 ```
  v
 ---------------
@@ -228,25 +220,23 @@ equal to the number of millisecond since epoch Thursday, 1 January 1970).
 #### Insert values using unixtimestampof()
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE test_unixtimestampof (k INT PRIMARY KEY, v BIGINT);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO test_unixtimestampof (k, v) VALUES (1, unixtimestampof(now()));
 ```
-</div>
 
 #### Select using unixtimestampof()
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT unixtimestampof(now()) FROM test_unixtimestampof;
 ```
-</div>
+
 ```
  unixtimestampof(now())
 ------------------------
@@ -256,11 +246,11 @@ cqlsh:example> SELECT unixtimestampof(now()) FROM test_unixtimestampof;
 #### Comparison using unixtimestampof()
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT v from test_unixtimestampof WHERE v < unixtimestampof(now());
 ```
-</div>
+
 ```
  v
 ---------------

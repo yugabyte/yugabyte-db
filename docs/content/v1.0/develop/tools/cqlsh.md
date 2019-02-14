@@ -15,12 +15,10 @@ menu:
 
 ## Example
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ ./bin/cqlsh --execute "select cluster_name, data_center, rack from system.local" 127.0.0.1
 ```
-</div>
+
 ```
  cluster_name  | data_center | rack
 ---------------+-------------+-------
@@ -31,8 +29,8 @@ $ ./bin/cqlsh --execute "select cluster_name, data_center, rack from system.loca
 
 Use the **-\-help** option to see all the command-line options supported.
 
-```
-cqlsh [options] [host [port]]
+```sh
+$ cqlsh [options] [host [port]]
 ```
 
 Where
@@ -78,22 +76,20 @@ To inspect the current consistency level, use `CONSISTENCY` with no arguments.
 
 ### SHOW VERSION
 Prints the `cqlsh`, Cassandra, CQL, and native protocol versions in use. Example:
-<div class='copy separator-gt'>
 ```sql
 cqlsh> SHOW VERSION
 ```
-</div>
+
 ```
 [cqlsh 5.0.1 | Cassandra 3.8 | CQL spec 3.4.2 | Native protocol v4]
 ```
 
 ### SHOW HOST
 Prints the IP address and port of the YB-TServer node that `cqlsh` is connected to in addition to the cluster name. Example:
-<div class='copy separator-gt'>
 ```sql
 cqlsh> SHOW HOST
 ```
-</div>
+
 ```
 Connected to local cluster at 127.0.0.1:9042.
 ```
@@ -106,16 +102,14 @@ SOURCE '<file>'
 ```
 
 Example usage:
-<div class='copy separator-gt'>
 ```sql
 cqlsh> SOURCE '/home/yugabyte/commands.cql'
 ```
-</div>
 
 ### CAPTURE
 Begins capturing command output and appending it to a specified file. Output will not be shown at the console while it is captured.
 
-```
+```sql
 CAPTURE '<file>'
 CAPTURE OFF
 CAPTURE
@@ -130,14 +124,14 @@ CAPTURE
 
 Gives information about `cqlsh` commands. To see available topics, enter `HELP` without any arguments. To see help on a topic, use `HELP <topic>`. Also see the `--browser` argument for controlling what browser is used to display help.
 
-```
+```sql
 HELP <topic>
 ```
 
 ### PAGING
 Enables paging, disables paging, or sets the page size for read queries. When paging is enabled, only one page of data will be fetched at a time and a prompt will appear to fetch the next page. Generally, it’s a good idea to leave paging enabled in an interactive session to avoid fetching and printing large amounts of data at once.
 
-```
+```sql
 PAGING ON
 PAGING OFF
 PAGING <page size in rows>
@@ -147,7 +141,7 @@ To inspect the current paging setting, use `PAGING` with no arguments.
 ### EXPAND
 Enables or disables vertical printing of rows. Enabling EXPAND is useful when many columns are fetched, or the contents of a single column are large.
 
-```
+```sql
 EXPAND ON
 EXPAND OFF
 ```
@@ -157,14 +151,14 @@ To inspect the current expand setting, use `EXPAND` with no arguments.
 ### LOGIN
 Authenticate as a specified YugaByte DB user for the current session.
 
-```
+```sql
 LOGIN <username> [<password>]
 ```
 
 ### EXIT
 Ends the current session and terminates the `cqlsh` process.
 
-```
+```sql
 EXIT
 QUIT
 ```
@@ -172,7 +166,7 @@ QUIT
 ### CLEAR
 Clears the console.
 
-```
+```sql
 CLEAR
 CLS
 ```
@@ -180,7 +174,7 @@ CLS
 ### DESCRIBE
 Prints a description (typically a series of DDL statements) of a schema element or the cluster. This is useful for dumping all or portions of the schema.
 
-```
+```sql
 DESCRIBE CLUSTER
 DESCRIBE SCHEMA
 DESCRIBE KEYSPACES
@@ -195,11 +189,10 @@ DESCRIBE TYPE <type name>
 In any of the commands, `DESC` may be used in place of `DESCRIBE`.
 
 The `DESCRIBE CLUSTER` command prints the cluster namer:
-<div class='copy separator-gt'>
 ```sql
 cqlsh> DESCRIBE CLUSTER
 ```
-</div>
+
 ```
 Cluster: local cluster
 ```
@@ -209,7 +202,7 @@ The `DESCRIBE SCHEMA` command prints the DDL statements needed to recreate the e
 ### COPY TO
 Copies data from a table to a CSV file.
 
-```
+```sql
 COPY <table name> [(<column>, ...)] TO <file name> WITH <copy option> [AND <copy option> ...]
 ```
 
@@ -243,7 +236,7 @@ Options | Default | Description
 ### COPY FROM
 Copies data from a CSV file to table.
 
-```
+```sql
 COPY <table name> [(<column>, ...)] FROM <file name> WITH <copy option> [AND <copy option> ...]
 ```
 If no columns are specified, all columns from the CSV file will be copied to the table. A subset of columns to copy may be specified by adding a comma-separated list of column names surrounded by parenthesis after the table name.

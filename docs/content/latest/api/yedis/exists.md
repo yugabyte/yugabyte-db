@@ -23,37 +23,35 @@ Returns the number of existing keys.
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ SET yuga1 "Africa"
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SET yuga2 "America"
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ EXISTS yuga1
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ EXISTS yuga1 yuga2 not_a_key
 ```
-</div>
-```sh
+
+```
 2
 ```
 

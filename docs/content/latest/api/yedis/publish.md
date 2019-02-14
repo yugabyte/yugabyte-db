@@ -24,13 +24,11 @@ Returns, as an integer value, the number of subscribers that the message was for
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ PUBLISH channel message
 ```
-</div>
-```sh
+
+```
 2
 ```
 

@@ -63,18 +63,17 @@ After [creating a local cluster](../create-local-cluster/), follow the instructi
 ## 2. Create a table
 
 Create a database called 'sample'.
-<div class='copy separator-gt'>
+
 ```sql
 username=> CREATE DATABASE sample;
 ```
-</div>
 
 Connect to the database we just created.
-<div class='copy separator-gt'>
+
 ```sql
 username=> \c sample
 ```
-</div>
+
 ```
 psql (10.3, server 0.0.0)
 You are now connected to database "sample" as user "username".
@@ -83,7 +82,7 @@ sample=>
 
 
 Create a table named 'stock_market' which can store stock prices at various timestamps for different stock ticker symbols.
-<div class='copy separator-gt'>
+
 ```sql
 sample=> CREATE TABLE sample.stock_market (
   stock_symbol text,
@@ -92,15 +91,13 @@ sample=> CREATE TABLE sample.stock_market (
   PRIMARY KEY (stock_symbol, ts)
 );
 ```
-</div>
-
 
 
 ## 3. Insert data
 
 Let us insert some data for a few stock symbols into our newly created 'stock_market' table. You can copy-paste these values directly into your cqlsh shell.
 
-```{.sql .copy}
+```sql
 INSERT INTO sample.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);
 INSERT INTO sample.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 10:00:00',157);
 INSERT INTO sample.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 09:00:00',170.63);
@@ -112,12 +109,12 @@ INSERT INTO sample.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','
 ## 4. Query the table
 
 Query all the values we have inserted into the table.
-<div class='copy separator-gt'>
+
 ```sql
 sample=> SELECT * FROM sample.stock_market;
 ```
-</div>
-```sql
+
+```
  stock_symbol |         ts          | current_price
 --------------+---------------------+---------------
  AAPL         | 2017-10-26 09:00:00 |    157.410004

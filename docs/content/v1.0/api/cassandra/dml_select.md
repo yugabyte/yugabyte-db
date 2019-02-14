@@ -70,7 +70,7 @@ Ideally, these performance considerations should be taken into account when crea
 ### Select all rows from a table
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE employees(department_id INT, 
                                       employee_id INT, 
@@ -78,37 +78,31 @@ cqlsh:example> CREATE TABLE employees(department_id INT,
                                       employee_name TEXT, 
                                       PRIMARY KEY(department_id, employee_id));
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name) 
                    VALUES (1, 1, 'Accounting', 'John');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name) 
                    VALUES (1, 2, 'Accounting', 'Jane');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name) 
                    VALUES (1, 3, 'Accounting', 'John');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name) 
                    VALUES (2, 1, 'Marketing', 'Joe');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees;
 ```
-</div>
-```sh
+```
  department_id | employee_id | dept_name  | employee_name
 ---------------+-------------+------------+---------------
              1 |           1 | Accounting |          John
@@ -120,12 +114,12 @@ cqlsh:example> SELECT * FROM employees;
 ### Select with limit
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees LIMIT 2;
 ```
-</div>
-```sh
+
+```
  department_id | employee_id | dept_name  | employee_name
 ---------------+-------------+------------+---------------
              1 |           1 | Accounting |          John
@@ -135,12 +129,12 @@ cqlsh:example> SELECT * FROM employees LIMIT 2;
 ### Select with offset 
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees LIMIT 2 OFFSET 1;
 ```
-</div>
-```sh
+
+```
  department_id | employee_id | dept_name  | employee_name
 ---------------+-------------+------------+---------------
              1 |           2 | Accounting |          Jane
@@ -150,12 +144,12 @@ cqlsh:example> SELECT * FROM employees LIMIT 2 OFFSET 1;
 ### Select distinct values
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT DISTINCT dept_name FROM employees;
 ```
-</div>
-```sh
+
+```
  dept_name
 ------------
  Accounting
@@ -165,12 +159,12 @@ cqlsh:example> SELECT DISTINCT dept_name FROM employees;
 ### Select with a condition on the partitioning column
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees WHERE department_id = 2;
 ```
-</div>
-```sh
+
+```
  department_id | employee_id | dept_name | employee_name
 ---------------+-------------+-----------+---------------
              2 |           1 | Marketing |           Joe
@@ -179,12 +173,12 @@ cqlsh:example> SELECT * FROM employees WHERE department_id = 2;
 ### Select with condition on the clustering column
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id <= 2;
 ```
-</div>
-```sh
+
+```
  department_id | employee_id | dept_name  | employee_name
 ---------------+-------------+------------+---------------
              1 |           1 | Accounting |          John
@@ -194,12 +188,12 @@ cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id <
 ### Select with condition on a regular column
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_name = 'John';
 ```
-</div>
-```sh
+
+```
  department_id | employee_id | dept_name  | employee_name
 ---------------+-------------+------------+---------------
              1 |           1 | Accounting |          John
@@ -215,37 +209,34 @@ cqlsh:example> CREATE TABLE sensor_data(device_id INT,
                                         value TEXT,
                                         PRIMARY KEY((device_id), sensor_id, ts)) WITH CLUSTERING ORDER BY (sensor_id ASC, ts DESC);
 ```
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO sensor_data(device_id, sensor_id, ts, value)
                    VALUES (1, 1, '2018-1-1 12:30:30 UTC', 'a');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO sensor_data(device_id, sensor_id, ts, value)
                    VALUES (1, 1, '2018-1-1 12:30:31 UTC', 'b');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO sensor_data(device_id, sensor_id, ts, value)
                    VALUES (1, 2, '2018-1-1 12:30:30 UTC', 'x');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO sensor_data(device_id, sensor_id, ts, value)
                    VALUES (1, 2, '2018-1-1 12:30:31 UTC', 'y');
 ```
-</div>
+
 Reverse scan, opposite of the table's clustering order.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id DESC, ts ASC;
 ```
-</div>
-```sh
+
+```
  device_id | sensor_id | ts                              | value
 -----------+-----------+---------------------------------+-------
          1 |         2 | 2018-01-01 12:30:30.000000+0000 |     x
@@ -254,12 +245,12 @@ cqlsh:example> SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id 
          1 |         1 | 2018-01-01 12:30:31.000000+0000 |     b
 ```
 Forward scan, same as a SELECT without an ORDER BY clause.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id ASC, ts DESC;
 ```
-</div>
-```sh
+
+```
  device_id | sensor_id | ts                              | value
 -----------+-----------+---------------------------------+-------
          1 |         1 | 2018-01-01 12:30:31.000000+0000 |     b
@@ -268,15 +259,15 @@ cqlsh:example> SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id 
          1 |         2 | 2018-01-01 12:30:30.000000+0000 |     x
 ```
 Other orderings are not allowed.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id ASC, ts ASC;
 ```
-</div>
+
 ```sh
 InvalidRequest: Unsupported order by relation
 SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id ASC, ts ASC; 
-                                                        ^^^^^^^^^^^^^^^^^^^^^                                                      
+                                                        ^^^^^^^^^^^^^^^^^^^^^                    
 ```
 
 ## See Also

@@ -20,7 +20,7 @@ To install the driver in your Visual Studio project
 
 ### Copy the contents below to your `Program.cs` file.
 
-```{.cs .copy}
+```cs
 using System;
 using System.Collections.Generic;
 using StackExchange.Redis;
@@ -77,7 +77,7 @@ namespace YugaByte_CSharp_Demo
         }
     }
 }
-  ```
+```
 
 ### Running the C# app
 Run the C# app from menu select `Run -> Start Without Debugging`

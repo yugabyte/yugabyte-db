@@ -13,14 +13,14 @@ Connect to the local node where YugaByte DB is running.
 
 On the local setup, this is your local machine (or a docker instance running on your local machine). On a multi-node cluster, you may need to `ssh` into the machines where the YugaByte node(s) are running.
 
-```
-ps aux | grep yb-tserver
+```sh
+$ ps aux | grep yb-tserver
 ```
 
 If you are expecting a master process on this node you can also do: 
 
-```
-ps aux | grep yb-master
+```sh
+$ ps aux | grep yb-master
 ```
 
 If the processes are not running you can start them with:

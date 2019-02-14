@@ -23,11 +23,11 @@ Returns the message.
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ECHO "Yuga Yuga"
 ```
-</div>
-```sh
+
+```
 "Yuga Yuga"
 ```

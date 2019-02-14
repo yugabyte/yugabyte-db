@@ -115,7 +115,7 @@ yb> change_blacklist --isAdd true --servers node1:9100,node2:9100,node3:9100,nod
 ```
 
 Verify that the blacklist info looks similar to the output below:
-```sh
+```
 java -jar ~/master/java/yb-cli-0.8.0-SNAPSHOT.jar
 yb> get_universe_config
 Config:
@@ -182,6 +182,8 @@ Now we ensure that the master leader is one of the new master nodes.
 ```sh
 $ export MASTERS=node7:7100,node8:7100,node9:7100
 $ ~/master/bin/yb-admin -master_addresses $MASTERS list_all_masters
+```
+```
 Master UUID         RPC Host/Port          State      Role
 ...                   node8:7100           ALIVE     FOLLOWER
 ...                   node9:7100           ALIVE     FOLLOWER

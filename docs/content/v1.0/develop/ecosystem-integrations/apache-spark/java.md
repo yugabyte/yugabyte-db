@@ -2,7 +2,7 @@
 
 Add the following snippet to your pom.xml for Scala 2.10:
 
-```
+```xml
 <dependency>
   <groupId>com.yugabyte.spark</groupId>
   <artifactId>spark-cassandra-connector_2.10</artifactId>
@@ -12,7 +12,7 @@ Add the following snippet to your pom.xml for Scala 2.10:
 
 For Scala 2.11:
 
-```
+```xml
 <dependency>
   <groupId>com.yugabyte.spark</groupId>
   <artifactId>spark-cassandra-connector_2.11</artifactId>
@@ -26,8 +26,8 @@ For Scala 2.11:
 
 You can run our Spark-based sample app with:
 
-```
-java -jar yb-sample-apps.jar --workload CassandraSparkWordCount --nodes 127.0.0.1:9042
+```sh
+$ java -jar yb-sample-apps.jar --workload CassandraSparkWordCount --nodes 127.0.0.1:9042
 ```
 
 It reads data from a table with sentences - by default it generates an input table `ybdemo_keyspace.lines`, computes the frequencies of the words and writes the result to the output table `ybdemo_keyspace.wordcounts`.

@@ -20,35 +20,35 @@ The cardinality of the sorted set.
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZADD z_key 1.0 v1 2.0 v2
 ```
-</div>
+
 ```sh
 (integer) 2
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZADD z_key 3.0 v2
 ```
-</div>
+
 ```sh
 (integer) 0
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZCARD z_key
 ```
-</div>
+
 ```sh
 (integer) 2
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZCARD ts_key
 ```
-</div>
+
 ```sh
 (integer) 0
 ```

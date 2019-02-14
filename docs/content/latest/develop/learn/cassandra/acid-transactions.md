@@ -3,7 +3,7 @@
 
 The table should be created with the `transactions` property enabled. The statement should look something as follows.
 
-```sh
+```sql
 CREATE TABLE IF NOT EXISTS <TABLE_NAME> (...) WITH transactions = { 'enabled' : true };
 ```
 
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS <TABLE_NAME> (...) WITH transactions = { 'enabled' : 
 
 Here is an example of how to create a simple key-value table which has two columns with transactions enabled.
 
-```{.java .copy}
+```java
 String create_stmt =
   String.format("CREATE TABLE IF NOT EXISTS %s (k varchar, v varchar, primary key (k)) " +
                 "WITH transactions = { 'enabled' : true };",
@@ -23,7 +23,7 @@ String create_stmt =
 
 You can insert data by performing the sequence of commands inside a `BEGIN TRANSACTION` and `END TRANSACTION` block.
 
-```sh
+```sql
 BEGIN TRANSACTION
   statement 1
   statement 2
@@ -35,7 +35,7 @@ END TRANSACTION;
 
 Here is a code snippet of how you would insert data into this table.
 
-```{.java .copy}
+```java
 // Insert two key values, (key1, value1) and (key2, value2) as a transaction.
 String create_stmt = 
   String.format("BEGIN TRANSACTION" +
@@ -47,14 +47,13 @@ String create_stmt =
 ```
 
 
-
 ## Prepare-bind transactions
 
 You can prepare statements with transactions and bind variables to the prepared statements when executing the query.
 
 ### Java example
 
-```{.java .copy}
+```java
 String create_stmt = 
   String.format("BEGIN TRANSACTION" +
                 "  INSERT INTO %s (k, v) VALUES (:k1, :v1);" +

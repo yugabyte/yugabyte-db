@@ -22,8 +22,8 @@ You should see something like the screenshot below, click `Create` next.
 
 ## 2. Create a new IAM role (optional)
 In order for YugaWare to manage YugaByte nodes, it will require some limited access to your AWS infrastructure. This can be accomplished through directly providing a set of credentials, when configuring the AWS provider, which you can read more later on [here](../configure-cloud-providers/). Alternatively, the EC2 instance where YugaWare will be running can be brought up with an IAM role with enough permissions to take all the actions required by YugaWare. Below we provide a sample of such a role:
-<div class='copy separator-dollar'>
-```sh
+
+```
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -74,7 +74,6 @@ In order for YugaWare to manage YugaByte nodes, it will require some limited acc
     ]
 }
 ```
-</div>
 
 ## 3. Provision instance for YugaWare
 

@@ -65,18 +65,17 @@ Follow the instructions below to test YugaByte DB's PostgreSQL-compatible [YSQL]
 ## 2. Create a table
 
 Create a database called 'sample'.
-<div class='copy separator-gt'>
+
 ```sql
 postgres=> CREATE DATABASE sample;
 ```
-</div>
 
 Connect to the database we just created.
-<div class='copy separator-gt'>
+
 ```sql
 postgres=> \c sample
 ```
-</div>
+
 ```
 You are now connected to database "sample" as user "postgres".
 sample=>
@@ -84,7 +83,7 @@ sample=>
 
 
 Create a table named 'stock_market' which can store stock prices at various timestamps for different stock ticker symbols.
-<div class='copy separator-gt'>
+
 ```sql
 sample=> CREATE TABLE stock_market (
   stock_symbol text,
@@ -93,7 +92,7 @@ sample=> CREATE TABLE stock_market (
   PRIMARY KEY (stock_symbol, ts)
 );
 ```
-</div>
+
 
 
 
@@ -101,7 +100,7 @@ sample=> CREATE TABLE stock_market (
 
 Let us insert some data for a few stock symbols into our newly created 'stock_market' table. You can copy-paste these values directly into your psql shell.
 
-```{.sql .copy}
+```sql
 INSERT INTO stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);
 INSERT INTO stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 10:00:00',157);
 INSERT INTO stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 09:00:00',170.63);
@@ -113,12 +112,12 @@ INSERT INTO stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10
 ## 4. Query the table
 
 Query all the values we have inserted into the table.
-<div class='copy separator-gt'>
+
 ```sql
 sample=> SELECT * FROM stock_market ORDER BY stock_symbol ASC, ts DESC;
 ```
-</div>
-```sql
+
+```
  stock_symbol |         ts          | current_price
 --------------+---------------------+---------------
  AAPL         | 2017-10-26 10:00:00 |           157

@@ -17,7 +17,7 @@ The data collected depends on the collection level set. See the [section](#confi
 
 ### Collection level: low [Default]
 
-```sh
+```
 Collection time
 Cluster uuid
 Node uuid
@@ -31,7 +31,7 @@ Cluster configuration (gflags)
 
 ### Collection level: medium
 
-```sh
+```
 Everything we collect for level “low” plus:
 Performance metrics
 RPC metrics
@@ -43,7 +43,7 @@ Same as `medium` level. In other words, no extra information is collected for th
 
 #### Example of metrics collected
 
-```sh
+```
 [
     {
         "type": "tablet",
@@ -82,7 +82,7 @@ Same as `medium` level. In other words, no extra information is collected for th
 
 #### Example of RPCs being collected
 
-```sh
+```
 {
     "inbound_connections": [
         {

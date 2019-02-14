@@ -22,16 +22,15 @@ Returns a status string, followed by an unending stream of commands that are bei
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ MONITOR
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-```sh
+
+```
 15319400354.989768 [0 127.0.0.1:37106] "set" "k1" "v1"
 15319400357.741004 [0 127.0.0.1:37106] "get" "k1"
 15319400361.280308 [0 127.0.0.1:37106] "set" "k2" "v2"

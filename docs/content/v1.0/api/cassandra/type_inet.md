@@ -27,33 +27,30 @@ type_specification ::= INET
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE dns_table(site_name TEXT PRIMARY KEY, ip_address INET);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO dns_table(site_name, ip_address) VALUES ('localhost', '127.0.0.1');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO dns_table(site_name, ip_address) VALUES ('example.com', '93.184.216.34'); 
 ```
-</div>
+
 `INET` type supports both ipv4 and ipv6 addresses.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE dns_table SET ip_address = '2606:2800:220:1:248:1893:25c8:1946' WHERE site_name = 'example.com'; 
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM dns_table;
 ```
-</div>
-```sh
+
+```
  site_name   | ip_address
 -------------+------------------------------------
  example.com | 2606:2800:220:1:248:1893:25c8:1946

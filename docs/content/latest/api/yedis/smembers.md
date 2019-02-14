@@ -23,29 +23,27 @@ Returns all members of the given set.
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ SADD yuga_world "Africa"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SADD yuga_world "America"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SMEMBERS yuga_world
 ```
-</div>
-```sh
+
+```
 1) "Africa"
 2) "America"
 ```

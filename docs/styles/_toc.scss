@@ -56,7 +56,12 @@ pre {
   position: relative;
 }
 
-pre code.copy + textarea + button.copy, .copy pre code + textarea + button.copy {
+div.copy {
+  display: inline;
+  opacity: 0;
+}
+
+pre code.copy + textarea + button.copy, .copy pre code + textarea + button.copy, .copy-to-clipboard, pre code + button.copy {
   position: absolute;
   border: none !important;
   text-transform: uppercase;

@@ -6,7 +6,7 @@ An “airgapped” host has either no or a restricted path to inbound/outbound I
 
 In order to install Replicated and YugaWare on a host with no Internet connectivity at all, we have to first download the binaries on a machine that has Internet connectivity and then copy the files over to the appropriate host. In case of restricted connectivity, the following endpoints have to be whitelisted to ensure that they are accessible from the host marked for installation.
 
-```{.sh .copy}
+```sh
 https://downloads.yugabyte.com
 https://download.docker.com
 ```
@@ -18,61 +18,51 @@ A supported version of docker-engine (currently 1.7.1 to 17.03.1-ce) needs to be
 ## Step 1. Install Replicated
 
 On a machine connected to the Internet, perform the following steps.
-<div class='copy separator-dollar'>
-```sh
-# make a directory for downloading the binaries
+
+Make a directory for downloading the binaries
+```sh 
 $ sudo mkdir /opt/downloads
 ```
-</div>
-<div class='copy separator-dollar'>
+
+Change the owner user for the directory
 ```sh
-# change the owner user for the directory
 $ sudo chown -R ubuntu:ubuntu /opt/downloads
 ```
-</div>
-<div class='copy separator-dollar'>
+
+Change to the directory
 ```sh
-# change to the directory
 $ cd /opt/downloads
 ```
-</div>
-<div class='copy separator-dollar'>
+
+Get the replicated binary
 ```sh
-# get the replicated binary
 $ wget https://downloads.yugabyte.com/replicated.tar.gz
 ```
-</div>
-<div class='copy separator-dollar'>
+
+Get the yugaware binary where the 1.1.0.2 refers to the version of the binary. change this number as needed.
 ```sh
-# get the yugaware binary where the 1.1.0.2 refers to the version of the binary. change this number as needed.
 $ wget https://downloads.yugabyte.com/yugaware-1.1.0.2.airgap
 ```
-</div>
-<div class='copy separator-dollar'>
+
+Change to the directory
 ```sh
-# change to the directory
 $ cd /opt/downloads
 ```
-</div>
-<div class='copy separator-dollar'>
+
+Expand the replicated binary
 ```sh
-# expand the replicated binary
 $ ar xzvf replicated.tar.gz
 ```
-</div>
-<div class='copy separator-dollar'>
+
+Install replicated (yugaware will be installed via replicated ui after replicated install completes) pick `eth0` network interface in case multiple ones show up
 ```sh
-# install replicated (yugaware will be installed via replicated ui after replicated install completes)
-# pick eth0 network interface in case multiple ones show up
 $ cat ./install.sh | sudo bash -s airgap
 ```
-</div>
-<div class='copy separator-dollar'>
+
+After replicated install completes, make sure it is running
 ```sh
-# after replicated install completes, make sure it is running
 $ sudo docker ps
 ```
-</div>
 
 You should see an output similar to the following.
 

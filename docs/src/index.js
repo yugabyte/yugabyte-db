@@ -129,50 +129,61 @@ $(document).ready(() => {
   }).show();
 
   ((document, Clipboard) => {
-    const $codes = document.querySelectorAll('code.copy');
-    const $codes2 = document.querySelectorAll('.copy');
-
-    const addCopy = element => {
-      const contentContainer = element.getElementsByTagName('code')[0];
-      const content = contentContainer.textContent;
-      let index = 0;
-      const appendContainer = contentContainer.parentNode;
-      if (contentContainer.classList.contains('copy')) {
-        if (contentContainer.classList.contains('separator-gt')) index = content.indexOf('> ') + 2;
-        if (contentContainer.classList.contains('separator-dollar')) index = content.indexOf('$ ') + 2;
-        if (contentContainer.classList.contains('separator-hash')) index = content.indexOf('# ') + 2;
-      } else {
-        if (element.classList.contains('separator-gt')) index = content.indexOf('> ') + 2;
-        if (element.classList.contains('separator-dollar')) index = content.indexOf('$ ') + 2;
-        if (element.classList.contains('separator-hash')) index = content.indexOf('# ') + 2;
+    const $codes = document.querySelectorAll('pre');
+    // Check if there's a language class (mark of to-be-copied content)
+    const findLanguageDescriptor = list => {
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].indexOf('language-') + 1) {
+          return list[i].replace('language-', '');
+        }
       }
-
-      const textarea = document.createElement('textarea');
-      textarea.value = content.substr(index < 0 ? 0 : index, content.length).trim();
-      appendContainer.append(textarea);
-
-      const button = document.createElement('button');
-      button.className = 'copy unclicked';
-      button.textContent = 'copy';
-      button.addEventListener('click', e => {
-        const elem = e.target;
-        elem.classList.remove('unclicked');
-        setTimeout(
-          () => {
-            elem.classList.add('unclicked');
-          }, 1500);
-      });
-      appendContainer.append(button);
+      return false;
     };
-
+    const addCopyButton = element => {
+      const container = element.getElementsByTagName('code')[0];
+      const languageDescriptor = findLanguageDescriptor(container.classList);
+      let regExpCopy = /a^/;
+      if (languageDescriptor) {
+        // Then apply copy button
+        if (languageDescriptor === 'sql') {
+          if (element.textContent.match(/^[0-9a-z_.:@=^]{1,30}[>|#]\s/gm)) {
+            regExpCopy = /^[0-9a-z_.:@=^]{1,30}[>|#]\s/gm;
+          }
+        } else if (languageDescriptor === 'sh') {
+          if (element.textContent.match(/^\$\s/gm)) {
+            regExpCopy = /^\$\s/gm;
+          } else if (element.textContent.match(/^[0-9a-z_.:@=^]{1,30}[>|#]\s/gm)) {
+            regExpCopy = /^[0-9a-z_.:@=^]{1,30}[>|#]\s/gm;
+          }
+        }
+        const button = document.createElement('button');
+        button.className = 'copy unclicked';
+        button.textContent = 'copy';
+        button.addEventListener('click', e => {
+          const elem = e.target;
+          elem.classList.remove('unclicked');
+          setTimeout(
+            () => {
+              elem.classList.add('unclicked');
+            }, 1500);
+        });
+        container.after(button);
+        let text;
+        const clip = new Clipboard(button, {
+          text: (trigger) => {
+            text = $(trigger).prev('code').text();
+            return text.replace(regExpCopy, '');
+          },
+        });
+        clip.on('success error', e => {
+          e.clearSelection();
+          e.preventDefault();
+        });
+      }
+    };
     for (let i = 0, len = $codes.length; i < len; i++) {
-      addCopy($codes[i].parentNode);
+      addCopyButton($codes[i]);
     }
-    for (let i = 0, len = $codes2.length; i < len; i++) {
-      addCopy($codes2[i]);
-    }
-    const clipboard = new Clipboard('button.copy', {target: trigger => (trigger.previousElementSibling)});
-    clipboard.on('error', e => (e.preventDefault()));
   })(document, Clipboard);
 });
 

@@ -41,36 +41,30 @@ Where
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> CREATE TABLE devices(id UUID PRIMARY KEY, ordered_id TIMEUUID);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO devices (id, ordered_id) 
                VALUES (123e4567-e89b-12d3-a456-426655440000, 123e4567-e89b-12d3-a456-426655440000);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO devices (id, ordered_id) 
                VALUES (123e4567-e89b-42d3-a456-426655440000, 123e4567-e89b-12d3-a456-426655440000);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE devices SET ordered_id = 00000000-0000-1000-0000-000000000000
                WHERE id = 123e4567-e89b-42d3-a456-426655440000; 
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM devices;
 ```
-</div>
-```sh
+
+```
 id                                   | ordered_id
 --------------------------------------+--------------------------------------
  123e4567-e89b-12d3-a456-426655440000 | 123e4567-e89b-12d3-a456-426655440000

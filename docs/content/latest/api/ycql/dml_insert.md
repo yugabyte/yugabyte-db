@@ -75,45 +75,40 @@ Where
 
 ### Insert a row into a table
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> CREATE TABLE employees(department_id INT, 
                                       employee_id INT, 
                                       name TEXT, 
                                       PRIMARY KEY(department_id, employee_id));
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 2, 'Jane');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees;
 ```
-</div>
+
 ```
  department_id | employee_id | name
 ---------------+-------------+------
              1 |           1 | John
              1 |           2 | Jane
-
 ```
 
 ### Conditional insert using the `IF` clause
+
 Example 1
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe') IF name = null;
 ```
-</div>
+
 ```
  [applied]
 -----------
@@ -121,11 +116,11 @@ cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2
 ```
 
 Example 2
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Jack') IF NOT EXISTS;
 ```
-</div>
+
 ``` 
  [applied]
 -----------
@@ -133,11 +128,11 @@ cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2
 ```
 
 Example 3
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees;
 ```
-</div>
+
 ```
  department_id | employee_id | name
 ---------------+-------------+------
@@ -149,18 +144,17 @@ cqlsh:example> SELECT * FROM employees;
 ### Insert a row with expiration time using the `USING TTL` clause
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 2, 'Jack') USING TTL 10;
 ```
-</div>
 
 Now query the employees table.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees;
 ```
-</div>
+
 ```
  department_id | employee_id | name
 ---------------+-------------+------
@@ -171,11 +165,11 @@ cqlsh:example> SELECT * FROM employees;
 ```
 
 Again query the employees table after 11 seconds or more.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees; -- 11 seconds after the insert. 
 ```
-</div>
+
 ``` 
  department_id | employee_id | name
 ---------------+-------------+------
@@ -188,19 +182,16 @@ cqlsh:example> SELECT * FROM employees; -- 11 seconds after the insert.
 
 #### Insert a row with a low timestamp.
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 3, 'Jeff') USING TIMESTAMP 1000;
 ```
-</div>
 
 Now query the employees table.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:foo> SELECT * FROM employees;
 ```
-</div>
+
 ```
  department_id | employee_id | name
 ---------------+-------------+------
@@ -214,17 +205,14 @@ cqlsh:foo> SELECT * FROM employees;
 
 #### Overwrite the row with a higher timestamp.
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 3, 'Jerry') USING TIMESTAMP 2000;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:foo> SELECT * FROM employees;
 ```
-</div>
+
 ```
  department_id | employee_id | name
 ---------------+-------------+-------
@@ -234,22 +222,18 @@ cqlsh:foo> SELECT * FROM employees;
              2 |           1 |   Joe
 
 (4 rows)
-
 ```
 
 #### Try to overwrite the row with a lower timestamp.
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 3, 'James') USING TIMESTAMP 1500;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:foo> SELECT * FROM employees;
 ```
-</div>
+
 ```
  department_id | employee_id | name
 ---------------+-------------+-------

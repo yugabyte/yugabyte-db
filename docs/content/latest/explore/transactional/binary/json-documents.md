@@ -1,28 +1,26 @@
 ## 1. Setup - create universe
 
 If you have a previously running local universe, destroy it using the following.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-ctl destroy
 ```
-</div>
 
 Start a new local cluster - by default, this will create a 3 node universe with a replication factor of 3.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-ctl create
 ```
-</div>
 
 ## 2. Create a table with a JSON column
 
 Connect to the cluster using `cqlsh`.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/cqlsh
 ```
-</div>
-```sh
+
+```
 Connected to local cluster at 127.0.0.1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
@@ -30,25 +28,23 @@ cqlsh>
 ```
 
 Create a keyspace for the online bookstore.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> CREATE KEYSPACE store;
 ```
-</div>
 
 Create a table with the book `id` as the primary key and a `jsonb` column to store the book `details`.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> CREATE TABLE store.books ( id int PRIMARY KEY, details jsonb );
 ```
-</div>
 
 You can verify the schema of the table by describing it. 
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> DESCRIBE TABLE store.books;
 ```
-</div>
+
 ```sql
 CREATE TABLE store.books (
     id int PRIMARY KEY,
@@ -65,7 +61,7 @@ Let us seed the `books` table with some sample data. Note the following about th
 
 Paste the following into the `cqlsh` shell.
 
-```{.sql .copy}
+```sql
 INSERT INTO store.books (id, details) VALUES
   (1, '{ "name": "Macbeth", "author": { "first_name": "William", "last_name": "Shakespeare" }, "year": 1623, "editors": ["John", "Elizabeth", "Jeff"] }');
 INSERT INTO store.books (id, details) VALUES 
@@ -86,12 +82,12 @@ To view .
 ### Query all the data
 
 We can view all the data inserted by running the following query.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT * FROM store.books;
 ```
-</div>
-```sql
+
+```
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------------------
   5 | {"author":{"first_name":"Stephen","last_name":"Hawking"},"editors":["Melisa","Mark","John"],"genre":"science","name":"A Brief History of Time","year":1988}
@@ -105,12 +101,12 @@ cqlsh> SELECT * FROM store.books;
 ### Query a particular book by id
 
 If we want the details of a book whose id is known (in this example query, we are querying the details of the book with `id` 5).
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT * FROM store.books WHERE id=5;
 ```
-</div>
-```sql
+
+```
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------------------
   5 | {"author":{"first_name":"Stephen","last_name":"Hawking"},"editors":["Melisa","Mark","John"],"genre":"science","name":"A Brief History of Time","year":1988}
@@ -123,11 +119,11 @@ document and further json operations can be applied to the result. The `->>` ope
 string result and as a result no further json operations can be performed after this.
 
 If we want to query all the books whose author is `William Shakespeare`
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT * FROM store.books where details->'author'->>'first_name' = 'William' AND details->'author'->>'last_name' = 'Shakespeare';
 ```
-</div>
+
 ```
  id | details
 ----+----------------------------------------------------------------------------------------------------------------------------------
@@ -136,11 +132,11 @@ cqlsh> SELECT * FROM store.books where details->'author'->>'first_name' = 'Willi
 ```
 
 If we want to retrieve the author for all entries:
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT id, details->>'author' as author from store.books;
 ```
-</div>
+
 ```
  id | author
 ----+----------------------------------------------------
@@ -154,22 +150,22 @@ cqlsh> SELECT id, details->>'author' as author from store.books;
 ### Query based on array elements
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
 ```
-</div>
+
 ```
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------
   3 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
 ```
 Select from the table.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT * FROM store.books WHERE details->'editors'->>2 = 'Jeff';
 ```
-</div>
+
 ```
  id | details
 ----+----------------------------------------------------------------------------------------------------------------------------------
@@ -183,11 +179,11 @@ respectively, but sometimes its useful to consider json attributes as numeric ty
 apply the appropriate logical/arithmetic operators.
 
 For this purpose, we can use the `CAST` function to handle integers within the json document:
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) > 1700;
 ```
-</div>
+
 ```
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -196,22 +192,21 @@ cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) > 1700;
   3 |             {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
 ```
 Now select from the table.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
 ```
-</div>
+
 ```
  id | details
 ----+--------------------------------------------------------------------------------------------------------------------------------------------------------
   4 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
 ```
 Select again.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) > 1600 AND CAST(details->>'year' AS integer) <= 1900;
 ```
-</div>
 
 ```
  id | details
@@ -225,17 +220,14 @@ cqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) > 1600 
 
 - Update entire JSONB document
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh> UPDATE store.books SET details = '{"author":{"first_name":"Carl","last_name":"Sagan"},"editors":["Ann","Rob","Neil"],"genre":"science","name":"Cosmos","year":1980}' WHERE id = 1;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT * FROM store.books WHERE id = 1;
 ```
-</div>
+
 ```
  id | details
 ----+-----------------------------------------------------------------------------------------------------------------------------------
@@ -244,17 +236,14 @@ cqlsh> SELECT * FROM store.books WHERE id = 1;
 
 - Update a JSONB object value.
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh> UPDATE store.books SET details->'author'->>'first_name' = '"Steve"' WHERE id = 4;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT * FROM store.books WHERE id = 4;
 ```
-</div>
+
 ```
  id | details
 ----+------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -263,17 +252,14 @@ cqlsh> SELECT * FROM store.books WHERE id = 4;
 
 - Update a JSONB array element.
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh> UPDATE store.books SET details->'editors'->>1 = '"Jack"' WHERE id = 4;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT * FROM store.books WHERE id = 4;
 ```
-</div>
+
 ```
  id | details
 ----+------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -282,27 +268,24 @@ cqlsh> SELECT * FROM store.books WHERE id = 4;
 
 - Update a JSONB subdocument.
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh> UPDATE store.books SET details->'author' = '{"first_name":"John", "last_name":"Doe"}' WHERE id = 4;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT * FROM store.books WHERE id = 4;
 ```
-</div>
+
 ```
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------
   4 | {"author":{"first_name":"John","last_name":"Doe"},"editors":["Robert","Jack","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
 ```
+
 ## 5. Clean up (optional)
 
 Optionally, you can shutdown the local cluster created in Step 1.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-ctl destroy
 ```
-</div>

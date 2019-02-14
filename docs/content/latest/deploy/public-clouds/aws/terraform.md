@@ -5,12 +5,12 @@
 
 
 2. Verify by the `terraform` command, it should print a help message that looks similar to that shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ terraform
 ```
-</div>
-```sh
+
+```
 Usage: terraform [--version] [--help] <command> [args]
 ...
 Common commands:
@@ -26,7 +26,7 @@ Common commands:
 
 Create a terraform config file called `yugabyte-db-config.tf` and add following details to it. The terraform module can be found in the [terraform-aws-yugabyte github repository](https://github.com/YugaByte/terraform-aws-yugabyte).
 
-```{.sh .copy}
+```sh
 provider "aws" {
   # Configure your AWS account credentials here.
   access_key = "ACCESS_KEY_HERE"
@@ -64,7 +64,7 @@ module "yugabyte-db-cluster" {
 
 **NOTE:** If you do not have a custom security group, you would need to remove the `${var.custom_security_group_id}` variable in `main.tf`, so that the `aws_instance` looks as follows:
 
-```{.sh .copy}
+```sh
 resource "aws_instance" "yugabyte_nodes" {
   count                       = "${var.num_instances}"
   ...
@@ -79,18 +79,16 @@ resource "aws_instance" "yugabyte_nodes" {
 ## 2. Create a cluster
 
 Init terraform first if you have not already done so.
-<div class='copy separator-dollar'>
+
 ```sh
 $ terraform init
 ```
-</div>
 
 Now run the following to create the instances and bring up the cluster.
-<div class='copy separator-dollar'>
+
 ```sh
 $ terraform apply
 ```
-</div>
 
 Once the cluster is created, you can go to the URL `http://<node ip or dns name>:7000` to view the UI. You can find the node's ip or dns by running the following:
 
@@ -101,11 +99,10 @@ $ terraform state show aws_instance.yugabyte_nodes[0]
 You can access the cluster UI by going to any of the following URLs.
 
 You can check the state of the nodes at any point by running the following command.
-<div class='copy separator-dollar'>
+
 ```sh
 $ terraform show
 ```
-</div>
 
 
 ## 3. Verify resources created
@@ -129,8 +126,7 @@ For cluster named `test-cluster`, this security group will be named `yb-ce-test-
 ## 4. Destroy the cluster (optional)
 
 To destroy what we just created, you can run the following command.
-<div class='copy separator-dollar'>
+
 ```sh
 $ terraform destroy
 ```
-</div>

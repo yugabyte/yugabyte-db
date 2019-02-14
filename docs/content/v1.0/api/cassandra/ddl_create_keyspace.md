@@ -40,30 +40,30 @@ Where
 - CQL keyspace properties are supported in the syntax but have no effect internally (where YugaByte defaults are used instead).
 
 ## Examples
-``` {.sql .copy .separator-gt}
+```sql
 cqlsh> CREATE KEYSPACE example;
 ```
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> DESCRIBE KEYSPACES;
 ```
-</div>
+
 ```
 example  system_schema  system_auth  system
 ```
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> DESCRIBE example;
 ```
-</div>
+
 ```
 CREATE KEYSPACE example WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': '3'} AND DURABLE_WRITES = true;
 ```
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> CREATE SCHEMA example;
 ```
-</div>
+
 ```
 SQL error: Keyspace Already Exists
 CREATE SCHEMA example;

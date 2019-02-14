@@ -22,7 +22,7 @@ These install steps are written in a way that we assume that you will run the in
 
 These are some handy environment variables you can set on the node from where you are planning to do the install of the software on the 6 YB nodes.
 
-```{.sh .copy}
+```sh
 # Suppose these are the IP addresses of your 6 machines
 # (say 2 in each AZ).
 export AZ1_NODES="<ip1> <ip2> ..."
@@ -84,10 +84,11 @@ If your AMI already has the needed hooks for mounting the devices as directories
 
 On each of those nodes, first locate the SSD device(s) that’ll be used as the data directories for YugaByte DB to store data on (such as RAFT/txn logs, SSTable files, logs, etc.)
 
-```{.sh .copy}
-lsblk
-```
 ```sh
+$ lsblk
+```
+
+```
 NAME        MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
 nvme0n1     259:1    0    40G  0 disk
 └─nvme0n1p1 259:2    0    40G  0 part /
@@ -96,7 +97,7 @@ nvme1n1     259:0    0 372.5G  0 disk
 
 OR
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
    echo =======$ip=======; \
    ssh -i $PEM $ADMIN_USER@$ip lsblk; \
@@ -111,13 +112,13 @@ Create xfs file system on those device(s). The filesystem on the drives do not h
 
 You can run this command on each node OR use the sample loop below.
 
-```{.sh .copy}
-sudo /sbin/mkfs.xfs /dev/nvme1n1 -f
+```sh
+$ sudo /sbin/mkfs.xfs /dev/nvme1n1 -f
 ```
 
 OR
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
    echo =======$ip=======; \
    ssh -i $PEM $ADMIN_USER@$ip sudo /sbin/mkfs.xfs /dev/nvme1n1 -f; \
@@ -126,7 +127,7 @@ done
 
 Verify the file system.
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
    echo =======$ip=======; \
    ssh -i $PEM $ADMIN_USER@$ip sudo /sbin/blkid -o value -s TYPE -c /dev/null /dev/nvme1n1; \
@@ -139,7 +140,7 @@ The above should print “xfs” for each of the nodes/drives.
 
 Add `/etc/fstab` entry to mount the drive(s) on each of the nodes. This example assumes there’s one drive that we will mount at the `/mnt/d0` location.
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
     echo =======$ip=======; \
     ssh -i $PEM $ADMIN_USER@$ip \
@@ -149,7 +150,7 @@ done
 
 Verify that the file has the expected new entries.
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
     echo =======$ip=======; \
     ssh -i $PEM $ADMIN_USER@$ip cat /etc/fstab | grep xfs; \
@@ -160,7 +161,7 @@ done
 
 Mount the drive(s) at `/mnt/d0` path. Note that the `/mnt/d0` is just a sample path. You can use a different location if you prefer. These paths become the `--fs_data_dirs` argument to yb-master and yb-tserver processes in later steps.
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
     echo =======$ip=======; \
     ssh -i $PEM $ADMIN_USER@$ip sudo mkdir /mnt/d0; \
@@ -171,7 +172,7 @@ done
 
 Verify that the drives were mounted and are of expected size. 
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
     echo =======$ip=======; \
     ssh -i $PEM $ADMIN_USER@$ip df -kh | grep mnt; \
@@ -184,7 +185,7 @@ Below is an example of setting up these pre-requisites in  CentOS 7 or RHEL. For
 
 #### Install ntp & Other Optional Packages
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
    echo =======$ip=======; \
    ssh -i $PEM $ADMIN_USER@$ip sudo yum install -y epel-release ntp; \
@@ -193,7 +194,7 @@ done
 
 OPTIONAL: You can install a few more helpful packages (for tools like `perf`, `iostat`, `netstat`, `links`)
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
      echo =======$ip=======; \
      ssh -i $PEM $ADMIN_USER@$ip sudo yum install -y perf sysstat net-tools links; \
@@ -204,7 +205,7 @@ done
 
 To ensure proper ulimit settings needed for YugaByte DB, add these lines to `/etc/security/limits.conf` (or appropriate location based on your OS).
 
-```{.sh .copy}
+```
 *       -       core    unlimited
 *       -       nofile  1048576
 *       -       nproc   12000
@@ -212,7 +213,7 @@ To ensure proper ulimit settings needed for YugaByte DB, add these lines to `/et
 
 Sample commands to set the above on all nodes.
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
    echo =======$ip=======; \
    ssh -i $PEM $ADMIN_USER@$ip sudo "echo '*       -       core    unlimited' | sudo tee -a /etc/security/limits.conf"; \
@@ -223,17 +224,18 @@ done
 
 Make sure the above is not overriden by files in `limits.d` directory. For example, if `20-nproc.conf` file on the nodes has a different value, then update the file as below.
 
-```{.sh .copy}
-cat /etc/security/limits.d/20-nproc.conf
-```
 ```sh
+$ cat /etc/security/limits.d/20-nproc.conf
+```
+
+```
 *          soft    nproc     12000
 root       soft    nproc     unlimited
 ```
 
 A sample command to set the above on all nodes.
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
    echo =======$ip=======; \
    ssh -i $PEM $ADMIN_USER@$ip sudo "echo '*       -       nproc   12000' | sudo tee -a /etc/security/limits.d/20-nproc.conf"; \
@@ -242,7 +244,7 @@ done
 
 #### Verify the settings
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
    echo =======$ip=======; \
    ssh -i $PEM $ADMIN_USER@$ip ulimit -n -u -c; \
@@ -251,7 +253,7 @@ done
 
 The values should be along the lines of:
 
-```sh
+```
 open files                      (-n) 1048576
 max user processes              (-u) 12000
 core file size          (blocks, -c) unlimited
@@ -263,7 +265,7 @@ Note: The installation need NOT be undertaken by the root or the ADMIN_USER (cen
 
 Create `yb-software` & `yb-conf` directory in a directory of your choice. In this example, we use ADMIN_USER’s home directory.
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
     echo =======$ip=======; \
     ssh -i $PEM $ADMIN_USER@$ip mkdir -p ~/yb-software; \
@@ -273,7 +275,7 @@ done
 
 Download the YugaByte DB package, untar and run post install to patch relative paths on all nodes.
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
    echo =======$ip=======; \
    ssh -i $PEM $ADMIN_USER@$ip \
@@ -293,7 +295,7 @@ Create `~/master` & `~/tserver` directories as symlinks to installed software di
 
 Execute the following on master nodes only.
 
-```{.sh .copy}
+```sh
 for ip in $MASTER_NODES; do \
     echo =======$ip=======; \
     ssh -i $PEM $ADMIN_USER@$ip \
@@ -303,7 +305,7 @@ done
 
 Execute the following on all nodes.
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
     echo =======$ip=======; \
     ssh -i $PEM $ADMIN_USER@$ip \
@@ -320,7 +322,7 @@ This step prepares the config files for the 3 masters. The config files need to,
 
 ### Create YB-Master1’s config file.
 
-```{.sh .copy}
+```sh
 (MASTER=$MASTER1; CLOUD=aws; REGION=us-west; AZ=us-west-2a; CONFIG_FILE=~/yb-conf/master.conf ;\
   ssh -i $PEM $ADMIN_USER@$MASTER "
     echo --master_addresses=$MASTER_RPC_ADDRS    > $CONFIG_FILE
@@ -335,7 +337,7 @@ This step prepares the config files for the 3 masters. The config files need to,
 ```
 ### Create YB-Master2’s config file.
 
-```{.sh .copy}
+```sh
 (MASTER=$MASTER2; CLOUD=aws; REGION=us-west; AZ=us-west-2b; CONFIG_FILE=~/yb-conf/master.conf ;\
   ssh -i $PEM $ADMIN_USER@$MASTER "
     echo --master_addresses=$MASTER_RPC_ADDRS    > $CONFIG_FILE
@@ -350,7 +352,7 @@ This step prepares the config files for the 3 masters. The config files need to,
 ```
 ### Create YB-Master3’s config file.
 
-```{.sh .copy}
+```sh
 (MASTER=$MASTER3; CLOUD=aws; REGION=us-west; AZ=us-west-2c; CONFIG_FILE=~/yb-conf/master.conf ;\
   ssh -i $PEM $ADMIN_USER@$MASTER "
     echo --master_addresses=$MASTER_RPC_ADDRS    > $CONFIG_FILE
@@ -366,9 +368,9 @@ This step prepares the config files for the 3 masters. The config files need to,
 
 ### Verify 
 
-```{.sh .copy}
 Verify that all the config vars look right and environment vars were substituted correctly.
 
+```sh
 for ip in $MASTER_NODES; do \
   echo =======$ip=======; \
   ssh -i $PEM $ADMIN_USER@$ip cat ~/yb-conf/master.conf; \
@@ -379,7 +381,7 @@ done
 
 ### Create config file for AZ1 yb-tserver nodes
 
-```{.sh .copy}
+```sh
 (CLOUD=aws; REGION=us-west; AZ=us-west-2a; CONFIG_FILE=~/yb-conf/tserver.conf; \
  for ip in $AZ1_NODES; do \
     echo =======$ip=======; \
@@ -400,8 +402,7 @@ done
 
 ### Create config file for AZ2 yb-tserver nodes
 
-
-```{.sh .copy}
+```sh
 (CLOUD=aws; REGION=us-west; AZ=us-west-2b; CONFIG_FILE=~/yb-conf/tserver.conf; \
  for ip in $AZ2_NODES; do \
     echo =======$ip=======; \
@@ -422,7 +423,7 @@ done
 
 ### Create config file for AZ3 yb-tserver nodes
 
-```{.sh .copy}
+```sh
 (CLOUD=aws; REGION=us-west; AZ=us-west-2c; CONFIG_FILE=~/yb-conf/tserver.conf; \
  for ip in $AZ3_NODES; do \
     echo =======$ip=======; \
@@ -445,7 +446,7 @@ done
 
 Verify that all the config vars look right and environment vars were substituted correctly.
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
   echo =======$ip=======; \
   ssh -i $PEM $ADMIN_USER@$ip cat ~/yb-conf/tserver.conf; \
@@ -456,8 +457,7 @@ done
 
 Note: On the first time when all three yb-master’s are started, it creates the cluster. If a yb-master process is restarted (after cluster has been created) such as during a rolling upgrade of software it simply rejoins the cluster.
 
-
-```{.sh .copy}
+```sh
 for ip in $MASTER_NODES; do \
   echo =======$ip=======; \
   ssh -i $PEM $ADMIN_USER@$ip \
@@ -471,7 +471,7 @@ done
 
 Verify that the yb-master processes are running.
 
-```{.sh .copy}
+```sh
 for ip in $MASTER_NODES; do  \
   echo =======$ip=======; \
   ssh -i $PEM $ADMIN_USER@$ip ps auxww | grep yb-master; \
@@ -480,14 +480,14 @@ done
 
 Check yb-master UI by going to any of the 3 masters.
 
-```{.sh .copy}
+```
 http://<any-master-ip>:7000/
 ```
 
 You can do so using a character mode browser (such as links for example). Try the following.
 
-```{.sh .copy}
-links http://<a-master-ip>:7000/
+```sh
+$ links http://<a-master-ip>:7000/
 ```
 
 ### Troubleshooting
@@ -499,7 +499,7 @@ Make sure all the ports detailed in the earlier section are opened up. Else, che
 
 After starting all the YB-Masters in the previous step, start yb-tserver processes on all the nodes.
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
   echo =======$ip=======; \
   ssh -i $PEM $ADMIN_USER@$ip \
@@ -510,7 +510,7 @@ done
 
 Verify that the yb-tserver processes are running.
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do  \
   echo =======$ip=======; \
   ssh -i $PEM $ADMIN_USER@$ip ps auxww | grep yb-tserver; \
@@ -523,7 +523,7 @@ Note: This step is NOT needed for single-AZ deployments.
 
 The default replica placement policy when the cluster is first created is to treat all nodes as equal irrespective of the placement_* configuration flags. However, for the current deployment, we want to explicitly place 1 replica in each AZ. The following command sets replication factor of 3 across `us-west-2a`, `us-west-2b` and `us-west-2c` leading to the placement of 1 replica in each AZ.
 
-```{.sh .copy}
+```sh
 ssh -i $PEM $ADMIN_USER@$MASTER1 \
    ~/master/bin/yb-admin --master_addresses $MASTER_RPC_ADDRS \
     modify_placement_info  \
@@ -532,13 +532,13 @@ ssh -i $PEM $ADMIN_USER@$MASTER1 \
 
 Verify by running the following.
 
-```{.sh .copy}
-curl -s http://<any-master-ip>:7000/cluster-config
+```sh
+$ curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
 And confirm that the output looks similar to what is shown below with `min_num_replicas` set to 1 for each AZ.
 
-```sh
+```
 replication_info {
   live_replicas {
     num_replicas: 3
@@ -578,12 +578,12 @@ Connect to the cluster using the `cqlsh` utility that comes pre-bundled in the `
 
 From any node, execute the following command.
 
-```{.sh .copy}
-cd ~/tserver
-./bin/cqlsh <any-node-ip>
+```sh
+$ cd ~/tserver
+$ ./bin/cqlsh <any-node-ip>
 ```
 
-```{.sh .copy}
+```sql
 CREATE KEYSPACE IF NOT EXISTS app;
 
 USE app;
@@ -605,12 +605,11 @@ INSERT INTO user_actions (userid, action_id, payload) VALUES (2, 4, 'o');
 INSERT INTO user_actions (userid, action_id, payload) VALUES (2, 5, 'p');
 
 SELECT * FROM user_actions WHERE userid=1 AND action_id > 2;
-
 ```
 
 Output should be the following.
 
-```sh
+```
  userid | action_id | payload
 --------+-----------+---------
       1 |         4 |       d
@@ -623,39 +622,39 @@ If you want to try the pre-bundled `yb-sample-apps.jar` for some sample apps, yo
 
 First install Java on the machine.
 
-```{.sh .copy}
-sudo yum install java-1.8.0-openjdk-src.x86_64 -y
+```sh
+$ sudo yum install java-1.8.0-openjdk-src.x86_64 -y
 ```
 
 Set the environment variable for the YCQL endpoint.
 
-```{.sh .copy}
-export CIP_ADDR=<one-node-ip>:9042
+```sh
+$ export CIP_ADDR=<one-node-ip>:9042
 ```
 
 Here's how to run a workload with 100M key values.
 
-```{.sh .copy}
+```
 % cd ~/tserver/java
 % java -jar yb-sample-apps.jar --workload CassandraKeyValue --nodes $CIP_ADDR -num_threads_read 4 -num_threads_write 32 --num_unique_keys 100000000 --num_writes 100000000 --nouuid
 ```
 
 Here's how to run a workload with 100M records with a unique secondary index.
 
-```{.sh .copy}
+```
 % cd ~/tserver/java
 % java -jar yb-sample-apps.jar --workload CassandraUniqueSecondaryIndex --nodes $CIP_ADDR -num_threads_read 1 -num_threads_write 16 --num_unique_keys 100000000 --num_writes 100000000 --nouuid
 ```
 
 When workload is running, verify activity across various tablet-servers in the Master’s UI:
 
-```{.sh .copy}
+```
 http://<master-ip>:7000/tablet-servers
 ```
 
 When workload is running, verify active YCQL or YEDIS RPCs from this links on the “utilz” page.
 
-```{.sh .copy}
+```
 http://<any-tserver-ip>:9000/utilz
 ```
 
@@ -667,23 +666,27 @@ Create the YugaByte DB `system_redis.redis` (which is the default Redis database
 
 - Using yb-admin
 
-```{.sh .copy}
-cd ~/tserver
-./bin/yb-admin --master_addresses $MASTER_RPC_ADDRS setup_redis_table
+```sh
+$ cd ~/tserver
+$ ./bin/yb-admin --master_addresses $MASTER_RPC_ADDRS setup_redis_table
 ```
 
 - Using redis-cli, which comes pre-bundled in the `bin` directory.
 
-```{.sh .copy}
-cd ~/tserver
-./bin/redis-cli -h <any-node-ip>
+```sh
+$ cd ~/tserver
+$ ./bin/redis-cli -h <any-node-ip>
+```
+```sql
 > CREATEDB 0
 ```
 
 ### Test API
 
-```{.sh .copy}
-./bin/redis-cli -h <any-node-ip>
+```sh
+$ ./bin/redis-cli -h <any-node-ip>
+```
+```sql
 > SET key1 hello_world
 > GET key1
 ```
@@ -692,7 +695,7 @@ cd ~/tserver
 
 Following commands can be used to stop the cluster as well as delete the data directories.
 
-```{.sh .copy}
+```sh
 for ip in $ALL_NODES; do \
   echo =======$ip=======; \
   ssh -i $PEM $ADMIN_USER@$ip pkill yb-master; \

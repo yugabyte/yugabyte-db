@@ -15,7 +15,7 @@ You can find a working example of a simple key-value workload running on YugaByt
 
 Here is how you can try out this sample application.
 
-```sh
+```
 Usage:
   java -jar yb-sample-apps.jar \
     --workload CassandraKeyValue \

@@ -71,9 +71,10 @@ The sections below describe the architecture / data model for the various featur
 
 The inventory of products is modeled as a table using the Cassandra-compatible YCQL API. Each product has a unique `id` which is an integer in this example. The product `id` is the [primary key partition column](../../learn/data-modeling/#partition-key-columns-required). This ensures that all the data for one product (identified by its product `id`) is co-located in the database.
 
-```
+```sql
 cqlsh> DESCRIBE TABLE yugastore.products;
-
+```
+```
 CREATE TABLE yugastore.products (
     id int PRIMARY KEY,
     name text,
@@ -90,7 +91,7 @@ CREATE TABLE yugastore.products (
 
 The dynamic attributes for rendering sorted views (such as *highly rated* or *most reviewed*) are stored in Redis sorted sets.
 
-```
+```sh
 127.0.0.1:6379> ZADD allproducts:num_stars <num-stars> <product-id>
 ```
 

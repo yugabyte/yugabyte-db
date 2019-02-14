@@ -27,56 +27,56 @@ If `emulate_redis_responses` is `false`, returns OK.
 
 ## Examples
 <li> `emulate_redis_responses` is `true`.
-<div class='copy separator-dollar'>
+
 ```sh
 $ SADD yuga_world "Africa"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SADD yuga_world "America"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SMEMBERS yuga_world
 ```
-</div>
-```sh
+
+```
 1) "Africa"
 2) "America"
 ```
 </li>
 
 <li> `emulate_redis_responses` is `false`.
-<div class='copy separator-dollar'>
+
 ```sh
 $ SADD yuga_world "Africa"
 ```
-</div>
-```sh
-OK
+
 ```
-<div class='copy separator-dollar'>
+"OK"
+```
+
 ```sh
 $ SADD yuga_world "America"
 ```
-</div>
-```sh
-OK
+
 ```
-<div class='copy separator-dollar'>
+"OK"
+```
+
 ```sh
 $ SMEMBERS yuga_world
 ```
-</div>
-```sh
+
+```
 1) "Africa"
 2) "America"
 ```

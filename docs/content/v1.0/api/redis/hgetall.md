@@ -21,28 +21,28 @@ Returns list of fields and values.
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ HSET yugahash area1 "Africa"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ HSET yugahash area2 "America"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ HGETALL yugahash
 ```
-</div>
-```sh
+
+```
 1) area1
 2) "Africa"
 3) area2

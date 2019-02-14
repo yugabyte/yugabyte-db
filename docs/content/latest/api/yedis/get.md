@@ -25,29 +25,30 @@ Returns string value of the given `key`.
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ GET yugakey
 ```
-</div>
-```sh
+
+```
 (null)
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SET yugakey "YugaByte"
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ GET yugakey
+```
+
+```
 "YugaByte"
 ```
-</div>
+
 
 ## See Also
 [`append`](../append/), [`getrange`](../getrange/), [`getset`](../getset/), [`incr`](../incr/), [`incrby`](../incrby/), [`set`](../set/), [`setrange`](../setrange/), [`strlen`](../strlen/)

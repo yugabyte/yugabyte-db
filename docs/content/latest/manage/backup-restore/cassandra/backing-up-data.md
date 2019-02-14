@@ -5,20 +5,18 @@ This page documents backups for YugaByte DB’s [Cassandra compatible YCQL API](
 - Backing up schema for one keyspace
 
 In order to backup the schema for a particular keyspace, run the following command.
-<div class='copy separator-dollar'>
+
 ```sh
 $ cqlsh -e "DESC KEYSPACE <keyspace name>" > schema.cql
 ```
-</div>
 
 - Backing up schema for entire cluster
 
 In order to backup the schema for all tables across all keyspaces, run the following command.
-<div class='copy separator-dollar'>
+
 ```sh
 cqlsh -e "DESC SCHEMA" > schema.cql
 ```
-</div>
 
 ## Data backup
 
@@ -27,20 +25,18 @@ The following command exports all the data from a table in the CSV (comma separa
 - Backing up all columns of the table
 
 All columns of the table are exported by default.
-<div class='copy separator-dollar'>
+
 ```sh
 cqlsh -e "COPY <keyspace>.<table> TO 'data.csv' WITH HEADER = TRUE;"
 ```
-</div>
 
 - Backing up select columns of the table
 
 In order to backup selected columns of the table, specify the column names in a list.
-<div class='copy separator-dollar'>
+
 ```sh
 cqlsh -e "COPY <keyspace>.<table> (<column 1 name>, <column 2 name>, ...) TO 'data.csv' WITH HEADER = TRUE;"
 ```
-</div>
 
 ## Options
 
@@ -56,7 +52,7 @@ cqlsh -e <command> <host> [<port>]
 
 The syntax to specify options in the `COPY TO` command is shown below.
 
-```
+```sql
 COPY table_name [( column_list )]
 FROM 'file_name'[, 'file2_name', ...] | STDIN
 [WITH option = 'value' [AND ...]]
@@ -84,13 +80,13 @@ This section assumes you already have a YugaByte DB cluster. You can install a l
 ### Create a table with data
 
 Create a keyspace for the stock ticker app.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> CREATE KEYSPACE myapp;
 ```
-</div>
+
 Create the stock ticker table.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> CREATE TABLE myapp.stock_market (
     stock_symbol text,
@@ -99,10 +95,9 @@ cqlsh> CREATE TABLE myapp.stock_market (
     PRIMARY KEY (stock_symbol, ts)
 );
 ```
-</div>
 
 Insert some sample data.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 10:00:00',157);
@@ -111,13 +106,13 @@ INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','201
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 09:00:00',972.56);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 10:00:00',971.91);
 ```
-</div>
 
 You can query all the 6 rows we inserted by running the following command in `cqlsh`.
 
-```
+```sql
 cqlsh> SELECT * FROM myapp.stock_market;
-
+```
+```
  stock_symbol | ts                  | current_price
 --------------+---------------------+---------------
          GOOG | 2017-10-26 09:00:00 |        972.56
@@ -133,17 +128,18 @@ cqlsh> SELECT * FROM myapp.stock_market;
 ### Backup the schema
 
 Run the following in order to backup the schema of the keyspace `myapp`.
-<div class='copy separator-dollar'>
+
 ```sh
 $ cqlsh -e "DESC KEYSPACE myapp" > myapp_schema.cql
 ```
-</div>
+
 
 The schema of the keyspace `myapp` along with the tables in it are saved to the file `myapp_schema.cql`.
 
-```
+```sh
 $ cat myapp_schema.cql
-
+```
+```
 CREATE KEYSPACE myapp WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '3'}  AND durable_writes = true;
 
 CREATE TABLE myapp.stock_market (
@@ -159,11 +155,11 @@ CREATE TABLE myapp.stock_market (
 ### Backing up all the columns of the table
 
 Run the following command in order to backup the data in the table `myapp.stock_market`.
-<div class='copy separator-dollar'>
+
 ```sh
 $ cqlsh -e "COPY myapp.stock_market TO 'myapp_data.csv' WITH HEADER = TRUE ;"
 ```
-</div>
+
 
 All columns of the rows in the table `myapp.stock_market` are saved to the file `myapp_data.csv`.
 
@@ -181,11 +177,11 @@ GOOG,2017-10-26 10:00:00,971.90997
 ### Backing up some columns of the table
 
 In order to backup a subset of columns, you can specify them in the backup command. In the example below, the `stock_symbol` and `ts` columns are backed up, while the `current_price` column is not.
-<div class='copy separator-dollar'>
+
 ```sh
 $ cqlsh -e "COPY myapp.stock_market (stock_symbol, ts) TO 'myapp_data_partial.csv' WITH HEADER = TRUE ;"
 ```
-</div>
+
 
 The selected columns (`stock_symbol` and `ts`) of the rows in the table `myapp.stock_market` are saved to the file `myapp_data_partial.csv`.
 

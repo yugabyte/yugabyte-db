@@ -33,27 +33,27 @@ Where
 ### Create and use keyspaces
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> CREATE KEYSPACE example;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> CREATE KEYSPACE other_keyspace;
-<div class='copy separator-gt'>
+```
+
 ```sql
 cqlsh> USE example;
 ```
-</div>
 
 ### Create a table in the current keyspace
 
-``` sql
+```sql
 cqlsh:example> CREATE TABLE test(id INT PRIMARY KEY);
 cqlsh:example> INSERT INTO test(id) VALUES (1);
 cqlsh:example> SELECT * FROM test;
-
+```
+```
  id
 ----
   1
@@ -61,11 +61,12 @@ cqlsh:example> SELECT * FROM test;
 
 ### Create a table in another keyspace
 
-``` sql
+```sql
 cqlsh:example> CREATE TABLE other_keyspace.test(id INT PRIMARY KEY);
 cqlsh:example> INSERT INTO other_keyspace.test(id) VALUES (2);
 cqlsh:example> SELECT * FROM other_keyspace.test;
-
+```
+```
  id
 ----
   2

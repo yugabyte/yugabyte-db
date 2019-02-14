@@ -24,29 +24,27 @@ Returns 1 if the specified member exists. Returns 0 otherwise.
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ SADD yuga_world "America"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SISMEMBER yuga_world "America"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SISMEMBER yuga_world "Moon"
 ```
-</div>
-```sh
+
+```
 0
 ```
 

@@ -35,26 +35,29 @@ Variable       | Description                  |
 
 You can do so by doing the following:
 
-```{.bash}
+```sh
 $ export SSL_CERTFILE=<path to file>/ca.crt
 $ export SSL_USERCERT=<path to file>/node.<name>.crt
 $ export SSL_USERKEY=<path to file>/node.<name>.key
 ```
 
 Next connect using the `--ssl` flag.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/cqlsh --ssl
 ```
-</div>
 
 You should see the following output:
 ```
 Connected to local cluster at X.X.X.X:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
+cqlsh>
+```
+```sql
 cqlsh> DESCRIBE KEYSPACES;
-
+```
+```
 system_schema  system_auth  system
 
 cqlsh>

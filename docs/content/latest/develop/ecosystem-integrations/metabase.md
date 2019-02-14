@@ -23,44 +23,37 @@ Follow [Quick Start](../../../quick-start/) instructions to run a local YugaByte
 
 ### Download the Sample Schema
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ wget https://raw.githubusercontent.com/YugaByte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
 ```
-</div>
 
 ### Download the Sample Data
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ wget https://github.com/YugaByte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ tar zxvf sample-data.tgz
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ ls data/
 ```
-</div>
-```sh
+
+```
 orders.sql	products.sql	reviews.sql	users.sql
 ```
 
 ### Connect to YugaByte DB using psql
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/psql -p 5433 -U postgres
 ```
-</div>
-```sh
+
+```
 psql (10.3, server 10.4)
 Type "help" for help.
 
@@ -69,66 +62,55 @@ postgres=#
 
 ### Create a Database
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 postgres=> CREATE DATABASE yb_demo;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 postgres=> GRANT ALL ON DATABASE yb_demo to postgres;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 postgres=> \c yb_demo;
 ```
-</div>
 
 ### Create Schema and Load Data
 
 First create the 4 tables necessary to store the data.
-<div class='copy separator-gt'>
+
 ```sql
 postgres=> \i 'schema.sql';
 ```
-</div>
 
 Now load the data into the tables.
-<div class='copy separator-gt'>
+
 ```sql
 postgres=> \i 'data/products.sql'
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 postgres=> \i 'data/users.sql'
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 postgres=> \i 'data/orders.sql'
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 postgres=> \i 'data/reviews.sql'
 ```
-</div>
+
 ## 3. Download and Configure Metabase
 
 Detailed steps for setting up Metabase are available [here](https://www.metabase.com/docs/latest/setting-up-metabase.html). The following are the minimal setup steps for getting started.
-<div class='copy separator-dollar'>
+
 ```sh
 $ wget http://downloads.metabase.com/v0.30.4/metabase.jar
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ java -jar metabase.jar
 ```
-</div>
 
 Go to http://localhost:3000 to configure your Metabase server and point it to the YugaByte DB PostgreSQL API endpoint at `localhost:5433`.
 

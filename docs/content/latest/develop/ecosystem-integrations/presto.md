@@ -23,50 +23,40 @@ Follow [Quick Start](../../../quick-start/) instructions to run a local YugaByte
 ## 2. Download and Configure Presto
 Detailed steps are documented [here](https://prestodb.io/docs/current/installation/deployment.html).
 The following are the minimal setup steps for getting started.
-<div class='copy separator-dollar'>
+
 ```sh
 $ wget https://repo1.maven.org/maven2/com/facebook/presto/presto-server/0.212/presto-server-0.212.tar.gz
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ tar xvf presto-server-0.212.tar.gz
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ cd presto-server-0.212
 ```
-</div>
 
 ### Create the “etc”, “etc/catalog”, and “data” directory inside the installation directory.
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ mkdir etc
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ mkdir etc/catalog
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ mkdir data
 ```
-</div>
 
 ### Create node.properties file - replace &lt;username&gt; below
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ cat > etc/node.properties
 ```
-</div>
-```sh
+
+```
 node.environment=test
 node.id=ffffffff-ffff-ffff-ffff-ffffffffffff
 node.data-dir=/Users/<username>/presto-server-0.212/data
@@ -74,13 +64,11 @@ node.data-dir=/Users/<username>/presto-server-0.212/data
 
 ### Create jvm.config file
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ cat > etc/jvm.config
 ```
-</div>
-```sh
+
+```
 -server
 -Xmx6G
 -XX:+UseG1GC
@@ -93,13 +81,11 @@ $ cat > etc/jvm.config
 
 ### Create config.properties file
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ cat > etc/config.properties
 ```
-</div>
-```sh
+
+```
 coordinator=true
 node-scheduler.include-coordinator=true
 http-server.http.port=8080
@@ -111,13 +97,11 @@ discovery.uri=http://localhost:8080
 
 ### Create log.properties file
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ cat > etc/log.properties
 ```
-</div>
-```sh
+
+```
 com.facebook.presto=INFO
 ```
 
@@ -125,86 +109,75 @@ com.facebook.presto=INFO
 
 Create the cassandra catalog properties file in etc/catalog directory.
 Detailed instructions are [here](https://prestodb.io/docs/current/connector/cassandra.html).
-<div class='copy separator-dollar'>
+
 ```sh
 $ cat > etc/catalog/cassandra.properties
 ```
-</div>
-```sh
+
+```
 connector.name=cassandra
 cassandra.contact-points=127.0.0.1
 ```
 
 ## 3. Download Presto CLI
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ cd ~/presto-server-0.212/bin
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ wget https://repo1.maven.org/maven2/com/facebook/presto/presto-cli/0.212/presto-cli-0.212-executable.jar
 ```
-</div>
 
 Rename jar to ‘presto’. It is meant to be a self-running binary.
-<div class='copy separator-dollar'>
+
 ```sh
 $ mv presto-cli-0.212-executable.jar presto && chmod +x presto
 ```
-</div>
 
 
 ## 4. Launch Presto server
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ cd presto-server-0.212
 ```
-</div>
 
 To run in foreground mode.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/launcher run       
 ```
-</div>
 
 To run in background mode.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/launcher start  
 ```
-</div>
 
 ## 5. Test Presto queries
 
 Use the presto CLI to run ad-hoc queries. 
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/presto --server localhost:8080 --catalog cassandra --schema default
 ```
-</div>
 
 Start using `myapp`.
-<div class='copy separator-gt'>
+
 ```sql
 presto:default> use myapp;
 ```
-</div>
+
 ```sh
 USE
 ```
 
 Show the tables available.
-<div class='copy separator-gt'>
+
 ```sql
 presto:myapp> show tables;
 ```
-</div>
+
 ```
  Table
 -------
@@ -213,12 +186,12 @@ presto:myapp> show tables;
 ```
 
 Describe a particular table.
-<div class='copy separator-gt'>
+
 ```sql
 presto:myapp> describe stock_market;
 ```
-</div>
-```sh
+
+```
     Column     |  Type   | Extra | Comment 
 ---------------+---------+-------+---------
  stock_symbol  | varchar |       |         
@@ -229,13 +202,11 @@ presto:myapp> describe stock_market;
 
 ### Query with filter
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 presto:myapp> select * from stock_market where stock_symbol = 'AAPL';
 ```
-</div>
-```sh
+
+```
  stock_symbol |         ts          | current_price 
 --------------+---------------------+---------------
  AAPL         | 2017-10-26 09:00:00 |        157.41 
@@ -245,13 +216,11 @@ presto:myapp> select * from stock_market where stock_symbol = 'AAPL';
 
 ### Query with aggregates
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 presto:myapp> select stock_symbol, avg(current_price) from stock_market group by stock_symbol;
 ```
-</div>
-```sh
+
+```
  stock_symbol |  _col1  
 --------------+---------
  GOOG         | 972.235 

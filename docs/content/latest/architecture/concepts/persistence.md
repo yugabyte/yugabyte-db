@@ -255,8 +255,9 @@ The entries in DocDB at this point will look like the following:
 (hash1, 'user1', 20), msg_props_column_id, 'subject', T3 -> 'bar'</b></code>
 </pre>
 
+Delete a single column from a row
 ```sql
-T4: DELETE msg_props       // Delete a single column from a row
+T4: DELETE msg_props       
       FROM msgs
      WHERE user_id = 'user1'
        AND msg_id = 10;

@@ -12,20 +12,18 @@ YugaByte DB supports a number of standard aggregation functions. Let us go throu
 
 
 Let us create this table with `ProductID` as the primary hash key.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> CREATE KEYSPACE store;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> CREATE TABLE store.products (ProductID BIGINT PRIMARY KEY, ProductName VARCHAR, SupplierID INT, CategoryID INT, Unit TEXT, Price FLOAT, Quantity INT);
 ```
-</div>
 
 Now let us populate the sample data.
 
-```{.sql .copy}
+```sql
 INSERT INTO store.products (ProductID, ProductName, SupplierID, CategoryID, Unit, Price, Quantity) VALUES (1, 'Chais', 1, 1, '10 boxes x 20 bags', 18, 25);
 INSERT INTO store.products (ProductID, ProductName, SupplierID, CategoryID, Unit, Price, Quantity) VALUES (2, 'Chang', 1, 1, '24 - 12 oz bottles', 19, 12);
 INSERT INTO store.products (ProductID, ProductName, SupplierID, CategoryID, Unit, Price, Quantity) VALUES (3, 'Aniseed Syrup', 1, 2, '12 - 550 ml bottles', 10, 10);
@@ -39,12 +37,12 @@ INSERT INTO store.products (ProductID, ProductName, SupplierID, CategoryID, Unit
 - Finding the number of item types in the store can be done as follows.
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT COUNT(ProductID) FROM store.products;
 ```
-</div>
-```sh
+
+```
  count(productid)
 ------------------
                 5
@@ -55,12 +53,12 @@ cqlsh> SELECT COUNT(ProductID) FROM store.products;
 - We can give an alias name to the count column as follows.
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT COUNT(ProductID) as num_products FROM store.products;
 ```
-</div>
-```sh
+
+```
  num_products
 --------------
             5
@@ -72,12 +70,12 @@ cqlsh> SELECT COUNT(ProductID) as num_products FROM store.products;
 - Finding the number of item types for supplier 1 can be done as follows.
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT COUNT(ProductID) as supplier1_num_products FROM store.products WHERE SupplierID=1;
 ```
-</div>
-```sh
+
+```
  supplier1_num_products
 ------------------------
                       3
@@ -93,12 +91,12 @@ The standard aggregate functions of min, max, sum and count are built-in functio
 - To find the total number of items in the store, run the following query.
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT SUM(Quantity) FROM store.products;
 ```
-</div>
-```sh
+
+```
  sum(quantity)
 ---------------
             96
@@ -109,12 +107,12 @@ cqlsh> SELECT SUM(Quantity) FROM store.products;
 - To find the price of the cheapest and the most expensive item, run the following.
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> SELECT MIN(Price), MAX(Price) FROM store.products;
 ```
-</div>
-```sh
+
+```
  min(price) | max(price)
 ------------+------------
          10 |         22

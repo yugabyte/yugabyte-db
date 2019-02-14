@@ -1,26 +1,24 @@
 ## 1. Setup - create universe
 
 If you have a previously running local universe, destroy it using the following:
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-ctl destroy
 ```
-</div>
 
 Start a new local cluster - by default, this will create a 3 node universe with a replication factor of 3.
 We set the number of [shards](../../architecture/concepts/sharding/) per tserver to 8 so we can better observe the load balancing during scaling.
 Considering there are 3 tservers and replication factor 3, there will be 72 total shards per table.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-ctl --num_shards_per_tserver 8 create
 ```
-</div>
 
 
 ## 2. Run sample key-value app
 
 Run the Cassandra sample key-value app against the local universe by typing the following command.
-<div class='copy separator-dollar'>
+
 ```sh
 $ java -jar ./java/yb-sample-apps.jar --workload CassandraKeyValue \
                                     --nodes 127.0.0.1:9042 \
@@ -28,7 +26,6 @@ $ java -jar ./java/yb-sample-apps.jar --workload CassandraKeyValue \
                                     --num_threads_read 4 \
                                     --value_size 4096
 ```
-</div>
 
 ## 3. Observe data sizes per node
 
@@ -40,11 +37,10 @@ You can check a lot of the per-node stats by browsing to the <a href='http://127
 ## 4. Add a node and observe data rebalancing
 
 Add a node to the universe.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-ctl add_node
 ```
-</div>
 
 Now we should have 4 nodes. Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. As you refresh, you should see the new node getting more and more tablets, which would cause it to get more data as well as increase its memory footprint. Finally, all the 4 nodes should end up with a similar data distribution and memory usage.
 
@@ -54,11 +50,10 @@ Now we should have 4 nodes. Refresh the <a href='http://127.0.0.1:7000/tablet-se
 ## 5. Add another node and observe linear scale out
 
 Add yet another node to the universe.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-ctl add_node
 ```
-</div>
 
 Now we should have 5 nodes. Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update, and as before you should see all the nodes end up with similar data sizes and memory footprints.
 
@@ -69,8 +64,8 @@ YugaByte DB automatically balances the tablet leaders and followers of a univers
 ## 6. Clean up (optional)
 
 Optionally, you can shutdown the local cluster created in Step 1.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-ctl destroy
 ```
-</div>
+

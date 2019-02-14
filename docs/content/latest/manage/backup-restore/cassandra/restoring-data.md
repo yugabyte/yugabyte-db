@@ -3,23 +3,20 @@
 ## Restore the schema
 
 In order to restore the schema, run the following command.
-<div class='copy separator-dollar'>
+
 ```sh
 $ cqlsh -e "source 'schema.cql'"
 ```
-</div>
 
 ### Restoring data from a backup
 
 In order to restore data from a backup, run the following command.
-<div class='copy separator-dollar'>
+
 ```sh
 $ cqlsh -e "COPY <keyspace name>.<table name> FROM 'data.csv' WITH HEADER = TRUE ;"
 ```
-</div>
 
 You can restore data from a backup that has a subset of columns as well.
-
 
 ## Options
 
@@ -35,7 +32,7 @@ cqlsh -e <command> <host> [<port>]
 
 The syntax to specify options in the `COPY FROM` command is shown below.
 
-```
+```sql
 COPY table_name [( column_list )]
 FROM 'file_name'[, 'file2_name', ...] | STDIN
 [WITH option = 'value' [AND ...]]
@@ -50,40 +47,38 @@ There are a number of useful options in the `COPY FROM` command used to perform 
 | CHUNKSIZE | The chunk size for each insert. Default value is `1000` |
 | INGESTRATE | Desired ingest rate in rows per second. Must be greater than the chunk size. Default value is `100000` |
 
-
 ## Example
 
 Let us restore the backup we had performed in the [example section of backing up data](/manage/backup-restore/backing-up-data/#example), 
 where we had walked through how to create the `myapp_schema.cql` schema backup and the `myapp_data.csv` data backup files. 
 
 If you have created the keyspace and the table with the data, remember to drop them using cqlsh. You can drop the table by running the following query:
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> DROP TABLE myapp.stock_market;
 ```
-</div>
 
 You can drop the keyspace by running the following:
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> DROP KEYSPACE myapp;
 ```
-</div>
+
 
 ### Restore the table schema
 
 You can import the schema from the `myapp_schema.cql` schema backup file by running the following:
-<div class='copy separator-dollar'>
+
 ```sh
 $ cqlsh -f myapp_schema.cql
 ```
-</div>
 
 The schema backup file `myapp_schema.cql` should look as show below:
 
-```
+```sh
 $ cat myapp_schema.cql
-
+```
+```
 CREATE KEYSPACE myapp WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '3'}  AND durable_writes = true;
 
 CREATE TABLE myapp.stock_market (
@@ -96,9 +91,10 @@ CREATE TABLE myapp.stock_market (
 ```
 
 You can verify that the table was created by connecting to the cluster using `cqlsh` and running the following :
-```
+```sql
 cqlsh> DESC myapp.stock_market;
-
+```
+```
 CREATE TABLE myapp.stock_market (
     stock_symbol text,
     ts text,
@@ -108,15 +104,13 @@ CREATE TABLE myapp.stock_market (
     AND default_time_to_live = 0;
 ```
 
-
 ### Restore the data
 
 You can restore the data from the `myapp_data.csv` data backup file as follows:
-<div class='copy separator-dollar'>
 ```sh
 $ cqlsh -e "COPY myapp.stock_market FROM 'myapp_data.csv' WITH HEADER = TRUE ;"
 ```
-</div>
+
 
 The data backup file `myapp_data.csv` should look as follows:
 
@@ -134,9 +128,10 @@ GOOG,2017-10-26 10:00:00,971.90997
 Note that the procedure to import data from a partial backup is identical. You can verify that the data has been restored by connecting 
 to the cluster using `cqlsh` and running the following query:
 
-```
+```sql
 cqlsh> SELECT * FROM myapp.stock_market;
-
+```
+```
  stock_symbol | ts                  | current_price
 --------------+---------------------+---------------
          GOOG | 2017-10-26 09:00:00 |        972.56

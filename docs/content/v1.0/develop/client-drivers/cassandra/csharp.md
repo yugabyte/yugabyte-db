@@ -21,7 +21,7 @@ To install the driver in your Visual Studio project
 
 ### Copy the contents below to your `Program.cs` file.
 
-```{.cs .copy}
+```cs
 using System;
 using System.Linq;
 using Cassandra;

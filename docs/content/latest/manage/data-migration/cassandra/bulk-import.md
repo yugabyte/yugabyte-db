@@ -6,7 +6,7 @@ We will first export data from existing Apache Cassandra and MySQL tables. There
 
 Following is the schema of the destination YugaByte DB table.
 
-```{.sql .copy}
+```sql
 CREATE KEYSPACE example;
 USE EXAMPLE;
 
@@ -27,7 +27,7 @@ We will prepare a csv (comma-separated values) file where each row of entries mu
 
 If you do not have the data already available in a database table, you can create sample data for the import using the instructions below.
 
-```{.sh .copy}
+```sh
 #!/bin/bash
 
 # Usage: ./generate_data.sh <number_of_rows> <output_filename>
@@ -46,7 +46,7 @@ do
   echo customer$((i%10)),$((i%3)),2017-11-11 12:30:$((i%60)).000000+0000,\"{temp:$i, humidity:$i}\" >> $2
 done
 ```
-```sh
+```
 customer1,1,2017-11-11 12:32:1.000000+0000,"{temp:1, humidity:1}"
 customer2,2,2017-11-11 12:32:2.000000+0000,"{temp:2, humidity:2}"
 customer3,0,2017-11-11 12:32:3.000000+0000,"{temp:3, humidity:3}"
@@ -58,17 +58,16 @@ customer6,0,2017-11-11 12:32:6.000000+0000,"{temp:6, humidity:6}"
 ### Export from Apache Cassandra
 
 If you already had the data in an Apache Cassandra table, then use the following command to create a csv file with the data.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> COPY example.SensorData TO '/path/to/sample.csv';
 ```
-</div>
 
 ### Export from MySQL
 
 If you already had the data in a MySQL table named `SensorData`, then use the following command to create a csv file with the data.
 
-```{.sql .copy}
+```sql
 SELECT customer_name, device_id, ts, sensor_data
 FROM SensorData 
 INTO OUTFILE '/path/to/sample.csv' FIELDS TERMINATED BY ',';
@@ -81,11 +80,10 @@ These instructions are organized by the size of the input datasets, ranging from
 ### Small Datasets (MBs)
 
 Cassandra’s CQL Shell provides the COPY FROM (see also COPY TO) command which allows importing data from csv files. 
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
 ```
-</div>
 
 ### Medium Datasets (GBs)
 
@@ -94,20 +92,18 @@ cqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
 #### Install cassandra-loader
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ wget https://github.com/YugaByte/cassandra-loader/releases/download/v0.0.27-yb-1/cassandra-loader
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ chmod a+x cassandra-loader
 ```
-</div>
 
 #### Run cassandra-loader
 
-```{.sh .copy}
+```sh
 time ./cassandra-loader \
 	-dateFormat 'yyyy-MM-dd HH:mm:ss.SSSSSSX' \
 	-f sample.csv \

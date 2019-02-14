@@ -25,7 +25,7 @@ Your data/log/conf directories are generally stored in a separate location which
 
 ## Upgrade YB-Masters
 
-```{.sh}
+```
 1. pkill yb-master
 2. switch binaries to new release
 3. start the yb-master process
@@ -35,7 +35,7 @@ Your data/log/conf directories are generally stored in a separate location which
 
 ## Upgrade YB-TServers
 
-```{.sh}
+```
 1. pkill yb-tserver
 2. switch binaries to new release
 3. start yb-tserver process

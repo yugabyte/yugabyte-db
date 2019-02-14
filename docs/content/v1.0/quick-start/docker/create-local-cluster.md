@@ -1,22 +1,22 @@
 ## 1. Create a 3 node cluster with replication factor 3 
 
 We will use the [`yb-docker-ctl`](../../admin/yb-docker-ctl/) utility downloaded in the previous step to create and administer a containerized local cluster. Detailed output for the *create* command is available in [yb-docker-ctl Reference](../../admin/yb-docker-ctl/#create-cluster).
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./yb-docker-ctl create
 ```
-</div>
+
 Clients can now connect to YugaByte DB's Cassandra-compatible YCQL API at `localhost:9042` and to the Redis-compatible YEDIS API at  `localhost:6379`.
 
 ## 2. Check cluster status with yb-docker-ctl
 
 Run the command below to see that we now have 3 `yb-master` (yb-master-n1,yb-master-n2,yb-master-n3) and 3 `yb-tserver` (yb-tserver-n1,yb-tserver-n2,yb-tserver-n3) containers running on this localhost. Roles played by these containers in a YugaByte cluster (aka Universe) is explained in detail [here](../../architecture/concepts/universe/).
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./yb-docker-ctl status
 ```
-</div>
-```sh
+
+```
 PID        Type       Node       URL                       Status          Started At          
 26132      tserver    n3         http://172.18.0.7:9000    Running         2017-10-20T17:54:54.99459154Z
 25965      tserver    n2         http://172.18.0.6:9000    Running         2017-10-20T17:54:54.412377451Z

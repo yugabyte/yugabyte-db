@@ -4,7 +4,7 @@
 Install the nodejs driver using the following command. You can find the source for the driver [here](https://github.com/datastax/nodejs-driver).
 
 ```sh
-npm install cassandra-driver
+$ npm install cassandra-driver
 ```
 
 ## Working Example
@@ -19,7 +19,7 @@ This tutorial assumes that you have:
 We will be using the [async](https://github.com/caolan/async) JS utility to work with asynchronous Javascript. Install this by running the following command:
 
 ```sh
-npm install --save async
+$ npm install --save async
 ```
 
 
@@ -90,7 +90,7 @@ async.series([
 To run the application, type the following:
 
 ```sh
-node yb-cql-helloworld.js
+$ node yb-cql-helloworld.js
 ```
 
 You should see the following output.

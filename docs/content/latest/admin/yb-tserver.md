@@ -17,23 +17,19 @@ showAsideToc: true
 
 ## Example
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ ./bin/yb-tserver \
 --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
 --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
 ```
-</div>
 
 ## Help
 
 Use the **-\-help** option to see all the commands supported.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-tserver --help
 ```
-</div>
 
 ## Config flags
 

@@ -24,37 +24,35 @@ Returns the value after addition.
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ HSET yugahash f1 5
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ HINCRBY yugahash f1 3
 ```
-</div>
-```sh
+
+```
 8
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ HINCRBY yugahash non-existent-f2 4
 ```
-</div>
-```sh
+
+```
 4
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ HINCRBY non-existent-yugahash f1 3
 ```
-</div>
-```sh
+
+```
 3
 ```
 

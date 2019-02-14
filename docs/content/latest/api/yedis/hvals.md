@@ -25,21 +25,19 @@ Returns list of values in the specified hash.
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ HMSET yugahash area1 "America" area2 "Africa"
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ HVALS yugahash
 ```
-</div>
-```sh
+
+```
 1) "America"
 2) "Africa"
 ```

@@ -32,16 +32,14 @@ Where
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE users(id INT PRIMARY KEY, name TEXT);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> DROP TABLE users;
 ```
-</div>
 
 ## See Also
 

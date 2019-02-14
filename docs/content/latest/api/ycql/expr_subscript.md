@@ -22,17 +22,13 @@ Subscripted expression allows access to an element in a multi-element value such
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:yugaspace> CREATE TABLE t(id INT PRIMARY KEY,yugamap MAP<TEXT, TEXT>);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:yugaspace> UPDATE yugatab SET map_value['key_value'] = 'yuga_string' WHERE id = 7;
 ```
-</div>
 
 ## See Also
 [All Expressions](..##expressions)

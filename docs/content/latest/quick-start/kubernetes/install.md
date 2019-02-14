@@ -3,38 +3,36 @@
 You must have [Minikube](https://github.com/kubernetes/minikube) installed on your localhost. [Follow these instructions](https://kubernetes.io/docs/tasks/tools/install-minikube/) to install Minikube along with its pre-requisites.
 
 We will be using the [StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) workload API of Kubernetes, so you should have a version that supports this (preferably 1.8+). Run the version commands as shown below to verify the version.
-<div class='copy separator-dollar'>
+
 ```sh
 $ minikube version
 ```
-</div>
-```sh
+
+```
 minikube version: v0.25.0
 ```
 
 ## Start Kubernetes
 
 Start Kubernetes via Minikube with the following command.
-<div class='copy separator-dollar'>
+
 ```sh
 $ minikube start
 ```
-</div>
 
 Review Kubernetes dashboard with the following command.
-<div class='copy separator-dollar'>
+
 ```sh
 $ minikube dashboard
 ```
-</div>
 
 Also confirm that your `kubectl` is configured correctly.
-<div class='copy separator-dollar'>
+
 ```sh
 $ kubectl version
 ```
-</div>
-```sh
+
+```
 Client Version: version.Info{Major:"1", Minor:"9", GitVersion:"v1.9.1", ...}
 Server Version: version.Info{Major:"1", Minor:"8", GitVersion:"v1.8.0", ...}
 ```
@@ -42,13 +40,11 @@ Server Version: version.Info{Major:"1", Minor:"8", GitVersion:"v1.8.0", ...}
 ## Download
 
 Download `yugabyte-statefulset.yaml`. This will create a local YugaByte DB cluster on Kubernetes with a replication factor of 3.
-<div class='copy separator-dollar'>
+
 ```sh
 $ mkdir ~/yugabyte && cd ~/yugabyte
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ wget https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset.yaml
 ```
-</div>

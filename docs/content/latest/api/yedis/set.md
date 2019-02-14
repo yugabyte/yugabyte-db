@@ -25,21 +25,19 @@ Returns status string.
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ SET yugakey "YugaByte"
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ GET yugakey
 ```
-</div>
-```sh
+
+```
 "YugaByte"
 ```
 

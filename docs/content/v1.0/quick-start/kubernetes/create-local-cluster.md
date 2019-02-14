@@ -1,12 +1,12 @@
 ## 1. Create a 3 node cluster with replication factor 3 
 
 Run the following command to create the cluster.
-<div class='copy separator-dollar'>
+
 ```sh
 $ kubectl apply -f yugabyte-statefulset.yaml
 ```
-</div>
-```sh
+
+```
 service "yb-masters" created
 statefulset "yb-master" created
 service "yb-tservers" created
@@ -16,12 +16,12 @@ statefulset "yb-tserver" created
 ## 2. Check cluster status
 
 Run the command below to see that we now have two services with 3 pods each - 3 `yb-master` pods (yb-master-1,yb-master-2,yb-master-3) and 3 `yb-tserver` pods (yb-tserver-1,yb-tserver-2,yb-tserver-3) running. Roles played by these pods in a YugaByte DB cluster (aka Universe) is explained in detail [here](../../architecture/concepts/universe/).
-<div class='copy separator-dollar'>
+
 ```sh
 $ kubectl get pods
 ```
-</div>
-```sh
+
+```
 NAME           READY     STATUS              RESTARTS   AGE
 yb-master-0    0/1       ContainerCreating   0          5s
 yb-master-1    0/1       ContainerCreating   0          5s
@@ -32,12 +32,12 @@ yb-tserver-2   0/1       ContainerCreating   0          4s
 ```
 
 Eventually all the pods will have the `Running` state.
-<div class='copy separator-dollar'>
+
 ```sh
 $ kubectl get pods
 ```
-</div>
-```sh
+
+```
 NAME           READY     STATUS    RESTARTS   AGE
 yb-master-0    1/1       Running   0          13s
 yb-master-1    1/1       Running   0          13s
@@ -51,12 +51,12 @@ yb-tserver-2   1/1       Running   1          12s
 ## 3. Initialize the Redis-compatible YEDIS API
 
 Initialize Redis-compatible YEDIS API in the YugaByte DB Universe we just setup by running the following `yb-admin` command. 
-<div class='copy separator-dollar'>
+
 ```sh
 $ kubectl exec -it yb-master-0 /home/yugabyte/bin/yb-admin -- --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100,yb-master-1.yb-masters.default.svc.cluster.local:7100,yb-master-2.yb-masters.default.svc.cluster.local:7100 setup_redis_table
 ```
-</div>
-```sh
+
+```
 ...
 I0127 19:38:10.358551   115 client.cc:1292] Created table system_redis.redis of type REDIS_TABLE_TYPE
 I0127 19:38:10.358872   115 yb-admin_client.cc:400] Table 'system_redis.redis' created.
@@ -67,12 +67,12 @@ Clients can now connect to this YugaByte DB universe using Cassandra and Redis A
 ## 4. Check cluster status via Kubernetes
 
 You can see the status of the 3 services by simply running the following command.
-<div class='copy separator-dollar'>
+
 ```sh
 $ kubectl get services
 ```
-</div>
-```sh
+
+```
 NAME           TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                               AGE
 kubernetes     ClusterIP      10.96.0.1       <none>        443/TCP                               10m
 yb-master-ui   LoadBalancer   10.102.121.64   <pending>     7000:31283/TCP                        8m
@@ -83,12 +83,12 @@ yb-tservers    ClusterIP      None            <none>        9000/TCP,9100/TCP,90
 ## 5. Check cluster status with Admin UI
 
 In order to do this, we would need to access the UI on port 7000 exposed by any of the pods in the `yb-master` service (one of `yb-master-0`, `yb-master-1` or `yb-master-2`). In order to do so, we find the URL for the yb-master-ui LoadBalancer service.
-<div class='copy separator-dollar'>
+
 ```sh
 $ minikube service  yb-master-ui --url
 ```
-</div>
-```sh
+
+```
 http://192.168.99.v1.0:31283
 ```
 

@@ -95,15 +95,15 @@ Where
 ## Examples
 ### Use column constraint to define primary key
  'user_id' is the partitioning column and there are no clustering columns.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE users(user_id INT PRIMARY KEY, full_name TEXT);
 ```
-</div>
+
 
 ### Use table constraint to define primary key
 'supplier_id' and 'device_id' are the partitioning columns and 'model_year' is the clustering column.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE devices(supplier_id INT,
                                     device_id INT,
@@ -111,12 +111,12 @@ cqlsh:example> CREATE TABLE devices(supplier_id INT,
                                     device_name TEXT,
                                     PRIMARY KEY((supplier_id, device_id), model_year));
 ```
-</div>
+
 
 ### Use column constraint to define a static column.
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE items(supplier_id INT,
                                   item_id INT,
@@ -124,24 +124,21 @@ cqlsh:example> CREATE TABLE items(supplier_id INT,
                                   item_name TEXT,
                                   PRIMARY KEY((supplier_id), item_id));
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO items(supplier_id, item_id, supplier_name, item_name)
                VALUES (1, 1, 'Unknown', 'Wrought Anvil');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO items(supplier_id, item_id, supplier_name, item_name)
                VALUES (1, 2, 'Acme Corporation', 'Giant Rubber Band');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM devices;
 ```
-</div>
+
 ```
  supplier_id | item_id | supplier_name    | item_name
 -------------+---------+------------------+-------------------
@@ -152,7 +149,7 @@ cqlsh:example> SELECT * FROM devices;
 ### Use table property to define the order (ascending or descending) for clustering columns
 
 Timestmap column 'ts' will be stored in descending order (latest values first).
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE user_actions(user_id INT,
                                          ts TIMESTAMP,
@@ -160,27 +157,23 @@ cqlsh:example> CREATE TABLE user_actions(user_id INT,
                                          PRIMARY KEY((user_id), ts))
                                          WITH CLUSTERING ORDER BY (ts DESC);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO user_actions(user_id, ts, action) VALUES (1, '2000-12-2 12:30:15', 'log in');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO user_actions(user_id, ts, action) VALUES (1, '2000-12-2 12:30:25', 'change password');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO user_actions(user_id, ts, action) VALUES (1, '2000-12-2 12:30:35', 'log out');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM user_actions;
 ```
-</div>
+
 ```
  user_id | ts                              | action
 ---------+---------------------------------+-----------------
@@ -192,7 +185,7 @@ cqlsh:example> SELECT * FROM user_actions;
 ### Use table property to define the default expiration time for rows.
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE sensor_data(sensor_id INT,
                                         ts TIMESTAMP,
@@ -200,36 +193,36 @@ cqlsh:example> CREATE TABLE sensor_data(sensor_id INT,
                                         PRIMARY KEY((sensor_id), ts))
                                         WITH default_time_to_live = 5;
 ```
-</div>
+
 First insert at time T (row expires at T + 5).
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO sensor_data(sensor_id, ts, value) VALUES (1, '2017-10-1 11:22:31', 3.1);
 ```
-</div>
+
 Second insert 3 seconds later (row expires at T + 8).
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO sensor_data(sensor_id, ts, value) VALUES (2, '2017-10-1 11:22:34', 3.4);
 ```
-</div>
+
 First select 3 seconds later (at time T + 6).
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM sensor_data;
 ```
-</div>
+
 ```
  sensor_id | ts                              | value
 -----------+---------------------------------+-------
          2 | 2017-10-01 18:22:34.000000+0000 |   3.4
 ```
 Second select 3 seconds later (at time T + 9).
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM sensor_data;
 ```
-</div>
+
 ```
  sensor_id | ts | value
 -----------+----+-------

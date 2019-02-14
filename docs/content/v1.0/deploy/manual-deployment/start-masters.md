@@ -24,47 +24,42 @@ This section covers deployment for a single region/zone (or a single datacenter/
 
 - Run `yb-master` binary on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. For the full list of flags, see the [yb-master Reference](../../../admin/yb-master/).
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ ./bin/yb-master \
   --master_addresses 172.151.17.v1.0:7100,172.151.17.220:7100,172.151.17.v1.0:7100 \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
   >& /home/centos/disk1/yb-master.out &
 ```
-</div>
 
 
 - Alternatively, you can also create a `master.conf` file with the following flags and then run the `yb-master` with the `--flagfile` option as shown below.
 
-```{.sh .copy}
+```sh
 --master_addresses=172.151.17.v1.0:7100,172.151.17.220:7100,172.151.17.v1.0:7100
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2 
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-master --flagfile master.conf >& /home/centos/disk1/yb-master.out &
 ```
-</div>
 
 - Make sure all the 3 yb-masters are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ cat /home/centos/disk1/yb-data/master/logs/yb-master.INFO
 ```
-</div>
 
 You can see that the 3 yb-masters were able to discover each other and were also able to elect a Raft leader among themselves (the remaining two act as Raft followers).
 
 For the masters that become followers, you will see the following line in the log.
-```sh
+```
 I0912 16:11:07.419591  8030 sys_catalog.cc:332] T 00000000000000000000000000000000 P bc42e1c52ffe4419896a816af48226bc [sys.catalog]: This master's current role is: FOLLOWER
 ```
 
 For the master that becomes the leader, you will see the following line in the log.
-```sh
+```
 I0912 16:11:06.899287 27220 raft_consensus.cc:738] T 00000000000000000000000000000000 P 21171528d28446c8ac0b1a3f489e8e4b [term 2 LEADER]: Becoming Leader. State: Replica: 21171528d28446c8ac0b1a3f489e8e4b, State: 1, Role: LEADER
 ```
 

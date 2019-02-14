@@ -40,12 +40,12 @@ kairosdb.service.datastore=org.kairosdb.datastore.cassandra.CassandraModule
 ## 3. Start KairosDB
 
 ```sh
-./bin/kairosdb.sh run
+$ ./bin/kairosdb.sh run
 ```
 
 You should see the following lines if KairosDB starts up successfully.
 
-```sh
+```
 18:34:01.094 [main] INFO  [AbstractConnector.java:338] - Started SelectChannelConnector@0.0.0.0:8080
 18:34:01.098 [main] INFO  [Main.java:522] - Starting service class org.kairosdb.core.telnet.TelnetServer
 18:34:01.144 [main] INFO  [Main.java:378] - ------------------------------------------
@@ -57,7 +57,7 @@ You should see the following lines if KairosDB starts up successfully.
 
 - Run cqlsh to connect to the YugaByte DB's YCQL API. 
 
-```sh
+```
 # assuming you are using the macOS or Linux binary
 $ ./bin/cqlsh localhost
 Connected to local cluster at 127.0.0.1:9042.
@@ -70,12 +70,15 @@ cqlsh>
 
 ```sql
 cqlsh> describe keyspaces;
-
+```
+```
 kairosdb  system_schema  system_auth  system
-
+```
+```sql
 cqlsh> use kairosdb;
 cqlsh:kairosdb> describe tables;
-
+```
+```
 row_keys       data_points    string_index      
 row_key_index  service_index  row_key_time_index
 

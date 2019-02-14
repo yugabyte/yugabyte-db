@@ -24,7 +24,7 @@
 
 You can find a working example of using transactions with YugaByte in our [sample applications](../../../quick-start/run-sample-apps/). Here is how you can try out this sample application.
 
-```sh
+```
  - CassandraTimeseries :
    -------------------
     Sample timeseries/IoT app built on CQL. The app models 100 users, each of

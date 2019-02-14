@@ -25,21 +25,19 @@ Returns status string.
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ HMSET yugahash area1 "America" area2 "Africa"
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ HGET yugahash area1
 ```
-</div>
-```sh
+
+```
 "America"
 ```
 

@@ -22,77 +22,77 @@ Returns a status string if successful. Returns an error if the database is not a
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ SET k1 v1
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ GET k1
 ```
-</div>
-```sh
+
+```
 "v1"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ LISTDB
 ```
-</div>
-```sh
+
+```
 1) "0"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ CREATEDB "second"
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SELECT "second"
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SET k1 v2
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ GET k1
 ```
-</div>
-```sh
+
+```
 "v2"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SELECT 0
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ GET k1
+```
+
+```
 "v1"
 ```
-</div>
 
 ## See Also
 [`createdb`](../createdb/)

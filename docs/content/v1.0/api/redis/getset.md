@@ -21,20 +21,20 @@ Returns the old value of the given `key`.
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ SET yugakey 1
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ GETSET yugakey 2
 ```
-</div>
-```sh
+
+```
 1
 ```
 

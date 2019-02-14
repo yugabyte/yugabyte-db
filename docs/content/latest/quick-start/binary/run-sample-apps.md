@@ -1,43 +1,38 @@
 ## 1. Create cluster and initialize YEDIS API.
 
 Create a cluster.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-ctl create
 ``` 
-</div>
 
 Setup the redis_keyspace keyspace and the .redis table so that this cluster becomes ready for redis clients. Detailed output for the setup_redis command is available in the [yb-ctl Reference](../../admin/yb-ctl/#setup-redis).
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-ctl setup_redis
 ```
-</div>
 
 Clients can now connect to the YCQL API at `localhost:9042` and to the YEDIS API at  `localhost:6379`.
 
 ## 2. Install Yugastore
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ git clone https://github.com/YugaByte/yugastore.git
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ cd yugastore
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ npm install
 ```
-</div>
 
 Note that the `config.json` in the `yugastore` directory stores the connection parameters for YugaByte DB. If you are running YugaByte DB in a different configuration, then you will need to change these parameters.
 
-```sh
+```
 {
   "DB_HOST": "127.0.0.1",
   "APP_HOST": "localhost",
@@ -46,35 +41,30 @@ Note that the `config.json` in the `yugastore` directory stores the connection p
 ```
 
 Load the initial data of the Yugastore app into YugaByte DB.
-<div class='copy separator-dollar'>
 ```sh
-node models/yugabyte/db_init.js
+$ node models/yugabyte/db_init.js
 ```
-</div>
 
 Start the REST API server.
-<div class='copy separator-dollar'>
+
 ```sh
 $ npm start
 ```
-</div>
 
 Start the web server.
-<div class='copy separator-dollar'>
+
 ```sh
 $ cd ./ui
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ npm install
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ npm start
 ```
-</div>
+
 
 You can see the Yugastore app at http://localhost:3001.
 
@@ -82,12 +72,9 @@ You can see the Yugastore app at http://localhost:3001.
 
 ## 3. Run a load tester
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ node test/sample-user.js
 ```
-</div>
 
 ## 4. Observe effects of load on YugaByte DB Admin UI
 

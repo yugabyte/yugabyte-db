@@ -2,8 +2,8 @@
 
 Install the nodejs driver using the following command.
 
-```
-npm install redis
+```sh
+$ npm install redis
 ```
 
 ## Working Example
@@ -46,12 +46,12 @@ client.quit(function (err, res) {
 To run the application, type the following:
 
 ```sh
-node yb-redis-helloworld.js
+$ node yb-redis-helloworld.js
 ```
 
 You should see the following output.
 
-```sh
+```
 Reply: OK
 Reply: John,35,NodeJS
 Exiting from quit command.

@@ -33,41 +33,39 @@ ordering invariant on the returned keys.
 
 ## Examples
 
-Add two keys into the database.
-<div class='copy separator-dollar'>
 ```sh
 $ ZADD z_key 1.0 v1
 ```
-</div>
-```sh
+
+```
 (integer) 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SADD key val
 ```
-</div>
-```sh
+
+```
 (integer) 1 
 ```
 
 Get all keys in the db.
-<div class='copy separator-dollar'>
+
 ```sh
 $ KEYS *
 ```
-</div>
-```sh
+
+```
 1) "key"
 2) "z_key"
 ```
 
 Get keys matching a specific pattern.
-<div class='copy separator-dollar'>
+
 ```sh
 $ KEYS ?ey
 ```
-</div>
-```sh
+
+```
 1) "key"
 ```

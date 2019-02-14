@@ -24,21 +24,19 @@ Returns the value after addition.
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ SET yugakey 7
 ```
-</div>
-```sh
-OK
+
 ```
-<div class='copy separator-dollar'>
+"OK"
+```
+
 ```sh
 $ INCRBY yugakey 3
 ```
-</div>
-```sh
+
+```
 10
 ```
 

@@ -65,67 +65,67 @@ After [creating a local cluster](../create-local-cluster/), follow the instructi
 ## 2. Simple key-value types
 
 Insert a key and a value.
-<div class='copy separator-gt'>
+
 ```sql
 127.0.0.1:6379> set mykey somevalue
 ```
-</div>
-```sh
-OK
+
+```
+"OK"
 ```
 
 Query the value by the key.
-<div class='copy separator-gt'>
+
 ```sql
 127.0.0.1:6379> get mykey
 ```
-</div>
-```sh
+
+```
 "somevalue"
 ```
 
 Check if the key exists.
-<div class='copy separator-gt'>
+
 ```sql
 127.0.0.1:6379> exists mykey
 ```
-</div>
-```sh
+
+```
 (integer) 1
 ```
 
 
 If the value is a number, it can be incremented.
-<div class='copy separator-gt'>
+
 ```sql
 127.0.0.1:6379> set counter 100
 ```
-</div>
-```sh
-OK
+
 ```
-<div class='copy separator-gt'>
+"OK"
+```
+
 ```sql
 127.0.0.1:6379> incr counter
 ```
-</div>
-```sh
+
+```
 (integer) 101
 ```
-<div class='copy separator-gt'>
+
 ```sql
 127.0.0.1:6379> incr counter
 ```
-</div>
-```sh
+
+```
 (integer) 102
 ```
-<div class='copy separator-gt'>
+
 ```sql
 127.0.0.1:6379> get counter
 ```
-</div>
-```sh
+
+```
 "102"
 ```
 
@@ -133,52 +133,52 @@ OK
 ## 3. Hash data types
 
 You can create a Redis Hash data type as follows. This models the data for user id 1000 with the following attributes {username : john, birthyear : 1977, verified : 1}.
-<div class='copy separator-gt'>
+
 ```sql
 127.0.0.1:6379> hmset user:1000 username john birthyear 1977 verified 1
 ```
-</div>
-```sh
-OK
+
+```
+"OK"
 ```
 
 You can retrieve specific attributes for user id 1000 as follows.
-<div class='copy separator-gt'>
+
 ```sql
 127.0.0.1:6379> hget user:1000 username
 ```
-</div>
-```sh
+
+```
 "john"
 ```
-<div class='copy separator-gt'>
+
 ```sql
 127.0.0.1:6379> hget user:1000 birthyear
 ```
-</div>
-```sh
+
+```
 "1977"
 ```
 
 You can fetch multiple attributes with a single command as follows.
-<div class='copy separator-gt'>
+
 ```sql
 127.0.0.1:6379> hmget user:1000 username birthyear no-such-field
 ```
-</div>
-```sh
+
+```
 1) "john"
 2) "1977"
 3) (nil)
 ```
 
 You can fetch all attributes by using the `hgetall` command.
-<div class='copy separator-gt'>
+
 ```sql
 127.0.0.1:6379> hgetall user:1000
 ```
-</div>
-```sh
+
+```
 1) "birthyear"
 2) "1977"
 3) "username"

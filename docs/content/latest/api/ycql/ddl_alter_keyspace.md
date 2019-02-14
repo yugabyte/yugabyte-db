@@ -50,36 +50,33 @@ Where
 - CQL keyspace properties are supported in the syntax but have no effect internally (where YugaByte defaults are used instead).
 
 ## Examples
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> ALTER KEYSPACE example;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> ALTER KEYSPACE example WITH DURABLE_WRITES = true;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> ALTER KEYSPACE example WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': '3'} AND DURABLE_WRITES = true;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> ALTER SCHEMA keyspace_example;
 ```
-</div>
+
 ```
 SQL error: Keyspace Not Found.
 ALTER SCHEMA keyspace_example;
              ^^^^^^
 ```
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> ALTER KEYSPACE example;
 ```
-</div>
+
 ```
 SQL error: Unauthorized. User test_role has no ALTER permission on <keyspace example> or any of its parents.
 ALTER KEYSPACE example;

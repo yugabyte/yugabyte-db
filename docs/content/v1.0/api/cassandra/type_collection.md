@@ -63,20 +63,19 @@ In particular, some list operations (insert at an index and remove elements) req
 - Collection types are used like simple types (except they are not allowed in primary key).
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE users(username TEXT PRIMARY KEY, 
                                   emails SET<TEXT>,
                                   phones MAP<TEXT,TEXT>,
                                   top_cities LIST<TEXT>);
 ```
-</div>
 
 ### `INSERT` Collection Data.
 - Collection values are inserted by setting all their elements at once.
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO users(username, emails, phones, top_cities) 
                VALUES ('foo', 
@@ -84,18 +83,18 @@ cqlsh:example> INSERT INTO users(username, emails, phones, top_cities)
                        {'home' : '999-9999', 'mobile' : '000-0000'}, 
                        ['New York', 'Paris']);
 ```
-</div>
+
 Empty collections are the same as nulls.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO users(username, emails, phones, top_cities) VALUES ('bar', { }, { }, [ ]);
 ```
-</div>
-<div class='copy separator-gt'>
+
+
 ```sql
 cqlsh:example> SELECT * FROM users;
 ```
-</div>
+
 ```
  username | emails                             | phones                                     | top_cities
 ----------+------------------------------------+--------------------------------------------+-----------------------
@@ -108,26 +107,23 @@ cqlsh:example> SELECT * FROM users;
 - Collection values can be updated by setting all their elements at once.
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE users SET emails = {'bar@example.com'} WHERE username = 'bar';
 ```
-</div>
-<div class='copy separator-gt'>
+
+
 ```sql
 cqlsh:example> UPDATE users SET phones = {'home' : '123-45678'} WHERE username = 'bar';
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE users SET top_cities = ['London', 'Tokyo'] WHERE username = 'bar';
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM users;
 ```
-</div>
 ```
  username | emails                             | phones                                     | top_cities
 ----------+------------------------------------+--------------------------------------------+-----------------------
@@ -139,26 +135,23 @@ cqlsh:example> SELECT * FROM users;
 - Collection elements can be added with `+` or removed with `-`.
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE users SET emails = emails + {'foo@example.com'} WHERE username = 'foo';
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE users SET emails = emails - {'a@example.com', 'c.example.com'} WHERE username = 'foo';
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE users SET phones = phones + {'office' : '333-3333'} WHERE username = 'foo';
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM users;
 ```
-</div>
+
 ```
  username | emails                               | phones                                                           | top_cities
 ----------+--------------------------------------+------------------------------------------------------------------+-----------------------
@@ -169,16 +162,15 @@ cqlsh:example> SELECT * FROM users;
 - To remove map elements only the relevant keys need to be given (as a set).
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE users SET phones = phones - {'home'} WHERE username = 'foo';
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM users;
 ```
-</div>
+
 ```
  username | emails                               | phones                                       | top_cities
 ----------+--------------------------------------+----------------------------------------------+-----------------------
@@ -189,26 +181,23 @@ cqlsh:example> SELECT * FROM users;
 - List elements can be either prepended or appended. 
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE users SET top_cities = top_cities + ['Delhi'] WHERE username = 'foo';
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE users SET top_cities = ['Sunnyvale'] + top_cities WHERE username = 'foo';
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE users SET top_cities = top_cities - ['Paris', 'New York'] WHERE username = 'foo';
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM users;
 ```
-</div>
+
 ```
  username | emails              | phones                                       | top_cities
 ----------+---------------------+----------------------------------------------+------------------------
@@ -221,21 +210,19 @@ cqlsh:example> SELECT * FROM users;
 - Maps allow referencing elements by key.
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE users SET phones['mobile'] = '111-1111' WHERE username = 'foo';
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE users SET phones['mobile'] = '345-6789' WHERE username = 'bar' IF phones['mobile'] = null;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM users;
 ```
-</div>
+
 ```
  username | emails                               | phones                                       | top_cities
 ----------+--------------------------------------+----------------------------------------------+-----------------------
@@ -246,21 +233,19 @@ cqlsh:example> SELECT * FROM users;
 - Lists allow referencing elements by index (numbering starts from 0).
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE users SET top_cities[0] = 'San Francisco' WHERE username = 'bar';
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE users SET top_cities[1] = 'Mumbai' WHERE username = 'bar' IF top_cities[1] = 'Tokyo';
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM users;
 ```
-</div>
+
 ```
  username | emails                               | phones                                       | top_cities
 ----------+--------------------------------------+----------------------------------------------+-----------------------------

@@ -29,56 +29,57 @@ Returns a list of members found in the range specified by `start`, `stop`, unles
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZADD z_key 1.0 v1 2.0 v2 3.0 v3
 ```
-</div>
-```sh
+
+```
 (integer) 3
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZRANGE z_key 0 2
 ```
-</div>
-```sh
+
+```
 1) "v1"
 2) "v2"
 3) "v3"
 ```
-<div class='copy separator-dollar'>
+
+With negative indices.
 ```sh
-# With negative indices.
 $ ZRANGE z_key -2 -1
 ```
-</div>
-```sh
+
+```
 1) "v2"
 2) "v3" 
 ```
-<div class='copy separator-dollar'>
+
+Both positive and negative indices.
 ```sh
-# Both positive and negative indices.
 $ ZRANGE z_key 1 -1 WITHSCORES
 ```
-</div>
-```sh
+
+```
 1) "v2"
 2) "2.0"
 3) "v3"
 4) "3.0"
 ```
-<div class='copy separator-dollar'>
+
+Empty list returned if key doesn't exist.
 ```sh
-# Empty list returned if key doesn't exist.
 $ ZRANGE z_key_no_exist 0 2  WITHSCORES
 ```
-</div>
-```sh
+
+```
 (empty list or set)
 ```
 
 ## See Also
+
 [`zadd`](../zadd/), [`zcard`](../zcard/), [`zrangebyscore`](../zrangebyscore/), [`zrem`](../zrem),
 [`zrevrange`](../zrevrange)

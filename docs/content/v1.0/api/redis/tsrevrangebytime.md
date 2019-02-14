@@ -28,20 +28,20 @@ Returns a list of timestamp, value pairs found in the range specified by `low_ts
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 TSADD ts_key 1 one 2 two 3 three 4 four 5 five 6 six
 ```
-</div>
-```sh
-OK
+
 ```
-<div class='copy separator-dollar'>
+"OK"
+```
+
 ```sh
 TSREVRANGEBYTIME ts_key 2 4
 ```
-</div>
-```sh
+
+```
 1) "4"
 2) "four"
 3) "3"
@@ -50,33 +50,33 @@ TSREVRANGEBYTIME ts_key 2 4
 6) "two"
 ```
 2 is exclusive
-<div class='copy separator-dollar'>
+
 ```sh
 TSREVRANGEBYTIME ts_key (2 4
 ```
-</div>
-```sh
+
+```
 1) "4"
 2) "four"
 3) "3"
 4) "three"
 ```
 2 and 4 are exclusive
-<div class='copy separator-dollar'>
+
 ```sh
 TSREVRANGEBYTIME ts_key (2 (4
 ```
-</div>
-```sh
+
+```
 1) "3"
 2) "three"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 TSREVRANGEBYTIME ts_key -inf 3
 ```
-</div>
-```sh
+
+```
 1) "3"
 2) "three"
 3) "2"
@@ -84,12 +84,12 @@ TSREVRANGEBYTIME ts_key -inf 3
 5) "1"
 6) "one"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 TSREVRANGEBYTIME ts_key 2 +inf
 ```
-</div>
-```sh
+
+```
  1) "6"
  2) "six"
  3) "5"
@@ -101,23 +101,23 @@ TSREVRANGEBYTIME ts_key 2 +inf
  9) "2"
 10) "two"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 TSREVRANGEBYTIME ts_key -inf 3 LIMIT 2
 ```
-</div>
-```sh
+
+```
 1) "3"
 2) "three"
 3) "2"
 4) "two"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 TSREVRANGEBYTIME ts_key -inf 3 LIMIT 10
 ```
-</div>
-```sh
+
+```
 1) "3"
 2) "three"
 3) "2"
@@ -127,5 +127,6 @@ TSREVRANGEBYTIME ts_key -inf 3 LIMIT 10
 ```
 
 ## See Also
+
 [`tsrangebytime`](../tsrangebytime/), [`tsadd`](../tsadd/), [`tsget`](../tsget/),
 [`tsrem`](../tsrem/), [`tslastn`](../tslastn/), [`tscard`](../tscard/)

@@ -22,44 +22,44 @@ Returns number of keys that were removed.
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ SET yuga1 "America"
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SET yuga2 "Africa"
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ DEL yuga1
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ DEL not_a_key
 ```
-</div>
-```sh
+
+```
 0
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ DEL yuga1 yuga2
 ```
-</div>
-```sh
+
+```
 "ERR del: Wrong number of arguments"
 ```
 

@@ -8,17 +8,16 @@ This tutorial assumes that you have:
 ## Install Go Cassandra Driver
 
 To install the driver locally run:
-<div class='copy separator-dollar'>
+
 ```sh
 $ go get github.com/gocql/gocql
 ```
-</div>
 
 ## Writing a HelloWorld CQL app
 
 Create a file `ybcql_hello_world.go` and copy the contents below.
 
-```{.go .copy}
+```go
 package main;
 
 import (
@@ -86,11 +85,10 @@ func main() {
 ## Running the app
 
 To execute the file, run the following command:
-<div class='copy separator-dollar'>
+
 ```sh
 $ go run ybcql_hello_world.go
 ```
-</div>
 
 You should see the following as the output.
 

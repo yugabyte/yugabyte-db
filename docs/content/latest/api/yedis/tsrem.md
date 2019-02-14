@@ -28,36 +28,36 @@ Returns the appropriate status string.
 ## Examples
 
 The timestamp can be arbitrary integers used just for sorting values in a certain order.
-<div class='copy separator-dollar'>
+
 ```sh
 TSADD ts_key 1 one 2 two 3 three 4 four 5 five 6 six
 ```
-</div>
-```sh
-OK
+
 ```
-<div class='copy separator-dollar'>
+"OK"
+```
+
 ```sh
 TSGET ts_key 2
 ```
-</div>
-```sh
+
+```
 "two"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 TSGET ts_key 3
 ```
-</div>
-```sh
+
+```
 "three"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 TSRANGEBYTIME ts_key 1 4
 ```
-</div>
-```sh
+
+```
 1) "1"
 2) "one"
 3) "2"
@@ -67,39 +67,39 @@ TSRANGEBYTIME ts_key 1 4
 7) "4"
 8) "four"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 TSREM ts_key 2 3
 ```
-</div>
-```sh
-OK
+
 ```
-<div class='copy separator-dollar'>
+"OK"
+```
+
 ```sh
 TSRANGEBYTIME ts_key 1 4
 ```
-</div>
-```sh
+
+```
 1) "1"
 2) "one"
 3) "4"
 4) "four"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 TSGET ts_key 2
 ```
-</div>
-```sh
+
+```
 (nil)
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 TSGET ts_key 3
 ```
-</div>
-```sh
+
+```
 (nil)
 ```
 

@@ -42,16 +42,14 @@ Where
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> DROP ROLE role1;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> DROP ROLE IF EXISTS role2;
 ```
-</div>
 
 ## See Also
 

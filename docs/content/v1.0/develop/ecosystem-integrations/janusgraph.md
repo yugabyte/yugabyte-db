@@ -17,11 +17,17 @@ Start a cluster on your [local machine](../../../quick-start/install/). Check th
 
 ```sh
 $ cqlsh
+```
+```
 Connected to local cluster at 127.0.0.1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
+cqlsh>
+```
+```sql
 cqlsh> DESCRIBE KEYSPACES;
-
+```
+```
 system_schema  system_auth  system
 
 cqlsh>
@@ -33,9 +39,9 @@ cqlsh>
 Download from the [JanusGraph downloads page](https://github.com/JanusGraph/janusgraph/releases). This tutorial uses the `0.2.0` version of JanusGraph.
 
 ```sh
-wget https://github.com/JanusGraph/janusgraph/releases/download/v0.2.0/janusgraph-0.2.0-hadoop2.zip
-unzip janusgraph-0.2.0-hadoop2.zip
-cd janusgraph-0.2.0-hadoop2
+$ wget https://github.com/JanusGraph/janusgraph/releases/download/v0.2.0/janusgraph-0.2.0-hadoop2.zip
+$ unzip janusgraph-0.2.0-hadoop2.zip
+$ cd janusgraph-0.2.0-hadoop2
 ```
 
 
@@ -45,6 +51,8 @@ cd janusgraph-0.2.0-hadoop2
 
 ```sh
 $ ./bin/gremlin.sh
+```
+```
          \,,,/
          (o o)
 -----oOOo-(3)-oOOo-----
@@ -61,6 +69,8 @@ gremlin>
 
 ```sh
 gremlin> graph = JanusGraphFactory.open('conf/janusgraph-cql.properties')
+```
+```
 ==>standardjanusgraph[cql:[127.0.0.1]]
 ```
 
@@ -74,8 +84,14 @@ We are going to load the sample data that JanusGraph ships with - the Graph of t
 
 ```sh
 gremlin> GraphOfTheGodsFactory.loadWithoutMixedIndex(graph,true)
+```
+```
 ==>null
+```
+```
 gremlin> g = graph.traversal()
+```
+```
 ==>graphtraversalsource[standardjanusgraph[cql:[127.0.0.1]], standard]
 ```
 

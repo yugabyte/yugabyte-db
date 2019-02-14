@@ -31,44 +31,40 @@ This section covers deployment for a single region/zone (or a single datacenter/
 
 - Run `yb-tserver` as below. Note that all the master addresses have to be provided as a flag. For the full list of flags, see the [yb-tserver Reference](../../../admin/yb-tserver/).
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ ./bin/yb-tserver \
   --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
   >& /home/centos/disk1/yb-tserver.out &
 ```
-</div>
 
 ## Run yb-tserver with conf file
 
 - Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the `--flagfile` option as shown below.
 
-```{.sh .copy}
+```sh
 --tserver_master_addrs=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-tserver --flagfile tserver.conf >& /home/centos/disk1/yb-tserver.out &
 ```
-</div>
+
 
 ## Verify health
 
 - Make sure all the 4 yb-tservers are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ cat /home/centos/disk1/yb-data/tserver/logs/yb-tserver.INFO
 ```
-</div>
 
 In all the 4 yb-tserver logs, you should see log messages similar to the following.
 
-```sh
+```
 I0912 16:27:18.296516  8168 heartbeater.cc:305] Connected to a leader master server at 172.151.17.140:7100
 I0912 16:27:18.296794  8168 heartbeater.cc:368] Registering TS with master...
 I0912 16:27:18.297732  8168 heartbeater.cc:374] Sending a full tablet report to master...
@@ -83,7 +79,7 @@ I0912 16:27:18.311828  8142 tablet_server_main.cc:128] CQL server successfully s
 
 In the current yb-master leader log, you should see log messages similar to the following.
 
-```sh
+```
 I0912 22:26:32.832296  3162 ts_manager.cc:97] Registered new tablet server { permanent_uuid: "766ec935738f4ae89e5ff3ae26c66651" instance_seqno: 1505255192814357 } with Master
 I0912 22:26:39.111896  3162 ts_manager.cc:97] Registered new tablet server { permanent_uuid: "9de074ac78a0440c8fb6899e0219466f" instance_seqno: 1505255199069498 } with Master
 I0912 22:26:41.055996  3162 ts_manager.cc:97] Registered new tablet server { permanent_uuid: "60042249ad9e45b5a5d90f10fc2320dc" instance_seqno: 1505255201010923 } with Master

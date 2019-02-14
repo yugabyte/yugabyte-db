@@ -20,20 +20,20 @@ Returns the length of the specified string.
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ HMSET yugahash L1 America L2 Europe
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ HSTRLEN yugahash L1
 ```
-</div>
-```sh
+
+```
 7
 ```
 

@@ -59,36 +59,30 @@ Upgrades to Replicated are as simple as rerunning the Replicated install command
 ## Uninstall
 
 Stop and remove the YugaWare application on Replicated first.
-<div class='copy separator-dollar'>
+
 ```sh
-# stop the yugaware application on replicated
 $ /usr/local/bin/replicated apps
 ```
-</div>
-<div class='copy separator-dollar'>
+
+Replace `<appid>` with the application id of yugaware from the command above
 ```sh
-# replace <appid> with the application id of yugaware from the command above
 $ /usr/local/bin/replicated app <appid> stop
 ```
-</div>
-<div class='copy separator-dollar'>
-```sh
-# remove yugaware app
+
+Remove yugaware app
+```sh 
 $ /usr/local/bin/replicated app <appid> rm
 ```
-</div>
-<div class='copy separator-dollar'>
+
+Remove all yugaware containers
 ```sh
-# remove all yugaware containers
 $ docker images | grep "yuga" | awk '{print $3}' | xargs docker rmi -f
 ```
-</div>
-<div class='copy separator-dollar'>
+
+Delete the mapped directory
 ```sh
-# delete the mapped directory
 $ rm -rf /opt/yugabyte
 ```
-</div>
 
 And then uninstall Replicated itself by following instructions documented [here](https://www.replicated.com/docs/distributing-an-application/installing-via-script/#removing-replicated).
 
@@ -98,7 +92,7 @@ And then uninstall Replicated itself by following instructions documented [here]
 
 If your host has SELinux turned on, then docker-engine may not be able to connect with the host. Run the following commands to open the ports using firewall exceptions.
 
-```{.sh .copy}
+```sh
 sudo firewall-cmd --zone=trusted --add-interface=docker0
 sudo firewall-cmd --zone=public --add-port=80/tcp
 sudo firewall-cmd --zone=public --add-port=443/tcp
@@ -114,29 +108,28 @@ sudo firewall-cmd --zone=public --add-port=9874-9879/tcp
 
 ### Unable to perform passwordless ssh into the data nodes
 
-If your YugaWare host is not able to do passwordless ssh to the data nodes, follow the steps below.
-<div class='copy separator-dollar'>
+If your YugaWare host is not able to do passwordless ssh to the data nodes, follow the steps below. Generate key pair.
+
 ```sh
-# Generate key pair
 $ ssh-keygen -t rsa
 ```
-</div>
-<div class='copy separator-dollar'>
+
+Setup passwordless ssh to the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152
 ```sh
-# Setup passwordless ssh to the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152
 $ for IP in 10.1.13.150 10.1.13.151 10.1.13.152; do
   ssh $IP mkdir -p .ssh;
   cat ~/.ssh/id_rsa.pub | ssh $IP 'cat >> .ssh/authorized_keys';
 done
 ```
-</div>
 
 ### Check host resources on the data nodes
 heck resources on the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152
-```{.sh .copy}
+
+```sh
 for IP in 10.1.13.150 10.1.13.151 10.1.13.152; do echo $IP; ssh $IP 'echo -n "CPUs: ";cat /proc/cpuinfo | grep processor | wc -l; echo -n "Mem: ";free -h | grep Mem | tr -s " " | cut -d" " -f 2; echo -n "Disk: "; df -h / | grep -v Filesystem'; done
 ```
-```sh
+
+```
 10.1.12.103
 CPUs: 72
 Mem: 251G
@@ -154,14 +147,16 @@ Disk: /dev/sda2       208G  5.1G  203G   3% /
 ### Create mount paths on the data nodes
 
 Create mount paths on the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152.
-```{.sh .copy}
+
+```sh
 for IP in 10.1.12.103 10.1.12.104 10.1.12.105; do ssh $IP mkdir -p /mnt/data0; done
 ```
 
 ### SELinux turned on for data nodes
 
 Add firewall exceptions on the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152.
-```{.sh .copy}
+
+```sh
 for IP in 10.1.12.103 10.1.12.104 10.1.12.105
 do
   ssh $IP firewall-cmd --zone=public --add-port=7000/tcp;

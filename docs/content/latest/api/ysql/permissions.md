@@ -50,19 +50,19 @@ revoke ::= REVOKE privileges ON privilege_target FROM name [, ...] [ CASCADE | R
 
 - Create a sample role.
 
-```{.sql .copy .separator-hash}
+```sql
 postgres=# CREATE USER John;
 ```
 
 - Grant John all permissions on the `postgres` database.
 
-```{.sql .copy .separator-hash}
+```sql
 postgres=# GRANT ALL ON DATABASE postgres TO John;
 ```
 
 - Remove John's permissions from the `postgres` database.
 
-```{.sql .copy .separator-hash}
+```sql
 postgres=# REVOKE ALL ON DATABASE postgres FROM John;
 ```
 

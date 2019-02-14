@@ -36,17 +36,13 @@ Where
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> CREATE TYPE person(first_name TEXT, last_name TEXT, email TEXT);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> DROP TYPE person;
 ```
-</div>
 
 ## See Also
 [`CREATE TABLE`](../ddl_create_table)

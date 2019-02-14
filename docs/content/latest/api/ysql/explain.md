@@ -49,19 +49,19 @@ Where statement is the target statement (see more [here](../dml)).
 
 - Create a sample table.
 
-```{.sql .copy .separator-hash}
+```sql
 postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
 - Insert some rows.
 
-```{.sql .copy .separator-hash}
+```sql
 postgres=# INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
 - Check the execution plan for simple select (condition will get pushed down).
 
-```{.sql .copy .separator-hash}
+```sql
 postgres=# EXPLAIN SELECT * FROM sample WHERE k1 = 1;
 ```
 ```
@@ -73,7 +73,7 @@ postgres=# EXPLAIN SELECT * FROM sample WHERE k1 = 1;
 
 - Check the execution plan for select with complex condition (second condition requires filtering).
 
-```{.sql .copy .separator-hash}
+```sql
 postgres=# EXPLAIN SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 ```
 ```
@@ -86,7 +86,7 @@ postgres=# EXPLAIN SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 
 - Check execution with `ANALYZE` option.
 
-```{.sql .copy .separator-hash}
+```sql
 postgres=# EXPLAIN ANALYZE SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 ```
 ```

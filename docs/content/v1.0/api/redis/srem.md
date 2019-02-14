@@ -21,36 +21,36 @@ Returns the total number of existed members that were removed from the set.
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ SADD yuga_world "America"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SADD yuga_world "Moon"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SREM yuga_world "Moon"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SREM yuga_world "Moon"
 ```
-</div>
-```sh
+
+```
 0
 ```
 

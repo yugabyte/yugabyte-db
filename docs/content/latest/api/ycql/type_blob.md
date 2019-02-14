@@ -38,33 +38,27 @@ Where
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> CREATE TABLE messages(id INT PRIMARY KEY, content BLOB);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO messages (id, content) VALUES (1, 0xab00ff);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO messages (id, content) VALUES (2, 0x);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE messages SET content = 0x0f0f WHERE id = 2;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM messages;
 ```
-</div>
-```sh
+
+```
  id | content
 ----+----------
   2 |   0x0f0f

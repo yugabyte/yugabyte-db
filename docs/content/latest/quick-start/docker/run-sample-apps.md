@@ -1,21 +1,18 @@
 ## 1. Create a cluster
 
 Create a cluster. The YEDIS API is initialized along with cluster creation so nothing additional needs to be done.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./yb-docker-ctl create
 ```
-</div>
+
 Clients can now connect to the YCQL API at `localhost:9042` and to the YEDIS API at  `localhost:6379`.
 
 ## 2. Install Yugastore
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
-docker run -p 3001:3001 -d --network yb-net --name yugastore yugabytedb/yugastore
+$ docker run -p 3001:3001 -d --network yb-net --name yugastore yugabytedb/yugastore
 ```
-</div>
 
 You can see the Yugastore app at http://localhost:3001.
 
@@ -23,12 +20,9 @@ You can see the Yugastore app at http://localhost:3001.
 
 ## 3. Run a load tester
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ docker exec -it yugastore node /usr/local/yugastore/test/sample-user.js
 ```
-</div>
 
 ## 4. Observe effects of load on YugaByte DB Admin UI
 

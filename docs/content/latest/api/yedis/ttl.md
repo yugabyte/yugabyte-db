@@ -23,28 +23,28 @@ Returns TTL in seconds, encoded as integer response.
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ SET yugakey "YugaByte"
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ EXPIRE yugakey 10
 ```
-</div>
-```sh
+
+```
 (integer) 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ TTL yugakey
 ```
-</div>
-```sh
+
+```
 (integer) 10
 ```
 

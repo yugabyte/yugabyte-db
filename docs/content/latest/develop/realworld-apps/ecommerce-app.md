@@ -75,7 +75,7 @@ The sections below describe the architecture / data model for the various featur
 
 The inventory of products is modeled as a table using the Cassandra-compatible YCQL API. Each product has a unique `id` which is an integer in this example. The product `id` is the [primary key partition column](../../learn/data-modeling/#partition-key-columns-required). This ensures that all the data for one product (identified by its product `id`) is co-located in the database.
 
-```
+```sql
 cqlsh> DESCRIBE TABLE yugastore.products;
 
 CREATE TABLE yugastore.products (
@@ -94,14 +94,14 @@ CREATE TABLE yugastore.products (
 
 The dynamic attributes for rendering sorted views (such as *highly rated* or *most reviewed*) are stored in Redis sorted sets.
 
-```
+```sql
 127.0.0.1:6379> ZADD allproducts:num_stars <num-stars> <product-id>
 ```
 
 
 The sample list of products are in the [`models/sample_data.json`](https://github.com/YugaByte/yugastore/blob/master/models/sample_data.json) file in the codebase. The file has entries such as the following:
 
-```
+```json
 {
   "products": [
     {
@@ -125,7 +125,7 @@ The sample list of products are in the [`models/sample_data.json`](https://githu
 
 The [db_init.js](https://github.com/YugaByte/yugastore/blob/master/models/yugabyte/db_init.js) node script loads the static attributes of the sample data using the following Cassandra batch insert API into YugaByte DB.
 
-```
+```js
 insert_batch.push({
   query: insert,
   params: params
@@ -149,7 +149,7 @@ Here we will examine the various display components of the product catalog in de
 #### 1. Homepage
 
 The homepage is rendered by the `App` react component. The React route is the following:
-```
+```js
 <Route exact path="/" component={App} />
 ```
 
@@ -159,7 +159,7 @@ It uses the following Rest API to query Express/NodeJS for all the products:
 ```
 
 Internally, the following query is executed against the database and the results are rendered.
-```
+```sql
 SELECT * FROM yugastore.products;
 ```
 
@@ -173,7 +173,7 @@ List products that have a given value for the category attribute. This is used t
 Let us take the example of the *business* category page.
 
 This is rendered by the `Products` react component. Here is the react route:
-```
+```js
 <Route path="/business"
   render={(props) => (
     <Products
@@ -188,7 +188,7 @@ The component internally uses the following Rest API:
 ```
 
 The following query is executed against the database:
-```
+```sql
 SELECT * FROM yugastore.products WHERE category='business';
 ```
 
@@ -203,7 +203,7 @@ List products in the descending (or ascending) order of certain frequently updat
 Let us take the example of books with the *highest rating* as an example.
 
 These product lists are also rendered by the `Products` react component.
-```
+```js
 <Route path="/sort/num_stars"
   render={(props) => (
     <Products
@@ -219,12 +219,12 @@ The component internally uses the following Rest API:
 
 
 The top 10 product ids sorted in a descending order by their rating is fetched from Redis with the following:
-```
+```js
 ybRedis.zrevrange("allproducts:num_stars", 0, 10, 'withscores', ...)
 ```
 
 Then, a select is issued against each of those product ids with the following query `IN` query:
-```
+```sql
 SELECT * FROM yugastore.products WHERE id IN ?;
 ```
 
@@ -236,7 +236,7 @@ This view shows all the details of a product. An example product details page fo
 ![Product details](/images/develop/realworld-apps/ecommerce-app/yugastore-product-details.png)
 
 The React route for this view is `ShowProduct`:
-```
+```js
 <Route exact path="/item/:id" component={ShowProduct} />
 ```
 
@@ -246,7 +246,7 @@ The component internally uses the following Rest API:
 ```
 
 The following query is executed against the database to fetch all the product details:
-```
+```sql
 SELECT * FROM yugastore.products WHERE id=5;
 ```
 

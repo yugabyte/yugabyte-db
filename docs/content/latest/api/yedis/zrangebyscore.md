@@ -32,64 +32,65 @@ elements, where `offset` is 0 indexed.</li>
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZADD z_key 1.0 v1 2.0 v2
 ```
-</div>
-```sh
+
+```
 (integer) 2
 ```
 Retrieve all members.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZRANGEBYSCORE z_key -inf +inf
 ```
-</div>
-```sh
+
+```
 1) "v1"
 2) "v2"
 ```
 Retrieve all member score pairs.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZRANGEBYSCORE z_key -inf +inf WITHSCORES
 ```
-</div>
-```sh
+
+```
 1) "v1"
 2) "1.0"
 3) "v2"
 4) "2.0"
 ```
 Bounds are inclusive.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZRANGEBYSCORE z_key 1.0 2.0
 ```
-</div>
-```sh
+
+```
 1) "v1"
 2) "v2"
 ```
 Bounds are exclusive.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZRANGEBYSCORE z_key (1.0 (2.0
 ```
-</div>
-```sh
+
+```
 (empty list or set)
 ```
 Enforce a limit.
-<div class='copy separator-dollar'>
+
 ```sh
 ZRANGEBYSCORE z_key -inf +inf LIMIT 1 1
 ```
-</div>
-```sh
+
+```
 1) "v2"
 ```
 
 ## See Also
+
 [`zadd`](../zadd/), [`zcard`](../zcard/), [`zrange`](../zrange/), [`zrem`](../zrem/), [`zrevrange`](../zrevrange)

@@ -33,20 +33,23 @@ Unlike Apache Cassandra, YugaByte COUNTER type is almost the same as INTEGER typ
 
 In Apache Cassandra, the highest timestamp provided always wins. Example:
 
+INSERT with timestamp far in the future.
 ```sql
-/* INSERT with timestamp far in the future. */
 > INSERT INTO table (c1, c2, c3) VALUES (1, 2, 3) USING TIMESTAMP 1607681258727447;
 > SELECT * FROM table;
-
+```
+```
  c1 | c2 | c3
 ----+----+----
   1 |  2 |  3
-
-/* INSERT at the current timestamp does not overwrite previous value which was written at a higher
-timestamp. */
+```
+INSERT at the current timestamp does not overwrite previous value which was written at a higher
+timestamp.
+```sql
 > INSERT INTO table (c1, c2, c3) VALUES (1, 2, 4); 
 > SELECT * FROM table;
-
+```
+```
  c1 | c2 | c3
 ----+----+----
   1 |  2 |  3
@@ -59,23 +62,30 @@ TIMESTAMP` clause, then appropriate timestamp ordering is performed. Example:
 ```sql
 > INSERT INTO table (c1, c2, c3) VALUES (1, 2, 3) USING TIMESTAMP 1000;
 > SELECT * FROM table;
-
+```
+```sql
  c1 | c2 | c3
 ----+----+----
   1 |  2 |  3
+```
 
-/* INSERT with timestamp far in the future, this would overwrite old value. */
+INSERT with timestamp far in the future, this would overwrite old value.
+```sql
 > INSERT INTO table (c1, c2, c3) VALUES (1, 2, 4) USING TIMESTAMP 1607681258727447;
 > SELECT * FROM table;
-
+```
+```
  c1 | c2 | c3
 ----+----+----
   1 |  2 |  4
+```
 
-/* INSERT without 'USING TIMESTAMP' will always overwrite. */
+INSERT without 'USING TIMESTAMP' will always overwrite.
+```sql
 > INSERT INTO table (c1, c2, c3) VALUES (1, 2, 5); 
 > SELECT * FROM table;
-
+```
+```
  c1 | c2 | c3
 ----+----+----
   1 |  2 |  5

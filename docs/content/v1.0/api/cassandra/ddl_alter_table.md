@@ -48,22 +48,20 @@ Where
 
 ### Add a column to a table
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> CREATE TABLE employees (id INT, name TEXT, salary FLOAT, PRIMARY KEY((id), name));
 ```
-</div>
-<div class='copy separator-gt'>
+
+
 ```sql
 cqlsh:example> ALTER TABLE employees ADD title TEXT;
 ```
-</div>
-<div class='copy separator-gt'>
+
+
 ```sql
 cqlsh:example> DESCRIBE TABLE employees;
 ```
-</div>
+
 Following result would be shown.
 ```
 CREATE TABLE example.employees (
@@ -77,17 +75,15 @@ CREATE TABLE example.employees (
 
 ### Remove a column from a table
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> ALTER TABLE employees DROP salary;
 ```
-</div>
-<div class='copy separator-gt'>
+
+
 ```sql
 cqlsh:example> DESCRIBE TABLE employees;
 ```
-</div>
+
 Following result would be shown.
 ```
 CREATE TABLE example.employees (
@@ -100,17 +96,15 @@ CREATE TABLE example.employees (
 
 ### Rename a column in a table
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> ALTER TABLE employees RENAME title TO job_title;
 ```
-</div>
-<div class='copy separator-gt'>
+
+
 ```sql
 cqlsh:example> DESCRIBE TABLE employees;
 ```
-</div>
+
 Following result would be shown.
 ```
 CREATE TABLE example.employees (
@@ -123,17 +117,14 @@ CREATE TABLE example.employees (
 
 ### Update a table property
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> ALTER TABLE employees WITH default_time_to_live = 5;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> DESCRIBE TABLE employees;
 ```
-</div>
+
 Following result would be shown.
 ```
 CREATE TABLE example.employees (
@@ -144,7 +135,6 @@ CREATE TABLE example.employees (
 ) WITH CLUSTERING ORDER BY (name ASC)
     AND default_time_to_live = 5;
 ```
-
 
 ## See Also
 

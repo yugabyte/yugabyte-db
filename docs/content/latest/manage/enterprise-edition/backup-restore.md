@@ -30,11 +30,10 @@ In this example, we create a local directory on the tserver to backup to. Select
 ![Connect Modal](/images/ee/br-connect-modal.png)       
 
 Once you are sshed in, create a directory `/backup` and change the owner to yugabyte.
-<div class='copy separator-dollar'>
+
 ```sh
-sudo mkdir /backup; sudo chown yugabyte /backup
+$ sudo mkdir /backup; sudo chown yugabyte /backup
 ```
-</div>
 
 Note that when there are more than 1 nodes, an nfs mounted on each server is recommended, and
 creating a local backup folder on each server will not work.

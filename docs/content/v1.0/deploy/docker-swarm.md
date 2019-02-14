@@ -44,8 +44,8 @@ Following bash script is a simpler form of Docker's own swarm beginner tutorial 
 In more fault-tolerant setups, there will be multiple manager nodes and they will be independent of the worker nodes. A 3-node master and 3-node worker setup is used in the Docker tutorial script referenced above.
 {{< /note >}}
 
-```{.sh .copy}
-#!/bin/bash
+```sh
+# !/bin/bash
 
 # Swarm mode using Docker Machine
 
@@ -99,12 +99,10 @@ docker-machine ssh worker1 "docker node ls"
 
 - Review all the nodes created.
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ docker-machine ls 
 ```
-</div>
+
 ```
 NAME      ACTIVE   DRIVER       STATE     URL                         SWARM   DOCKER        ERRORS
 worker1   -        virtualbox   Running   tcp://192.168.99.v1.0:2376           v18.05.0-ce   
@@ -116,21 +114,17 @@ worker3   -        virtualbox   Running   tcp://192.168.99.102:2376           v1
 
 - SSH into the worker1 node where the swarm manager is running.
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ docker-machine ssh worker1 
 ```
-</div>
 
 - Create an [overlay network](https://docs.docker.com/network/overlay/) that the swarm services can use to communicate with each other. The `attachable` option allows standalone containers to connect to swarm services on the network.
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ docker network create --driver overlay --attachable yugabytedb
 ```
-</div>
 
 ## 3. Create yb-master services
 
@@ -139,7 +133,7 @@ $ docker network create --driver overlay --attachable yugabytedb
 {{< note title="Note for Kubernetes Users" >}}
 Docker Swarm lacks an equivalent of [Kubernetes StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/). The concept of replicated services is similar to [Kubernetes Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/).
 {{< /note >}}
-<div class='copy separator-dollar'>
+
 ```sh
 $ docker service create \
 --replicas 1 \
@@ -152,8 +146,7 @@ yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --master_addresses=yb-master1:7100,yb-master2:7100,yb-master3:7100 \
 --replication_factor=3
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ docker service create \
 --replicas 1 \
@@ -165,8 +158,7 @@ yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --master_addresses=yb-master1:7100,yb-master2:7100,yb-master3:7100 \
 --replication_factor=3
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ docker service create \
 --replicas 1 \
@@ -178,17 +170,14 @@ yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-master \
 --master_addresses=yb-master1:7100,yb-master2:7100,yb-master3:7100 \
 --replication_factor=3
 ```
-</div>
 
 - Run the command below to see the services that are now live.
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ docker service ls
 ```
-</div>
-```{.sh}
+
+```
 ID                  NAME                MODE                REPLICAS            IMAGE                        PORTS
 jfnrqfvnrc5b        yb-master1          replicated          1/1                 yugabytedb/yugabyte:latest   *:7000->7000/tcp
 kqp6eju3kq88        yb-master2          replicated          1/1                 yugabytedb/yugabyte:latest   
@@ -204,7 +193,7 @@ ah6wfodd4noh        yb-master3          replicated          1/1                 
 {{< note title="Note for Kubernetes Users" >}}
 The global services concept in Docker Swarm is similar to [Kubernetes DaemonSets](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/).
 {{< /note >}}
-<div class='copy separator-dollar'>
+
 ```sh
 $ docker service create \
 --mode global \
@@ -216,7 +205,6 @@ yugabytedb/yugabyte:latest /home/yugabyte/bin/yb-tserver \
 --fs_data_dirs=/mnt/data0 \
 --tserver_master_addrs=yb-master1:7100,yb-master2:7100,yb-master3:7100
 ```
-</div>
 
 {{< tip title="Tip" >}}
 Use remote volumes instead of local volumes (used above) when you want to scale-out or scale-in your swarm cluster.
@@ -224,13 +212,11 @@ Use remote volumes instead of local volumes (used above) when you want to scale-
 
 - Run the command below to see the services that are now live.
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ docker service ls
 ```
-</div>
-```{.sh}
+
+```
 ID                  NAME                MODE                REPLICAS            IMAGE                        PORTS
 jfnrqfvnrc5b        yb-master1          replicated          1/1                 yugabytedb/yugabyte:latest   *:7000->7000/tcp
 kqp6eju3kq88        yb-master2          replicated          1/1                 yugabytedb/yugabyte:latest   
@@ -247,13 +233,10 @@ n6padh2oqjk7        yb-tserver          global              3/3                 
 
 - Connect to that container using that container ID.
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ docker exec -it <ybtserver_container_id> /home/yugabyte/bin/cqlsh
 ```
-</div>
-```sh
+```
 Connected to local cluster at 127.0.0.1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
@@ -269,12 +252,12 @@ cqlsh>
 - Initialize the YEDIS API.
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ docker exec -it <ybmaster_container_id> /home/yugabyte/bin/yb-admin -- --master_addresses yb-master1:7100,yb-master2:7100,yb-master3:7100 setup_redis_table
 ```
-</div>
-```sh
+
+```
 ...
 I0515 19:54:48.952378    39 client.cc:1208] Created table system_redis.redis of type REDIS_TABLE_TYPE
 I0515 19:54:48.953572    39 yb-admin_client.cc:440] Table 'system_redis.redis' created.
@@ -286,22 +269,17 @@ I0515 19:54:48.953572    39 yb-admin_client.cc:440] Table 'system_redis.redis' c
 
 - Install the `postgresql` client in the yb-tserver container.
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ docker exec -it <ybtserver_container_id> yum install postgresql
 ```
-</div>
 
 - Connect to the psql client in yb-tserver.
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ docker exec -it <ybtserver_container_id> psql -h localhost --port 5433
 ```
-</div>
-```sh
+
+```
 ...
 psql (9.2.23, server 0.0.0)
 WARNING: psql version 9.2, server version 0.0.
@@ -316,11 +294,10 @@ root=>
 ## 6. Test fault-tolerance with node failure
 
 Docker Swarm ensures that the yb-tserver `global` service will always have 1 yb-tserver container running on every node. If the yb-tserver container on any node dies, then Docker Swarm will bring it back on.
-<div class='copy separator-dollar'>
+
 ```sh
 $ docker kill <ybtserver_container_id>
 ```
-</div>
 
 Observe the output of `docker ps` every few seconds till you see that the yb-tserver container is re-spawned by Docker Swarm.
 
@@ -328,38 +305,28 @@ Observe the output of `docker ps` every few seconds till you see that the yb-tse
 
 - On the host machine, get worker token for new worker nodes to use to join the existing swarm.
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ docker-machine ssh worker1 "docker swarm join-token worker -q"
 ```
-</div>
+
 ```
 SWMTKN-1-aadasdsadas-2ja2q2esqsivlfx2ygi8u62yq
 ```
 
 - Create a new node `worker4`.
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ docker-machine create -d virtualbox worker4
 ```
-</div>
 
 - Pull the YugaByte DB container.
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ docker-machine ssh worker4 "docker pull yugabytedb/yugabyte"
 ```
-</div>
 
 - Join worker4 with existing swarm.
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ docker-machine ssh worker4 \
 	"docker swarm join \
@@ -368,17 +335,16 @@ $ docker-machine ssh worker4 \
 	--advertise-addr $(docker-machine ip worker4) \
 	$(docker-machine ip worker1)"
 ```
-</div>
 
 - Observe that Docker Swarm adds a new yb-tserver instance to the newly added `worker4` node and changes its replica status from 3 / 3 to 4 / 4.
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ docker service ls
 ```
-</div>
-```{.sh}
+
+```
 ID                  NAME                MODE                REPLICAS            IMAGE                        PORTS
 jfnrqfvnrc5b        yb-master1          replicated          1/1                 yugabytedb/yugabyte:latest   *:7000->7000/tcp
 kqp6eju3kq88        yb-master2          replicated          1/1                 yugabytedb/yugabyte:latest   
@@ -390,18 +356,12 @@ n6padh2oqjk7        yb-tserver          global              4/4                 
 
 - Stop the machines.
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ docker-machine stop $(docker-machine ls -q)
 ```
-</div>
 
 - Remove the machines.
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ docker-machine rm $(docker-machine ls -q)
 ```
-</div>

@@ -83,7 +83,7 @@
     <link rel="stylesheet" href="/css/temporary.css">
     <link rel="stylesheet" href="{{ with .Site.Params.highlight_css }}{{ . | absURL }}{{ else }}{{ "/css/highlight/highlight.css" }}{{ end }}">
 
-    {{ $text := or .Site.Params.font.text "Roboto" }}
+    {{ $text := or .Site.Params.font.text "Open Sans" }}
     {{ $code := or .Site.Params.font.code "Roboto Mono" }}
     <link href="https://fonts.googleapis.com/css?family=Montserrat:300,300i,500,500i,600,800,800i" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,300i,400,400i,600,700,700i,900,900i" rel="stylesheet">

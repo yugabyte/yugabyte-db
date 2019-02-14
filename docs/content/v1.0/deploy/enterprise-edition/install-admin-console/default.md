@@ -10,31 +10,28 @@ Connect to the YugaWare instance and do the following.
 - Install Replicated.
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ curl -sSL https://get.replicated.com/docker | sudo bash
 ```
-</div>
 
 **NOTE**: If you are behind a proxy, you would need to run the following:
 
 - Install Replicated behind a proxy.
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ curl -x http://<proxy_address>:<proxy_port> https://get.replicated.com/docker | sudo bash
 ```
-</div>
 
 - After Replicated install completes, make sure it is running.
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ sudo docker ps
 ```
-</div>
 
 You should see an output similar to the following.
 

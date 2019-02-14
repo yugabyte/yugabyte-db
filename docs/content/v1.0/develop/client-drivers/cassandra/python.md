@@ -4,7 +4,7 @@
 Install the python driver using the following command.
 
 ```
-pip install cassandra-driver
+$ pip install cassandra-driver
 ```
 
 ## Working Example
@@ -63,12 +63,12 @@ cluster.shutdown()
 To run the application, type the following:
 
 ```sh
-python yb-cql-helloworld.py
+$ python yb-cql-helloworld.py
 ```
 
 You should see the following output.
 
-```sh
+```
 Created keyspace ybdemo
 Created table employee
 Inserted (id, name, age, language) = (1, 'John', 35, 'Python')

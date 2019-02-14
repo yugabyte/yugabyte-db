@@ -79,8 +79,6 @@ Where
 
 ### Update a value in a table
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> CREATE TABLE employees(department_id INT, 
                                       employee_id INT, 
@@ -88,67 +86,64 @@ cqlsh:example> CREATE TABLE employees(department_id INT,
                                       age INT, 
                                       PRIMARY KEY(department_id, employee_id));
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name, age) VALUES (1, 1, 'John', 30);
 ```
-</div>
+
 Update the value of a non primary-key column.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE employees SET name = 'Jack' WHERE department_id = 1 AND employee_id = 1;
 ```
-</div>
+
 Using upsert semantics to update a non-existent row (i.e. insert the row).
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE employees SET name = 'Jane', age = 40 WHERE department_id = 1 AND employee_id = 2;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees;
 ```
-</div>
-```sh
+
+```
  department_id | employee_id | name | age
 ---------------+-------------+------+-----
              1 |           1 | Jack |  30
              1 |           2 | Jane |  40
-
 ```
 
 ### Conditional update using the `IF` clause
 
 The supported expressions are allowed in the 'SET' assignment targets.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE employees SET age = age + 1 WHERE department_id = 1 AND employee_id = 1 IF name = 'Jack';
 ```
-</div>
-```sh
+
+```
  [applied]
 -----------
       True
 ```
 Using upsert semantics to add a row, age is not set so will be 'null'.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE employees SET name = 'Joe' WHERE department_id = 2 AND employee_id = 1 IF NOT EXISTS;
 ```
-</div>
-```sh
+
+```
  [applied]
 -----------
       True
 ```
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees;
 ```
-</div>
-```sh
+
+```
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              2 |           1 |  Joe | null
@@ -159,28 +154,27 @@ cqlsh:example> SELECT * FROM employees;
 ### Update with expiration time using the `USING TTL` clause.
 
 The updated value(s) will persist for the TTL duration.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE employees USING TTL 10 SET age = 32 WHERE department_id = 1 AND employee_id = 1;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id = 1;
 ```
-</div>
-```sh
+
+```
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              1 |           1 | Jack |   32
 ```
 11 seconds after the update (value will have expired).
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id = 1;
 ```
-</div>
-```sh
+
+```
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              1 |           1 | Jack | null
@@ -189,17 +183,16 @@ cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id =
 ### Update row with the `USING TIMESTAMP` clause.
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:foo> INSERT INTO employees(department_id, employee_id, name, age) VALUES (1, 4, 'Jeff', 20) USING TIMESTAMP 1000;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:foo> SELECT * FROM employees;
 ```
-</div>
-```sh
+
+```
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              1 |           1 | Jack | null
@@ -210,16 +203,16 @@ cqlsh:foo> SELECT * FROM employees;
 (4 rows)
 ```
 Now update the employees table.
-<div class='copy separator-gt'>
+
 ```sql
-cqlsh:foo> UPDATE employees USING TIMESTAMP 500 SET age = 30 WHERE department_id = 1 AND employee_id = 4; -- not applied since timestamp is lower than 1000.
+cqlsh:foo> UPDATE employees USING TIMESTAMP 500 SET age = 30 WHERE department_id = 1 AND employee_id = 4;
 ```
-</div>
-<div class='copy separator-gt'>
+Not applied since timestamp is lower than 1000.
+
 ```sql
 cqlsh:foo> SELECT * FROM employees;
 ```
-</div>
+
 ```
  department_id | employee_id | name | age
 ---------------+-------------+------+------
@@ -230,16 +223,16 @@ cqlsh:foo> SELECT * FROM employees;
 
 (4 rows)
 ```
-<div class='copy separator-gt'>
+
 ```sql
-cqlsh:foo> UPDATE employees USING TIMESTAMP 1500 SET age = 30 WHERE department_id = 1 AND employee_id = 4;  -- applied since timestamp is higher than 1000.
+cqlsh:foo> UPDATE employees USING TIMESTAMP 1500 SET age = 30 WHERE department_id = 1 AND employee_id = 4;
 ```
-</div>
-<div class='copy separator-gt'>
+Applied since timestamp is higher than 1000.
+
 ```sql
 cqlsh:foo> SELECT * FROM employees;
 ```
-</div>
+
 ```
  department_id | employee_id | name | age
 ---------------+-------------+------+------
@@ -250,6 +243,7 @@ cqlsh:foo> SELECT * FROM employees;
 
 (4 rows)
 ```
+
 ## See Also
 
 [`CREATE TABLE`](../ddl_create_table)

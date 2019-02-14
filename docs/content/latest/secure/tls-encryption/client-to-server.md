@@ -34,8 +34,8 @@ Remember to set `--allow_insecure_connections=false` to enforce TLS communicatio
 {{< /note >}}
 
 Your command should look similar to that shown below:
-<div class='copy separator-dollar'>
-```sh
+
+```
 bin/yb-tserver                                       \
     --fs_data_dirs=<data directories>                \
     --tserver_master_addrs=<master addresses>        \
@@ -43,6 +43,6 @@ bin/yb-tserver                                       \
     --allow_insecure_connections=false               \
     --use_client_to_server_encryption=true &
 ```
-</div>
+
 
 You can read more about bringing up the YB-TServers for a deployment in the section on [manual deployment of a YugaByte DB cluster](../../../deploy/manual-deployment/start-tservers/).

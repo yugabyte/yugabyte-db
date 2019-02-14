@@ -3,7 +3,7 @@
 
 To build your Java application using the YugaByte DB Cassandra driver, add the following Maven dependency to your application:
 
-```{.mvn .copy}
+```mvn
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>cassandra-driver-core</artifactId>
@@ -26,7 +26,7 @@ This tutorial assumes that you have:
 
 Create a maven build file `pom.xml` and add the following content into it.
 
-```{.mvn .copy}
+```mvn
 <?xml version="1.0"?>
 <project
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
@@ -80,15 +80,14 @@ Create a maven build file `pom.xml` and add the following content into it.
 
 
 Create the appropriate directory structure as expected by maven.
-<div class='copy separator-dollar'>
+
 ```sh
 $ mkdir -p src/main/java/com/yugabyte/sample/apps
 ```
-</div>
 
 Copy the following contents into the file `src/main/java/com/yugabyte/sample/apps/YBCqlHelloWorld.java`.
 
-```{.java .copy}
+```java
 package com.yugabyte.sample.apps;
 
 import java.util.List;
@@ -149,16 +148,15 @@ public class YBCqlHelloWorld {
 ### Building and running the app
 
 To build the application, just run the following command.
-<div class='copy separator-dollar'>
+
 ```sh
 $ mvn package
 ```
-</div>
 
 To run the program, do the following.
 
-```{.sh .copy}
-java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YBCqlHelloWorld
+```sh
+$ java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YBCqlHelloWorld
 ```
 
 You should see the following as the output.

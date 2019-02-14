@@ -21,20 +21,20 @@ Returns list of string values of the fields in the same order that was requested
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ HMSET yugahash area1 "Africa" area2 "America"
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ HMGET yugahash area1 area2 area_none
 ```
-</div>
-```sh
+
+```
 1) "Africa"
 2) "America"
 3) (null)

@@ -27,7 +27,7 @@ We will refer to the YugaByte base folder as `<yugabyte-base-folder>` below.
 Masters manage system meta-data such as keyspaces, tables and types: they handle DDL statements (e.g. `CREATE/DROP/ALTER TABLE/KEYSPACE/TYPE`).  Masters also manage users, permissions, and coordinate background operations such as load balancing.
 Master logs can be found at:
 
-```
+```sh
 $ cd <yugabyte-base-folder>/disk1/yb-data/master/logs/
 ```
 Logs are organized by error severity: `FATAL`, `ERROR`, `WARNING`, `INFO`. In case of issues, the `FATAL` and `ERROR` logs are most likely to be relevant. 
@@ -36,7 +36,7 @@ Logs are organized by error severity: `FATAL`, `ERROR`, `WARNING`, `INFO`. In ca
 
 TServers do the actual IO for end-user requests: they handle DML statements (e.g. `INSERT`, `UPDATE`, `DELETE`, `SELECT`)  and Redis commands.
 Tserver logs can be found at:
-```
+```sh
 $ cd <yugabyte-base-folder>/disk1/yb-data/tserver/logs/
 ```
 Logs are organized by error severity: `FATAL`, `ERROR`, `WARNING`, `INFO`. In case of issues, the `FATAL` and `ERROR` logs are most likely to be relevant. 

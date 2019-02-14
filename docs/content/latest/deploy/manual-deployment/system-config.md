@@ -23,11 +23,10 @@ Do the following configuration steps on each of the nodes in the cluster.
 - ntp
 
 Here's the command to install these packages.
-<div class='copy separator-dollar'>
+
 ```sh
 $ sudo yum install -y epel-release ntp
 ```
-</div>
 
 ## Setting ulimits
 
@@ -36,11 +35,10 @@ In Linux, `ulimit` is used to limit and control the usage of system resources (t
 ### Checking ulimits
 
 Run the following command to check the ulimit settings.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ulimit -a
 ```
-</div>
 
 The following settings are recommended when running YugaByte DB.
 
@@ -67,8 +65,8 @@ file locks                      (-x) unlimited
 
 You can change values by substituting the -n option for any possible value in the output of ulimit -a. Issue a command in the following form to change a `ulimit` setting.
 
-```
-ulimit -n <value>
+```sh
+$ ulimit -n <value>
 ```
 
 ```

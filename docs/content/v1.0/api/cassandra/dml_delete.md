@@ -60,35 +60,30 @@ Where
 
 ### Delete a row from a table
 
-You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE employees(department_id INT, 
                                       employee_id INT, 
                                       name TEXT, 
                                       PRIMARY KEY(department_id, employee_id));
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 2, 'Jane');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees;
 ```
-</div>
+
 ```
  department_id | employee_id | name
 ---------------+-------------+------
@@ -97,22 +92,20 @@ cqlsh:example> SELECT * FROM employees;
              2 |           1 |  Joe
 ```
 Delete statements identify rows by the primary key columns.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> DELETE FROM employees WHERE department_id = 1 AND employee_id = 1;
 ```
-</div>
 Deletes on non-existent rows are no-ops.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> DELETE FROM employees WHERE department_id = 3 AND employee_id = 1;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees;
 ```
-</div>
+
 ```
  department_id | employee_id | name
 ---------------+-------------+------
@@ -122,31 +115,31 @@ cqlsh:example> SELECT * FROM employees;
 ### Conditional delete using the `IF` clause
 
 'IF' clause conditions will return whether they were applied or not.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> DELETE FROM employees WHERE department_id = 2 AND employee_id = 1 IF name = 'Joe';
 ```
-</div>
+
 ```
  [applied]
 -----------
       True
 ```
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> DELETE FROM employees WHERE department_id = 3 AND employee_id = 1 IF EXISTS;
 ```
-</div>
+
 ```
  [applied]
 -----------
      False
 ```
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees;
 ```
-</div>
+
 ```
  department_id | employee_id | name
 ---------------+-------------+------
@@ -155,27 +148,23 @@ cqlsh:example> SELECT * FROM employees;
 
 ### Delete several rows with the same partition key
 
-You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 2, 'Jack');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees;
 ```
-</div>
+
 ```
  department_id | employee_id | name
 ---------------+-------------+------
@@ -186,16 +175,15 @@ cqlsh:example> SELECT * FROM employees;
 ```
 
 Delete all entries for a partition key.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> DELETE FROM employees WHERE department_id = 1;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees;
 ```
-</div>
+
 ```
  department_id | employee_id | name
 ---------------+-------------+------
@@ -203,16 +191,15 @@ cqlsh:example> SELECT * FROM employees;
              2 |           2 | Jack
 ```
 Delete a range of entries within a partition key.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> DELETE FROM employees WHERE department_id = 2 AND employee_id >= 2 AND employee_id < 4;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM employees;
 ```
-</div>
+
 ```
  department_id | employee_id | name
 ---------------+-------------+------
@@ -221,37 +208,46 @@ cqlsh:example> SELECT * FROM employees;
 
 ### Delete with the `USING TIMESTAMP` clause
 
-You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (4, 4, 'Ted') USING TIMESTAMP 1000;
 cqlsh:foo> SELECT * FROM employees;
-
+```
+```
  department_id | employee_id | name
 ---------------+-------------+------
              4 |           4 |  Ted
              2 |           1 |  Joe
 
 (2 rows)
-cqlsh:foo> DELETE FROM employees USING TIMESTAMP 500 WHERE department_id = 4 AND employee_id = 4; -- not applied since timestamp is lower than 1000
-cqlsh:foo> SELECT * FROM employees;
+```
 
+Not applied since timestamp is lower than 1000
+```sql
+cqlsh:foo> DELETE FROM employees USING TIMESTAMP 500 WHERE department_id = 4 AND employee_id = 4; 
+cqlsh:foo> SELECT * FROM employees;
+```
+```
  department_id | employee_id | name
 ---------------+-------------+------
              4 |           4 |  Ted
              2 |           1 |  Joe
 
 (2 rows)
-cqlsh:foo> DELETE FROM employees USING TIMESTAMP 1500 WHERE department_id = 4 AND employee_id = 4; -- applied since timestamp is higher than 1000.
-cqlsh:foo> SELECT * FROM employees;
+```
 
+Applied since timestamp is higher than 1000.
+```sql
+cqlsh:foo> DELETE FROM employees USING TIMESTAMP 1500 WHERE department_id = 4 AND employee_id = 4;
+cqlsh:foo> SELECT * FROM employees;
+```
+```
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe
 
 (1 rows)
 ```
-</div>
 
 ## See Also
 

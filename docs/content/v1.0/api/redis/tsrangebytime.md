@@ -25,20 +25,20 @@ Returns a list of timestamp, value pairs found in the range specified by `low_ts
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 TSADD ts 1 one 2 two 3 three 4 four 5 five 6 six
 ```
-</div>
-```sh
-OK
+
 ```
-<div class='copy separator-dollar'>
+"OK"
+```
+
 ```sh
 TSRANGEBYTIME ts_key 2 4
 ```
-</div>
-```sh
+
+```
 1) "2"
 2) "two"
 3) "3"
@@ -47,33 +47,33 @@ TSRANGEBYTIME ts_key 2 4
 6) "four"
 ```
 2 is exclusive
-<div class='copy separator-dollar'>
+
 ```sh
 TSRANGEBYTIME ts_key (2 4
 ```
-</div>
-```sh
+
+```
 1) "3"
 2) "three"
 3) "4"
 4) "four"
 ```
 2 and 4 are exclusive
-<div class='copy separator-dollar'>
+
 ```sh
 TSRANGEBYTIME ts_key (2 (4
 ```
-</div>
-```sh
+
+```
 1) "3"
 2) "three"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 TSRANGEBYTIME ts_key -inf 3
 ```
-</div>
-```sh
+
+```
 1) "1"
 2) "one"
 3) "2"
@@ -81,12 +81,12 @@ TSRANGEBYTIME ts_key -inf 3
 5) "3"
 6) "three"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 TSRANGEBYTIME ts_key 2 +inf
 ```
-</div>
-```sh
+
+```
  1) "2"
  2) "two"
  3) "3"

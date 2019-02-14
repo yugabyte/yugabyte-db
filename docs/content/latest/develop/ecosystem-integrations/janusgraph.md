@@ -21,6 +21,9 @@ Start a cluster on your [local machine](../../../quick-start/install/). Check th
 
 ```sh
 $ cqlsh
+```
+
+```
 Connected to local cluster at 127.0.0.1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
@@ -37,9 +40,9 @@ cqlsh>
 Download from the [JanusGraph downloads page](https://github.com/JanusGraph/janusgraph/releases). This tutorial uses the `0.2.0` version of JanusGraph.
 
 ```sh
-wget https://github.com/JanusGraph/janusgraph/releases/download/v0.2.0/janusgraph-0.2.0-hadoop2.zip
-unzip janusgraph-0.2.0-hadoop2.zip
-cd janusgraph-0.2.0-hadoop2
+$ wget https://github.com/JanusGraph/janusgraph/releases/download/v0.2.0/janusgraph-0.2.0-hadoop2.zip
+$ unzip janusgraph-0.2.0-hadoop2.zip
+$ cd janusgraph-0.2.0-hadoop2
 ```
 
 
@@ -63,7 +66,7 @@ gremlin>
 
 - Now use the CQL config to initialize JanusGraph to talk to YugaByte.
 
-```sh
+```sql
 gremlin> graph = JanusGraphFactory.open('conf/janusgraph-cql.properties')
 ==>standardjanusgraph[cql:[127.0.0.1]]
 ```

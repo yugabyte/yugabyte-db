@@ -84,30 +84,21 @@ Operation| Permission| Resource|
 
 ### Grant `MODIFY` permission on a table so role `qa` can insert rows into a table.
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> GRANT MODIFY ON TABLE performance_tests.metrics TO qa;
 ```
-</div>
 
 ### Grant `SELECT` permission on a table so role `qa` can read the table.
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> GRANT SELECT ON performance_tests.metrics TO qa;
 ```
-</div>
 
 ### Grant `CREATE` permission on `ALL KEYSPACES` so role `tests` can create new keyspaces.
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> GRANT CREATE ON ALL KEYSPACES TO tests;
 ```
-</div>
 
 ## See Also
 

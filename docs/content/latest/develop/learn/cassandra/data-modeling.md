@@ -111,10 +111,10 @@ Secondary indexes can be used to speed up queries and to enforce uniqueness of v
 
 The predominant use of a secondary index is to make lookups by some column values efficient. Let us take an example of a users table, where user_id is the primary key. Suppose we want to lookup user_id by the email of the user efficiently. You can achieve this as follows.
 
-```{.sh .copy .separator-gt}
+```sql
 cqlsh> CREATE KEYSPACE example;
 ```
-```{.sh .copy .separator-gt}
+```sql
 cqlsh> CREATE TABLE example.users(
          user_id    bigint PRIMARY KEY,
          firstname  text,
@@ -122,26 +122,26 @@ cqlsh> CREATE TABLE example.users(
          email      text
        ) WITH transactions = { 'enabled' : true };
 ```
-```{.sh .copy .separator-gt}
+```sql
 cqlsh> CREATE INDEX user_by_email ON example.users (email)
          INCLUDE (firstname, lastname);
 ```
 
 Next let us insert some data.
 
-```{.sh .copy .separator-gt}
+```sql
 cqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
        VALUES (1, 'James', 'Bond', 'bond@yb.com');
 ```
 
-```{.sh .copy .separator-gt}
+```sql
 cqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
        VALUES (2, 'Sherlock', 'Holmes', 'sholmes@yb.com');
 ```
 
 You can now query the table by the email of a user efficiently as follows.
 
-```{.sh .copy .separator-gt}
+```sql
 cqlsh> SELECT * FROM example.users WHERE email='bond@yb.com';
 ```
 
@@ -151,10 +151,10 @@ Read more about using secondary indexes to speed up queries in this quick guide 
 
 In some cases, you would need to ensure that duplicate values cannot be inserted in a column of a table. You can achieve this in YugaByte DB by creating a unique secondary index, where the application does not want duplicate values to be inserted into a column. 
 
-```{.sh .copy .separator-gt}
+```sql
 cqlsh> CREATE KEYSPACE example;
 ```
-```{.sh .copy .separator-gt}
+```sql
 cqlsh> CREATE TABLE example.users(
          user_id    bigint PRIMARY KEY,
          firstname  text,
@@ -162,27 +162,27 @@ cqlsh> CREATE TABLE example.users(
          email      text
        ) WITH transactions = { 'enabled' : true };
 ```
-```{.sh .copy .separator-gt}
+```sql
 cqlsh> CREATE UNIQUE INDEX unique_emails ON example.users (email);
 ```
 
 Inserts would succeed as long as the email is unique.
-```{.sh .copy .separator-gt}
+```sql
 cqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
        VALUES (1, 'James', 'Bond', 'bond@yb.com');
 ```
-```{.sh .copy .separator-gt}
+```sql
 cqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
        VALUES (2, 'Sherlock', 'Holmes', 'sholmes@yb.com');
 ```
 
 But upon inserting a duplicate email, we get an error.
 
-```{.sh .copy .separator-gt}
+```sql
 cqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
        VALUES (3, 'Fake', 'Bond', 'bond@yb.com');
 ```
-```sh
+```
 InvalidRequest: Error from server: code=2200 [Invalid query] message="SQL error: Execution Error. Duplicate value disallowed by unique index unique_emails
 ```
 

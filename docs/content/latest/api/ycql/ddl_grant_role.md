@@ -44,12 +44,9 @@ Where
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> GRANT ROLE eng to robert;
 ```
-</div>
 
 ## See Also
 

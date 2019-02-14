@@ -47,13 +47,11 @@ Returns an array of values.
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ ROLE
 ```
-</div>
-```sh
+
+```
 1) "master"
 2) 0
 3) 1) 1) "127.0.0.1"

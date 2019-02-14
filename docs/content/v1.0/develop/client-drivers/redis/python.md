@@ -4,7 +4,7 @@
 Install the python driver using the following command.
 
 ```
-sudo pip install redis
+$ sudo pip install redis
 ```
 
 ## Working Example
@@ -41,12 +41,12 @@ print r.hgetall(userid)
 To run the application, type the following:
 
 ```sh
-python yb-redis-helloworld.py
+$ python yb-redis-helloworld.py
 ```
 
 You should see the following output.
 
-```sh
+```
 Inserted userid=1, profile={'age': '35', 'name': 'John', 'language': 'Python'}
 {'age': '35', 'name': 'John', 'language': 'Python'}
 ```

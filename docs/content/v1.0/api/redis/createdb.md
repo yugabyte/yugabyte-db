@@ -22,45 +22,45 @@ Returns a status string, if creating the database was successful. Returns an err
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ LISTDB
 ```
-</div>
-```sh
+
+```
 1) "0"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ CREATEDB "second"
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ LISTDB
 ```
-</div>
-```sh
+
+```
 1) "0"
 2) "second"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ CREATEDB "3.0"
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ LISTDB
 ```
-</div>
-```sh
+
+```
 1) "0"
 2) "3.0"
 3) "second"

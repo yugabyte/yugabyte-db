@@ -34,21 +34,18 @@ Where
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> CREATE KEYSPACE example;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> DROP KEYSPACE example;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh> DROP KEYSPACE IF EXISTS example;
 ```
-</div>
 
 ## See Also
 [`CREATE KEYSPACE`](../ddl_create_keyspace)

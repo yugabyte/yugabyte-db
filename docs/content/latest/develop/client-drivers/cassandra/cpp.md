@@ -11,11 +11,10 @@ The tutorial assumes that you have:
 ## Installing the C/C++ Driver
 
 To get the C/C++ driver run: 
-<div class='copy separator-dollar'>
+
 ```sh
 $ git clone https://github.com/YugaByte/cassandra-cpp-driver.git
 ```
-</div>
 
 ### Dependencies
 
@@ -32,12 +31,12 @@ given [here](https://docs.datastax.com/en/developer/cpp-driver/2.9/topics/buildi
 
 To build and install the driver:
 
-```{.sh .copy}
-mkdir build
-cd build
-cmake ..
-make
-make install
+```sh
+$ mkdir build
+$ cd build
+$ cmake ..
+$ make
+$ make install
 ```
 
 ## Working Example
@@ -46,7 +45,7 @@ make install
 
 Create a file `ybcql_hello_world.c` and copy the contents below:
 
-```{.cpp .copy}
+```cpp
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
@@ -195,18 +194,16 @@ int main() {
 
 You can compile the file using gcc or clang. 
 For clang, you can use:
-<div class='copy separator-dollar'>
+
 ```sh
 $ clang ybcql_hello_world.c -lcassandra -Iinclude -o yb_cql_hello_world
 ```
-</div>
 
 Run with:
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./yb_cql_hello_world
 ```
-</div>
 
 You should see the following output:
 

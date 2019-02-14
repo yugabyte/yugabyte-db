@@ -31,25 +31,25 @@ $ cd kairosdb/
 
 You can follow the [Getting Started](http://kairosdb.github.io/docs/build/html/GettingStarted.html) to see how to configure KairosDB in general. For the purpose of integrating with the local YugaByte DB cluster running at `localhost:9042`, simply open `conf/kairosdb.properties` and comment out the default in-memory datastore as below.
 
-```sh
+```
 #kairosdb.service.datastore=org.kairosdb.datastore.h2.H2Module 
 ```
 
 Uncomment the following line to make Cassandra the datastore.
 
-```sh
+```
 kairosdb.service.datastore=org.kairosdb.datastore.cassandra.CassandraModule
 ```
 
 ## 3. Start KairosDB
 
 ```sh
-./bin/kairosdb.sh run
+$ ./bin/kairosdb.sh run
 ```
 
 You should see the following lines if KairosDB starts up successfully.
 
-```sh
+```
 18:34:01.094 [main] INFO  [AbstractConnector.java:338] - Started SelectChannelConnector@0.0.0.0:8080
 18:34:01.098 [main] INFO  [Main.java:522] - Starting service class org.kairosdb.core.telnet.TelnetServer
 18:34:01.144 [main] INFO  [Main.java:378] - ------------------------------------------
@@ -61,9 +61,12 @@ You should see the following lines if KairosDB starts up successfully.
 
 - Run cqlsh to connect to the YugaByte DB's YCQL API. 
 
+Assuming you are using the macOS or Linux binary
 ```sh
-# assuming you are using the macOS or Linux binary
 $ ./bin/cqlsh localhost
+```
+
+```
 Connected to local cluster at 127.0.0.1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
@@ -74,16 +77,20 @@ cqlsh>
 
 ```sql
 cqlsh> describe keyspaces;
+```
 
+```
 kairosdb  system_schema  system_auth  system
+```
 
+```sql
 cqlsh> use kairosdb;
 cqlsh:kairosdb> describe tables;
+```
 
+```
 row_keys       data_points    string_index      
 row_key_index  service_index  row_key_time_index
-
-cqlsh:kairosdb>
 ```
 
 ## 5. Test KairosDB

@@ -12,37 +12,37 @@ The tutorial assumes that you have:
 We use the [`cpp_redis`](https://redis.io/clients#c--) driver. To install the library do the following:
 
 - Clone the `cpp_redis` repository
-```{.sh .copy}
-git clone https://github.com/Cylix/cpp_redis.git
+```sh
+$ git clone https://github.com/Cylix/cpp_redis.git
 ```
 
 - Get the networking module ([tacopie](https://github.com/Cylix/tacopie))
-```{.sh .copy}
-cd cpp_redis
-git submodule init && git submodule update
+```sh
+$ cd cpp_redis
+$ git submodule init && git submodule update
 ```
 
 - Create a build directory and move into it
-```{.sh .copy}
-mkdir build && cd build
+```sh
+$ mkdir build && cd build
 ```
 
 - Generate the Makefile using CMake
-```{.sh .copy}
-cmake .. -DCMAKE_BUILD_TYPE=Release
+```sh
+$ cmake .. -DCMAKE_BUILD_TYPE=Release
 ```
 
 - Build and install the library
-```{.sh .copy}
-make
-make install
+```sh
+$ make
+$ make install
 ```
 
 ## Writing a hello world redis app
 
 Create a file `ybredis_hello_world.cpp` and copy the contents below:
 
-```{.cpp .copy}
+```cpp
 #include <cpp_redis/cpp_redis>
 
 #include<iostream>
@@ -94,14 +94,14 @@ int main() {
 
 To compile the file, run the following command
 
-```{.sh .copy }
-g++ -ltacopie -lcpp_redis -std=c++11 -o ybredis_hello_world ybredis_hello_world.cpp
+```sh
+$ g++ -ltacopie -lcpp_redis -std=c++11 -o ybredis_hello_world ybredis_hello_world.cpp
 ```
 
 To run the app do
 
-```{.sh .copy}
-./ybredis_hello_world
+```sh
+$ ./ybredis_hello_world
 ```
 
 You should see the following output

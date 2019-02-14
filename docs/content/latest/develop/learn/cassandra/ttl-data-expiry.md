@@ -15,7 +15,7 @@
 
 You can find a working example of using transactions with YugaByte in our [sample applications](../../../quick-start/run-sample-apps/). Here is how you can try out this sample application.
 
-```sh
+```
  - CassandraStockTicker :
    --------------------
     Sample stock ticker app built on CQL. The app models 10,000 stock tickers

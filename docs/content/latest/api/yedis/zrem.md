@@ -26,37 +26,39 @@ The number of `members` removed from the sorted set.
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZADD z_key 1.0 v1 2.0 v2
 ```
-</div>
-```sh
+
+```
 (integer) 2
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZREM z_key v2 v3
 ```
-</div>
-```sh
+
+```
 (integer) 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZREM z_key v1 v2 v3
 ```
-</div>
-```sh
+
+```
 (integer) 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZCARD z_key
 ```
-</div>
-```sh
+
+```
 (integer) 0
 ```
+
 ## See Also
+
 [`zadd`](../zadd/), [`zcard`](../zcard/), [`zrange`](../zrange/), [`zrangebyscore`](../zrangebyscore/), [`zrevrange`](../zrevrange)

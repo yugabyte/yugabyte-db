@@ -92,21 +92,15 @@ YugaWare comes with a pre-packaged set of sample applications. We will run a sim
 
 - **Install Java**
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ sudo yum install java-1.8.0-openjdk.x86_64 -y
 ```
-</div>
 
 - **Switch to the `yugabyte` user**
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ sudo su - yugabyte
 ```
-</div>
 
 - **Export the `YCQL_ENDPOINTS` env variable**
 
@@ -115,11 +109,10 @@ Export an environment variable telling us the IP addresses for nodes in the clus
 ![YCQL end points](/images/ee/multi-zone-universe-ycql-endpoints.png)
 
 Export this into a shell variable on the database node `yb-dev-helloworld1-n1` we had connected to. Remember to replace the ip addresses below with those shown by YugaWare.
-<div class='copy separator-dollar'>
+
 ```sh
 $ export YCQL_ENDPOINTS="10.138.0.3:9042,10.138.0.4:9042,10.138.0.5:9042"
 ```
-</div>
 
 - **Export the `YEDIS_ENDPOINTS` env variable**
 
@@ -128,17 +121,16 @@ Repeat the same process for the YEDIS endpoints.
 ![YCQL end points](/images/ee/multi-zone-universe-yedis-endpoints.png)
 
 Export an environment variable for the YEDIS endpoints.
-<div class='copy separator-dollar'>
+
 ```sh
 $ export YEDIS_ENDPOINTS="10.138.0.3:6379,10.138.0.4:6379,10.138.0.5:6379"
 ```
-</div>
 
 
 ### Run the CassandraKeyValue workload
 
 To start the workload, run the following command.
-<div class='copy separator-dollar'>
+
 ```sh
 $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --workload CassandraKeyValue \
@@ -149,11 +141,10 @@ $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --num_unique_keys 10000000 \
             --nouuid
 ```
-</div>
 
 The sample app will print some output and settle into reporting some stats in the steady state.
 
-```sh
+```
 Created table: [CREATE TABLE IF NOT EXISTS CassandraKeyValue (k varchar, v blob, primary key (k));]
 ...
 Read: 47388.10 ops/sec (0.67 ms/op), 816030 total ops  | Write: 1307.80 ops/sec (1.53 ms/op), 22900 total ops
@@ -174,7 +165,7 @@ Let us stop the load tester and run a yedis workload.
 ### Run the RedisKeyValue workload
 
 To start the workload, run the following command.
-<div class='copy separator-dollar'>
+
 ```sh
 $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --workload RedisKeyValue \
@@ -185,11 +176,10 @@ $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --num_unique_keys 10000000 \
             --nouuid
 ```
-</div>
 
 The sample app will print some output and settle into reporting some stats in the steady state.
 
-```sh
+```
 Read: 50069.15 ops/sec (0.64 ms/op), 657550 total ops  | Write: 1470.87 ops/sec (1.36 ms/op), 18849 total ops
 Read: 50209.09 ops/sec (0.64 ms/op), 908653 total ops  | Write: 1454.87 ops/sec (1.37 ms/op), 26125 total ops
 Read: 50016.18 ops/sec (0.64 ms/op), 1158794 total ops | Write: 1463.26 ops/sec (1.37 ms/op), 33443 total ops
@@ -211,18 +201,19 @@ $ /home/yugabyte/tserver/bin/cqlsh <ip address of the node>
 
 You can view the table schema as well as the data entered as shown below.
 
-```
+```sql
 cqlsh> DESCRIBE ybdemo_keyspace.cassandrakeyvalue;
-
+```
 CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
     k text PRIMARY KEY,
     v blob
 ) WITH default_time_to_live = 0;
 ```
 
-```sh
+```sql
 cqlsh> SELECT * FROM ybdemo_keyspace.cassandrakeyvalue LIMIT 5;
-
+```
+```
  k          | v
 ------------+-----------------------------------------
  key:101323 | 0x4276616c3a3130313332336be1dd6597e2...
@@ -243,7 +234,7 @@ $ /home/yugabyte/tserver/bin/redis-cli -h <ip address of the node>
 
 You can view the data by running the following commands.
 
-```sh
+```
 10.138.0.4:6379> GET key:0
 "Bval:0\x1b\x942\xea\xf0Q\xd1O\xdb\xf8...=V"
 10.138.0.4:6379> GET key:1

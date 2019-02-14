@@ -8,23 +8,21 @@ Prometheus is installed on your local machine. If you have not done so already, 
 ## 1. Setup - create universe
 
 If you have a previously running local universe, destroy it using the following.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-ctl destroy
 ```
-</div>
 
 Start a new local cluster - by default, this will create a 3-node universe with a replication factor of 3. 
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-ctl create
 ```
-</div>
 
 ## 2. Run sample key-value app
 
 Run a simple key-value workload in a separate shell.
-<div class='copy separator-dollar'>
+
 ```sh
 $ java -jar java/yb-sample-apps.jar \
     --workload CassandraKeyValue \
@@ -32,14 +30,13 @@ $ java -jar java/yb-sample-apps.jar \
     --num_threads_read 1 \
     --num_threads_write 1
 ```
-</div>
 
 
 ## 3. Prepare Prometheus config file
 
 Copy the following into a file called `yugabytedb.yml`.
 
-```{.sh .copy}
+```sh
 global:
   scrape_interval:     5s # Set the scrape interval to every 5 seconds. Default is every 1 minute.
   evaluation_interval: 5s # Evaluate rules every 5 seconds. The default is every 1 minute.
@@ -75,11 +72,10 @@ scrape_configs:
 ## 4. Start Prometheus server
 
 Go to the directory where Prometheus is installed and start the Prometheus server as below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./prometheus --config.file=yugabytedb.yml
 ```
-</div>
 
 Open the Prometheus UI at http://localhost:9090 and then navigate to the Targets page under Status.
 
@@ -97,14 +93,14 @@ Paste the following expressions into the Expression box and click Execute follow
 
 > Read IOPS
 
-```{.sh .copy}
+```sh
 sum(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_count[1m]))
 ```
 ![Prometheus Read IOPS](/images/ce/prom-read-iops.png)
 
 >  Write IOPS
 
-```{.sh .copy}
+```sh
 sum(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_count[1m]))
 ```
 ![Prometheus Read IOPS](/images/ce/prom-write-iops.png)
@@ -114,7 +110,7 @@ sum(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_count[1m]))
 
 >  Read Latency (in microseconds)
 
-```{.sh .copy}
+```sh
 avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_sum[1m])) / avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_count[1m]))
 ```
 ![Prometheus Read IOPS](/images/ce/prom-read-latency.png)
@@ -122,7 +118,7 @@ avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_sum[1m])) / avg(i
 
 > Write Latency (in microseconds)
 
-```{.sh .copy}
+```sh
 avg(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_sum[1m])) / avg(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_count[1m]))
 ```
 ![Prometheus Read IOPS](/images/ce/prom-write-latency.png)
@@ -130,8 +126,7 @@ avg(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_sum[1m])) / avg(i
 ## 6. Clean up (optional)
 
 Optionally, you can shutdown the local cluster created in Step 1.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-ctl destroy
 ```
-</div>

@@ -23,11 +23,11 @@ If you want this cluster to be able to support Redis clients, you **must** perfo
 {{< /note >}}
 
 While the YCQL and PostgreSQL (Beta) services are turned on by default after all the yb-tservers start, the Redis-compatible YEDIS service is off by default. If you want this cluster to be able to support Redis clients, run the following command from any of the 4 instances. The command below will add the special Redis table into the DB and also start the YEDIS server on port 6379 on all instances.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/yb-admin --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 setup_redis_table
 ```
-</div>
+
 
 ## View the master UI dashboard
 
@@ -42,17 +42,20 @@ You should now be able to view the master dashboard on the ip address of any mas
 ## Connect clients
 
 - Clients can connect to YugaByte DB's YCQL API at
-```{.sh .copy}
+
+```sh
 172.151.17.130:9042,172.151.17.220:9042,172.151.17.140:9042,172.151.17.150:9042
 ```
 
 - Clients can connect to YugaByte DB's YEDIS API at
-```{.sh .copy}
+
+```sh
 172.151.17.130:6379,172.151.17.220:6379,172.151.17.140:6379,172.151.17.150:6379
 ```
 
 - Clients can connect to YugaByte DB's YSQL (Beta) API at
-```{.sh .copy}
+
+```sh
 172.151.17.130:5433,172.151.17.220:5433,172.151.17.140:5433,172.151.17.150:5433
 ```
 

@@ -25,21 +25,19 @@ Returns the value for the given `field`
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ HSET yugahash area1 "America"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ HGET yugahash area1
 ```
-</div>
-```sh
+
+```
 "America"
 ```
 

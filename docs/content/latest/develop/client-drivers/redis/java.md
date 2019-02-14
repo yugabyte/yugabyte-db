@@ -3,7 +3,7 @@
 
 To build your Java application using YugaByte DB's version of the Jedis driver, add the following Maven dependency to your application:
 
-```
+```xml
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jedis</artifactId>
@@ -78,7 +78,7 @@ Create a maven build file `pom.xml` and add the following content into it.
 Create the appropriate directory structure as expected by maven.
 
 ```sh
-mkdir -p src/main/java/com/yugabyte/sample/apps
+$ mkdir -p src/main/java/com/yugabyte/sample/apps
 ```
 
 Copy the following contents into the file `src/main/java/com/yugabyte/sample/apps/YBRedisHelloWorld.java`.
@@ -126,18 +126,18 @@ public class YBRedisHelloWorld {
 To build the application, just run the following command.
 
 ```sh
-mvn package
+$ mvn package
 ```
 
 To run the program, do the following.
 
 ```sh
-java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YBRedisHelloWorld
+% java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YBRedisHelloWorld
 ```
 
 You should see the following as the output.
 
-```sh
+```
 HMSET returned OK: id=1, name=John, age=35, language=Redis
 Query result: name=John, age=35, language=Redis
 ```

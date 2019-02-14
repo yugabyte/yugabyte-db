@@ -25,29 +25,27 @@ Returns the length of the resulted string after appending.
 
 ## Examples
 
-You can do this as shown below.
-<div class='copy separator-dollar'>
 ```sh
 $ GET yugakey
 ```
-</div>
-```sh
+
+```
 "Yuga"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ APPEND yugakey "Byte"
 ```
-</div>
-```sh
+
+```
 8
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ GET yugakey
 ```
-</div>
-```sh
+
+```
 "YugaByte"
 ```
 

@@ -21,28 +21,28 @@ Returns list of fields in the specified hash.
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ HSET yugahash area1 "Africa"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ HSET yugahash area2 "America"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ HKEYS yugahash
 ```
-</div>
-```sh
+
+```
 1) "area1"
 2) "area2"
 ```

@@ -1,27 +1,25 @@
 ## 1. Setup - create universe
 
 If you have a previously running local universe, destroy it using the following.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./yb-docker-ctl destroy
 ```
-</div>
 
 Start a new local universe with default replication factor 3.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./yb-docker-ctl create  
 ```
-</div>
+
 ## 2. Run sample key-value app
 
 Run a simple key-value workload in a separate shell.
-<div class='copy separator-dollar'>
+
 ```sh
 $ docker cp yb-master-n1:/home/yugabyte/java/yb-sample-apps.jar .
 ```
-</div>
-<div class='copy separator-dollar'>
+
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --nodes localhost:9042 \
@@ -29,14 +27,13 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --num_threads_read 4 \
                                     --value_size 4096
 ```
-</div>
 
 
 ## 3. Prepare Prometheus config file
 
 Copy the following into a file called `yugabytedb.yml`. Move this file to the `/tmp` directory so that we can bind the file to the Prometheus container later on.
 
-```{.sh .copy}
+```sh
 global:
   scrape_interval:     5s # Set the scrape interval to every 5 seconds. Default is every 1 minute.
   evaluation_interval: 5s # Evaluate rules every 5 seconds. The default is every 1 minute.
@@ -72,7 +69,7 @@ scrape_configs:
 ## 4. Start Prometheus server
 
 Start the Prometheus server as below. The `prom/prometheus` container image will be pulled from the Docker registry if not already present on the localhost.
-<div class='copy separator-dollar'>
+
 ```sh
 $ docker run \
 	-p 9090:9090 \
@@ -80,7 +77,6 @@ $ docker run \
 	--net yb-net \
     prom/prometheus
 ```
-</div>
 
 Open the Prometheus UI at http://localhost:9090 and then navigate to the Targets page under Status.
 
@@ -98,14 +94,14 @@ Paste the following expressions into the Expression box and click Execute follow
 
 > Read IOPS
 
-```{.sh .copy}
+```sh
 sum(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_count[1m]))
 ```
 ![Prometheus Read IOPS](/images/ce/prom-read-iops.png)
 
 >  Write IOPS
 
-```{.sh .copy}
+```sh
 sum(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_count[1m]))
 ```
 ![Prometheus Read IOPS](/images/ce/prom-write-iops.png)
@@ -115,7 +111,7 @@ sum(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_count[1m]))
 
 >  Read Latency (in microseconds)
 
-```{.sh .copy}
+```sh
 avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_sum[1m])) / avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_count[1m]))
 ```
 ![Prometheus Read IOPS](/images/ce/prom-read-latency.png)
@@ -123,7 +119,7 @@ avg(irate(handler_latency_yb_cqlserver_SQLProcessor_SelectStmt_sum[1m])) / avg(i
 
 > Write Latency (in microseconds)
 
-```{.sh .copy}
+```sh
 avg(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_sum[1m])) / avg(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_count[1m]))
 ```
 ![Prometheus Read IOPS](/images/ce/prom-write-latency.png)
@@ -131,8 +127,7 @@ avg(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_sum[1m])) / avg(i
 ## 6. Clean up (optional)
 
 Optionally, you can shutdown the local cluster created in Step 1.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./yb-docker-ctl destroy
 ```
-</div>

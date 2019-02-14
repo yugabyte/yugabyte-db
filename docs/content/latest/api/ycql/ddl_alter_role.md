@@ -43,26 +43,22 @@ Where
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE ROLE finance;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> ALTER ROLE finance with LOGIN = true;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> ALTER ROLE finance with SUPERUSER = true;
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> ALTER ROLE finance with PASSWORD = 'jsfp9ajhufans2' AND SUPERUSER = false;
 ```
-</div>
 
 ## See Also
 

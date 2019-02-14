@@ -24,16 +24,20 @@ Follow the instructions on the [Check Processes](../../nodes/check-processes/) p
 
 If the tserver process is running, make sure the YCQL API is enabled and listening on the YCQL port (default `9042`).
 
-```
+```sh
 $ lsof -i :9042
+```
+```
 COMMAND     PID   USER   FD   TYPE     DEVICE SIZE/OFF NODE NAME
 yb-tserve 81590 centos  131u  IPv4 0xdeadbeef      0t0  TCP localhost:9042 (LISTEN)
 ```
 Note: You may need to install `lsof` first.
 
 When running a local cluster with `yb-ctl` you should see all the nodes here with different IPs. For instance:
-```
+```sh
 $ lsof -i :9042
+```
+```
 COMMAND     PID   USER   FD   TYPE     DEVICE SIZE/OFF NODE NAME
 yb-tserve 81590 centos  131u  IPv4 0xdeadbeef      0t0  TCP localhost:9042 (LISTEN)
 yb-tserve 81593 centos  131u  IPv4 0xdeadbeef      0t0  TCP 127.0.0.2:9042 (LISTEN)
@@ -48,8 +52,8 @@ tserver process.
 Once on the machine where YugaByte DB is running, use `cqlsh` to connect to the local YugaByte DB instance.
 Depending on your installation, you may need to install `cqlsh`, otherwise you can find it in the YugaByte `bin` directory. 
 Try running:
-```
-cqlsh <yb-local-address>
+```sh
+$ cqlsh <yb-local-address>
 ```
 where `<yb-local-address>` is the address where the YugaByte CQL server is listening (e.g. as returned by `lsof`). For instance, in the example above, it is `localhost` (or, additionally, `127.0.0.2` and `127.0.0.3` for the `yb-ctl` case).
 

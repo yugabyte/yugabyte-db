@@ -25,54 +25,56 @@ Returns a list of `members` found in the range specified by `min`, `max`, unless
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZADD z_key 1.0 v1 2.0 v2
 ```
-</div>
-```sh
+
+```
 (integer) 2
 ```
 Retrieve all members.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZRANGEBYSCORE z_key -inf +inf
 ```
-</div>
-```sh
+
+```
 1) "v1"
 2) "v2"
 ```
 Retrieve all member score pairs.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZRANGEBYSCORE z_key -inf +inf WITHSCORES
 ```
-</div>
-```sh
+
+```
 1) "v1"
 2) "1.0"
 3) "v2"
 4) "2.0"
 ```
 Bounds are inclusive.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ZRANGEBYSCORE z_key 1.0 2.0
 ```
-</div>
-```sh
+
+```
 1) "v1"
 2) "v2"
 ```
-<div class='copy separator-dollar'>
+
+Bounds are exclusive.
 ```sh
-# Bounds are exclusive.
 $ ZRANGEBYSCORE z_key (1.0 (2.0
 ```
-</div>
-```sh
+
+```
 (empty list or set)
 ```
+
 ## See Also
+
 [`zadd`](../zadd/), [`zcard`](../zcard/), [`zrange`](../zrange/), [`zrem`](../zrem/), [`zrevrange`](../zrevrange)

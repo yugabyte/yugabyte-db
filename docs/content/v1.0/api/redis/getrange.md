@@ -20,28 +20,28 @@ Returns a string value.
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ SET yugakey "YugaByte"
 ```
-</div>
-```sh
+
+```
 "OK"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ GETRANGE yugakey 0 3
 ```
-</div>
-```sh
+
+```
 "Yuga"
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ GETRANGE yugakey -4 -1
 ```
-</div>
-```sh
+
+```
 "Byte"
 ```
 

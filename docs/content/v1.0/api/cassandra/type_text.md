@@ -32,32 +32,28 @@ Where
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE users(user_name TEXT PRIMARY KEY, full_name VARCHAR);
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO users(user_name, full_name) VALUES ('jane', 'Jane Doe');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> INSERT INTO users(user_name, full_name) VALUES ('john', 'John Doe');
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> UPDATE users set full_name = 'Jane Poe' WHERE user_name = 'jane';
 ```
-</div>
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> SELECT * FROM users;
 ```
-</div>
-```sh
+
+```
  user_name | full_name
 -----------+-----------
       jane |  Jane Poe

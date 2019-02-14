@@ -20,28 +20,28 @@ Returns the cardinality of the set.
 ## Examples
 
 You can do this as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ SADD yuga_world "America"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SADD yuga_world "Asia"
 ```
-</div>
-```sh
+
+```
 1
 ```
-<div class='copy separator-dollar'>
+
 ```sh
 $ SCARD yuga_world
 ```
-</div>
-```sh
+
+```
 2
 ```
 

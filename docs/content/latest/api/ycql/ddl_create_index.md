@@ -87,10 +87,9 @@ Where
 ## Examples
 ### Create a table to be indexed
 
-You can do this as shown below.
-<div class='copy separator-gt'>
+'customer_id' is the partitioning column and 'order_date' is the clustering column.
+
 ```sql
-cqlsh:example> -- 'customer_id' is the partitioning column and 'order_date' is the clustering column.
 cqlsh:example> CREATE TABLE orders (customer_id INT,
                                     order_date TIMESTAMP,
                                     warehouse_id INT,
@@ -98,30 +97,21 @@ cqlsh:example> CREATE TABLE orders (customer_id INT,
                                     PRIMARY KEY ((customer_id), order_date))
                WITH transactions = { 'enabled' : true };
 ```
-</div>
 
 ### Create an index for query by the `order_date` column
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> CREATE INDEX orders_by_date ON orders (order_date) INCLUDE (amount);
 ```
-</div>
 
 ### Create an index for query by the `warehouse_id` column
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> CREATE INDEX orders_by_warehouse ON orders (warehouse_id, order_date) INCLUDE (amount);
 ```
-</div>
 
 ### Insert some data
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> INSERT INTO orders (customer_id, order_date, warehouse_id, amount)
                VALUES (1001, '2018-01-10', 107, 100.30);
@@ -132,16 +122,13 @@ cqlsh:example> INSERT INTO orders (customer_id, order_date, warehouse_id, amount
 cqlsh:example> INSERT INTO orders (customer_id, order_date, warehouse_id, amount)
                VALUES (1003, '2018-04-09', 108, 200.80);
 ```
-</div>
 
 ### Query by the partition column `customer_id` in the table
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> SELECT SUM(amount) FROM orders WHERE customer_id = 1001 AND order_date >= '2018-01-01';
 ```
-</div>
+
 ```
   sum(amount)
 -------------
@@ -150,12 +137,10 @@ cqlsh:example> SELECT SUM(amount) FROM orders WHERE customer_id = 1001 AND order
 
 ### Query by the partition column `order_date` in the index `orders_by_date`
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> SELECT SUM(amount) FROM orders WHERE order_date = '2018-04-09';
 ```
-</div>
+
 ```
  sum(amount)
 -------------
@@ -164,12 +149,10 @@ cqlsh:example> SELECT SUM(amount) FROM orders WHERE order_date = '2018-04-09';
 
 ### Query by the partition column `warehouse_id` column in the index `orders_by_warehouse`
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> SELECT SUM(amount) FROM orders WHERE warehouse_id = 102 AND order_date >= '2018-01-01';
 ```
-</div>
+
 ```
  sum(amount)
 -------------
@@ -179,7 +162,7 @@ cqlsh:example> SELECT SUM(amount) FROM orders WHERE warehouse_id = 102 AND order
 ### Create a table with a unique index
 
 You can do this as shown below.
-<div class='copy separator-gt'>
+
 ```sql
 cqlsh:example> CREATE TABLE emp (enum INT primary key,
                                  lastname VARCHAR,
@@ -188,12 +171,10 @@ cqlsh:example> CREATE TABLE emp (enum INT primary key,
                WITH transactions = { 'enabled' : true };
 cqlsh:example> CREATE UNIQUE INDEX emp_by_userid ON emp (userid);
 ```
-</div>
+
 
 ### Insert values into the table and verify no duplicate `userid` is inserted
 
-You can do this as shown below.
-<div class='copy separator-gt'>
 ```sql
 cqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
                VALUES (1001, 'Smith', 'John', 'jsmith');
@@ -207,10 +188,11 @@ VALUES (1002, 'Smith', 'Jason', 'jsmith');
 cqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
                VALUES (1002, 'Smith', 'Jason', 'jasmith');
 ```
-</div>
-```
+
+```sql
 cqlsh:example> SELECT * FROM emp;
 ```
+
 ```
  enum | lastname | firstname | userid
 ------+----------+-----------+---------

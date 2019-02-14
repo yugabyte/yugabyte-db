@@ -29,11 +29,18 @@ YSQL is a distributed SQL API compatible with PostgreSQL. It supports the follow
 The following example illustrates how to use `psql` to connect to YugaByte DB's PostgreSQL API.
 It assumes you have [installed YugaByte](../../quick-start/install/) and started a [PostgreSQL-enabled cluster](../../quick-start/test-postgresql/).
 
-```{.sql}
-18:31 $ bin/psql -p 5433 -U postgres
+```sh
+$ bin/psql -p 5433 -U postgres
+```
+
+```
 psql (10.3, server 10.4)
 Type "help" for help.
 
+postgres=#
+```
+
+```sql
 postgres=# create table sample(id int primary key, name varchar, salary float);
 CREATE TABLE
 postgres=# insert into sample values(1, 'one', 50000.99);
@@ -41,6 +48,9 @@ INSERT 0 1
 postgres=# insert into sample values(2, 'two', 10000.00);
 INSERT 0 1
 postgres=# select * from sample ORDER BY id DESC;
+```
+
+```
  id | name |  salary
 ----+------+----------
   2 | two  |    10000

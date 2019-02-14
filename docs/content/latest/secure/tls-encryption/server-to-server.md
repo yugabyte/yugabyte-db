@@ -29,8 +29,8 @@ Flag                           | Process                  | Description         
 ## Start the master process
 
 You can enable access control by starting the `yb-master` processes minimally with the `--use_node_to_node_encryption=true` flag as described above. Your command should look similar to that shown below:
-<div class='copy separator-dollar'>
-```sh
+
+```
 bin/yb-master                               \
     --fs_data_dirs=<data directories>       \
     --master_addresses=<master addresses>   \
@@ -38,7 +38,6 @@ bin/yb-master                               \
     --allow_insecure_connections=false      \
     --use_node_to_node_encryption=true
 ```
-</div>
 
 You can read more about bringing up the YB-Masters for a deployment in the section on [manual deployment of a YugaByte DB cluster](../../../deploy/manual-deployment/start-masters/).
 
@@ -46,15 +45,14 @@ You can read more about bringing up the YB-Masters for a deployment in the secti
 ## Start the tserver process
 
 You can enable access control by starting the `yb-tserver` processes minimally with the `--use_node_to_node_encryption=true` flag as described above. Your command should look similar to that shown below:
-<div class='copy separator-dollar'>
-```sh
+
+```
 bin/yb-tserver                                  \
     --fs_data_dirs=<data directories>           \
     --tserver_master_addrs=<master addresses>   \
     --certs_dir /home/centos/tls/$NODE_IP       \
     --use_node_to_node_encryption=true &
 ```
-</div>
 
 You can read more about bringing up the YB-TServers for a deployment in the section on [manual deployment of a YugaByte DB cluster](../../../deploy/manual-deployment/start-tservers/).
 
@@ -62,19 +60,27 @@ You can read more about bringing up the YB-TServers for a deployment in the sect
 ## Connect to the cluster
 
 Since we have only enabled encryption between the database servers, we should be able to connect to this cluster using `cqlsh` without enabling encryption as shown below.
-<div class='copy separator-dollar'>
+
 ```sh
 $ ./bin/cqlsh
+```
+
+```
 Connected to local cluster at 127.0.0.1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh> DESCRIBE KEYSPACES;
+cqlsh>
+```
 
+```sh
+cqlsh> DESCRIBE KEYSPACES;
+```
+
+```sh
 system_schema  system_auth  system
 
 cqlsh>
 ```
-</div>
 
 {{< note title="Note" >}}
 Since we have not enforced client to server encrypted communication, connecting to this cluster using `cqlsh` without TLS encryption enabled would work.
