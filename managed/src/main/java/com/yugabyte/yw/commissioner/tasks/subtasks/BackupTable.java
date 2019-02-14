@@ -34,6 +34,7 @@ public class BackupTable extends AbstractTaskBase {
     Backup backup = Backup.fetchByTaskUUID(userTaskUUID);
     JsonNode jsonNode = Json.parse(response.message);
     if (response.code != 0 || jsonNode.has("error")) {
+      LOG.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
       backup.transitionState(Backup.BackupState.Failed);
       throw new RuntimeException(response.message);
     } else {

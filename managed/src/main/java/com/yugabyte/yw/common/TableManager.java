@@ -92,6 +92,9 @@ public class TableManager extends DevopsBase {
         }
         commandArgs.add("--no_auto_name");
         commandArgs.add(backupTableParams.actionType.name().toLowerCase());
+        if (backupTableParams.enableVerboseLogs) {
+          commandArgs.add("--verbose");
+        }
         extraVars = customerConfig.dataAsMap();
         if (region.provider.code.equals("kubernetes")) {
           extraVars.putAll(region.provider.getConfig());
