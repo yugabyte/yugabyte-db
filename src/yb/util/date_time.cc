@@ -20,6 +20,7 @@
 #include <regex>
 #include <ctime>
 
+#include <gflags/gflags.h>
 #include "yb/util/date_time.h"
 #include "yb/util/logging.h"
 #include "boost/date_time/gregorian/gregorian.hpp"
@@ -32,6 +33,7 @@ using std::string;
 using std::regex;
 using icu::GregorianCalendar;
 using icu::TimeZone;
+using icu::UnicodeString;
 using boost::gregorian::date;
 using boost::local_time::local_date_time;
 using boost::local_time::local_time_facet;
@@ -42,6 +44,9 @@ using boost::posix_time::ptime;
 using boost::posix_time::microseconds;
 using boost::posix_time::time_duration;
 using boost::posix_time::microsec_clock;
+using boost::posix_time::milliseconds;
+
+DEFINE_bool(use_icu_timezones, true, "Use the new ICU library for timezones instead of boost");
 
 namespace yb {
 
@@ -102,6 +107,50 @@ string GetSystemTimezone() {
   return buffer;
 }
 
+/* Subset of supported Timezone formats https://docs.oracle.com/cd/E51711_01/DR/ICU_Time_Zones.html
+ * Full database can be found at https://www.iana.org/time-zones
+ * We support everything that Cassandra supports, like z/Z, +/-0800, +/-08:30 GMT+/-[0]7:00,
+ * and we also support UTC+/-[0]9:30 which Cassandra does not support
+ */
+Result<string> GetTimezone(string timezoneID) {
+  /* Parse timezone offset from string in most formats of timezones
+   * Some formats are supported by ICU and some different ones by Boost::PosixTime
+   * To capture both, return posix supported directly, and for ICU, create ICU Timezone and then
+   * convert to a supported Posix format.
+   */
+  // [+/-]0830 is not supported by ICU TimeZone or Posixtime so need to do some extra work
+  std::smatch m;
+  std::regex rgx = regex("(?:\\+|-)(\\d{2})(\\d{2})");
+  if (timezoneID.empty()) {
+    return GetSystemTimezone();
+  } else if (timezoneID == "z" || timezoneID == "Z") {
+    timezoneID = "GMT";
+  } else if (std::regex_match(timezoneID, m , rgx)) {
+    return m.str(1) + ":" + m.str(2);
+  } else if (timezoneID.at(0) == '+' || timezoneID.at(0) == '-' ||
+             timezoneID.substr(0, 3) == "UTC") {
+    return timezoneID;
+  }
+  TimeZone *tzone = TimeZone::createTimeZone(timezoneID.c_str());
+  UnicodeString id;
+  tzone->getID(id);
+  string timezone;
+  id.toUTF8String(timezone);
+  if (*tzone == TimeZone::getUnknown()) {
+    return STATUS(InvalidArgument, "Invalid Timezone: " + timezoneID +
+        "\nUse standardized timezone such as \"America/New_York\" or offset such as UTC-07:00.");
+  }
+  time_duration td = milliseconds(tzone->getRawOffset());
+  const int hours = td.hours();
+  const int minutes = td.minutes();
+  char buffer[7]; // "+HH:MM" or "-HH:MM"
+  const int result = snprintf(buffer, sizeof(buffer), "%+2.2d:%2.2d", hours, abs(minutes));
+  if (result <= 0 || result >= sizeof(buffer)) {
+    return STATUS(Corruption, "Parsing timezone into timezone offset string failed");
+  }
+  return buffer;
+}
+
 } // namespace
 
 //------------------------------------------------------------------------------------------------
@@ -124,8 +173,14 @@ Result<Timestamp> DateTime::TimestampFromString(const string& str,
       try {
         const date d(year, month, day);
         const time_duration t(hours, minutes, seconds, frac);
-        const time_zone_ptr tz(new posix_time_zone(m.str(8).empty() ? GetSystemTimezone()
-                                                                    : m.str(8)));
+        posix_time_zone *ptz;
+        if (FLAGS_use_icu_timezones) {
+          ptz = new posix_time_zone(VERIFY_RESULT(GetTimezone(m.str(8))));
+        } else {
+          ptz = new posix_time_zone(m.str(8).empty() ? GetSystemTimezone()
+            : m.str(8));
+        }
+        const time_zone_ptr tz(ptz);
         return ToTimestamp(local_date_time(d, t, tz, local_date_time::NOT_DATE_TIME_ON_ERROR));
       } catch (std::exception& e) {
         return STATUS(InvalidArgument, "Invalid timestamp", e.what());
@@ -302,6 +357,9 @@ const DateTime::InputFormat DateTime::CqlInputFormat = []() -> InputFormat {
   string frac_fmt = "\\.(\\d{1,3})";
   // Offset, i.e. +/-xx:xx, +/-0000, timezone parser will do additional checking.
   string tzX_fmt = "((?:\\+|-)\\d{2}:?\\d{2})";
+  // Zulu Timezone e.g allows user to just add z or Z at the end with no space in front to indicate
+  // Zulu Time which is equivlent to GMT/UTC.
+  string tzY_fmt = "([zZ])";
   // Timezone name, abbreviation, or offset (preceded by space), e.g. PDT, UDT+/-xx:xx, etc..
   // At this point this allows anything that starts with a letter or '+' (after space), and leaves
   // further processing to the timezone parser.
@@ -313,54 +371,72 @@ const DateTime::InputFormat DateTime::CqlInputFormat = []() -> InputFormat {
       regex(date_fmt + " " + time_fmt_no_sec + fmt_empty + fmt_empty),
       // e.g. "1992-06-04 12:30+04:00" or "1992-6-4 12:30-04:30"
       regex(date_fmt + " " + time_fmt_no_sec + fmt_empty + tzX_fmt),
+      // e.g. "1992-06-04 12:30 UTCz" or "1992-6-4 12:30Z"
+      regex(date_fmt + " " + time_fmt_no_sec + fmt_empty + tzY_fmt),
       // e.g. "1992-06-04 12:30 UTC+04:00" or "1992-6-4 12:30 UTC-04:30"
       regex(date_fmt + " " + time_fmt_no_sec + fmt_empty + tzZ_fmt),
       // e.g. "1992-06-04 12:30.321" or "1992-6-4 12:30.12"
       regex(date_fmt + " " + time_fmt_no_sec + frac_fmt + fmt_empty),
       // e.g. "1992-06-04 12:30.321+04:00" or "1992-6-4 12:30.12-04:30"
       regex(date_fmt + " " + time_fmt_no_sec + frac_fmt + tzX_fmt),
+      // e.g. "1992-06-04 12:30.321z" or "1992-6-4 12:30.12Z"
+      regex(date_fmt + " " + time_fmt_no_sec + frac_fmt + tzY_fmt),
       // e.g. "1992-06-04 12:30.321 UTC+04:00" or "1992-6-4 12:30.12 UTC-04:30"
       regex(date_fmt + " " + time_fmt_no_sec + frac_fmt + tzZ_fmt),
       // e.g. "1992-06-04 12:30:45" or "1992-6-4 12:30:45"
       regex(date_fmt + " " + time_fmt + fmt_empty + fmt_empty),
       // e.g. "1992-06-04 12:30:45+04:00" or "1992-6-4 12:30:45-04:30"
       regex(date_fmt + " " + time_fmt + fmt_empty + tzX_fmt),
+      // e.g. "1992-06-04 12:30:45z" or "1992-6-4 12:30:45Z"
+      regex(date_fmt + " " + time_fmt + fmt_empty + tzY_fmt),
       // e.g. "1992-06-04 12:30:45 UTC+04:00" or "1992-6-4 12:30:45 UTC-04:30"
       regex(date_fmt + " " + time_fmt + fmt_empty + tzZ_fmt),
       // e.g. "1992-06-04 12:30:45.321" or "1992-6-4 12:30:45.12"
       regex(date_fmt + " " + time_fmt + frac_fmt + fmt_empty),
       // e.g. "1992-06-04 12:30:45.321+04:00" or "1992-6-4 12:30:45.12-04:30"
       regex(date_fmt + " " + time_fmt + frac_fmt + tzX_fmt),
+      // e.g. "1992-06-04 12:30:45.321z" or "1992-6-4 12:30:45.12Z"
+      regex(date_fmt + " " + time_fmt + frac_fmt + tzY_fmt),
       // e.g. "1992-06-04 12:30:45.321 UTC+04:00" or "1992-6-4 12:30:45.12 UTC-04:30"
       regex(date_fmt + " " + time_fmt + frac_fmt + tzZ_fmt),
       // e.g. "1992-06-04T12:30" or "1992-6-4T12:30"
       regex(date_fmt + "T" + time_fmt_no_sec + fmt_empty + fmt_empty),
       // e.g. "1992-06-04T12:30+04:00" or "1992-6-4T12:30-04:30"
       regex(date_fmt + "T" + time_fmt_no_sec + fmt_empty + tzX_fmt),
-      // e.g. "1992-06-04T12:30 UTC+04:00" or "1992-6-4T12:30TUTC-04:30"
+      // e.g. "1992-06-04T12:30z" or "1992-6-4T12:30TZ"
+      regex(date_fmt + "T" + time_fmt_no_sec + fmt_empty + tzY_fmt),
+      // e.g. "1992-06-04T12:30 UTC+04:00" or "1992-6-4T12:30T UTC-04:30"
       regex(date_fmt + "T" + time_fmt_no_sec + fmt_empty + tzZ_fmt),
       // e.g. "1992-06-04T12:30.321" or "1992-6-4T12:30.12"
       regex(date_fmt + "T" + time_fmt_no_sec + frac_fmt + fmt_empty),
       // e.g. "1992-06-04T12:30.321+04:00" or "1992-6-4T12:30.12-04:30"
       regex(date_fmt + "T" + time_fmt_no_sec + frac_fmt + tzX_fmt),
+      // e.g. "1992-06-04T12:30.321z" or "1992-6-4T12:30.12Z"
+      regex(date_fmt + "T" + time_fmt_no_sec + frac_fmt + tzY_fmt),
       // e.g. "1992-06-04T12:30.321 UTC+04:00" or "1992-6-4T12:30.12 UTC-04:30"
       regex(date_fmt + "T" + time_fmt_no_sec + frac_fmt + tzZ_fmt),
       // e.g. "1992-06-04T12:30:45" or "1992-6-4T12:30:45"
       regex(date_fmt + "T" + time_fmt + fmt_empty + fmt_empty),
       // e.g. "1992-06-04T12:30:45+04:00" or "1992-6-4T12:30:45-04:30"
       regex(date_fmt + "T" + time_fmt + fmt_empty + tzX_fmt),
+      // e.g. "1992-06-04T12:30:45z" or "1992-6-4T12:30:45Z"
+      regex(date_fmt + "T" + time_fmt + fmt_empty + tzY_fmt),
       // e.g. "1992-06-04T12:30:45 UTC+04:00" or "1992-6-4T12:30:45 UTC-04:30"
       regex(date_fmt + "T" + time_fmt + fmt_empty + tzZ_fmt),
       // e.g. "1992-06-04T12:30:45.321" or "1992-6-4T12:30:45.12"
       regex(date_fmt + "T" + time_fmt + frac_fmt + fmt_empty),
       // e.g. "1992-06-04T12:30:45.321+04:00" or "1992-6-4T12:30:45.12-04:30"
       regex(date_fmt + "T" + time_fmt + frac_fmt + tzX_fmt),
+      // e.g. "1992-06-04T12:30:45.321z" or "1992-6-4T12:30:45.12Z"
+      regex(date_fmt + "T" + time_fmt + frac_fmt + tzY_fmt),
       // e.g. "1992-06-04T12:30:45.321 UTC+04:00" or "1992-6-4T12:30:45.12 UTC-04:30"
       regex(date_fmt + "T" + time_fmt + frac_fmt + tzZ_fmt),
       // e.g. "1992-06-04" or "1992-6-4"
       regex(date_fmt + time_empty + fmt_empty + fmt_empty),
       // e.g. "1992-06-04+04:00" or "1992-6-4-04:30"
       regex(date_fmt + time_empty + fmt_empty + tzX_fmt),
+      // e.g. "1992-06-04z" or "1992-6-4Z"
+      regex(date_fmt + time_empty + fmt_empty + tzY_fmt),
       // e.g. "1992-06-04 UTC+04:00" or "1992-6-4 UTC-04:30"
       regex(date_fmt + time_empty + fmt_empty + tzZ_fmt)};
   int input_precision = 3; // Cassandra current default
