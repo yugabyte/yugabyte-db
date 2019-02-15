@@ -586,12 +586,21 @@ void ShutdownIfRemoteAddressIs(const ConnectionPtr& conn, const IpAddress& addre
 } // namespace
 
 void Reactor::DropWithRemoteAddress(const IpAddress& address) {
+  DropIncomingWithRemoteAddress(address);
+  DropOutgoingWithRemoteAddress(address);
+}
+void Reactor::DropIncomingWithRemoteAddress(const IpAddress& address) {
   DCHECK(IsCurrentThread());
 
+  VLOG(1) << "Dropping Incoming connections from " << address;
   for (auto& conn : server_conns_) {
     ShutdownIfRemoteAddressIs(conn, address);
   }
+}
 
+void Reactor::DropOutgoingWithRemoteAddress(const IpAddress& address) {
+  DCHECK(IsCurrentThread());
+  VLOG(1) << "Dropping Outgoing connections to " << address;
   for (auto& pair : client_conns_) {
     ShutdownIfRemoteAddressIs(pair.second, address);
   }

@@ -124,6 +124,11 @@ TAG_FLAG(log_inject_latency_ms_stddev, unsafe);
 DEFINE_int32(log_inject_append_latency_ms_max, 0,
              "The maximum latency to inject before the log append operation.");
 
+DEFINE_test_flag(bool, log_consider_all_ops_safe, false,
+            "If true, we consider all operations to be safe and will not wait"
+            "for the opId to apply to the local log. i.e. WaitForSafeOpIdToApply "
+            "becomes a noop.");
+
 // Validate that log_min_segments_to_retain >= 1
 static bool ValidateLogsToRetain(const char* flagname, int value) {
   if (value >= 1) {
@@ -767,7 +772,7 @@ yb::OpId Log::GetLatestEntryOpId() const {
 }
 
 yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed) {
-  if (all_op_ids_safe_) {
+  if (FLAGS_log_consider_all_ops_safe || all_op_ids_safe_) {
     return min_allowed;
   }
 

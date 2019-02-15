@@ -867,6 +867,11 @@ void CatalogManager::LoadSysCatalogDataTask() {
   LOG_SLOW_EXECUTION(WARNING, 1000, LogPrefix() + "Loading metadata into memory") {
     Status status = VisitSysCatalog(term);
     if (!status.ok()) {
+      if (status.IsShutdownInProgress()) {
+        LOG(INFO) << "Error loading sys catalog; because shutdown is in progress. term " << term
+                  << " status : " << status;
+        return;
+      }
       auto new_term = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE).current_term();
       if (new_term != term) {
         LOG(INFO) << "Error loading sys catalog; but that's OK as term was changed from " << term
@@ -901,6 +906,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
 
   LOG(INFO) << __func__ << ": Acquire catalog manager lock_ before loading sys catalog..";
   boost::lock_guard<LockType> lock(lock_);
+  VLOG(1) << __func__ << ": Acquired the catalog manager lock_";
 
   // Abort any outstanding tasks. All TableInfos are orphaned below, so
   // it's important to end their tasks now; otherwise Shutdown() will
@@ -1506,6 +1512,10 @@ void CatalogManager::Shutdown() {
   if (background_tasks_) {
     background_tasks_->Shutdown();
   }
+  // Shutdown the Catalog Manager worker pool.
+  if (worker_pool_) {
+    worker_pool_->Shutdown();
+  }
 
   // Mark all outstanding table tasks as aborted and wait for them to fail.
   //
@@ -1554,7 +1564,7 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   // Since this is a failed creation attempt, it's safe to just abort
   // all tasks, as (by definition) no tasks may be pending against a
   // table that has failed to successfully create.
-  table->AbortTasks();
+  table->AbortTasksAndClose();
   table->WaitTasksCompletion();
 
   std::lock_guard<LockType> l(lock_);
@@ -6816,11 +6826,14 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
 
 void CatalogManager::AbortAndWaitForAllTasks(const vector<scoped_refptr<TableInfo>>& tables) {
   for (const auto& t : tables) {
-    t->AbortTasks();
+    VLOG(1) << "Aborting tasks for table " << t;
+    t->AbortTasksAndClose();
   }
   for (const auto& t : tables) {
+    VLOG(1) << "Waiting on Aborting tasks for table " << t;
     t->WaitTasksCompletion();
   }
+  VLOG(1) << "Waiting on Aborting tasks done";
 }
 
 ////////////////////////////////////////////////////////////
@@ -6877,8 +6890,13 @@ CatalogManager::ScopedLeaderSharedLock::ScopedLeaderSharedLock(CatalogManager* c
     return;
   }
   if (PREDICT_FALSE(!leader_shared_lock_.owns_lock())) {
-    leader_status_ = STATUS(ServiceUnavailable, "Couldn't get leader_lock_ in shared mode. "
-                                                "Leader still loading catalog tables.");
+    leader_status_ = STATUS(
+        ServiceUnavailable, Substitute(
+                                "Couldn't get leader_lock_ in shared mode. "
+                                "Leader still loading catalog tables."
+                                "leader_ready_term_ = $0; "
+                                "cstate.current_term = $1",
+                                catalog_->leader_ready_term_, cstate.current_term()));
     return;
   }
 }
@@ -7144,28 +7162,54 @@ bool TableInfo::HasTasks(MonitoredTask::Type type) const {
 }
 
 void TableInfo::AddTask(std::shared_ptr<MonitoredTask> task) {
-  std::lock_guard<simple_spinlock> l(lock_);
-  pending_tasks_.insert(std::move(task));
+  bool abort_task = false;
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    if (!closing_) {
+      pending_tasks_.insert(std::move(task));
+    } else {
+      abort_task = true;
+    }
+  }
+  // We need to abort these tasks without holding the lock because when a task is destroyed it tries
+  // to acquire the same lock to remove itself from pending_tasks_.
+  if (abort_task) {
+    task->AbortAndReturnPrevState();
+  }
 }
 
 void TableInfo::RemoveTask(const std::shared_ptr<MonitoredTask>& task) {
-  std::lock_guard<simple_spinlock> l(lock_);
-  pending_tasks_.erase(task);
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    pending_tasks_.erase(task);
+  }
+  VLOG(1) << __func__ << " Removed task " << task.get() << " " << task->description();
 }
 
 // Aborts tasks which have their rpc in progress, rest of them are aborted and also erased
 // from the pending list.
 void TableInfo::AbortTasks() {
+  AbortTasksAndCloseIfRequested( /* close */ false);
+}
+
+void TableInfo::AbortTasksAndClose() {
+  AbortTasksAndCloseIfRequested( /* close */ true);
+}
+
+void TableInfo::AbortTasksAndCloseIfRequested(bool close) {
   std::vector<std::shared_ptr<MonitoredTask>> abort_tasks;
   {
     std::lock_guard<simple_spinlock> l(lock_);
+    if (close) {
+      closing_ = true;
+    }
     abort_tasks.reserve(pending_tasks_.size());
     abort_tasks.assign(pending_tasks_.cbegin(), pending_tasks_.cend());
   }
   // We need to abort these tasks without holding the lock because when a task is destroyed it tries
   // to acquire the same lock to remove itself from pending_tasks_.
   for (const auto& task : abort_tasks) {
-    VLOG(1) << "Aborting task " << task->description();
+    VLOG(1) << __func__ << " Aborting task " << task.get() << " " << task->description();
     task->AbortAndReturnPrevState();
   }
 }
@@ -7173,11 +7217,18 @@ void TableInfo::AbortTasks() {
 void TableInfo::WaitTasksCompletion() {
   int wait_time = 5;
   while (1) {
+    std::vector<std::shared_ptr<MonitoredTask>> waiting_on_for_debug;
     {
       std::lock_guard<simple_spinlock> l(lock_);
       if (pending_tasks_.empty()) {
         break;
+      } else if (VLOG_IS_ON(1)) {
+        waiting_on_for_debug.reserve(pending_tasks_.size());
+        waiting_on_for_debug.assign(pending_tasks_.cbegin(), pending_tasks_.cend());
       }
+    }
+    for (const auto& task : waiting_on_for_debug) {
+      VLOG(1) << "Waiting for Aborting task " << task.get() << " " << task->description();
     }
     base::SleepForMilliseconds(wait_time);
     wait_time = std::min(wait_time * 5 / 4, 10000);

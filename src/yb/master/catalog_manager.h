@@ -406,6 +406,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void AddTask(std::shared_ptr<MonitoredTask> task);
   void RemoveTask(const std::shared_ptr<MonitoredTask>& task);
   void AbortTasks();
+  void AbortTasksAndClose();
   void WaitTasksCompletion();
 
   // Allow for showing outstanding tasks in the master UI.
@@ -416,6 +417,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   ~TableInfo();
 
   void AddTabletUnlocked(TabletInfo* tablet);
+  void AbortTasksAndCloseIfRequested(bool close);
 
   const TableId table_id_;
 
@@ -426,6 +428,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Protects tablet_map_ and pending_tasks_.
   mutable simple_spinlock lock_;
+
+  // If closing, requests to AddTask will be promptly aborted.
+  bool closing_ = false;
 
   // List of pending tasks (e.g. create/alter tablet requests).
   std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_;
