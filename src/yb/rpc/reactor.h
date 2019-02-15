@@ -318,6 +318,8 @@ class Reactor {
   CoarseTimePoint cur_time() const { return cur_time_; }
 
   // Drop all connections with remote address. Used in tests with broken connectivity.
+  void DropIncomingWithRemoteAddress(const IpAddress& address);
+  void DropOutgoingWithRemoteAddress(const IpAddress& address);
   void DropWithRemoteAddress(const IpAddress& address);
 
   // Return true if this reactor thread is the thread currently

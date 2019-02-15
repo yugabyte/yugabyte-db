@@ -245,7 +245,11 @@ class Messenger : public ProxyContext {
   const IpAddress& outbound_address_v6() const { return outbound_address_v6_; }
 
   void BreakConnectivityWith(const IpAddress& address);
+  void BreakConnectivityTo(const IpAddress& address);
+  void BreakConnectivityFrom(const IpAddress& address);
   void RestoreConnectivityWith(const IpAddress& address);
+  void RestoreConnectivityTo(const IpAddress& address);
+  void RestoreConnectivityFrom(const IpAddress& address);
 
   Scheduler& scheduler() {
     return scheduler_;
@@ -275,7 +279,10 @@ class Messenger : public ProxyContext {
   // 'retain_self_' for more info.
   void AllExternalReferencesDropped();
 
-  bool IsArtificiallyDisconnectedFrom(const IpAddress& remote);
+  bool ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &remote);
+  bool ShouldArtificiallyRejectOutgoingCallsTo(const IpAddress &remote);
+  void BreakConnectivity(const IpAddress& address, bool incoming, bool outgoing);
+  void RestoreConnectivity(const IpAddress& address, bool incoming, bool outgoing);
 
   // Take ownership of the socket via Socket::Release
   void RegisterInboundSocket(
@@ -361,7 +368,8 @@ class Messenger : public ProxyContext {
   std::atomic<bool> has_broken_connectivity_ = {false};
 
   // Set of addresses with artificially broken connectivity.
-  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_;
+  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_from_;
+  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_to_;
 
   IoThreadPool io_thread_pool_;
   Scheduler scheduler_;

@@ -1848,8 +1848,10 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
                           << request->candidate_uuid();
   }
 
-  // If we've heard recently from the leader, then we should ignore the request.
-  // It might be from a "disruptive" server. This could happen in a few cases:
+  // If we've heard recently from the leader, then we should ignore the request
+  // (except if it is the leader itself requesting a vote -- something that might
+  //  happen if the leader were to stepdown and call an election.). Otherwise,
+  // it might be from a "disruptive" server. This could happen in a few cases:
   //
   // 1) Network partitions
   // If the leader can talk to a majority of the nodes, but is partitioned from a
@@ -1865,7 +1867,8 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // See also https://ramcloud.stanford.edu/~ongaro/thesis.pdf
   // section 4.2.3.
   MonoTime now = MonoTime::Now();
-  if (!request->ignore_live_leader() && now < withhold_votes_until_) {
+  if (request->candidate_uuid() != state_->GetLeaderUuidUnlocked() &&
+      !request->ignore_live_leader() && now < withhold_votes_until_) {
     return RequestVoteRespondLeaderIsAlive(request, response);
   }
 

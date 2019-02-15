@@ -258,22 +258,48 @@ Status Messenger::StartAcceptor() {
 }
 
 void Messenger::BreakConnectivityWith(const IpAddress& address) {
-  LOG(INFO) << "TEST: Break connectivity with: " << address;
+  BreakConnectivity(address, /* incoming */ true, /* outgoing */ true);
+}
+void Messenger::BreakConnectivityTo(const IpAddress& address) {
+  BreakConnectivity(address, /* incoming */ false, /* outgoing */ true);
+}
+
+void Messenger::BreakConnectivityFrom(const IpAddress& address) {
+  BreakConnectivity(address, /* incoming */ true, /* outgoing */ false);
+}
+
+void Messenger::BreakConnectivity(const IpAddress& address, bool incoming, bool outgoing) {
+  LOG(INFO) << "TEST: Break " << (incoming ? "incoming" : "") << "/" << (outgoing ? "outgoing" : "")
+            << " connectivity with: " << address;
 
   std::unique_ptr<CountDownLatch> latch;
   {
     std::lock_guard<percpu_rwlock> guard(lock_);
-    if (broken_connectivity_.empty()) {
+    if (broken_connectivity_from_.empty() || broken_connectivity_to_.empty()) {
       has_broken_connectivity_.store(true, std::memory_order_release);
     }
-    if (broken_connectivity_.insert(address).second) {
+    bool inserted_from = false;
+    if (incoming) {
+      inserted_from = broken_connectivity_from_.insert(address).second;
+    }
+    bool inserted_to = false;
+    if (outgoing) {
+      inserted_to = broken_connectivity_to_.insert(address).second;
+    }
+    if (inserted_from || inserted_to) {
       latch.reset(new CountDownLatch(reactors_.size()));
       for (auto* reactor : reactors_) {
         auto scheduled = reactor->ScheduleReactorTask(MakeFunctorReactorTask(
-            [&latch, address](Reactor* reactor) {
-              reactor->DropWithRemoteAddress(address);
+            [&latch, address, incoming, outgoing](Reactor* reactor) {
+              if (incoming) {
+                reactor->DropIncomingWithRemoteAddress(address);
+              }
+              if (outgoing) {
+                reactor->DropOutgoingWithRemoteAddress(address);
+              }
               latch->CountDown();
-            }, SOURCE_LOCATION()));
+            },
+            SOURCE_LOCATION()));
         if (!scheduled) {
           LOG(INFO) << "Failed to schedule drop connection with: " << address.to_string();
           latch->CountDown();
@@ -288,19 +314,44 @@ void Messenger::BreakConnectivityWith(const IpAddress& address) {
 }
 
 void Messenger::RestoreConnectivityWith(const IpAddress& address) {
-  LOG(INFO) << "TEST: Restore connectivity with: " << address;
+  RestoreConnectivity(address, /* incoming */ true, /* outgoing */ true);
+}
+void Messenger::RestoreConnectivityTo(const IpAddress& address) {
+  RestoreConnectivity(address, /* incoming */ false, /* outgoing */ true);
+}
+
+void Messenger::RestoreConnectivityFrom(const IpAddress& address) {
+  RestoreConnectivity(address, /* incoming */ true, /* outgoing */ false);
+}
+
+void Messenger::RestoreConnectivity(const IpAddress& address, bool incoming, bool outgoing) {
+  LOG(INFO) << "TEST: Restore " << (incoming ? "incoming" : "") << "/"
+            << (outgoing ? "outgoing" : "") << " connectivity with: " << address;
 
   std::lock_guard<percpu_rwlock> guard(lock_);
-  broken_connectivity_.erase(address);
-  if (broken_connectivity_.empty()) {
+  if (incoming) {
+    broken_connectivity_from_.erase(address);
+  }
+  if (outgoing) {
+    broken_connectivity_to_.erase(address);
+  }
+  if (broken_connectivity_from_.empty() && broken_connectivity_to_.empty()) {
     has_broken_connectivity_.store(false, std::memory_order_release);
   }
 }
 
-bool Messenger::IsArtificiallyDisconnectedFrom(const IpAddress& remote) {
+bool Messenger::ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &remote) {
   if (has_broken_connectivity_.load(std::memory_order_acquire)) {
     shared_lock<rw_spinlock> guard(lock_.get_lock());
-    return broken_connectivity_.count(remote) != 0;
+    return broken_connectivity_from_.count(remote) != 0;
+  }
+  return false;
+}
+
+bool Messenger::ShouldArtificiallyRejectOutgoingCallsTo(const IpAddress &remote) {
+  if (has_broken_connectivity_.load(std::memory_order_acquire)) {
+    shared_lock<rw_spinlock> guard(lock_.get_lock());
+    return broken_connectivity_to_.count(remote) != 0;
   }
   return false;
 }
@@ -405,8 +456,8 @@ void Messenger::QueueOutboundCall(OutboundCallPtr call) {
   const auto& remote = call->conn_id().remote();
   Reactor *reactor = RemoteToReactor(remote, call->conn_id().idx());
 
-  if (IsArtificiallyDisconnectedFrom(remote.address())) {
-    LOG(INFO) << "TEST: Rejected connection to " << remote;
+  if (ShouldArtificiallyRejectOutgoingCallsTo(remote.address())) {
+    VLOG(1) << "TEST: Rejected connection to " << remote;
     auto scheduled = reactor->ScheduleReactorTask(std::make_shared<NotifyDisconnectedReactorTask>(
         call, SOURCE_LOCATION()));
     if (!scheduled) {
@@ -451,10 +502,10 @@ void Messenger::Handle(InboundCallPtr call) {
 
 void Messenger::RegisterInboundSocket(
     const ConnectionContextFactoryPtr& factory, Socket *new_socket, const Endpoint& remote) {
-  if (IsArtificiallyDisconnectedFrom(remote.address())) {
+  if (ShouldArtificiallyRejectIncomingCallsFrom(remote.address())) {
     auto status = new_socket->Close();
-    LOG(INFO) << "TEST: Rejected connection from " << remote
-              << ", close status: " << status.ToString();
+    VLOG(1) << "TEST: Rejected connection from " << remote
+            << ", close status: " << status.ToString();
     return;
   }
 

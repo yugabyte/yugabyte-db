@@ -837,7 +837,7 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(IndexToRoundMap::iterator it
 
   // Stop at the operation after the last one we must commit. This iterator by definition points to
   // the first entry greater than the committed index, so the entry preceding that must have the
-  // OpId equal to commited_index.
+  // OpId equal to committed_index.
   IndexToRoundMap::iterator end_iter;
   auto status = CheckOperationExist(committed_index, &end_iter);
   if (!status.ok()) {
