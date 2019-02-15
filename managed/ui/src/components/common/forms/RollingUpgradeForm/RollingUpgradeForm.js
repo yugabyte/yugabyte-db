@@ -151,8 +151,8 @@ export default class RollingUpgradeForm extends Component {
     primaryCluster.userIntent.masterGFlags = masterGFlagList;
     primaryCluster.userIntent.tserverGFlags = tserverGFlagList;
     payload.clusters = [primaryCluster];
-    payload.sleepAfterMasterRestartMillis = values.timeDelay * 1000;
-    payload.sleepAfterTServerRestartMillis = values.timeDelay * 1000;
+    payload.sleepAfterMasterRestartMillis = values.timeDelay;
+    payload.sleepAfterTServerRestartMillis = values.timeDelay;
     this.props.submitRollingUpgradeForm(payload, universeUUID, reset);
   };
 

@@ -10,6 +10,7 @@ import { rollingUpgrade, rollingUpgradeResponse, closeUniverseDialog, resetRolli
   fetchUniverseInfoResponse } from '../../../../actions/universe';
 import { isDefinedNotNull, isNonEmptyObject } from "../../../../utils/ObjectUtils";
 import { getPrimaryCluster } from "../../../../utils/UniverseUtils";
+import { TASK_LONG_TIMEOUT } from '../../../tasks/constants';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -81,7 +82,7 @@ function mapStateToProps(state, ownProps) {
     }
   }
   initalGFlagValues.ybSoftwareVersion = state.customer.softwareVersions[0];
-  initalGFlagValues.timeDelay = 60;
+  initalGFlagValues.timeDelay = TASK_LONG_TIMEOUT;
   initalGFlagValues.rollingUpgrade = true;
   return {
     modal: state.modal,
