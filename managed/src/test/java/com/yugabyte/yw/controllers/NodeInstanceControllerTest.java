@@ -12,14 +12,19 @@ import static org.mockito.Mockito.*;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
+import java.util.Set;
 import java.util.LinkedList;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -108,6 +113,18 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     }
 
     return FakeApiHelper.doRequestWithBody("PUT", uri, params);
+  }
+
+  private void setInTransitNode(UUID universeUUID) {
+    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        NodeDetails node = universeDetails.nodeDetailsSet.iterator().next();
+        node.state = NodeState.Removed;
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+    Universe.saveDetails(universeUUID, updater);
   }
 
   private void checkOk(Result r) { assertEquals(OK, r.status()); }
@@ -301,5 +318,28 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
       assertEquals("host-n1", ct.getTargetName());
       Mockito.reset(mockCommissioner);
     }
+  }
+
+  @Test
+  public void testDisableStopRemove() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class),
+         any(UniverseDefinitionTaskParams.class)))
+         .thenReturn(fakeTaskUUID);
+
+    Universe u = ModelFactory.createUniverse("disable-stop-remove-rf-3", customer.getCustomerId());
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    setInTransitNode(u.universeUUID);
+
+    Set<NodeDetails> nodes = u.getMasters().stream().filter((n) -> n.state == NodeState.Live).collect(Collectors.toSet());
+
+    NodeDetails curNode = nodes.iterator().next();
+    Result invalidRemove = performNodeAction(customer.uuid, u.universeUUID, curNode.nodeName,
+                                             NodeActionType.REMOVE, false);
+    assertBadRequest(invalidRemove, "Cannot REMOVE " + curNode.nodeName + " as it will under replicate the masters.");
+
+    Result invalidStop = performNodeAction(customer.uuid, u.universeUUID, curNode.nodeName,
+                                           NodeActionType.STOP, false);
+    assertBadRequest(invalidStop, "Cannot STOP " + curNode.nodeName + " as it will under replicate the masters.");
   }
 }
