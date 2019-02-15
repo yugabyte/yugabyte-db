@@ -437,8 +437,10 @@ Status YBClient::Data::CreateTable(YBClient* client,
   int attempts = 0;
   Status s = SyncLeaderMasterRpc<CreateTableRequestPB, CreateTableResponsePB>(
       deadline, client, req, &resp, &attempts, "CreateTable", &MasterServiceProxy::CreateTable);
-  RETURN_NOT_OK(s);
+  // Set the table id even if there was an error. This is useful when the error is IsAlreadyPresent
+  // so that we can wait for the existing table to be available to receive requests.
   *table_id = resp.table_id();
+  RETURN_NOT_OK(s);
   if (resp.has_error()) {
     if (resp.error().code() == MasterErrorPB::TABLE_ALREADY_PRESENT && attempts > 1) {
       // If the table already exists and the number of attempts is >

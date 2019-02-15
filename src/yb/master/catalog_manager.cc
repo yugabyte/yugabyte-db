@@ -215,6 +215,9 @@ DEFINE_bool(
     "This cuts down test logs significantly.");
 TAG_FLAG(hide_pg_catalog_table_creation_logs, hidden);
 
+DEFINE_test_flag(int32, simulate_slow_table_create_secs, 0,
+    "Simulates a slow table creation by sleeping after the table has been added to memory.");
+
 namespace yb {
 namespace master {
 
@@ -2123,6 +2126,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
     if (table != nullptr) {
       s = STATUS(AlreadyPresent, Substitute("Target $0 already exists", object_type), table->id());
+      // If the table already exists, we set the response table_id field to the id of the table that
+      // already exists. This is necessary because before we return the error to the client (or
+      // success in case of a "CREATE TABLE IF NOT EXISTS" request) we want to wait for the existing
+      // table to be available to receive requests. And we need the table id for that.
+      resp->set_table_id(table->id());
       return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_ALREADY_PRESENT, s);
     }
 
@@ -2130,6 +2138,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                                       namespace_id, partitions,
                                       create_index_info ? &index_info : nullptr,
                                       &tablets, resp, &table));
+  }
+  if (PREDICT_FALSE(FLAGS_simulate_slow_table_create_secs > 0)) {
+    LOG(INFO) << "Simulating slow table creation";
+    SleepFor(MonoDelta::FromSeconds(FLAGS_simulate_slow_table_create_secs));
   }
   TRACE("Inserted new table and tablet info into CatalogManager maps");
 

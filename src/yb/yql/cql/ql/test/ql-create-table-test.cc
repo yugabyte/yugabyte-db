@@ -17,6 +17,9 @@
 #include "yb/master/master.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
+
+DECLARE_int32(simulate_slow_table_create_secs);
+
 namespace yb {
 namespace master {
 class CatalogManager;
@@ -149,6 +152,83 @@ TEST_F(TestQLCreateTable, TestQLCreateTableSimple) {
 
   const string drop_stmt = "DROP TABLE human_resource1;";
   EXEC_VALID_STMT(drop_stmt);
+}
+
+// Tests fix for https://github.com/YugaByte/yugabyte-db/issues/798.
+// In order to reproduce the issue consistently, we have inserted a sleep after the table has been
+// inserted in the master's memory map so that a subsequent request can find it and return an
+// AlreadyPresent error. Before the fix, a CREATE TABLE IF NOT EXISTS will immediately return
+// after encountering the error without waiting for the table to be ready to serve read/write
+// requests which happens when a CREATE TABLE statement succeeds.
+
+// This test creates a new thread to simulate two concurrent CREATE TABLE statements. In the  main
+// thread we issue a CREATE TABLE IF NOT EXIST statement which should wait until the master is done
+// sleeping and the table is in a ready state. Without the fix, the INSERT statement always fails
+// with a "Table Not Found" error.
+TEST_F(TestQLCreateTable, TestQLConcurrentCreateTableAndCreateTableIfNotExistsStmts) {
+  FLAGS_simulate_slow_table_create_secs = 10;
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  TestQLProcessor *processor1 = GetQLProcessor();
+  TestQLProcessor *processor2 = GetQLProcessor();
+
+  auto s = processor1->Run("create keyspace k;");
+
+  std::thread t1([&] {
+    auto s2 = processor1->Run("CREATE TABLE k.t(k int PRIMARY KEY);");
+    CHECK_OK(s2);
+    LOG(INFO) << "Created keyspace table t";
+  });
+
+  // Sleep for 5 sec to give the previous statement a head start.
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  // Before the fix, this would return immediately with Status::OK() without waiting for the table
+  // to be ready to serve read/write requests. With the fix, this statement shouldn't return until
+  // the table is ready, which happens after FLAGS_simulate_slow_table_create_secs seconds have
+  // elapsed.
+  s = processor2->Run("CREATE TABLE IF NOT EXISTS k.t(k int PRIMARY KEY);");
+  CHECK_OK(s);
+
+  s = processor2->Run("INSERT INTO k.t(k) VALUES (1)");
+  CHECK_OK(s);
+
+  t1.join();
+}
+
+// Same test as TestQLConcurrentCreateTableAndCreateTableIfNotExistsStmts, but this time we verify
+// that whenever a CREATE TABLE statement returns "Duplicate Table. Already present", the table
+// is ready to accept write requests.
+TEST_F(TestQLCreateTable, TestQLConcurrentCreateTableStmt) {
+  FLAGS_simulate_slow_table_create_secs = 10;
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  TestQLProcessor *processor1 = GetQLProcessor();
+  TestQLProcessor *processor2 = GetQLProcessor();
+
+  auto s = processor1->Run("create keyspace k;");
+
+  std::thread t1([&] {
+    auto s2 = processor1->Run("CREATE TABLE k.t(k int PRIMARY KEY);");
+    CHECK_OK(s2);
+    LOG(INFO) << "Created keyspace table t";
+  });
+
+  // Sleep for 5 sec to give the previous statement a head start.
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  // Wait until the table is already present in the tables map of the master.
+  s = processor2->Run("CREATE TABLE k.t(k int PRIMARY KEY);");
+  CHECK_NE(s.ToString().find("Duplicate Table. Already present"), string::npos);
+
+  s = processor2->Run("INSERT INTO k.t(k) VALUES (1)");
+  CHECK_OK(s);
+
+  t1.join();
 }
 
 TEST_F(TestQLCreateTable, TestQLCreateTableWithTTL) {
