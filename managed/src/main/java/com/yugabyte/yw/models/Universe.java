@@ -22,6 +22,7 @@ import javax.persistence.UniqueConstraint;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
+import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -577,5 +578,26 @@ public class Universe extends Model {
     }
 
     return null;
+  }
+
+  /**
+   * Checks if node is allowed to perform the action without under-replicating master nodes in the universe.
+   *
+   * @return whether the node is allowed to perform the action.
+   */
+  public boolean isNodeActionAllowed(String nodeName, NodeActionType action) {
+    NodeDetails node = getNode(nodeName);
+    Cluster curCluster = getCluster(node.placementUuid);
+
+    if (node.isMaster && (action == NodeActionType.STOP || action == NodeActionType.REMOVE)) {
+      long numMasterNodesUp = universeDetails.getNodesInCluster(curCluster.uuid).stream()
+          .filter((n) -> n.isMaster && n.state == NodeDetails.NodeState.Live)
+          .count();
+      if (numMasterNodesUp <= (curCluster.userIntent.replicationFactor + 1) / 2) {
+        return false;
+      }
+    }
+
+    return node.getAllowedActions().contains(action);
   }
 }
