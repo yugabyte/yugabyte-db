@@ -1593,13 +1593,22 @@ Status YBTableCreator::Create() {
     deadline.AddDelta(data_->client_->default_admin_operation_timeout());
   }
 
-  RETURN_NOT_OK_PREPEND(data_->client_->data_->CreateTable(data_->client_,
-                                                           req,
-                                                           *data_->schema_,
-                                                           deadline,
-                                                           &data_->table_id_),
-                        strings::Substitute("Error creating $0 $1 on the master",
-                                            object_type, data_->table_name_.ToString()));
+  auto s = data_->client_->data_->CreateTable(data_->client_,
+                                              req,
+                                              *data_->schema_,
+                                              deadline,
+                                              &data_->table_id_);
+
+  if (!s.ok() && !s.IsAlreadyPresent()) {
+      RETURN_NOT_OK_PREPEND(s, strings::Substitute("Error creating $0 $1 on the master",
+                                                   object_type, data_->table_name_.ToString()));
+  }
+
+  // We are here because the create request succeeded or we received an IsAlreadyPresent error.
+  // Although the table is already in the catalog manager, it doesn't mean that the table is
+  // ready to receive requests. So we will call WaitForCreateTableToFinish to ensure that once
+  // this request returns, the client can send operations without receiving a "Table Not Found"
+  // error.
 
   // Spin until the table is fully created, if requested.
   if (data_->wait_) {
@@ -1609,12 +1618,12 @@ Status YBTableCreator::Create() {
                                                                     deadline));
   }
 
-  if (!FLAGS_client_suppress_created_logs) {
+  if (s.ok() && !FLAGS_client_suppress_created_logs) {
     LOG(INFO) << "Created " << object_type << " " << data_->table_name_.ToString()
               << " of type " << TableType_Name(data_->table_type_);
   }
 
-  return Status::OK();
+  return s;
 }
 
 ////////////////////////////////////////////////////////////
