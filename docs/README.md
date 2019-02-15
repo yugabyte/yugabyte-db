@@ -1,51 +1,49 @@
-// Copyright (c) YugaByte, Inc.
+# YugaByte DB Docs
 
-# README #
+This repository contains the documentation for YugaByte DB available at https://docs.yugabyte.com/
 
-YugaByte Product Documentation
-
-### What is this repository for? ###
+Please [open an issue](https://github.com/YugaByte/docs/issues) to suggest enhancements.
 
 
-Our docs are based on the Hugo framework and are using the Material Docs theme
+# Contributing to YugaByte DB Docs
 
-** Hugo framework: http://gohugo.io/overview/introduction/
+YugaByte DB docs are based on the Hugo framework and use the Material Docs theme.
 
-** Material Docs theme: http://themes.gohugo.io/material-docs/
+* Hugo framework: http://gohugo.io/overview/introduction/
+* Material Docs theme: http://themes.gohugo.io/material-docs/
 
-** Example of Material docs theme: http://themes.gohugo.io/theme/material-docs/
 
+## Setup
 
-### How do I get set up? ###
+1. Fork this repository on GitHub and create a local clone of your fork.
 
-## Install Hugo ##
+2. Install Hugo. For example, on a Mac, you can run the following commands:
 ```
 brew update
 brew install hugo
 brew install npm
 ```
 
-## Prerequisites ##
-Copy the config.yaml.sample to config.yaml and add any Third-party credentials needed.
+3. Copy the config.yaml.sample to config.yaml.
 ```
 cp config.yaml.sample config.yaml
 ```
 
-
-## To run locally ##
+4. Start the local webserver on `127.0.0.1` interface by running the following:
 ```
 npm start
 ```
 
-If you would like to share the URL of your local docs with someone else, you can do that through:
+To start the webserver on some other IP address (in case you want to share the URL of your local docs with someone else), do the following:
 ```
 YB_HUGO_BASE=<YOUR_IP_OR_HOSTNAME> npm start
 ```
 
-Then, just share the `<YOUR_IP_OR_HOSTNAME>:1313` link to whomever you want to view your docs changes.
+You can now share the following link: `http://<YOUR_IP_OR_HOSTNAME>:1313`
+
 
 ## To publish to S3 ##
-Caution: This would publish the docs to our website which is used by customers
+This would publish the docs to our website which is used by customers
 ```
 npm run publish
 ```
