@@ -344,34 +344,34 @@ INSERT INTO feature_tab_dml VALUES(
 			 '{ "nine", "nine", "nine" }');
 INSERT INTO feature_tab_dml_identifier VALUES(19, 'nineteen');
 --
-INSERT INTO feature_tab_dml(
-			 			col_smallint,
-			 			col_bigint,
-			 			col_real,
-			 			col_char,
-			 			col_bytea,
-			 			col_timestamp_tz,
-			 			col_bool,
-			 			col_array_int,
-			 			col_array_text)
-			 VALUES (
-			 			10,
-			 			0,
-			 			0.0,
-			 			'zero',
-			 			E'\\x00F1E2D3C4B5A6079889706A5B4C3D2E1F',
-			 			'October 10, 2019 00:00:00.0000 PST AD',
-			 			TRUE,
-			 			'{ 0, 0, 0 }',
-			 			'{ "zero", "zero", "zero" }')
-			 RETURNING
-						col_smallint,
-						col_bigint,
-						col_real,
-						col_double,
-						DATE_TRUNC('day', col_timestamp_tz) expr_date,
-						col_array_text[1];
-INSERT INTO feature_tab_dml_identifier VALUES(0, 'zero');
+-- INSERT INTO feature_tab_dml(
+--			 			col_smallint,
+--			 			col_bigint,
+--			 			col_real,
+--			 			col_char,
+--			 			col_bytea,
+--			 			col_timestamp_tz,
+--			 			col_bool,
+--			 			col_array_int,
+--			 			col_array_text)
+--			 VALUES (
+--			 			10,
+--			 			0,
+--			 			0.0,
+--			 			'zero',
+--			 			E'\\x00F1E2D3C4B5A6079889706A5B4C3D2E1F',
+--			 			'October 10, 2019 00:00:00.0000 PST AD',
+--			 			TRUE,
+--			 			'{ 0, 0, 0 }',
+--			 			'{ "zero", "zero", "zero" }')
+--			 RETURNING
+--						col_smallint,
+--						col_bigint,
+--						col_real,
+--						col_double,
+--						DATE_TRUNC('day', col_timestamp_tz) expr_date,
+--						col_array_text[1];
+-- INSERT INTO feature_tab_dml_identifier VALUES(0, 'zero');
 --
 -- Use SELECT To Validate INSERT
 --

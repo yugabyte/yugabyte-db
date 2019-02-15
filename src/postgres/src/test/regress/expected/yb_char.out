@@ -144,13 +144,13 @@ INSERT INTO yb_charn_in_key(f1) VALUES ('a');
 INSERT INTO yb_charn_in_key(f1) VALUES ('ab');
 INSERT INTO yb_charn_in_key(f1) VALUES ('abc');
 INSERT INTO yb_charn_in_key(f1) VALUES ('abc ');
-ERROR:  Query error: Primary key already exists
+ERROR:  Query error: Duplicate key found in primary key or unique index
 INSERT INTO yb_charn_in_key(f1) VALUES (' abc');
 INSERT INTO yb_charn_in_key(f1) VALUES ('abcd');
 INSERT INTO yb_charn_in_key(f1) VALUES ('abcde');
 ERROR:  value too long for type character(4)
 INSERT INTO yb_charn_in_key(f1) VALUES ('abcd    ');
-ERROR:  Query error: Primary key already exists
+ERROR:  Query error: Duplicate key found in primary key or unique index
 SELECT * FROM yb_charn_in_key ORDER BY f1;
   f1
 ------
