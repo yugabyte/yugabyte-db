@@ -9,7 +9,6 @@
 SELECT * FROM feature_tab_dml_identifier ORDER BY col_id;
  col_id |   col_name
 --------+---------------
-      0 | zero
       1 | one
       2 | two
       3 | three
@@ -31,7 +30,7 @@ SELECT * FROM feature_tab_dml_identifier ORDER BY col_id;
      19 | nineteen
      77 | seventy seven
      88 | eighty eight
-(22 rows)
+(21 rows)
 
 --
 -- Select rows 1-5 and 11-15 from the table.
@@ -48,11 +47,11 @@ SELECT * FROM feature_tab_dml ORDER BY col_smallint LIMIT 5;
 SELECT * FROM feature_tab_dml ORDER BY col_smallint OFFSET 10 FETCH FIRST 5 ROWS ONLY;
  col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text |              col_bytea               |        col_timestamp        |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text
 --------------+-------------+------------+----------+------------+----------+-------------+----------+--------------------------------------+-----------------------------+-----------------------------------+----------+---------------+---------------------
-           11 |           1 |          1 |      1.1 |        1.1 | one      | one         | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:11:11.11 2019 | Tue Jan 01 01:11:11.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
            12 |           2 |          2 |      2.2 |        2.2 | two      | two         | two      | \x22f1e2d3c4b5a6079889706a5b4c3d2e1f | Sat Feb 02 02:02:02.22 2019 | Sat Feb 02 02:02:02.2222 2019 PST | t        | {2,2,2}       | {two,two,two}
            13 |           3 |          3 |      3.3 |        3.3 | three    | three       | three    | \x33f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun Mar 03 03:03:03.33 2019 | Sun Mar 03 03:03:03.3333 2019 PST | t        | {3,3,3}       | {three,three,three}
            14 |           4 |          4 |      4.4 |        4.4 | four     | four        | four     | \x44f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Apr 04 04:04:04.44 2019 | Thu Apr 04 05:04:04.4444 2019 PDT | t        | {4,4,4}       | {four,four,four}
            15 |           5 |          5 |      5.5 |        5.5 | five     | five        | five     | \x55f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun May 05 05:05:05.56 2019 | Sun May 05 06:05:05.5555 2019 PDT | t        | {5,5,5}       | {five,five,five}
+           16 |           6 |          6 |      6.6 |        6.6 | six      | six         | six      | \x66f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Jun 06 06:06:06.67 2019 | Thu Jun 06 07:06:06.6666 2019 PDT | t        | {6,6,6}       | {six,six,six}
 (5 rows)
 
 --
@@ -72,7 +71,6 @@ SELECT DISTINCT
 		ORDER BY col_bigint, col_smallint;
  col_smallint | col_bigint | col_real | col_char |              col_bytea               |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text
 --------------+------------+----------+----------+--------------------------------------+-----------------------------------+----------+---------------+---------------------
-           10 |          0 |        0 | zero     | \x00f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Oct 10 01:00:00 2019 PDT      | t        | {0,0,0}       | {zero,zero,zero}
             1 |          1 |      1.1 | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:11:11.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
            11 |          1 |      1.1 | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:11:11.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
             2 |          2 |      2.2 | two      | \x22f1e2d3c4b5a6079889706a5b4c3d2e1f | Sat Feb 02 02:02:02.2222 2019 PST | t        | {2,2,2}       | {two,two,two}
@@ -91,7 +89,7 @@ SELECT DISTINCT
            18 |          8 |      8.8 | eight    | \x88f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Aug 08 09:08:08.8888 2019 PDT | t        | {8,8,8}       | {eight,eight,eight}
             9 |          9 |      9.9 | nine     | \x99f1e2d3c4b5a6079889706a5b4c3d2e1f | Mon Sep 09 10:09:09.9999 2019 PDT | t        | {9,9,9}       | {nine,nine,nine}
            19 |          9 |      9.9 | nine     | \x99f1e2d3c4b5a6079889706a5b4c3d2e1f | Mon Sep 09 10:09:09.9999 2019 PDT | t        | {9,9,9}       | {nine,nine,nine}
-(19 rows)
+(18 rows)
 
 SELECT DISTINCT
 				col_bigint,
@@ -107,7 +105,6 @@ SELECT DISTINCT
 		ORDER BY col_bigint;
  col_bigint | col_real | col_char |              col_bytea               |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text
 ------------+----------+----------+--------------------------------------+-----------------------------------+----------+---------------+---------------------
-          0 |        0 | zero     | \x00f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Oct 10 01:00:00 2019 PDT      | t        | {0,0,0}       | {zero,zero,zero}
           1 |      1.1 | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:11:11.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
           2 |      2.2 | two      | \x22f1e2d3c4b5a6079889706a5b4c3d2e1f | Sat Feb 02 02:02:02.2222 2019 PST | t        | {2,2,2}       | {two,two,two}
           3 |      3.3 | three    | \x33f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun Mar 03 03:03:03.3333 2019 PST | t        | {3,3,3}       | {three,three,three}
@@ -117,7 +114,7 @@ SELECT DISTINCT
           7 |      7.7 | seven    | \x77f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun Jul 07 08:07:07.7777 2019 PDT | t        | {7,7,7}       | {seven,seven,seven}
           8 |      8.8 | eight    | \x88f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Aug 08 09:08:08.8888 2019 PDT | t        | {8,8,8}       | {eight,eight,eight}
           9 |      9.9 | nine     | \x99f1e2d3c4b5a6079889706a5b4c3d2e1f | Mon Sep 09 10:09:09.9999 2019 PDT | t        | {9,9,9}       | {nine,nine,nine}
-(10 rows)
+(9 rows)
 
 --
 -- GROUP BY and HAVING clauses.
@@ -132,7 +129,6 @@ SELECT
 		ORDER BY col_bigint;
  col_bigint | count |       avg        | sum |  sum
 ------------+-------+------------------+-----+-------
-          0 |     1 |                0 |   0 |
           1 |     2 | 1.10000002384186 |   2 |   2.2
           2 |     2 | 2.20000004768372 |   4 |   4.4
           3 |     2 | 3.29999995231628 |   6 |   6.6
@@ -143,7 +139,7 @@ SELECT
           8 |     2 | 8.80000019073486 |  16 |  17.6
           9 |     2 | 9.89999961853027 |  18 |  19.8
          77 |     1 | 77.7699966430664 |  77 | 77.77
-(11 rows)
+(10 rows)
 
 --
 SELECT
@@ -180,7 +176,6 @@ SELECT DISTINCT
  yuga_rank | count | sum |       avg
 -----------+-------+-----+------------------
          1 |     1 |  77 | 77.7699966430664
-         1 |     0 |   0 |                0
          1 |     1 |   1 | 1.10000002384186
          1 |     1 |   5 |              5.5
          1 |     1 |   7 | 7.69999980926514
@@ -199,7 +194,7 @@ SELECT DISTINCT
          2 |     2 |   6 | 3.29999995231628
          2 |     2 |  10 |              5.5
          2 |     2 |   2 | 1.10000002384186
-(20 rows)
+(19 rows)
 
 --
 -- JOIN Test Cases
@@ -258,14 +253,13 @@ SELECT	col_smallint Employee_ID,
            7 | seven
            8 | eight
            9 | nine
-          10 |
           10 | ten
           11 | eleven
           11 | one
           12 | twelve
           12 | two
-          13 | three
           13 | thirteen
+          13 | three
           14 | four
           14 | fourteen
           15 | fifteen
@@ -275,7 +269,7 @@ SELECT	col_smallint Employee_ID,
           19 | nineteen
           77 | seventy seven
           88 | eighty eight
-(26 rows)
+(25 rows)
 
 -- INTERSECT
 SELECT	col_smallint Employee_ID,
@@ -311,9 +305,8 @@ SELECT	col_smallint Employee_ID,
            3 | three
            4 | four
            5 | five
-          10 |
           11 | one
           12 | two
           13 | three
           14 | four
-(10 rows)
+(9 rows)
