@@ -26,8 +26,9 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/thread_restrictions.h"
 
 DEFINE_int32(unresponsive_ts_rpc_timeout_ms, 60 * 60 * 1000,  // 1 hour
              "After this amount of time (or after we have retried unresponsive_ts_rpc_retry_limit "
@@ -40,6 +41,10 @@ DEFINE_int32(unresponsive_ts_rpc_retry_limit, 20,
              "happens first), the master will stop attempting to contact a tablet server in order "
              "to perform operations such as deleting a tablet.");
 TAG_FLAG(unresponsive_ts_rpc_retry_limit, advanced);
+
+DEFINE_test_flag(
+    int32, slowdown_master_async_rpc_tasks_by_ms, 0,
+    "For testing purposes, slow down the run method to take longer.");
 
 // The flags are defined in catalog_manager.cc.
 DECLARE_int32(master_ts_rpc_timeout_ms);
@@ -123,8 +128,11 @@ RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
 Status RetryingTSRpcTask::Run() {
   VLOG_WITH_PREFIX(1) << "Start Running";
   auto task_state = state();
-  DCHECK(task_state == MonitoredTaskState::kWaiting || task_state == MonitoredTaskState::kAborted)
-      << "State: " << ToString(task_state);
+  if (task_state == MonitoredTaskState::kAborted) {
+    UnregisterAsyncTask();  // May delete this.
+    return STATUS(IllegalState, "Unable to run task because it has been aborted");
+  }
+  DCHECK(task_state == MonitoredTaskState::kWaiting) << "State: " << ToString(task_state);
 
   const Status s = ResetTSProxy();
   if (!s.ok()) {
@@ -134,7 +142,6 @@ Status RetryingTSRpcTask::Run() {
     } else if (state() == MonitoredTaskState::kAborted) {
       UnregisterAsyncTask();  // May delete this.
       return STATUS(IllegalState, "Unable to run task because it has been aborted");
-
     } else {
       LOG_WITH_PREFIX(FATAL) << "Failed to change task to MonitoredTaskState::kFailed state";
     }
@@ -158,6 +165,14 @@ Status RetryingTSRpcTask::Run() {
       return STATUS_FORMAT(IllegalState, "Task in invalid state $0", state());
     }
   }
+  if (PREDICT_FALSE(FLAGS_slowdown_master_async_rpc_tasks_by_ms > 0)) {
+    VLOG(1) << "Slowing down " << this->description() << " by "
+            << FLAGS_slowdown_master_async_rpc_tasks_by_ms << " ms.";
+    bool old_thread_restriction = ThreadRestrictions::SetWaitAllowed(true);
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_slowdown_master_async_rpc_tasks_by_ms));
+    ThreadRestrictions::SetWaitAllowed(old_thread_restriction);
+    VLOG(2) << "Slowing down " << this->description() << " done. Resuming.";
+  }
   if (!SendRequest(++attempt_)) {
     if (!RescheduleWithBackoffDelay()) {
       UnregisterAsyncTask();  // May call 'delete this'.
@@ -174,10 +189,12 @@ MonitoredTaskState RetryingTSRpcTask::AbortAndReturnPrevState() {
     auto expected = prev_state;
     if (state_.compare_exchange_weak(expected, MonitoredTaskState::kAborted)) {
       AbortIfScheduled();
+      UnregisterAsyncTask();
       return prev_state;
     }
     prev_state = state();
   }
+  UnregisterAsyncTask();
   return prev_state;
 }
 

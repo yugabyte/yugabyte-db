@@ -638,7 +638,11 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   const int metadata_col_idx = schema_.find_column(kSysCatalogTableColMetadata);
   CHECK(type_col_idx != Schema::kColumnNotFound);
 
-  auto iter = tablet_peer()->tablet()->NewRowIterator(schema_, boost::none);
+  auto tablet = tablet_peer()->shared_tablet();
+  if (!tablet) {
+    return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
+  }
+  auto iter = tablet->NewRowIterator(schema_, boost::none);
   RETURN_NOT_OK(iter);
 
   QLTableRow value_map;
