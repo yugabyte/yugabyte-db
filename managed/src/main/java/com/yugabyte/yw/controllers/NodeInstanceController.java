@@ -14,7 +14,6 @@ import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,7 +22,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 
 import play.data.Form;
 import play.data.FormFactory;
@@ -173,6 +171,16 @@ public class NodeInstanceController extends AuthenticatedController {
       taskParams.expectedUniverseVersion = universe.version;
       taskParams.nodeName = nodeName;
       NodeActionType nodeAction = formData.get().nodeAction;
+
+      // Check deleting/removing a node will not go below the RF
+      if (nodeAction == NodeActionType.STOP || nodeAction == NodeActionType.REMOVE) {
+        if (!universe.isNodeActionAllowed(nodeName, nodeAction)) {
+          String errMsg = "Cannot " + nodeAction.name() + " " + nodeName + " as it will under replicate the masters.";
+          LOG.error(errMsg);
+          return ApiResponse.error(BAD_REQUEST, errMsg);
+        }
+      }
+
       if (nodeAction == NodeActionType.ADD) {
         taskParams.clusters = universe.getUniverseDetails().clusters;
       }
