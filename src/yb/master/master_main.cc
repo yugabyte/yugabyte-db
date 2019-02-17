@@ -43,7 +43,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
 #include "yb/gutil/sysinfo.h"
-
+#include "yb/server/total_mem_watcher.h"
 
 DECLARE_bool(callhome_enabled);
 DECLARE_bool(evict_failed_followers);
@@ -53,6 +53,8 @@ DECLARE_int32(webserver_port);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(durable_wal_write);
 DECLARE_int32(stderrthreshold);
+
+using namespace std::literals;
 
 namespace yb {
 namespace master {
@@ -85,7 +87,7 @@ static int MasterMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(MasterOptions::kServerType, argv[0]));
   LOG(INFO) << "NumCPUs determined to be: " << base::NumCPUs();
 
-  CHECK_OK(GetPrivateIpMode());
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(GetPrivateIpMode());
 
   auto opts_result = MasterOptions::CreateMasterOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(opts_result);
@@ -104,10 +106,12 @@ static int MasterMain(int argc, char** argv) {
     call_home->ScheduleCallHome();
   }
 
-  while (true) {
-    SleepFor(MonoDelta::FromSeconds(60));
-  }
-  return 0;
+  auto total_mem_watcher = server::TotalMemWatcher::Create();
+  total_mem_watcher->MemoryMonitoringLoop(
+      [&server]() { server.Shutdown(); },
+      [&server]() { return server.IsShutdown(); }
+  );
+  return EXIT_FAILURE;
 }
 
 } // namespace master

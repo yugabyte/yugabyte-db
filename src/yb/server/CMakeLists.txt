@@ -97,6 +97,7 @@ set(SERVER_PROCESS_SRCS
   webserver.cc
   webserver_options.cc
   webui_util.cc
+  total_mem_watcher.cc
   ${RPC_SRCS_EXTENSIONS}
 )
 
