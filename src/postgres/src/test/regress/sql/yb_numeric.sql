@@ -14,6 +14,19 @@ CREATE TABLE num_exp_power_10_ln (id int4, expected numeric(210,10));
 
 CREATE TABLE num_result (id1 int4, id2 int4, result numeric(210,10));
 
+-- ******************************
+-- * Create indices for faster checks
+-- ******************************
+
+CREATE UNIQUE INDEX num_exp_add_idx ON num_exp_add (id1, id2);
+CREATE UNIQUE INDEX num_exp_sub_idx ON num_exp_sub (id1, id2);
+CREATE UNIQUE INDEX num_exp_div_idx ON num_exp_div (id1, id2);
+CREATE UNIQUE INDEX num_exp_mul_idx ON num_exp_mul (id1, id2);
+CREATE UNIQUE INDEX num_exp_sqrt_idx ON num_exp_sqrt (id);
+CREATE UNIQUE INDEX num_exp_ln_idx ON num_exp_ln (id);
+CREATE UNIQUE INDEX num_exp_log10_idx ON num_exp_log10 (id);
+CREATE UNIQUE INDEX num_exp_power_10_ln_idx ON num_exp_power_10_ln (id);
+
 
 -- ******************************
 -- * The following EXPECTED results are computed by bc(1)
@@ -486,15 +499,16 @@ COMMIT TRANSACTION;
 -- ******************************
 -- * Create indices for faster checks
 -- ******************************
-
-CREATE UNIQUE INDEX num_exp_add_idx ON num_exp_add (id1, id2);
-CREATE UNIQUE INDEX num_exp_sub_idx ON num_exp_sub (id1, id2);
-CREATE UNIQUE INDEX num_exp_div_idx ON num_exp_div (id1, id2);
-CREATE UNIQUE INDEX num_exp_mul_idx ON num_exp_mul (id1, id2);
-CREATE UNIQUE INDEX num_exp_sqrt_idx ON num_exp_sqrt (id);
-CREATE UNIQUE INDEX num_exp_ln_idx ON num_exp_ln (id);
-CREATE UNIQUE INDEX num_exp_log10_idx ON num_exp_log10 (id);
-CREATE UNIQUE INDEX num_exp_power_10_ln_idx ON num_exp_power_10_ln (id);
+-- TODO(Alex): Uncomment this and remove index creation at the beginning if/when we start supporting
+--             creating indexes on populated tablea
+-- CREATE UNIQUE INDEX num_exp_add_idx ON num_exp_add (id1, id2);
+-- CREATE UNIQUE INDEX num_exp_sub_idx ON num_exp_sub (id1, id2);
+-- CREATE UNIQUE INDEX num_exp_div_idx ON num_exp_div (id1, id2);
+-- CREATE UNIQUE INDEX num_exp_mul_idx ON num_exp_mul (id1, id2);
+-- CREATE UNIQUE INDEX num_exp_sqrt_idx ON num_exp_sqrt (id);
+-- CREATE UNIQUE INDEX num_exp_ln_idx ON num_exp_ln (id);
+-- CREATE UNIQUE INDEX num_exp_log10_idx ON num_exp_log10 (id);
+-- CREATE UNIQUE INDEX num_exp_power_10_ln_idx ON num_exp_power_10_ln (id);
 
 --
 -- TODO: Enable if/when we start supporting ANALYZE
@@ -646,6 +660,10 @@ SELECT AVG(val) FROM num_data;
 SELECT STDDEV(val) FROM num_data;
 SELECT VARIANCE(val) FROM num_data;
 
+-- ASC/DESC check
+SELECT * FROM num_data ORDER BY val ASC, id ASC;
+SELECT * FROM num_data ORDER BY val DESC, id DESC;
+
 -- Check for appropriate rounding and overflow
 CREATE TABLE fract_only (id int, val numeric(4,4));
 INSERT INTO fract_only VALUES (1, '0.0');
@@ -778,24 +796,16 @@ SELECT width_bucket('Infinity'::float8, 1, 10, 10),
 
 DROP TABLE width_bucket_test;
 
+--
 -- TO_CHAR()
 --
-SELECT '' AS to_char_1, to_char(val, '9G999G999G999G999G999')
-    FROM num_data
-    ORDER BY val;
+SET LC_NUMERIC  TO 'en_US.UTF-8';
+SET LC_MONETARY TO 'en_US.UTF-8';
 
-SELECT '' AS to_char_2, to_char(val, '9G999G999G999G999G999D999G999G999G999G999')
-    FROM num_data
-    ORDER BY val;
-
-SELECT '' AS to_char_3, to_char(val, '9999999999999999.999999999999999PR')
-    FROM num_data
-    ORDER BY val;
-
-SELECT '' AS to_char_4, to_char(val, '9999999999999999.999999999999999S')
-    FROM num_data
-    ORDER BY val;
-
+SELECT '' AS to_char_1,  to_char(val, '9G999G999G999G999G999')                  FROM num_data ORDER BY val;
+SELECT '' AS to_char_2,  to_char(val, '9G999G999G999G999G999D999G999G999G999G999') FROM num_data ORDER BY val;
+SELECT '' AS to_char_3,  to_char(val, '9999999999999999.999999999999999PR')     FROM num_data ORDER BY val;
+SELECT '' AS to_char_4,  to_char(val, '9999999999999999.999999999999999S')      FROM num_data ORDER BY val;
 SELECT '' AS to_char_5,  to_char(val, 'MI9999999999999999.999999999999999')     FROM num_data ORDER BY val;
 SELECT '' AS to_char_6,  to_char(val, 'FMS9999999999999999.999999999999999')    FROM num_data ORDER BY val;
 SELECT '' AS to_char_7,  to_char(val, 'FM9999999999999999.999999999999999THPR') FROM num_data ORDER BY val;
