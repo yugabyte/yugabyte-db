@@ -14,6 +14,19 @@ CREATE TABLE num_big_exp_power_10_ln (id int4, expected numeric(1000,800));
 
 CREATE TABLE num_big_result (id1 int4, id2 int4, result numeric(1000,800));
 
+-- ******************************
+-- * Create indices for faster checks
+-- ******************************
+
+CREATE UNIQUE INDEX num_big_exp_add_idx ON num_big_exp_add (id1, id2);
+CREATE UNIQUE INDEX num_big_exp_sub_idx ON num_big_exp_sub (id1, id2);
+CREATE UNIQUE INDEX num_big_exp_div_idx ON num_big_exp_div (id1, id2);
+CREATE UNIQUE INDEX num_big_exp_mul_idx ON num_big_exp_mul (id1, id2);
+CREATE UNIQUE INDEX num_big_exp_sqrt_idx ON num_big_exp_sqrt (id);
+CREATE UNIQUE INDEX num_big_exp_ln_idx ON num_big_exp_ln (id);
+CREATE UNIQUE INDEX num_big_exp_log10_idx ON num_big_exp_log10 (id);
+CREATE UNIQUE INDEX num_big_exp_power_10_ln_idx ON num_big_exp_power_10_ln (id);
+
 
 -- ******************************
 -- * The following EXPECTED results are computed by bc(1)
@@ -486,15 +499,16 @@ COMMIT TRANSACTION;
 -- ******************************
 -- * Create indices for faster checks
 -- ******************************
-
-CREATE UNIQUE INDEX num_big_exp_add_idx ON num_big_exp_add (id1, id2);
-CREATE UNIQUE INDEX num_big_exp_sub_idx ON num_big_exp_sub (id1, id2);
-CREATE UNIQUE INDEX num_big_exp_div_idx ON num_big_exp_div (id1, id2);
-CREATE UNIQUE INDEX num_big_exp_mul_idx ON num_big_exp_mul (id1, id2);
-CREATE UNIQUE INDEX num_big_exp_sqrt_idx ON num_big_exp_sqrt (id);
-CREATE UNIQUE INDEX num_big_exp_ln_idx ON num_big_exp_ln (id);
-CREATE UNIQUE INDEX num_big_exp_log10_idx ON num_big_exp_log10 (id);
-CREATE UNIQUE INDEX num_big_exp_power_10_ln_idx ON num_big_exp_power_10_ln (id);
+-- TODO(Alex): Uncomment this and remove index creation at the beginning if/when we start supporting
+--             creating indexes on populated tablea
+-- CREATE UNIQUE INDEX num_big_exp_add_idx ON num_big_exp_add (id1, id2);
+-- CREATE UNIQUE INDEX num_big_exp_sub_idx ON num_big_exp_sub (id1, id2);
+-- CREATE UNIQUE INDEX num_big_exp_div_idx ON num_big_exp_div (id1, id2);
+-- CREATE UNIQUE INDEX num_big_exp_mul_idx ON num_big_exp_mul (id1, id2);
+-- CREATE UNIQUE INDEX num_big_exp_sqrt_idx ON num_big_exp_sqrt (id);
+-- CREATE UNIQUE INDEX num_big_exp_ln_idx ON num_big_exp_ln (id);
+-- CREATE UNIQUE INDEX num_big_exp_log10_idx ON num_big_exp_log10 (id);
+-- CREATE UNIQUE INDEX num_big_exp_power_10_ln_idx ON num_big_exp_power_10_ln (id);
 
 --
 -- TODO: Enable if/when we start supporting ANALYZE
@@ -638,6 +652,9 @@ SELECT t1.id1, t1.result, t2.expected
     WHERE t1.id1 = t2.id
     AND t1.result != t2.expected;
 
+-- ASC/DESC check
+SELECT * FROM num_big_data ORDER BY val ASC;
+SELECT * FROM num_big_data ORDER BY val DESC;
 
 --
 -- Test code path for raising to integer powers
