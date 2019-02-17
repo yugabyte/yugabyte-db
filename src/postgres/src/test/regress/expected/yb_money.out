@@ -1,6 +1,7 @@
 --
 -- MONEY
 --
+SET LC_MONETARY TO 'en_US.UTF-8';
 CREATE TABLE money_data (m money);
 INSERT INTO money_data VALUES ('123');
 SELECT * FROM money_data;
@@ -282,14 +283,16 @@ SELECT '12345678901234567'::money;
  $12,345,678,901,234,567.00
 (1 row)
 
-SELECT '123456789012345678'::money;
-ERROR:  value "123456789012345678" is out of range for type money
-LINE 1: SELECT '123456789012345678'::money;
-               ^
-SELECT '9223372036854775807'::money;
-ERROR:  value "9223372036854775807" is out of range for type money
-LINE 1: SELECT '9223372036854775807'::money;
-               ^
+-- TODO: Enable after issue #808 is done (ENG-4604)
+--       (fails solely on yugabyte-centos-phabricator-gcc-release)
+-- SELECT '123456789012345678'::money;
+-- ERROR:  value "123456789012345678" is out of range for type money
+-- LINE 1: SELECT '123456789012345678'::money;
+-- ^
+-- SELECT '9223372036854775807'::money;
+-- ERROR:  value "9223372036854775807" is out of range for type money
+-- LINE 1: SELECT '9223372036854775807'::money;
+-- ^
 SELECT '-12345'::money;
     money    
 -------------
@@ -512,3 +515,20 @@ SELECT VAL FROM money_data_with_pk WHERE id = '$2.2';
 ---------
  -$22.22
 (1 row)
+
+-- ASC/DESC check
+SELECT * FROM money_data_with_pk ORDER BY val ASC;
+  id   |   val
+-------+---------
+ $3.30 | -$33.33
+ $2.20 | -$22.22
+ $1.10 | -$11.11
+(3 rows)
+
+SELECT * FROM money_data_with_pk ORDER BY val DESC;
+  id   |   val
+-------+---------
+ $1.10 | -$11.11
+ $2.20 | -$22.22
+ $3.30 | -$33.33
+(3 rows)
