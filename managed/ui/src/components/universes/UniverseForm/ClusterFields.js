@@ -875,7 +875,7 @@ export default class ClusterFields extends Component {
     let universeInstanceTypeList = <option/>;
 
     if (currentProviderCode === "aws") {
-      const optGroups = this.props.cloud.instanceTypes && this.props.cloud.instanceTypes.data.reduce(function(groups, it) {
+      const optGroups = this.props.cloud.instanceTypes && isNonEmptyArray(this.props.cloud.instanceTypes.data) && this.props.cloud.instanceTypes.data.reduce(function(groups, it) {
         const prefix = it.instanceTypeCode.substr(0, it.instanceTypeCode.indexOf("."));
         groups[prefix] ? groups[prefix].push(it.instanceTypeCode): groups[prefix] = [it.instanceTypeCode];
         return groups;
