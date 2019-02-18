@@ -11,7 +11,8 @@ import { UniverseStatusContainer } from 'components/universes';
 import './UniverseDisplayPanel.scss';
 import { isNonEmptyObject } from "../../../utils/ObjectUtils";
 import { YBModal } from '../../common/forms/fields';
-import { TimelineMax, Power1 } from "gsap/all";
+import TimelineMax from 'gsap/TimelineMax';
+import { Power1 } from "gsap/all";
 import { getPrimaryCluster, getReadOnlyCluster, getClusterProviderUUIDs, getProviderMetadata } from "../../../utils/UniverseUtils";
 const moment = require('moment');
 
