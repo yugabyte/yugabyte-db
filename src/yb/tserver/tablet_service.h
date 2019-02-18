@@ -120,6 +120,10 @@ class TabletServiceImpl : public TabletServerServiceIf {
                        GetTabletStatusResponsePB* resp,
                        rpc::RpcContext context) override;
 
+  void IsTabletServerReady(const IsTabletServerReadyRequestPB* req,
+                           IsTabletServerReadyResponsePB* resp,
+                           rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:
