@@ -61,9 +61,11 @@ service TabletServerService {
   rpc AbortTransaction(AbortTransactionRequestPB) returns (AbortTransactionResponsePB);
   rpc Truncate(TruncateRequestPB) returns (TruncateResponsePB);
   rpc GetTabletStatus(GetTabletStatusRequestPB) returns (GetTabletStatusResponsePB);
-  rpc GetMasterAddresses (GetMasterAddressesRequestPB) returns (GetMasterAddressesResponsePB);
+  rpc GetMasterAddresses(GetMasterAddressesRequestPB) returns (GetMasterAddressesResponsePB);
 
   rpc Publish(PublishRequestPB) returns (PublishResponsePB);
+
+  rpc IsTabletServerReady(IsTabletServerReadyRequestPB) returns (IsTabletServerReadyResponsePB);
 }
 
 message GetLogLocationRequestPB {

@@ -685,6 +685,16 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs()).getMasterAddresses();
   }
 
+  /**
+   * Check if the tserver is ready to serve requests.
+   * @param hp the host and port of the tablet server.
+   * @return tablet server readiness response.
+   */
+  public IsTabletServerReadyResponse isTServerReady(HostAndPort hp) throws Exception {
+    Deferred<IsTabletServerReadyResponse> d = asyncClient.isTServerReady(hp);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   public interface Condition {
     boolean get() throws Exception;
   }

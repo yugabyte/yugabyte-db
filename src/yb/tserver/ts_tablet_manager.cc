@@ -1215,6 +1215,25 @@ int TSTabletManager::GetNumDirtyTabletsForTests() const {
   return dirty_tablets_.size();
 }
 
+int TSTabletManager::GetNumTabletsNotRunning() const {
+  if (state() != MANAGER_RUNNING) {
+    return INT_MAX;
+  }
+
+  boost::shared_lock<RWMutex> shared_lock(lock_);
+  int num_not_running = 0;
+  for (const auto& entry : tablet_map_) {
+    tablet::TabletStatePB state = entry.second->state();
+    if (state != tablet::RUNNING) {
+      num_not_running++;
+    }
+  }
+
+  LOG(INFO) << num_not_running << " tablets not running out of " << tablet_map_.size();
+
+  return num_not_running;
+}
+
 int TSTabletManager::GetNumLiveTablets() const {
   int count = 0;
   boost::shared_lock<RWMutex> lock(lock_);
