@@ -323,6 +323,25 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Check if the tserver is ready to serve requests.
+   * @param hp host port of the tablet server.
+   * @return a deferred object for the response from tablet server.
+   */
+  public Deferred<IsTabletServerReadyResponse> isTServerReady(final HostAndPort hp) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    IsTabletServerReadyRequest rpc = new IsTabletServerReadyRequest();
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<IsTabletServerReadyResponse> d = rpc.getDeferred();
+    rpc.attempt++;
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  /**
    * Create a table on the cluster with the specified name and schema. Default table
    * configurations are used, mainly the table will have one tablet.
    * @param keyspace CQL keyspace to which this table belongs
