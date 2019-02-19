@@ -45,6 +45,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
@@ -305,19 +306,43 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param node node for which the CTL command needs to be executed
    * @param processType, Master/TServer process type
    * @param command, actual command (start, stop, create)
-   * @param sleepAfterCmdMillis, number of seconds to sleep after the command execution
    * @return SubTaskGroup
    */
   public SubTaskGroup createServerControlTask(NodeDetails node,
                                               UniverseDefinitionTaskBase.ServerType processType,
-                                              String command,
-                                              int sleepAfterCmdMillis) {
+                                              String command) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
-    subTaskGroup.addTask(getServerControlTask(node, processType, command, sleepAfterCmdMillis));
+    subTaskGroup.addTask(getServerControlTask(node, processType, command, 0));
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
 
+  /**
+   * Create task to check if a specific process is ready to serve requests on a given node.
+   *
+   * @param node node for which the check needs to be executed.
+   * @param serverType server process type on the node to the check.
+   * @param sleepTimeMs default sleep time if server does not support check for readiness.
+   * @return SubTaskGroup
+   */
+  public SubTaskGroup createWaitForServerReady(NodeDetails node, ServerType serverType,
+                                               int sleepTimeMs) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForServerReady", executor);
+    // Do not need check for MASTER as there is only one tablet 'load' on them.
+    if (serverType != ServerType.TSERVER) {
+      return subTaskGroup;
+    }
+    WaitForServerReady.Params params = new WaitForServerReady.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.nodeName = node.nodeName;
+    params.serverType = serverType;
+    params.waitTimeMs = sleepTimeMs;
+    WaitForServerReady task = new WaitForServerReady();
+    task.initialize(params);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
 
   /**
    * Create tasks to execute Cluster CTL command against specific process in parallel
@@ -325,16 +350,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param nodes set of nodes to issue control command in parallel.
    * @param processType, Master/TServer process type
    * @param command, actual command (start, stop, create)
-   * @param sleepAfterCmdMillis, number of seconds to sleep after the command execution
    * @return SubTaskGroup
    */
   public SubTaskGroup createServerControlTasks(List<NodeDetails> nodes,
                                                UniverseDefinitionTaskBase.ServerType processType,
-                                               String command,
-                                               int sleepAfterCmdMillis) {
+                                               String command) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
-      subTaskGroup.addTask(getServerControlTask(node, processType, command, sleepAfterCmdMillis));
+      subTaskGroup.addTask(getServerControlTask(node, processType, command, 0));
     }
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
