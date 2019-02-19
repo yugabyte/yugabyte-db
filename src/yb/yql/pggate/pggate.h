@@ -86,6 +86,32 @@ class PgApiImpl {
   // Read statement.
   PgStatement::ScopedRefPtr GetStatement(PgStatement *handle);
 
+  // Setup the table to store sequences data.
+  CHECKED_STATUS CreateSequencesDataTable(PgSession *pg_session);
+
+  CHECKED_STATUS InsertSequenceTuple(PgSession *pg_session,
+                                     int64_t db_oid,
+                                     int64_t seq_oid,
+                                     int64_t last_val,
+                                     bool is_called);
+
+  CHECKED_STATUS UpdateSequenceTuple(PgSession *pg_session,
+                                     int64_t db_oid,
+                                     int64_t seq_oid,
+                                     int64_t last_val,
+                                     bool is_called,
+                                     int64_t expected_last_val,
+                                     bool expected_is_called,
+                                     bool* skipped);
+
+  CHECKED_STATUS ReadSequenceTuple(PgSession *pg_session,
+                                   int64_t db_oid,
+                                   int64_t seq_oid,
+                                   int64_t *last_val,
+                                   bool *is_called);
+
+  CHECKED_STATUS DeleteSequenceTuple(PgSession *pg_session, int64_t db_oid, int64_t seq_oid);
+
   // Delete statement.
   CHECKED_STATUS DeleteStatement(PgStatement *handle);
 

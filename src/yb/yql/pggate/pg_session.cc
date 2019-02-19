@@ -13,6 +13,9 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <memory>
+
+#include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pggate_if_cxx_decl.h"
 
@@ -20,7 +23,10 @@
 #include "yb/client/transaction.h"
 #include "yb/client/batcher.h"
 
+#include "yb/common/ql_protocol_util.h"
+
 #include "yb/util/string_util.h"
+#include "yb/util/random_util.h"
 
 namespace yb {
 namespace pggate {
@@ -41,6 +47,29 @@ using client::YBTableType;
 
 // TODO(neil) This should be derived from a GFLAGS.
 static MonoDelta kSessionTimeout = 60s;
+
+
+//--------------------------------------------------------------------------------------------------
+// Constants used for the sequences data table.
+//--------------------------------------------------------------------------------------------------
+static constexpr const char* const kPgSequencesNamespaceName = "system_postgres";
+static constexpr const char* const kPgSequencesDataTableName = "sequences_data";
+
+// Used to build this table's uuid.
+static constexpr const YBCPgOid kPgSequencesDataTableOid = 0xFFFF;
+static constexpr const YBCPgOid kPgSequencesDataDatabaseOid = 0xFFFF;
+static const string kPgSequencesDataNamespaceId = GetPgsqlNamespaceId(kPgSequencesDataDatabaseOid);
+
+// Columns names and ids.
+static constexpr const char* const kPgSequenceDbOidColName = "db_oid";
+
+static constexpr const char* const kPgSequenceSeqOidColName = "seq_oid";
+
+static constexpr const char* const kPgSequenceLastValueColName = "last_value";
+static constexpr const size_t kPgSequenceLastValueColIdx = 2;
+
+static constexpr const char* const kPgSequenceIsCalledColName = "is_called";
+static constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 
 //--------------------------------------------------------------------------------------------------
 // Class PgSession
@@ -104,6 +133,199 @@ Status PgSession::ReserveOids(const PgOid database_oid,
 
 Status PgSession::GetCatalogMasterVersion(uint64_t *version) {
   return client_->GetYsqlCatalogMasterVersion(version);
+}
+
+Status PgSession::CreateSequencesDataTable() {
+  const YBTableName table_name(kPgSequencesDataNamespaceId,
+                               kPgSequencesNamespaceName,
+                               kPgSequencesDataTableName);
+  RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kPgSequencesNamespaceName,
+                                                    YQLDatabase::YQL_DATABASE_PGSQL,
+                                                    "" /* creator_role_name */,
+                                                    kPgSequencesDataNamespaceId));
+
+  // Set up the schema.
+  TableProperties table_properties;
+  table_properties.SetTransactional(true);
+  client::YBSchemaBuilder schemaBuilder;
+  schemaBuilder.SetTableProperties(table_properties);
+  schemaBuilder.
+      AddColumn(kPgSequenceDbOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
+  schemaBuilder.
+      AddColumn(kPgSequenceSeqOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
+  schemaBuilder.AddColumn(kPgSequenceLastValueColName)->Type(yb::INT64)->NotNull();
+  schemaBuilder.AddColumn(kPgSequenceIsCalledColName)->Type(yb::BOOL)->NotNull();
+  client::YBSchema schema;
+  CHECK_OK(schemaBuilder.Build(&schema));
+
+  // Generate the table id.
+  pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+
+  // Try to create the table.
+  gscoped_ptr<yb::client::YBTableCreator> table_creator(client_->NewTableCreator());
+
+  Status s = table_creator->table_name(table_name)
+      .schema(&schema)
+      .table_type(yb::client::YBTableType::PGSQL_TABLE_TYPE)
+      .table_id(oid.GetYBTableId())
+      .hash_schema(YBHashSchema::kPgsqlHash)
+      .Create();
+  // If we could create it, then all good!
+  if (s.ok()) {
+    LOG(INFO) << "Table '" << table_name.ToString() << "' created.";
+    // If the table was already there, also not an error...
+  } else if (s.IsAlreadyPresent()) {
+    LOG(INFO) << "Table '" << table_name.ToString() << "' already exists";
+  } else {
+    // If any other error, report that!
+    LOG(ERROR) << "Error creating table '" << table_name.ToString() << "': " << s;
+    RETURN_NOT_OK(s);
+  }
+  return Status::OK();
+}
+
+Status PgSession::InsertSequenceTuple(int64_t db_oid,
+                                      int64_t seq_oid,
+                                      int64_t last_val,
+                                      bool is_called) {
+  pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  auto result = LoadTable(oid);
+  if (!result.ok()) {
+    RETURN_NOT_OK(CreateSequencesDataTable());
+    // Try one more time.
+    result = LoadTable(oid);
+  }
+  PgTableDesc::ScopedRefPtr t = VERIFY_RESULT(result);
+
+  std::shared_ptr<client::YBPgsqlWriteOp> psql_write;
+  psql_write.reset(t->NewPgsqlInsert());
+
+  auto write_request = psql_write->mutable_request();
+
+  write_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
+  write_request->add_partition_column_values()->mutable_value()->set_int64_value(seq_oid);
+
+  PgsqlColumnValuePB* column_value = write_request->add_column_values();
+  column_value->set_column_id(t->table()->schema().ColumnId(kPgSequenceLastValueColIdx));
+  column_value->mutable_expr()->mutable_value()->set_int64_value(last_val);
+
+  column_value = write_request->add_column_values();
+  column_value->set_column_id(t->table()->schema().ColumnId(kPgSequenceIsCalledColIdx));
+  column_value->mutable_expr()->mutable_value()->set_bool_value(is_called);
+
+  return session_->ApplyAndFlush(psql_write);
+}
+
+Status PgSession::UpdateSequenceTuple(int64_t db_oid,
+                                      int64_t seq_oid,
+                                      int64_t last_val,
+                                      bool is_called,
+                                      int64_t expected_last_val,
+                                      bool expected_is_called,
+                                      bool* skipped) {
+  pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  PgTableDesc::ScopedRefPtr t = VERIFY_RESULT(LoadTable(oid));
+
+  std::shared_ptr<client::YBPgsqlWriteOp> psql_write;
+  psql_write.reset(t->NewPgsqlUpdate());
+
+  auto write_request = psql_write->mutable_request();
+
+  write_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
+  write_request->add_partition_column_values()->mutable_value()->set_int64_value(seq_oid);
+
+  PgsqlColumnValuePB* column_value = write_request->add_column_new_values();
+  column_value->set_column_id(t->table()->schema().ColumnId(kPgSequenceLastValueColIdx));
+  column_value->mutable_expr()->mutable_value()->set_int64_value(last_val);
+
+  column_value = write_request->add_column_new_values();
+  column_value->set_column_id(t->table()->schema().ColumnId(kPgSequenceIsCalledColIdx));
+  column_value->mutable_expr()->mutable_value()->set_bool_value(is_called);
+
+  // WHERE clause => WHERE last_val == expected_last_val AND is_called == expected_is_called.
+  auto where_pb = write_request->mutable_where_expr()->mutable_condition();
+  where_pb->set_op(QL_OP_AND);
+  auto cond = where_pb->add_operands()->mutable_condition();
+  cond->set_op(QL_OP_EQUAL);
+  cond->add_operands()->set_column_id(t->table()->schema().ColumnId(kPgSequenceLastValueColIdx));
+  cond->add_operands()->mutable_value()->set_int64_value(expected_last_val);
+
+  cond = where_pb->add_operands()->mutable_condition();
+  cond->set_op(QL_OP_EQUAL);
+  cond->add_operands()->set_column_id(t->table()->schema().ColumnId(kPgSequenceIsCalledColIdx));
+  cond->add_operands()->mutable_value()->set_bool_value(expected_is_called);
+
+  write_request->mutable_column_refs()->add_ids(
+      t->table()->schema().ColumnId(kPgSequenceLastValueColIdx));
+  write_request->mutable_column_refs()->add_ids(
+      t->table()->schema().ColumnId(kPgSequenceIsCalledColIdx));
+
+  RETURN_NOT_OK(session_->ApplyAndFlush(psql_write));
+  if (skipped) {
+    *skipped = psql_write->response().skipped();
+  }
+  return Status::OK();
+}
+
+Status PgSession::ReadSequenceTuple(int64_t db_oid,
+                                    int64_t seq_oid,
+                                    int64_t *last_val,
+                                    bool *is_called) {
+  pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  PgTableDesc::ScopedRefPtr t = VERIFY_RESULT(LoadTable(oid));
+
+  std::shared_ptr<client::YBPgsqlReadOp> psql_read(t->NewPgsqlSelect());
+
+  auto read_request = psql_read->mutable_request();
+
+  read_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
+  read_request->add_partition_column_values()->mutable_value()->set_int64_value(seq_oid);
+
+  read_request->add_targets()->set_column_id(
+      t->table()->schema().ColumnId(kPgSequenceLastValueColIdx));
+  read_request->add_targets()->set_column_id(
+      t->table()->schema().ColumnId(kPgSequenceIsCalledColIdx));
+
+  read_request->mutable_column_refs()->add_ids(
+      t->table()->schema().ColumnId(kPgSequenceLastValueColIdx));
+  read_request->mutable_column_refs()->add_ids(
+      t->table()->schema().ColumnId(kPgSequenceIsCalledColIdx));
+
+  RETURN_NOT_OK(session_->ReadSync(psql_read));
+
+  Slice cursor;
+  int64_t row_count = 0;
+  RETURN_NOT_OK(PgDocData::LoadCache(psql_read->rows_data(), &row_count, &cursor));
+  if (row_count == 0) {
+    return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", seq_oid);
+  }
+
+  PgWireDataHeader header = PgDocData::ReadDataHeader(&cursor);
+  if (header.is_null()) {
+    return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", seq_oid);
+  }
+  size_t read_size = PgDocData::ReadNumber(&cursor, last_val);
+  cursor.remove_prefix(read_size);
+
+  header = PgDocData::ReadDataHeader(&cursor);
+  if (header.is_null()) {
+    return STATUS_SUBSTITUTE(NotFound, "Unable to find relation for sequence $0", seq_oid);
+  }
+  read_size = PgDocData::ReadNumber(&cursor, is_called);
+  return Status::OK();
+}
+
+Status PgSession::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
+  pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  PgTableDesc::ScopedRefPtr t = VERIFY_RESULT(LoadTable(oid));
+
+  std::shared_ptr<client::YBPgsqlWriteOp> psql_delete(t->NewPgsqlDelete());
+  auto delete_request = psql_delete->mutable_request();
+
+  delete_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
+  delete_request->add_partition_column_values()->mutable_value()->set_int64_value(seq_oid);
+
+  return session_->ApplyAndFlush(psql_delete);
 }
 
 //--------------------------------------------------------------------------------------------------

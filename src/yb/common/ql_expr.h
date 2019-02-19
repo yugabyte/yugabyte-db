@@ -243,6 +243,14 @@ class QLExprExecutor {
   virtual CHECKED_STATUS ReadTSCallValue(const PgsqlBCallPB& ql_expr,
                                          const QLTableRow::SharedPtrConst& table_row,
                                          QLValue *result);
+
+  // Evaluate a boolean condition for the given row.
+  virtual CHECKED_STATUS EvalCondition(const PgsqlConditionPB& condition,
+                                       const QLTableRow::SharedPtrConst& table_row,
+                                       bool* result);
+  virtual CHECKED_STATUS EvalCondition(const PgsqlConditionPB& condition,
+                                       const QLTableRow::SharedPtrConst& table_row,
+                                       QLValue *result);
 };
 
 } // namespace yb

@@ -2147,9 +2147,9 @@ StoreAttrDefault(Relation rel, AttrNumber attnum,
 	 */
 	adbin = nodeToString(expr);
 
-	/*
-	 * Also deparse it to form the mostly-obsolete adsrc field.
-	 */
+  /*
+   * Also deparse it to form the mostly-obsolete adsrc field.
+   */
 	adsrc = deparse_expression(expr,
 							   deparse_context_for(RelationGetRelationName(rel),
 												   RelationGetRelid(rel)),
