@@ -35,9 +35,7 @@ CREATE TABLE feature_tab_bytea (feature_col BYTEA);
 CREATE TABLE feature_tab_timestamp (feature_col TIMESTAMP(2));
 CREATE TABLE feature_tab_timestamp_with_time_zone (feature_col TIMESTAMP WITH TIME ZONE);
 CREATE TABLE feature_tab_date (feature_col DATE);
-ERROR:  Type not yet supported in YugaByte: 1082 (DATE)
 CREATE TABLE feature_tab_time (feature_col TIME(2));
-ERROR:  Type not yet supported in YugaByte: 1083 (TIME)
 CREATE TABLE feature_tab_time_with_time_zone (feature_col TIME(2) WITH TIME ZONE);
 ERROR:  Type not yet supported in YugaByte: 1266 (TIMETZ)
 CREATE TABLE feature_tab_interval (feature_col INTERVAL[YEAR TO MONTH, DAY TO SECOND](2));

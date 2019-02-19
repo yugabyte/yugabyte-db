@@ -365,8 +365,8 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool 
     case YB_YQL_DATA_TYPE_TYPEARGS:
     case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE:
     case YB_YQL_DATA_TYPE_FROZEN:
-    case YB_YQL_DATA_TYPE_DATE:
-    case YB_YQL_DATA_TYPE_TIME:
+    case YB_YQL_DATA_TYPE_DATE: // Not used for PG storage
+    case YB_YQL_DATA_TYPE_TIME: // Not used for PG storage
     case YB_YQL_DATA_TYPE_JSONB:
     case YB_YQL_DATA_TYPE_UINT8:
     case YB_YQL_DATA_TYPE_UINT16:
@@ -546,8 +546,8 @@ PgColumnRef::PgColumnRef(int attr_num,
       case YB_YQL_DATA_TYPE_TYPEARGS:
       case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE:
       case YB_YQL_DATA_TYPE_FROZEN:
-      case YB_YQL_DATA_TYPE_DATE:
-      case YB_YQL_DATA_TYPE_TIME:
+      case YB_YQL_DATA_TYPE_DATE: // Not used for PG storage
+      case YB_YQL_DATA_TYPE_TIME: // Not used for PG storage
       case YB_YQL_DATA_TYPE_JSONB:
       case YB_YQL_DATA_TYPE_UINT8:
       case YB_YQL_DATA_TYPE_UINT16:

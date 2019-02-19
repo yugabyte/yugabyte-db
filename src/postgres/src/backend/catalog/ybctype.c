@@ -68,7 +68,7 @@
 #include "catalog/ybctype.h"
 #include "mb/pg_wchar.h"
 #include "parser/parse_type.h"
-#include "parser/parse_type.h"
+#include "utils/date.h"
 #include "utils/builtins.h"
 #include "utils/cash.h"
 #include "utils/syscache.h"
@@ -408,6 +408,32 @@ Datum YBCUuidToDatum(const unsigned char *data, int64 bytes, const YBCPgTypeAttr
 }
 
 /*
+ * DATE conversions.
+ * PG represents DATE as signed int32 number of days since 2000-01-01, we store it as-is
+ */
+
+void YBCDatumToDate(Datum datum, int32 *data, int64 *bytes) {
+	*data = DatumGetDateADT(datum);
+}
+
+Datum YBCDateToDatum(const int32 *data, int64 bytes, const YBCPgTypeAttrs* type_attrs) {
+	return DateADTGetDatum(*data);
+}
+
+/*
+ * TIME conversions.
+ * PG represents TIME as microseconds in int64, we store it as-is
+ */
+
+void YBCDatumToTime(Datum datum, int64 *data, int64 *bytes) {
+	*data = DatumGetTimeADT(datum);
+}
+
+Datum YBCTimeToDatum(const int64 *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+	return TimeADTGetDatum(*data);
+}
+
+/*
  * Other conversions.
  */
 
@@ -624,13 +650,13 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToVarchar,
 		(YBCPgDatumFromData)YBCVarcharToDatum },
 
-	{ DATEOID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, false,
-		(YBCPgDatumToData)NULL,
-		(YBCPgDatumFromData)NULL },
+	{ DATEOID, YB_YQL_DATA_TYPE_INT32, true,
+		(YBCPgDatumToData)YBCDatumToDate,
+		(YBCPgDatumFromData)YBCDateToDatum },
 
-	{ TIMEOID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, false,
-		(YBCPgDatumToData)NULL,
-		(YBCPgDatumFromData)NULL },
+	{ TIMEOID, YB_YQL_DATA_TYPE_INT64, true,
+		(YBCPgDatumToData)YBCDatumToTime,
+		(YBCPgDatumFromData)YBCTimeToDatum },
 
 	{ TIMESTAMPOID, YB_YQL_DATA_TYPE_INT64, true,
 		(YBCPgDatumToData)YBCDatumToInt64,

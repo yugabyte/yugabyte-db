@@ -88,14 +88,13 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
     case InternalType::kBinaryValue:
       WriteBinary(col_value.binary_value(), buffer);
       break;
-    case InternalType::kDecimalValue: {
+    case InternalType::kDecimalValue:
       // Passing a serialized form of YB Decimal, decoding will be done in pg_expr.cc
       WriteText(col_value.decimal_value(), buffer);
       break;
-    }
     case InternalType::kTimestampValue:
-    case InternalType::kDateValue:
-    case InternalType::kTimeValue:
+    case InternalType::kDateValue: // Not used for PG storage
+    case InternalType::kTimeValue: // Not used for PG storage
     case InternalType::kVarintValue:
     case InternalType::kInetaddressValue:
     case InternalType::kJsonbValue:

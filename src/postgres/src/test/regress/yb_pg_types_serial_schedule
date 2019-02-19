@@ -22,3 +22,5 @@ test: yb_timestamp
 test: yb_jsonb
 test: yb_uuid
 test: yb_money
+test: yb_date
+test: yb_time
