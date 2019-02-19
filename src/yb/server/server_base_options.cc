@@ -58,6 +58,10 @@ DEFINE_string(placement_zone, "rack1",
 DEFINE_string(placement_uuid, "",
               "The uuid of the tservers cluster/placement.");
 
+DEFINE_int32(master_discovery_timeout_ms, 3600000,
+             "Timeout for masters to discover each other during cluster creation/startup");
+TAG_FLAG(master_discovery_timeout_ms, hidden);
+
 namespace yb {
 namespace server {
 
@@ -211,6 +215,34 @@ Status DetermineMasterAddresses(
     master_addr_strings.emplace_back(hp.ToString());
   }
   *master_addresses_resolved_str = JoinStrings(master_addr_strings, ",");
+  return Status::OK();
+}
+
+Status ResolveMasterAddresses(MasterAddressesPtr master_addresses,
+                              std::vector<Endpoint>* resolved_addresses) {
+  const auto resolve_sleep_interval_sec = 1;
+  auto resolve_max_iterations =
+      (FLAGS_master_discovery_timeout_ms / 1000) / resolve_sleep_interval_sec;
+  if (resolve_max_iterations < 120) {
+    resolve_max_iterations = 120;
+  }
+
+  for (const auto &list : *master_addresses) {
+    for (const auto &master_addr : list) {
+      // Retry resolving master address for 'master_discovery_timeout' period of time
+      int num_iters = 0;
+      Status s = master_addr.ResolveAddresses(resolved_addresses);
+      while (!s.ok()) {
+        num_iters++;
+        if (num_iters > resolve_max_iterations) {
+          return STATUS_FORMAT(ConfigurationError, "Couldn't resolve master service address '$0'",
+              master_addr);
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(resolve_sleep_interval_sec));
+        s = master_addr.ResolveAddresses(resolved_addresses);
+      }
+    }
+  }
   return Status::OK();
 }
 
