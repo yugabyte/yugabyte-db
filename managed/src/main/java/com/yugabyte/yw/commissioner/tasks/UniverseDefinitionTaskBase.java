@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod.CommandType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.NodeInstance;
@@ -724,7 +725,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
   }
 
-  public void createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType commandType, String podName, int waitTime) {
+  public void createKubernetesWaitForPodTask(CommandType commandType, String podName) {
     SubTaskGroup subTaskGroup = new SubTaskGroup(commandType.getSubTaskGroupName(), executor);
     KubernetesWaitForPod.Params params = new KubernetesWaitForPod.Params();
     UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
@@ -733,7 +734,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.nodePrefix = taskParams().nodePrefix;
     params.universeUUID = taskParams().universeUUID;
     params.podName = podName;
-    params.waitTime = waitTime;
     KubernetesWaitForPod task = new KubernetesWaitForPod();
     task.initialize(params);
     subTaskGroup.addTask(task);

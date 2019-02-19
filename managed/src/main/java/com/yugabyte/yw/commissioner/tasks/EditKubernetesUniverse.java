@@ -14,7 +14,6 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
-import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -37,15 +36,15 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      
+
       // Get requested user intent.
-      UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
       UserIntent userIntent = primaryCluster.userIntent;
 
       // Get current universe's intent.
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       UserIntent currIntent = universeDetails.getPrimaryCluster().userIntent.clone();
-      
+
       boolean userIntentChange = false;
       boolean isNumNodeChange = false;
       boolean isFirstIteration = true;
@@ -67,7 +66,7 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
 
       List<NodeDetails> currTServers = universe.getTServers();
       int numTServers = currTServers.size();
-      
+
       Set<NodeDetails> tserversToRemove = getTServersToRemove(numTServers,
           userIntent.numNodes, universe);
       Set<NodeDetails> tserversToAdd = getTServersToAdd(numTServers,
@@ -86,24 +85,23 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
       // Check if rolling pods is not important to reduce tasks to run.
       if (!userIntentChange) {
         createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.HELM_UPGRADE);
-
       } else {
         // In case user intent changes per pod, roll each pod.
         for (int partition = userIntent.numNodes - 1; partition >= 0; partition--) {
           createKubernetesExecutorTaskForServerType(KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
               null, ServerType.TSERVER, partition);
           createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
-              String.format("yb-tserver-%d", partition), 0);
+              String.format("yb-tserver-%d", partition));
 
           // Update the node detail set with the current pods so that the wait tasks
           // get the latest pods to wait for (required when new pods are added).
           if (isNumNodeChange && isFirstIteration) {
             createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO);
           }
-          
+
           // Get the tserver that has just been rolled.
           Set<NodeDetails> tserverUpdated = getTServerToWaitFor(partition);
-          
+
           // TODO: Ideally should wait for tserver to have locally bootstrapped data.
           createWaitForServersTasks(tserverUpdated, ServerType.TSERVER)
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -113,7 +111,7 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
           isFirstIteration = false;
         }
       }
-      
+
       // Final update for the node details.
       createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO);
 
@@ -125,13 +123,13 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
         createWaitForLoadBalanceTask()
             .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
-      
+
       if (!tserversToRemove.isEmpty()) {
         createModifyBlackListTask(new ArrayList(tserversToRemove), false /* isAdd */)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-     createSwamperTargetUpdateTask(false);
+      createSwamperTargetUpdateTask(false);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
@@ -157,7 +155,8 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
     return tservers;
   }
 
-  public Set<NodeDetails> getTServersToRemove(int numCurrTServers, int numIntendedTServers, Universe universe) {
+  public Set<NodeDetails> getTServersToRemove(int numCurrTServers, int numIntendedTServers,
+      Universe universe) {
     Set<NodeDetails> tservers = new HashSet<>();
     for (int i = numIntendedTServers; i < numCurrTServers; i++) {
       String tserverName = String.format("yb-tserver-%d", i);
@@ -166,7 +165,8 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
     return tservers;
   }
 
-  public Set<NodeDetails> getTServersToAdd(int numCurrTServers, int numIntendedTServers, Universe universe) {
+  public Set<NodeDetails> getTServersToAdd(int numCurrTServers, int numIntendedTServers,
+      Universe universe) {
     Set<NodeDetails> tservers = new HashSet<>();
     for (int i = numCurrTServers; i < numIntendedTServers; i++) {
       String tserverName = String.format("yb-tserver-%d", i);

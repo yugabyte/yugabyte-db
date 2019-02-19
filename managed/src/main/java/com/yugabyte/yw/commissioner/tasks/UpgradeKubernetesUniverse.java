@@ -7,11 +7,11 @@ import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -50,7 +50,7 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
 
       UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
 
-      if (taskParams().taskType == UpgradeUniverse.UpgradeTaskType.Software) {
+      if (taskParams().taskType == UpgradeTaskType.Software) {
         if (taskParams().ybSoftwareVersion == null ||
             taskParams().ybSoftwareVersion.isEmpty()) {
           throw new IllegalArgumentException("Invalid yugabyte software version: " +
@@ -67,7 +67,7 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
           LOG.info("Upgrading software version to {} in universe {}",
                    taskParams().ybSoftwareVersion, universe.name);
 
-          createUpgradeTask(userIntent);
+          createUpgradeTask(userIntent, universe);
 
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
@@ -77,7 +77,7 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
           updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
               .setSubTaskGroupType(getTaskSubGroupType());
 
-          createUpgradeTask(userIntent);
+          createUpgradeTask(userIntent, universe);
           break;
       }
 
@@ -96,7 +96,7 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
     LOG.info("Finished {} task.", getName());
   }
 
-    private SubTaskGroupType getTaskSubGroupType() {
+  private SubTaskGroupType getTaskSubGroupType() {
     switch (taskParams().taskType) {
       case Software:
         return SubTaskGroupType.UpgradingSoftware;
@@ -107,30 +107,36 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
     }
   }
 
-  private void createUpgradeTask(UserIntent userIntent) {
+  private void createUpgradeTask(UserIntent userIntent, Universe universe) {
     String version = null;
     boolean flag = true;
-    if (taskParams().taskType == UpgradeUniverse.UpgradeTaskType.Software) {
-       version = taskParams().ybSoftwareVersion;
-       flag = false;
+    if (taskParams().taskType == UpgradeTaskType.Software) {
+      version = taskParams().ybSoftwareVersion;
+      flag = false;
     }
+
+    createKubernetesExecutorTask(CommandType.POD_INFO);
+
     if (!taskParams().masterGFlags.isEmpty() || !flag) {
       for (int partition = userIntent.replicationFactor - 1; partition >= 0; partition--) {
-        createKubernetesExecutorTaskForServerType(KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+        createKubernetesExecutorTaskForServerType(CommandType.HELM_UPGRADE,
             version, ServerType.MASTER, partition);
         createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
-            String.format("yb-master-%d", partition), taskParams().sleepAfterMasterRestartMillis / 1000);
+            String.format("yb-master-%d", partition));
       }
     }
     if (!taskParams().tserverGFlags.isEmpty() || !flag) {
       userIntent.tserverGFlags = taskParams().tserverGFlags;
       for (int partition = userIntent.numNodes - 1; partition >= 0; partition--) {
-        createKubernetesExecutorTaskForServerType(KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+        createKubernetesExecutorTaskForServerType(CommandType.HELM_UPGRADE,
             version, ServerType.TSERVER, partition);
-        createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
-            String.format("yb-tserver-%d", partition), taskParams().sleepAfterTServerRestartMillis / 1000);
+        String tserverName = String.format("yb-tserver-%d", partition);
+        createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD, tserverName);
+        NodeDetails node = new NodeDetails();
+        node.nodeName = tserverName;
+        createWaitForServerReady(node, ServerType.TSERVER, taskParams().sleepAfterTServerRestartMillis)
+            .setSubTaskGroupType(getTaskSubGroupType());
       }
     }
-    createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO);
   }
 }
