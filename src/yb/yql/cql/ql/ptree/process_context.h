@@ -56,15 +56,24 @@ class ProcessContextBase {
                        const char *msg,
                        ErrorCode error_code,
                        const char* token = nullptr);
+  CHECKED_STATUS Error(const YBLocation& loc,
+                       const std::string& msg,
+                       ErrorCode error_code,
+                       const char* token = nullptr);
+  CHECKED_STATUS Error(const YBLocation& loc, const std::string& msg, const char* token = nullptr);
   CHECKED_STATUS Error(const YBLocation& loc, const char *msg, const char* token = nullptr);
   CHECKED_STATUS Error(const YBLocation& loc, ErrorCode error_code, const char* token = nullptr);
 
   // Variants of Error() that report location of tnode as the error location.
   CHECKED_STATUS Error(const TreeNode *tnode, ErrorCode error_code);
+  CHECKED_STATUS Error(const TreeNode *tnode, const std::string& msg, ErrorCode error_code);
   CHECKED_STATUS Error(const TreeNode *tnode, const char *msg, ErrorCode error_code);
   CHECKED_STATUS Error(const TreeNode *tnode, const Status& s, ErrorCode error_code);
 
   CHECKED_STATUS Error(const TreeNode::SharedPtr& tnode, ErrorCode error_code);
+  CHECKED_STATUS Error(const TreeNode::SharedPtr& tnode,
+                       const std::string& msg,
+                       ErrorCode error_code);
   CHECKED_STATUS Error(const TreeNode::SharedPtr& tnode, const char *msg, ErrorCode error_code);
   CHECKED_STATUS Error(const TreeNode::SharedPtr& tnode, const Status& s, ErrorCode error_code);
 

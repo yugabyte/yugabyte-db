@@ -40,7 +40,7 @@
 %expect 0
 
 // Debugging options. These should be deleted after coding is completed.
-%debug
+%define parse.trace
 %define parse.error verbose
 // Because of a bug in BISON 3.2, we have to turn off assertion for now.
 // %define parse.assert
@@ -90,6 +90,7 @@
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
+#include "yb/yql/cql/ql/ptree/pt_insert_values_clause.h"
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
 #include "yb/yql/cql/ql/ptree/pt_update.h"
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
@@ -117,7 +118,7 @@ typedef PTRoleOptionListNode::SharedPtr     PRoleOptionListNode;
 typedef PTConstInt::SharedPtr          PConstInt;
 typedef PTCollectionExpr::SharedPtr    PCollectionExpr;
 typedef PTCollection::SharedPtr        PCollection;
-typedef PTValues::SharedPtr            PValues;
+typedef PTInsertValuesClause::SharedPtr     PInsertValuesClause;
 typedef PTSelectStmt::SharedPtr        PSelectStmt;
 typedef PTTableRef::SharedPtr          PTableRef;
 typedef PTTableRefListNode::SharedPtr  PTableRefListNode;
@@ -268,7 +269,7 @@ using namespace yb::ql;
 
 %type <PSelectStmt>       simple_select
 
-%type <PValues>           values_clause
+%type <PInsertValuesClause>     values_clause
 
 %type <PExpr>             // Expression clause. These expressions are used in a specific context.
                           if_clause
@@ -2132,7 +2133,7 @@ simple_select:
 
 values_clause:
   VALUES ctext_row {
-    $$ = MAKE_NODE(@1, PTValues, $2);
+    $$ = MAKE_NODE(@1, PTInsertValuesClause, $2);
   }
   | values_clause ',' ctext_row {
     PARSER_NOCODE(@2);

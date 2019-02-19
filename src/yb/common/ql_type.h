@@ -22,6 +22,7 @@
 
 #include "yb/common/key_encoder.h"
 #include "yb/common/common.pb.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -208,7 +209,7 @@ class QLType {
     }
   }
 
-  const std::shared_ptr<QLType>& param_type(int member_index = 0) const {
+  const QLType::SharedPtr& param_type(int member_index = 0) const {
     DCHECK_LT(member_index, params_.size());
     return params_[member_index];
   }
@@ -271,6 +272,16 @@ class QLType {
     for (auto& param : params_) {
       param->GetUserDefinedTypeIds(udt_ids);
     }
+  }
+
+  // Returns the type of given field, or nullptr if that field is not found in this UDT.R
+  const Result<QLType::SharedPtr> GetUDTFieldTypeByName(const std::string& field_name) const {
+    SCHECK(IsUserDefined(), InternalError, "Can only be called on UDT");
+    const int idx = GetUDTypeFieldIdxByName(field_name);
+    if (idx == -1) {
+      return nullptr;
+    }
+    return param_type(idx);
   }
 
   //------------------------------------------------------------------------------------------------

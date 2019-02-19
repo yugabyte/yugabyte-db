@@ -32,7 +32,7 @@ import org.yb.YBTestRunner;
 import org.junit.runner.RunWith;
 
 @RunWith(value=YBTestRunner.class)
-public class TestInsert extends BaseCQLTest {
+public class TestInsertValues extends BaseCQLTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
@@ -42,12 +42,12 @@ public class TestInsert extends BaseCQLTest {
 
   @Test
   public void testSimpleInsert() throws Exception {
-    LOG.info("TEST SIMPLE INSERT - Start");
+    LOG.info("TEST INSERT VALUES - Start");
 
     // Setup table and insert 100 rows.
     setupTable("test_insert", 100);
 
-    LOG.info("TEST SIMPLE INSERT - End");
+    LOG.info("TEST INSERT VALUES - End");
   }
 
   @Test
