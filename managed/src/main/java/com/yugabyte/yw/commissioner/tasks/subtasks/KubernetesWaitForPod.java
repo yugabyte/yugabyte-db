@@ -9,7 +9,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.KubernetesManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellProcessHandler.ShellResponse;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -50,6 +50,11 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
   @Inject
   Application application;
 
+  // Number of iterations to wait for the pod to come up.
+  private static final int MAX_ITERS = 10;
+
+  // Time to sleep on each iteration of the pod to come up.
+  private static final int SLEEP_TIME = 10;
 
   @Override
   public void initialize(ITaskParams params) {
@@ -66,7 +71,6 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
     // so we would need that for any sort helm operations.
     public String nodePrefix;
     public String podName = null;
-    public int waitTime = 60;
   }
 
   protected KubernetesWaitForPod.Params taskParams() {
@@ -78,24 +82,19 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
     // TODO: add checks for the shell process handler return values.
     switch (taskParams().commandType) {
       case WAIT_FOR_POD:
-        int count = 0;
+        int iters = 0;
         String status;
         do {
           try {
-            TimeUnit.SECONDS.sleep(10);
+            TimeUnit.SECONDS.sleep(SLEEP_TIME);
           } catch (InterruptedException ex) {
             // Do nothing
           }
           status = waitForPod();
-          count++;
-        } while (!status.equals("Running") && count < 10);
-        if (count > 10) {
-          throw new RuntimeException("Pod creation taking too long");
-        }
-        try {
-          TimeUnit.SECONDS.sleep(taskParams().waitTime);
-        } catch (InterruptedException ex) {
-          // Do nothing
+          iters++;
+        } while (!status.equals("Running") && iters < MAX_ITERS);
+        if (MAX_ITERS > 10) {
+          throw new RuntimeException("Pod " + taskParams().podName + " creation taking too long.");
         }
         break;
     }
@@ -103,7 +102,8 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
 
   // Waits for pods as well as the containers inside the pod.
   private String waitForPod() {
-    ShellProcessHandler.ShellResponse podResponse = kubernetesManager.getPodStatus(taskParams().providerUUID, taskParams().nodePrefix, taskParams().podName);
+    ShellResponse podResponse = kubernetesManager.getPodStatus(taskParams().providerUUID,
+        taskParams().nodePrefix, taskParams().podName);
     JsonNode podInfo = parseShellResponseAsJson(podResponse);
     JsonNode statusNode = podInfo.path("status");
     String status = statusNode.get("phase").asText();

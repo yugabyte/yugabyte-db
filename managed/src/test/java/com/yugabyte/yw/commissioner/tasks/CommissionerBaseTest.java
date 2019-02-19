@@ -95,7 +95,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
 
   protected TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
     int numRetries = 0;
-    while(numRetries < maxRetryCount) {
+    while (numRetries < maxRetryCount) {
       TaskInfo taskInfo = TaskInfo.get(taskUUID);
       if (taskInfo.getTaskState() == TaskInfo.State.Success ||
           taskInfo.getTaskState() == TaskInfo.State.Failure) {
@@ -104,6 +104,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
       Thread.sleep(1000);
       numRetries++;
     }
-    throw new RuntimeException("WaitFor task exceeded maxRetries!");
+    throw new RuntimeException("WaitFor task exceeded maxRetries! Task state is " +
+                               TaskInfo.get(taskUUID).getTaskState());
   }
 }

@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -25,6 +26,7 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
+import org.yb.client.IsTabletServerReadyResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
@@ -79,6 +81,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
+    IsTabletServerReadyResponse okReadyResp = new IsTabletServerReadyResponse(0, "", null, 0);
+    try {
+      when(mockClient.isTServerReady(any(HostAndPort.class))).thenReturn(okReadyResp);
+    } catch (Exception ex) {}
     dummyShellResponse =  new ShellProcessHandler.ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
   }
@@ -94,8 +100,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.taskType = taskType;
     taskParams.expectedUniverseVersion = expectedVersion;
-    taskParams.sleepAfterMasterRestartMillis = 0;
-    taskParams.sleepAfterTServerRestartMillis = 0;
+    // Need not sleep for default 4min in tests.
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
 
     try {
       UUID taskUUID = commissioner.submit(TaskType.UpgradeUniverse, taskParams);
@@ -123,11 +130,20 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       TaskType.WaitForServer
   );
 
-  List<TaskType> GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE = ImmutableList.of(
+  List<TaskType> GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE_MASTER = ImmutableList.of(
       TaskType.SetNodeState,
       TaskType.AnsibleConfigureServers,
       TaskType.AnsibleClusterServerCtl,
       TaskType.AnsibleClusterServerCtl,
+      TaskType.SetNodeState
+  );
+
+  List<TaskType> GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER = ImmutableList.of(
+      TaskType.SetNodeState,
+      TaskType.AnsibleConfigureServers,
+      TaskType.AnsibleClusterServerCtl,
+      TaskType.AnsibleClusterServerCtl,
+      TaskType.WaitForServerReady,
       TaskType.SetNodeState
   );
 
@@ -140,7 +156,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       TaskType.WaitForServer
   );
 
-  List<TaskType> SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE = ImmutableList.of(
+  List<TaskType> SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE_MASTER = ImmutableList.of(
       TaskType.SetNodeState,
       TaskType.AnsibleClusterServerCtl,
       TaskType.AnsibleConfigureServers,
@@ -148,20 +164,32 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       TaskType.SetNodeState
   );
 
+  List<TaskType> SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER = ImmutableList.of(
+      TaskType.SetNodeState,
+      TaskType.AnsibleClusterServerCtl,
+      TaskType.AnsibleConfigureServers,
+      TaskType.AnsibleClusterServerCtl,
+      TaskType.WaitForServerReady,
+      TaskType.SetNodeState
+  );
+
   private int assertSoftwareUpgradeSequence(Map<Integer, List<TaskInfo>> subTasksByPosition,
-                                            UniverseDefinitionTaskBase.ServerType serverType,
+                                            ServerType serverType,
                                             int startPosition, boolean isRollingUpgrade) {
     int position = startPosition;
     if (isRollingUpgrade) {
+      List<TaskType> taskSequence =
+          serverType.equals(MASTER) ? SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE_MASTER
+                                    : SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER;
       for (int nodeIdx = 1; nodeIdx <= 3; nodeIdx++) {
         String nodeName = String.format("host-n%d", nodeIdx);
-        for (int j = 0; j < SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE.size(); j++) {
+        for (int j = 0; j < taskSequence.size(); j++) {
           Map<String, Object> assertValues = new HashMap<String, Object>();
           List<TaskInfo> tasks = subTasksByPosition.get(position);
           TaskType taskType = tasks.get(0).getTaskType();
           UserTaskDetails.SubTaskGroupType subTaskGroupType = tasks.get(0).getSubTaskGroupType();
           assertEquals(1, tasks.size());
-          assertEquals(SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE.get(j), taskType);
+          assertEquals(taskSequence.get(j), taskType);
           if (!NON_NODE_TASKS.contains(taskType)) {
             assertValues.putAll(ImmutableMap.of(
                 "nodeName", nodeName, "nodeCount", 1
@@ -169,7 +197,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
             if (taskType.equals(TaskType.AnsibleConfigureServers)) {
               String version = "new-version";
-              String taskSubType = subTaskGroupType.equals(DownloadingSoftware) ? "Download" :  "Install";
+              String taskSubType =
+                  subTaskGroupType.equals(DownloadingSoftware) ? "Download" :  "Install";
               assertValues.putAll(ImmutableMap.of(
                   "ybSoftwareVersion", version,
                   "processType", serverType.toString(),
@@ -209,26 +238,28 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   }
 
   private int assertGFlagsUpgradeSequence(Map<Integer, List<TaskInfo>> subTasksByPosition,
-          UniverseDefinitionTaskBase.ServerType serverType,
-          int startPosition, boolean isRollingUpgrade) {
+      ServerType serverType, int startPosition, boolean isRollingUpgrade) {
     return assertGFlagsUpgradeSequence(subTasksByPosition, serverType, startPosition,
                                        isRollingUpgrade, false);
   }
 
   private int assertGFlagsUpgradeSequence(Map<Integer, List<TaskInfo>> subTasksByPosition,
-                                          UniverseDefinitionTaskBase.ServerType serverType,
+                                          ServerType serverType,
                                           int startPosition, boolean isRollingUpgrade,
                                           boolean isEdit) {
     int position = startPosition;
     if (isRollingUpgrade) {
+      List<TaskType> taskSequence =
+          serverType.equals(MASTER) ? GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE_MASTER
+                                    : GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER;
       for (int nodeIdx = 1; nodeIdx <= 3; nodeIdx++) {
         String nodeName = String.format("host-n%d", nodeIdx);
-        for (int j = 0; j < GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE.size(); j++) {
+        for (int j = 0; j < taskSequence.size(); j++) {
           Map<String, Object> assertValues = new HashMap<String, Object>();
           List<TaskInfo> tasks = subTasksByPosition.get(position);
           TaskType taskType = tasks.get(0).getTaskType();
           assertEquals(1, tasks.size());
-          assertEquals(GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE.get(j), taskType);
+          assertEquals(taskSequence.get(j), taskType);
           if (!NON_NODE_TASKS.contains(taskType)) {
             assertValues.putAll(ImmutableMap.of(
                 "nodeName", nodeName, "nodeCount", 1
@@ -415,7 +446,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     position = assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false);
     position = assertSoftwareUpgradeSequence(subTasksByPosition, TSERVER, position, true);
     assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(33, position);
+    assertEquals(36, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
@@ -545,7 +576,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     position = assertGFlagsUpgradeSequence(subTasksByPosition, TSERVER, position, true);
     position = assertGFlagsCommonTasks(subTasksByPosition, position,
                                        UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, true);
-    assertEquals(20, position);
+    assertEquals(23, position);
   }
 
   @Test
@@ -566,7 +597,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     position = assertGFlagsUpgradeSequence(subTasksByPosition, TSERVER, position, true);
     position = assertGFlagsCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE,
                                        true);
-    assertEquals(36, position);
+    assertEquals(39, position);
   }
 
   @Test
@@ -615,7 +646,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     position = assertGFlagsUpgradeSequence(subTasksByPosition, TSERVER, position, true, true);
     position = assertGFlagsCommonTasks(subTasksByPosition, position,
                    UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, true);
-    assertEquals(20, position);
+    assertEquals(23, position);
   }
 
   @Test

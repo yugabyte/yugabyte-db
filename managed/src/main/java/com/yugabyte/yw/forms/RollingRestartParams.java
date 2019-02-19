@@ -28,8 +28,11 @@ public class RollingRestartParams extends UniverseDefinitionTaskParams {
   // This is deprecated use cluster.userIntent.tserverGFlags
   public Map<String, String> tserverGFlags = new HashMap<String, String>();
 
-  public Integer sleepAfterMasterRestartMillis = 180000;
-  public Integer sleepAfterTServerRestartMillis = 180000;
+  public static final int DEFAULT_SLEEP_AFTER_RESTART_MS = 240000;
+
+  // Time to sleep after a server restart, if there is no way to check/rpc if it is ready to server requests.
+  public Integer sleepAfterMasterRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
+  public Integer sleepAfterTServerRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
 
   public Boolean rollingUpgrade = true;
 }

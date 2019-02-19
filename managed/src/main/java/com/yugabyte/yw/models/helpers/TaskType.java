@@ -110,6 +110,8 @@ public enum TaskType {
 
   InstanceActions("subtasks.InstanceActions"),
 
+  WaitForServerReady("subtasks.WaitForServerReady"),
+
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
 
