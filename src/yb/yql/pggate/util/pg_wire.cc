@@ -65,9 +65,11 @@ void PgWire::WriteDouble(double value, faststring *buffer) {
 }
 
 void PgWire::WriteText(const string& value, faststring *buffer) {
-  const uint64 length = value.size();
+  // Postgres expected text string to be null-terminated, so we have to add '\0' here.
+  // Postgres will call strlen() without using the returning byte count.
+  const uint64 length = value.size() + 1;
   WriteInt(NetworkByteOrder::Store64, length, buffer);
-  buffer->append(value);
+  buffer->append(static_cast<const void *>(value.c_str()), length);
 }
 
 void PgWire::WriteBinary(const string& value, faststring *buffer) {
