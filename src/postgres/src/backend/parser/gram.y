@@ -838,6 +838,7 @@ stmt :
 			| CreateAsStmt
 			| CopyStmt
 			| CreateSchemaStmt
+			| CreateSeqStmt
 			| CreateStmt
 			| CreateUserStmt
 			| CreatedbStmt
@@ -915,7 +916,6 @@ stmt :
 			| AlterOpFamilyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePolicyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePLangStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateSeqStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateStatsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateTableSpaceStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -2693,7 +2693,7 @@ alter_column_default:
 		;
 
 opt_drop_behavior:
-			CASCADE						{ $$ = DROP_CASCADE; parser_ybc_not_support(@1, "CASCADE"); }
+			CASCADE						{ $$ = DROP_CASCADE; }
 			| RESTRICT					{ $$ = DROP_RESTRICT; }
 			| /* EMPTY */				{ $$ = DROP_RESTRICT; /* default */ }
 		;
@@ -4376,7 +4376,6 @@ RefreshMatViewStmt:
 CreateSeqStmt:
 			CREATE OptTemp SEQUENCE qualified_name OptSeqOptList
 				{
-					parser_ybc_not_support(@1, "CREATE SEQUENCE");
 					CreateSeqStmt *n = makeNode(CreateSeqStmt);
 					$4->relpersistence = $2;
 					n->sequence = $4;
@@ -4387,7 +4386,6 @@ CreateSeqStmt:
 				}
 			| CREATE OptTemp SEQUENCE IF_P NOT EXISTS qualified_name OptSeqOptList
 				{
-					parser_ybc_not_support(@1, "CREATE SEQUENCE");
 					CreateSeqStmt *n = makeNode(CreateSeqStmt);
 					$7->relpersistence = $2;
 					n->sequence = $7;
@@ -4442,6 +4440,7 @@ SeqOptElem: AS SimpleTypename
 				}
 			| CYCLE
 				{
+					parser_ybc_not_support(@1, "CYCLE");
 					$$ = makeDefElem("cycle", (Node *)makeInteger(true), @1);
 				}
 			| NO CYCLE
@@ -6662,7 +6661,7 @@ DropStmt:	DROP drop_type_any_name IF_P EXISTS any_name_list opt_drop_behavior
 /* object types taking any_name_list */
 drop_type_any_name:
 			TABLE									{ $$ = OBJECT_TABLE; }
-			| SEQUENCE { parser_ybc_not_support(@1, "DROP SEQUENCE"); $$ = OBJECT_SEQUENCE; }
+			| SEQUENCE								{ $$ = OBJECT_SEQUENCE; }
 			| VIEW									{ $$ = OBJECT_VIEW; }
 			| MATERIALIZED VIEW
 				{

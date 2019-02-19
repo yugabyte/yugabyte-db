@@ -82,7 +82,8 @@ IsYBRelationById(Oid relid)
 }
 
 bool
-IsYBRelationByKind(char relKind){
+IsYBRelationByKind(char relKind)
+{
   return (relKind == RELKIND_RELATION || relKind == RELKIND_INDEX);
 }
 

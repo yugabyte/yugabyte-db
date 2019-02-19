@@ -39,12 +39,18 @@ message PgsqlBCallPB {
   repeated PgsqlExpressionPB operands = 2;
 }
 
+// A logical condition that evaluates to true/false. Used in the WHERE clause.
+message PgsqlConditionPB {
+  optional QLOperator op = 1;
+  repeated PgsqlExpressionPB operands = 2;
+}
+
 // An expression in a WHERE condition.
-// - Bind values would be given by client and grouped into a repeated field that can be accesed
+// - Bind values would be given by client and grouped into a repeated field that can be accessed
 //   by their indexes.
-// - Alias values would be computed by server and grouped into repeated field that can be accesed
+// - Alias values would be computed by server and grouped into repeated field that can be accessed
 //   by their indexes.
-// - Code generator write indexes as ref. Executtor deref indexes to get actual values.
+// - Code generator write indexes as ref. Executor deref indexes to get actual values.
 message PgsqlExpressionPB {
   oneof expr {
     QLValuePB value = 1;
@@ -54,6 +60,7 @@ message PgsqlExpressionPB {
     PgsqlBCallPB bfcall = 5;                   // Regular builtin calls.
     PgsqlBCallPB tscall = 6;                   // Tablet server builtin calls.
     PgsqlBCallPB bocall = 7;                   // Builtin operator calls.
+    PgsqlConditionPB condition = 8;            // Logical condition that evaluates to true/false.
   }
 }
 
@@ -126,6 +133,7 @@ message PgsqlWriteRequestPB {
   repeated PgsqlExpressionPB partition_column_values = 7;
   repeated PgsqlExpressionPB range_column_values = 8;
   optional PgsqlExpressionPB ybctid_column_value = 9;
+  // Not used with UPDATEs. Use column_new_values to UPDATE a value.
   repeated PgsqlColumnValuePB column_values = 10;
 
   //------------------------------------------------------------------------------------------------
@@ -140,7 +148,7 @@ message PgsqlWriteRequestPB {
   // a selected row. We call it rsrow to distinguish a selected row from a row of a table in the
   // database in our coding.
   optional PgsqlRSRowDescPB rsrow_desc = 12;
-  repeated PgsqlExpressionPB targets = 13; // required.
+  repeated PgsqlExpressionPB targets = 13; // required for a RETURNING clause.
 
   //------------------------------------------------------------------------------------------------
   // Where clause condition

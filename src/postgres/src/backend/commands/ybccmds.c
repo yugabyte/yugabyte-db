@@ -200,7 +200,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, O
 	                                   relationId,
 	                                   false, /* is_shared_table */
 	                                   false, /* if_not_exists */
-									   primary_key == NULL /* add_primary_key */,
+	                                   primary_key == NULL /* add_primary_key */,
 	                                   &handle));
 
 	/*

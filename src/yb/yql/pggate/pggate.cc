@@ -151,6 +151,45 @@ Status PgApiImpl::InvalidateCache(PgSession *pg_session) {
 
 //--------------------------------------------------------------------------------------------------
 
+Status PgApiImpl::CreateSequencesDataTable(PgSession *pg_session) {
+  return pg_session->CreateSequencesDataTable();
+}
+
+Status PgApiImpl::InsertSequenceTuple(PgSession *pg_session,
+                                      int64_t db_oid,
+                                      int64_t seq_oid,
+                                      int64_t last_val,
+                                      bool is_called) {
+  return pg_session->InsertSequenceTuple(db_oid, seq_oid, last_val, is_called);
+}
+
+Status PgApiImpl::UpdateSequenceTuple(PgSession *pg_session,
+                                      int64_t db_oid,
+                                      int64_t seq_oid,
+                                      int64_t last_val,
+                                      bool is_called,
+                                      int64_t expected_last_val,
+                                      bool expected_is_called,
+                                      bool* skipped) {
+  return pg_session->UpdateSequenceTuple(db_oid, seq_oid, last_val, is_called, expected_last_val,
+      expected_is_called, skipped);
+}
+
+Status PgApiImpl::ReadSequenceTuple(PgSession *pg_session,
+                                    int64_t db_oid,
+                                    int64_t seq_oid,
+                                    int64_t *last_val,
+                                    bool *is_called) {
+  return pg_session->ReadSequenceTuple(db_oid, seq_oid, last_val, is_called);
+}
+
+Status PgApiImpl::DeleteSequenceTuple(PgSession *pg_session, int64_t db_oid, int64_t seq_oid) {
+  return pg_session->DeleteSequenceTuple(db_oid, seq_oid);
+}
+
+
+//--------------------------------------------------------------------------------------------------
+
 Status PgApiImpl::DeleteStatement(PgStatement *handle) {
   if (handle) {
     handle->Release();

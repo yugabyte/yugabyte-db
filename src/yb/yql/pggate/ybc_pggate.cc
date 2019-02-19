@@ -199,6 +199,38 @@ YBCStatus YBCPgExecDropSchema(YBCPgStatement handle) {
 #endif
 }
 
+YBCStatus YBCInsertSequenceTuple(YBCPgSession pg_session,
+                                 int64_t db_oid,
+                                 int64_t seq_oid,
+                                 int64_t last_val,
+                                 bool is_called) {
+  return ToYBCStatus(pgapi->InsertSequenceTuple(pg_session, db_oid, seq_oid, last_val, is_called));
+}
+
+YBCStatus YBCUpdateSequenceTuple(YBCPgSession pg_session,
+                                 int64_t db_oid,
+                                 int64_t seq_oid,
+                                 int64_t last_val,
+                                 bool is_called,
+                                 int64_t expected_last_val,
+                                 bool expected_is_called,
+                                 bool* skipped) {
+  return ToYBCStatus(pgapi->UpdateSequenceTuple(pg_session, db_oid, seq_oid, last_val, is_called,
+      expected_last_val, expected_is_called, skipped));
+}
+
+YBCStatus YBCReadSequenceTuple(YBCPgSession pg_session,
+                               int64_t db_oid,
+                               int64_t seq_oid,
+                               int64_t *last_val,
+                               bool *is_called) {
+  return ToYBCStatus(pgapi->ReadSequenceTuple(pg_session, db_oid, seq_oid, last_val, is_called));
+}
+
+YBCStatus YBCDeleteSequenceTuple(YBCPgSession pg_session, int64_t db_oid, int64_t seq_oid) {
+  return ToYBCStatus(pgapi->DeleteSequenceTuple(pg_session, db_oid, seq_oid));
+}
+
 // Table Operations -------------------------------------------------------------------------------
 
 YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
