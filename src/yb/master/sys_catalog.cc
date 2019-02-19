@@ -99,10 +99,6 @@ DEFINE_bool(notify_peer_of_removal_from_cluster, true,
 TAG_FLAG(notify_peer_of_removal_from_cluster, hidden);
 TAG_FLAG(notify_peer_of_removal_from_cluster, advanced);
 
-DEFINE_int32(master_discovery_timeout_ms, 3600000,
-             "Timeout for masters to discover each other during cluster creation/startup");
-TAG_FLAG(master_discovery_timeout_ms, hidden);
-
 METRIC_DEFINE_histogram(
   server, dns_resolve_latency_during_sys_catalog_setup,
   "yb.master.SysCatalogTable.SetupConfig DNS Resolve",
@@ -110,6 +106,7 @@ METRIC_DEFINE_histogram(
   "Microseconds spent resolving DNS requests during SysCatalogTable::SetupConfig",
   60000000LU, 2);
 
+DECLARE_int32(master_discovery_timeout_ms);
 
 namespace yb {
 namespace master {

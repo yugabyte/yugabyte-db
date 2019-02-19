@@ -203,7 +203,6 @@ DEFINE_string(cluster_uuid, "", "Cluster UUID to be used by this cluster");
 TAG_FLAG(cluster_uuid, hidden);
 
 DECLARE_int32(yb_num_shards_per_tserver);
-DECLARE_int32(master_discovery_timeout_ms);
 
 DEFINE_uint64(transaction_table_num_tablets, 0,
     "Number of tablets to use when creating the transaction status table."
@@ -1415,38 +1414,18 @@ Status CatalogManager::CheckLocalHostInMasterAddresses() {
     local_addrs.push_back(local_hostport.address());
   }
 
-  auto master_addresses_shared_ptr = master_->opts().GetMasterAddresses();
-  const auto kResolveSleepIntervalSec = 1;
-  auto kResolveMaxIterations =
-     (FLAGS_master_discovery_timeout_ms / 1000) / kResolveSleepIntervalSec;
-  if (kResolveMaxIterations < 120) {
-    kResolveMaxIterations = 120;
-  }
-  for (const auto& list : *master_addresses_shared_ptr) {
-    for (const HostPort& peer_addr : list) {
-      std::vector<Endpoint> addresses;
-      // Ignore resolve errors for this check.
-      int numIters = 0;
-      Status s = peer_addr.ResolveAddresses(&addresses);
-      while (!s.ok()) {
-        numIters++;
-        if (numIters > kResolveMaxIterations) {
-          return STATUS_FORMAT(ConfigurationError, "Could not resolve address of $0",
-              peer_addr.ToString());
-        }
-        std::this_thread::sleep_for(std::chrono::seconds(kResolveSleepIntervalSec));
-        s = peer_addr.ResolveAddresses(&addresses);
-      }
-      for (auto const& addr : addresses) {
-        if (addr.address().is_unspecified() ||
-            std::find(local_addrs.begin(), local_addrs.end(), addr.address()) !=
-                 local_addrs.end()) {
-          return Status::OK();
-        }
-      }
+  std::vector<Endpoint> resolved_addresses;
+  Status s = server::ResolveMasterAddresses(master_->opts().GetMasterAddresses(),
+                                            &resolved_addresses);
+  RETURN_NOT_OK(s);
+
+  for (auto const &addr : resolved_addresses) {
+    if (addr.address().is_unspecified() ||
+        std::find(local_addrs.begin(), local_addrs.end(), addr.address()) !=
+            local_addrs.end()) {
+      return Status::OK();
     }
   }
-
   return STATUS(IllegalState,
                 Substitute("None of the local addresses are present in master_addresses $0.",
                            master_->opts().master_addresses_flag));

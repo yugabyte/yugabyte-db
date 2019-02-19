@@ -124,6 +124,9 @@ CHECKED_STATUS DetermineMasterAddresses(
 
 std::string MasterAddressesToString(const MasterAddresses& addresses);
 
+CHECKED_STATUS ResolveMasterAddresses(
+    MasterAddressesPtr master_addresses, std::vector<Endpoint>* resolved_addresses);
+
 } // namespace server
 } // namespace yb
 

@@ -147,17 +147,11 @@ std::string TabletServer::ToString() const {
 }
 
 Status TabletServer::ValidateMasterAddressResolution() const {
-  for (const auto& list : *opts_.GetMasterAddresses()) {
-    for (const auto& master_addr : list) {
-      RETURN_NOT_OK_PREPEND(master_addr.ResolveAddresses(nullptr),
-                            Format("Couldn't resolve master service address '$0'", master_addr));
-    }
-  }
-  return Status::OK();
+  return server::ResolveMasterAddresses(opts_.GetMasterAddresses(), nullptr);
 }
 
-  Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_config,
-                                             bool is_master_leader) {
+Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_config,
+                                           bool is_master_leader) {
   shared_ptr<server::MasterAddresses> new_master_addresses;
   if (is_master_leader) {
     SetCurrentMasterIndex(new_config.opid_index());
