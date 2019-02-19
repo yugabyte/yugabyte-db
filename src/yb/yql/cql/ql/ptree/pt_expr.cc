@@ -255,6 +255,10 @@ CHECKED_STATUS PTLiteralString::ToVarInt(string *value, bool negate) const {
   return Status::OK();
 }
 
+std::string PTLiteralString::ToString() const {
+  return string(value_->c_str());
+}
+
 CHECKED_STATUS PTLiteralString::ToString(string *value) const {
   *value = value_->c_str();
   return Status::OK();
@@ -281,6 +285,47 @@ CHECKED_STATUS PTLiteralString::ToInetaddress(InetAddress *value) const {
 
 //--------------------------------------------------------------------------------------------------
 // Collections.
+
+CHECKED_STATUS PTCollectionExpr::InitializeUDTValues(const QLType::SharedPtr& expected_type,
+                                                     ProcessContextBase* process_context) {
+  SCHECK(expected_type->IsUserDefined(), Corruption, "Expected type should be UDT");
+  SCHECK_EQ(keys_.size(), values_.size(), Corruption,
+            "Expected keys and values to be of the same size");
+
+  udtype_field_values_.resize(expected_type->udtype_field_names().size());
+  // Each literal key/value pair must correspond to a field name/type pair from the UDT
+  auto values_it = values_.begin();
+  for (const auto& key : keys_) {
+    // All keys must be field refs
+
+    // TODO (mihnea) Consider unifying handling of field references (for user-defined types) and
+    // column references (for tables) to simplify this path.
+    if (key->opcode() != TreeNodeOpcode::kPTRef) {
+      return process_context->Error(this,
+                                    "Field names for user-defined types must be field reference",
+                                    ErrorCode::INVALID_ARGUMENTS);
+    }
+    PTRef* field_ref = down_cast<PTRef*>(key.get());
+    if (!field_ref->name()->IsSimpleName()) {
+      return process_context->Error(this,
+                                    "Qualified names not allowed for fields of user-defined types",
+                                    ErrorCode::INVALID_ARGUMENTS);
+    }
+    string field_name(field_ref->name()->last_name().c_str());
+
+    // All keys must be existing field names from the UDT
+    int field_idx = expected_type->GetUDTypeFieldIdxByName(field_name);
+    if (field_idx < 0) {
+      return process_context->Error(this, "Invalid field name found for user-defined type instance",
+                                    ErrorCode::INVALID_ARGUMENTS);
+    }
+
+    // Setting the corresponding field value
+    udtype_field_values_[field_idx] = *values_it;
+    values_it++;
+  }
+  return Status::OK();
+}
 
 CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(CheckOperator(sem_context));
@@ -346,47 +391,18 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
 
     case USER_DEFINED_TYPE: {
       SemState sem_state(sem_context);
-      DCHECK_EQ(keys_.size(), values_.size());
-
-      udtype_field_values_.resize(expected_type->udtype_field_names().size());
-      // Each literal key/value pair must correspond to a field name/type pair from the UDT
-      auto values_it = values_.begin();
-      for (auto& key : keys_) {
-        // All keys must be field refs
-
-        // TODO (mihnea) Consider unifying handling of field references (for user-defined types) and
-        // column references (for tables) to simplify this path.
-        PTRef* field_ref = dynamic_cast<PTRef *>(key.get());
-        if (field_ref == nullptr) {
-          return sem_context->Error(this,
-                                    "Field names for user-defined types must be field reference",
-                                    ErrorCode::INVALID_ARGUMENTS);
+      RETURN_NOT_OK(InitializeUDTValues(expected_type, sem_context));
+      for (int i = 0; i < udtype_field_values_.size(); i++) {
+        if (!udtype_field_values_[i]) {
+          // Skip missing values
+          continue;
         }
-        if (!field_ref->name()->IsSimpleName()) {
-          return sem_context->Error(this,
-                                    "Qualified names not allowed for fields of user-defined types",
-                                    ErrorCode::INVALID_ARGUMENTS);
-        }
-        string field_name(field_ref->name()->last_name().c_str());
-
-        // All keys must be existing field names from the UDT
-        int field_idx = expected_type->GetUDTypeFieldIdxByName(field_name);
-        if (field_idx < 0) {
-          return sem_context->Error(this, "Invalid field name found for user-defined type instance",
-                                    ErrorCode::INVALID_ARGUMENTS);
-        }
-
-        // Setting the corresponding field value
-        udtype_field_values_[field_idx] = *values_it;
-
         // Each value should have the corresponding type from the UDT
-        auto& param_type = expected_type->param_type(field_idx);
+        const auto& param_type = expected_type->param_type(i);
         sem_state.SetExprState(param_type,
                                YBColumnSchema::ToInternalDataType(param_type),
                                bindvar_name);
-        RETURN_NOT_OK(udtype_field_values_[field_idx]->Analyze(sem_context));
-
-        values_it++;
+        RETURN_NOT_OK(udtype_field_values_[i]->Analyze(sem_context));
       }
       sem_state.ResetContextState();
       break;

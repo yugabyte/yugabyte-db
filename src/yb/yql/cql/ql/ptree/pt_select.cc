@@ -215,40 +215,6 @@ class Selectivity {
 
 //--------------------------------------------------------------------------------------------------
 
-PTValues::PTValues(MemoryContext *memctx,
-                   YBLocation::SharedPtr loc,
-                   PTExprListNode::SharedPtr tuple)
-    : PTCollection(memctx, loc),
-      tuples_(memctx, loc) {
-  Append(tuple);
-}
-
-PTValues::~PTValues() {
-}
-
-void PTValues::Append(const PTExprListNode::SharedPtr& tuple) {
-  tuples_.Append(tuple);
-}
-
-void PTValues::Prepend(const PTExprListNode::SharedPtr& tuple) {
-  tuples_.Prepend(tuple);
-}
-
-CHECKED_STATUS PTValues::Analyze(SemContext *sem_context) {
-  return Status::OK();
-}
-
-void PTValues::PrintSemanticAnalysisResult(SemContext *sem_context) {
-  VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
-}
-
-PTExprListNode::SharedPtr PTValues::Tuple(int index) const {
-  DCHECK_GE(index, 0);
-  return tuples_.element(index);
-}
-
-//--------------------------------------------------------------------------------------------------
-
 PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
                            YBLocation::SharedPtr loc,
                            const bool distinct,

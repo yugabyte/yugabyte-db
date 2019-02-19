@@ -106,7 +106,7 @@ class Decimal {
   // The FromX() functions always create a canonical Decimal,
   // but the (digits, varint, sign) constructor doesn't.
 
-  // The input is expected to be of the form [+-]?[0-9]*('.'[0-9]*)?([eE][+-]?[0-9+])?,
+  // The input is expected to be of the form [+-]?[0-9]*('.'[0-9]*)?([eE][+-]?[0-9]+)?,
   // whitespace is not allowed. Use this after removing whitespace.
   CHECKED_STATUS FromString(const Slice &slice);
 

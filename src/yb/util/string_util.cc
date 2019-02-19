@@ -20,14 +20,36 @@
 
 #include "yb/util/string_util.h"
 
-#include "yb/util/string_case.h"
+#include <regex>
+#include <boost/algorithm/string/predicate.hpp>
+
 #include "yb/util/logging.h"
 
 using std::vector;
+using std::regex;
+using std::regex_match;
 using std::string;
 using std::stringstream;
+using boost::algorithm::iequals;
 
 namespace yb {
+
+bool IsBigInteger(const std::string& s) {
+  static const regex int_regex("[+-]?[0-9]+");
+  return regex_match(s, int_regex);
+}
+
+bool IsDecimal(const std::string& s) {
+  // Regexes are based (but do not match exactly) the definition of Decimal::FromString
+  static const string optional_exp_suffix = "([eE][+-]?[0-9]+)?";
+  static const regex decimal_regex_1("[+-]?[0-9]*\\.[0-9]+" + optional_exp_suffix);
+  static const regex decimal_regex_2("[+-]?[0-9]+\\.?"      + optional_exp_suffix);
+  return IsBigInteger(s) || regex_match(s, decimal_regex_1) || regex_match(s, decimal_regex_2);
+}
+
+bool IsBoolean(const std::string& s) {
+  return iequals(s, "true") || iequals(s, "false");
+}
 
 vector<string> StringSplit(const string& arg, char delim) {
   vector<string> splits;
@@ -37,17 +59,6 @@ vector<string> StringSplit(const string& arg, char delim) {
     splits.push_back(item);
   }
   return splits;
-}
-
-bool EqualsIgnoreCase(const std::string &string1,
-                      const std::string &string2) {
-  if (string1.size() != string2.size())
-    return false;
-  for (int i = 0; i < string1.size(); ++i) {
-    if (tolower(string1[i]) != tolower(string2[i]))
-      return false;
-  }
-  return true;
 }
 
 std::string RightPadToWidth(const string& s, int w) {

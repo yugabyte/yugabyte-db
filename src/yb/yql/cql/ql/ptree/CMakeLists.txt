@@ -38,6 +38,7 @@ add_library(ql_ptree
             pt_dml_using_clause_element.cc
             pt_select.cc
             pt_insert.cc
+            pt_insert_values_clause.cc
             pt_delete.cc
             pt_update.cc
             pt_transaction.cc
