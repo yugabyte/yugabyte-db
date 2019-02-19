@@ -55,9 +55,10 @@ SELECT is(
     'findfincs() should return distinct values'
 );
 
-SELECT matches(
-    pgtap_version()::text,
-    '^0[.][[:digit:]]{2}$',
+SELECT cmp_ok(
+    pgtap_version(),
+    '>=',
+    1.0,
     'pgtap_version() should work'
 );
 

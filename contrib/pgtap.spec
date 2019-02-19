@@ -1,6 +1,6 @@
 Summary:	Unit testing suite for PostgreSQL
 Name:		pgtap
-Version:	0.99.1
+Version:	1.0.0
 Release:	1%{?dist}
 Group:		Applications/Databases
 License:	PostgreSQL
@@ -48,6 +48,9 @@ make install USE_PGXS=1 DESTDIR=%{buildroot}
 %{_docdir}/pgsql/contrib/README.pgtap
 
 %changelog
+* Thu Feb 21 2019 Jim Nasby <jim@nasby.net> 1.0.0
+- Update to 1.0.0
+
 * Sun Sep 16 2018 David E. Wheeler <david@justatheory.com> 0.99.0-1
 - Update to v0.99.0.
 

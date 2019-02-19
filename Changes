@@ -1,7 +1,7 @@
 Revision history for pgTAP
 ==========================
 
-0.99.1 (Dev toward 1.0.0)
+1.0.0 (Dev toward 1.0.0)
 --------------------------
 * Fixed uninstall script generation to properly emit `DROP TYPE` statements.
   Thanks to Kamen Naydenov for the PR (#181)!
@@ -27,6 +27,7 @@ Revision history for pgTAP
 * Changed the uninstall script to use `DROP IF EXISTS` rather than just `DROP`
   so that it works even with partial or failed installs. Thanks to Sandro
   Santilli for the PR (#194).
+* Officially end support for PostgreSQL 8.2 and older.
 
 0.99.0 2018-09-16T20:55:41Z
 ---------------------------

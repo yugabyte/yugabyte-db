@@ -1,4 +1,4 @@
-pgTAP 0.99.1
+pgTAP 1.0.0
 ============
 
 pgTAP is a unit testing framework for PostgreSQL written in PL/pgSQL and
@@ -774,8 +774,8 @@ Since "my test" was declared with double quotes, it must be passed with double
 quotes. And since the call to "expect" included spaces (to keep it legible),
 the `EXECUTE` keyword was required.
 
-In PostgreSQL 8.2 and up, you can also use a `VALUES` statement, both in
-the query string or in a prepared statement. A useless example:
+You can also use a `VALUES` statement, both in the query string or in a
+prepared statement. A useless example:
 
     PREPARE myvals AS VALUES (1, 2), (3, 4);
     SELECT set_eq(
@@ -1170,8 +1170,8 @@ expect, you might do something like this:
         'active_users() should return active users'
     );
 
-Tip: If you're using PostgreSQL 8.2 and up and want to hard-code the values to
-compare, use a `VALUES` statement instead of a query, like so:
+Tip: If you want to hard-code the values to compare, use a `VALUES` statement
+instead of a query, like so:
 
     SELECT results_eq(
         'SELECT * FROM active_users()',
@@ -1188,12 +1188,11 @@ second argument may be an array:
     );
 
 In general, the use of prepared statements is highly recommended to keep your
-test code SQLish (you can even use `VALUES` in prepared statements in
-PostgreSQL 8.2 and up!). But note that, because `results_eq()` does a
-row-by-row comparison, the results of the two query arguments must be in
-exactly the same order, with exactly the same data types, in order to pass. In
-practical terms, it means that you must make sure that your results are never
-unambiguously ordered.
+test code SQLish (you can even use `VALUES` in prepared statements). But note
+that, because `results_eq()` does a row-by-row comparison, the results of the
+two query arguments must be in exactly the same order, with exactly the same
+data types, in order to pass. In practical terms, it means that you must make
+sure that your results are never unambiguously ordered.
 
 For example, say that you want to compare queries against a `persons` table.
 The simplest way to sort is by `name`, as in:
@@ -6662,8 +6661,6 @@ database privileges are:
 * CONNECT
 * TEMPORARY
 
-Although CONNECT is not available before PostgreSQL 8.2.
-
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
 
@@ -7579,7 +7576,7 @@ Conditional Tests
 
 Sometimes running a test under certain conditions will cause the test script
 or function to die. A certain function or feature isn't implemented (such as
-`pg_sleep()` prior to PostgreSQL 8.2), some resource isn't available (like a
+`sha256()` prior to PostgreSQL 11), some resource isn't available (like a
 procedural language), or a contrib module isn't available. In these cases it's
 necessary to skip tests, or declare that they are supposed to fail but will
 work in the future (a todo test).
@@ -7769,14 +7766,7 @@ version of PostgreSQL. For example:
 The revision level is in the tens position, the minor version in the thousands
 position, and the major version in the ten thousands position and above
 (assuming PostgreSQL 10 is ever released, it will be in the hundred thousands
-position). This value is the same as the `server_version_num` setting
-available in PostgreSQL 8.2 and higher, but supported by this function back to
-PostgreSQL 8.1:
-
-    try=% select current_setting( 'server_version_num'), pg_version_num();
-     current_setting | pg_version_num
-    -----------------+----------------
-     80304           |          80304
+position). This value is the same as the `server_version_num` setting.
 
 ### `os_name()` ###
 
@@ -8356,28 +8346,6 @@ No changes. Everything should just work.
     + `isnt_ancestor_of()`
     + `is_descendent_of()`
     + `isnt_descendent_of()`
-
-8.2 and Down
-------------
-
-* A patch is applied that removes `enum_has_labels()` and
-  `language_owner_is()`, since neither are testable before 8.3.
-
-* the `diag(anyelement)` function and `col_has_default()` cannot be used to
-  test for columns specified with `DEFAULT NULL` (even though that's the
-  implied default default).
-
-* The `has_enums()` function won't work.
-
-* A number of assignments casts are added to increase compatibility. The casts
-  are:
-
-  + `boolean` to `text`
-  + `text[]` to `text`
-  + `name[]` to `text`
-  + `regtype` to `text`
-
-* Two operators, `=` and `<>`, are added to compare `name[]` values.
 
 Metadata
 ========
