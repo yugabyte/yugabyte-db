@@ -187,10 +187,6 @@
           <executions>
             <execution>
               <id>build-assembly</id>
-              <!--
-                Assembly will be disabled if -DskipAssembly is specified. See the parent pom.xml
-                for the corresponding profile.
-              -->
               <phase>${assembly.execution.phase}</phase>
               <goals>
                 <goal>single</goal>
@@ -531,17 +527,6 @@
         <assembly.execution.phase>none</assembly.execution.phase>
         <maven-dependency-plugin.phase>none</maven-dependency-plugin.phase>
         <yb.collect.tests.only>true</yb.collect.tests.only>
-      </properties>
-    </profile>
-    <profile>
-      <id>skipAssembly</id>
-      <activation>
-        <property>
-          <name>skipAssembly</name>
-        </property>
-      </activation>
-      <properties>
-        <assembly.execution.phase>none</assembly.execution.phase>
       </properties>
     </profile>
   </profiles>

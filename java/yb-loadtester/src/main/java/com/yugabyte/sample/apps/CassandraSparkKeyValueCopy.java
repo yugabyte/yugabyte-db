@@ -147,7 +147,7 @@ public class CassandraSparkKeyValueCopy extends AppBase {
   }
 
   @Override
-  public List<String> getExampleUsageOptions() {
+  public List<String> getWorkloadOptionalArguments() {
     return Arrays.asList(
       "--num_threads_write " + appConfig.numWriterThreads,
       "--" + INPUT_TABLE_ARG_NAME + " " + DEFAULT_INPUT_TABLE_NAME,
