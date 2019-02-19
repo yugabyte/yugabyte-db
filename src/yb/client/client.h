@@ -330,6 +330,11 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Except for testing we should use proper database_types for all creations.
   CHECKED_STATUS CreateNamespaceIfNotExists(const std::string& namespace_name,
                                             const boost::optional<YQLDatabase>& database_type =
+                                            boost::none,
+                                            const std::string& creator_role_name = "",
+                                            const std::string& namespace_id = "",
+                                            const std::string& source_namespace_id = "",
+                                            const boost::optional<uint32_t>& next_pg_oid =
                                             boost::none);
 
   // Delete namespace with the given name.
@@ -351,18 +356,22 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
                                        const char* resource_name,
                                        const char* namespace_name,
                                        const std::string& role_name);
-  // List all namespace names.
+  // List all namespace names and optionally namespace ids.
   // 'namespaces' is appended to only on success.
-  CHECKED_STATUS ListNamespaces(std::vector<std::string>* namespaces) {
-    return ListNamespaces(boost::none, namespaces);
+  CHECKED_STATUS ListNamespaces(std::vector<std::string>* namespace_names,
+                                std::vector<std::string>* namespace_ids = nullptr) {
+    return ListNamespaces(boost::none, namespace_names, namespace_ids);
   }
   CHECKED_STATUS ListNamespaces(const boost::optional<YQLDatabase>& database_type,
-                                std::vector<std::string>* namespaces);
+                                std::vector<std::string>* namespace_names,
+                                std::vector<std::string>* namespace_ids = nullptr);
 
-  // Check if the namespace given by 'namespace_name' exists.
+  // Check if the namespace given by 'namespace_name' or 'namespace_id' exists.
   // Result value is set only on success.
   Result<bool> NamespaceExists(const std::string& namespace_name,
                                const boost::optional<YQLDatabase>& database_type = boost::none);
+  Result<bool> NamespaceIdExists(const std::string& namespace_id,
+                                 const boost::optional<YQLDatabase>& database_type = boost::none);
 
   // Authentication and Authorization
   // Create a new role.

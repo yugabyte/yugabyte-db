@@ -162,7 +162,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
         sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id(), ttl, user_timestamp));
   }
 
-  RETURN_NOT_OK(PopulateResultSet());
+  RETURN_NOT_OK(PopulateResultSet(table_row));
 
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
@@ -210,35 +210,50 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   } else {
     // This UPDATE is calling PGGATE directly without going thru PosgreSQL layer.
     // Keep it here as we might need it.
-    for (const auto& column_value : request_.column_new_values()) {
-      // Get the column.
-      if (!column_value.has_column_id()) {
-        return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
-                             column_value.DebugString());
-      }
-      const ColumnId column_id(column_value.column_id());
-      auto column = schema_.column_by_id(column_id);
-      RETURN_NOT_OK(column);
 
-      // Check column-write operator.
-      CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
+
+    // Very limited support for where expressions. Only used for updates to the sequences data
+    // table.
+    bool is_match = true;
+    if (request_.has_where_expr()) {
+      QLValue match;
+      RETURN_NOT_OK(EvalExpr(request_.where_expr(), table_row, &match));
+      is_match = match.bool_value();
+    }
+
+    if (is_match) {
+      for (const auto &column_value : request_.column_new_values()) {
+        // Get the column.
+        if (!column_value.has_column_id()) {
+          return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
+                               column_value.DebugString());
+        }
+        const ColumnId column_id(column_value.column_id());
+        auto column = schema_.column_by_id(column_id);
+        RETURN_NOT_OK(column);
+
+        // Check column-write operator.
+        CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
         << "Illegal write instruction";
 
-      // Evaluate column value.
-      QLValue expr_result;
-      RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
-      const SubDocument sub_doc =
-        SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
+        // Evaluate column value.
+        QLValue expr_result;
+        RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
 
-      // Inserting into specified column.
-      DocPath sub_path(encoded_range_doc_key_.as_slice(), PrimitiveValue(column_id));
-      RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-          sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
-      skipped = false;
+        const SubDocument sub_doc =
+            SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
+
+        // Inserting into specified column.
+        DocPath sub_path(encoded_range_doc_key_.as_slice(), PrimitiveValue(column_id));
+        RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+            sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
+        skipped = false;
+      }
     }
   }
 
-  RETURN_NOT_OK(PopulateResultSet());
+  // Returning the values before the update.
+  RETURN_NOT_OK(PopulateResultSet(table_row));
 
   if (skipped) {
     response_->set_skipped(true);
@@ -258,7 +273,7 @@ Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
   RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(DocPath(
       encoded_range_doc_key_.as_slice()), data.read_time, data.deadline));
 
-  RETURN_NOT_OK(PopulateResultSet());
+  RETURN_NOT_OK(PopulateResultSet(table_row));
 
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
@@ -289,19 +304,19 @@ Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
   return Status::OK();
 }
 
-Status PgsqlWriteOperation::PopulateResultSet() {
-  if (!request_.targets().empty()) {
-    PgsqlRSRow *rsrow = resultset_.AllocateRSRow(request_.targets().size());
-    int rscol_index = 0;
-    for (const PgsqlExpressionPB& expr : request_.targets()) {
-      if (expr.has_column_id() &&
-          expr.column_id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
+Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow::SharedPtr& table_row) {
+  PgsqlRSRow* rsrow = resultset_.AllocateRSRow(request_.targets().size());
+  int rscol_index = 0;
+  for (const PgsqlExpressionPB& expr : request_.targets()) {
+    if (expr.has_column_id()) {
+      if (expr.column_id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
         rsrow->rscol(rscol_index)->set_binary_value(encoded_range_doc_key_.data(),
                                                     encoded_range_doc_key_.size());
-        continue;
+      } else {
+        RETURN_NOT_OK(EvalExpr(expr, table_row, rsrow->rscol(rscol_index)));
       }
-      return STATUS(NotSupported, "unsupported returning expression");
     }
+    rscol_index++;
   }
   return Status::OK();
 }

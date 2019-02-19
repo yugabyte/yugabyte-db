@@ -767,7 +767,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   // For postgres requests check that the syscatalog version matches.
   if (tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE) {
     for (const auto& pg_req : req->pgsql_write_batch()) {
-      if (pg_req.ysql_catalog_version() < server_->ysql_catalog_version()) {
+      if (pg_req.has_ysql_catalog_version() &&
+          pg_req.ysql_catalog_version() < server_->ysql_catalog_version()) {
         SetupErrorAndRespond(resp->mutable_error(),
             STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while processing "
                                        "this query. Try Again."),

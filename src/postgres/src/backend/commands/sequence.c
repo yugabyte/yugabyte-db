@@ -45,6 +45,8 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
+/*  YB includes. */
+#include "pg_yb_utils.h"
 
 /*
  * We don't want to log each fetching of a value from a sequence,
@@ -218,9 +220,20 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 	rel = heap_open(seqoid, AccessExclusiveLock);
 	tupDesc = RelationGetDescr(rel);
 
-	/* now initialize the sequence's data */
-	tuple = heap_form_tuple(tupDesc, value, null);
-	fill_seq_with_data(rel, tuple);
+	if (IsYugaByteEnabled())
+	{
+		HandleYBStatus(YBCInsertSequenceTuple(ybc_pg_session,
+											  MyDatabaseId,
+											  ObjectIdGetDatum(seqoid),
+											  Int64GetDatumFast(seqdataform.last_value),
+											  false /* is_called */));
+	}
+	else
+	{
+		/* now initialize the sequence's data */
+		tuple = heap_form_tuple(tupDesc, value, null);
+		fill_seq_with_data(rel, tuple);
+	}
 
 	/* process OWNED BY if given */
 	if (owned_by)
@@ -421,6 +434,7 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 	HeapTupleData datatuple;
 	Form_pg_sequence seqform;
 	Form_pg_sequence_data newdataform;
+	FormData_pg_sequence_data seq_data;
 	bool		need_seq_rewrite;
 	List	   *owned_by;
 	ObjectAddress address;
@@ -453,14 +467,27 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 
 	seqform = (Form_pg_sequence) GETSTRUCT(seqtuple);
 
-	/* lock page's buffer and read tuple into new sequence structure */
-	(void) read_seq_tuple(seqrel, &buf, &datatuple);
+	if (IsYugaByteEnabled())
+	{
+		int64_t last_val = 0;
+		HandleYBStatus(YBCReadSequenceTuple(ybc_pg_session, MyDatabaseId, ObjectIdGetDatum(relid),
+											&last_val, &seq_data.is_called));
 
-	/* copy the existing sequence data tuple, so it can be modified locally */
-	newdatatuple = heap_copytuple(&datatuple);
-	newdataform = (Form_pg_sequence_data) GETSTRUCT(newdatatuple);
+		seq_data.last_value = last_val;
+		seq_data.log_cnt = 0;
+		newdataform = &seq_data;
+	}
+	else
+	{
+		/* lock page's buffer and read tuple into new sequence structure */
+		(void) read_seq_tuple(seqrel, &buf, &datatuple);
 
-	UnlockReleaseBuffer(buf);
+		/* copy the existing sequence data tuple, so it can be modified locally */
+		newdatatuple = heap_copytuple(&datatuple);
+		newdataform = (Form_pg_sequence_data) GETSTRUCT(newdatatuple);
+
+		UnlockReleaseBuffer(buf);
+	}
 
 	/* Check and set new values */
 	init_params(pstate, stmt->options, stmt->for_identity, false,
@@ -522,6 +549,12 @@ DeleteSequenceTuple(Oid relid)
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for sequence %u", relid);
 
+	if (IsYugaByteEnabled())
+	{
+		HandleYBStatus(
+				YBCDeleteSequenceTuple(ybc_pg_session, MyDatabaseId, ObjectIdGetDatum(relid)));
+	}
+
 	CatalogTupleDelete(rel, tuple);
 
 	ReleaseSysCache(tuple);
@@ -573,6 +606,7 @@ nextval_internal(Oid relid, bool check_permissions)
 	HeapTuple	pgstuple;
 	Form_pg_sequence pgsform;
 	HeapTupleData seqdatatuple;
+	FormData_pg_sequence_data seq_data;
 	Form_pg_sequence_data seq;
 	int64		incby,
 				maxv,
@@ -630,9 +664,27 @@ nextval_internal(Oid relid, bool check_permissions)
 	cycle = pgsform->seqcycle;
 	ReleaseSysCache(pgstuple);
 
-	/* lock page' buffer and read tuple */
-	seq = read_seq_tuple(seqrel, &buf, &seqdatatuple);
-	page = BufferGetPage(buf);
+retry:
+	if (IsYugaByteEnabled())
+	{
+		int64_t last_val;
+		bool is_called;
+		HandleYBStatus(YBCReadSequenceTuple(ybc_pg_session,
+											MyDatabaseId,
+											ObjectIdGetDatum(relid),
+											&last_val,
+											&is_called));
+		seq_data.last_value = last_val;
+		seq_data.is_called = is_called;
+		seq_data.log_cnt = 0;
+		seq = &seq_data;
+	}
+	else
+	{
+		/* lock page' buffer and read tuple */
+		seq = read_seq_tuple(seqrel, &buf, &seqdatatuple);
+		page = BufferGetPage(buf);
+	}
 
 	elm->increment = incby;
 	last = next = result = seq->last_value;
@@ -645,6 +697,13 @@ nextval_internal(Oid relid, bool check_permissions)
 		fetch--;
 	}
 
+
+	/*
+	 * We don't use the WAL log record. The value has already been updated and there is no way
+	 * to rollback to another sequence number.
+	 */
+	if (IsYugaByteEnabled())
+		goto check_bounds;
 	/*
 	 * Decide whether we should emit a WAL log record.  If so, force up the
 	 * fetch count to grab SEQ_LOG_VALS more values than we actually need to
@@ -673,6 +732,7 @@ nextval_internal(Oid relid, bool check_permissions)
 		}
 	}
 
+check_bounds:
 	while (fetch)				/* try to fetch cache [+ log ] numbers */
 	{
 		/*
@@ -737,7 +797,8 @@ nextval_internal(Oid relid, bool check_permissions)
 	}
 
 	log -= fetch;				/* adjust for any unfetched numbers */
-	Assert(log >= 0);
+	if (!IsYugaByteEnabled())
+		Assert(log >= 0);
 
 	/* save info in local cache */
 	elm->last = result;			/* last returned number */
@@ -745,6 +806,34 @@ nextval_internal(Oid relid, bool check_permissions)
 	elm->last_valid = true;
 
 	last_used_seq = elm;
+
+	/*
+	 * YugaByte doesn't use the WAL, and we don't need to free the buffer because we didn't allocate
+	 * memory for it. So close the relation and return the result now.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		bool skipped = false;
+		/*
+		 * We do a conditional update here to detect write conflicts with other sessions. If the
+		 * update fails, we retry again by reading the last_val and is_called values and going
+		 * through the whole process again.
+		 */
+		HandleYBStatus(YBCUpdateSequenceTuple(ybc_pg_session,
+											  MyDatabaseId,
+											  ObjectIdGetDatum(relid),
+											  last /* last_val */,
+											  true /* is_called */,
+											  seq->last_value /* expected_last_val */,
+											  seq->is_called /* expected_is_called */,
+											  &skipped));
+		if (skipped)
+		{
+			goto retry;
+		}
+		relation_close(seqrel, NoLock);
+		return result;
+	}
 
 	/*
 	 * If something needs to be WAL logged, acquire an xid, so this
@@ -934,8 +1023,15 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	 */
 	PreventCommandIfParallelMode("setval()");
 
-	/* lock page' buffer and read tuple */
-	seq = read_seq_tuple(seqrel, &buf, &seqdatatuple);
+	/*
+	 * TODO(hector): Finish the implementation for setval(). For now, we only skip this part of the
+	 * code to avoid errors.
+	 */
+	if (!IsYugaByteEnabled())
+	{
+		/* lock page' buffer and read tuple */
+		seq = read_seq_tuple(seqrel, &buf, &seqdatatuple);
+	}
 
 	if ((next < minv) || (next > maxv))
 	{
@@ -962,6 +1058,16 @@ do_setval(Oid relid, int64 next, bool iscalled)
 
 	/* In any case, forget any future cached numbers */
 	elm->cached = elm->last;
+
+	/*
+	 * TODO(hector): Finish the implementation for setval(). YugaByte doesn't use the WAL, and we
+	 * didn't allocate memory for buffer, so no need to free it.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		relation_close(seqrel, NoLock);
+		return;
+	}
 
 	/* check the comment above nextval_internal()'s equivalent call. */
 	if (RelationNeedsWAL(seqrel))
@@ -1852,6 +1958,12 @@ pg_sequence_last_value(PG_FUNCTION_ARGS)
 				 errmsg("permission denied for sequence %s",
 						RelationGetRelationName(seqrel))));
 
+	if (IsYugaByteEnabled())
+	{
+		/* TODO(hector): Read the sequence's data. For now return null. */
+		relation_close(seqrel, NoLock);
+		PG_RETURN_NULL();
+	}
 	seq = read_seq_tuple(seqrel, &buf, &seqtuple);
 
 	is_called = seq->is_called;

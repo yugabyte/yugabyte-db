@@ -76,6 +76,30 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CHECKED_STATUS GetCatalogMasterVersion(uint64_t *version);
 
+  // API for sequences data operations.
+  CHECKED_STATUS CreateSequencesDataTable();
+
+  CHECKED_STATUS InsertSequenceTuple(int64_t db_oid,
+      int64_t seq_oid,
+      int64_t last_val,
+      bool is_called);
+
+
+  CHECKED_STATUS UpdateSequenceTuple(int64_t db_oid,
+                                     int64_t seq_oid,
+                                     int64_t last_val,
+                                     bool is_called,
+                                     int64_t expected_last_val,
+                                     bool expected_is_called,
+                                     bool* skipped);
+
+  CHECKED_STATUS ReadSequenceTuple(int64_t db_oid,
+                                   int64_t seq_oid,
+                                   int64_t *last_val,
+                                   bool *is_called);
+
+  CHECKED_STATUS DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
+
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.
   CHECKED_STATUS CreateSchema(const std::string& schema_name, bool if_not_exist);

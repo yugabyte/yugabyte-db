@@ -60,6 +60,29 @@ YBCStatus YBCPgClearBinds(YBCPgStatement handle);
 // Connect database. Switch the connected database to the given "database_name".
 YBCStatus YBCPgConnectDatabase(YBCPgSession pg_session, const char *database_name);
 
+YBCStatus YBCInsertSequenceTuple(YBCPgSession pg_session,
+                                 int64_t db_oid,
+                                 int64_t seq_oid,
+                                 int64_t last_val,
+                                 bool is_called);
+
+YBCStatus YBCUpdateSequenceTuple(YBCPgSession pg_session,
+                                 int64_t db_oid,
+                                 int64_t seq_oid,
+                                 int64_t last_val,
+                                 bool is_called,
+                                 int64_t expected_last_val,
+                                 bool expected_is_called,
+                                 bool* skipped);
+
+YBCStatus YBCReadSequenceTuple(YBCPgSession pg_session,
+                               int64_t db_oid,
+                               int64_t seq_oid,
+                               int64_t *last_val,
+                               bool *is_called);
+
+YBCStatus YBCDeleteSequenceTuple(YBCPgSession pg_session, int64_t db_oid, int64_t seq_oid);
+
 // Create database.
 YBCStatus YBCPgNewCreateDatabase(YBCPgSession pg_session,
                                  const char *database_name,

@@ -589,11 +589,19 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
 }
 
 Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
-                                            const boost::optional<YQLDatabase>& database_type) {
-  Result<bool> namespace_exists = NamespaceExists(namespace_name);
-  RETURN_NOT_OK(namespace_exists);
-  return namespace_exists.get() ? Status::OK()
-                                : CreateNamespace(namespace_name, database_type);
+                                            const boost::optional<YQLDatabase>& database_type,
+                                            const std::string& creator_role_name,
+                                            const std::string& namespace_id,
+                                            const std::string& source_namespace_id,
+                                            const boost::optional<uint32_t>& next_pg_oid) {
+  Result<bool> namespace_exists = (!namespace_id.empty() ? NamespaceIdExists(namespace_id)
+                                                         : NamespaceExists(namespace_name));
+  if (VERIFY_RESULT(namespace_exists)) {
+    return Status::OK();
+  }
+
+  return CreateNamespace(namespace_name, database_type, creator_role_name, namespace_id,
+                         source_namespace_id, next_pg_oid);
 }
 
 Status YBClient::DeleteNamespace(const std::string& namespace_name,
@@ -609,7 +617,8 @@ Status YBClient::DeleteNamespace(const std::string& namespace_name,
 }
 
 Status YBClient::ListNamespaces(const boost::optional<YQLDatabase>& database_type,
-                                std::vector<std::string>* namespaces) {
+                                std::vector<std::string>* namespace_names,
+                                std::vector<std::string>* namespace_ids) {
   ListNamespacesRequestPB req;
   ListNamespacesResponsePB resp;
   if (database_type) {
@@ -617,9 +626,13 @@ Status YBClient::ListNamespaces(const boost::optional<YQLDatabase>& database_typ
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListNamespaces);
 
-  CHECK_NOTNULL(namespaces);
   for (auto ns : resp.namespaces()) {
-    namespaces->push_back(ns.name());
+    if (namespace_names != nullptr) {
+      namespace_names->push_back(ns.name());
+    }
+    if (namespace_ids != nullptr) {
+      namespace_ids->push_back(ns.id());
+    }
   }
   return Status::OK();
 }
@@ -675,11 +688,24 @@ Status YBClient::GrantRevokePermission(GrantRevokeStatementType statement_type,
 
 Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
                                        const boost::optional<YQLDatabase>& database_type) {
-  std::vector<std::string> namespaces;
-  RETURN_NOT_OK(ListNamespaces(database_type, &namespaces));
+  std::vector<std::string> namespace_names;
+  RETURN_NOT_OK(ListNamespaces(database_type, &namespace_names));
 
-  for (const string& name : namespaces) {
+  for (const string& name : namespace_names) {
     if (name == namespace_name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
+                                         const boost::optional<YQLDatabase>& database_type) {
+  std::vector<std::string> namespace_ids;
+  RETURN_NOT_OK(ListNamespaces(database_type, nullptr /* namespace_names */, &namespace_ids));
+
+  for (const string& id : namespace_ids) {
+    if (namespace_id == id) {
       return true;
     }
   }
