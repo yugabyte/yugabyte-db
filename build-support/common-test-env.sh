@@ -90,7 +90,6 @@ declare -i -r DEFAULT_REPEATED_TEST_PARALLELISM_TSAN=1
 
 readonly MVN_COMMON_SKIPPED_OPTIONS_IN_TEST=(
   -Dmaven.javadoc.skip
-  -DskipAssembly
 )
 
 # -------------------------------------------------------------------------------------------------

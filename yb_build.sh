@@ -105,8 +105,6 @@ Options:
     about the build root, compiler used, etc.
   --force, -f, -y
     Run a clean build without asking for confirmation even if a clean build was recently done.
-  --with-assembly
-    Build the java code with assembly (basically builds the yb-sample-apps.jar as well)
   -j <parallelism>, -j<parallelism>
     Build using the given number of concurrent jobs (defaults to the number of CPUs).
   --remote
@@ -571,7 +569,6 @@ export YB_GTEST_FILTER=""
 repeat_unit_test_inherited_args=()
 forward_args_to_repeat_unit_test=false
 original_args=( "$@" )
-java_with_assembly=false
 user_mvn_opts=""
 java_only=false
 cmake_only=false
@@ -649,9 +646,6 @@ while [[ $# -gt 0 ]]; do
     ;;
     --run-java-tests|--java-tests)
       run_java_tests=true
-    ;;
-    --with-assembly)
-      java_with_assembly=true
     ;;
     --static)
       YB_LINK=static
@@ -1212,9 +1206,6 @@ if "$build_java"; then
   set_mvn_parameters
 
   java_build_opts=( install )
-  if ! "$java_with_assembly"; then
-    java_build_opts+=( -DskipAssembly )
-  fi
   java_build_opts+=( -DbinDir="$BUILD_ROOT/bin" )
 
   if ! "$run_java_tests" || should_run_java_test_methods_separately; then

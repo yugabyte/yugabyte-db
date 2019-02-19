@@ -92,6 +92,11 @@
       <artifactId>postgresql</artifactId>
       <version>42.2.2</version>
     </dependency>
+    <dependency>
+      <groupId>com.yugabyte</groupId>
+      <artifactId>yb-sample-apps</artifactId>
+      <version>1.0.9</version>
+    </dependency>
   </dependencies>
 
   <build>

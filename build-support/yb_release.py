@@ -137,7 +137,6 @@ def main():
     build_desc_path = os.path.join(tmp_dir, 'build_descriptor.yaml')
     build_cmd_list = [
         "./yb_build.sh",
-        "--with-assembly",
         "--write-build-descriptor", build_desc_path,
         "--edition", build_edition,
         build_type
