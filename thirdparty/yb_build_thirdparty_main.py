@@ -428,12 +428,14 @@ class Builder:
                 checksum_file = self.get_checksum_file()
                 with open(checksum_file, 'rt') as inp:
                     lines = inp.readlines()
+                lines = [line.rstrip() for line in lines]
                 checksum = compute_file_sha256(downloaded_path)
-                lines += [filename, checksum]
+                lines.append("%s  %s" % (checksum, filename))
                 with open(checksum_file, 'wt') as out:
                     for line in lines:
                         out.write(line + "\n")
                 self.filename2checksum[filename] = checksum
+                log("Added checksum for {} to {}: {}".format(filename, checksum_file, checksum))
                 return checksum
 
             fatal("No expected checksum provided for {}".format(filename))
@@ -463,8 +465,6 @@ class Builder:
             subprocess.check_call([self.curl_path, '-o', path, '--location', url])
         if not os.path.exists(path):
             fatal("Downloaded '{}' but but unable to find '{}'".format(url, path))
-        if filename not in self.filename2checksum:
-            fatal("No expected checksum provided for {}".format(filename))
         expected_checksum = self.get_expected_checksum(filename, downloaded_path=path)
         if not self.verify_checksum(path, expected_checksum):
             fatal("File '{}' has wrong checksum after downloading from '{}'. "
