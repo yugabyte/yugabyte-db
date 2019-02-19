@@ -100,15 +100,21 @@ class PTExpr : public TreeNode {
       yb::QLOperator ql_op = yb::QLOperator::QL_OP_NOOP,
       InternalType internal_type = InternalType::VALUE_NOT_SET,
       DataType ql_type_id = DataType::UNKNOWN_DATA)
+      : PTExpr(memctx, loc, op, ql_op, internal_type, QLType::Create(ql_type_id)) {}
+  explicit PTExpr(
+      MemoryContext *memctx,
+      YBLocation::SharedPtr loc,
+      ExprOperator op,
+      yb::QLOperator ql_op,
+      InternalType internal_type,
+      const QLType::SharedPtr& ql_type)
       : TreeNode(memctx, loc),
         op_(op),
         ql_op_(ql_op),
         internal_type_(internal_type),
-        ql_type_(QLType::Create(ql_type_id)),
-        expected_internal_type_(InternalType::VALUE_NOT_SET) {
-  }
-  virtual ~PTExpr() {
-  }
+        ql_type_(ql_type),
+        expected_internal_type_(InternalType::VALUE_NOT_SET) {}
+  virtual ~PTExpr() {}
 
   // Expression return type in DocDB format.
   virtual InternalType internal_type() const {
@@ -281,7 +287,7 @@ class PTExpr : public TreeNode {
   ExprOperator op_;
   yb::QLOperator ql_op_;
   InternalType internal_type_;
-  std::shared_ptr<QLType> ql_type_;
+  QLType::SharedPtr ql_type_;
   InternalType expected_internal_type_;
 };
 
@@ -300,12 +306,14 @@ class PTCollectionExpr : public PTExpr {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  PTCollectionExpr(MemoryContext *memctx, YBLocation::SharedPtr loc, DataType literal_type)
+  PTCollectionExpr(MemoryContext* memctx,
+                   YBLocation::SharedPtr loc,
+                   const QLType::SharedPtr& ql_type)
       : PTExpr(memctx, loc, ExprOperator::kCollection, yb::QLOperator::QL_OP_NOOP,
-      client::YBColumnSchema::ToInternalDataType(QLType::Create(literal_type))),
-        keys_(memctx), values_(memctx), udtype_field_values_(memctx) {
-    ql_type_ = QLType::Create(literal_type);
-  }
+               client::YBColumnSchema::ToInternalDataType(ql_type), ql_type),
+        keys_(memctx), values_(memctx), udtype_field_values_(memctx) {}
+  PTCollectionExpr(MemoryContext* memctx, YBLocation::SharedPtr loc, DataType literal_type)
+      : PTCollectionExpr(memctx, loc, QLType::Create(literal_type)) {}
   virtual ~PTCollectionExpr() { }
 
   void AddKeyValuePair(PTExpr::SharedPtr key, PTExpr::SharedPtr value) {
@@ -316,6 +324,10 @@ class PTCollectionExpr : public PTExpr {
   void AddElement(PTExpr::SharedPtr value) {
     values_.emplace_back(value);
   }
+
+  // Fill in udtype_field_values collection, copying values in accordance to UDT field order
+  CHECKED_STATUS InitializeUDTValues(const QLType::SharedPtr& expected_type,
+                                     ProcessContextBase* process_context);
 
   int size() const {
     return static_cast<int>(values_.size());
@@ -726,6 +738,8 @@ class PTLiteralString : public PTLiteral<MCSharedPtr<MCString>> {
   CHECKED_STATUS ToDecimal(util::Decimal *value, bool negate) const;
   CHECKED_STATUS ToDecimal(std::string *value, bool negate) const;
   CHECKED_STATUS ToVarInt(std::string *value, bool negate) const;
+
+  std::string ToString() const;
 
   CHECKED_STATUS ToString(std::string *value) const;
   CHECKED_STATUS ToTimestamp(int64_t *value) const;

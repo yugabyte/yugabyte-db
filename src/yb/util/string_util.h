@@ -90,6 +90,15 @@ void AppendItem(vector<string>* dest, const T& t, const Args&... args) {
 
 } // namespace details
 
+// Whether the string contains (arbitrary long) integer value
+bool IsBigInteger(const std::string& s);
+
+// Whether the string contains (arbitrary long) decimal or integer value
+bool IsDecimal(const std::string& s);
+
+// Whether the string is "true"/"false" (case-insensitive)
+bool IsBoolean(const std::string& s);
+
 using StringVector = std::vector<std::string>;
 StringVector StringSplit(const std::string& arg, char delim);
 
@@ -102,7 +111,6 @@ template <typename T>
 inline std::string VectorToString(const std::vector<T>& vec) {
   return ToString(vec);
 }
-
 
 // Whether or not content of two strings is equal ignoring case
 // Examples:

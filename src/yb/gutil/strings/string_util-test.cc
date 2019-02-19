@@ -73,14 +73,94 @@ TEST(StringUtilTest, MatchPatternTest) {
                            "He********************************o"));
 }
 
-TEST(StringUtilTest, TestEqualsIgnoreCase) {
-  ASSERT_TRUE(EqualsIgnoreCase(string("abcd"), string("ABCD")));
-  ASSERT_TRUE(EqualsIgnoreCase(string("AbCd"), string("aBCD")));
-  ASSERT_TRUE(EqualsIgnoreCase(string(""), string("")));
-  ASSERT_FALSE(EqualsIgnoreCase(string("ABCD"), string("ABC")));
-  ASSERT_FALSE(EqualsIgnoreCase(string("ABC"), string("ABCD")));
-  ASSERT_FALSE(EqualsIgnoreCase(string("ABCD"), string("ABC")));
-  ASSERT_FALSE(EqualsIgnoreCase(string("ABC"), string("ABE")));
+TEST(StringUtilTest, TestIsBigInteger) {
+  ASSERT_TRUE(IsBigInteger("0"));
+  ASSERT_TRUE(IsBigInteger("1234"));
+  ASSERT_TRUE(IsBigInteger("-1234"));
+  ASSERT_TRUE(IsBigInteger("+1234"));
+  ASSERT_TRUE(IsBigInteger("0000"));
+  ASSERT_TRUE(IsBigInteger("00001234"));
+  ASSERT_TRUE(IsBigInteger("-00001234"));
+  ASSERT_TRUE(IsBigInteger("+00001234"));
+  ASSERT_TRUE(IsBigInteger("111222333444555666777888999888777666555444333222111"));
+  ASSERT_FALSE(IsBigInteger(""));
+  ASSERT_FALSE(IsBigInteger("."));
+  ASSERT_FALSE(IsBigInteger("0."));
+  ASSERT_FALSE(IsBigInteger(".0"));
+  ASSERT_FALSE(IsBigInteger("0.0"));
+  ASSERT_FALSE(IsBigInteger("0,0"));
+  ASSERT_FALSE(IsBigInteger(" 0"));
+  ASSERT_FALSE(IsBigInteger("0 "));
+}
+
+TEST(StringUtilTest, TestIsDecimal) {
+  // Integer cases
+  ASSERT_TRUE(IsDecimal("0"));
+  ASSERT_TRUE(IsDecimal("1234"));
+  ASSERT_TRUE(IsDecimal("-1234"));
+  ASSERT_TRUE(IsDecimal("+1234"));
+  ASSERT_TRUE(IsDecimal("0000"));
+  ASSERT_TRUE(IsDecimal("00001234"));
+  ASSERT_TRUE(IsDecimal("-00001234"));
+  ASSERT_TRUE(IsDecimal("+00001234"));
+  ASSERT_TRUE(IsDecimal("111222333444555666777888999888777666555444333222111"));
+  // Decimal separator - regular
+  ASSERT_TRUE(IsDecimal("0.0"));
+  ASSERT_TRUE(IsDecimal("1234.1234"));
+  ASSERT_TRUE(IsDecimal("-1234.1234"));
+  ASSERT_TRUE(IsDecimal("+1234.1234"));
+  ASSERT_TRUE(IsDecimal("0000.0000"));
+  ASSERT_TRUE(IsDecimal("00001234.12340000"));
+  ASSERT_TRUE(IsDecimal("-00001234.12340000"));
+  ASSERT_TRUE(IsDecimal("+00001234.12340000"));
+  ASSERT_TRUE(IsDecimal(string("111222333444555666777888999888777666555444333222111")
+                            + ".111222333444555666777888999888777666555444333222111"));
+  // Decimal separator - irregular
+  ASSERT_TRUE(IsDecimal("0."));
+  ASSERT_TRUE(IsDecimal(".0"));
+  ASSERT_TRUE(IsDecimal("0.0"));
+  // Exponent
+  ASSERT_TRUE(IsDecimal("0e0"));
+  ASSERT_TRUE(IsDecimal("1e2"));
+  ASSERT_TRUE(IsDecimal("123E456"));
+  ASSERT_TRUE(IsDecimal("-123e-456"));
+  ASSERT_TRUE(IsDecimal("+123e+456"));
+  ASSERT_TRUE(IsDecimal("000123e000456"));
+  ASSERT_TRUE(IsDecimal(string("111222333444555666777888999888777666555444333222111")
+                            + "e111222333444555666777888999888777666555444333222111"));
+  // Both exponent and decimal separator
+  ASSERT_TRUE(IsDecimal("1.2e345"));
+  ASSERT_TRUE(IsDecimal(".123e1"));
+  ASSERT_TRUE(IsDecimal("-.123e1"));
+  ASSERT_TRUE(IsDecimal("+.123e1"));
+  ASSERT_TRUE(IsDecimal("123.e1"));
+  ASSERT_TRUE(IsDecimal("-123.e1"));
+  ASSERT_TRUE(IsDecimal("+123.e1"));
+  ASSERT_TRUE(IsDecimal(string("111222333444555666777888999888777666555444333222111")
+                            + ".111222333444555666777888999888777666555444333222111"
+                            + "e111222333444555666777888999888777666555444333222111"));
+  // Non-decimals
+  ASSERT_FALSE(IsDecimal(" 0"));
+  ASSERT_FALSE(IsDecimal("0 "));
+  ASSERT_FALSE(IsDecimal(""));
+  ASSERT_FALSE(IsDecimal("."));
+  ASSERT_FALSE(IsDecimal("0,0"));
+  ASSERT_FALSE(IsDecimal("0e"));
+  ASSERT_FALSE(IsDecimal("0e0.0"));
+  ASSERT_FALSE(IsDecimal("0e.0"));
+  ASSERT_FALSE(IsDecimal("0e0."));
+}
+
+TEST(StringUtilTest, TestIsBoolean) {
+  ASSERT_TRUE(IsBoolean("true"));
+  ASSERT_TRUE(IsBoolean("TRUE"));
+  ASSERT_TRUE(IsBoolean("fAlSe"));
+  ASSERT_TRUE(IsBoolean("falsE"));
+  ASSERT_FALSE(IsBoolean(""));
+  ASSERT_FALSE(IsBoolean("0"));
+  ASSERT_FALSE(IsBoolean("1"));
+  ASSERT_FALSE(IsBoolean(" true"));
+  ASSERT_FALSE(IsBoolean("false "));
 }
 
 TEST(StringUtilTest, TestAppendWithSeparator) {
