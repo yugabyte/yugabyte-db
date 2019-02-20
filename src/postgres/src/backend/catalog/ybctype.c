@@ -244,16 +244,6 @@ Datum YBCVarcharToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *typ
 	return varcharin(fcinfo);
 }
 
-Datum YBCTextToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
-  /* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
-  if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
-		ereport(ERROR, (errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-										errmsg("Invalid data size")));
-	}
-
-	return PointerGetDatum(cstring_to_text(data));
-}
-
 /*
  * NAME conversion.
  */
@@ -722,7 +712,7 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToBinary,
 		(YBCPgDatumFromData)YBCBinaryToDatum },
 
-	{ UUIDOID, YB_YQL_DATA_TYPE_STRING, true,
+	{ UUIDOID, YB_YQL_DATA_TYPE_BINARY, true,
 		(YBCPgDatumToData)YBCDatumToUuid,
 		(YBCPgDatumFromData)YBCUuidToDatum },
 
