@@ -162,7 +162,7 @@ log() {
   local stack_idx0=${yb_log_skip_top_frames:-0}
   local stack_idx1=$(( $stack_idx0 + 1 ))
 
-  echo "[$( get_timestamp )" \
+  echo "[$HOSTNAME $( get_timestamp )" \
        "${BASH_SOURCE[$stack_idx1]##*/}:${BASH_LINENO[$stack_idx0]}" \
        "${FUNCNAME[$stack_idx1]}]" $* >&2
 }
