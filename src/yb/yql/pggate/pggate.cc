@@ -290,6 +290,67 @@ Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
   return down_cast<PgCreateTable*>(handle)->Exec();
 }
 
+Status PgApiImpl::NewAlterTable(PgSession *pg_session,
+                                const PgObjectId& table_id,
+                                PgStatement **handle) {
+  auto stmt = make_scoped_refptr<PgAlterTable>(pg_session, table_id);
+  *handle = stmt.detach();
+  return Status::OK();
+}
+
+Status PgApiImpl::AlterTableAddColumn(PgStatement *handle, const char *name,
+                                      int order, const YBCPgTypeEntity *attr_type,
+                                      bool is_not_null) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
+  return pg_stmt->AddColumn(name, attr_type, order, is_not_null);
+}
+
+Status PgApiImpl::AlterTableRenameColumn(PgStatement *handle, const char *oldname,
+                                         const char *newname) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
+  return pg_stmt->RenameColumn(oldname, newname);
+}
+
+Status PgApiImpl::AlterTableDropColumn(PgStatement *handle, const char *name) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
+  return pg_stmt->DropColumn(name);
+}
+
+Status PgApiImpl::AlterTableRenameTable(PgStatement *handle, const char *db_name,
+                                        const char *newname) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
+  return pg_stmt->RenameTable(db_name, newname);
+}
+
+Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
+  return pg_stmt->Exec();
+}
+
 Status PgApiImpl::NewDropTable(PgSession *pg_session,
                                const PgObjectId& table_id,
                                bool if_exist,

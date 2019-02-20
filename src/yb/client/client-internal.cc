@@ -715,12 +715,20 @@ Status YBClient::Data::AlterTable(YBClient* client,
 
 Status YBClient::Data::IsAlterTableInProgress(YBClient* client,
                                               const YBTableName& table_name,
+                                              string table_id,
                                               const MonoTime& deadline,
                                               bool *alter_in_progress) {
   IsAlterTableDoneRequestPB req;
   IsAlterTableDoneResponsePB resp;
 
-  table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  if (table_name.has_table()) {
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  }
+
+  if (!table_id.empty()) {
+    (req.mutable_table())->set_table_id(table_id);
+  }
+
   Status s =
       SyncLeaderMasterRpc<IsAlterTableDoneRequestPB, IsAlterTableDoneResponsePB>(
           deadline,
@@ -741,10 +749,12 @@ Status YBClient::Data::IsAlterTableInProgress(YBClient* client,
 
 Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
                                                  const YBTableName& alter_name,
+                                                 const string table_id,
                                                  const MonoTime& deadline) {
   return RetryFunc(
       deadline, "Waiting on Alter Table to be completed", "Timed out waiting for AlterTable",
-      std::bind(&YBClient::Data::IsAlterTableInProgress, this, client, alter_name, _1, _2));
+      std::bind(&YBClient::Data::IsAlterTableInProgress, this, client,
+              alter_name, table_id, _1, _2));
 }
 
 Status YBClient::Data::InitLocalHostNames() {

@@ -39,6 +39,7 @@
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
 #include "utils/rel.h"
+#include "utils/syscache.h"
 #include "executor/tuptable.h"
 #include "executor/ybcExpr.h"
 
@@ -46,6 +47,7 @@
 #include "pg_yb_utils.h"
 
 #include "parser/parser.h"
+#include "parser/parse_type.h"
 
 /* -------------------------------------------------------------------------- */
 /*  Database Functions. */
@@ -316,4 +318,100 @@ YBCCreateIndex(const char *indexName,
 	HandleYBStmtStatus(YBCPgExecCreateIndex(handle), handle);
 
 	HandleYBStatus(YBCPgDeleteStatement(handle));
+}
+
+void YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId) {
+	YBCPgStatement handle = NULL;
+	HandleYBStatus(YBCPgNewAlterTable(ybc_pg_session,
+									  MyDatabaseId,
+									  relationId,
+									  &handle));
+
+	ListCell *lcmd;
+	int col = 1;
+	bool needsYBAlter = false;
+
+	foreach(lcmd, stmt->cmds){
+		AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
+		switch (cmd->subtype) {
+			case AT_AddColumn: {
+
+				ColumnDef* colDef = (ColumnDef *) cmd->def;
+				Oid			typeOid;
+				int32		typmod;
+				HeapTuple	typeTuple;
+				int order;
+
+				typeTuple = typenameType(NULL, colDef->typeName, &typmod);
+				typeOid = HeapTupleGetOid(typeTuple);
+				order = RelationGetNumberOfAttributes(rel) + col;
+				const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(order, typeOid);
+
+				HandleYBStmtStatus(YBCPgAlterTableAddColumn(handle, colDef->colname,
+															order, col_type,
+															colDef->is_not_null), handle);
+
+				++col;
+				ReleaseSysCache(typeTuple);
+				needsYBAlter = true;
+
+				break;
+			}
+			case AT_DropColumn: {
+
+				HandleYBStmtStatus(YBCPgAlterTableDropColumn(handle, cmd->name), handle);
+				needsYBAlter = true;
+
+				break;
+
+			}
+			case AT_AddConstraint:
+			case AT_DropConstraint:
+				/* For these cases a YugaByte alter isn't required, so we do nothing. */
+				break;
+
+			default:
+				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("This ALTER TABLE command is not yet supported.")));
+				break;
+		}
+	}
+
+	if (needsYBAlter) {
+		HandleYBStmtStatus(YBCPgExecAlterTable(handle), handle);
+		HandleYBStatus(YBCPgDeleteStatement(handle));
+	}
+}
+
+void YBCRename(RenameStmt *stmt, Oid relationId) {
+	YBCPgStatement handle = NULL;
+	char *db_name	  = get_database_name(MyDatabaseId);
+
+	switch (stmt->renameType)
+	{
+		case OBJECT_TABLE:
+			HandleYBStatus(YBCPgNewAlterTable(ybc_pg_session,
+											  MyDatabaseId,
+											  relationId,
+											  &handle));
+			HandleYBStmtStatus(YBCPgAlterTableRenameTable(handle, db_name, stmt->newname), handle);
+			break;
+
+		case OBJECT_COLUMN:
+		case OBJECT_ATTRIBUTE:
+
+			HandleYBStatus(YBCPgNewAlterTable(ybc_pg_session,
+											  MyDatabaseId,
+											  relationId,
+											  &handle));
+
+			HandleYBStmtStatus(YBCPgAlterTableRenameColumn(handle,
+							   stmt->subname, stmt->newname), handle);
+			break;
+
+		default:
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("Renaming this object is not yet supported.")));
+
+	}
 }

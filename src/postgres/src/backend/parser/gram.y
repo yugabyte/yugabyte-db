@@ -824,6 +824,7 @@ stmt :
 				{ $$ = NULL; }
 			| AlterDatabaseSetStmt
 			| AlterDatabaseStmt
+			| AlterTableStmt
 			| ConstraintsSetStmt
 			| CreateAsStmt
 			| CopyStmt
@@ -840,6 +841,7 @@ stmt :
 			| IndexStmt
 			| InsertStmt
 			| PrepareStmt
+			| RenameStmt
 			| RevokeStmt
 			| SelectStmt
 			| TransactionStmt
@@ -870,7 +872,6 @@ stmt :
 			| AlterPolicyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterSeqStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterSystemStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterTableStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTblSpcStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterCompositeTypeStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterPublicationStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -941,7 +942,6 @@ stmt :
 			| RemoveAggrStmt { parser_ybc_not_support(@1, "This statement"); }
 			| RemoveFuncStmt { parser_ybc_not_support(@1, "This statement"); }
 			| RemoveOperStmt { parser_ybc_not_support(@1, "This statement"); }
-			| RenameStmt { parser_ybc_not_support(@1, "This statement"); }
 			| RevokeRoleStmt { parser_ybc_not_support(@1, "This statement"); }
 			| RuleStmt { parser_ybc_not_support(@1, "This statement"); }
 			| SecLabelStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1846,7 +1846,6 @@ DiscardStmt:
 AlterTableStmt:
 			ALTER TABLE relation_expr alter_table_cmds
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE");
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 					n->relation = $3;
 					n->cmds = $4;
@@ -1856,7 +1855,7 @@ AlterTableStmt:
 				}
 		|	ALTER TABLE IF_P EXISTS relation_expr alter_table_cmds
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE");
+					parser_ybc_not_support(@1, "ALTER TABLE IF EXISTS");
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 					n->relation = $5;
 					n->cmds = $6;
@@ -1866,7 +1865,7 @@ AlterTableStmt:
 				}
 		|	ALTER TABLE relation_expr partition_cmd
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE");
+					parser_ybc_not_support(@1, "ALTER TABLE WITH PARTITION COMMAND");
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 					n->relation = $3;
 					n->cmds = list_make1($4);
@@ -1876,7 +1875,7 @@ AlterTableStmt:
 				}
 		|	ALTER TABLE IF_P EXISTS relation_expr partition_cmd
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE");
+					parser_ybc_not_support(@1, "ALTER TABLE WITH PARTITION COMMAND");
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 					n->relation = $5;
 					n->cmds = list_make1($6);
@@ -1886,7 +1885,7 @@ AlterTableStmt:
 				}
 		|	ALTER TABLE ALL IN_P TABLESPACE name SET TABLESPACE name opt_nowait
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE");
+					parser_ybc_not_support(@1, "ALTER TABLE ALL IN TABLESPACE");
 					AlterTableMoveAllStmt *n =
 						makeNode(AlterTableMoveAllStmt);
 					n->orig_tablespacename = $6;
@@ -1898,7 +1897,7 @@ AlterTableStmt:
 				}
 		|	ALTER TABLE ALL IN_P TABLESPACE name OWNED BY role_list SET TABLESPACE name opt_nowait
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE");
+					parser_ybc_not_support(@1, "ALTER TABLE ALL IN TABLESPACE");
 					AlterTableMoveAllStmt *n =
 						makeNode(AlterTableMoveAllStmt);
 					n->orig_tablespacename = $6;
@@ -2041,12 +2040,10 @@ AlterTableStmt:
 alter_table_cmds:
 			alter_table_cmd
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE");
 					$$ = list_make1($1);
 				}
 			| alter_table_cmds ',' alter_table_cmd
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE");
 					$$ = lappend($1, $3);
 				}
 		;
@@ -2086,7 +2083,9 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ADD <coldef> */
 			ADD_P columnDef
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE ADD column");
+                    if (((ColumnDef * ) $2)->constraints != NIL) {
+                       parser_ybc_not_support(@1, "ALTER TABLE ADD COLUMN with constraints");
+                    }
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_AddColumn;
 					n->def = $2;
@@ -2096,7 +2095,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ADD IF NOT EXISTS <coldef> */
 			| ADD_P IF_P NOT EXISTS columnDef
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE ADD column");
+					parser_ybc_not_support(@1, "ALTER TABLE ADD IF NOT EXISTS");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_AddColumn;
 					n->def = $5;
@@ -2106,7 +2105,9 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ADD COLUMN <coldef> */
 			| ADD_P COLUMN columnDef
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE ADD COLUMN");
+					if (((ColumnDef * ) $3)->constraints != NIL) {
+						parser_ybc_not_support(@1, "ALTER TABLE ADD COLUMN with constraints");
+ 					}
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_AddColumn;
 					n->def = $3;
@@ -2116,7 +2117,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ADD COLUMN IF NOT EXISTS <coldef> */
 			| ADD_P COLUMN IF_P NOT EXISTS columnDef
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE ADD COLUMN");
+					parser_ybc_not_support(@1, "ALTER TABLE ADD COLUMN IF NOT EXISTS");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_AddColumn;
 					n->def = $6;
@@ -2242,7 +2243,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DROP [COLUMN] IF EXISTS <colname> [RESTRICT|CASCADE] */
 			| DROP opt_column IF_P EXISTS ColId opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE DROP column");
+					parser_ybc_not_support(@1, "ALTER TABLE DROP COLUMN IF EXISTS");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DropColumn;
 					n->name = $5;
@@ -2253,7 +2254,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DROP [COLUMN] <colname> [RESTRICT|CASCADE] */
 			| DROP opt_column ColId opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE DROP column");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DropColumn;
 					n->name = $3;
@@ -2293,7 +2293,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ADD CONSTRAINT ... */
 			| ADD_P TableConstraint
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE ADD constraint");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_AddConstraint;
 					n->def = $2;
@@ -2302,7 +2301,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ALTER CONSTRAINT ... */
 			| ALTER CONSTRAINT name ConstraintAttributeSpec
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE ADD CONSTRAINT");
+					parser_ybc_not_support(@1, "ALTER TABLE ALTER CONSTRAINT");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					Constraint *c = makeNode(Constraint);
 					n->subtype = AT_AlterConstraint;
@@ -2338,7 +2337,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DROP CONSTRAINT <name> [RESTRICT|CASCADE] */
 			| DROP CONSTRAINT name opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE DROP CONSTRAINT");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DropConstraint;
 					n->name = $3;
@@ -3459,7 +3457,6 @@ ColQualList:
 ColConstraint:
 			CONSTRAINT name ColConstraintElem
 				{
-					parser_ybc_not_support(@1, "CONSTRAINT name");
 					Constraint *n = castNode(Constraint, $3);
 					n->conname = $2;
 					n->location = @1;
@@ -3693,7 +3690,6 @@ TableLikeOption:
 TableConstraint:
 			CONSTRAINT name ConstraintElem
 				{
-					parser_ybc_not_support(@1, "CONSTRAINT name");
 					Constraint *n = castNode(Constraint, $3);
 					n->conname = $2;
 					n->location = @1;
@@ -3705,7 +3701,6 @@ TableConstraint:
 ConstraintElem:
 			CHECK '(' a_expr ')' ConstraintAttributeSpec
 				{
-					parser_ybc_not_support(@1, "CHECK constraint");
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_CHECK;
 					n->location = @1;
@@ -8741,7 +8736,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TABLE relation_expr RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TABLE;
 					n->relation = $3;
@@ -8752,7 +8746,7 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TABLE IF_P EXISTS relation_expr RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE");
+					parser_ybc_not_support(@1, "ALTER TABLE IF EXISTS");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TABLE;
 					n->relation = $5;
@@ -8873,7 +8867,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TABLE relation_expr RENAME opt_column name TO name
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_COLUMN;
 					n->relationType = OBJECT_TABLE;
@@ -8885,7 +8878,7 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TABLE IF_P EXISTS relation_expr RENAME opt_column name TO name
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE");
+					parser_ybc_not_support(@1, "ALTER TABLE IF EXISTS");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_COLUMN;
 					n->relationType = OBJECT_TABLE;

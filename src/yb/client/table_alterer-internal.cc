@@ -54,6 +54,12 @@ YBTableAlterer::Data::Data(YBClient* client, YBTableName name)
       wait_(true) {
 }
 
+YBTableAlterer::Data::Data(YBClient* client, string id)
+    : client_(client),
+      table_id_(std::move(id)),
+      wait_(true) {
+}
+
 YBTableAlterer::Data::~Data() {
   for (Step& s : steps_) {
     delete s.spec;
@@ -70,7 +76,15 @@ Status YBTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
   }
 
   req->Clear();
-  table_name_.SetIntoTableIdentifierPB(req->mutable_table());
+
+  if (table_name_.has_table()) {
+    table_name_.SetIntoTableIdentifierPB(req->mutable_table());
+  }
+
+  if (!table_id_.empty()) {
+    (req->mutable_table())->set_table_id(table_id_);
+  }
+
   if (rename_to_.is_initialized()) {
     req->set_new_table_name(rename_to_.get().table_name());
 

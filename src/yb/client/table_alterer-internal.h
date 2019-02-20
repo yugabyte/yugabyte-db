@@ -51,12 +51,15 @@ class YBColumnSpec;
 class YBTableAlterer::Data {
  public:
   Data(YBClient* client, YBTableName name);
-  ~Data();
+  Data(YBClient* client, string id);
+
+    ~Data();
   CHECKED_STATUS ToRequest(master::AlterTableRequestPB* req);
 
 
   YBClient* const client_;
   const YBTableName table_name_;
+  const string table_id_;
 
   Status status_;
 
