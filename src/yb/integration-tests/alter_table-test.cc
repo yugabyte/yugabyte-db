@@ -191,7 +191,8 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
     int wait_time = 1000;
     for (int i = 0; i < attempts; ++i) {
       bool in_progress;
-      RETURN_NOT_OK(client_->IsAlterTableInProgress(table_name, &in_progress));
+      string table_id;
+      RETURN_NOT_OK(client_->IsAlterTableInProgress(table_name, table_id, &in_progress));
       if (!in_progress) {
         return Status::OK();
       }
@@ -329,9 +330,10 @@ TEST_F(AlterTableTest, TestAlterOnTSRestart) {
   YBSchema schema;
   PartitionSchema partition_schema;
   bool alter_in_progress = false;
+  string table_id;
   ASSERT_OK(client_->GetTableSchema(kTableName, &schema, &partition_schema));
   ASSERT_TRUE(schema_.Equals(schema));
-  ASSERT_OK(client_->IsAlterTableInProgress(kTableName, &alter_in_progress));
+  ASSERT_OK(client_->IsAlterTableInProgress(kTableName, table_id, &alter_in_progress));
   ASSERT_TRUE(alter_in_progress);
 
   // Restart the TS and wait for the new schema
@@ -877,7 +879,8 @@ TEST_F(ReplicatedAlterTableTest, TestReplicatedAlter) {
   ASSERT_OK(AddNewI32Column(kTableName, "c1"));
 
   bool alter_in_progress;
-  ASSERT_OK(client_->IsAlterTableInProgress(kTableName, &alter_in_progress));
+  string table_id;
+  ASSERT_OK(client_->IsAlterTableInProgress(kTableName, table_id, &alter_in_progress));
   ASSERT_FALSE(alter_in_progress);
 
   LOG(INFO) << "Verifying that the new default shows up";

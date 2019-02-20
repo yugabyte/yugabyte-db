@@ -11,3 +11,6 @@ test: yb_feature_delete
 test: yb_feature_update
 test: yb_feature_select
 test: yb_feature_config
+test: yb_feature_copy
+test: yb_feature_copyselect
+test: yb_feature_alter_table

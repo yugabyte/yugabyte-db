@@ -219,6 +219,37 @@ YBCStatus YBCPgExecCreateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecCreateTable(handle));
 }
 
+YBCStatus YBCPgNewAlterTable(YBCPgSession pg_session,
+                             const YBCPgOid database_oid,
+                             const YBCPgOid table_oid,
+                             YBCPgStatement *handle) {
+  const PgObjectId table_id(database_oid, table_oid);
+  return ToYBCStatus(pgapi->NewAlterTable(pg_session, table_id, handle));
+}
+
+YBCStatus YBCPgAlterTableAddColumn(YBCPgStatement handle, const char *name, int order,
+                                   const YBCPgTypeEntity *attr_type, bool is_not_null) {
+  return ToYBCStatus(pgapi->AlterTableAddColumn(handle, name, order, attr_type, is_not_null));
+}
+
+YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname,
+                                      const char *newname) {
+  return ToYBCStatus(pgapi->AlterTableRenameColumn(handle, oldname, newname));
+}
+
+YBCStatus YBCPgAlterTableDropColumn(YBCPgStatement handle, const char *name) {
+  return ToYBCStatus(pgapi->AlterTableDropColumn(handle, name));
+}
+
+YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
+                                     const char *newname) {
+  return ToYBCStatus(pgapi->AlterTableRenameTable(handle, db_name, newname));
+}
+
+YBCStatus YBCPgExecAlterTable(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecAlterTable(handle));
+}
+
 YBCStatus YBCPgNewDropTable(YBCPgSession pg_session,
                             const YBCPgOid database_oid,
                             const YBCPgOid table_oid,

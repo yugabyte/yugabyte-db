@@ -140,7 +140,7 @@ class PgApiImpl {
   CHECKED_STATUS ExecDropSchema(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
-  // Create and drop table.
+  // Create, alter and drop table.
   CHECKED_STATUS NewCreateTable(PgSession *pg_session,
                                 const char *database_name,
                                 const char *schema_name,
@@ -156,6 +156,23 @@ class PgApiImpl {
                                       bool is_range);
 
   CHECKED_STATUS ExecCreateTable(PgStatement *handle);
+
+  CHECKED_STATUS NewAlterTable(PgSession *pg_session,
+                               const PgObjectId& table_id,
+                               PgStatement **handle);
+
+  CHECKED_STATUS AlterTableAddColumn(PgStatement *handle, const char *name,
+                                     int order, const YBCPgTypeEntity *attr_type, bool is_not_null);
+
+  CHECKED_STATUS AlterTableRenameColumn(PgStatement *handle, const char *oldname,
+                                        const char *newname);
+
+  CHECKED_STATUS AlterTableDropColumn(PgStatement *handle, const char *name);
+
+  CHECKED_STATUS AlterTableRenameTable(PgStatement *handle, const char *db_name,
+                                       const char *newname);
+
+  CHECKED_STATUS ExecAlterTable(PgStatement *handle);
 
   CHECKED_STATUS NewDropTable(PgSession *pg_session,
                               const PgObjectId& table_id,

@@ -508,11 +508,16 @@ YBTableAlterer* YBClient::NewTableAlterer(const YBTableName& name) {
   return new YBTableAlterer(this, name);
 }
 
+YBTableAlterer* YBClient::NewTableAlterer(const string id) {
+  return new YBTableAlterer(this, id);
+}
+
 Status YBClient::IsAlterTableInProgress(const YBTableName& table_name,
+                                        const string& table_id,
                                         bool *alter_in_progress) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
-  return data_->IsAlterTableInProgress(this, table_name, deadline, alter_in_progress);
+  return data_->IsAlterTableInProgress(this, table_name, table_id, deadline, alter_in_progress);
 }
 
 Status YBClient::GetTableSchema(const YBTableName& table_name,
@@ -1889,6 +1894,10 @@ YBTableAlterer::YBTableAlterer(YBClient* client, const YBTableName& name)
   : data_(new Data(client, name)) {
 }
 
+YBTableAlterer::YBTableAlterer(YBClient* client, const string id)
+  : data_(new Data(client, id)) {
+}
+
 YBTableAlterer::~YBTableAlterer() {
   delete data_;
 }
@@ -1947,7 +1956,7 @@ Status YBTableAlterer::Alter() {
   if (data_->wait_) {
     YBTableName alter_name = data_->rename_to_.get_value_or(data_->table_name_);
     RETURN_NOT_OK(data_->client_->data_->WaitForAlterTableToFinish(
-        data_->client_, alter_name, deadline));
+        data_->client_, alter_name, data_->table_id_, deadline));
   }
 
   return Status::OK();
