@@ -38,3 +38,9 @@ Create chart name and version as used by the chart label.
 {{- define "yugabyte.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
+
+{{/*
+*/}}
+{{- define "yugabyte.server_addr" -}}
+{{- printf "$(HOSTNAME).%s.$(NAMESPACE).svc.%s" . -}}
+{{- end -}}

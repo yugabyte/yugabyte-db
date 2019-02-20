@@ -21,9 +21,9 @@ data:
 {{- $rootCA := buildCustomCert $root.Values.tls.rootCA.cert $root.Values.tls.rootCA.key -}}
 {{- $replicas := (eq .name "yb-masters") | ternary $root.Values.replicas.master $root.Values.replicas.tserver -}}
 {{- range $index := until ( int ( $replicas ) ) }}
-{{- $node := printf "%s-%d.%s.%s.svc.cluster.local" $service.label $index $service.name $root.Release.Namespace }}
+{{- $node := printf "%s-%d.%s.%s.svc.($root.domainName)" $service.label $index $service.name $root.Release.Namespace }}
 {{- $dns1 := printf "*.*.%s" $root.Release.Namespace }}
-{{- $dns2 := printf "%s.svc.cluster.local" $dns1 }}
+{{- $dns2 := printf "%s.svc.($root.domainName)" $dns1 }}
 {{- $server := genSignedCert $node ( default nil ) (list $dns1 $dns2 ) 3650 $rootCA }}
   node.{{$node}}.crt: {{ $server.Cert | b64enc }}
   node.{{$node}}.key: {{ $server.Key | b64enc }}
@@ -210,7 +210,7 @@ spec:
         {{ if eq .name "yb-masters" }}
           - "/home/yugabyte/bin/yb-master"
           - "--fs_data_dirs={{range $index := until (int ($storageInfo.count))}}{{if ne $index 0}},{{end}}/mnt/disk{{ $index }}{{end}}"
-          - "--rpc_bind_addresses=$(HOSTNAME).yb-masters.$(NAMESPACE).svc.cluster.local"
+          - "--rpc_bind_addresses=$(HOSTNAME).yb-masters.$(NAMESPACE).svc.($root.domainName)"
           - "--server_broadcast_addresses=$(HOSTNAME).yb-masters.$(NAMESPACE):7100"
           - "--master_addresses={{range $index := until (int ($root.Values.replicas.master))}}{{if ne $index 0}},{{end}}yb-master-{{ $index }}.yb-masters.$(NAMESPACE):7100{{end}}"
           - "--replication_factor={{ $root.Values.replicas.master }}"
@@ -227,10 +227,11 @@ spec:
           {{- end }}
         {{ else }}
           - "/home/yugabyte/bin/yb-tserver"
+          - "--foo={{ template "yugabyte.server_addr" | .name | $root.domainName ) }}"
           - "--fs_data_dirs={{range $index := until (int ($storageInfo.count))}}{{if ne $index 0}},{{end}}/mnt/disk{{ $index }}{{end}}"
           - "--server_broadcast_addresses=$(HOSTNAME).yb-tservers.$(NAMESPACE):9100"
-          - "--rpc_bind_addresses=$(HOSTNAME).yb-tservers.$(NAMESPACE).svc.cluster.local"
-          - "--cql_proxy_bind_address=$(HOSTNAME).yb-tservers.$(NAMESPACE).svc.cluster.local"
+          - "--rpc_bind_addresses=$(HOSTNAME).yb-tservers.$(NAMESPACE).svc.($root.domainName)"
+          - "--cql_proxy_bind_address=$(HOSTNAME).yb-tservers.$(NAMESPACE).svc.($root.domainName)"
           {{ if or $root.Values.enableYsql $root.Values.enablePostgres }}
           - "--start_pgsql_proxy"
           - "--pgsql_proxy_bind_address=$(POD_IP):5433"

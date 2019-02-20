@@ -59,6 +59,7 @@ PodManagementPolicy: Parallel
 # enableYsql: true
 
 enableLoadBalancer: True
+domainName: "cluster.local"
 
 serviceEndpoints:
   - name: "yb-master-ui"
