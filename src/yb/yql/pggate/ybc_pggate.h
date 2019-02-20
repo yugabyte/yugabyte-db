@@ -119,6 +119,24 @@ YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name
 
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
+YBCStatus YBCPgNewAlterTable(YBCPgSession pg_session,
+                             YBCPgOid database_oid,
+                             YBCPgOid table_oid,
+                             YBCPgStatement *handle);
+
+YBCStatus YBCPgAlterTableAddColumn(YBCPgStatement handle, const char *name, int order,
+                                   const YBCPgTypeEntity *attr_type, bool is_not_null);
+
+YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname,
+                                      const char *newname);
+
+YBCStatus YBCPgAlterTableDropColumn(YBCPgStatement handle, const char *name);
+
+YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
+                                     const char *newname);
+
+YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
+
 YBCStatus YBCPgNewDropTable(YBCPgSession pg_session,
                             YBCPgOid database_oid,
                             YBCPgOid table_oid,

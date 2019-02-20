@@ -54,7 +54,7 @@
  */
 bool IsRealYBColumn(Relation rel, int attrNum)
 {
-	return attrNum > 0 ||
+	return (attrNum > 0 && !rel->rd_att->attrs[attrNum - 1]->attisdropped) ||
 	       (rel->rd_rel->relhasoids && attrNum == ObjectIdAttributeNumber);
 }
 
@@ -176,7 +176,7 @@ Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple)
 	bool is_null = false;
 	for (AttrNumber attnum = minattr; attnum <= natts; attnum++)
 	{
-		/* Skip virtual (system) columns */
+		/* Skip virtual (system) and dropped columns */
 		if (!IsRealYBColumn(rel, attnum))
 		{
 			continue;

@@ -298,9 +298,11 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
 
   // Creates a YBTableAlterer; it is the caller's responsibility to free it.
   YBTableAlterer* NewTableAlterer(const YBTableName& table_name);
+  YBTableAlterer* NewTableAlterer(const string id);
 
   // Set 'alter_in_progress' to true if an AlterTable operation is in-progress.
   CHECKED_STATUS IsAlterTableInProgress(const YBTableName& table_name,
+                                        const string& table_id,
                                         bool *alter_in_progress);
 
   CHECKED_STATUS GetTableSchema(const YBTableName& table_name,
@@ -918,8 +920,9 @@ class YBTableAlterer {
   friend class YBClient;
 
   YBTableAlterer(YBClient* client, const YBTableName& name);
+  YBTableAlterer(YBClient* client, const string id);
 
-  // Owned.
+    // Owned.
   Data* data_;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableAlterer);

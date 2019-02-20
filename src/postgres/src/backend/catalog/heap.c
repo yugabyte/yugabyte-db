@@ -1593,7 +1593,7 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 	}
 	else
 	{
-		/* Dropping user attributes is lots harder */
+	    /* Dropping user attributes is lots harder */
 
 		/* Mark the attribute as dropped */
 		attStruct->attisdropped = true;
@@ -1616,13 +1616,26 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 		attStruct->attstattarget = 0;
 
 		/*
-		 * Change the column name to something that isn't likely to conflict
-		 */
-		snprintf(newattname, sizeof(newattname),
-				 "........pg.dropped.%d........", attnum);
-		namestrcpy(&(attStruct->attname), newattname);
+		* Change the column name to something that isn't likely to conflict
+		*/
 
-		CatalogTupleUpdate(attr_rel, &tuple->t_self, tuple);
+		if (IsYugaByteEnabled()) {
+			/* TODO: Should be changed to CatalogTupleUpdate() when we are able to update a row's primary key */
+
+			CatalogTupleDelete(attr_rel, tuple);
+
+			snprintf(newattname, sizeof(newattname),
+					 "........pg.dropped.%d........", attnum);
+			namestrcpy(&(attStruct->attname), newattname);
+
+			CatalogTupleInsert(attr_rel, tuple);
+		} else {
+			snprintf(newattname, sizeof(newattname),
+					 "........pg.dropped.%d........", attnum);
+			namestrcpy(&(attStruct->attname), newattname);
+
+			CatalogTupleUpdate(attr_rel, &tuple->t_self, tuple);
+		}
 	}
 
 	/*

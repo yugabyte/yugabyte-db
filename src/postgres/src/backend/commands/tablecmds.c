@@ -122,6 +122,7 @@
 #include "catalog/pg_database.h"
 
 #include "commands/ybccmds.h"
+#include "executor/ybcModifyTable.h"
 #include "pg_yb_utils.h"
 
 /*
@@ -2736,9 +2737,20 @@ renameatt_internal(Oid myrelid,
 	(void) check_for_column_name_collision(targetrelation, newattname, false);
 
 	/* apply the update */
-	namestrcpy(&(attform->attname), newattname);
 
-	CatalogTupleUpdate(attrelation, &atttup->t_self, atttup);
+	if (IsYugaByteEnabled()) {
+		/* TODO: Should be changed to CatalogTupleUpdate() when we are able to update a row's primary key */
+
+		CatalogTupleDelete(attrelation, atttup);
+
+		namestrcpy(&(attform->attname), newattname);
+
+		CatalogTupleInsert(attrelation, atttup);
+	} else {
+		namestrcpy(&(attform->attname), newattname);
+
+		CatalogTupleUpdate(attrelation, &atttup->t_self, atttup);
+	}
 
 	InvokeObjectPostAlterHook(RelationRelationId, myrelid, attnum);
 
@@ -2793,6 +2805,10 @@ renameatt(RenameStmt *stmt)
 				(errmsg("relation \"%s\" does not exist, skipping",
 						stmt->relation->relname)));
 		return InvalidObjectAddress;
+	}
+
+	if (IsYugaByteEnabled()){
+		YBCRename(stmt, relid);
 	}
 
 	attnum =
@@ -2990,6 +3006,10 @@ RenameRelation(RenameStmt *stmt)
 	}
 
 	/* Do the work */
+	if (IsYugaByteEnabled()) {
+      YBCRename(stmt, relid);
+	}
+
 	RenameRelationInternal(relid, stmt->newname, false);
 
 	ObjectAddressSet(address, RelationRelationId, relid);
@@ -3043,9 +3063,20 @@ RenameRelationInternal(Oid myrelid, const char *newrelname, bool is_internal)
 	 * Update pg_class tuple with new relname.  (Scribbling on reltup is OK
 	 * because it's a copy...)
 	 */
-	namestrcpy(&(relform->relname), newrelname);
 
-	CatalogTupleUpdate(relrelation, &reltup->t_self, reltup);
+	if (IsYugaByteEnabled()) {
+		/* TODO: Should be changed to CatalogTupleUpdate() when we are able to update a row's primary key */
+
+		CatalogTupleDelete(relrelation, reltup);
+
+		namestrcpy(&(relform->relname), newrelname);
+
+		CatalogTupleInsert(relrelation, reltup);
+	} else {
+		namestrcpy(&(relform->relname), newrelname);
+
+		CatalogTupleUpdate(relrelation, &reltup->t_self, reltup);
+	}
 
 	InvokeObjectPostAlterHookArg(RelationRelationId, myrelid, 0,
 								 InvalidOid, is_internal);
@@ -3192,11 +3223,6 @@ AlterTable(Oid relid, LOCKMODE lockmode, AlterTableStmt *stmt)
 	CheckTableNotInUse(rel, "ALTER TABLE");
 
 	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode);
-
-	if (IsYugaByteEnabled())
-	{
-		YBReportFeatureUnsupported("Alter table is not yet supported");
-	}
 
 }
 
@@ -3516,17 +3542,27 @@ ATController(AlterTableStmt *parsetree,
 {
 	List	   *wqueue = NIL;
 	ListCell   *lcmd;
+	Oid		   relid = RelationGetRelid(rel);
 
 	/* Phase 1: preliminary examination of commands, create work queue */
 	foreach(lcmd, cmds)
 	{
 		AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
+		/* Currently don't support multiple commands that include an "add constraint" */
+		if (IsYugaByteEnabled() && cmd->subtype == AT_AddConstraint && cmds->length > 1) {
+			YBReportFeatureUnsupported("Alter Table with multiple commands "
+									   "including an add constraint is not supported");
+		}
 
 		ATPrepCmd(&wqueue, rel, cmd, recurse, false, lockmode);
 	}
 
 	/* Close the relation, but keep lock until commit */
 	relation_close(rel, NoLock);
+
+	if (IsYugaByteEnabled()){
+		YBCAlterTable(parsetree, rel, relid);
+	}
 
 	/* Phase 2: update system catalogs */
 	ATRewriteCatalogs(&wqueue, lockmode);
@@ -3888,6 +3924,9 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode)
 			relation_close(rel, NoLock);
 		}
 	}
+
+	/* YugaByte doesn't support toast tables. */
+	if (IsYugaByteEnabled()) return;
 
 	/* Check to see if a toast table must be added. */
 	foreach(ltab, *wqueue)
@@ -4673,12 +4712,18 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 				switch (con->contype)
 				{
 					case CONSTR_CHECK:
-						if (!ExecCheck(con->qualstate, econtext))
+						if (!ExecCheck(con->qualstate, econtext)) {
+							/* If YugaByte is enabled, the add constraint operation is not atomic.
+							 * So we must delete the relevant entries from the catalog tables. */
+							if (IsYugaByteEnabled()) {
+								ATExecDropConstraint(oldrel, con->name, DROP_RESTRICT, true, false, false, lockmode);
+							}
 							ereport(ERROR,
 									(errcode(ERRCODE_CHECK_VIOLATION),
 									 errmsg("check constraint \"%s\" is violated by some row",
 											con->name),
 									 errtableconstraint(oldrel, con->name)));
+						}
 						break;
 					case CONSTR_FOREIGN:
 						/* Nothing to do here */

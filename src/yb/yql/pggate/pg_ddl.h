@@ -284,6 +284,44 @@ class PgCreateIndex : public PgCreateTable {
   bool is_unique_index_;
 };
 
+//--------------------------------------------------------------------------------------------------
+// ALTER TABLE
+//--------------------------------------------------------------------------------------------------
+
+class PgAlterTable : public PgDdl {
+ public:
+  typedef scoped_refptr<PgAlterTable> ScopedRefPtr;
+  typedef scoped_refptr<const PgAlterTable> ScopedRefPtrConst;
+
+  typedef std::unique_ptr<PgAlterTable> UniPtr;
+  typedef std::unique_ptr<const PgAlterTable> UniPtrConst;
+
+  // Constructors.
+  PgAlterTable(PgSession::ScopedRefPtr pg_session,
+               const PgObjectId& table_id);
+
+  CHECKED_STATUS AddColumn(const char *name, const YBCPgTypeEntity *attr_type,
+                           int order, bool is_not_null);
+
+  CHECKED_STATUS RenameColumn(const char *oldname, const char *newname);
+
+  CHECKED_STATUS DropColumn(const char *name);
+
+  CHECKED_STATUS RenameTable(const char *db_name, const char *newname);
+
+  CHECKED_STATUS Exec();
+
+  virtual ~PgAlterTable();
+
+  virtual StmtOp stmt_op() const override { return StmtOp::STMT_ALTER_TABLE; }
+
+ private:
+  const client::YBTableName table_name_;
+  const PgObjectId table_id_;
+  client::YBTableAlterer* table_alterer;
+
+};
+
 }  // namespace pggate
 }  // namespace yb
 

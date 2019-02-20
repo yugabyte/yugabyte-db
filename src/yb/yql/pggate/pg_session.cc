@@ -113,6 +113,14 @@ client::YBTableCreator *PgSession::NewTableCreator() {
   return client_->NewTableCreator();
 }
 
+client::YBTableAlterer *PgSession::NewTableAlterer(const YBTableName& table_name) {
+  return client_->NewTableAlterer(table_name);
+}
+
+client::YBTableAlterer *PgSession::NewTableAlterer(const string table_id) {
+  return client_->NewTableAlterer(table_id);
+}
+
 Status PgSession::DropTable(const PgObjectId& table_id) {
   return client_->DeleteTable(table_id.GetYBTableId());
 }
@@ -145,6 +153,11 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_i
   DCHECK_EQ(table->table_type(), YBTableType::PGSQL_TABLE_TYPE);
 
   return make_scoped_refptr<PgTableDesc>(table);
+}
+
+void PgSession::InvalidateTableCache(const PgObjectId& table_id) {
+  const TableId yb_table_id = table_id.GetYBTableId();
+  table_cache_.erase(yb_table_id);
 }
 
 Status PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op, uint64_t* read_time) {

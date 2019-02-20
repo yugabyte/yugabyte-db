@@ -289,5 +289,51 @@ Status PgCreateIndex::Exec() {
   return PgCreateTable::Exec();
 }
 
+//--------------------------------------------------------------------------------------------------
+// PgAlterTable
+//--------------------------------------------------------------------------------------------------
+
+PgAlterTable::PgAlterTable(PgSession::ScopedRefPtr pg_session,
+                           const PgObjectId& table_id)
+    : PgDdl(pg_session),
+      table_id_(table_id),
+      table_alterer(pg_session_->NewTableAlterer(table_id.GetYBTableId())) {
+}
+
+Status PgAlterTable::AddColumn(const char *name, const YBCPgTypeEntity *attr_type,
+                               int order, bool is_not_null) {
+  shared_ptr<QLType> yb_type = QLType::Create(static_cast<DataType>(attr_type->yb_type));
+
+  client::YBColumnSpec* column = table_alterer->AddColumn(name)->Type(yb_type)->Order(order);
+  if (is_not_null) column->NotNull();
+
+  return Status::OK();
+}
+
+Status PgAlterTable::RenameColumn(const char *oldname, const char *newname) {
+  table_alterer->AlterColumn(oldname)->RenameTo(newname);
+  return Status::OK();
+}
+
+Status PgAlterTable::DropColumn(const char *name) {
+  table_alterer->DropColumn(name);
+  return Status::OK();
+}
+
+Status PgAlterTable::RenameTable(const char *db_name, const char *newname) {
+  client::YBTableName new_table_name(db_name, newname);
+  table_alterer->RenameTo(new_table_name);
+  return Status::OK();
+}
+
+Status PgAlterTable::Exec() {
+  Status s = table_alterer->Alter();
+  pg_session_->InvalidateTableCache(table_id_);
+  return s;
+}
+
+PgAlterTable::~PgAlterTable() {
+}
+
 }  // namespace pggate
 }  // namespace yb

@@ -139,11 +139,13 @@ class YBClient::Data {
 
   CHECKED_STATUS IsAlterTableInProgress(YBClient* client,
                                         const YBTableName& table_name,
+                                        string table_id,
                                         const MonoTime& deadline,
                                         bool *alter_in_progress);
 
   CHECKED_STATUS WaitForAlterTableToFinish(YBClient* client,
                                            const YBTableName& alter_name,
+                                           string table_id,
                                            const MonoTime& deadline);
 
   CHECKED_STATUS GetTableSchema(YBClient* client,
