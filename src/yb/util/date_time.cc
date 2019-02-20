@@ -131,7 +131,7 @@ Result<string> GetTimezone(string timezoneID) {
              timezoneID.substr(0, 3) == "UTC") {
     return timezoneID;
   }
-  TimeZone *tzone = TimeZone::createTimeZone(timezoneID.c_str());
+  std::unique_ptr<TimeZone> tzone(TimeZone::createTimeZone(timezoneID.c_str()));
   UnicodeString id;
   tzone->getID(id);
   string timezone;
