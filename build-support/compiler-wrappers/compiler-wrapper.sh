@@ -337,11 +337,19 @@ if [[ $local_build_only == "false" &&
   sleep_deciseconds=1  # a decisecond is one-tenth of a second
   while [[ $attempt -lt 100 ]]; do
     let attempt+=1
+    if [[ ! -f $YB_BUILD_WORKERS_FILE ]]; then
+      log "The build worker list file ('$YB_BUILD_WORKERS_FILE') does not exist. Will retry" \
+          "after 0.1 sec."
+      log "Current mounts on $( hostname ): $( mount )"
+      sleep 0.1
+      continue
+    fi
     set +e
     build_worker_name=$( shuf -n 1 "$YB_BUILD_WORKERS_FILE" )
     if [[ $? -ne 0 ]]; then
       set -e
-      log "shuf failed, trying again"
+      log "shuf failed, trying again in 0.1 sec"
+      sleep 0.1
       continue
     fi
     set -e
