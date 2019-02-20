@@ -129,7 +129,7 @@ varchar2recv(PG_FUNCTION_ARGS)
  * length >= the previous maximum length.  We can ignore the isExplicit
  * argument, since that only affects truncation cases.
  *
- * just use varchar_transform()
+ * just use varchar_support()
  */
 
 /*
