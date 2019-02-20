@@ -1,7 +1,7 @@
 ---
-title: 2. Server-server encryption
-linkTitle: 2. Server-server encryption
-description: 2. Server-server encryption
+title: 2. Server-Server Encryption
+linkTitle: 2. Server-Server Encryption
+description: 2. Server-Server Encryption
 headcontent: Enable server to server encryption between YB-Masters and YB-TServers.
 image: /images/section_icons/secure/tls-encryption/server-to-server.png
 aliases:

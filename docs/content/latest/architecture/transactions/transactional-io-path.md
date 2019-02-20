@@ -167,7 +167,7 @@ max_clock_skew**, which allows us to determine whether a particular record was w
 after* our read request started. **max_clock_skew** is a globally configured bound on clock skew
 between different YugaByte DB servers. (We've also designed an adaptive clock skew tracking algorithm
 that allows to avoid the need to specify a global clock skew bound, which is part of [YugaByte DB
-Enterprise Edition](https://www.yugabyte.com/product/enterprise/)).
+Enterprise Edition](https://www.yugabyte.com/enterprise-edition/)).
 
 ### 2. Read from all tablets at the chosen hybrid time
 

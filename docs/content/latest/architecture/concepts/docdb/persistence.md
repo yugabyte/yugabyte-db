@@ -1,44 +1,40 @@
 ---
 title: Persistence
 linkTitle: Persistence
-description: Data Persistence with DocDB
+description: Persistence on top of RocksDB
 aliases:
-  - /architecture/concepts/persistence/
+  - /latest/architecture/concepts/persistence/
 menu:
   latest:
-    identifier: architecture-persistence
-    parent: architecture-concepts
-    weight: 960
+    identifier: docdb-persistence
+    parent: docdb
+    weight: 970
 isTocNested: false
 showAsideToc: true
 ---
 
-## Introduction
+Once data is replicated via Raft across a majority of the tablet-peers, it is applied to each tablet peer’s local DocDB document storage layer. This storage layer is essentially a persistent “**key to object/document**” store rather than just a “key to value” store.
 
-DocDB is YugaByte’s Log Structured Merge tree (LSM) based storage engine. Once data is replicated
-via Raft  across a majority of the tablet-peers, it is applied to each tablet peer’s local DocDB.
-
-DocDB is a persistent “**key to object/document**” store rather than just a “key to value” store.
-
-* The **keys** in DocDB are compound keys consisting of:
+* The **keys** in DocDB document model are compound keys consisting of:
   * 1 or more **hash organized components**, followed by
   * 0 or more **ordered (range) components**. These components are stored in their data type specific sort order; both
     ascending and descending sort order is supported for each ordered component of the key.
-* The **values** in DocDB can be:
+
+* The **values** in DocDB document data model can be:
   * **primitive types**: such as int32, int64, double, text, timestamp, etc.
-  * **object types (sorted maps)**: These objects map scalar keys to values, which could be either scalar or sorted maps as well.
+  * **non-primitive types (sorted maps)**: These objects map scalar keys to values, which could be either scalar or sorted maps as well.
 
 This model allows multiple levels of nesting, and corresponds to a JSON-like format. Other data
 structures like lists, sorted sets etc. are implemented using DocDB’s object type with special key
-encodings. In DocDB, [hybrid timestamps](../../transactions/distributed-txns/)
-of each update are recorded carefully, so that it is possible to
-recover the state of any document at some point in the past. Overwritten or deleted versions
-of data are garbage-collected as soon as there are no transactions reading at a snapshot at which
-the old value would be visible.
+encodings. In DocDB, [hybrid timestamps](../../transactions/distributed-txns/) of each update are recorded carefully, so that it is possible to recover the state of any document at some point in the past. Overwritten or deleted versions of data are garbage-collected as soon as there are no transactions reading at a snapshot at which the old value would be visible.
 
-YugaByte’s DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a
-log-structured merge tree (LSM) based key-value store. The primary motivation behind the
-enhancements or customizations to RocksDB are described below:
+## Enhancing RocksDB for Speed & Scale
+
+DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-structured merge tree (LSM) based key-value store.
+
+![DocDB Document Storage Layer](/images/architecture/docdb-rocksdb.png)
+
+The primary motivation behind the enhancements or customizations to RocksDB are described below:
 
 * **Efficient implementation of a row/document model on top of a KV store**: To implement a flexible data
   model---such as a row (comprising of columns), or collections types (such as list, map, set) with
@@ -125,12 +121,11 @@ motivation was to prevent operations such as long-running scans (e.g., due to an
 query or background Spark jobs) from polluting the entire cache with poor quality data and wiping
 out useful/hot data.
 
-## Encoding Details
+## Mapping DocDB documents to RocksDB
 
 DocDB is the storage layer that acts as the common backbone of different APIs that are supported by
 YugaByte DB (currently YCQL, YEDIS, and YSQL(beta)).
 
-### Mapping Documents to Key-Value Store
 
 The documents are stored using a key-value store based on RocksDB, which is typeless. The documents
 are converted to multiple key-value pairs along with timestamps. Because documents are spread across
@@ -170,7 +165,7 @@ Deletions of Documents and SubDocuments are performed by writing a single Tombst
 corresponding value. During compaction, overwritten or deleted values are cleaned up to reclaim
 space.
 
-### Mapping of CQL rows to Documents
+## Mapping of YCQL rows to DocDB
 
 For CQL tables, every row is a document in DocDB. The Document key contains the full primary key -
 the values of partition (hash) column(s) and clustering (range) column(s), in order. A 16-bit hash
@@ -342,7 +337,7 @@ T2: UPDATE page_views
 we do not store the TTL on a per KV basis in RocksDB; but the TTL is implicitly enforced on reads as
 well as during compactions (to reclaim space).
 
-### Mapping Redis Data to Documents
+## Mapping YEDIS keys to DocDB documents
 
 Redis is a schemaless data store. There is only one primitive type (string) and some collection
 types. In this case, the documents are pretty simple. For primitive values, the document consists of

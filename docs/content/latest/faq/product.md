@@ -73,12 +73,14 @@ A more detailed comparison of the two editions is available [here](https://www.y
 
 See [YugaByte DB in Comparison](../../comparisons/)
 
-- [Apache Cassandra](../../comparisons/cassandra/)
 - [MongoDB](../../comparisons/mongodb/)
-- [Redis](../../comparisons/redis/)
-- [Apache HBase](../../comparisons/hbase/)
+- [Amazon DynamoDB](../../comparisons/amazon-dynamodb/)
+- [FoundationDB](../../comparisons/foundationdb/)
+- [Apache Cassandra](../../comparisons/cassandra/)
 - [Google Cloud Spanner](../../comparisons/google-spanner/)
 - [Azure Cosmos DB](../../comparisons/azure-cosmos/)
+- [Apache HBase](../../comparisons/hbase/)
+- [Redis In-Memory Store](../../comparisons/redis/)
 
 ## Why not use a Redis cluster alongside a sharded SQL cluster?
 

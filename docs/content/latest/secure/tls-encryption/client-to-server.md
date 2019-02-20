@@ -1,7 +1,7 @@
 ---
-title: 3. Client-server encryption
-linkTitle: 3. Client-server encryption
-description: 3. Client-server encryption
+title: 3. Client-Server Encryption
+linkTitle: 3. Client-Server Encryption
+description: 3. Client-Server Encryption
 headcontent: Enable client to server encryption.
 image: /images/section_icons/secure/tls-encryption/client-to-server.png
 aliases:
