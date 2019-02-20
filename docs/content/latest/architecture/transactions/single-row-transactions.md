@@ -35,15 +35,10 @@ latency](https://docs.datastax.com/en/cassandra/3.0/cassandra/dml/dmlLtwtTransac
 YugaByte DB implements [MVCC](https://en.wikipedia.org/wiki/Multiversion_concurrency_control)
 (multiversion concurrency control) and internally keeps track of multiple versions of values
 corresponding to the same key, e.g. of a particular column in a particular row. The details of how
-multiple versions of the same key are stored in each replica's DocDB are described in the [Encoding
-Details](../../concepts/persistence/#encoding-details) section. The last part of each key is
-a timestamp, which allows to quickly navigate to a particular version of a key in the RocksDB
+multiple versions of the same key are stored in each replica's DocDB are described in [here](../../concepts/docdb/persistence/#mapping-docdb-documents-to-rocksdb). The last part of each key is a timestamp, which allows to quickly navigate to a particular version of a key in the RocksDB
 key-value store.
 
-The timestamp that we are using for MVCC comes from the [Hybrid
-Time](http://users.ece.utexas.edu/~garg/pdslab/david/hybrid-time-tech-report-01.pdf) algorithm, a
-distributed timestamp assignment algorithm that combines the advantages of local realtime (physical)
-clocks and Lamport clocks.  The Hybrid Time algorithm ensures that events connected by a causal
+The timestamp that we are using for MVCC comes from the [Hybrid Time](http://users.ece.utexas.edu/~garg/pdslab/david/hybrid-time-tech-report-01.pdf) algorithm, a distributed timestamp assignment algorithm that combines the advantages of local realtime (physical) clocks and Lamport clocks.  The Hybrid Time algorithm ensures that events connected by a causal
 chain of the form "A happens before B on the same server" or "A happens on one server, which then
 sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an
 increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and
@@ -90,10 +85,9 @@ time period in order to avoid the following inconsistency:
   * The client writes a new value and the new leader replicates it
   * The client reads a stale value from the old leader.
 
-![A diagram showing a potential inconsistency in case of a network partition if leader leases are
-not present](/images/architecture/txn/leader_leases_network_partition.svg)
+![A diagram showing a potential inconsistency in case of a network partition if leader leases are not present](/images/architecture/txn/leader_leases_network_partition.svg)
 
-The leader lease mechanism in YugaByte prevents this inconsistency. It works as follows:
+The leader lease mechanism in YugaByte DB prevents this inconsistency. It works as follows:
 
 * With every leader-to-follower message (AppendEntries in Raft's terminology), whether replicating
   new entries or even an empty heartbeat message, the leader sends a "leader lease" request as a
@@ -155,8 +149,7 @@ records will have strictly higher hybrid times.
 
 However, with this conservative timestamp assignment approach, **ht_read** can stay the same if
 there is no write workload on this particular tablet. This will result in a client-observed anomaly
-if [TTL
-(time-to-live)](../../../api/ycql/dml_insert/#insert-a-row-with-expiration-time-using-the-using-ttl-clause)
+if [TTL(time-to-live)](../../../api/ycql/dml_insert/#insert-a-row-with-expiration-time-using-the-using-ttl-clause)
 is being used: no expired values will disappear, as far as the client is concerned, until a new
 record is written to the tablet. Then, a lot of old expired values could suddenly disappear. To
 prevent this anomaly, we need to assign the read timestamp to be close to the current hybrid time

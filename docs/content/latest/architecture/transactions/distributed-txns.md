@@ -14,14 +14,12 @@ isTocNested: false
 showAsideToc: true
 ---
 
-## Introduction
-
 Distributed ACID transactions are transactions modifying multiple rows in more than one shard. YugaByte DB supports distributed transactions, enabling features such as strongly consistent secondary indexes and multi-table/row ACID operations in both the YCQL context as well as in the YSQL context (currently in Beta). This section provides some common concepts and notions used in YugaByte's approach to implementing distributed transactions.  Once you are familiar with these concepts, please see the [Core Functions / IO Path with Distributed Transactions](../transactional-io-path/) section for a walk-through of a distributed transaction lifecycle.
 
 ## Provisional records
 
 Just as YugaByte DB stores values written by single-shard ACID transactions into
-[DocDB](../../concepts/persistence/), it needs to store uncommitted values written by
+[DocDB](../../concepts/docdb/persistence/), it needs to store uncommitted values written by
 distributed transactions in a similar persistent data structure. However, we cannot just write them
 to DocDB as regular values, because they would then become visible at different times to clients
 reading through different tablet servers, allowing a client to see a partially applied transaction
@@ -51,14 +49,14 @@ the one-byte prefix that puts these records before all regular records in RocksD
 
 ![DocDB storage, including provisional records](/images/architecture/txn/provisional_record_storage.svg)
 
-  * **Primary provisional records**
+#### 1. Primary provisional records
 
   ```
   DocumentKey, SubKey1, ..., SubKeyN, LockType, ProvisionalRecordHybridTime -> TxnId, Value
   ```
 
   The `DocumentKey`, `SubKey1`, ..., `SubKey` components exactly match those in DocDB's
-  [encoding](../../concepts/persistence/#mapping-documents-to-key-value-store) of "paths" to
+  [encoding](../../concepts/docdb/persistence/#mapping-docdb-documents-to-rocksdb) of "paths" to
   a particular subdocument (e.g. a row, a column, or an element in a collection-type column) to
   RocksDB keys.
 
@@ -86,7 +84,9 @@ the one-byte prefix that puts these records before all regular records in RocksD
   are writing), and `StrongSIWrite` for the column itself. The provisional record for the column is
   also where the column's value being written by the transaction is stored.
 
-  * **Transaction metadata records**: `TxnId -> StatusTabletId, IsolationLevel, Priority`
+#### 2. Transaction metadata records
+
+`TxnId -> StatusTabletId, IsolationLevel, Priority`
     - `StatusTabletId` is the id of the tablet that keeps track of this transaction's status.
       Unlike the case of tables/tablets holding user data, where we are using a [hash-based
       mapping](../../concepts/sharding/) from keys to tablets, there is no deterministic way
@@ -100,7 +100,7 @@ the one-byte prefix that puts these records before all regular records in RocksD
       is detected between two transactions, the transaction with lower priority is
       aborted and restarted.
 
-  * **Provisional record keys indexed by transaction id** ("reverse index")
+#### 3. Provisional record keys indexed by transaction id** ("reverse index")
 ```
 TxnId, HybridTime -> primary provisional record key
 ```

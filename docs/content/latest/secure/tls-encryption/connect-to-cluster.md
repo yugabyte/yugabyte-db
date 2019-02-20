@@ -1,7 +1,7 @@
 ---
-title: 4. Connect to cluster
-linkTitle: 4. Connect to cluster
-description: 4. Connect to cluster
+title: 4. Connect to Cluster
+linkTitle: 4. Connect to Cluster
+description: 4. Connect to Cluster
 headcontent: Connect to YugaByte DB cluster using cqlsh.
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 aliases:

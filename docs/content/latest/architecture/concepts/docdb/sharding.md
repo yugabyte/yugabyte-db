@@ -1,23 +1,23 @@
 ---
 title: Sharding
 linkTitle: Sharding
-description: Data Sharding into Tablets
+description: Sharding into Tablets
 aliases:
-  - /architecture/concepts/sharding/
+  - /latest/architecture/concepts/sharding/
 menu:
   latest:
-    identifier: architecture-sharding
-    parent: architecture-concepts
-    weight: 940
+    identifier: docdb-sharding
+    parent: docdb
+    weight: 950
 ---
 
-User tables are implicitly managed as multiple shards by the system. These shards are referred to as
+User tables are implicitly managed as multiple shards by DocDB. These shards are referred to as
 **tablets**. The primary key for each row in the table uniquely determines the tablet the row lives in.
 For data distribution purposes, a hash based partitioning scheme is used. [Note: For some use cases,
 such as ordered secondary indexes, we’ll also support range-partitioned tables. We’ll discuss that
 topic in the future.]
 
-The hash space for hash partitioned YugaByte tables is the 2-byte range from 0x0000 to 0xFFFF. Such
+The hash space for hash partitioned YugaByte DB tables is the 2-byte range from 0x0000 to 0xFFFF. Such
 a table may therefore have at most 64K tablets. We expect this to be sufficient in practice even for
 very large data sets or cluster sizes.
 
