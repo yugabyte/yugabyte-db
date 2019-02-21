@@ -1889,18 +1889,32 @@ Status RedisReadOperation::ExecuteKeys() {
   iterator_->Seek(DocKey());
   int threshold = request_.keys_request().threshold();
 
+  bool doc_found;
+  SubDocument result;
+
   while (iterator_->valid()) {
-    if (deadline_info_ && deadline_info_->CheckAndSetDeadlinePassed()) {
+    if (deadline_info_.get_ptr() && deadline_info_->CheckAndSetDeadlinePassed()) {
       return STATUS(Expired, "Deadline for query passed.");
     }
     auto key = VERIFY_RESULT(iterator_->FetchKey());
     DocKey doc_key;
     RETURN_NOT_OK(doc_key.FullyDecodeFrom(key));
     const PrimitiveValue& key_primitive = doc_key.hashed_group().front();
-    if (key_primitive.IsString() &&
-        RedisUtil::RedisPatternMatch(request_.keys_request().pattern(),
+    if (!key_primitive.IsString() ||
+        !RedisUtil::RedisPatternMatch(request_.keys_request().pattern(),
                                      key_primitive.GetString(),
-                                     false)) {
+                                     false /* ignore_case */)) {
+      iterator_->SeekOutOfSubDoc(key);
+      continue;
+    }
+
+    GetSubDocumentData data = {key, &result, &doc_found};
+    data.deadline_info = deadline_info_.get_ptr();
+    data.return_type_only = true;
+    RETURN_NOT_OK(GetSubDocument(iterator_.get(), data, /* projection */ nullptr,
+                                 SeekFwdSuffices::kFalse));
+
+    if (doc_found) {
       if (--threshold < 0) {
         response_.clear_array_response();
         response_.set_code(RedisResponsePB::SERVER_ERROR);
