@@ -28,7 +28,7 @@ Here are the steps to take to make a release of pgTAP:
         `make NO_PGXS=1 installcheck`)
 
 *   If you've made any significant changes while testing versions backward, test
-    them again in forward order (8.1, 8.2, 8.3, etc.) to make sure the changes
+    them again in forward order (9.1, 9.2, 9.3, etc.) to make sure the changes
     didn't break any later versions.
 
 *   Review the documentation in `doc/pgtap.mmd`, and make any necessary changes,
@@ -81,7 +81,7 @@ Here are the steps to take to make a release of pgTAP:
 
 *   Timestamp the `Changes` file. I generate the timestamp like so:
 
-        perl -MDateTime -e 'print DateTime->now->datetime . "Z"'
+        perl -MDateTime -e 'print DateTime->now->datetime . "Z\n"'
 
     Paste that into the line with the new version, maybe increment by a minute
     to account for the time you'll need to actually do the release.
@@ -94,13 +94,14 @@ Here are the steps to take to make a release of pgTAP:
 *   Package the source and submit to [PGXN](http://manager.pgxn.org/).
 
         gem install pgxn_utils
-        git archive --format zip --prefix=pgtap-0.98.0/ \
-        --output pgtap-0.98.0.zip master
+        git archive --format zip --prefix=pgtap-1.0.0/ \
+        --output pgtap-1.0.0.zip master
 
 *   Push all the changes to GitHub.
 
         git push
         git push --tags
+        git push origin up/gh-pages:gh-pages
 
 *   Increment the minor version to kick off development for the next release.
     The version should be added to the `Changes` file, and incremented in the
@@ -114,7 +115,7 @@ Here are the steps to take to make a release of pgTAP:
 
 *   Commit that change and push it.
 
-        git ci -m 'Increment to v0.98.1.'
+        git ci -m 'Increment to v1.0.1.'
         git push
 
 *   Start hacking on the next version!

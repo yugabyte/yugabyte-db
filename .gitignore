@@ -8,6 +8,8 @@ results
 pgtap.so
 regression.*
 *.html
+*.html1
+*.sql.orig
 bbin
 /sql/pgtap--?.??.?.sql
 /sql/pgtap--?.?.?.sql
@@ -18,4 +20,6 @@ bbin
 /sql/pgtap--0.97.0--0.98.0.sql
 /sql/pgtap--0.99.0--1.0.0.sql
 /sql/pgtap-static.sql
-*.sql.orig
+
+# Misc mac crap
+.DS_Store
