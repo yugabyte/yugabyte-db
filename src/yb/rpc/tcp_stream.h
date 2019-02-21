@@ -32,8 +32,6 @@ class TcpStream : public Stream {
 
   Socket* socket() { return &socket_; }
 
-  std::string ToString() const;
-
   size_t GetPendingWriteBytes() override {
     return queued_bytes_to_send_ - send_position_;
   }
@@ -76,8 +74,6 @@ class TcpStream : public Stream {
   // Updates listening events.
   void UpdateEvents();
 
-  const std::string& LogPrefix() const;
-
   int FillIov(iovec* out);
 
   void DelayConnectHandler(ev::timer& watcher, int revents); // NOLINT
@@ -94,8 +90,6 @@ class TcpStream : public Stream {
   const Endpoint remote_;
 
   StreamContext* context_;
-
-  mutable std::string log_prefix_;
 
   // Notifies us when our socket is readable or writable.
   ev::io io_;

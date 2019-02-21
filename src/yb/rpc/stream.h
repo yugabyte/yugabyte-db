@@ -62,9 +62,27 @@ class Stream {
   // The address of the local end of the connection.
   virtual const Endpoint& Local() = 0;
 
+  virtual std::string ToString() {
+    return Format("{ local: $0 remote: $1 }", Local(), Remote());
+  }
+
+  const std::string& LogPrefix() {
+    if (log_prefix_.empty()) {
+      log_prefix_ = ToString() + ": ";
+    }
+    return log_prefix_;
+  }
+
   virtual const Protocol* GetProtocol() = 0;
 
   virtual ~Stream() {}
+
+ protected:
+  void ResetLogPrefix() {
+    log_prefix_.clear();
+  }
+
+  std::string log_prefix_;
 };
 
 struct StreamCreateData {

@@ -348,17 +348,6 @@ Status TcpStream::WriteHandler(bool just_connected) {
   return DoWrite();
 }
 
-std::string TcpStream::ToString() const {
-  return Format("{ local: $0 remote: $1 }", local_, remote_);
-}
-
-const std::string& TcpStream::LogPrefix() const {
-  if (log_prefix_.empty()) {
-    log_prefix_ = ToString() + ": ";
-  }
-  return log_prefix_;
-}
-
 bool TcpStream::Idle(std::string* reason_not_idle) {
   bool result = true;
   // Check if we're in the middle of receiving something.
