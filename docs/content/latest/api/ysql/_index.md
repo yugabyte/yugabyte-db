@@ -71,9 +71,9 @@ Statement | Description |
 [`DROP DATABASE`](ddl_drop_database) | Delete a database and associated objects |
 [`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
 [`CREATE VIEW`](ddl_create_view) | Create a new view |
-[`CREATE USER`](permissions) | Create a new user/role |
-[`GRANT`](permissions) | Grant permissions|
-[`REVOKE`](permissions) | Revoke permissions |
+[`CREATE USER`](ddl_create_user) | Create a new user/role |
+[//]: # [`GRANT`](permissions) | Grant permissions|
+[//]: # [`REVOKE`](permissions) | Revoke permissions |
 
 ## DML Statements
 Data manipulation language (DML) statements read from and write to the existing database objects. Currently, YugaByte DB implicitly commits any updates by DML statements.
