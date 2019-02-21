@@ -24,6 +24,12 @@ menu:
       YEDIS
     </a>
   </li>
+  <li>
+    <a href="#ysql" class="nav-link" id="ysql-tab" data-toggle="tab" role="tab" aria-controls="ysql" aria-selected="false">
+      <i class="icon-ysql" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
@@ -32,5 +38,8 @@ menu:
   </div>
   <div id="redis" class="tab-pane fade" role="tabpanel" aria-labelledby="redis-tab">
     {{% includeMarkdown "redis/go.md" /%}}
+  </div>
+  <div id="ysql" class="tab-pane fade" role="tabpanel" aria-labelledby="ysql-tab">
+    {{% includeMarkdown "ysql/go.md" /%}}
   </div>
 </div>
