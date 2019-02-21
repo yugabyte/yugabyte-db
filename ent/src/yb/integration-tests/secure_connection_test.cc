@@ -19,6 +19,7 @@
 
 #include "yb/server/secure.h"
 
+#include "yb/util/size_literals.h"
 #include "yb/util/env_util.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
@@ -47,7 +48,7 @@ class SecureConnectionTest : public client::KeyValueTableTest {
 
     client::QLDmlTestBase::SetUp();
 
-    CreateTable(client::Transactional::kFalse);
+    DontVerifyClusterBeforeNextTearDown(); // Verify requires insecure connection.
   }
 
   CHECKED_STATUS CreateClient() override {
@@ -64,7 +65,7 @@ class SecureConnectionTest : public client::KeyValueTableTest {
 };
 
 TEST_F(SecureConnectionTest, Simple) {
-  DontVerifyClusterBeforeNextTearDown(); // Verify requires insecure connection.
+  CreateTable(client::Transactional::kFalse);
 
   const int32_t kKey = 1;
   const int32_t kValue = 2;
@@ -78,6 +79,39 @@ TEST_F(SecureConnectionTest, Simple) {
   {
     auto value = ASSERT_RESULT(SelectRow(NewSession(), kKey));
     ASSERT_EQ(kValue, value);
+  }
+}
+
+TEST_F(SecureConnectionTest, BigWrite) {
+  client::YBSchemaBuilder builder;
+  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kValueColumn)->Type(STRING);
+
+  ASSERT_OK(table_.Create(client::kTableName, 1, client_.get(), &builder));
+
+  const int32_t kKey = 1;
+  const std::string kValue(64_KB, 'X');
+
+  auto session = NewSession();
+  {
+    const auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    auto* const req = op->mutable_request();
+    QLAddInt32HashValue(req, kKey);
+    table_.AddStringColumnValue(req, kValueColumn, kValue);
+    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_OK(CheckOp(op.get()));
+  }
+
+  {
+    const auto op = table_.NewReadOp();
+    auto* const req = op->mutable_request();
+    QLAddInt32HashValue(req, kKey);
+    table_.AddColumns({kValueColumn}, req);
+    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_OK(CheckOp(op.get()));
+    auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
+    ASSERT_EQ(rowblock->row_count(), 1);
+    ASSERT_EQ(kValue, rowblock->row(0).column(0).string_value());
   }
 }
 
