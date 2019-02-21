@@ -4,7 +4,7 @@ import React, {Component} from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBButton } from '../../../common/forms/fields';
 import { YBFormSelect, YBFormInput, YBFormDropZone } from '../../../common/forms/fields';
-import { isNonEmptyObject, isDefinedNotNull } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isDefinedNotNull, isNonEmptyString } from 'utils/ObjectUtils';
 import { REGION_METADATA, KUBERNETES_PROVIDERS } from 'config';
 import { withRouter } from 'react-router';
 import { Formik, Field } from 'formik';
@@ -43,7 +43,6 @@ class CreateKubernetesConfiguration extends Component {
         "KUBECONFIG_NAME": kubeConfigFile.name,
         "KUBECONFIG_PROVIDER": vals.providerType,
         "KUBECONFIG_SERVICE_ACCOUNT": vals.serviceAccount,
-        "KUBECONFIG_ANNOTATIONS": vals.annotations,
         "KUBECONFIG_STORAGE_CLASSES": vals.storageClasses,
         "KUBECONFIG_IMAGE_REGISTRY": vals.imageRegistry
       };
@@ -55,6 +54,12 @@ class CreateKubernetesConfiguration extends Component {
           "KUBECONFIG_IMAGE_PULL_SECRET_NAME": pullSecretYaml.metadata.name,
           "KUBECONFIG_PULL_SECRET_NAME": pullSecretFile.name,
           "KUBECONFIG_PULL_SECRET_CONTENT": configs[1]
+        });
+      }
+
+      if (isNonEmptyString(vals.annotations)) {
+        Object.assign(providerConfig, {
+          "KUBECONFIG_ANNOTATIONS": vals.annotations
         });
       }
       const regionData = REGION_METADATA.find((region) => region.code === vals.regionCode);
