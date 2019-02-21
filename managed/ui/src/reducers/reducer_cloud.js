@@ -7,7 +7,7 @@ import { GET_REGION_LIST, GET_REGION_LIST_RESPONSE, GET_PROVIDER_LIST, GET_PROVI
   CREATE_ACCESS_KEY_RESPONSE, INITIALIZE_PROVIDER, INITIALIZE_PROVIDER_SUCCESS,
   INITIALIZE_PROVIDER_FAILURE, DELETE_PROVIDER, DELETE_PROVIDER_SUCCESS, DELETE_PROVIDER_FAILURE,
   DELETE_PROVIDER_RESPONSE, RESET_PROVIDER_BOOTSTRAP, LIST_ACCESS_KEYS, LIST_ACCESS_KEYS_RESPONSE,
-  GET_EBS_TYPE_LIST, GET_EBS_TYPE_LIST_RESPONSE, CREATE_DOCKER_PROVIDER,
+  GET_EBS_TYPE_LIST, GET_EBS_TYPE_LIST_RESPONSE, GET_GCP_TYPE_LIST, GET_GCP_TYPE_LIST_RESPONSE, CREATE_DOCKER_PROVIDER,
   CREATE_DOCKER_PROVIDER_RESPONSE,CREATE_INSTANCE_TYPE, CREATE_INSTANCE_TYPE_RESPONSE,
   FETCH_CLOUD_METADATA, CREATE_ZONES, CREATE_ZONES_RESPONSE, CREATE_NODE_INSTANCES,
   CREATE_NODE_INSTANCES_RESPONSE, SET_ON_PREM_CONFIG_DATA, GET_NODE_INSTANCE_LIST,
@@ -26,11 +26,13 @@ const INITIAL_STATE = {
   supportedRegionList: getInitialState([]),
   onPremJsonFormData: {},
   ebsTypes: [],
+  gcpTypes: [],
   loading: {
     regions: false,
     providers: false,
     instanceTypes: false,
     ebsTypes: true,
+    gcpTypes: true,
     supportedRegions: false
   },
   selectedProvider: null,
@@ -185,6 +187,11 @@ export default function(state = INITIAL_STATE, action) {
         return { ...state, ebsTypes: action.payload.data, loading: _.assign(state.loading, {ebsTypes: false})};
       return { ...state, ebsTypes: [], error: error, loading: _.assign(state.loading, {ebsTypes: false})};
 
+    case GET_GCP_TYPE_LIST:
+      return {...setLoadingState(state, "gcpTypes", [])};
+    case GET_GCP_TYPE_LIST_RESPONSE:
+      return setPromiseResponse(state, "gcpTypes", action);
+      
     case CREATE_DOCKER_PROVIDER:
       return setLoadingState(state, "dockerBootstrap", {});
     case CREATE_DOCKER_PROVIDER_RESPONSE:

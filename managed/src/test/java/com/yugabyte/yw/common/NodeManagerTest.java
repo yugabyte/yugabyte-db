@@ -82,16 +82,16 @@ public class NodeManagerTest extends FakeDBApplication {
 
   private class TestData {
     public Common.CloudType cloudType;
-    public PublicCloudConstants.EBSType ebsType;
+    public PublicCloudConstants.StorageType storageType;
     public Provider provider;
     public Region region;
     public AvailabilityZone zone;
     public NodeInstance node;
     public List<String> baseCommand = new ArrayList<>();
 
-    public TestData(Provider p, Common.CloudType cloud, PublicCloudConstants.EBSType ebs, int idx) {
+    public TestData(Provider p, Common.CloudType cloud, PublicCloudConstants.StorageType storageType, int idx) {
       cloudType = cloud;
-      ebsType = ebs;
+      this.storageType = storageType;
       provider = p;
       region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
       zone = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
@@ -131,10 +131,10 @@ public class NodeManagerTest extends FakeDBApplication {
     List<TestData> testDataList = new ArrayList<>();
     Provider provider = ModelFactory.newProvider(customer, cloud);
     if (cloud.equals(Common.CloudType.aws)) {
-      testDataList.add(new TestData(provider, cloud, PublicCloudConstants.EBSType.GP2, 1));
+      testDataList.add(new TestData(provider, cloud, PublicCloudConstants.StorageType.GP2, 1));
     }
     else if (cloud.equals(Common.CloudType.gcp)) {
-      testDataList.add(new TestData(provider, cloud, PublicCloudConstants.EBSType.IO1, 2));
+      testDataList.add(new TestData(provider, cloud, PublicCloudConstants.StorageType.IO1, 2));
     } else {
       testDataList.add(new TestData(provider, cloud, null, 3));
     }
@@ -160,8 +160,8 @@ public class NodeManagerTest extends FakeDBApplication {
     params.deviceInfo.volumeSize = 200;
     params.deviceInfo.numVolumes = 2;
     if (testData.cloudType.equals(Common.CloudType.aws)) {
-      params.deviceInfo.ebsType = testData.ebsType;
-      if (testData.ebsType != null && testData.ebsType.equals(PublicCloudConstants.EBSType.IO1)) {
+      params.deviceInfo.storageType = testData.storageType;
+      if (testData.storageType != null && testData.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
         params.deviceInfo.diskIops = 240;
       }
     }
@@ -347,10 +347,10 @@ public class NodeManagerTest extends FakeDBApplication {
         expectedCommand.add("--volume_size");
         expectedCommand.add(Integer.toString(deviceInfo.volumeSize));
       }
-      if (type == NodeManager.NodeCommandType.Provision && deviceInfo.ebsType != null) {
+      if (type == NodeManager.NodeCommandType.Provision && deviceInfo.storageType != null) {
         expectedCommand.add("--volume_type");
-        expectedCommand.add(deviceInfo.ebsType.toString().toLowerCase());
-        if (deviceInfo.ebsType == PublicCloudConstants.EBSType.IO1 && deviceInfo.diskIops != null) {
+        expectedCommand.add(deviceInfo.storageType.toString().toLowerCase());
+        if (deviceInfo.storageType == PublicCloudConstants.StorageType.IO1 && deviceInfo.diskIops != null) {
           expectedCommand.add("--disk_iops");
           expectedCommand.add(Integer.toString(deviceInfo.diskIops));
         }
@@ -511,7 +511,7 @@ public class NodeManagerTest extends FakeDBApplication {
       int accessKeyIndexOffset = 5;
       if (t.cloudType.equals(Common.CloudType.aws)) {
         accessKeyIndexOffset += 2;
-        if (params.deviceInfo.ebsType.equals(PublicCloudConstants.EBSType.IO1)) {
+        if (params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
           accessKeyIndexOffset += 2;
         }
       }

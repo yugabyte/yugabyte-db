@@ -61,6 +61,9 @@ export const LIST_ACCESS_KEYS_RESPONSE = 'LIST_ACCESS_KEYS_RESPONSE';
 export const GET_EBS_TYPE_LIST = 'GET_EBS_TYPES';
 export const GET_EBS_TYPE_LIST_RESPONSE = 'GET_EBS_TYPES_RESPONSE';
 
+export const GET_GCP_TYPE_LIST = 'GET_GCP_TYPES';
+export const GET_GCP_TYPE_LIST_RESPONSE = 'GET_GCP_TYPES_RESPONSE';
+
 export const CREATE_DOCKER_PROVIDER = 'CREATE_DOCKER_PROVIDER';
 export const CREATE_DOCKER_PROVIDER_RESPONSE = 'CREATE_DOCKER_PROVIDER_RESPONSE';
 
@@ -368,6 +371,21 @@ export function getEBSTypeList() {
 export function getEBSTypeListResponse(responsePayload) {
   return {
     type: GET_EBS_TYPE_LIST_RESPONSE,
+    payload: responsePayload
+  };
+}
+
+export function getGCPTypeList() {
+  const request = axios.get(`${ROOT_URL}/metadata/gcp_types`);
+  return {
+    type: GET_GCP_TYPE_LIST,
+    payload: request
+  };
+}
+
+export function getGCPTypeListResponse(responsePayload) {
+  return {
+    type: GET_GCP_TYPE_LIST_RESPONSE,
     payload: responsePayload
   };
 }

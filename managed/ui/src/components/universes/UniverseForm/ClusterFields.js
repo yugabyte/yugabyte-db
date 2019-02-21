@@ -6,9 +6,9 @@ import { Field, FieldArray } from 'redux-form';
 import {browserHistory} from 'react-router';
 import _ from 'lodash';
 import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, isEmptyObject,
-         isNonEmptyArray, isEmptyString, trimSpecialChars } from 'utils/ObjectUtils';
+  isNonEmptyArray, isEmptyString, trimSpecialChars } from 'utils/ObjectUtils';
 import { YBTextInput, YBTextInputWithLabel, YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
-         YBToggle, YBUnControlledNumericInput, YBControlledNumericInputWithLabel } from 'components/common/forms/fields';
+  YBToggle, YBUnControlledNumericInput, YBControlledNumericInputWithLabel } from 'components/common/forms/fields';
 import {getPromiseState} from 'utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
 import './UniverseForm.scss';
@@ -23,6 +23,13 @@ const DEFAULT_INSTANCE_TYPE_MAP = {
   'kubernetes': 'small'
 };
 
+// Maps API storage types to UI display options
+const API_UI_STORAGE_TYPES = {
+  'Scratch': 'Local Scratch',
+  'Persistent': 'Persistent',
+  'IO1': 'IO1',
+  'GP2': 'GP2'
+};
 
 const initialState = {
   universeName: '',
@@ -37,7 +44,7 @@ const initialState = {
   placementInfo: {},
   ybSoftwareVersion: '',
   gflags: {},
-  ebsType: 'GP2',
+  storageType: 'GP2',
   accessKeyCode: 'yugabyte-default',
   // Maximum Number of nodes currently in use OnPrem case
   maxNumNodes: -1,
@@ -59,7 +66,7 @@ export default class ClusterFields extends Component {
     this.getCurrentProvider = this.getCurrentProvider.bind(this);
     this.configureUniverseNodeList = this.configureUniverseNodeList.bind(this);
     this.handleUniverseConfigure = this.handleUniverseConfigure.bind(this);
-    this.ebsTypeChanged = this.ebsTypeChanged.bind(this);
+    this.storageTypeChanged = this.storageTypeChanged.bind(this);
     this.numVolumesChanged = this.numVolumesChanged.bind(this);
     this.volumeSizeChanged = this.volumeSizeChanged.bind(this);
     this.diskIopsChanged = this.diskIopsChanged.bind(this);
@@ -111,7 +118,7 @@ export default class ClusterFields extends Component {
       const userIntent = clusterType === "async" ? readOnlyCluster && { ...readOnlyCluster.userIntent, universeName: primaryCluster.userIntent.universeName } : primaryCluster && primaryCluster.userIntent;
       const providerUUID = userIntent && userIntent.provider;
       if (userIntent && providerUUID) {
-        const ebsType = (userIntent.deviceInfo === null) ? null : userIntent.deviceInfo.ebsType;
+        const storageType = (userIntent.deviceInfo === null) ? null : userIntent.deviceInfo.storageType;
         this.setState({
           providerSelected: providerUUID,
           instanceTypeSelected: userIntent.instanceType,
@@ -122,9 +129,9 @@ export default class ClusterFields extends Component {
           accessKeyCode: userIntent.accessKeyCode,
           deviceInfo: userIntent.deviceInfo,
           storageClass: userIntent.deviceInfo.storageClass,
-          ebsType: ebsType,
+          storageType: storageType,
           regionList: userIntent.regionList,
-          volumeType: (ebsType === null) ? "SSD" : "EBS"
+          volumeType: (storageType === null) ? "SSD" : "EBS" //TODO(wesley): fixme - establish volumetype/storagetype relationship
         });
       }
 
@@ -141,7 +148,7 @@ export default class ClusterFields extends Component {
         this.setState({providerSelected: formValues[clusterType].provider});
         this.setState({numNodes: formValues[clusterType].numNodes ? formValues[clusterType].numNodes : 3});
         this.setState({replicationFactor: formValues[clusterType].replicationFactor ?
-                                          Number(formValues[clusterType].replicationFactor) : 3});
+          Number(formValues[clusterType].replicationFactor) : 3});
         if (isNonEmptyString(formValues[clusterType].provider)) {
           this.props.getInstanceTypeListItems(formValues[clusterType].provider);
           this.props.getRegionListItems(formValues[clusterType].provider);
@@ -207,10 +214,14 @@ export default class ClusterFields extends Component {
       };
     }
 
-    // Set default ebsType once API call has completed
-    if (isNonEmptyArray(nextProps.cloud.ebsTypes) && !isNonEmptyArray(this.props.cloud.ebsTypes)) {
-      this.props.updateFormField(`${clusterType}.ebsType`, 'GP2');
-      this.setState({"ebsType": "GP2"});
+    const currentProvider = this.getCurrentProvider(providerSelected);
+    // Set default storageType once API call has completed, defaults to AWS provider if current provider is not GCP
+    if (typeof currentProvider !== 'undefined' && currentProvider.code === "gcp" && isNonEmptyArray(nextProps.cloud.gcpTypes.data) && !isNonEmptyArray(this.props.cloud.gcpTypes.data)) {
+      this.props.updateFormField(`${clusterType}.storageType`, 'Persistent');
+      this.setState({"storageType": "Persistent"});
+    } else if (isNonEmptyArray(nextProps.cloud.ebsTypes) && !isNonEmptyArray(this.props.cloud.ebsTypes)) {
+      this.props.updateFormField(`${clusterType}.storageType`, 'GP2');
+      this.setState({"storageType": "GP2"});
     }
 
     if (isNonEmptyArray(nextProps.softwareVersions) && isNonEmptyObject(this.props.formValues[clusterType]) && !isNonEmptyString(this.props.formValues[clusterType].ybSoftwareVersion)) {
@@ -347,13 +358,13 @@ export default class ClusterFields extends Component {
         volumeSize: volumeDetail.volumeSizeGB,
         numVolumes: volumesList.length,
         mountPoints: mountPoints,
-        ebsType: volumeDetail.volumeType === "EBS" ? "GP2" : null,
+        storageType: volumeDetail.volumeType === "EBS" ? "GP2" : "Persistent",
         diskIops: null
       };
       updateFormField(`${clusterType}.volumeSize`, volumeDetail.volumeSizeGB);
       updateFormField(`${clusterType}.numVolumes`, volumesList.length);
       updateFormField(`${clusterType}.diskIops`, volumeDetail.diskIops);
-      updateFormField(`${clusterType}.ebsType`, volumeDetail.ebsType);
+      updateFormField(`${clusterType}.storageType`, volumeDetail.storageType);
       updateFormField(`${clusterType}.mountPoints`, mountPoints);
       this.setState({deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
     }
@@ -377,7 +388,8 @@ export default class ClusterFields extends Component {
           numVolumes: formValues[clusterType].numVolumes,
           diskIops: formValues[clusterType].diskIops,
           mountPoints: formValues[clusterType].mountPoints,
-          ebsTypes: formValues[clusterType].ebsTypes
+          ebsTypes: formValues[clusterType].ebsTypes,
+          gcpTypes: formValues[clusterType].gcpTypes.data
         },
         accessKeyCode: formValues[clusterType].accessKeyCode,
         gflags: formValues[clusterType].gflags,
@@ -395,18 +407,18 @@ export default class ClusterFields extends Component {
     updateFormField(`${clusterType}.ybSoftwareVersion`, value);
   }
 
-  ebsTypeChanged(ebsValue) {
+  storageTypeChanged(storageValue) {
     const {updateFormField, clusterType} = this.props;
     const currentDeviceInfo = _.clone(this.state.deviceInfo);
-    currentDeviceInfo.ebsType = ebsValue;
-    if (currentDeviceInfo.ebsType === "IO1" && currentDeviceInfo.diskIops == null) {
+    currentDeviceInfo.storageType = storageValue;
+    if (currentDeviceInfo.storageType === "IO1" && currentDeviceInfo.diskIops == null) {
       currentDeviceInfo.diskIops = 1000;
       updateFormField(`${clusterType}.diskIops`, 1000);
     } else {
       currentDeviceInfo.diskIops = null;
     }
-    updateFormField(`${clusterType}.ebsType`, ebsValue);
-    this.setState({deviceInfo: currentDeviceInfo, ebsType: ebsValue});
+    updateFormField(`${clusterType}.storageType`, storageValue);
+    this.setState({deviceInfo: currentDeviceInfo, storageType: storageValue});
   }
 
   numVolumesChanged(val) {
@@ -424,7 +436,7 @@ export default class ClusterFields extends Component {
   diskIopsChanged(val) {
     const {updateFormField, clusterType} = this.props;
     updateFormField(`${clusterType}.diskIops`, val);
-    if (this.state.deviceInfo.ebsType === "IO1") {
+    if (this.state.deviceInfo.storageType === "IO1") {
       this.setState({deviceInfo: {...this.state.deviceInfo, diskIops: val}});
     }
   }
@@ -516,8 +528,8 @@ export default class ClusterFields extends Component {
           if(!isDefinedNotNull(currentClusterConfiguration)) {
             this.props.submitConfigureUniverse(universeTaskParams);
           } else if (!areIntentsEqual(
-                      getClusterByType(universeTaskParams.clusters, clusterType).userIntent,
-                      currentClusterConfiguration.userIntent) ) {
+            getClusterByType(universeTaskParams.clusters, clusterType).userIntent,
+            currentClusterConfiguration.userIntent) ) {
             this.props.submitConfigureUniverse(universeTaskParams);
           }
         }
@@ -578,7 +590,7 @@ export default class ClusterFields extends Component {
         volumeSize: formValues[clusterType].volumeSize,
         numVolumes: formValues[clusterType].numVolumes,
         mountPoints: formValues[clusterType].mountPoints,
-        ebsType: formValues[clusterType].ebsType,
+        storageType: formValues[clusterType].storageType,
         diskIops: formValues[clusterType].diskIops,
         storageClass: formValues[clusterType].storageClass
       },
@@ -619,6 +631,7 @@ export default class ClusterFields extends Component {
   providerChanged = (value) => {
     const {updateFormField, clusterType, universe: {currentUniverse: {data}}} = this.props;
     const providerUUID = value;
+    const currentProviderData = this.getCurrentProvider(value);
 
     const targetCluster = clusterType !== "primary" ? isNonEmptyObject(data) && getPrimaryCluster(data.universeDetails.clusters) : isNonEmptyObject(data) && getReadOnlyCluster(data.universeDetails.clusters);
     if (isEmptyObject(data) || isDefinedNotNull(targetCluster)) {
@@ -632,12 +645,18 @@ export default class ClusterFields extends Component {
         }
       }
       updateFormField(`${clusterType}.accessKeyCode`, defaultAccessKeyCode);
+
+      if (currentProviderData.code === "gcp") {
+        this.storageTypeChanged("Persistent");
+      } else if (currentProviderData.code === "aws") {
+        this.storageTypeChanged("GP2");
+      }
+
       this.setState({nodeSetViaAZList: false, regionList: [], providerSelected: providerUUID,
         deviceInfo: {}, accessKeyCode: defaultAccessKeyCode});
       this.props.getRegionListItems(providerUUID, true);
       this.props.getInstanceTypeListItems(providerUUID);
     }
-    const currentProviderData = this.getCurrentProvider(value);
 
     if (currentProviderData && currentProviderData.code === "onprem") {
       this.props.fetchNodeInstanceList(value);
@@ -712,7 +731,7 @@ export default class ClusterFields extends Component {
     }
 
     // Spot price and EBS types
-    let ebsTypeSelector = <span/>;
+    let storageTypeSelector = <span/>;
     let deviceDetail = null;
     let iopsField = <span/>;
     let storageClassField = <span/>;
@@ -723,7 +742,15 @@ export default class ClusterFields extends Component {
       cloud.ebsTypes && cloud.ebsTypes.sort().map(function (ebsType, idx) {
         return <option key={ebsType} value={ebsType}>{ebsType}</option>;
       });
+    const gcpTypesList = 
+      cloud.gcpTypes.data && cloud.gcpTypes.data.sort().map(function (gcpType, idx) {
+        return <option key={gcpType} value={gcpType}>{API_UI_STORAGE_TYPES[gcpType]}</option>;
+      });
     const isFieldReadOnly = isNonEmptyObject(universe.currentUniverse.data) && (this.props.type === "Edit" || (this.props.type === "Async" && this.state.isReadOnlyExists));
+
+    //Get list of cloud providers
+    const providerNameField = (<Field name={`${clusterType}.provider`} type="select" component={YBSelectWithLabel} label="Provider"
+      onInputChanged={this.providerChanged} options={universeProviderList} readOnlySelect={isFieldReadOnly}/>);
 
     const deviceInfo = this.state.deviceInfo;
 
@@ -738,8 +765,8 @@ export default class ClusterFields extends Component {
       if (isNonEmptyString(currentCluster.diskIops)) {
         deviceInfo["diskIops"] = currentCluster.diskIops;
       }
-      if (isNonEmptyObject(currentCluster.ebsType)) {
-        deviceInfo["ebsType"] = currentCluster.ebsType;
+      if (isNonEmptyObject(currentCluster.storageType)) {
+        deviceInfo["storageType"] = currentCluster.storageType;
       }
     }
 
@@ -747,9 +774,10 @@ export default class ClusterFields extends Component {
       if (self.state.volumeType === 'EBS' || self.state.volumeType === 'SSD') {
         const currentProvider = this.getCurrentProvider(self.state.providerSelected);
         const isInAws = currentProvider.code === 'aws';
-        // We don't want to keep the volume fixed in case of Kubernetes.
+        const isInGcp = currentProvider.code === 'gcp';
+        // We don't want to keep the volume fixed in case of Kubernetes or persistent GCP storage.
         const fixedVolumeInfo = self.state.volumeType === 'SSD' && 
-          currentProvider.code !== 'kubernetes';
+          currentProvider.code !== 'kubernetes' && deviceInfo.storageType === "Scratch";
         const fixedNumVolumes = self.state.volumeType === 'SSD' &&
           currentProvider.code !== 'kubernetes' && currentProvider.code !== 'gcp';
         if (currentProvider.code === 'kubernetes') {
@@ -766,15 +794,15 @@ export default class ClusterFields extends Component {
             options={storageClassOptions} onInputChanged={self.storageClassChanged} />);
         }
 
-        const isIoType = deviceInfo.ebsType === 'IO1';
+        const isIoType = deviceInfo.storageType === 'IO1';
         if (isIoType) {
           iopsField = (
             <span className="volume-info form-group-shrinked  volume-info-iops">
               <label className="form-item-label">Provisioned IOPS</label>
               <span className="volume-info-field">
                 <Field name={`${clusterType}.diskIops`} component={YBUnControlledNumericInput}
-                       label="Provisioned IOPS" onInputChanged={self.diskIopsChanged}
-                       readOnly={isFieldReadOnly} />
+                  label="Provisioned IOPS" onInputChanged={self.diskIopsChanged}
+                  readOnly={isFieldReadOnly} />
               </span>
             </span>
           );
@@ -782,15 +810,15 @@ export default class ClusterFields extends Component {
         const numVolumes = (
           <span className="volume-info-field volume-info-count">
             <Field name={`${clusterType}.numVolumes`} component={YBUnControlledNumericInput}
-                   label="Number of Volumes" onInputChanged={self.numVolumesChanged}
-                   readOnly={fixedNumVolumes || isFieldReadOnly} />
+              label="Number of Volumes" onInputChanged={self.numVolumesChanged}
+              readOnly={fixedNumVolumes || isFieldReadOnly} />
           </span>
         );
         const volumeSize = (
           <span className="volume-info-field volume-info-size">
             <Field name={`${clusterType}.volumeSize`} component={YBUnControlledNumericInput}
-                   label="Volume Size" valueFormat={volumeTypeFormat}
-                   readOnly={fixedVolumeInfo || isFieldReadOnly} />
+              label="Volume Size" valueFormat={volumeTypeFormat} onInputChanged={self.volumeSizeChanged}
+              readOnly={fixedVolumeInfo || isFieldReadOnly} />
           </span>
         );
         deviceDetail = (
@@ -800,13 +828,21 @@ export default class ClusterFields extends Component {
             {volumeSize}
           </span>
         );
-        // Only for AWS EBS, show type option.
+        // Only for AWS EBS or GCP, show type option.
         if (isInAws && self.state.volumeType === "EBS") {
-          ebsTypeSelector = (
+          storageTypeSelector = (
             <span className="volume-info form-group-shrinked">
-              <Field name={`${clusterType}.ebsType`} component={YBSelectWithLabel}
-                     options={ebsTypesList} label="EBS Type" defaultValue="GP2" onInputChanged={self.ebsTypeChanged}
-                     readOnlySelect={isFieldReadOnly} />
+              <Field name={`${clusterType}.storageType`} component={YBSelectWithLabel}
+                options={ebsTypesList} label="EBS Type" defaultValue="GP2" onInputChanged={self.storageTypeChanged}
+                readOnlySelect={isFieldReadOnly} />
+            </span>
+          );
+        } else if (isInGcp) {
+          storageTypeSelector = (
+            <span className="volume-info form-group-shrinked">
+              <Field name={`${clusterType}.storageType`} component={YBSelectWithLabel}
+                options={gcpTypesList} label="Storage Type (SSD)" defaultValue="Persistent" onInputChanged={self.storageTypeChanged}
+                readOnlySelect={isFieldReadOnly} />
             </span>
           );
         }
@@ -824,12 +860,12 @@ export default class ClusterFields extends Component {
       const disableOnChange = clusterType !== "primary";
       enableYSQL = (
         <Field name={`${clusterType}.enableYSQL`}
-                component={YBToggle} isReadOnly={isFieldReadOnly}
-                disableOnChange={disableOnChange}
-                checkedVal={this.state.enableYSQL}
-                onToggle={this.toggleEnableYSQL}
-                label="Enable YSQL"
-                subLabel="Whether or not to enable YSQL."/>
+          component={YBToggle} isReadOnly={isFieldReadOnly}
+          disableOnChange={disableOnChange}
+          checkedVal={this.state.enableYSQL}
+          onToggle={this.toggleEnableYSQL}
+          label="Enable YSQL"
+          subLabel="Whether or not to enable YSQL."/>
       );
     }
     
@@ -840,27 +876,25 @@ export default class ClusterFields extends Component {
       const disableOnChange = clusterType !== "primary";
       assignPublicIP = (
         <Field name={`${clusterType}.assignPublicIP`}
-               component={YBToggle} isReadOnly={isFieldReadOnly}
-               disableOnChange={disableOnChange}
-               checkedVal={this.state.assignPublicIP}
-               onToggle={this.toggleAssignPublicIP}
-               label="Assign Public IP"
-               subLabel="Whether or not to assign a public IP."/>
+          component={YBToggle} isReadOnly={isFieldReadOnly}
+          disableOnChange={disableOnChange}
+          checkedVal={this.state.assignPublicIP}
+          onToggle={this.toggleAssignPublicIP}
+          label="Assign Public IP"
+          subLabel="Whether or not to assign a public IP."/>
       );
     }
     // Only enable Time Sync Service toggle for AWS.
     if (isDefinedNotNull(currentProvider) && currentProvider.code === "aws") {
       useTimeSync = (
         <Field name={`${clusterType}.useTimeSync`}
-               component={YBToggle} isReadOnly={isFieldReadOnly}
-               checkedVal={this.state.useTimeSync}
-               onToggle={this.toggleUseTimeSync}
-               label="Use AWS Time Sync"
-               subLabel="Whether or not to use the Amazon Time Sync Service."/>
+          component={YBToggle} isReadOnly={isFieldReadOnly}
+          checkedVal={this.state.useTimeSync}
+          onToggle={this.toggleUseTimeSync}
+          label="Use AWS Time Sync"
+          subLabel="Whether or not to use the Amazon Time Sync Service."/>
       );
     }
-
-    // End spot price and EBS types
 
     universeProviderList.unshift(<option key="" value=""></option>);
 
@@ -901,7 +935,7 @@ export default class ClusterFields extends Component {
         cloud.instanceTypes.data && cloud.instanceTypes.data.map(function (instanceTypeItem, idx) {
           return (
             <option key={instanceTypeItem.instanceTypeCode}
-                    value={instanceTypeItem.instanceTypeCode}>
+              value={instanceTypeItem.instanceTypeCode}>
               {instanceTypeItem.instanceTypeName || instanceTypeItem.instanceTypeCode } ({instanceTypeItem.numCores} {instanceTypeItem.numCores>1 ? "cores" : "core"}, {instanceTypeItem.memSizeGB}GB RAM)
             </option>
           );
@@ -911,7 +945,7 @@ export default class ClusterFields extends Component {
         cloud.instanceTypes.data && cloud.instanceTypes.data.map(function (instanceTypeItem, idx) {
           return (
             <option key={instanceTypeItem.instanceTypeCode}
-                    value={instanceTypeItem.instanceTypeCode}>
+              value={instanceTypeItem.instanceTypeCode}>
               {instanceTypeItem.instanceTypeCode}
             </option>
           );
@@ -972,8 +1006,8 @@ export default class ClusterFields extends Component {
     let universeNameField = <span/>;
     if (clusterType === "primary") {
       universeNameField = (<Field name={`${clusterType}.universeName`}
-      type="text" normalize={trimSpecialChars} component={YBTextInputWithLabel}
-      label="Name" isReadOnly={isFieldReadOnly}/>);
+        type="text" normalize={trimSpecialChars} component={YBTextInputWithLabel}
+        label="Name" isReadOnly={isFieldReadOnly}/>);
     }
 
     return (
@@ -984,16 +1018,15 @@ export default class ClusterFields extends Component {
               <h4 style={{marginBottom: 40}}>Cloud Configuration</h4>
               <div className="form-right-aligned-labels">
                 {universeNameField}
-                <Field name={`${clusterType}.provider`} type="select" component={YBSelectWithLabel} label="Provider"
-                        onInputChanged={this.providerChanged} options={universeProviderList} readOnlySelect={isFieldReadOnly}/>
+                {providerNameField}
                 <Field name={`${clusterType}.regionList`} component={YBMultiSelectWithLabel} options={universeRegionList}
-                      label="Regions" multi={true} selectValChanged={this.regionListChanged} providerSelected={currentProviderUUID}/>
+                  label="Regions" multi={true} selectValChanged={this.regionListChanged} providerSelected={currentProviderUUID}/>
                 { clusterType === "async"
                   ? [<Field key="numNodes" name={`${clusterType}.numNodes`} type="text" component={YBControlledNumericInputWithLabel}
-                      label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
-                      minVal={Number(this.state.replicationFactor)}/>,
-                    <Field key="replicationFactor" name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 2, 3, 4, 5, 6, 7]}
-                      label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} isReadOnly={isFieldReadOnly}/>]
+                    label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
+                    minVal={Number(this.state.replicationFactor)}/>,
+                  <Field key="replicationFactor" name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 2, 3, 4, 5, 6, 7]}
+                    label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} isReadOnly={isFieldReadOnly}/>]
                   : null
                 }
               </div>
@@ -1003,12 +1036,12 @@ export default class ClusterFields extends Component {
                   <div className="form-right-aligned-labels">
                     <Col lg={5}>
                       <Field name={`${clusterType}.numNodes`} type="text" component={YBControlledNumericInputWithLabel}
-                            label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
-                            minVal={Number(this.state.replicationFactor)}/>
+                        label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
+                        minVal={Number(this.state.replicationFactor)}/>
                     </Col>
                     <Col lg={7} className="button-group-row">
                       <Field name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
-                            label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} isReadOnly={isFieldReadOnly}/>
+                        label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} isReadOnly={isFieldReadOnly}/>
 
                     </Col>
                   </div>
@@ -1030,7 +1063,7 @@ export default class ClusterFields extends Component {
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
                 <Field name={`${clusterType}.instanceType`} component={YBSelectWithLabel} label="Instance Type"
-                       options={universeInstanceTypeList} onInputChanged={this.instanceTypeChanged} />
+                  options={universeInstanceTypeList} onInputChanged={this.instanceTypeChanged} />
               </div>
             </Col>
             <Col sm={12} md={12} lg={6}>
@@ -1044,7 +1077,7 @@ export default class ClusterFields extends Component {
                   </div>
                   <div className="form-inline-controls">
                     <div className="form-group universe-form-instance-info">
-                      {ebsTypeSelector}
+                      {storageTypeSelector}
                     </div>
                   </div>
                   <div className="form-inline-controls">
@@ -1074,13 +1107,13 @@ export default class ClusterFields extends Component {
             <Col sm={5} md={4}>
               <div className="form-right-aligned-labels">
                 <Field name={`${clusterType}.ybSoftwareVersion`} component={YBSelectWithLabel}
-                       options={softwareVersionOptions} label="DB Version" onInputChanged={this.softwareVersionChanged} readOnlySelect={isFieldReadOnly}/>
+                  options={softwareVersionOptions} label="DB Version" onInputChanged={this.softwareVersionChanged} readOnlySelect={isFieldReadOnly}/>
               </div>
             </Col>
             <Col lg={4}>
               <div className="form-right-aligned-labels">
                 <Field name={`${clusterType}.accessKeyCode`} type="select" component={YBSelectWithLabel} label="Access Key"
-                       onInputChanged={this.accessKeyChanged} options={accessKeyOptions} readOnlySelect={isFieldReadOnly}/>
+                  onInputChanged={this.accessKeyChanged} options={accessKeyOptions} readOnlySelect={isFieldReadOnly}/>
               </div>
             </Col>
           </Row>

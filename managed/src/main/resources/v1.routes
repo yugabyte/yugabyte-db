@@ -111,4 +111,5 @@ PUT    /customers/:cUUID/universes/:universeUUID/nodes/:nodeName   com.yugabyte.
 # Metadata API
 GET    /metadata/column_types                     com.yugabyte.yw.controllers.TablesController.getColumnTypes()
 GET    /metadata/ebs_types                        com.yugabyte.yw.controllers.InstanceTypeController.getEBSTypes()
+GET    /metadata/gcp_types                        com.yugabyte.yw.controllers.InstanceTypeController.getGCPTypes()
 
