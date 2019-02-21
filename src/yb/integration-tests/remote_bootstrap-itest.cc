@@ -55,6 +55,8 @@
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/test_util.h"
 
+using namespace std::literals;
+
 DEFINE_int32(test_delete_leader_num_iters, 3,
              "Number of iterations to run in TestDeleteLeaderDuringRemoteBootstrapStressTest.");
 DEFINE_int32(test_delete_leader_min_rows_per_iter, 200,
@@ -487,10 +489,18 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
 // as the remote bootstrap source. When a tablet is tombstoned, its last-logged
 // opid is stored in a field its on-disk superblock.
 void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType table_type) {
-  vector<string> ts_flags, master_flags;
-  ts_flags.push_back("--enable_leader_failure_detection=false");
-  master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  master_flags.push_back("--replication_factor=2");
+  std::vector<std::string> ts_flags = {
+    "--enable_leader_failure_detection=false"s,
+    // Disable pre-elections since we wait for term to become 2,
+    // that does not happen with pre-elections
+    "--use_preelection=false"s
+  };
+
+  std::vector<std::string> master_flags = {
+    "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
+    "--replication_factor=2"s
+  };
+
   const int kNumTabletServers = 2;
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumTabletServers));
 

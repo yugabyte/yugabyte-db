@@ -43,8 +43,13 @@ typedef std::vector<ConsensusRoundPtr> ConsensusRounds;
 class ConsensusServiceProxy;
 typedef std::unique_ptr<ConsensusServiceProxy> ConsensusServiceProxyPtr;
 
+class LeaderElection;
+typedef scoped_refptr<LeaderElection> LeaderElectionPtr;
+
 class PeerProxy;
 typedef std::unique_ptr<PeerProxy> PeerProxyPtr;
+
+struct LeaderElectionData;
 
 // The elected Leader (this peer) can be in not-ready state because it's not yet synced.
 // The state reflects the real leader status: not-leader, leader-not-ready, leader-ready.
@@ -63,6 +68,7 @@ typedef std::shared_ptr<ReplicateMsg> ReplicateMsgPtr;
 typedef std::vector<ReplicateMsgPtr> ReplicateMsgs;
 
 YB_STRONGLY_TYPED_BOOL(TEST_SuppressVoteRequest);
+YB_STRONGLY_TYPED_BOOL(PreElection);
 
 } // namespace consensus
 } // namespace yb

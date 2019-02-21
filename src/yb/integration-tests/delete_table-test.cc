@@ -645,9 +645,16 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
 // Test for correct remote bootstrap merge of consensus metadata.
 TEST_F(DeleteTableTest, TestMergeConsensusMetadata) {
   // Enable manual leader selection.
-  vector<string> ts_flags, master_flags;
-  ts_flags.push_back("--enable_leader_failure_detection=false");
-  master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
+  std::vector<std::string> ts_flags = {
+    "--enable_leader_failure_detection=false"s,
+    // Disable pre-elections since we wait for term to become 2,
+    // that does not happen with pre-elections
+    "--use_preelection=false"s
+  };
+
+  std::vector<std::string> master_flags = {
+    "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"
+  };
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
   const MonoDelta timeout = MonoDelta::FromSeconds(10);
   const int kTsIndex = 0;
