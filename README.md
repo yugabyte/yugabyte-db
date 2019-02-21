@@ -33,7 +33,8 @@ Before use this extension, you should build it and load it at the desirable data
 ```
 $ git clone https://github.com/eulerto/wal2json.git
 $ cd wal2json
-$ PATH=/path/to/bin/pg_config:$PATH
+# Make sure your path includes the bin directory that contains the correct `pg_config`
+$ PATH=/path/to/pg/bin:$PATH
 $ USE_PGXS=1 make
 $ USE_PGXS=1 make install
 ```
