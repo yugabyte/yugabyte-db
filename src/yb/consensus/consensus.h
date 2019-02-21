@@ -115,6 +115,36 @@ struct ConsensusBootstrapInfo {
 
 struct LeaderState;
 
+// Mode is orthogonal to pre-elections, so any combination could be used.
+YB_DEFINE_ENUM(ElectionMode,
+    // A normal leader election. Peers will not vote for this node
+    // if they believe that a leader is alive.
+    (NORMAL_ELECTION)
+    // In this mode, peers will vote for this candidate even if they
+    // think a leader is alive. This can be used for a faster hand-off
+    // between a leader and one of its replicas.
+    (ELECT_EVEN_IF_LEADER_IS_ALIVE));
+
+// Arguments for StartElection.
+struct LeaderElectionData {
+  ElectionMode mode;
+
+  // pending_commit - we should start election only after we have specified entry committed.
+  const bool pending_commit = false;
+
+  // must_be_committed_opid - only matters if pending_commit is true.
+  //    If this is specified, we would wait until this entry is committed. If not specified
+  //    (i.e. if this has the default OpId value) it is taken from the last call to StartElection
+  //    with pending_commit = true.
+  OpId must_be_committed_opid = OpId::default_instance();
+
+  // originator_uuid - if election is initiated by an old leader as part of a stepdown procedure,
+  //    this would contain the uuid of the old leader.
+  std::string originator_uuid = std::string();
+
+  TEST_SuppressVoteRequest suppress_vote_request = TEST_SuppressVoteRequest::kFalse;
+};
+
 // The external interface for a consensus peer.
 //
 // Note: Even though Consensus points to Log, it needs to be destroyed
@@ -142,36 +172,7 @@ class Consensus {
   // Emulates a leader election by simply making this peer leader.
   virtual CHECKED_STATUS EmulateElection() = 0;
 
-  // Triggers a leader election. Start an election now or start a pending election. A pending
-  // election will be started pending upon the opid having been committed to this peer's log.
-  // If omitted, the previously queued opid is assumed.
-  enum ElectionMode {
-    // A normal leader election. Peers will not vote for this node
-    // if they believe that a leader is alive.
-    NORMAL_ELECTION,
-
-    // In this mode, peers will vote for this candidate even if they
-    // think a leader is alive. This can be used for a faster hand-off
-    // between a leader and one of its replicas.
-    ELECT_EVEN_IF_LEADER_IS_ALIVE
-  };
-
-  // pending_commit - we should start election only after we have specified entry committed.
-  // must_be_committed_opid - only matters if pending_commit is true.
-  //    If this is specified, we would wait until this entry is committed. If not specified
-  //    (i.e. if this has the default OpId value) it is taken from the last call to StartElection
-  //    with pending_commit = true.
-  // originator_uuid - if election is initiated by an old leader as part of a stepdown procedure,
-  //    this would contain the uuid of the old leader.
-  CHECKED_STATUS StartElection(
-      ElectionMode mode,
-      const bool pending_commit = false,
-      const OpId& must_be_committed_opid = OpId::default_instance(),
-      const std::string& originator_uuid = std::string(),
-      TEST_SuppressVoteRequest suppress_vote_request = TEST_SuppressVoteRequest::kFalse) {
-    return DoStartElection(
-        mode, pending_commit, must_be_committed_opid, originator_uuid, suppress_vote_request);
-  }
+  virtual CHECKED_STATUS StartElection(const LeaderElectionData& data) = 0;
 
   // We tried to step down, so you protege become leader.
   // But it failed to win election, so we should reset our withhold time and try to reelect ourself.
@@ -379,13 +380,6 @@ class Consensus {
   };
 
  private:
-  virtual CHECKED_STATUS DoStartElection(
-      ElectionMode mode,
-      const bool pending_commit,
-      const OpId& must_be_committed_opid,
-      const std::string& originator_uuid,
-      TEST_SuppressVoteRequest suppress_vote_request) = 0;
-
   DISALLOW_COPY_AND_ASSIGN(Consensus);
 };
 

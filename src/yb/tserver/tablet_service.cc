@@ -1445,12 +1445,12 @@ void ConsensusServiceImpl::RunLeaderElection(const RunLeaderElectionRequestPB* r
     return;
   }
   Status s = scope->StartElection(
-      consensus::Consensus::ELECT_EVEN_IF_LEADER_IS_ALIVE,
-      req->has_committed_index(),
-      req->committed_index(),
-      req->has_originator_uuid() ? req->originator_uuid() : std::string(),
-      consensus::TEST_SuppressVoteRequest(
-          req->has_suppress_vote_request() && req->suppress_vote_request()));
+      { consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
+        req->has_committed_index(),
+        req->committed_index(),
+        req->has_originator_uuid() ? req->originator_uuid() : std::string(),
+        consensus::TEST_SuppressVoteRequest(
+          req->has_suppress_vote_request() && req->suppress_vote_request()) });
   scope.CheckStatus(s, resp);
 }
 

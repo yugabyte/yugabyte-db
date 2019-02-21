@@ -83,6 +83,7 @@ struct ElectionResult;
 constexpr int32_t kDefaultLeaderLeaseDurationMs = 2000;
 
 YB_STRONGLY_TYPED_BOOL(WriteEmpty);
+YB_STRONGLY_TYPED_BOOL(PreElected);
 
 YB_DEFINE_ENUM(RejectMode, (kNone)(kAll)(kNonEmpty));
 
@@ -233,6 +234,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     reject_mode_.store(value, std::memory_order_release);
   }
 
+  CHECKED_STATUS StartElection(const LeaderElectionData& data) override {
+    return DoStartElection(data, PreElected::kFalse);
+  }
+
  protected:
   // Trigger that a non-Operation ConsensusRound has finished replication.
   // If the replication was successful, an status will be OK. Otherwise, it
@@ -269,12 +274,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   }
 
  private:
-  CHECKED_STATUS DoStartElection(
-      ElectionMode mode,
-      const bool pending_commit,
-      const OpId& must_be_committed_opid,
-      const std::string& originator_uuid,
-      TEST_SuppressVoteRequest suppress_vote_request) override;
+  CHECKED_STATUS DoStartElection(const LeaderElectionData& data, PreElected preelected);
+
+  Result<LeaderElectionPtr> CreateElectionUnlocked(
+      const LeaderElectionData& data,
+      MonoDelta timeout,
+      PreElection preelection);
 
   friend class ReplicaState;
   friend class RaftConsensusQuorumTest;
@@ -396,7 +401,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Fill VoteResponsePB with the following information:
   // - Update responder_term to current local term.
   // - Set vote_granted to true.
-  void FillVoteResponseVoteGranted(VoteResponsePB* response);
+  void FillVoteResponseVoteGranted(const VoteRequestPB& request, VoteResponsePB* response);
 
   // Fill VoteResponsePB with the following information:
   // - Update responder_term to current local term.
@@ -437,8 +442,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Callback for leader election driver. ElectionCallback is run on the
   // reactor thread, so it simply defers its work to DoElectionCallback.
-  void ElectionCallback(const std::string& originator_uuid, const ElectionResult& result);
-  void DoElectionCallback(const std::string& originator_uuid, const ElectionResult& result);
+  void ElectionCallback(const LeaderElectionData& data, const ElectionResult& result);
+  void DoElectionCallback(const LeaderElectionData& data, const ElectionResult& result);
   void NotifyOriginatorAboutLostElection(const std::string& originator_uuid);
 
   // Helper struct that tracks the RunLeaderElection as part of leadership transferral.
@@ -641,6 +646,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   MonoTime withold_replica_updates_until_ = MonoTime::kUninitialized;
 
   std::atomic<RejectMode> reject_mode_{RejectMode::kNone};
+
+  CoarseTimePoint disable_pre_elections_until_ = CoarseTimePoint::min();
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };
