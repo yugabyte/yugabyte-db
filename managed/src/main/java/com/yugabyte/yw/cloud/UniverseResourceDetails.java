@@ -92,12 +92,13 @@ public class UniverseResourceDetails {
 
       // Add price of volumes if necessary
       // TODO: Remove aws check once GCP volumes are decoupled from "EBS" designation
-      if (userIntent.deviceInfo.ebsType != null && userIntent.providerType.equals(Common.CloudType.aws)) {
+      // TODO(wesley): gcp options?
+      if (userIntent.deviceInfo.storageType != null && userIntent.providerType.equals(Common.CloudType.aws)) {
         Integer numVolumes = userIntent.deviceInfo.numVolumes;
         Integer diskIops = userIntent.deviceInfo.diskIops;
         Integer volumeSize = userIntent.deviceInfo.volumeSize;
         PriceComponent sizePrice;
-        switch (userIntent.deviceInfo.ebsType) {
+        switch (userIntent.deviceInfo.storageType) {
           case IO1:
             PriceComponent piopsPrice = PriceComponent.get(provider.code, region.code, IO1_PIOPS);
             sizePrice = PriceComponent.get(provider.code, region.code, IO1_SIZE);

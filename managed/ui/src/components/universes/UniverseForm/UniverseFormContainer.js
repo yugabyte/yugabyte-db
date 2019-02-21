@@ -5,14 +5,14 @@ import { connect } from 'react-redux';
 import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../actions/tasks';
 import UniverseForm from './UniverseForm';
 import { getInstanceTypeList, getRegionList, getRegionListResponse, getInstanceTypeListResponse,
-         getNodeInstancesForProvider, getNodesInstancesForProviderResponse } from '../../../actions/cloud';
+  getNodeInstancesForProvider, getNodesInstancesForProviderResponse } from '../../../actions/cloud';
 import { createUniverse, createUniverseResponse, editUniverse, editUniverseResponse,
-         configureUniverseTemplate, configureUniverseTemplateResponse, configureUniverseTemplateSuccess,
-         configureUniverseResources, configureUniverseResourcesResponse,
-         checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration,
-         fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata, fetchUniverseTasks,
-         fetchUniverseTasksResponse, addUniverseReadReplica, editUniverseReadReplica, 
-         addUniverseReadReplicaResponse, editUniverseReadReplicaResponse, closeUniverseDialog } from '../../../actions/universe';
+  configureUniverseTemplate, configureUniverseTemplateResponse, configureUniverseTemplateSuccess,
+  configureUniverseResources, configureUniverseResourcesResponse,
+  checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration,
+  fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata, fetchUniverseTasks,
+  fetchUniverseTasksResponse, addUniverseReadReplica, editUniverseReadReplica, 
+  addUniverseReadReplicaResponse, editUniverseReadReplicaResponse, closeUniverseDialog } from '../../../actions/universe';
 
 import { openDialog, closeDialog } from '../../../actions/modal';
 
@@ -136,7 +136,7 @@ const formFieldNames =
   ['formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
     'primary.numNodes', 'primary.instanceType', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
     'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes',
-    'primary.volumeSize', 'primary.ebsType', 'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.mountPoints',
+    'primary.volumeSize', 'primary.storageType', 'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.mountPoints',
     'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.numNodes',
     'async.instanceType', 'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP', 'async.useTimeSync',
     'async.enableYSQL', 'async.mountPoints',
@@ -162,7 +162,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].diskIops = userIntent.deviceInfo.diskIops;
     data[clusterType].numVolumes = userIntent.deviceInfo.numVolumes;
     data[clusterType].volumeSize = userIntent.deviceInfo.volumeSize;
-    data[clusterType].ebsType = userIntent.deviceInfo.ebsType;
+    data[clusterType].storageType = userIntent.deviceInfo.storageType;
     data[clusterType].mountPoints = userIntent.deviceInfo.mountPoints;
     data[clusterType].storageClass = userIntent.deviceInfo.storageClass;
 
@@ -227,11 +227,11 @@ function mapStateToProps(state, ownProps) {
     formValues: selector(state,
       'formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
       'primary.numNodes', 'primary.instanceType', 'primary.replicationFactor', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
-      'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType',
+      'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
       'primary.diskIops', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.storageClass',
       'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
       'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.ybSoftwareVersion', 'async.accessKeyCode',
-      'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.ebsType', 'async.assignPublicIP',
+      'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.storageType', 'async.assignPublicIP',
       'async.enableYSQL','async.mountPoints', 'async.useTimeSync', 'async.storageClass', 'masterGFlags', 'tserverGFlags', 'instanceTags' )
   };
 }

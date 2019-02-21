@@ -7,8 +7,8 @@ import { fetchHostInfo, fetchHostInfoSuccess,
 import { fetchUniverseList, fetchUniverseListResponse, resetUniverseList }
   from '../../actions/universe';
 import { getProviderList, getProviderListResponse, getSupportedRegionData,
-  getSupportedRegionDataResponse, getEBSTypeList, getEBSTypeListResponse,
-  listAccessKeysResponse, listAccessKeys }
+  getSupportedRegionDataResponse, getEBSTypeList, getEBSTypeListResponse, getGCPTypeList,
+  getGCPTypeListResponse, listAccessKeysResponse, listAccessKeys }
   from '../../actions/cloud';
 import { fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure }
   from '../../actions/tables';
@@ -75,6 +75,12 @@ const mapDispatchToProps = (dispatch) => {
     getEBSListItems: () => {
       dispatch(getEBSTypeList()).then((response) => {
         dispatch(getEBSTypeListResponse(response.payload));
+      });
+    },
+
+    getGCPListItems: () => {
+      dispatch(getGCPTypeList()).then((response) => {
+        dispatch(getGCPTypeListResponse(response.payload));
       });
     },
 
