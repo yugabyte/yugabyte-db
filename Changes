@@ -1,7 +1,7 @@
 Revision history for pgTAP
 ==========================
 
-1.0.0 (Dev toward 1.0.0)
+1.0.0 2019-02-21T22:39:42Z
 --------------------------
 * Fixed uninstall script generation to properly emit `DROP TYPE` statements.
   Thanks to Kamen Naydenov for the PR (#181)!
