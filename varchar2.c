@@ -24,6 +24,7 @@ PG_FUNCTION_INFO_V1(varchar2out);
 PG_FUNCTION_INFO_V1(varchar2);
 PG_FUNCTION_INFO_V1(varchar2recv);
 PG_FUNCTION_INFO_V1(orafce_concat2);
+PG_FUNCTION_INFO_V1(orafce_varchar_transform);
 
 bool orafce_varchar2_null_safe_concat = false;
 
@@ -131,6 +132,21 @@ varchar2recv(PG_FUNCTION_ARGS)
  *
  * just use varchar_transform()
  */
+
+Datum
+orafce_varchar_transform(PG_FUNCTION_ARGS)
+{
+#if PG_VERSION_NUM < 120000
+
+	return varchar_transform(fcinfo);
+
+#else
+
+	return varchar_support(fcinfo);
+
+#endif
+}
+
 
 /*
  * Converts a VARCHAR2 type to the specified size.

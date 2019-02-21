@@ -518,7 +518,7 @@ SELECT to_number(1210.73::numeric, 9999.99::numeric);
 SELECT to_date('2009-01-02');
 
 SELECT bitand(5,1), bitand(5,2), bitand(5,4);
-SELECT sinh(1.570796), cosh(1.570796), tanh(4);
+SELECT sinh(1.570796)::numeric(10, 8), cosh(1.570796)::numeric(10, 8), tanh(4)::numeric(10, 8);
 SELECT nanvl(12345, 1), nanvl('NaN', 1);
 SELECT nanvl(12345::float4, 1), nanvl('NaN'::float4, 1);
 SELECT nanvl(12345::float8, 1), nanvl('NaN'::float8, 1);

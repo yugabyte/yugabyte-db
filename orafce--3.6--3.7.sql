@@ -25,6 +25,8 @@ RETURNS numeric AS $$
 SELECT coalesce($1, $2)
 $$ LANGUAGE sql IMMUTABLE;
 
+
+
 CREATE OR REPLACE FUNCTION oracle.add_months(TIMESTAMP WITH TIME ZONE,INTEGER)
 RETURNS TIMESTAMP
 AS $$ SELECT (pg_catalog.add_months($1::pg_catalog.date, $2) + $1::time)::oracle.date; $$

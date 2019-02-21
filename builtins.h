@@ -278,6 +278,7 @@ extern PGDLLEXPORT Datum varchar2out(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum varchar2(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum varchar2recv(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_concat2(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_varchar_transform(PG_FUNCTION_ARGS);
 
 /* from nvarchar2.c */
 extern PGDLLEXPORT Datum nvarchar2in(PG_FUNCTION_ARGS);
