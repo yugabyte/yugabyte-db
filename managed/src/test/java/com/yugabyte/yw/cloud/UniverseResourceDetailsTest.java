@@ -102,7 +102,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   }
 
   private UniverseDefinitionTaskParams setUpValidEBS(Iterator<NodeDetails> mockIterator,
-                                                     PublicCloudConstants.EBSType ebsType) {
+                                                     PublicCloudConstants.StorageType storageType) {
 
     // Set up instance type
     InstanceType.upsert(provider.code, testInstanceType, 10, 5.5, null);
@@ -112,7 +112,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     instanceDetails.pricePerHour = instancePrice;
     PriceComponent.upsert(provider.code, region.code, testInstanceType, instanceDetails);
     PriceComponent.PriceDetails sizeDetails;
-    switch (ebsType) {
+    switch (storageType) {
       case IO1:
         PriceComponent.PriceDetails piopsDetails = new PriceComponent.PriceDetails();
         piopsDetails.pricePerHour = piopsPrice;
@@ -133,7 +133,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     // Set up DeviceInfo
     DeviceInfo deviceInfo = getDummyDeviceInfo(numVolumes, volumeSize);
     deviceInfo.diskIops = diskIops;
-    deviceInfo.ebsType = ebsType;
+    deviceInfo.storageType = storageType;
 
     // Set up userIntent
     UserIntent userIntent = getDummyUserIntent(deviceInfo, provider, testInstanceType);
@@ -197,7 +197,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   public void testAddPriceToDetailsIO1() throws Exception {
     Iterator<NodeDetails> mockIterator = mock(Iterator.class);
     UniverseDefinitionTaskParams params = setUpValidEBS(mockIterator,
-        PublicCloudConstants.EBSType.IO1);
+        PublicCloudConstants.StorageType.IO1);
 
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.addPrice(params);
@@ -214,7 +214,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   public void testAddPriceToDetailsGP2() throws Exception {
     Iterator<NodeDetails> mockIterator = mock(Iterator.class);
     UniverseDefinitionTaskParams params = setUpValidEBS(mockIterator,
-        PublicCloudConstants.EBSType.GP2);
+        PublicCloudConstants.StorageType.GP2);
 
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.addPrice(params);

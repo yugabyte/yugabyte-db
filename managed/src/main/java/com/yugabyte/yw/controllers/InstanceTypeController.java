@@ -2,13 +2,13 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.HashMap;
-import java.util.LinkedList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Region;
@@ -155,6 +155,16 @@ public class InstanceTypeController extends AuthenticatedController {
    * @return a list of all supported types of EBS volumes.
    */
   public Result getEBSTypes() {
-    return ok(Json.toJson(PublicCloudConstants.EBSType.values()));
+    return ok(Json.toJson(Arrays.stream(PublicCloudConstants.StorageType.values())
+            .filter(name->name.getCloudType().equals(Common.CloudType.aws)).toArray()));
+  }
+
+  /**
+   * Metadata endpoint for getting a list of all supported types of GCP disks.
+   * @return a list of all supported types of GCP disks.
+   */
+  public Result getGCPTypes() {
+    return ok(Json.toJson(Arrays.stream(PublicCloudConstants.StorageType.values())
+            .filter(name->name.getCloudType().equals(Common.CloudType.gcp)).toArray()));
   }
 }

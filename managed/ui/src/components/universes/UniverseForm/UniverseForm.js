@@ -192,7 +192,7 @@ class UniverseForm extends Component {
           numVolumes: formValues[clusterType].numVolumes,
           diskIops: formValues[clusterType].diskIops,
           mountPoints: formValues[clusterType].mountPoints,
-          ebsType: formValues[clusterType].ebsType,
+          storageType: formValues[clusterType].storageType,
           storageClass: formValues[clusterType].storageClass
         },
       };
@@ -372,7 +372,7 @@ class UniverseForm extends Component {
     return (
       <Grid id="page-wrapper" fluid={true} className="universe-form-new">
         <DeleteUniverseContainer visible={modal.showModal && modal.visibleModal==="deleteReadReplicaModal"}
-                               onHide={closeModal} title="Delete Read Replica of " body="Are you sure you want to delete this read replica cluster?" type="async"/>
+          onHide={closeModal} title="Delete Read Replica of " body="Are you sure you want to delete this read replica cluster?" type="async"/>
         {pageTitle}
         <form name="UniverseForm" className="universe-form-container" onSubmit={handleSubmit(this.handleSubmitButtonClick)}>
           {clusterForm}
@@ -399,7 +399,7 @@ class PrimaryClusterFields extends Component {
     return (
       <Fields names={['primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList', 'primary.replicationFactor',
         'primary.numNodes', 'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.ybSoftwareVersion',
-        'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType',
+        'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
         'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.storageClass']} component={ClusterFields} {...this.props} clusterType={"primary"} />
     );
   }
@@ -411,8 +411,8 @@ class ReadOnlyClusterFields extends Component {
       <Fields names={['primary.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
         'async.numNodes', 'async.instanceType', 'async.ybSoftwareVersion', 'async.diskIops',
         'async.numVolumes','async.volumeSize',
-        'async.ebsType', 'async.assignPublicIP', 'async.useTimeSync', 'async.enableYSQL', 'async.storageClass']}
-              component={ClusterFields} {...this.props} clusterType={"async"}/>
+        'async.storageType', 'async.assignPublicIP', 'async.useTimeSync', 'async.enableYSQL', 'async.storageClass']}
+      component={ClusterFields} {...this.props} clusterType={"async"}/>
     );
   }
 }

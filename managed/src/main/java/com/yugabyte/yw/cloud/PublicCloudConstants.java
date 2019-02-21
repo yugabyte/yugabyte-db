@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 package com.yugabyte.yw.cloud;
+import com.yugabyte.yw.commissioner.Common;
 
 public class PublicCloudConstants {
   public static final String IO1_SIZE = "io1.size";
@@ -11,8 +12,27 @@ public class PublicCloudConstants {
     Dedicated,
     Host
   }
-  public enum EBSType {
-    IO1,
-    GP2
+
+  /**
+   * Tracks the supported storage options for each cloud provider.
+   * Options in the UI will be ordered alphabetically
+   * e.g. Persistent will be the default value for GCP, not Scratch
+   */
+  public enum StorageType {
+    IO1(Common.CloudType.aws),
+    GP2(Common.CloudType.aws),
+    Scratch(Common.CloudType.gcp),
+    Persistent(Common.CloudType.gcp);
+
+    private Common.CloudType cloudType;
+
+    StorageType(Common.CloudType cloudType) {
+      this.cloudType = cloudType;
+    }
+
+    public Common.CloudType getCloudType() {
+      return cloudType;
+    }
   }
+
 }

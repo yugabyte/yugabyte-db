@@ -226,6 +226,13 @@ public class InstanceType extends Model {
           VolumeType.SSD);
     	return instanceTypeDetails;
     }
-    
+
+    public static InstanceTypeDetails createGCPInstanceTypeDetails(VolumeType volumeType) {
+      InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
+      instanceTypeDetails.setVolumeDetailsList(DEFAULT_VOLUME_COUNT, DEFAULT_GCP_VOLUME_SIZE_GB,
+              volumeType);
+      return instanceTypeDetails;
+    }
+
   }
 }

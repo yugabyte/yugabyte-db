@@ -295,7 +295,7 @@ public class UniverseTest extends FakeDBApplication {
     userIntent.instanceType = instanceType;
     userIntent.provider = defaultProvider.uuid.toString();
     userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.ebsType = PublicCloudConstants.EBSType.IO1;
+    userIntent.deviceInfo.storageType = PublicCloudConstants.StorageType.IO1;
     userIntent.deviceInfo.numVolumes = 2;
     userIntent.deviceInfo.diskIops = 1000;
     userIntent.deviceInfo.volumeSize = 100;
@@ -521,7 +521,7 @@ public class UniverseTest extends FakeDBApplication {
     userIntent.instanceType = instanceType;
     userIntent.provider = defaultProvider.uuid.toString();
     userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.ebsType = PublicCloudConstants.EBSType.IO1;
+    userIntent.deviceInfo.storageType = PublicCloudConstants.StorageType.IO1;
     userIntent.deviceInfo.numVolumes = 2;
     userIntent.deviceInfo.diskIops = 1000;
     userIntent.deviceInfo.volumeSize = 100;
