@@ -124,6 +124,10 @@ class SecureStream : public Stream, public StreamContext {
   void Established(SecureState state);
   static int VerifyCallback(int preverified, X509_STORE_CTX* store_context);
   bool Verify(bool preverified, X509_STORE_CTX* store_context);
+  void WriteEncrypted(OutboundDataPtr data);
+  CHECKED_STATUS ReadDecrypted();
+
+  std::string ToString() override;
 
   const SecureContext& secure_context_;
   std::unique_ptr<Stream> lower_stream_;

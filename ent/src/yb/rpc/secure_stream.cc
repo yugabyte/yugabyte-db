@@ -24,6 +24,7 @@
 #include "yb/rpc/outbound_data.h"
 
 #include "yb/util/errno.h"
+#include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 
 using namespace std::literals;
@@ -343,23 +344,35 @@ void SecureStream::Send(OutboundDataPtr data) {
     pending_data_.push_back(std::move(data));
     break;
   case SecureState::kEnabled: {
-      {
-        boost::container::small_vector<RefCntBuffer, 10> queue;
-        data->Serialize(&queue);
-        for (const auto& buf : queue) {
-          auto len = SSL_write(ssl_.get(), buf.data(), buf.size());
-          DCHECK_EQ(len, buf.size());
+      boost::container::small_vector<RefCntBuffer, 10> queue;
+      data->Serialize(&queue);
+      for (const auto& buf : queue) {
+        Slice slice(buf.data(), buf.size());
+        for (;;) {
+          auto len = SSL_write(ssl_.get(), slice.data(), slice.size());
+          if (len == slice.size()) {
+            break;
+          }
+          VLOG_WITH_PREFIX(4) << "SSL_write was not full: " << slice.size() << ", written: " << len;
+          WriteEncrypted(nullptr);
+          slice.remove_prefix(len);
         }
       }
-      RefCntBuffer buf(BIO_ctrl_pending(bio_.get()));
-      auto len2 = BIO_read(bio_.get(), buf.data(), buf.size());
-      DCHECK_EQ(len2, buf.size());
-      lower_stream_->Send(std::make_shared<SecureOutboundData>(buf, data));
+      WriteEncrypted(std::move(data));
     } break;
   case SecureState::kDisabled:
     lower_stream_->Send(std::move(data));
     break;
   }
+}
+
+void SecureStream::WriteEncrypted(OutboundDataPtr data) {
+  RefCntBuffer buf(BIO_ctrl_pending(bio_.get()));
+  auto len = BIO_read(bio_.get(), buf.data(), buf.size());
+  LOG_IF_WITH_PREFIX(DFATAL, len != buf.size())
+      << "BIO_read was not full: " << buf.size() << ", read: " << len;
+  VLOG_WITH_PREFIX(4) << "Write encrypted: " << len << ", " << yb::ToString(data);
+  lower_stream_->Send(std::make_shared<SecureOutboundData>(buf, std::move(data)));
 }
 
 Status SecureStream::TryWrite() {
@@ -390,6 +403,10 @@ const Endpoint& SecureStream::Local() {
   return lower_stream_->Local();
 }
 
+std::string SecureStream::ToString() {
+  return Format("SECURE $0 $1", state_, lower_stream_->ToString());
+}
+
 void SecureStream::UpdateLastActivity() {
   context_->UpdateLastActivity();
 }
@@ -411,6 +428,7 @@ Result<size_t> SecureStream::ProcessReceived(const IoVecs& data, ReadBufferFull 
       const uint8_t* bytes = static_cast<const uint8_t*>(data[0].iov_base);
       if (bytes[0] == 0x16 && bytes[1] == 0x03) { // TLS handshake header
         state_ = SecureState::kHandshake;
+        ResetLogPrefix();
         RETURN_NOT_OK(Init());
       } else if (FLAGS_allow_insecure_connections) {
         Established(SecureState::kDisabled);
@@ -432,7 +450,7 @@ Result<size_t> SecureStream::ProcessReceived(const IoVecs& data, ReadBufferFull 
         DCHECK_EQ(written, iov.iov_len);
       }
       auto handshake_status = Handshake();
-      LOG_IF(INFO, !handshake_status.ok()) << "Handshake failed: " << handshake_status;
+      LOG_IF_WITH_PREFIX(INFO, !handshake_status.ok()) << "Handshake failed: " << handshake_status;
       RETURN_NOT_OK(handshake_status);
       return result;
     }
@@ -440,36 +458,52 @@ Result<size_t> SecureStream::ProcessReceived(const IoVecs& data, ReadBufferFull 
     case SecureState::kEnabled: {
       size_t result = 0;
       for (const auto& iov : data) {
-        auto len = BIO_write(bio_.get(), iov.iov_base, iov.iov_len);
-        if (len < 0) {
-          break;
-        }
-        result += len;
-      }
-      // TODO handle IsBusy
-      auto out = VERIFY_RESULT(received_data_.PrepareAppend());
-      size_t appended = 0;
-      for (auto iov = out.begin(); iov != out.end();) {
-        auto len = SSL_read(ssl_.get(), iov->iov_base, iov->iov_len);
-        if (len < 0) {
-          break;
-        }
-        appended += len;
-        iov->iov_base = static_cast<char*>(iov->iov_base) + len;
-        iov->iov_len -= len;
-        if (iov->iov_len <= 0) {
-          ++iov;
+        Slice slice(static_cast<char*>(iov.iov_base), iov.iov_len);
+        for (;;) {
+          auto len = BIO_write(bio_.get(), slice.data(), slice.size());
+          result += len;
+          if (len == slice.size()) {
+            break;
+          }
+          slice.remove_prefix(len);
+          RETURN_NOT_OK(ReadDecrypted());
         }
       }
-      received_data_.DataAppended(appended);
-      auto temp = VERIFY_RESULT(context_->ProcessReceived(
-          received_data_.AppendedVecs(), ReadBufferFull(received_data_.full())));
-      received_data_.Consume(temp);
+      RETURN_NOT_OK(ReadDecrypted());
       return result;
     }
   }
 
   return STATUS_FORMAT(IllegalState, "Unexpected state: $0", to_underlying(state_));
+}
+
+Status SecureStream::ReadDecrypted() {
+  // TODO handle IsBusy
+  bool done = false;
+  while (!done) {
+    auto out = VERIFY_RESULT(received_data_.PrepareAppend());
+    size_t appended = 0;
+    for (auto iov = out.begin(); iov != out.end();) {
+      auto len = SSL_read(ssl_.get(), iov->iov_base, iov->iov_len);
+      if (len < 0) {
+        done = true;
+        break;
+      }
+      VLOG_WITH_PREFIX(4) << "Read decrypted: " << len;
+      appended += len;
+      iov->iov_base = static_cast<char*>(iov->iov_base) + len;
+      iov->iov_len -= len;
+      if (iov->iov_len <= 0) {
+        ++iov;
+      }
+    }
+    received_data_.DataAppended(appended);
+    auto temp = VERIFY_RESULT(context_->ProcessReceived(
+        received_data_.AppendedVecs(), ReadBufferFull(received_data_.full())));
+    received_data_.Consume(temp);
+  }
+
+  return Status::OK();
 }
 
 void SecureStream::Connected() {
@@ -564,9 +598,10 @@ Status SecureStream::Init() {
 }
 
 void SecureStream::Established(SecureState state) {
-  VLOG(4) << "Established with state: " << state;
+  VLOG_WITH_PREFIX(4) << "Established with state: " << state;
 
   state_ = state;
+  ResetLogPrefix();
   context_->Connected();
   for (auto& data : pending_data_) {
     Send(std::move(data));
@@ -627,14 +662,14 @@ bool MatchPattern(Slice pattern, Slice host) {
 bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
   // Don't bother looking at certificates that have failed pre-verification.
   if (!preverified) {
-    VLOG(4) << "Unverified certificate";
+    VLOG_WITH_PREFIX(4) << "Unverified certificate";
     return false;
   }
 
   // We're only interested in checking the certificate at the end of the chain.
   int depth = X509_STORE_CTX_get_error_depth(store_context);
   if (depth > 0) {
-    VLOG(4) << "Intermediate certificate";
+    VLOG_WITH_PREFIX(4) << "Intermediate certificate";
     return true;
   }
 
@@ -653,7 +688,7 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
       ASN1_IA5STRING* domain = gen->d.dNSName;
       if (domain->type == V_ASN1_IA5STRING && domain->data && domain->length) {
         Slice domain_slice(domain->data, domain->length);
-        VLOG(4) << "Domain: " << domain_slice.ToBuffer() << " vs " << remote_hostname_;
+        VLOG_WITH_PREFIX(4) << "Domain: " << domain_slice.ToBuffer() << " vs " << remote_hostname_;
         if (FLAGS_dump_certificate_entries) {
           certificate_entries_.push_back(Format("DNS:$0", domain_slice.ToBuffer()));
         }
@@ -668,7 +703,7 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
           boost::asio::ip::address_v4::bytes_type bytes;
           memcpy(&bytes, ip_address->data, bytes.size());
           auto allowed_address = boost::asio::ip::address_v4(bytes);
-          VLOG(4) << "IPv4: " << allowed_address.to_string() << " vs " << address;
+          VLOG_WITH_PREFIX(4) << "IPv4: " << allowed_address.to_string() << " vs " << address;
           if (FLAGS_dump_certificate_entries) {
             certificate_entries_.push_back(Format("IP Address:$0", allowed_address));
           }
@@ -679,7 +714,7 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
           boost::asio::ip::address_v6::bytes_type bytes;
           memcpy(&bytes, ip_address->data, bytes.size());
           auto allowed_address = boost::asio::ip::address_v6(bytes);
-          VLOG(4) << "IPv6: " << allowed_address.to_string() << " vs " << address;
+          VLOG_WITH_PREFIX(4) << "IPv6: " << allowed_address.to_string() << " vs " << address;
           if (FLAGS_dump_certificate_entries) {
             certificate_entries_.push_back(Format("IP Address:$0", allowed_address));
           }
@@ -702,7 +737,7 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
   }
   if (common_name && common_name->data && common_name->length) {
     Slice common_name_slice(common_name->data, common_name->length);
-    VLOG(4) << "Common name: " << common_name_slice.ToBuffer() << " vs "
+    VLOG_WITH_PREFIX(4) << "Common name: " << common_name_slice.ToBuffer() << " vs "
             << Remote().address() << "/" << remote_hostname_;
     if (FLAGS_dump_certificate_entries) {
       certificate_entries_.push_back(Format("CN:$0", common_name_slice.ToBuffer()));
@@ -713,7 +748,7 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
     }
   }
 
-  VLOG(4) << "Nothing suitable for " << Remote().address() << "/" << remote_hostname_;
+  VLOG_WITH_PREFIX(4) << "Nothing suitable for " << Remote().address() << "/" << remote_hostname_;
   return false;
 }
 
