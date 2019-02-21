@@ -9,7 +9,7 @@ import { YBLoading } from 'components/common/indicators';
 import TreeNode from 'components/common/TreeNode';
 import { YBPanelItem } from 'components/panels';
 import { Panel } from 'react-bootstrap';
-import { isNonEmptyArray } from 'utils/ObjectUtils';
+import { isNonEmptyArray, isEmptyArray } from 'utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
 
 import './UniverseHealthCheckList.scss';
@@ -19,6 +19,14 @@ const UniverseHealthCheckList = props => {
   let content = <span/>;
   if (getPromiseState(healthCheck).isLoading()) {
     content = <YBLoading />;
+  } else if (getPromiseState(healthCheck).isEmpty() || getPromiseState(healthCheck).isError() || (getPromiseState(healthCheck).isSuccess() && isEmptyArray(healthCheck.data))) {
+    content = (
+      <div>
+        <h2 className="health-check-header content-title">Health Checks</h2>
+
+        There're no finished Health checks available at the moment. 
+      </div>
+    );
   } else if (getPromiseState(healthCheck).isSuccess() && isNonEmptyArray(healthCheck.data)) {
     const data = [...healthCheck.data].reverse();
     const timestamps = prepareData(data);
