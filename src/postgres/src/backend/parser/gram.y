@@ -10130,7 +10130,6 @@ transaction_mode_item:
 				}
 			| READ ONLY
 				{
-					parser_ybc_not_support(@1, "TRANSACTION READ ONLY mode");
 					$$ = makeDefElem("transaction_read_only",
 									 makeIntConst(TRUE, @1), @1);
 				}
