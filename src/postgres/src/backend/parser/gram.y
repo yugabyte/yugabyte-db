@@ -840,6 +840,7 @@ stmt :
 			| GrantStmt
 			| IndexStmt
 			| InsertStmt
+			| LockStmt
 			| PrepareStmt
 			| RenameStmt
 			| RevokeStmt
@@ -935,7 +936,6 @@ stmt :
 			| ListenStmt { parser_ybc_not_support(@1, "This statement"); }
 			| RefreshMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
-			| LockStmt { parser_ybc_not_support(@1, "This statement"); }
 			| NotifyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ReassignOwnedStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ReindexStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -11246,7 +11246,6 @@ using_clause:
 
 LockStmt:	LOCK_P opt_table relation_expr_list opt_lock opt_nowait
 				{
-					parser_ybc_not_support(@1, "LOCK");
 					LockStmt *n = makeNode(LockStmt);
 
 					n->relations = $3;
@@ -11257,17 +11256,48 @@ LockStmt:	LOCK_P opt_table relation_expr_list opt_lock opt_nowait
 		;
 
 opt_lock:	IN_P lock_type MODE				{ $$ = $2; }
-			| /*EMPTY*/						{ $$ = AccessExclusiveLock; }
+			| /*EMPTY*/
+			  {
+			    parser_ybc_not_support(@0, "ACCESS EXCLUSIVE lock mode");
+			    $$ = AccessExclusiveLock;
+			  }
 		;
 
 lock_type:	ACCESS SHARE					{ $$ = AccessShareLock; }
-			| ROW SHARE						{ $$ = RowShareLock; }
-			| ROW EXCLUSIVE					{ $$ = RowExclusiveLock; }
-			| SHARE UPDATE EXCLUSIVE		{ $$ = ShareUpdateExclusiveLock; }
-			| SHARE							{ $$ = ShareLock; }
-			| SHARE ROW EXCLUSIVE			{ $$ = ShareRowExclusiveLock; }
-			| EXCLUSIVE						{ $$ = ExclusiveLock; }
-			| ACCESS EXCLUSIVE				{ $$ = AccessExclusiveLock; }
+			| ROW SHARE
+			  { parser_ybc_not_support(@1, "ROW SHARE");
+			    $$ = RowShareLock;
+			  }
+			| ROW EXCLUSIVE
+			  {
+			    parser_ybc_not_support(@1, "ROW EXCLUSIVE");
+			    $$ = RowExclusiveLock;
+			  }
+			| SHARE UPDATE EXCLUSIVE
+			  {
+			    parser_ybc_not_support(@1, "SHARE UPDATE EXCLUSIVE");
+			    $$ = ShareUpdateExclusiveLock;
+			  }
+			| SHARE
+			  {
+			    parser_ybc_not_support(@1, "SHARE");
+			    $$ = ShareLock;
+			  }
+			| SHARE ROW EXCLUSIVE
+				{
+				  parser_ybc_not_support(@1, "SHARE ROW EXCLUSIVE");
+				  $$ = ShareRowExclusiveLock;
+				}
+			| EXCLUSIVE
+			  {
+			    parser_ybc_not_support(@1, "EXCLUSIVE");
+			    $$ = ExclusiveLock;
+			  }
+			| ACCESS EXCLUSIVE
+			  {
+			    parser_ybc_not_support(@1, "ACCESS EXCLUSIVE");
+			    $$ = AccessExclusiveLock;
+			  }
 		;
 
 opt_nowait:	NOWAIT							{ $$ = TRUE; }
