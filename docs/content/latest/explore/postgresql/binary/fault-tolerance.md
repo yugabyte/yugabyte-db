@@ -17,7 +17,7 @@ $ ./bin/yb-ctl create --enable_postgres
 Download the sample app jar.
 
 ```sh
-$ wget https://github.com/YugaByte/yb-sql-workshop/blob/master/running-sample-apps/yb-sample-apps.jar
+$ wget https://github.com/YugaByte/yb-sql-workshop/blob/master/running-sample-apps/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
 ```
 
 Run the `SqlInserts` sample key-value app against the local universe by typing the following command.
