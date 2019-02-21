@@ -46,7 +46,7 @@ orders.sql  products.sql  reviews.sql users.sql
 ### Connect to YugaByte DB using psql
 
 ```sh
-$ ./bin/psql -p 5433 -U postgres
+$ ./bin/psql -h 127.0.0.1 -p 5433 -U postgres
 ```
 
 ```
