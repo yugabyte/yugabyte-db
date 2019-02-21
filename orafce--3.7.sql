@@ -2122,7 +2122,7 @@ IMMUTABLE;
 
 CREATE FUNCTION varchar2_transform(internal)
 RETURNS internal
-AS 'varchar_support'
+AS 'varchar_transform'
 LANGUAGE internal
 STRICT
 IMMUTABLE;
@@ -2282,7 +2282,7 @@ WITH INOUT
 AS IMPLICIT;
 
 UPDATE pg_proc
-SET prosupport=(SELECT oid FROM pg_proc WHERE proname='varchar2_transform')
+SET protransform=(SELECT oid FROM pg_proc WHERE proname='varchar2_transform')
 WHERE proname='varchar2';
 
 -- string functions for varchar2 type
@@ -2330,7 +2330,7 @@ IMMUTABLE;
 
 CREATE FUNCTION nvarchar2_transform(internal)
 RETURNS internal
-AS 'varchar_support'
+AS 'varchar_transform'
 LANGUAGE internal
 STRICT
 IMMUTABLE;
@@ -2490,7 +2490,7 @@ WITH INOUT
 AS IMPLICIT;
 
 UPDATE pg_proc
-SET prosupport=(SELECT oid FROM pg_proc WHERE proname='varchar2_transform')
+SET protransform=(SELECT oid FROM pg_proc WHERE proname='varchar2_transform')
 WHERE proname='nvarchar2';
 
 /*
