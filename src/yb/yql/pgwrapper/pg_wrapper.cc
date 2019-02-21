@@ -86,9 +86,6 @@ Status PgWrapper::Start() {
     "-D", conf_.data_dir,
     "-p", std::to_string(conf_.pg_port),
     "-h", conf_.listen_addresses,
-    "-c", "logging_collector=on",
-    // FLAGS_log_dir should already be set by tserver during startup.
-    "-c", "log_directory=" + FLAGS_log_dir,
     // Disable listening on a UNIX domain socket
     "-k", ""
   };
