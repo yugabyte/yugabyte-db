@@ -296,6 +296,9 @@ message VoteRequestPB {
   // for example to force a faster leader hand-off rather than waiting for
   // the election timer to expire.
   optional bool ignore_live_leader = 5 [ default = false ];
+
+  // true if it is pre-election request and state of voter should not be changed.
+  optional bool preelection = 7;
 }
 
 // A response from a replica to a leader election request.
@@ -318,6 +321,9 @@ message VoteResponsePB {
   // to wait out before it can start serving read and write requests.
   // Contains only physical part of hybrid time.
   optional fixed64 leader_ht_lease_expiration = 5;
+
+  // true if it is response to pre-election request.
+  optional bool preelection = 6;
 
   // TODO: Migrate ConsensusService to the AppStatusPB RPC style and merge these errors.
   // Error message from the consensus implementation.
