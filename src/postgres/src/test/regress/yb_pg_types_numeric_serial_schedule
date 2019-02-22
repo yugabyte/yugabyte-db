@@ -2,25 +2,14 @@
 #
 ####################################################################################################
 # Postgres Testsuites: Porting from PostgreSQL original tests.
-# This suite includes all tests on datatypes that are enabled for YugaByte.
+# This suite includes all tests on numeric datatypes that are enabled for YugaByte.
 ####################################################################################################
-test: yb_boolean
-test: yb_char
-test: yb_bytea
-test: yb_text
 test: yb_oid
 test: yb_int2
 test: yb_int4
 test: yb_int8
-test: yb_int2_array
-test: yb_int4_array
 test: yb_float4
 test: yb_float8
 test: yb_numeric
 test: yb_numeric_big
-test: yb_timestamp
-test: yb_jsonb
-test: yb_uuid
 test: yb_money
-test: yb_date
-test: yb_time
