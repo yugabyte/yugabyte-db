@@ -151,8 +151,8 @@ Status CQLMessage::QueryParameters::ValidateConsistency() {
       break;
     }
     default:
-      LOG(WARNING) << "Consistency level " << static_cast<uint16_t>(consistency)
-                   << " is not supported, defaulting to strong consistency";
+      YB_LOG_EVERY_N_SECS(WARNING, 10) << "Consistency level " << static_cast<uint16_t>(consistency)
+                                       << " is not supported, defaulting to strong consistency";
       set_yb_consistency_level(YBConsistencyLevel::STRONG);
   }
   return Status::OK();
