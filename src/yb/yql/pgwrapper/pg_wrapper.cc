@@ -90,6 +90,14 @@ Status PgWrapper::Start() {
     "-k", ""
   };
 
+  if (!FLAGS_logtostderr) {
+    argv.push_back("-c");
+    argv.push_back("logging_collector=on");
+    // FLAGS_log_dir should already be set by tserver during startup.
+    argv.push_back("-c");
+    argv.push_back("log_directory=" + FLAGS_log_dir);
+  }
+
   pg_proc_.emplace(postgres_executable, argv);
   pg_proc_->ShareParentStderr();
   pg_proc_->ShareParentStdout();
