@@ -2,15 +2,16 @@
 
 import React, { Component } from 'react';
 import { PageHeader } from 'react-bootstrap';
-import { Field } from 'redux-form';
-import { YBButton, YBInputField } from '../fields';
-import {getPromiseState} from 'utils/PromiseUtils';
+import { YBButton, YBFormInput } from '../fields';
+import { getPromiseState } from 'utils/PromiseUtils';
 import YBLogo from '../../YBLogo/YBLogo';
-import {browserHistory} from 'react-router';
+import { browserHistory } from 'react-router';
+import { Field, Form, Formik } from 'formik';
+import * as Yup from "yup";
 
 class LoginForm extends Component {
   submitLogin = formValues => {
-    const {loginCustomer} = this.props;
+    const { loginCustomer } = this.props;
     loginCustomer(formValues);
   };
 
@@ -22,7 +23,22 @@ class LoginForm extends Component {
   }
 
   render() {
-    const { handleSubmit, submitting, customer: {authToken} } = this.props;
+    const { customer: { authToken } } = this.props;
+
+    const validationSchema = Yup.object().shape({
+      email: Yup.string()
+      .required('Enter email'),
+
+      password: Yup.string()
+      .required('Enter password'),
+
+    });
+
+    const initialValues = {
+      email: "",
+      password: "",
+    };
+
     return (
       <div className="container full-height dark-background flex-vertical-middle">
         <div className="col-sm-5 dark-form">
@@ -30,20 +46,33 @@ class LoginForm extends Component {
             <YBLogo type="full"/>
             <span>Admin Console</span>
           </PageHeader>
-          <form onSubmit={handleSubmit(this.submitLogin)}>
-            <div className={`alert alert-danger form-error-alert ${authToken.error ? '': 'hide'}`}>
-              {<strong>{JSON.stringify(authToken.error)}</strong>}
-            </div>
+          <Formik
+            validationSchema={validationSchema}
+            initialValues={initialValues}
+            onSubmit={(values, { setSubmitting }) => {
+              this.submitLogin(values);
+              setSubmitting(false);
+            }}
+            render={({
+              handleSubmit,
+              isSubmitting
+            }) => (
+              <Form onSubmit={handleSubmit}>
+                <div className={`alert alert-danger form-error-alert ${authToken.error ? '': 'hide'}`}>
+                  {<strong>{JSON.stringify(authToken.error)}</strong>}
+                </div>
 
-            <div className="clearfix">
-              <Field name="email" placeHolder="Email Address" type="text" component={YBInputField} />
-              <Field name="password" placeHolder="Password" type="password" component={YBInputField} />
-            </div>
-            <div className="clearfix">
-              <YBButton btnType="submit" btnDisabled={submitting || getPromiseState(authToken).isLoading()}
-                        btnClass="btn btn-orange" btnText="Login"/>
-            </div>
-          </form>
+                <div className="clearfix">
+                  <Field name="email" placeholder="Email Address" type="text" component={YBFormInput} />
+                  <Field name="password" placeholder="Password" type="password" component={YBFormInput} />
+                </div>
+                <div className="clearfix">
+                  <YBButton btnType="submit" btnDisabled={isSubmitting || getPromiseState(authToken).isLoading()}
+                            btnClass="btn btn-orange" btnText="Login"/>
+                </div>
+              </Form>
+            )}
+          />
         </div>
       </div>
     );

@@ -1,25 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import LoginForm from './LoginForm';
-import {login, loginResponse } from '../../../../actions/customers';
-import { reduxForm } from 'redux-form';
+import { login, loginResponse } from '../../../../actions/customers';
 import { connect } from 'react-redux';
-
-//Client side validation
-function validate(values) {
-  const errors = {};
-  let hasErrors = false;
-  if (!values.email || values.email.trim() === '') {
-    errors.email = 'Enter email';
-    hasErrors = true;
-  }
-  if(!values.password || values.password.trim() === '') {
-    errors.password = 'Enter password';
-    hasErrors = true;
-  }
-  return hasErrors && errors;
-}
-
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -41,11 +24,4 @@ function mapStateToProps(state) {
   };
 }
 
-
-const loginForm = reduxForm({
-  form: 'LoginForm',
-  fields: ['email', 'password'],
-  validate
-});
-
-export default connect(mapStateToProps, mapDispatchToProps)(loginForm(LoginForm));
+export default connect(mapStateToProps, mapDispatchToProps)(LoginForm);
