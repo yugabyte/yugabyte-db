@@ -110,15 +110,21 @@
   }
 
   .form-control {
-    border: 0.5px solid rgba($YB_ORANGE, 0);
+    border: 0.5px solid transparent;
     background-color: $YB_VIOLET_DARK;
+
+    &:hover {
+      background-color: lighten($YB_VIOLET_DARK, 3%);
+    }
     color: #fff;
     box-shadow: none;
     @include transition(0.35s);
 
     &:focus {
-      border: 0.5px solid rgba($YB_ORANGE, .8);
-      box-shadow: none;
+      @include transition(0.35s);
+      border: 0.5px solid rgba($YB_ORANGE, .6);
+      background-color: lighten($YB_VIOLET_DARK, 3%);
+      box-shadow: inset 0 2px 3px black;
     }
   }
 
@@ -283,9 +289,6 @@
       border-color: rgba($YB_ORANGE, .5);
       box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 8px rgba($YB_ORANGE, .2);
     }
-    &:hover {
-      border-color: hsl(0,0%,70%);
-    }
   }
 
   .form-item-label {
@@ -326,7 +329,6 @@
     }
 
     .btn-group-radio {
-      margin-left: 2px;
       width: 100%;
 
       label {
@@ -343,7 +345,13 @@
       }
     }
 
-    input {
+    .btn-group-segmented {
+      label {
+        text-align: center;
+      }
+    }
+
+    .form-control {
       text-align: left;
     }
 
