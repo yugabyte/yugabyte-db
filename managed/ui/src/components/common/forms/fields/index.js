@@ -9,6 +9,8 @@ export { default as YBMultiSelectWithLabel, YBNewMultiSelect, YBMultiSelect } fr
 export { default as YBNumericInputWithLabel, YBNumericInput, YBControlledNumericInputWithLabel, YBControlledNumericInput, YBUnControlledNumericInput } from './YBNumericInput';
 export { default as YBRadioButton } from './YBRadioButton';
 export { default as YBRadioButtonBar, YBRadioButtonBarDefault, YBRadioButtonBarWithLabel, YBRadioButtonBarDefaultWithLabel } from './YBRadioButtonBar';
+export { default as YBFormRadioButton } from './YBFormRadioButton';
+export { default as YBRadioButtonGroup, YBSegmentedButtonGroup } from './YBFormRadioButtonBar';
 export { default as YBSelectWithLabel, YBUnControlledSelect, YBControlledSelect, YBControlledSelectWithLabel, YBSelect } from './YBSelect';
 export { default as YBTextInputWithLabel, YBTextInput, YBInputField, YBControlledTextInput } from './YBTextInput';
 export { default as YBTextArea} from './YBTextArea';
