@@ -1,13 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Fragment, Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { YBSelectWithLabel, YBInputField, YBButton } from '../common/forms/fields';
-import { Field } from 'redux-form';
+import { YBFormInput, YBFormSelect, YBButton } from '../common/forms/fields';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { isNonEmptyObject } from "../../utils/ObjectUtils";
 import Highlight from 'react-highlight';
 import { Link } from 'react-router';
+import { Formik, Field } from 'formik';
+import * as Yup from "yup";
 import './Importer.scss';
 
 const stepsEnum = [
@@ -18,9 +19,9 @@ const stepsEnum = [
 ];
 
 const stepsHeaders = {
-  "BEGIN" : 'Import masters checks',
-  "IMPORTED_MASTERS" : 'Import tservers checks',
-  "IMPORTED_TSERVERS" : 'Final checks'
+  "IMPORTED_MASTERS" : 'Import masters checks',
+  "IMPORTED_TSERVERS" : 'Import tservers checks',
+  "FINISHED" : 'Final checks'
 };
 
 export default class Importer extends Component {
@@ -34,6 +35,36 @@ export default class Importer extends Component {
     };
   }
 
+  resetForm = (isUnmount) => {
+    if(isUnmount) this.props.importUniverseReset();
+    this.setState({
+      currentState: "BEGIN",
+      universeUUID: "",
+      checks: {}
+    }, this.props.importUniverseReset);
+  }
+
+  componentWillUnmount = () => {
+    if (this.state.currentState === "FINISHED") {
+      this.resetForm(true);
+    }
+  }
+
+  componentWillMount = () => {
+    const { universeImport } = this.props;
+    // repopulate form if it was not finished
+    if (isNonEmptyObject(universeImport.data)) {
+
+      this.setState({
+        currentState: universeImport.data.state || this.state.currentState,
+        universeUUID: universeImport.data.universeUUID,
+        universeName: universeImport.data.universeName || this.state.universeName,
+        masterAddresses: universeImport.data.masterAddresses || this.state.masterAddresses,
+        checks: {[universeImport.data.state] : {...universeImport.data.checks}}
+      });
+    }
+  }
+
   componentWillReceiveProps(nextProps) {
     const { universeImport } = nextProps;
 
@@ -41,13 +72,15 @@ export default class Importer extends Component {
       ? getPromiseState(universeImport).isSuccess() ? universeImport.data : universeImport.error
       : {};
     const importChecks = isNonEmptyObject(importChecksSource) && ({
-      [this.state.currentState] : {...importChecksSource.checks}
+      [importChecksSource.state] : {...importChecksSource.checks}
     });
 
     if (getPromiseState(universeImport).isSuccess()) {
       this.setState({
         currentState: universeImport.data.state,
-        universeUUID: universeImport.data.universeUUID,
+        universeUUID: this.state.universeUUID || universeImport.data.universeUUID,
+        universeName: this.state.universeName || universeImport.data.universeName,
+        masterAddresses: this.state.masterAddresses || universeImport.data.masterAddresses,
         checks: {
           ...this.state.checks, 
           ...importChecks
@@ -66,7 +99,7 @@ export default class Importer extends Component {
   submitForm = (formValues) => {
     formValues.currentState = this.state.currentState;
     formValues.universeUUID = this.state.universeUUID;
-    return this.props.importUniverse(formValues);
+    this.props.importUniverse(formValues);
   }
 
   generateCheckList = () => {
@@ -109,7 +142,7 @@ export default class Importer extends Component {
   }
 
   render() {
-    const {handleSubmit, submitting, universeImport} = this.props;
+    const { universeImport} = this.props;
 
     const currentStep = stepsEnum.indexOf(this.state.currentState);
 
@@ -125,10 +158,10 @@ export default class Importer extends Component {
         submitButtonTxt = "Import TServers";
       } else if (this.state.currentState === "IMPORTED_TSERVERS") {
         status = <span className="yb-success-color">Imported YB-TServers successfully</span>;
-        submitButtonTxt = "Finish Import";
+        submitButtonTxt = "Finalize Import";
       } else if (this.state.currentState === "FINISHED") {
         status = <span className="yb-success-color">Successfully imported universe</span>;
-        submitButtonTxt = "Universes list";
+        submitButtonTxt = "Go to universes list";
       }
     } else if (universeImport.error) {
       status = <span className="yb-fail-color">Universe import failed</span>;
@@ -138,45 +171,81 @@ export default class Importer extends Component {
         submitButtonTxt = "Import TServers";
       } else if (this.state.currentState === "IMPORTED_MASTERS") {
         status = <span className="yb-fail-color">Import YB-TServers failed</span>;
-        submitButtonTxt = "Finish Import";
+        submitButtonTxt = "Finalize Import";
       } else if (this.state.currentState === "IMPORTED_TSERVERS") {
         status = <span className="yb-fail-color">Failed to finalize universe</span>;
       }
     }
 
     const universeProviderList = [];
-    universeProviderList.unshift(<option key="other" value="other">Other</option>);
+    universeProviderList.unshift({value: "other", label: "Other"});
+
+    const validationSchema = Yup.object().shape({
+      universeName: Yup.string()
+      .required('Universe name is Required'),
+
+      masterAddresses: Yup.string()
+      .required('Enter the master addresses of the universe'),
+
+    });
+
+    const initialValues = {
+      universeName: this.state.universeName || "",
+      cloudProviderType: universeProviderList[0],
+      masterAddresses: this.state.masterAddresses || "",
+    };
 
     return (
       <div className="bottom-bar-padding import-universe-form">
-        <form name="ImportUniverse" onSubmit={handleSubmit(this.submitForm)}>
-          <Row>
-            <h2 className="content-title">Import Existing Universe</h2>
-            <Col md={8} sm={12}>
-              {this.generateProgressBar()} 
-              <div className={"form-right-aligned-labels "+(currentStep > 0 ? "faded" : "")}>
-                <Field name="universeName" isReadOnly={currentStep > 0} type="text" component={YBInputField} label="Universe Name" placeHolder="Universe Name"/>
-                <Field name="cloudProviderType" type="select" readOnlySelect={currentStep > 0} component={YBSelectWithLabel} label="Cloud Type" options={universeProviderList}/>
-                <Field name="masterAddresses" isReadOnly={currentStep > 0}type="text" component={YBInputField} label="Master Addresses" placeHolder="Master Addresses"/>
-              </div>
-              { this.state.currentState === "FINISHED" ? 
-                
-                <Link to="/universes">
-                  <YBButton btnText={"Step "+(currentStep+1)+": "+submitButtonTxt} disabled={submitting || getPromiseState(universeImport).isLoading() } btnClass="btn btn-orange pull-right"/>
-                </Link> :
-                
-                <YBButton btnText={"Step "+(currentStep+1)+": "+submitButtonTxt} btnType="submit" disabled={submitting || getPromiseState(universeImport).isLoading() } btnClass="btn btn-orange pull-right"/> }
+        <Formik
+          validationSchema={validationSchema}
+          initialValues={initialValues}
+          onSubmit={(values, { setSubmitting }) => {
+            const payload = {
+              ...values,
+              cloudProviderType: values.cloudProviderType.value,
+            };
+            this.submitForm(payload);
+            setSubmitting(false);
+          }}
+          render={({
+            handleSubmit,
+            isSubmitting
+          }) => (
+            <form name="ImportUniverse"
+              onSubmit={handleSubmit}>
+              <Row>
+                <h2 className="content-title">Import Existing Universe</h2>
+                <Col md={8} sm={12}>
+                  {this.generateProgressBar()}
+                  <div className={"form-right-aligned-labels "+(currentStep > 0 ? "faded" : "")}>
+                    <Field name="universeName" readOnly={currentStep > 0} type="text" component={YBFormInput} label="Universe Name" placeholder="Universe Name" />
+                    <Field name="cloudProviderType" type="select" isDisabled={currentStep > 0} component={YBFormSelect} label="Cloud Type" options={universeProviderList} isClearable={false}/>
+                    <Field name="masterAddresses" readOnly={currentStep > 0} type="text" component={YBFormInput} label="Master Addresses" placeholder="Master Addresses" />
+                  </div>
+                  { this.state.currentState === "FINISHED" ? 
+                    
+                    <Link to="/universes">
+                      <YBButton btnText={submitButtonTxt} disabled={isSubmitting || getPromiseState(universeImport).isLoading() } btnClass="btn btn-default pull-right"/>
+                    </Link> :
+                    
+                    <Fragment>
+                      <YBButton btnText={"Step "+(currentStep+1)+": "+submitButtonTxt} btnType="submit" disabled={isSubmitting || getPromiseState(universeImport).isLoading() } btnClass="btn btn-orange pull-right"/>
+                      <YBButton btnText={"Reset form"} onClick={() => this.resetForm(false)} disabled={isSubmitting || getPromiseState(universeImport).isLoading() } btnClass="btn btn-default pull-right"/>
+                    </Fragment> }
 
-              <b className="status">
-                {status}
-              </b>
-              {errorString !=="" && <Highlight className='json'>{errorString}</Highlight>}
-              <div className="checks">
-                {this.generateCheckList()}
-              </div>
-            </Col>
-          </Row>
-        </form>
+                  <b className="status">
+                    {status}
+                  </b>
+                  {errorString !=="" && <Highlight className='json'>{errorString}</Highlight>}
+                  <div className="checks">
+                    {isNonEmptyObject(this.state.checks) && this.generateCheckList()}
+                  </div>
+                </Col>
+              </Row>
+            </form>
+          )}
+        />
       </div>
     );
   }

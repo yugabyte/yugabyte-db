@@ -1,5 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 @import "_style/colors.scss";
+@import "_style/mixins.scss";
 
 .form-action-button-container {
   position: absolute;
@@ -59,15 +60,20 @@
 }
 
 .upload-file-button {
-  border: 1px solid #d3d3d3;
-  height: 40px;
+  height: 42px;
   cursor: pointer;
   text-align: center;
-  padding-top: 10px;
+  padding-top: 11px;
   color: #444;
   background-color: #DDD;
   boxShadow: 0 0 5px -1px rgba(0,0,0,0.2);
-  vertical-align: middle
+  vertical-align: middle;
+  @include transition(0.125s);
+
+  &:hover {
+    background-color: hsl(0,0%,80%);
+    @include transition(0.35s);
+  }
 }
 
 .config-section-header .buttons {

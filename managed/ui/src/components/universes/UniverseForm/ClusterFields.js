@@ -1025,7 +1025,7 @@ export default class ClusterFields extends Component {
                 {universeNameField}
                 {providerNameField}
                 <Field name={`${clusterType}.regionList`} component={YBMultiSelectWithLabel} options={universeRegionList}
-                  label="Regions" multi={true} selectValChanged={this.regionListChanged} providerSelected={currentProviderUUID}/>
+                  label="Regions" isMulti={true} selectValChanged={this.regionListChanged} providerSelected={currentProviderUUID}/>
                 { clusterType === "async"
                   ? [<Field key="numNodes" name={`${clusterType}.numNodes`} type="text" component={YBControlledNumericInputWithLabel}
                       label={this.state.isKubernetesUniverse ? "Pods" : "Nodes"} onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}

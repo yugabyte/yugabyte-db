@@ -286,6 +286,8 @@ public class ImportController extends Controller {
     LOG.info("Done importing masters " + masterAddresses);
     // Update the state to IMPORTED_MASTERS.
     results.put("state", ImportUniverseFormData.State.IMPORTED_MASTERS.toString());
+    results.put("universeName", universeName.toString());
+    results.put("masterAddresses", masterAddresses.toString());
 
     return ApiResponse.success(results);
   }
@@ -424,6 +426,8 @@ public class ImportController extends Controller {
 
     // Update the state to IMPORTED_TSERVERS.
     results.put("state", ImportUniverseFormData.State.IMPORTED_TSERVERS.toString());
+    results.put("masterAddresses", masterAddresses.toString());
+    results.put("universeName", importForm.universeName.toString());
 
     return ApiResponse.success(results);
   }

@@ -105,6 +105,10 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertEquals(json.get("checks").get("check_master_leader_election").asText(), "OK");
     assertNotNull(json.get("state").asText());
     assertEquals(json.get("state").asText(), "IMPORTED_MASTERS");
+    assertNotNull(json.get("universeName").asText());
+    assertEquals(json.get("universeName").asText(), "importUniv");
+    assertNotNull(json.get("masterAddresses").asText());
+    assertEquals(json.get("masterAddresses").asText(), MASTER_ADDRS);
     Universe universe = Universe.get(UUID.fromString(univUUID));
     assertEquals(universe.getUniverseDetails().importedState, ImportedState.MASTERS_ADDED);
     assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
@@ -117,6 +121,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertOk(result);
     json = Json.parse(contentAsString(result));
+    assertNotNull(json.get("state").asText());
     assertEquals(json.get("state").asText(), "IMPORTED_TSERVERS");
     assertNotNull(json.get("universeUUID"));
     assertNotNull(json.get("checks").get("find_tservers_list"));
@@ -125,6 +130,10 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertEquals(json.get("checks").get("check_tservers_are_running").asText(), "OK");
     assertNotNull(json.get("checks").get("check_tserver_heartbeats"));
     assertEquals(json.get("checks").get("check_tserver_heartbeats").asText(), "OK");
+    assertNotNull(json.get("universeName").asText());
+    assertEquals(json.get("universeName").asText(), "importUniv");
+    assertNotNull(json.get("masterAddresses").asText());
+    assertEquals(json.get("masterAddresses").asText(), MASTER_ADDRS);
     assertNotNull(json.get("tservers_list").asText());
     assertValue(json, "tservers_count", "3");
     universe = Universe.get(UUID.fromString(univUUID));

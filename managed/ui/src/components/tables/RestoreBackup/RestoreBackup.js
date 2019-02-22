@@ -25,15 +25,15 @@ export default class RestoreBackup extends Component {
         !isEmptyString(values.storageLocation)) {
       const { restoreToUniverseUUID } = values;
       const payload = {
-        storageConfigUUID: values.storageConfigUUID,
+        storageConfigUUID: values.storageConfigUUID.value,
         storageLocation:  values.storageLocation,
         actionType: 'RESTORE',
         keyspace: values.restoreToKeyspace,
         tableName: values.restoreToTableName
       };
       onHide();
-      restoreTableBackup(restoreToUniverseUUID, payload);
-      browserHistory.push('/universes/' + restoreToUniverseUUID + "?tab=backups");
+      restoreTableBackup(restoreToUniverseUUID.value, payload);
+      browserHistory.push('/universes/' + restoreToUniverseUUID.value + "?tab=backups");
     }
   }
   hasBackupInfo = () => {

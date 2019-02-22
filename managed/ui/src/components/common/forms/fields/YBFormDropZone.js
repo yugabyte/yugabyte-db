@@ -23,7 +23,7 @@ export default class YBFormDropZone extends Component {
     const hasError = error && (_.get(touched, name) || form.submitCount > 0);
     return (
       <Fragment>
-        <div className={`form-group file-upload ${ hasError ? 'has-error' : ''} ${value ? 'has-value' : ''}`}>
+        <div className={`form-group yb-field-group file-upload ${ hasError ? 'has-error' : ''} ${value ? 'has-value' : ''}`}>
           <Dropzone
             className={this.props.className}
             name={name}

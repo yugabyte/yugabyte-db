@@ -59,20 +59,27 @@ export default class CreateBackup extends Component {
     return (
       <div className="universe-apps-modal">
         <YBModalForm title={modalTitle}
-                 visible={visible}
-                 onHide={onHide}
-                 showCancelButton={true}
-                 cancelLabel={"Cancel"}
-                 onFormSubmit={this.createBackup}
-                 initialValues= {this.props.initialValues}
-                 validationSchema={
-                   Yup.object().shape({
-                     backupTableUUID: Yup.string()
-                     .required('Backup Table is Required'),
-                     storageConfigUUID: Yup.string()
-                     .required('Storage Config is Required'),
-                   })
-                 }>
+                visible={visible}
+                onHide={onHide}
+                showCancelButton={true}
+                cancelLabel={"Cancel"}
+                onFormSubmit={(values) => {
+                  const payload = {
+                    ...values,
+                    backupTableUUID: values.backupTableUUID.value,
+                    storageConfigUUID: values.storageConfigUUID.value,
+                  };
+                  this.createBackup(payload);
+                }}
+                initialValues= {this.props.initialValues}
+                validationSchema={
+                  Yup.object().shape({
+                    backupTableUUID: Yup.string()
+                    .required('Backup Table is Required'),
+                    storageConfigUUID: Yup.string()
+                    .required('Storage Config is Required'),
+                  })
+                }>
           <Field name="storageConfigUUID" component={YBFormSelect}
                  label={"Storage"}
                  onInputChanged={this.storageConfigChanged}

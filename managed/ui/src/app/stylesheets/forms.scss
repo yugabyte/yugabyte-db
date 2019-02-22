@@ -203,10 +203,10 @@
   opacity: 0.85;
 }
 .yb-field-group {
-  input {
-    line-height: 42px;
-  }
   .Select {
+    input {
+      line-height: inherit;
+    }
     .Select-control {
       min-height: 42px;
       padding-bottom: 4px;
@@ -220,6 +220,29 @@
       .Select-control {
         cursor: not-allowed;
         background-color: #eeeeee;
+      }
+    }
+  }
+  .Select {
+    & > .Select-control {
+      .Select-value {
+        line-height: 40px;
+        font-size: 14px;
+      }
+      .Select-clear {
+        font-size: 20px;
+        color: #ffffff;
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background-color: $YB_ORANGE;
+        margin-top: 6px;
+        margin-right: 3px;
+      }
+      .Select-arrow {
+        position: relative;
+        top: 3px;
       }
     }
   }
@@ -249,6 +272,7 @@
     height: 42px;
     padding: 0 12px;
     border-color: $YB_GRAY;
+
     &select:after {
       content: '';
       width: 2px;
@@ -258,6 +282,9 @@
     &:focus {
       border-color: rgba($YB_ORANGE, .5);
       box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 8px rgba($YB_ORANGE, .2);
+    }
+    &:hover {
+      border-color: hsl(0,0%,70%);
     }
   }
 
