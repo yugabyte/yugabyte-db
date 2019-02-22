@@ -94,7 +94,9 @@ export const GET_HEALTH_CHECK = 'GET_HEALTH_CHECK';
 export const GET_HEALTH_CHECK_RESPONSE = 'GET_HEALTH_CHECK_RESPONSE';
 
 export const IMPORT_UNIVERSE = 'IMPORT_UNIVERSE';
+export const IMPORT_UNIVERSE_INIT = 'IMPORT_UNIVERSE_INIT';
 export const IMPORT_UNIVERSE_RESPONSE = 'IMPORT_UNIVERSE_RESPONSE';
+export const IMPORT_UNIVERSE_RESET = 'IMPORT_UNIVERSE_RESET';
 
 
 export function createUniverse(formValues) {
@@ -486,6 +488,12 @@ export function getHealthCheckResponse(response) {
   };
 }
 
+export function importUniverseInit() {
+  return {
+    type: IMPORT_UNIVERSE_INIT,
+  };
+}
+
 export function importUniverse(values) {
   const customerUUID = localStorage.getItem("customer_id");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes/import`, values);
@@ -499,5 +507,11 @@ export function importUniverseResponse(response) {
   return {
     type: IMPORT_UNIVERSE_RESPONSE,
     payload: response
+  };
+}
+
+export function importUniverseReset() {
+  return {
+    type: IMPORT_UNIVERSE_RESET
   };
 }

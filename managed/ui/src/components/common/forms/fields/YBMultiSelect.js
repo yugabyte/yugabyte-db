@@ -3,7 +3,6 @@
 import React, { Component } from 'react';
 import { isFunction } from 'lodash';
 import Select from 'react-select';
-import 'react-select/dist/react-select.css';
 
 import { YBLabel } from 'components/common/descriptors';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
@@ -15,7 +14,7 @@ export class YBNewMultiSelect extends Component {
     let newSelection = null;
 
     // If AZ is changed from multi to single, take only last selection.
-    if (this.props.multi !== props.multi && props.multi === false) {
+    if (this.props.isMulti !== props.isMulti && props.isMulti === false) {
       const currentSelection = this.props.input.value;
       if (isNonEmptyArray(currentSelection)) {
         newSelection = currentSelection.splice(-1, 1);
@@ -32,11 +31,11 @@ export class YBNewMultiSelect extends Component {
   }
 
   render() {
-    const { input, options, multi, isReadOnly, selectValChanged } = this.props;
+    const { input, options, isMulti, isReadOnly, selectValChanged } = this.props;
     const self = this;
 
     function onChange(val) {
-      val = multi ? val: val.slice(-1);
+      val = isMulti ? val: val.slice(-1);
       if (isFunction(self.props.input.onChange)) {
         self.props.input.onChange(val);
       }
@@ -45,8 +44,55 @@ export class YBNewMultiSelect extends Component {
       }
     }
 
+    const customStyles = {
+      option: (provided, state) => ({
+        ...provided,
+        padding: 10,
+      }),
+      control: (provided) => ({
+        // none of react-select's styles are passed to <Control />
+
+        ...provided,
+        width: "auto",
+        borderColor: "#dedee0",
+        borderRadius: 7,
+        boxShadow: "inset 0 1px 1px rgba(0, 0, 0, .075)",
+        fontSize: "14px",
+        height: 42
+      }),
+      placeholder: (provided) => ({
+        ...provided,
+        color: "#999999"
+      }),
+      container: (provided) => ({
+        ...provided,
+        zIndex: 2
+      }),
+      dropdownIndicator: (provided) => ({
+        ...provided,
+        cursor: "pointer"
+      }),
+      clearIndicator: (provided) => ({
+        ...provided,
+        cursor: "pointer",
+      }),
+      singleValue: (provided, state) => {
+        const opacity = state.isDisabled ? 0.5 : 1;
+        const transition = 'opacity 300ms';
+    
+        return { ...provided, opacity, transition };
+      }
+    };
+
     return (
-      <Select {...input} options={options} disabled={isReadOnly} multi={true} onBlur={() => {}} onChange={onChange} />
+      <Select 
+        className="Select"
+        styles={customStyles} 
+        {...input} 
+        options={options} 
+        disabled={isReadOnly} 
+        isMulti={true} 
+        onBlur={() => {}} onChange={onChange} />
     );
   }
 }
