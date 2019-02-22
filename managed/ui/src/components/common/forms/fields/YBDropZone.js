@@ -13,7 +13,7 @@ export default class YBDropZone extends Component {
     const { input, title, meta: { touched, error } } = this.props;
     return (
       <Fragment>
-        <div className={`form-group file-upload ${ touched && error ? 'has-error' : ''} ${input.value ? 'has-value' : ''}`}>
+        <div className={`form-group yb-field-group file-upload ${ touched && error ? 'has-error' : ''} ${input.value ? 'has-value' : ''}`}>
           <Dropzone
             className={this.props.className}
             name={this.props.name}
