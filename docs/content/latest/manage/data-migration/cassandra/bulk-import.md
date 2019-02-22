@@ -94,7 +94,7 @@ cqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
 You can do this as shown below.
 
 ```sh
-$ wget https://github.com/YugaByte/cassandra-loader/releases/download/v0.0.27-yb-1/cassandra-loader
+$ wget https://github.com/YugaByte/cassandra-loader/releases/download/v0.0.27-yb-2/cassandra-loader
 ```
 
 ```sh

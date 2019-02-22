@@ -78,7 +78,7 @@ python ./gen_csv.py file04.csv 5120 &
 You can do this as shown below.
 
 ```sh
-$ wget https://github.com/YugaByte/cassandra-loader/releases/download/v0.0.27-yb-1/cassandra-loader
+$ wget https://github.com/YugaByte/cassandra-loader/releases/download/v0.0.27-yb-2/cassandra-loader
 ```
 
 ```sh
