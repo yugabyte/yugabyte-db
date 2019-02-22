@@ -4,12 +4,11 @@ description: Prepared Statements.
 summary: Prepare and execute statements.
 menu:
   latest:
-    identifier: api-postgresql-prepare
-    parent: api-postgresql
+    identifier: api-ysql-commands-prepare
+    parent: api-ysql-commands
     weight: 3600
 aliases:
-  - /latest/api/postgresql/prepare
-  - /latest/api/ysql/prepare
+  - /latest/api/ysql/commands/prepare
 isTocNested: true
 showAsideToc: true
 ---

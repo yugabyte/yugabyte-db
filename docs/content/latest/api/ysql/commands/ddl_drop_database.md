@@ -4,17 +4,16 @@ summary: Removes a database and all of its database objects
 description: DROP DATABASE
 menu:
   latest:
-    identifier: api-postgresql-drop-db
-    parent: api-postgresql-ddl
+    identifier: api-ysql-commands-drop-db
+    parent: api-ysql-commands
 aliases:
-  - /latest/api/postgresql/ddl_drop_database
-  - /latest/api/ysql/ddl_drop_database
+  - /latest/api/ysql/commands/ddl_drop_database
 isTocNested: true
 showAsideToc: true
 ---
 
 ## Synopsis
-The `DROP DATABASE` statement removes a database and all its database objects (such as [tables](../ddl_create_table) or [types](../ddl_create_type)) from the system.
+The `DROP DATABASE` statement removes a database and all its database objects (such as [tables](ddl_create_table) or [types](ddl_create_type)) from the system.
 
 ## Syntax
 
@@ -37,5 +36,5 @@ Where
 - Currently, an error is raised if the specified database is non-empty (contains tables or types). This restriction will be removed.
 
 ## See Also
-[`CREATE DATABASE`](../ddl_create_database)
+[`CREATE DATABASE`](ddl_create_database)
 [Other PostgreSQL Statements](..)

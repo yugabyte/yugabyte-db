@@ -1,15 +1,14 @@
 ---
-title: Roles and Permissions
-description: Roles and Permissions
-summary: Roles and Permissions
+title: Roles
+description: Users and roles
+summary: Users and roles
 menu:
   latest:
-    identifier: api-postgresql-permissions
-    parent: api-postgresql
+    identifier: api-ysql-commands-create-users
+    parent: api-ysql-commands
     weight: 3500
 aliases:
-  - /latest/api/postgresql/permissions
-  - /latest/api/ysql/permissions
+  - /latest/api/ysql/commands/permissions
 isTocNested: true
 showAsideToc: true
 ---

@@ -4,11 +4,10 @@ summary: Signed integers of different ranges
 description: Integer Types
 menu:
   latest:
-    identifier: api-postgresql-int
-    parent: api-postgresql-type
+    identifier: api-ysql-datatypes-int
+    parent: api-ysql-datatypes
 aliases:
-  - /latest/api/postgresql/type/int
-  - /latest/api/ysql/type/int
+  - /latest/api/ysql/datatypes/int
 isTocNested: true
 showAsideToc: true
 ---

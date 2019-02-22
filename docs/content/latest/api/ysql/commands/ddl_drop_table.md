@@ -4,11 +4,10 @@ summary: Remove a table
 description: DROP TABLE
 menu:
   latest:
-    identifier: api-postgresql-drop-table
-    parent: api-postgresql-ddl
+    identifier: api-ysql-commands-drop-table
+    parent: api-ysql-commands
 aliases:
-  - /latest/api/postgresql/ddl_drop_table
-  - /latest/api/ysql/ddl_drop_table
+  - /latest/api/ysql/commands/ddl_drop_table
 isTocNested: true
 showAsideToc: true
 ---

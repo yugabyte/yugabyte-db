@@ -4,11 +4,10 @@ summary: Create a new view in a database
 description: CREATE VIEW
 menu:
   latest:
-    identifier: api-postgresql-create-view
-    parent: api-postgresql-ddl
+    identifier: api-ysql-commands-create-view
+    parent: api-ysql-commands
 aliases:
-  - /latest/api/postgresql/ddl_create_view
-  - /latest/api/ysql/ddl_create_view
+  - /latest/api/ysql/commands/ddl_create_view
 isTocNested: true
 showAsideToc: true
 ---

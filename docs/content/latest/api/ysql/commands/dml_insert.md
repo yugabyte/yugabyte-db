@@ -4,11 +4,10 @@ summary: Add a new row to a table
 description: INSERT
 menu:
   latest:
-    identifier: api-postgresql-insert
-    parent: api-postgresql-dml
+    identifier: api-ysql-commands-insert
+    parent: api-ysql-commands
 aliases:
-  - /latest/api/postgresql/dml/insert
-  - /latest/api/ysql/dml/insert
+  - /latest/api/ysql/dml/commands/insert
 isTocNested: true
 showAsideToc: true
 ---

@@ -4,12 +4,11 @@ description: Transactions
 summary: Overview of transaction-related commands.
 menu:
   latest:
-    identifier: api-postgresql-transactions
-    parent: api-postgresql
+    identifier: api-ysql-commands-transactions
+    parent: api-ysql-commands
     weight: 3400
 aliases:
-  - /latest/api/postgresql/transactions
-  - /latest/api/ysql/transactions
+  - /latest/api/ysql/commands/transactions
 isTocNested: true
 showAsideToc: true
 ---

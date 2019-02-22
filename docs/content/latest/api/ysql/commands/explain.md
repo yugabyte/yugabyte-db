@@ -4,12 +4,11 @@ description: Explain Statement
 summary: EXPLAIN
 menu:
   latest:
-    identifier: api-postgresql-explain
-    parent: api-postgresql
+    identifier: api-ysql-commands-explain
+    parent: api-ysql-commands
     weight: 3700
 aliases:
-  - /latest/api/postgresql/explain
-  - /latest/api/ysql/explain
+  - /latest/api/ysql/commands/explain
 isTocNested: true
 showAsideToc: true
 ---

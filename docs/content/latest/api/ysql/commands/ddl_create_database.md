@@ -4,11 +4,10 @@ summary: Create a new database
 description: CREATE DATABASE
 menu:
   latest:
-    identifier: api-postgresql-create-db
-    parent: api-postgresql-ddl
+    identifier: api-ysql-commands-create-db
+    parent: api-ysql-commands
 aliases:
-  - /latest/api/postgresql/ddl_create_database
-  - /latest/api/ysql/ddl_create_database
+  - /latest/api/ysql/commands/ddl_create_database
 isTocNested: true
 showAsideToc: true
 ---

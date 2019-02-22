@@ -1,14 +1,14 @@
 ---
 title: CREATE TABLE
+linkTitle: CREATE TABLE
 summary: Create a new table in a database
 description: CREATE TABLE
 menu:
   latest:
-    identifier: api-postgresql-create-table
-    parent: api-postgresql-ddl
+    identifier: api-ysql-commands-create-table
+    parent: api-ysql-commands
 aliases:
-  - /latest/api/postgresql/ddl_create_table
-  - /latest/api/ysql/ddl_create_table
+  - /latest/api/ysql/commands/ddl_create_table
 isTocNested: true
 showAsideToc: true
 ---

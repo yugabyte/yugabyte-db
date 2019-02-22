@@ -4,11 +4,10 @@ summary: String of Unicode characters
 description: Character Types
 menu:
   latest:
-    identifier: api-postgresql-text
-    parent: api-postgresql-type
+    identifier: api-ysql-datatypes-text
+    parent: api-ysql-datatypes
 aliases:
-  - /latest/api/postgresql/type/text
-  - /latest/api/ysql/type/text
+  - /latest/api/ysql/datatypes/text
 isTocNested: true
 showAsideToc: true
 ---

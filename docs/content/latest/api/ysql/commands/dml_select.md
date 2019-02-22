@@ -4,11 +4,10 @@ summary: Retrieves rows from a table
 description: SELECT
 menu:
   latest:
-    identifier: api-postgresql-select
-    parent: api-postgresql-dml
+    identifier: api-ysql-commands-select
+    parent: api-ysql-commands
 aliases:
-  - /latest/api/postgresql/dml/select
-  - /latest/api/ysql/dml/select
+  - /latest/api/ysql/commands/select
 isTocNested: true
 showAsideToc: true
 ---

@@ -4,11 +4,10 @@ summary: FLOAT, DOUBLE, and DECIMAL
 description: Floating-Point Types
 menu:
   latest:
-    identifier: api-postgresql-number
-    parent: api-postgresql-type
+    identifier: api-ysql-datatypes-number
+    parent: api-ysql-datatypes
 aliases:
-  - /latest/api/postgresql/type/number
-  - /latest/api/ysql/type/number
+  - /latest/api/ysql/datatypes/number
 isTocNested: true
 showAsideToc: true
 ---
