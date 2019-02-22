@@ -381,10 +381,11 @@ void LeaderElection::HandleVoteDeniedUnlocked(const string& voter_uuid, const Vo
 }
 
 std::string LeaderElection::LogPrefix() const {
-  return Substitute("T $0 P $1 [CANDIDATE]: Term $2 election: ",
+  return Substitute("T $0 P $1 [CANDIDATE]: Term $2 $3election: ",
                     request_.tablet_id(),
                     request_.candidate_uuid(),
-                    request_.candidate_term());
+                    request_.candidate_term(),
+                    (result_.preelection ? "pre-" : ""));
 }
 
 } // namespace consensus
