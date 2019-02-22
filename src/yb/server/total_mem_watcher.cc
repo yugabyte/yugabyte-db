@@ -31,7 +31,15 @@
 
 using namespace std::literals;
 
-DEFINE_int32(memory_limit_termination_threshold_pct, 200,
+#if defined(THREAD_SANITIZER)
+const int kDefaultMemoryLimitTerminationPercent = 500;
+#elif defined(ADDRESS_SANITIZER)
+const int kDefaultMemoryLimitTerminationPercent = 300;
+#else
+const int kDefaultMemoryLimitTerminationPercent = 200;
+#endif
+
+DEFINE_int32(memory_limit_termination_threshold_pct, kDefaultMemoryLimitTerminationPercent,
              "If the RSS (resident set size) of the program reaches this percentage of the "
              "root memory tracker limit, the program will exit. RSS is measured using operating "
              "system means, not the memory allocator. Set to 0 to disable this behavior.");
