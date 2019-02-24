@@ -39,9 +39,16 @@
 
 #ifdef __linux__
 #include <link.h>
-#include <backtrace.h>
 #include <cxxabi.h>
-#endif  // __linux__
+#endif // __linux__
+
+#if defined(__linux__) && !defined(NDEBUG)
+#define USE_LIBBACKTRACE 1
+#endif
+
+#if USE_LIBBACKTRACE
+#include <backtrace.h>
+#endif // USE_LIBBACKTRACE
 
 #include <string>
 #include <iostream>
@@ -229,7 +236,7 @@ bool InitSignalHandlerUnlocked(int signum) {
 const char kStackTraceEntryFormat[] = "    @ %*p  %s";
 const char kUnknownSymbol[] = "(unknown)";
 
-#ifdef __linux__
+#if USE_LIBBACKTRACE
 
 // Remove path prefixes up to what looks like the root of the YB source tree, or the source tree
 // of other recognizable codebases.
@@ -298,7 +305,7 @@ class GlobalBacktraceState {
   GlobalBacktraceState() {
     bt_state_ = backtrace_create_state(
         /* filename */ nullptr,
-        /* threaded = */ 1,
+        /* threaded = */ 0,
         BacktraceErrorCallback,
         /* data */ nullptr);
 
@@ -309,6 +316,9 @@ class GlobalBacktraceState {
   }
 
   backtrace_state* GetState() { return bt_state_; }
+
+  std::mutex* mutex() { return &mutex_; }
+
  private:
   static int DummyCallback(void *const data, const uintptr_t pc,
                     const char* const filename, const int lineno,
@@ -317,6 +327,7 @@ class GlobalBacktraceState {
   }
 
   struct backtrace_state* bt_state_;
+  std::mutex mutex_;
 };
 
 int BacktraceFullCallback(void *const data, const uintptr_t pc,
@@ -427,7 +438,7 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
   return 0;
 }
 
-#endif  // __linux__
+#endif  // USE_LIBBACKTRACE
 
 }  // anonymous namespace
 
@@ -525,13 +536,20 @@ Status ListThreads(vector<pid_t> *tids) {
 std::string GetStackTrace(StackTraceLineFormat stack_trace_line_format,
                           int num_top_frames_to_skip) {
   std::string buf;
-#ifdef __linux__
+#if USE_LIBBACKTRACE
   SymbolizationContext context;
   context.buf = &buf;
   context.stack_trace_line_format = stack_trace_line_format;
+
   // Use libbacktrace on Linux because that gives us file names and line numbers.
-  struct backtrace_state* const backtrace_state =
-      Singleton<GlobalBacktraceState>::get()->GetState();
+  auto* global_backtrace_state = Singleton<GlobalBacktraceState>::get();
+  struct backtrace_state* const backtrace_state = global_backtrace_state->GetState();
+
+  // Avoid multi-threaded access to libbacktrace which causes high memory consumption.
+  std::lock_guard<std::mutex> l(*global_backtrace_state->mutex());
+
+  // TODO: https://yugabyte.atlassian.net/browse/ENG-4729
+
   const int backtrace_full_rv = backtrace_full(
       backtrace_state, /* skip = */ num_top_frames_to_skip + 1, BacktraceFullCallback,
       BacktraceErrorCallback, &context);
@@ -600,8 +618,8 @@ void SymbolizeAddress(
     const StackTraceLineFormat stack_trace_line_format,
     void* pc,
     string* buf
-#ifdef __linux__
-    , struct backtrace_state* backtrace_state = nullptr
+#if USE_LIBBACKTRACE
+    , GlobalBacktraceState* global_backtrace_state = nullptr
 #endif
     ) {
   // The return address 'pc' on the stack is the address of the instruction
@@ -630,10 +648,15 @@ void SymbolizeAddress(
   // This also ensures that we point at the correct line number when using addr2line
   // on logged stacks.
   pc = reinterpret_cast<void*>(reinterpret_cast<size_t>(pc) - 1);
-#ifdef __linux__
-  if (!backtrace_state) {
-    backtrace_state = Singleton<GlobalBacktraceState>::get()->GetState();
+#if USE_LIBBACKTRACE
+  if (!global_backtrace_state) {
+    global_backtrace_state = Singleton<GlobalBacktraceState>::get();
   }
+  struct backtrace_state* const backtrace_state = global_backtrace_state->GetState();
+
+  // Avoid multi-threaded access to libbacktrace which causes high memory consumption.
+  std::lock_guard<std::mutex> l(*global_backtrace_state->mutex());
+
   SymbolizationContext context;
   context.stack_trace_line_format = stack_trace_line_format;
   context.buf = buf;
@@ -656,18 +679,17 @@ void SymbolizeAddress(
 // Symbolization function borrowed from glog and modified to use libbacktrace on Linux.
 string StackTrace::Symbolize(const StackTraceLineFormat stack_trace_line_format) const {
   string buf;
-#ifdef __linux__
+#if USE_LIBBACKTRACE
   // Use libbacktrace for symbolization.
-  struct backtrace_state* const backtrace_state =
-      Singleton<GlobalBacktraceState>::get()->GetState();
+  auto* global_backtrace_state = Singleton<GlobalBacktraceState>::get();
 #endif
 
   for (int i = 0; i < num_frames_; i++) {
     void* const pc = frames_[i];
 
     SymbolizeAddress(stack_trace_line_format, pc, &buf
-#ifdef __linux__
-        , backtrace_state
+#if USE_LIBBACKTRACE
+        , global_backtrace_state
 #endif
         );
   }
