@@ -44,6 +44,7 @@ class V26__Universe_Details_EBS_Type_UUID_Update extends JdbcMigration {
               newStorageValue = Json.toJson("Scratch")
             case "aws" =>
               newStorageValue = Json.toJson("GP2")
+            case _ =>
           }
         }
         json.as[JsObject] - "deviceInfo" + ("deviceInfo" -> (deviceInfo.as[JsObject] - "ebsType" + ("storageType" -> newStorageValue)))
