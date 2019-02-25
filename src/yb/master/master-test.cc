@@ -84,28 +84,32 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
     EXPECTED_SYSTEM_NAMESPACES \
     /**/
 
-#define TABLE_ENTRY(namespace, table) \
+#define TABLE_ENTRY(namespace, table, relation_type) \
     std::make_tuple(k##namespace##table##TableName, \
-        k##namespace##NamespaceName, k##namespace##NamespaceId)
+        k##namespace##NamespaceName, k##namespace##NamespaceId, relation_type)
+
+#define SYSTEM_TABLE_ENTRY(namespace, table) \
+    TABLE_ENTRY(namespace, table, SYSTEM_TABLE_RELATION)
 
 #define EXPECTED_SYSTEM_TABLES \
-    TABLE_ENTRY(System, Peers), \
-    TABLE_ENTRY(System, Local), \
-    TABLE_ENTRY(System, Partitions), \
-    TABLE_ENTRY(System, SizeEstimates), \
-    std::make_tuple(kSysCatalogTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId), \
-    TABLE_ENTRY(SystemSchema, Aggregates), \
-    TABLE_ENTRY(SystemSchema, Columns), \
-    TABLE_ENTRY(SystemSchema, Functions), \
-    TABLE_ENTRY(SystemSchema, Indexes), \
-    TABLE_ENTRY(SystemSchema, Triggers), \
-    TABLE_ENTRY(SystemSchema, Types), \
-    TABLE_ENTRY(SystemSchema, Views), \
-    TABLE_ENTRY(SystemSchema, Keyspaces), \
-    TABLE_ENTRY(SystemSchema, Tables), \
-    TABLE_ENTRY(SystemAuth, Roles), \
-    TABLE_ENTRY(SystemAuth, RolePermissions), \
-    TABLE_ENTRY(SystemAuth, ResourceRolePermissionsIndex)
+    SYSTEM_TABLE_ENTRY(System, Peers), \
+    SYSTEM_TABLE_ENTRY(System, Local), \
+    SYSTEM_TABLE_ENTRY(System, Partitions), \
+    SYSTEM_TABLE_ENTRY(System, SizeEstimates), \
+    std::make_tuple(kSysCatalogTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, \
+        SYSTEM_TABLE_RELATION), \
+    SYSTEM_TABLE_ENTRY(SystemSchema, Aggregates), \
+    SYSTEM_TABLE_ENTRY(SystemSchema, Columns), \
+    SYSTEM_TABLE_ENTRY(SystemSchema, Functions), \
+    SYSTEM_TABLE_ENTRY(SystemSchema, Indexes), \
+    SYSTEM_TABLE_ENTRY(SystemSchema, Triggers), \
+    SYSTEM_TABLE_ENTRY(SystemSchema, Types), \
+    SYSTEM_TABLE_ENTRY(SystemSchema, Views), \
+    SYSTEM_TABLE_ENTRY(SystemSchema, Keyspaces), \
+    SYSTEM_TABLE_ENTRY(SystemSchema, Tables), \
+    SYSTEM_TABLE_ENTRY(SystemAuth, Roles), \
+    SYSTEM_TABLE_ENTRY(SystemAuth, RolePermissions), \
+    SYSTEM_TABLE_ENTRY(SystemAuth, ResourceRolePermissionsIndex)
     /**/
 
 namespace yb {
@@ -209,12 +213,14 @@ class MasterTest : public YBTest {
     ASSERT_EQ(namespaces.namespaces_size(), namespace_info.size());
   }
 
-  void CheckTables(const std::set<std::tuple<TableName, NamespaceName, NamespaceId>>& table_info,
-                   const ListTablesResponsePB& tables) {
+  void CheckTables(
+      const std::set<std::tuple<TableName, NamespaceName, NamespaceId, bool>>& table_info,
+      const ListTablesResponsePB& tables) {
     for (int i = 0; i < tables.tables_size(); i++) {
       auto search_key = std::make_tuple(tables.tables(i).name(),
                                         tables.tables(i).namespace_().name(),
-                                        tables.tables(i).namespace_().id());
+                                        tables.tables(i).namespace_().id(),
+                                        tables.tables(i).relation_type());
       ASSERT_TRUE(table_info.find(search_key) != table_info.end())
           << strings::Substitute("Couldn't find table $0.$1",
               tables.tables(i).namespace_().name(), tables.tables(i).name());
@@ -520,7 +526,8 @@ TEST_F(MasterTest, TestCatalog) {
   ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
+          std::make_tuple(kTableName, default_namespace_name, default_namespace_id,
+              USER_TABLE_RELATION),
           EXPECTED_SYSTEM_TABLES
       }, tables);
 
@@ -568,7 +575,8 @@ TEST_F(MasterTest, TestCatalog) {
   ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
+          std::make_tuple(kTableName, default_namespace_name, default_namespace_id,
+              USER_TABLE_RELATION),
           EXPECTED_SYSTEM_TABLES
       }, tables);
 
@@ -618,6 +626,35 @@ TEST_F(MasterTest, TestCatalog) {
     DoListTables(req, &tables);
     ASSERT_EQ(1, tables.tables_size());
     ASSERT_EQ(kSystemPeersTableName, tables.tables(0).name());
+  }
+
+  {
+    ListTablesRequestPB req;
+    req.add_relation_type_filter(USER_TABLE_RELATION);
+    DoListTables(req, &tables);
+    ASSERT_EQ(2, tables.tables_size());
+  }
+
+  {
+    ListTablesRequestPB req;
+    req.add_relation_type_filter(INDEX_TABLE_RELATION);
+    DoListTables(req, &tables);
+    ASSERT_EQ(0, tables.tables_size());
+  }
+
+  {
+    ListTablesRequestPB req;
+    req.add_relation_type_filter(SYSTEM_TABLE_RELATION);
+    DoListTables(req, &tables);
+    ASSERT_EQ(kNumSystemTables, tables.tables_size());
+  }
+
+  {
+    ListTablesRequestPB req;
+    req.add_relation_type_filter(SYSTEM_TABLE_RELATION);
+    req.add_relation_type_filter(USER_TABLE_RELATION);
+    DoListTables(req, &tables);
+    ASSERT_EQ(kNumSystemTables + 2, tables.tables_size());
   }
 }
 
@@ -998,7 +1035,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
   ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, other_ns_name, other_ns_id),
+          std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION),
           EXPECTED_SYSTEM_TABLES
       }, tables);
 
@@ -1092,7 +1129,8 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
+          std::make_tuple(kTableName, default_namespace_name, default_namespace_id,
+              USER_TABLE_RELATION),
           EXPECTED_SYSTEM_TABLES
       }, tables);
 
@@ -1114,7 +1152,8 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
+          std::make_tuple(kTableName, default_namespace_name, default_namespace_id,
+              USER_TABLE_RELATION),
           EXPECTED_SYSTEM_TABLES
       }, tables);
 
@@ -1171,7 +1210,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, other_ns_name, other_ns_id),
+          std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION),
           EXPECTED_SYSTEM_TABLES
       }, tables);
 
@@ -1193,7 +1232,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, other_ns_name, other_ns_id),
+          std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION),
           EXPECTED_SYSTEM_TABLES
       }, tables);
 
@@ -1215,7 +1254,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, other_ns_name, other_ns_id),
+          std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION),
           EXPECTED_SYSTEM_TABLES
       }, tables);
 
@@ -1234,7 +1273,8 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
+          std::make_tuple(kTableName, default_namespace_name, default_namespace_id,
+              USER_TABLE_RELATION),
           EXPECTED_SYSTEM_TABLES
       }, tables);
 
@@ -1280,7 +1320,8 @@ TEST_F(MasterTest, TestFullTableName) {
   ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
+          std::make_tuple(kTableName, default_namespace_name, default_namespace_id,
+              USER_TABLE_RELATION),
           EXPECTED_SYSTEM_TABLES
       }, tables);
 
@@ -1311,8 +1352,9 @@ TEST_F(MasterTest, TestFullTableName) {
   ASSERT_EQ(2 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
-          std::make_tuple(kTableName, other_ns_name, other_ns_id),
+          std::make_tuple(kTableName, default_namespace_name, default_namespace_id,
+              USER_TABLE_RELATION),
+          std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION),
           EXPECTED_SYSTEM_TABLES
       }, tables);
 
@@ -1322,14 +1364,15 @@ TEST_F(MasterTest, TestFullTableName) {
   ASSERT_EQ(1, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
+          std::make_tuple(kTableName, default_namespace_name, default_namespace_id,
+              USER_TABLE_RELATION),
       }, tables);
 
   ASSERT_NO_FATALS(DoListAllTables(&tables, other_ns_name));
   ASSERT_EQ(1, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, other_ns_name, other_ns_id)
+          std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION)
       }, tables);
 
   // Try to alter table: change namespace name into the default one.
@@ -1354,8 +1397,9 @@ TEST_F(MasterTest, TestFullTableName) {
   ASSERT_EQ(2 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, other_ns_name, other_ns_id),
-          std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
+          std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION),
+          std::make_tuple(kTableName, default_namespace_name, default_namespace_id,
+              USER_TABLE_RELATION),
           EXPECTED_SYSTEM_TABLES
       }, tables);
 
@@ -1366,7 +1410,8 @@ TEST_F(MasterTest, TestFullTableName) {
   ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, default_namespace_name, default_namespace_id),
+          std::make_tuple(kTableName, default_namespace_name, default_namespace_id,
+              USER_TABLE_RELATION),
           EXPECTED_SYSTEM_TABLES
       }, tables);
 
@@ -1445,7 +1490,7 @@ TEST_F(MasterTest, TestGetTableSchema) {
   ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
   CheckTables(
       {
-          std::make_tuple(kTableName, other_ns_name, other_ns_id),
+          std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION),
           EXPECTED_SYSTEM_TABLES
       }, tables);
 

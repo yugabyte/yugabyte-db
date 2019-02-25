@@ -729,6 +729,12 @@ message IsDeleteTableDoneResponsePB {
   optional bool done = 2;
 }
 
+enum RelationType {
+  SYSTEM_TABLE_RELATION = 1;
+  USER_TABLE_RELATION = 2;
+  INDEX_TABLE_RELATION = 3;
+}
+
 message ListTablesRequestPB {
   // When used, only returns tables that satisfy a substring match on name_filter.
   optional string name_filter = 1;
@@ -738,6 +744,9 @@ message ListTablesRequestPB {
 
   // Exclude system tables.
   optional bool exclude_system_tables = 3 [default = false];
+
+  // Can be used to filter tables based on RelationType
+  repeated RelationType relation_type_filter = 4;
 }
 
 message ListTablesResponsePB {
@@ -749,6 +758,7 @@ message ListTablesResponsePB {
     required string name = 2;
     optional TableType table_type = 3;
     optional NamespaceIdentifierPB namespace = 4;
+    optional RelationType relation_type = 5 [default = USER_TABLE_RELATION];
   }
 
   repeated TableInfo tables = 2;
