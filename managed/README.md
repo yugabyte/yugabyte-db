@@ -194,11 +194,13 @@ Go to localhost:3000 and login with admin/admin
   # Create the sbt plugins directory for your local machine.
   $ mkdir ~/.sbt/0.13/plugins/
 
-  # Create a file ~/.sbt/0.13/plugins/build.sbt with the contents shown below.
-  $ cat > ~/.sbt/0.13/plugins/build.sbt
+  # Create a file ~/.sbt/0.13/plugins/plugins.sbt with the contents shown below.
+  $ cat > ~/.sbt/0.13/plugins/plugins.sbt
   resolvers += Classpaths.typesafeResolver
   addSbtPlugin("com.typesafe.sbteclipse" % "sbteclipse-plugin" % "4.0.0")
 ```
+You may need to remove the line ```resolvers += Classpaths.typesafeResolver``` if it gives you an
+error.
 
 * Install the plugin
 ```
@@ -279,7 +281,44 @@ OR better to enable all lines in the file:
  ```
     echo SBT_OPTS="-XX:MaxPermSize=4G -Xmx4096M" > ~/.sbt_config
  ```
+#### Incompatibility between sbt 1.2 and Java 10/11 on MacOS
+ If you have sbt version 1.2 and Java version higher than 8, then you may run into
+ NullPointerException on MacOS for aby sbt command (sbt run or sbt -version).
+ ```
+ java.lang.NullPointerException
+        at java.base/java.util.regex.Matcher.getTextLength(Matcher.java:1770)
+        at java.base/java.util.regex.Matcher.reset(Matcher.java:416)
+        at java.base/java.util.regex.Matcher.<init>(Matcher.java:253)
+        at java.base/java.util.regex.Pattern.matcher(Pattern.java:1133)
+        at java.base/java.util.regex.Pattern.split(Pattern.java:1261)
+        at java.base/java.util.regex.Pattern.split(Pattern.java:1334)
+        at sbt.IO$.pathSplit(IO.scala:797)
+        at sbt.IO$.parseClasspath(IO.scala:912)
+        at sbt.compiler.CompilerArguments.extClasspath(CompilerArguments.scala:66)
+ ```
 
+ To fix this, uninstall existing Java using
+ ```
+    brew cask uninstall java
+ ```
+ and then download and install Java8 from https://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html
+
+#### npm install fails
+If ```npm install``` fails with this error:
+```
+xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance
+```
+Install Xcode from https://developer.apple.com/xcode/ if you don't have it yet.
+Point xcode-select to the Xcode Developer directory using the following command:
+```
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+```
+
+#### node-sass module not found while starting UI
+Install node-sass using the command below and try again:
+```
+sudo npm install --save-dev  --unsafe-perm node-sass
+```
 
 See the docs for additional info:
 

@@ -54,12 +54,15 @@ export default class ListTables extends Component {
     const {tables} = this.props;
     let numCassandraTables = 0;
     let numRedisTables = 0;
+    let numPostgresTables = 0;
     if (isNonEmptyArray(self.props.tables.universeTablesList)) {
       self.props.tables.universeTablesList.forEach(function (item, idx) {
         if (item.tableType === "REDIS_TABLE_TYPE") {
           numRedisTables++;
-        } else {
+        } else if (item.tableType === "YQL_TABLE_TYPE") {
           numCassandraTables++;
+        } else {
+          numPostgresTables++;
         }
       });
     }
@@ -70,7 +73,7 @@ export default class ListTables extends Component {
           header={
             <TableTitle numRedisTables={numRedisTables}
                         numCassandraTables={numCassandraTables}
-                        numPostgresTables={0}/>
+                        numPostgresTables={numPostgresTables}/>
           }
           body={
             <ListTableGrid {...this.props}/>
