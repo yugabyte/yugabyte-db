@@ -92,6 +92,17 @@ Statement | Description |
 [`BEGIN`](transactions) | Start a transaction |
 [`END` &#124; `COMMIT`](transactions) | Commit a transaction |
 
+## Sequences
+Statement | Description |
+----------|------------|
+[`CREATE SEQUENCE`](create_sequence) | Create a new sequence |
+[`DROP SEQUENCE`](drop_sequence) | Drop a sequence |
+[`nextval(sequence)`](nextval_sequence) | Get the next value in the sequence
+[`currval(sequence)`](currval_sequence) | Get the last value returned by the most recent nextval call for the specified sequence
+[`lastval()`](lastval_sequence) | Get the last value returned by the most recent nextval call for any sequence
+
+- `ALTER SEQUENCE` and  `setval()` are not supported yet.
+
 ## Other SQL Statements
 
 Statement | Description |
@@ -103,7 +114,7 @@ Statement | Description |
 [`SHOW`](transactions) | Select rows from a table |
 
 ## Expressions
-PostgreSQL builtin functions and operators are supported. 
+PostgreSQL builtin functions and operators are supported.
 User-defined functions are currently in progress.
 
 ## Data Types
