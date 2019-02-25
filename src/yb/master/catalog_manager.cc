@@ -3462,7 +3462,24 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     namespace_id = ns->id();
   }
 
+  bool has_rel_filter = req->relation_type_filter_size() > 0;
+  bool include_user_table = has_rel_filter ? false : true;
+  bool include_user_index = has_rel_filter ? false : true;
+  bool include_system_table = req->exclude_system_tables() ? false
+      : (has_rel_filter ? false : true);
+
+  for (const auto &relation : req->relation_type_filter()) {
+    if (relation == SYSTEM_TABLE_RELATION) {
+      include_system_table = true;
+    } else if (relation == USER_TABLE_RELATION) {
+      include_user_table = true;
+    } else if (relation == INDEX_TABLE_RELATION) {
+      include_user_index = true;
+    }
+  }
+
   boost::shared_lock<LockType> l(lock_);
+  RelationType relation_type;
 
   for (const auto& entry : table_ids_map_) {
     auto& table_info = *entry.second;
@@ -3481,15 +3498,28 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       }
     }
 
-    if (req->exclude_system_tables() &&
-        (IsSystemTable(table_info) || table_info.IsRedisTable())) {
-      continue;
+    if (IsUserIndex(table_info)) {
+      if (!include_user_index) {
+        continue;
+      }
+      relation_type = INDEX_TABLE_RELATION;
+    } else if (IsUserTable(table_info)) {
+      if (!include_user_table) {
+        continue;
+      }
+      relation_type = USER_TABLE_RELATION;
+    } else {
+      if (!include_system_table) {
+        continue;
+      }
+      relation_type = SYSTEM_TABLE_RELATION;
     }
 
     ListTablesResponsePB::TableInfo *table = resp->add_tables();
     table->set_id(entry.second->id());
     table->set_name(ltm->data().name());
     table->set_table_type(ltm->data().table_type());
+    table->set_relation_type(relation_type);
 
     scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_,
         ltm->data().namespace_id());
