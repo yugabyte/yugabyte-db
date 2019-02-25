@@ -824,8 +824,12 @@ a {
               i {
                 display: block;
                 font-size: 48px;
+                line-height: 48px;
                 color: $YB_LIGHT_VIOLET;
                 @include transition(0.15s);
+                &.fa-comment-alt {
+                  font-size: 42px;
+                }
               }
 
               &:hover {
