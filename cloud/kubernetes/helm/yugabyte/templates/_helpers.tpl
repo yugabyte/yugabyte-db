@@ -50,7 +50,13 @@ Create chart name and version as used by the chart label.
   Get YugaByte master addresses
 */}}
 {{- define "yugabyte.master_addresses" -}}
-{{range $index := until (int (.Values.replicas.master))}}{{if ne $index 0}},{{end}}yb-master-{{ $index }}.yb-masters.$(NAMESPACE):7100{{end}}
+{{- $master_replicas := .Values.replicas.master | int -}}
+  {{- range .Values.Services }}
+    {{- if eq .name "yb-masters" }}
+      {{- $domain_name := .domainName -}}
+      {{range $index := until $master_replicas }}{{if ne $index 0}},{{end}}yb-master-{{ $index }}.yb-masters.$(NAMESPACE).svc.{{ $domain_name }}:7100{{end}}
+    {{- end -}}
+  {{- end -}}
 {{- end -}}
 
 {{/*
