@@ -1122,7 +1122,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
 
       if (index_response->status() != QLResponsePB::YQL_STATUS_OK) {
         response->set_status(index_response->status());
-        response->set_error_message(std::move(index_response->error_message()));
+        response->set_error_message(std::move(*index_response->mutable_error_message()));
       }
       if (txn) {
         *response->mutable_child_transaction_result() = child_result;
@@ -1247,7 +1247,7 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
     return;
   }
 
-  WriteRequestPB* key_value_write_request = operation->state()->mutable_request();
+  const WriteRequestPB* key_value_write_request = operation->state()->request();
 
   if (!key_value_write_request->redis_write_batch().empty()) {
     auto status = KeyValueBatchFromRedisWriteBatch(operation.get());

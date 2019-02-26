@@ -939,4 +939,42 @@ public class TestIndex extends BaseCQLTest {
                                                   "Row[2, 2, 4, d]",
                                                   "Row[3, 1, 5, e]")));
   }
+
+  @Test
+  public void testDropDuringWrite() throws Exception {
+    for (int i = 0; i != 5; ++i) {
+      String table_name = "index_test_" + i;
+      String index_name = "index_" + i;
+      session.execute(String.format(
+          "create table %s (h int, c int, primary key ((h))) " +
+          "with transactions = { 'enabled' : true };", table_name));
+      session.execute(String.format("create index %s on %s (c);", index_name, table_name));
+      final PreparedStatement statement = session.prepare(String.format(
+          "insert into %s (h, c) values (?, ?);", table_name));
+
+      List<Thread> threads = new ArrayList<Thread>();
+      while (threads.size() != 10) {
+        Thread thread = new Thread(() -> {
+          int key = 0;
+          while (!Thread.interrupted()) {
+            session.execute(statement.bind(Integer.valueOf(key), Integer.valueOf(-key)));
+            ++key;
+          }
+        });
+        thread.start();
+        threads.add(thread);
+      }
+      try {
+        Thread.sleep(5000);
+        session.execute(String.format("drop table %s;", table_name));
+      } finally {
+        for (Thread thread : threads) {
+          thread.interrupt();
+        }
+        for (Thread thread : threads) {
+          thread.join();
+        }
+      }
+    }
+  }
 }

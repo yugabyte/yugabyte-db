@@ -1389,6 +1389,7 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
 
   // Go through each ExecContext and process async results.
   bool has_buffered_ops = false;
+  bool has_restart = false;
   const MonoTime now = (ql_metrics_ != nullptr) ? MonoTime::Now() : MonoTime();
   for (auto exec_itr = exec_contexts_.begin(); exec_itr != exec_contexts_.end(); ) {
 
@@ -1397,6 +1398,7 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
 
     // Restart a statement if necessary
     if (exec_context_->restart()) {
+      has_restart = true;
       const TreeNode *root = exec_context_->parse_tree().root().get();
       // Clear partial rows accumulated from the SELECT statement.
       if (root->opcode() == TreeNodeOpcode::kPTSelectStmt) {
@@ -1494,7 +1496,12 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
   // recurse too deeply hitting the stack limitiation. Rescheduling can also avoid occupying the
   // RPC worker thread for too long starving other CQL calls waiting in the queue. If there is no
   // buffered ops to flush, just call FlushAsync() to commit the transactions if any.
-  if (has_buffered_ops && !rescheduled) {
+  //
+  // When restart is required we will reexecute the whole operation with new transaction.
+  // Since restart could happen multiple times, it is possible that we will do it recursively,
+  // when local call is enabled.
+  // So to avoid stack overflow we use reschedule in this case.
+  if ((has_buffered_ops || has_restart) && !rescheduled) {
     rescheduler_->Reschedule(&flush_async_task_.Bind(this));
   } else {
     FlushAsync();

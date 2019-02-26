@@ -82,6 +82,7 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 
+using namespace std::literals;
 using namespace std::placeholders;
 using std::shared_ptr;
 using std::string;
@@ -356,6 +357,18 @@ bool TabletPeer::StartShutdown() {
 }
 
 void TabletPeer::CompleteShutdown() {
+  auto wait_start = CoarseMonoClock::now();
+  auto last_report = wait_start;
+  while (preparing_operations_.load(std::memory_order_acquire) != 0) {
+    auto now = CoarseMonoClock::now();
+    if (now > last_report + 10s) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Long wait for finish of preparing operations: " << yb::ToString(now - wait_start);
+      last_report = now;
+    }
+    std::this_thread::sleep_for(100ms);
+  }
+
   // TODO: KUDU-183: Keep track of the pending tasks and send an "abort" message.
   LOG_SLOW_EXECUTION(WARNING, 1000,
       Substitute("TabletPeer: tablet $0: Waiting for Operations to complete", tablet_id())) {
@@ -367,12 +380,10 @@ void TabletPeer::CompleteShutdown() {
   }
 
   if (log_) {
-    WARN_NOT_OK(log_->Close(), "Error closing the Log.");
+    WARN_NOT_OK(log_->Close(), LogPrefix() + "Error closing the Log");
   }
 
-  if (VLOG_IS_ON(1)) {
-    VLOG_WITH_PREFIX(1) << "Shut down!";
-  }
+  VLOG_WITH_PREFIX(1) << "Shut down!";
 
   if (tablet_) {
     tablet_->Shutdown();
@@ -461,11 +472,14 @@ void TabletPeer::WriteAsync(
     return;
   }
 
+  preparing_operations_.fetch_add(1, std::memory_order_acq_rel);
   auto status = CheckRunning();
   if (!status.ok()) {
+    preparing_operations_.fetch_sub(1, std::memory_order_acq_rel);
     state->CompleteWithStatus(status);
     return;
   }
+
   auto operation = std::make_unique<WriteOperation>(std::move(state), term, deadline, this);
   tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
 }
@@ -475,9 +489,14 @@ HybridTime TabletPeer::ReportReadRestart() {
   return tablet_->SafeTime(RequireLease::kTrue);
 }
 
+void TabletPeer::Aborted(Operation* operation) {
+  preparing_operations_.fetch_sub(1, std::memory_order_acq_rel);
+}
+
 void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
   auto status = CheckRunning();
 
+  auto operation_type = operation->operation_type();
   if (status.ok()) {
     auto driver = NewLeaderOperationDriver(&operation, term);
     if (driver.ok()) {
@@ -489,6 +508,10 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
   if (!status.ok()) {
     operation->Finish(Operation::ABORTED);
     operation->state()->CompleteWithStatus(status);
+  }
+
+  if (operation_type == OperationType::kWrite) {
+    preparing_operations_.fetch_sub(1, std::memory_order_acq_rel);
   }
 }
 

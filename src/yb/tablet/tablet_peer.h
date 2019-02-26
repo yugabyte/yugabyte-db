@@ -152,6 +152,8 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
   void Submit(std::unique_ptr<Operation> operation, int64_t term) override;
 
+  void Aborted(Operation* operation) override;
+
   HybridTime Now() override;
 
   void UpdateClock(HybridTime hybrid_time) override;
@@ -405,6 +407,8 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   const std::string permanent_uuid_;
 
   std::atomic<rpc::ThreadPool*> service_thread_pool_{nullptr};
+
+  std::atomic<size_t> preparing_operations_{0};
 
  private:
   HybridTime ReportReadRestart() override;

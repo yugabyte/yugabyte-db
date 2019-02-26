@@ -79,7 +79,10 @@ WriteOperation::WriteOperation(
     std::unique_ptr<WriteOperationState> state, int64_t term, CoarseTimePoint deadline,
     WriteOperationContext* context)
     : Operation(std::move(state), OperationType::kWrite),
-      context_(*context), term_(term), deadline_(deadline), start_time_(MonoTime::Now()) {
+      context_(*context), term_(term), deadline_(deadline), start_time_(MonoTime::Now()),
+      // If term is unknown, it means that we are creating operation at replica.
+      // So it was already submitted at leader.
+      submitted_(term == yb::OpId::kUnknownTerm) {
 }
 
 consensus::ReplicateMsgPtr WriteOperation::NewReplicateMsg() {
@@ -152,6 +155,14 @@ string WriteOperation::ToString() const {
                     abs_time_formatted, state()->ToString());
 }
 
+WriteOperation::~WriteOperation() {
+  // If operation was submitted, then it's lifetime is controlled by operation tracker and we
+  // don't have to do it here.
+  if (!submitted_) {
+    context_.Aborted(this);
+  }
+}
+
 void WriteOperation::DoStartSynchronization(const Status& status) {
   std::unique_ptr<WriteOperation> self(this);
   // If a restart read is required, then we return this fact to caller and don't perform the write
@@ -171,6 +182,7 @@ void WriteOperation::DoStartSynchronization(const Status& status) {
     return;
   }
 
+  self->submitted_ = true;
   context_.Submit(std::move(self), term_);
 }
 
