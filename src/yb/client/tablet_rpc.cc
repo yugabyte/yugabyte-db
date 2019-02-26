@@ -302,19 +302,18 @@ bool TabletInvoker::Done(Status* status) {
     } else {
       current_ts_string = "(no tablet server available)";
     }
-    Status old_status = std::move(*status);
-    *status = old_status.CloneAndPrepend(
+    Status log_status = status->CloneAndPrepend(
         Format("Failed $0 to tablet $1 $2 after $3 attempt(s)",
                command_->ToString(),
                tablet_id_,
                current_ts_string,
                retrier_->attempt_num()));
     if (status->IsTryAgain() || status->IsExpired() || status->IsAlreadyPresent()) {
-      YB_LOG_EVERY_N_SECS(INFO, 1) << *status;
+      YB_LOG_EVERY_N_SECS(INFO, 1) << log_status;
     } else {
-      LOG(WARNING) << *status;
+      LOG(WARNING) << log_status;
     }
-    rpc_->Failed(old_status);
+    rpc_->Failed(*status);
   }
 
   return true;
