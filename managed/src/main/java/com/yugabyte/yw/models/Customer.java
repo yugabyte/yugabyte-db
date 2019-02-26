@@ -45,7 +45,7 @@ public class Customer extends Model {
   private Long id;
   public Long getCustomerId() { return id; }
 
-  @Column(length = 5, unique = true, nullable = false)
+  @Column(length = 15, unique = true, nullable = false)
   @Constraints.Required
   public String code;
 

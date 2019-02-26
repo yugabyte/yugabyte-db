@@ -5,6 +5,8 @@ package com.yugabyte.yw.models;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import org.apache.commons.lang3.RandomStringUtils;
+import org.h2.jdbc.JdbcSQLException;
 import org.junit.Test;
 import org.mindrot.jbcrypt.BCrypt;
 
@@ -31,6 +33,25 @@ public class CustomerTest extends FakeDBApplication {
     assertEquals("Test Customer", customer.name);
     assertNotNull(customer.creationDate);
     assertTrue(BCrypt.checkpw("password", customer.passwordHash));
+  }
+
+  @Test
+  public void testCreateWithLargerCustomerCode() {
+    String largeCustomerCode = RandomStringUtils.randomAlphabetic(16);
+    try {
+      Customer customer = Customer.create(largeCustomerCode,"Test Customer", "foo@bar.com", "password");
+      customer.save();
+    } catch (PersistenceException pe) {
+      assertTrue(pe.getMessage().contains("Value too long for column"));
+    }
+  }
+
+  @Test
+  public void testCreateWithCustomerCode() {
+    String customerCode = RandomStringUtils.randomAlphabetic(15);
+    Customer customer = Customer.create(customerCode,"Test Customer", "foo@bar.com", "password");
+    customer.save();
+    assertEquals(customerCode, customer.code);
   }
 
   @Test(expected = PersistenceException.class)
