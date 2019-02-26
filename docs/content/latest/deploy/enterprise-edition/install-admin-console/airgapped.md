@@ -1,4 +1,4 @@
-An “airgapped” host has either no or a restricted path to inbound/outbound Internet traffic at all. 
+An “airgapped” host has either no or a restricted path to inbound/outbound Internet traffic at all.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ A supported version of docker-engine (currently 1.7.1 to 17.03.1-ce) needs to be
 On a machine connected to the Internet, perform the following steps.
 
 Make a directory for downloading the binaries
-```sh 
+```sh
 $ sudo mkdir /opt/downloads
 ```
 
@@ -41,7 +41,7 @@ $ wget https://downloads.yugabyte.com/replicated.tar.gz
 
 Get the yugaware binary where the 1.1.0.2 refers to the version of the binary. change this number as needed.
 ```sh
-$ wget https://downloads.yugabyte.com/yugaware-1.1.0.2.airgap
+$ wget https://downloads.yugabyte.com/yugaware-1.1.9.0.airgap
 ```
 
 Change to the directory
@@ -51,7 +51,7 @@ $ cd /opt/downloads
 
 Expand the replicated binary
 ```sh
-$ ar xzvf replicated.tar.gz
+$ tar xzvf replicated.tar.gz
 ```
 
 Install replicated (yugaware will be installed via replicated ui after replicated install completes) pick `eth0` network interface in case multiple ones show up
