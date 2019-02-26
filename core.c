@@ -37,6 +37,8 @@
  *     has_join_restriction()
  *     is_dummy_rel()
  *     restriction_is_constant_false()
+ *     update_child_rel_info()
+ *     build_child_join_sjinfo()
  *
  *
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
@@ -1041,6 +1043,71 @@ restriction_is_constant_false(List *restrictlist,
 	return false;
 }
 
+
+/*
+ * Set up tlist expressions for the childrel, and add EC members referencing
+ * the childrel.
+ */
+static void
+update_child_rel_info(PlannerInfo *root,
+					  RelOptInfo *rel, RelOptInfo *childrel)
+{
+	AppendRelInfo *appinfo = root->append_rel_array[childrel->relid];
+
+	/* Make child tlist expressions */
+	childrel->reltarget->exprs = (List *)
+		adjust_appendrel_attrs(root,
+							   (Node *) rel->reltarget->exprs,
+							   1, &appinfo);
+
+	/* Make child entries in the EquivalenceClass as well */
+	if (rel->has_eclass_joins || has_useful_pathkeys(root, rel))
+		add_child_rel_equivalences(root, appinfo, rel, childrel);
+	childrel->has_eclass_joins = rel->has_eclass_joins;
+}
+
+/*
+ * Construct the SpecialJoinInfo for a child-join by translating
+ * SpecialJoinInfo for the join between parents. left_relids and right_relids
+ * are the relids of left and right side of the join respectively.
+ */
+static SpecialJoinInfo *
+build_child_join_sjinfo(PlannerInfo *root, SpecialJoinInfo *parent_sjinfo,
+						Relids left_relids, Relids right_relids)
+{
+	SpecialJoinInfo *sjinfo = makeNode(SpecialJoinInfo);
+	AppendRelInfo **left_appinfos;
+	int			left_nappinfos;
+	AppendRelInfo **right_appinfos;
+	int			right_nappinfos;
+
+	memcpy(sjinfo, parent_sjinfo, sizeof(SpecialJoinInfo));
+	left_appinfos = find_appinfos_by_relids(root, left_relids,
+											&left_nappinfos);
+	right_appinfos = find_appinfos_by_relids(root, right_relids,
+											 &right_nappinfos);
+
+	sjinfo->min_lefthand = adjust_child_relids(sjinfo->min_lefthand,
+											   left_nappinfos, left_appinfos);
+	sjinfo->min_righthand = adjust_child_relids(sjinfo->min_righthand,
+												right_nappinfos,
+												right_appinfos);
+	sjinfo->syn_lefthand = adjust_child_relids(sjinfo->syn_lefthand,
+											   left_nappinfos, left_appinfos);
+	sjinfo->syn_righthand = adjust_child_relids(sjinfo->syn_righthand,
+												right_nappinfos,
+												right_appinfos);
+	sjinfo->semi_rhs_exprs = (List *) adjust_appendrel_attrs(root,
+															 (Node *) sjinfo->semi_rhs_exprs,
+															 right_nappinfos,
+															 right_appinfos);
+
+	pfree(left_appinfos);
+	pfree(right_appinfos);
+
+	return sjinfo;
+}
+
 /*
  * Assess whether join between given two partitioned relations can be broken
  * down into joins between matching partitions; a technique called
@@ -1066,6 +1133,8 @@ try_partitionwise_join(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 					   RelOptInfo *joinrel, SpecialJoinInfo *parent_sjinfo,
 					   List *parent_restrictlist)
 {
+	bool		rel1_is_simple = IS_SIMPLE_REL(rel1);
+	bool		rel2_is_simple = IS_SIMPLE_REL(rel2);
 	int			nparts;
 	int			cnt_parts;
 
@@ -1129,6 +1198,27 @@ try_partitionwise_join(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 		Relids		child_joinrelids;
 		AppendRelInfo **appinfos;
 		int			nappinfos;
+
+		/*
+		 * If a child table has consider_partitionwise_join=false, it means
+		 * that it's a dummy relation for which we skipped setting up tlist
+		 * expressions and adding EC members in set_append_rel_size(), so do
+		 * that now for use later.
+		 */
+		if (rel1_is_simple && !child_rel1->consider_partitionwise_join)
+		{
+			Assert(child_rel1->reloptkind == RELOPT_OTHER_MEMBER_REL);
+			Assert(IS_DUMMY_REL(child_rel1));
+			update_child_rel_info(root, rel1, child_rel1);
+			child_rel1->consider_partitionwise_join = true;
+		}
+		if (rel2_is_simple && !child_rel2->consider_partitionwise_join)
+		{
+			Assert(child_rel2->reloptkind == RELOPT_OTHER_MEMBER_REL);
+			Assert(IS_DUMMY_REL(child_rel2));
+			update_child_rel_info(root, rel2, child_rel2);
+			child_rel2->consider_partitionwise_join = true;
+		}
 
 		/* We should never try to join two overlapping sets of rels. */
 		Assert(!bms_overlap(child_rel1->relids, child_rel2->relids));
