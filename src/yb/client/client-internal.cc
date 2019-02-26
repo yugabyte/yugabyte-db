@@ -617,6 +617,10 @@ Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
   // compiler complains.
   RETURN_NOT_OK(s);
   if (resp.has_error()) {
+    if (resp.error().code() == MasterErrorPB::TABLE_NOT_FOUND) {
+      *delete_in_progress = false;
+      return Status::OK();
+    }
     return StatusFromPB(resp.error().status());
   }
 

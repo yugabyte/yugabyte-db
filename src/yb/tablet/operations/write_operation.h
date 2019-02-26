@@ -192,6 +192,7 @@ class WriteOperationContext {
  public:
   // When operation completes, its callback is executed.
   virtual void Submit(std::unique_ptr<Operation> operation, int64_t term) = 0;
+  virtual void Aborted(Operation* operation) = 0;
   virtual HybridTime ReportReadRestart() = 0;
 
   virtual ~WriteOperationContext() {}
@@ -202,6 +203,8 @@ class WriteOperation : public Operation {
  public:
   WriteOperation(std::unique_ptr<WriteOperationState> operation_state, int64_t term,
                  CoarseTimePoint deadline, WriteOperationContext* context);
+
+  ~WriteOperation();
 
   WriteOperationState* state() override {
     return down_cast<WriteOperationState*>(Operation::state());
@@ -294,6 +297,9 @@ class WriteOperation : public Operation {
   HybridTime restart_read_ht_;
 
   docdb::DocOperations doc_ops_;
+
+  // True if operation was submitted, i.e. context_.Submit(this) was invoked.
+  bool submitted_;
 
   Tablet* tablet() { return state()->tablet(); }
 

@@ -267,6 +267,11 @@ bool TSDescriptor::IsTabletDeletePending(const std::string& tablet_id) const {
   return tablets_pending_delete_.count(tablet_id);
 }
 
+std::string TSDescriptor::PendingTabletDeleteToString() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  return yb::ToString(tablets_pending_delete_);
+}
+
 void TSDescriptor::AddPendingTabletDelete(const std::string& tablet_id) {
   std::lock_guard<simple_spinlock> l(lock_);
   tablets_pending_delete_.insert(tablet_id);
