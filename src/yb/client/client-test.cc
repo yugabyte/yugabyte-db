@@ -909,7 +909,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
     ASSERT_TRUE(s.IsIOError());
     auto error = GetSingleErrorFromSession(session.get());
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
-    ASSERT_STR_CONTAINS(error->status().ToString(), "Failed Write");
+    ASSERT_STR_CONTAINS(error->status().ToString(), "timed out");
   }
 }
 
