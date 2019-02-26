@@ -3092,6 +3092,13 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
   } else {
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id "
               << req->table_id() << ": deleting tablets";
+    std::vector<std::shared_ptr<TSDescriptor>> descs;
+    master_->ts_manager()->GetAllDescriptors(&descs);
+    for (auto& ts_desc : descs) {
+      LOG(INFO) << "Deleting on " << ts_desc->permanent_uuid() << ": "
+                << ts_desc->PendingTabletDeleteToString();
+    }
+
     resp->set_done(false);
   }
 
