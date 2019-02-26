@@ -1,14 +1,15 @@
 ---
-title: Roles and Permissions
+title: Data Control Language
+linktitle: DCL
 description: Roles and Permissions
 summary: Roles and Permissions
 menu:
   latest:
-    identifier: api-ysql-commands-permissions
-    parent: api-ysql-commands
-    weight: 3500
+    identifier: api-ysql-components-dcl
+    parent: api-ysql-components
+    weight: 3300
 aliases:
-  - /latest/api/ysql/commands/permissions
+  - /latest/api/ysql/components/dcl
 isTocNested: true
 showAsideToc: true
 ---

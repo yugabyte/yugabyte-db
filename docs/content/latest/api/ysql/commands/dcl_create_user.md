@@ -1,14 +1,13 @@
 ---
-title: Roles
+title: CREATE USER
 description: Users and roles
 summary: Users and roles
 menu:
   latest:
     identifier: api-ysql-commands-create-users
     parent: api-ysql-commands
-    weight: 3500
 aliases:
-  - /latest/api/ysql/commands/permissions
+  - /latest/api/ysql/commands/dcl_create_user
 isTocNested: true
 showAsideToc: true
 ---

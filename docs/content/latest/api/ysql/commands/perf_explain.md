@@ -1,14 +1,13 @@
 ---
-title: Explain Statement
-description: Explain Statement
+title: EXPLAIN
+description: EXPLAIN Command
 summary: EXPLAIN
 menu:
   latest:
     identifier: api-ysql-commands-explain
     parent: api-ysql-commands
-    weight: 3700
 aliases:
-  - /latest/api/ysql/commands/explain
+  - /latest/api/ysql/commands/perf_explain
 isTocNested: true
 showAsideToc: true
 ---

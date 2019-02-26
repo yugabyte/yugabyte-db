@@ -17,14 +17,11 @@ showAsideToc: true
 ---
 
 ## Introduction
-YSQL is a distributed SQL API compatible with PostgreSQL. It supports the following features.
+YSQL - YugaByte Structured Query Language - is a distributed SQL API compatible with PostgreSQL. Similar to PostgreSQL, YSQL has several components being constructed by a number of elements.
 
-- Data definition language (DDL) statements are provided to define a database structure, modify it, and delete it by using CREATE, ALTER, and DROP commands respectively.
-- Data manipulation language (DML) statements are provided to modify the contents of a database by using INSERT, UPDATE, DELETE, and SELECT commands.
-- Data control language (DCL) statements are provided to protect and prevent it from corruptions by using GRANT and REVOKE commands.
-- There are also a host of other commands for different purposes such as system control, transaction control, and performance tuning.
-- Builtin datatypes are provided to specify a database object.
-- Builtin functions and expression operators are provided for performance purpose as selected data are computed and filtered on server side before being sent to clients.
+The main components of YSQL are Data definition language (DDL), Data manipulation language (DML), and Data control language (DCL). Several other components are also provided for different purposes such as system control, transaction control, and performance tuning.
+
+A number of elements are used to construct the languages in YSQL such as datatypes, database objects, names and qualifiers, expressions, and comments.
 
 ## Example
 The following example illustrates how to use `psql` to connect to YugaByte DB's PostgreSQL-compatible API. It assumes you have [installed YugaByte](../../quick-start/install/) and started a [PostgreSQL-enabled cluster](../../quick-start/test-postgresql/).
@@ -59,21 +56,13 @@ postgres=# select * from sample ORDER BY id DESC;
 ```
 The examples given in the rest of this section assume the cluster is running and `psql` is connected to it as described above.
 
-## SQL Commands
+## References
 
-## Expressions
-PostgreSQL builtin functions and operators are supported.
-User-defined functions are currently in progress.
+### Commands
+All suppoted commands are listed in the [Commands](commands/) section.
 
-## Data Types
-The following table lists all supported primitive types.
+### Data Types
+All PostgresSQL-compatible types are supported although not all of them can be used for columns in PRIMARY KEY yet. All suppoted types are listed in the [Data Types](datatypes/) section.
 
-Primitive Type | Allowed in Key | Type Parameters | Description |
----------------|----------------|-----------------|-------------|
-[`BIGINT`](type_int) | Yes | - | 64-bit signed integer |
-[`DOUBLE PRECISION`](type_number) | Yes | - | 64-bit, inexact, floating-point number |
-[`FLOAT`](type_number) | Yes | - | 64-bit, inexact, floating-point number |
-[`REAL`](type_number) | Yes | - | 32-bit, inexact, floating-point number |
-[`INT` &#124; `INTEGER`](type_int) | Yes | - | 32-bit signed integer |
-[`SMALLINT`](type_int) | Yes | - | 16-bit signed integer |
-[`TEXT` &#124; `VARCHAR`](type_text) | Yes | - | Variable-size string of Unicode characters |
+### Expressions
+All PostgreSQL-compatible builtin functions and operators are supported. User-defined functions are currently in progress. All suppoted expressions are listed in the [Expressions](exprs/) section.

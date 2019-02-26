@@ -1,13 +1,13 @@
 ---
-title: SQL Commands
-description: Overview on PostgreSQL-Compatible Commands
-summary: Overview on SQL Commands
+title: Commands
+description: Overview on YSQL Commands
+summary: Overview on YSQL Commands
 image: /images/section_icons/api/pgsql.png
 menu:
   latest:
     identifier: api-ysql-commands
     parent: api-ysql
-    weight: 3100
+    weight: 4100
 aliases:
   - /latest/api/ysql/commands/
 isTocNested: true

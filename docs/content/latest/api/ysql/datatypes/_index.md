@@ -1,13 +1,13 @@
 ---
 title: Datatypes
-description: PostgreSQL-Compatible Datatypes
+description: YSQL Datatypes
 summary: Datatype overview and specification.
 image: /images/section_icons/api/pgsql.png
 menu:
   latest:
     identifier: api-ysql-datatypes
     parent: api-ysql
-    weight: 3300
+    weight: 4200
 aliases:
   - /latest/api/ysql/datatypes/
 isTocNested: true
