@@ -347,6 +347,7 @@ SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
 SET min_parallel_table_scan_size to 0;
 SET min_parallel_index_scan_size to 0;
+SET max_parallel_workers_per_gather to 0;
 SET enable_parallel_append to false;
 /*+Parallel(p1 8)*/
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
@@ -399,14 +400,14 @@ error hint:
                       QUERY PLAN                       
 -------------------------------------------------------
  Gather
-   Workers Planned: 2
+   Workers Planned: 1
    ->  Parallel Hash Join
-         Hash Cond: (p1.id = p2.id)
+         Hash Cond: (p1.id = p2_c2.id)
          ->  Parallel Append
-               ->  Seq Scan on p1
-               ->  Seq Scan on p1_c1
-               ->  Seq Scan on p1_c3
+               ->  Parallel Seq Scan on p1
+               ->  Parallel Seq Scan on p1_c1
                ->  Parallel Seq Scan on p1_c2
+               ->  Parallel Seq Scan on p1_c3
                ->  Parallel Seq Scan on p1_c4
                ->  Parallel Seq Scan on p1_c1_c1
                ->  Parallel Seq Scan on p1_c1_c2
@@ -414,15 +415,15 @@ error hint:
                ->  Parallel Seq Scan on p1_c3_c2
          ->  Parallel Hash
                ->  Parallel Append
-                     ->  Seq Scan on p2
-                     ->  Seq Scan on p2_c1
-                     ->  Seq Scan on p2_c3
                      ->  Parallel Seq Scan on p2_c2
                      ->  Parallel Seq Scan on p2_c4
                      ->  Parallel Seq Scan on p2_c1_c1
                      ->  Parallel Seq Scan on p2_c1_c2
                      ->  Parallel Seq Scan on p2_c3_c1
                      ->  Parallel Seq Scan on p2_c3_c2
+                     ->  Parallel Seq Scan on p2
+                     ->  Parallel Seq Scan on p2_c1
+                     ->  Parallel Seq Scan on p2_c3
 (25 rows)
 
 SET enable_parallel_append to false;
@@ -479,14 +480,14 @@ error hint:
                    QUERY PLAN                    
 -------------------------------------------------
  Gather
-   Workers Planned: 2
+   Workers Planned: 1
    ->  Parallel Hash Join
          Hash Cond: (p1.id = p2_c2.id)
          ->  Parallel Append
-               ->  Seq Scan on p1
-               ->  Seq Scan on p1_c1
-               ->  Seq Scan on p1_c3
+               ->  Parallel Seq Scan on p1
+               ->  Parallel Seq Scan on p1_c1
                ->  Parallel Seq Scan on p1_c2
+               ->  Parallel Seq Scan on p1_c3
                ->  Parallel Seq Scan on p1_c4
                ->  Parallel Seq Scan on p1_c1_c1
                ->  Parallel Seq Scan on p1_c1_c2
@@ -556,31 +557,31 @@ error hint:
 
                       QUERY PLAN                       
 -------------------------------------------------------
- Gather
-   Workers Planned: 8
-   ->  Parallel Hash Join
-         Hash Cond: (p2.id = p1.id)
-         ->  Parallel Append
-               ->  Seq Scan on p2
-               ->  Seq Scan on p2_c1
-               ->  Seq Scan on p2_c3
-               ->  Parallel Seq Scan on p2_c2
-               ->  Parallel Seq Scan on p2_c4
-               ->  Parallel Seq Scan on p2_c1_c1
-               ->  Parallel Seq Scan on p2_c1_c2
-               ->  Parallel Seq Scan on p2_c3_c1
-               ->  Parallel Seq Scan on p2_c3_c2
-         ->  Parallel Hash
+ Hash Join
+   Hash Cond: (p1.id = p2.id)
+   ->  Append
+         ->  Seq Scan on p1
+         ->  Seq Scan on p1_c1
+         ->  Seq Scan on p1_c2
+         ->  Seq Scan on p1_c3
+         ->  Seq Scan on p1_c4
+         ->  Seq Scan on p1_c1_c1
+         ->  Seq Scan on p1_c1_c2
+         ->  Seq Scan on p1_c3_c1
+         ->  Seq Scan on p1_c3_c2
+   ->  Hash
+         ->  Gather
+               Workers Planned: 8
                ->  Parallel Append
-                     ->  Seq Scan on p1
-                     ->  Seq Scan on p1_c1
-                     ->  Seq Scan on p1_c3
-                     ->  Parallel Seq Scan on p1_c2
-                     ->  Parallel Seq Scan on p1_c4
-                     ->  Parallel Seq Scan on p1_c1_c1
-                     ->  Parallel Seq Scan on p1_c1_c2
-                     ->  Parallel Seq Scan on p1_c3_c1
-                     ->  Parallel Seq Scan on p1_c3_c2
+                     ->  Seq Scan on p2
+                     ->  Seq Scan on p2_c1
+                     ->  Seq Scan on p2_c3
+                     ->  Parallel Seq Scan on p2_c2
+                     ->  Parallel Seq Scan on p2_c4
+                     ->  Parallel Seq Scan on p2_c1_c1
+                     ->  Parallel Seq Scan on p2_c1_c2
+                     ->  Parallel Seq Scan on p2_c3_c1
+                     ->  Parallel Seq Scan on p2_c3_c2
 (25 rows)
 
 -- Number of workers results to the largest number
@@ -677,33 +678,33 @@ not used hint:
 duplication hint:
 error hint:
 
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
- Gather
-   Workers Planned: 8
-   ->  Parallel Hash Join
-         Hash Cond: (p1.id = p2.id)
-         ->  Append
-               ->  Parallel Seq Scan on p1
-               ->  Parallel Seq Scan on p1_c1
-               ->  Parallel Seq Scan on p1_c2
-               ->  Parallel Seq Scan on p1_c3
-               ->  Parallel Seq Scan on p1_c4
-               ->  Parallel Seq Scan on p1_c1_c1
-               ->  Parallel Seq Scan on p1_c1_c2
-               ->  Parallel Seq Scan on p1_c3_c1
-               ->  Parallel Seq Scan on p1_c3_c2
-         ->  Parallel Hash
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Hash Join
+   Hash Cond: (p2.id = p1.id)
+   ->  Append
+         ->  Index Scan using p2_id2_val on p2
+         ->  Index Scan using p2_c1_id2_val on p2_c1
+         ->  Index Scan using p2_c2_id2_val on p2_c2
+         ->  Index Scan using p2_c3_id_val_idx on p2_c3
+         ->  Index Scan using p2_c4_id_val_idx on p2_c4
+         ->  Index Scan using p2_c1_c1_id_val_idx on p2_c1_c1
+         ->  Index Scan using p2_c1_c2_id_val_idx on p2_c1_c2
+         ->  Index Scan using p2_c3_c1_id_val_idx on p2_c3_c1
+         ->  Index Scan using p2_c3_c2_id_val_idx on p2_c3_c2
+   ->  Hash
+         ->  Gather
+               Workers Planned: 8
                ->  Append
-                     ->  Parallel Index Scan using p2_id2_val on p2
-                     ->  Parallel Index Scan using p2_c1_id2_val on p2_c1
-                     ->  Parallel Index Scan using p2_c2_id2_val on p2_c2
-                     ->  Parallel Index Scan using p2_c3_id_val_idx on p2_c3
-                     ->  Parallel Index Scan using p2_c4_id_val_idx on p2_c4
-                     ->  Parallel Index Scan using p2_c1_c1_id_val_idx on p2_c1_c1
-                     ->  Parallel Index Scan using p2_c1_c2_id_val_idx on p2_c1_c2
-                     ->  Parallel Index Scan using p2_c3_c1_id_val_idx on p2_c3_c1
-                     ->  Parallel Index Scan using p2_c3_c2_id_val_idx on p2_c3_c2
+                     ->  Parallel Seq Scan on p1
+                     ->  Parallel Seq Scan on p1_c1
+                     ->  Parallel Seq Scan on p1_c2
+                     ->  Parallel Seq Scan on p1_c3
+                     ->  Parallel Seq Scan on p1_c4
+                     ->  Parallel Seq Scan on p1_c1_c1
+                     ->  Parallel Seq Scan on p1_c1_c2
+                     ->  Parallel Seq Scan on p1_c3_c1
+                     ->  Parallel Seq Scan on p1_c3_c2
 (25 rows)
 
 SET enable_parallel_append to true;
@@ -717,33 +718,33 @@ not used hint:
 duplication hint:
 error hint:
 
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
- Gather
-   Workers Planned: 8
-   ->  Parallel Hash Join
-         Hash Cond: (p1.id = p2_c2.id)
-         ->  Parallel Append
-               ->  Seq Scan on p1
-               ->  Seq Scan on p1_c1
-               ->  Seq Scan on p1_c3
-               ->  Parallel Seq Scan on p1_c2
-               ->  Parallel Seq Scan on p1_c4
-               ->  Parallel Seq Scan on p1_c1_c1
-               ->  Parallel Seq Scan on p1_c1_c2
-               ->  Parallel Seq Scan on p1_c3_c1
-               ->  Parallel Seq Scan on p1_c3_c2
-         ->  Parallel Hash
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Hash Join
+   Hash Cond: (p2.id = p1.id)
+   ->  Append
+         ->  Index Scan using p2_id2_val on p2
+         ->  Index Scan using p2_c1_id2_val on p2_c1
+         ->  Index Scan using p2_c2_id2_val on p2_c2
+         ->  Index Scan using p2_c3_id_val_idx on p2_c3
+         ->  Index Scan using p2_c4_id_val_idx on p2_c4
+         ->  Index Scan using p2_c1_c1_id_val_idx on p2_c1_c1
+         ->  Index Scan using p2_c1_c2_id_val_idx on p2_c1_c2
+         ->  Index Scan using p2_c3_c1_id_val_idx on p2_c3_c1
+         ->  Index Scan using p2_c3_c2_id_val_idx on p2_c3_c2
+   ->  Hash
+         ->  Gather
+               Workers Planned: 8
                ->  Parallel Append
-                     ->  Parallel Index Scan using p2_c2_id2_val on p2_c2
-                     ->  Parallel Index Scan using p2_c4_id_val_idx on p2_c4
-                     ->  Parallel Index Scan using p2_c1_c1_id_val_idx on p2_c1_c1
-                     ->  Parallel Index Scan using p2_c1_c2_id_val_idx on p2_c1_c2
-                     ->  Parallel Index Scan using p2_c3_c1_id_val_idx on p2_c3_c1
-                     ->  Parallel Index Scan using p2_c3_c2_id_val_idx on p2_c3_c2
-                     ->  Parallel Index Scan using p2_id2_val on p2
-                     ->  Parallel Index Scan using p2_c1_id2_val on p2_c1
-                     ->  Parallel Index Scan using p2_c3_id_val_idx on p2_c3
+                     ->  Seq Scan on p1
+                     ->  Seq Scan on p1_c1
+                     ->  Seq Scan on p1_c3
+                     ->  Parallel Seq Scan on p1_c2
+                     ->  Parallel Seq Scan on p1_c4
+                     ->  Parallel Seq Scan on p1_c1_c1
+                     ->  Parallel Seq Scan on p1_c1_c2
+                     ->  Parallel Seq Scan on p1_c3_c1
+                     ->  Parallel Seq Scan on p1_c3_c2
 (25 rows)
 
 -- Parallel sequential scan
@@ -800,31 +801,31 @@ error hint:
 
                       QUERY PLAN                       
 -------------------------------------------------------
- Gather
-   Workers Planned: 8
-   ->  Parallel Hash Join
-         Hash Cond: (p1.id = p2.id)
-         ->  Parallel Append
-               ->  Seq Scan on p1
-               ->  Seq Scan on p1_c1
-               ->  Seq Scan on p1_c3
-               ->  Parallel Seq Scan on p1_c2
-               ->  Parallel Seq Scan on p1_c4
-               ->  Parallel Seq Scan on p1_c1_c1
-               ->  Parallel Seq Scan on p1_c1_c2
-               ->  Parallel Seq Scan on p1_c3_c1
-               ->  Parallel Seq Scan on p1_c3_c2
-         ->  Parallel Hash
+ Hash Join
+   Hash Cond: (p2.id = p1.id)
+   ->  Append
+         ->  Seq Scan on p2
+         ->  Seq Scan on p2_c1
+         ->  Seq Scan on p2_c2
+         ->  Seq Scan on p2_c3
+         ->  Seq Scan on p2_c4
+         ->  Seq Scan on p2_c1_c1
+         ->  Seq Scan on p2_c1_c2
+         ->  Seq Scan on p2_c3_c1
+         ->  Seq Scan on p2_c3_c2
+   ->  Hash
+         ->  Gather
+               Workers Planned: 8
                ->  Parallel Append
-                     ->  Seq Scan on p2
-                     ->  Seq Scan on p2_c1
-                     ->  Seq Scan on p2_c3
-                     ->  Parallel Seq Scan on p2_c2
-                     ->  Parallel Seq Scan on p2_c4
-                     ->  Parallel Seq Scan on p2_c1_c1
-                     ->  Parallel Seq Scan on p2_c1_c2
-                     ->  Parallel Seq Scan on p2_c3_c1
-                     ->  Parallel Seq Scan on p2_c3_c2
+                     ->  Seq Scan on p1
+                     ->  Seq Scan on p1_c1
+                     ->  Seq Scan on p1_c3
+                     ->  Parallel Seq Scan on p1_c2
+                     ->  Parallel Seq Scan on p1_c4
+                     ->  Parallel Seq Scan on p1_c1_c1
+                     ->  Parallel Seq Scan on p1_c1_c2
+                     ->  Parallel Seq Scan on p1_c3_c1
+                     ->  Parallel Seq Scan on p1_c3_c2
 (25 rows)
 
 -- Parallel index scan
@@ -879,33 +880,33 @@ not used hint:
 duplication hint:
 error hint:
 
-                              QUERY PLAN                               
------------------------------------------------------------------------
- Gather
-   Workers Planned: 8
-   ->  Parallel Hash Join
-         Hash Cond: (p1.id = p2.id)
-         ->  Parallel Append
-               ->  Parallel Index Scan using p1_pkey on p1
-               ->  Parallel Index Scan using p1_c1_pkey on p1_c1
-               ->  Parallel Index Scan using p1_c2_pkey on p1_c2
-               ->  Parallel Index Scan using p1_c3_pkey on p1_c3
-               ->  Parallel Index Scan using p1_c4_pkey on p1_c4
-               ->  Parallel Index Scan using p1_c1_c1_pkey on p1_c1_c1
-               ->  Parallel Index Scan using p1_c1_c2_pkey on p1_c1_c2
-               ->  Parallel Index Scan using p1_c3_c1_pkey on p1_c3_c1
-               ->  Parallel Index Scan using p1_c3_c2_pkey on p1_c3_c2
-         ->  Parallel Hash
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Hash Join
+   Hash Cond: (p2.id = p1.id)
+   ->  Append
+         ->  Seq Scan on p2
+         ->  Seq Scan on p2_c1
+         ->  Seq Scan on p2_c2
+         ->  Seq Scan on p2_c3
+         ->  Seq Scan on p2_c4
+         ->  Seq Scan on p2_c1_c1
+         ->  Seq Scan on p2_c1_c2
+         ->  Seq Scan on p2_c3_c1
+         ->  Seq Scan on p2_c3_c2
+   ->  Hash
+         ->  Gather
+               Workers Planned: 8
                ->  Parallel Append
-                     ->  Seq Scan on p2
-                     ->  Seq Scan on p2_c1
-                     ->  Seq Scan on p2_c3
-                     ->  Parallel Seq Scan on p2_c2
-                     ->  Parallel Seq Scan on p2_c4
-                     ->  Parallel Seq Scan on p2_c1_c1
-                     ->  Parallel Seq Scan on p2_c1_c2
-                     ->  Parallel Seq Scan on p2_c3_c1
-                     ->  Parallel Seq Scan on p2_c3_c2
+                     ->  Parallel Index Scan using p1_pkey on p1
+                     ->  Parallel Index Scan using p1_c1_pkey on p1_c1
+                     ->  Parallel Index Scan using p1_c2_pkey on p1_c2
+                     ->  Parallel Index Scan using p1_c3_pkey on p1_c3
+                     ->  Parallel Index Scan using p1_c4_pkey on p1_c4
+                     ->  Parallel Index Scan using p1_c1_c1_pkey on p1_c1_c1
+                     ->  Parallel Index Scan using p1_c1_c2_pkey on p1_c1_c2
+                     ->  Parallel Index Scan using p1_c3_c1_pkey on p1_c3_c1
+                     ->  Parallel Index Scan using p1_c3_c2_pkey on p1_c3_c2
 (25 rows)
 
 -- This hint doesn't turn on parallel, so the Parallel hint is ignored

@@ -1888,7 +1888,7 @@ error hint:
                        Filter: (ctid = '(1,1)'::tid)
                        ->  Bitmap Index Scan on t4_pkey
                              Index Cond: (c1 = b1t2.c1)
-   InitPlan 2 (returns $4)
+   InitPlan 2 (returns $5)
      ->  Aggregate
            ->  Nested Loop
                  Join Filter: (b2t1.c1 = b2t4.c1)
@@ -1908,7 +1908,7 @@ error hint:
                  ->  Index Scan using t4_pkey on t4 b2t4
                        Index Cond: (c1 = b2t2.c1)
                        Filter: (ctid = '(1,1)'::tid)
-   InitPlan 3 (returns $7)
+   InitPlan 3 (returns $8)
      ->  Aggregate
            ->  Nested Loop
                  Join Filter: (b3t1.c1 = b3t2.c1)
@@ -1937,7 +1937,7 @@ error hint:
                      ->  Nested Loop
                            Join Filter: (bmt1.c1 = bmt4.c1)
                            ->  Seq Scan on t1 bmt1
-                                 Filter: ((c1 <> $7) AND (ctid = '(1,1)'::tid))
+                                 Filter: ((c1 <> $8) AND (ctid = '(1,1)'::tid))
                            ->  Tid Scan on t4 bmt4
                                  TID Cond: (ctid = '(1,1)'::tid)
                      ->  Index Scan using t2_pkey on t2 bmt2
@@ -2078,18 +2078,18 @@ error hint:
                        Filter: (ctid = '(1,1)'::tid)
                        ->  Bitmap Index Scan on t4_pkey
                              Index Cond: (c1 = b1t2.c1)
-   InitPlan 3 (returns $3)
+   InitPlan 3 (returns $4)
      ->  Result
-           InitPlan 2 (returns $2)
+           InitPlan 2 (returns $3)
              ->  Limit
                    ->  Bitmap Heap Scan on t1 b2t1
                          Recheck Cond: ((c1 IS NOT NULL) AND (c1 = 1))
                          Filter: (ctid = '(1,1)'::tid)
                          ->  Bitmap Index Scan on t1_pkey
                                Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
-   InitPlan 5 (returns $5)
+   InitPlan 5 (returns $6)
      ->  Result
-           InitPlan 4 (returns $4)
+           InitPlan 4 (returns $5)
              ->  Limit
                    ->  Index Scan Backward using t1_pkey on t1 b3t1
                          Index Cond: (c1 IS NOT NULL)
@@ -2103,7 +2103,7 @@ error hint:
                      ->  Nested Loop
                            Join Filter: (bmt1.c1 = bmt4.c1)
                            ->  Seq Scan on t1 bmt1
-                                 Filter: ((c1 <> $5) AND (ctid = '(1,1)'::tid))
+                                 Filter: ((c1 <> $6) AND (ctid = '(1,1)'::tid))
                            ->  Tid Scan on t4 bmt4
                                  TID Cond: (ctid = '(1,1)'::tid)
                      ->  Index Scan using t2_pkey on t2 bmt2

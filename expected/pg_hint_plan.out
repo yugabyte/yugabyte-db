@@ -11,13 +11,13 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 (4 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
-                QUERY PLAN                 
--------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t1.val)
-   ->  Index Scan using t2_val on t2
-   ->  Materialize
-         ->  Index Scan using t1_val on t1
+           QUERY PLAN           
+--------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t1.val)
+   ->  Seq Scan on t2
+   ->  Hash
+         ->  Seq Scan on t1
 (5 rows)
 
 LOAD 'pg_hint_plan';
@@ -32,13 +32,13 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 (4 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
-                QUERY PLAN                 
--------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t1.val)
-   ->  Index Scan using t2_val on t2
-   ->  Materialize
-         ->  Index Scan using t1_val on t1
+           QUERY PLAN           
+--------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t1.val)
+   ->  Seq Scan on t2
+   ->  Hash
+         ->  Seq Scan on t1
 (5 rows)
 
 /*+ Test (t1 t2) */

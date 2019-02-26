@@ -89,6 +89,7 @@ SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
 SET min_parallel_table_scan_size to 0;
 SET min_parallel_index_scan_size to 0;
+SET max_parallel_workers_per_gather to 0;
 SET enable_parallel_append to false;
 /*+Parallel(p1 8)*/
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;

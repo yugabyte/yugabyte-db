@@ -159,8 +159,9 @@ SELECT name, setting, category
     OR name = 'client_min_messages'
  ORDER BY category, name;
 SELECT * FROM settings;
-              name              |  setting  |                  category                   
---------------------------------+-----------+---------------------------------------------
+              name              |  setting  |                    category                     
+--------------------------------+-----------+-------------------------------------------------
+ client_min_messages            | notice    | Client Connection Defaults / Statement Behavior
  geqo                           | on        | Query Tuning / Genetic Query Optimizer
  geqo_effort                    | 5         | Query Tuning / Genetic Query Optimizer
  geqo_generations               | 0         | Query Tuning / Genetic Query Optimizer
@@ -205,7 +206,6 @@ SELECT * FROM settings;
  enable_seqscan                 | on        | Query Tuning / Planner Method Configuration
  enable_sort                    | on        | Query Tuning / Planner Method Configuration
  enable_tidscan                 | on        | Query Tuning / Planner Method Configuration
- client_min_messages            | notice    | Reporting and Logging / When to Log
 (45 rows)
 
 ANALYZE;
