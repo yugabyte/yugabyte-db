@@ -622,6 +622,7 @@ void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
 
   versions_->AddLiveFiles(&job_context->sst_live);
   if (doing_the_full_scan) {
+    InfoLogPrefix info_log_prefix(!db_options_.db_log_dir.empty(), dbname_);
     for (size_t path_id = 0; path_id < db_options_.db_paths.size(); path_id++) {
       // set of all files in the directory. We'll exclude files that are still
       // alive in the subsequent processings.
@@ -629,6 +630,12 @@ void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
       env_->GetChildren(db_options_.db_paths[path_id].path,
                         &files);  // Ignore errors
       for (std::string file : files) {
+        uint64_t number;
+        FileType type;
+        if (!ParseFileName(file, &number, info_log_prefix.prefix, &type) ||
+            pending_outputs_->HasFileNumber(number)) {
+          continue;
+        }
         // TODO(icanadi) clean up this mess to avoid having one-off "/" prefixes
         job_context->full_scan_candidate_files.emplace_back(
             "/" + file, static_cast<uint32_t>(path_id));
