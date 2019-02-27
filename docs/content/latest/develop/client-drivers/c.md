@@ -1,14 +1,14 @@
 ---
-title: C++
-linkTitle: C++
-description: Develop C++ Apps
+title: C
+linkTitle: C
+description: Develop C Apps
 aliases:
-  - /develop/client-drivers/cpp/
+  - /develop/client-drivers/c/
 menu:
   latest:
-    identifier: client-drivers-cpp
+    identifier: client-drivers-c
     parent: client-drivers
-    weight: 551
+    weight: 550
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">
@@ -40,7 +40,7 @@ menu:
     {{% includeMarkdown "redis/cpp.md" /%}}
   </div>
   <div id="ysql" class="tab-pane fade" role="tabpanel" aria-labelledby="ysql-tab">
-    {{% includeMarkdown "ysql/cpp.md" /%}}
+    {{% includeMarkdown "ysql/c.md" /%}}
   </div>
 </div>
 
