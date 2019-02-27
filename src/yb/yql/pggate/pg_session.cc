@@ -174,6 +174,7 @@ Status PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op, uin
   } else {
     has_non_txn_ops_ = true;
   }
+
   auto session = VERIFY_RESULT(GetSessionForOp(op));
   if (read_time && has_txn_ops_) {
     if (!*read_time) {

@@ -280,7 +280,10 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Insert.
-  CHECKED_STATUS NewInsert(PgSession *pg_session, const PgObjectId& table_id, PgStatement **handle);
+  CHECKED_STATUS NewInsert(PgSession *pg_session,
+                           const PgObjectId &table_id,
+                           bool is_single_row_txn,
+                           PgStatement **handle);
 
   CHECKED_STATUS ExecInsert(PgStatement *handle);
 

@@ -27,6 +27,8 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 
+#include "pg_yb_utils.h"
+#include "optimizer/ybcplan.h"
 
 /*
  * ActivePortal is the currently executing Portal (the most closely nested,
@@ -40,7 +42,8 @@ static void ProcessQuery(PlannedStmt *plan,
 			 ParamListInfo params,
 			 QueryEnvironment *queryEnv,
 			 DestReceiver *dest,
-			 char *completionTag);
+			 char *completionTag,
+			 bool isSingleRowModifyTxn);
 static void FillPortalStore(Portal portal, bool isTopLevel);
 static uint64 RunFromStore(Portal portal, ScanDirection direction, uint64 count,
 			 DestReceiver *dest);
@@ -139,7 +142,8 @@ ProcessQuery(PlannedStmt *plan,
 			 ParamListInfo params,
 			 QueryEnvironment *queryEnv,
 			 DestReceiver *dest,
-			 char *completionTag)
+			 char *completionTag,
+			 bool isSingleRowModifyTxn)
 {
 	QueryDesc  *queryDesc;
 
@@ -154,6 +158,9 @@ ProcessQuery(PlannedStmt *plan,
 	 * Call ExecutorStart to prepare the plan for execution
 	 */
 	ExecutorStart(queryDesc, 0);
+
+	/* Set whether this is a single-row, single-stmt modify, used in YB mode. */
+	queryDesc->estate->es_yb_is_single_row_modify_txn = isSingleRowModifyTxn;
 
 	/*
 	 * Run the plan to completion.
@@ -1208,6 +1215,7 @@ PortalRunMulti(Portal portal,
 			   char *completionTag)
 {
 	bool		active_snapshot_set = false;
+	bool        is_single_row_modify_txn = false;
 	ListCell   *stmtlist_item;
 
 	/*
@@ -1224,6 +1232,16 @@ PortalRunMulti(Portal portal,
 		dest = None_Receiver;
 	if (altdest->mydest == DestRemoteExecute)
 		altdest = None_Receiver;
+
+	if (IsYugaByteEnabled())
+	{
+		if (!IsTransactionBlock() && isTopLevel &&
+				list_length(portal->stmts) == 1)
+		{
+			PlannedStmt *pstmt = linitial_node(PlannedStmt, portal->stmts);
+			is_single_row_modify_txn = ybcIsSingleRowModify(pstmt);
+		}
+	}
 
 	/*
 	 * Loop to handle the individual queries generated from a single parsetree
@@ -1287,7 +1305,9 @@ PortalRunMulti(Portal portal,
 							 portal->sourceText,
 							 portal->portalParams,
 							 portal->queryEnv,
-							 dest, completionTag);
+							 dest,
+							 completionTag,
+							 is_single_row_modify_txn);
 			}
 			else
 			{
@@ -1296,7 +1316,9 @@ PortalRunMulti(Portal portal,
 							 portal->sourceText,
 							 portal->portalParams,
 							 portal->queryEnv,
-							 altdest, NULL);
+							 altdest,
+							 NULL,
+							 is_single_row_modify_txn);
 			}
 
 			if (log_executor_stats)
