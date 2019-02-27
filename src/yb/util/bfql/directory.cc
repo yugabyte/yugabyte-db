@@ -207,7 +207,7 @@ const vector<BFDecl> kBFDirectory = {
   { "IncCounter", "counter+", "", INT64, {INT64, INT64} },
   { "DecCounter", "counter-", "", INT64, {INT64, INT64} },
 
-  // Uuid and timeuuid functions.
+  // Now function.
   { "NowTimeUuid", "now", "", TIMEUUID, {} },
 
   // WRITETIME and TTL functions.
@@ -269,6 +269,9 @@ const vector<BFDecl> kBFDirectory = {
   { "NowTime",      "currenttime", "",      TIME, {} },
   { "NowTimestamp", "currenttimestamp", "", TIMESTAMP, {} },
   { "NowTimeUuid",  "currenttimeuuid", "",  TIMEUUID, {} }, // alias of now() for timeuuid.
+
+  // uuid function.
+  { "GetUuid", "uuid", "", UUID, {} },
 };
 
 } // namespace bfql
