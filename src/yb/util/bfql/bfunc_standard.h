@@ -294,6 +294,22 @@ CHECKED_STATUS NowTimeUuid(RTypePtr result) {
 }
 
 //--------------------------------------------------------------------------------------------------
+// uuid().
+static const uint16_t kUUIDType = 4;
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS GetUuid(RTypePtr result) {
+  boost::uuids::uuid b_uuid = Uuid::Generate();
+  Uuid uuid(b_uuid);
+  DCHECK_EQ(b_uuid.version(), kUUIDType);
+  if (b_uuid.version() != kUUIDType) {
+    return STATUS_FORMAT(IllegalState, "Unexpected UUID type $0, expected $1.",
+                         b_uuid.version(), kUUIDType);
+  }
+  result->set_uuid_value(uuid);
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
 
 } // namespace bfql
 } // namespace yb

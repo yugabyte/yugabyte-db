@@ -4459,6 +4459,7 @@ type_function_name:
   IDENT                         { $$ = $1; }
   | unreserved_keyword          { $$ = parser_->MakeString($1); }
   | type_func_name_keyword      { $$ = parser_->MakeString($1); }
+  | UUID                        { $$ = parser_->MakeString($1); }
 ;
 
 // Any not-fully-reserved word --- these names can be, eg, role names.
