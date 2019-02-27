@@ -132,6 +132,44 @@ public class TestCreateTable extends BaseCQLTest {
   }
 
   @Test
+  public void testCreateTableWithColumnNamedOffset() throws Exception {
+    // This test is to check if OFFSET is allowed to be used as column in various syntax.
+    // This test does not need to verify correctness of data values.
+    LOG.info("Begin test");
+
+    // Create table with as "offset" as key column.
+    session.execute("CREATE TABLE test_create_offset_key " +
+                    "(offset int, c1 double, c2 varchar, primary key (offset));");
+    session.execute("INSERT INTO test_create_offset_key (offset) VALUES (1);");
+    session.execute("INSERT INTO test_create_offset_key (c1, offset, c2) VALUES (2.2, 2, '2');");
+    session.execute("SELECT offset FROM test_create_offset_key WHERE offset = 1;");
+    session.execute("SELECT offset, c1, c2 FROM test_create_offset_key WHERE offset = 2;");
+    session.execute("DROP TABLE test_create_offset_key;");
+
+    // Create table with as "offset" as range column.
+    session.execute("CREATE TABLE test_create_offset_rng " +
+                    "(c1 int, offset double, c2 varchar, primary key (c1, offset));");
+    session.execute("SELECT c1, offset, c2 FROM test_create_offset_rng WHERE c1 = 1 " +
+                    "ORDER BY offset;");
+    session.execute("DROP TABLE test_create_offset_rng;");
+
+    // Create table with as "offset" as regular column.
+    session.execute("CREATE TABLE test_create_offset_reg " +
+                    "(c1 int, offset double, c2 varchar, primary key (c1));");
+    session.execute("SELECT c1, offset, c2 FROM test_create_offset_reg;");
+    session.execute("UPDATE test_create_offset_reg SET offset = 3 WHERE c1 = 2;");
+    session.execute("DROP TABLE test_create_offset_reg;");
+
+    // Create table with as "offset" as counter.
+    session.execute("CREATE TABLE test_create_offset_cnt " +
+                    "(c1 int, offset counter, c2 counter, primary key (c1));");
+    session.execute("UPDATE test_create_offset_cnt SET offset = offset + 1 WHERE c1 = 1;");
+    session.execute("DROP TABLE test_create_offset_cnt;");
+
+    LOG.info("End test");
+  }
+
+  @Test
   public void testCreateTableSystemNamespace() throws Exception {
     runInvalidStmt("CREATE TABLE system.abc (c1 int, PRIMARY KEY(c1));");
   }

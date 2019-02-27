@@ -96,6 +96,7 @@ GramProcessor::symbol_type LexProcessor::Scan() {
 
   // Return the token if it doesn't require lookahead. Otherwise, set the token length.
   switch (cur_token.token()) {
+    case GramProcessor::token::TOK_OFFSET:
     case GramProcessor::token::TOK_NOT:
     case GramProcessor::token::TOK_NULLS_P:
     case GramProcessor::token::TOK_WITH: {
@@ -114,6 +115,20 @@ GramProcessor::symbol_type LexProcessor::Scan() {
   // Replace cur_token if needed, based on lookahead.
   GramProcessor::token_type next_token_type = lookahead_.token();
   switch (cur_token.token()) {
+    case GramProcessor::token::TOK_OFFSET: {
+      // Replace OFFSET with OFFSET_LA to support SELECT ... OFFSET ...
+      // - Token OFFSET is accepted when being used as column name (practically all names).
+      // - Token OFFSET_LA is accepted when being used in OFFSET clause.
+      //   offset_clause:  OFFSET_LA <int constant>
+      //                   OFFSET_LA '?'  --> Bind variable
+      //                   OFFSET_LA ':'  --> Bind variable
+      int next_tok = static_cast<int>(next_token_type);
+      if (next_tok == GramProcessor::token::TOK_ICONST || next_tok == '?' || next_tok == ':') {
+        return GramProcessor::make_OFFSET_LA(cursor_);
+      }
+      break;
+    }
+
     case GramProcessor::token::TOK_NOT: {
       // Replace NOT by NOT_LA if it's followed by BETWEEN, IN, etc.
       switch (next_token_type) {

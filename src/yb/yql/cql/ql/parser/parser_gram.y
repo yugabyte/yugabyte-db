@@ -692,7 +692,9 @@ using namespace yb::ql;
 // same precedence as LIKE; otherwise they'd effectively have the same precedence as NOT, at least
 // with respect to their left-hand subexpression. NULLS_LA and WITH_LA are needed to make the
 // grammar LALR(1).
-%token                    NOT_LA NULLS_LA WITH_LA
+//
+// OFFSET_LA is added to support OFFSET clause in SELECT.
+%token                    NOT_LA NULLS_LA WITH_LA OFFSET_LA
 
 %token                    SCAN_ERROR "incomprehensible_character_pattern"
 %token END                0 "end_of_file"
@@ -2344,7 +2346,7 @@ limit_clause:
 ;
 
 offset_clause:
-  OFFSET select_offset_value {
+  OFFSET_LA select_offset_value {
     $$ = $2;
   }
 ;
@@ -5204,6 +5206,7 @@ col_name_keyword:
   | NONE { $$ = $1; }
   | NULLIF { $$ = $1; }
   | NUMERIC { $$ = $1; }
+  | OFFSET { $$ = $1; }
   | OUT_P { $$ = $1; }
   | OVERLAY { $$ = $1; }
   | POSITION { $$ = $1; }
@@ -5334,7 +5337,6 @@ reserved_keyword:
   | NAN { $$ = $1; }
   | NOT { $$ = $1; }
   | NULL_P { $$ = $1; }
-  | OFFSET { $$ = $1; }
   | ON { $$ = $1; }
   | ONLY { $$ = $1; }
   | OR { $$ = $1; }
