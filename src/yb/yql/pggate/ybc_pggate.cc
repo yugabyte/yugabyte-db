@@ -391,9 +391,10 @@ YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle) {
 YBCStatus YBCPgNewInsert(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
+                         const bool is_single_row_txn,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewInsert(pg_session, table_id, handle));
+  return ToYBCStatus(pgapi->NewInsert(pg_session, table_id, is_single_row_txn, handle));
 }
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle) {

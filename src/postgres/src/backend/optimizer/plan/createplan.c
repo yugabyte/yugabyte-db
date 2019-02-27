@@ -43,6 +43,9 @@
 #include "partitioning/partprune.h"
 #include "utils/lsyscache.h"
 
+#include "pg_yb_utils.h"
+#include "optimizer/ybcplan.h"
+
 /*
  * Flag bits that can appear in the flags argument of create_plan_recurse().
  * These can be OR-ed together.
@@ -343,6 +346,12 @@ create_plan(PlannerInfo *root, Path *best_path)
 	 * re-used later
 	 */
 	root->plan_params = NIL;
+
+	/* Run any YugaByte-specific logic on this plan */
+	if (IsYugaByteEnabled())
+	{
+		ybcAnalyzePlan(plan);
+	}
 
 	return plan;
 }

@@ -420,7 +420,32 @@ ExecInsert(ModifyTableState *mtstate,
 
 		if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
 		{
-			newId = YBCExecuteInsert(resultRelationDesc, slot->tts_tupleDescriptor, tuple);
+			/*
+			 * Try to execute the statement as a single row transaction (rather
+			 * than a distributed transaction) if it is safe to do so.
+			 * I.e. if we are in a single-statement transaction that targets a
+			 * single row (i.e. single-row-modify txn), and there are no indices
+			 * or triggers on the target table.
+			 */
+			bool has_triggers = resultRelInfo->ri_TrigDesc &&
+			                    resultRelInfo->ri_TrigDesc->numtriggers > 0;
+
+			bool is_single_row_txn = estate->es_yb_is_single_row_modify_txn &&
+			                         resultRelInfo->ri_NumIndices == 0 &&
+			                         !has_triggers;
+
+			if (is_single_row_txn)
+			{
+				newId = YBCExecuteSingleRowTxnInsert(resultRelationDesc,
+				                                     slot->tts_tupleDescriptor,
+				                                     tuple);
+			}
+			else
+			{
+				newId = YBCExecuteInsert(resultRelationDesc,
+				                         slot->tts_tupleDescriptor,
+				                         tuple);
+			}
 
 			if (resultRelInfo->ri_NumIndices > 0)
 			{

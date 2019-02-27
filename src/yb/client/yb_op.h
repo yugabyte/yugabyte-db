@@ -115,7 +115,7 @@ class YBOperation {
 
   // Returns whether this operation is being performed on a table where distributed transactions
   // are enabled.
-  bool IsTransactional() const;
+  virtual bool IsTransactional() const;
 
  protected:
   explicit YBOperation(const std::shared_ptr<YBTable>& table);
@@ -423,6 +423,12 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
 
   CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
+  bool IsTransactional() const override;
+
+  void set_is_single_row_txn(bool is_single_row_txn) {
+    is_single_row_txn_ = is_single_row_txn;
+  }
+
   bool wrote_data() override { return succeeded() && !read_only() && !response().skipped(); }
 
  protected:
@@ -436,6 +442,9 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
   static YBPgsqlWriteOp *NewUpdate(const std::shared_ptr<YBTable>& table);
   static YBPgsqlWriteOp *NewDelete(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<PgsqlWriteRequestPB> write_request_;
+  // Whether this operation should be run as a single row txn.
+  // Else could be distributed transaction (or non-transactional) depending on target table type.
+  bool is_single_row_txn_ = false;
 };
 
 class YBPgsqlReadOp : public YBPgsqlOp {

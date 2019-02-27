@@ -57,7 +57,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
-  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabaseOid, tab_oid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(pg_session_, kDefaultDatabaseOid, tab_oid,
+                                  false /* is_single_row_txn */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
