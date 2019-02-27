@@ -258,6 +258,7 @@ YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle);
 YBCStatus YBCPgNewInsert(YBCPgSession pg_session,
                          YBCPgOid database_oid,
                          YBCPgOid table_oid,
+                         bool is_single_row_txn,
                          YBCPgStatement *handle);
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle);

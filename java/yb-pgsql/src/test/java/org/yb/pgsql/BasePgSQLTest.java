@@ -567,6 +567,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
+  protected void assertRowSet(String stmt, Set<Row> expectedRows) throws SQLException {
+    try (Statement statement = connection.createStatement()) {
+      try (ResultSet rs = statement.executeQuery(stmt)) {
+        assertEquals(expectedRows, getRowSet(rs));
+      }
+    }
+  }
+
   /*
    * Returns whether or not this select statement requires filtering by Postgres (i.e. not all
    * conditions can be pushed down to YugaByte).
@@ -605,12 +613,37 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected void runInvalidQuery(Statement statement, String stmt) {
+  /**
+   * Deprecated. Use the version below which requires an expected error message substring.
+   * TODO Consider replacing all occurences of this version and then removing it.
+   */
+  @Deprecated
+  protected void runInvalidQuery(Statement statement, String query) {
     try {
-      statement.execute(stmt);
-      fail(String.format("Statement did not fail: %s", stmt));
+      statement.execute(query);
+      fail(String.format("Statement did not fail: %s", query));
     } catch (SQLException e) {
       LOG.info("Expected exception", e);
+    }
+  }
+
+  /**
+   *
+   * @param statement The statement used to execute the query.
+   * @param query The query string.
+   * @param errorSubstring A substring of the expected error message.
+   */
+  protected void runInvalidQuery(Statement statement, String query, String errorSubstring) {
+    try {
+      statement.execute(query);
+      fail(String.format("Statement did not fail: %s", query));
+    } catch (SQLException e) {
+      if (e.getMessage().contains(errorSubstring)) {
+        LOG.info("Expected exception", e);
+      } else {
+        fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+                           e.getMessage(), errorSubstring));
+      }
     }
   }
 
