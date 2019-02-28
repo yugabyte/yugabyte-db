@@ -82,6 +82,11 @@ IsYBRelationById(Oid relid)
 }
 
 bool
+IsYBRelationByKind(char relKind){
+  return (relKind == RELKIND_RELATION || relKind == RELKIND_INDEX);
+}
+
+bool
 YBNeedRetryAfterCacheRefresh(ErrorData *edata)
 {
 	// TODO Inspect error code to distinguish retryable errors.

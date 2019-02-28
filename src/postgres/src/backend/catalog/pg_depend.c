@@ -76,16 +76,6 @@ recordMultipleDependencies(const ObjectAddress *depender,
 	if (IsBootstrapProcessingMode())
 		return;
 
-	/*
-	 * Disable dependency check here for now (14/12/2018) to avoid many
-	 * full-table scans caused by isObjectPinned below. YugaByte master
-	 * catalog maps should catch broken dependencies for now anyway.
-	 * TODO as we enable more postgres-exclusive features this needs to be
-	 * handled (re-enabled) to ensure correctness.
-	 */
-	if (IsYugaByteEnabled())
-		return;
-
 	dependDesc = heap_open(DependRelationId, RowExclusiveLock);
 
 	/* Don't open indexes unless we need to make an update */

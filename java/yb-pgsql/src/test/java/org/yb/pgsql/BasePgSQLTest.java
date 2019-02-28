@@ -288,8 +288,13 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
     try (Statement statement = connection.createStatement())  {
       DatabaseMetaData dbmd = connection.getMetaData();
-      String[] types = {"TABLE"};
-      ResultSet rs = dbmd.getTables(null, null, "%", types);
+      String[] views = {"VIEW"};
+      ResultSet rs = dbmd.getTables(null, null, "%", views);
+      while (rs.next()) {
+        statement.execute("DROP VIEW " + rs.getString("TABLE_NAME"));
+      }
+      String[] tables = {"TABLE"};
+      rs = dbmd.getTables(null, null, "%", tables);
       while (rs.next()) {
         statement.execute("DROP TABLE " + rs.getString("TABLE_NAME"));
       }
