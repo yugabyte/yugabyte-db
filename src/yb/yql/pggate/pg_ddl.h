@@ -214,7 +214,7 @@ class PgDropTable : public PgDdl {
   // Execute.
   CHECKED_STATUS Exec();
 
- private:
+ protected:
   const PgObjectId table_id_;
   bool if_exist_;
 };
@@ -282,6 +282,25 @@ class PgCreateIndex : public PgCreateTable {
  private:
   const PgObjectId base_table_id_;
   bool is_unique_index_;
+};
+
+class PgDropIndex : public PgDropTable {
+ public:
+  // Public types.
+  typedef scoped_refptr<PgDropIndex> ScopedRefPtr;
+  typedef scoped_refptr<const PgDropIndex> ScopedRefPtrConst;
+
+  typedef std::unique_ptr<PgDropIndex> UniPtr;
+  typedef std::unique_ptr<const PgDropIndex> UniPtrConst;
+
+  // Constructors.
+  PgDropIndex(PgSession::ScopedRefPtr pg_session, const PgObjectId& index_id, bool if_exist);
+  virtual ~PgDropIndex();
+
+  virtual StmtOp stmt_op() const override { return StmtOp::STMT_DROP_INDEX; }
+
+  // Execute.
+  CHECKED_STATUS Exec();
 };
 
 //--------------------------------------------------------------------------------------------------

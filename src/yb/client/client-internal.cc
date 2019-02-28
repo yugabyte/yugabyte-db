@@ -585,8 +585,8 @@ Status YBClient::Data::DeleteTable(YBClient* client,
     RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.table_id(), deadline));
   }
 
-  if (resp.has_indexed_table()) {
-    DCHECK(indexed_table_name != nullptr);
+  // Return indexed table name if requested.
+  if (resp.has_indexed_table() && indexed_table_name != nullptr) {
     indexed_table_name->GetFromTableIdentifierPB(resp.indexed_table());
   }
 

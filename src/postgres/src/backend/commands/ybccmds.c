@@ -415,3 +415,17 @@ void YBCRename(RenameStmt *stmt, Oid relationId) {
 
 	}
 }
+
+void
+YBCDropIndex(Oid relationId)
+{
+	YBCPgStatement handle;
+
+	HandleYBStatus(YBCPgNewDropIndex(ybc_pg_session,
+									 MyDatabaseId,
+									 relationId,
+									 false,	   /* if_exists */
+									 &handle));
+	HandleYBStmtStatus(YBCPgExecDropIndex(handle), handle);
+	HandleYBStatus(YBCPgDeleteStatement(handle));
+}

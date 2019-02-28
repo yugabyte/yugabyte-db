@@ -293,7 +293,10 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Delete the specified index table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   CHECKED_STATUS DeleteIndexTable(const YBTableName& table_name,
-                                  YBTableName* indexed_table_name,
+                                  YBTableName* indexed_table_name = nullptr,
+                                  bool wait = true);
+  CHECKED_STATUS DeleteIndexTable(const std::string& table_id,
+                                  YBTableName* indexed_table_name = nullptr,
                                   bool wait = true);
 
   // Creates a YBTableAlterer; it is the caller's responsibility to free it.

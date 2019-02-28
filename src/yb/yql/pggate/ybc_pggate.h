@@ -194,6 +194,14 @@ YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name
 
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle);
 
+YBCStatus YBCPgNewDropIndex(YBCPgSession pg_session,
+                            YBCPgOid database_oid,
+                            YBCPgOid index_oid,
+                            bool if_exist,
+                            YBCPgStatement *handle);
+
+YBCStatus YBCPgExecDropIndex(YBCPgStatement handle);
+
 //--------------------------------------------------------------------------------------------------
 // DML statements (select, insert, update, delete, truncate)
 //--------------------------------------------------------------------------------------------------
