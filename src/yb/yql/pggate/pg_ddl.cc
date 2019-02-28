@@ -290,6 +290,27 @@ Status PgCreateIndex::Exec() {
 }
 
 //--------------------------------------------------------------------------------------------------
+// PgDropIndex
+//--------------------------------------------------------------------------------------------------
+
+PgDropIndex::PgDropIndex(PgSession::ScopedRefPtr pg_session,
+                         const PgObjectId& index_id,
+                         bool if_exist)
+    : PgDropTable(pg_session, index_id, if_exist) {
+}
+
+PgDropIndex::~PgDropIndex() {
+}
+
+Status PgDropIndex::Exec() {
+  Status s = pg_session_->DropIndex(table_id_);
+  if (s.ok() || (s.IsNotFound() && if_exist_)) {
+    return Status::OK();
+  }
+  return s;
+}
+
+//--------------------------------------------------------------------------------------------------
 // PgAlterTable
 //--------------------------------------------------------------------------------------------------
 

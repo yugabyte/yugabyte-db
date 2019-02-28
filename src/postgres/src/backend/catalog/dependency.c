@@ -1121,8 +1121,8 @@ doDeletion(const ObjectAddress *object, int flags)
 
 					Assert(object->objectSubId == 0);
 
-					if (IsYugaByteEnabled())
-						YBC_LOG_WARNING("Skipping index deletion.");
+					if (IsYugaByteEnabled() && IsYBRelationByKind(relKind))
+						YBCDropIndex(object->objectId);
 					index_drop(object->objectId, concurrent);
 				}
 				else
@@ -1130,10 +1130,10 @@ doDeletion(const ObjectAddress *object, int flags)
 					if (object->objectSubId != 0)
 						RemoveAttributeById(object->objectId,
 											object->objectSubId);
-					else {
-						if (IsYugaByteEnabled() && IsYBRelationByKind(relKind)) {
+					else
+					{
+						if (IsYugaByteEnabled() && IsYBRelationByKind(relKind))
 							YBCDropTable(object->objectId);
-						}
 						heap_drop_with_catalog(object->objectId);
 					}
 				}

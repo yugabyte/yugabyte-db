@@ -37,3 +37,11 @@ CREATE INDEX rix ON road USING btree (name text_ops);
 CREATE INDEX iix ON ihighway USING btree (name text_ops);
 
 CREATE INDEX six ON shighway USING btree (name text_ops);
+
+CREATE INDEX onek_two_idx ON onek USING btree(two);
+
+DROP INDEX onek_two_idx;
+
+DROP INDEX onek_two_idx;
+
+DROP INDEX IF EXISTS onek_two_idx;
