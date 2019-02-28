@@ -40,13 +40,13 @@ Restart the YugaByte cluster and set the flag to enable transactions for the Pos
 For Mac/Linux: 
 
 ```sh
-$ export YB_PG_TRANSACTIONS_ENABLED=1; ./bin/yb-ctl destroy; ./bin/yb-ctl create --enable_postgres
+$ ./bin/yb-ctl destroy; ./bin/yb-ctl create --enable_postgres
 ```
 
 For Docker:
 
 ```sh
-$ export YB_PG_TRANSACTIONS_ENABLED=1; ./bin/yb-docker-ctl destroy; ./bin/yb-docker-ctl create --enable_postgres
+$ ./bin/yb-docker-ctl destroy; ./bin/yb-docker-ctl create --enable_postgres
 ```
 
 

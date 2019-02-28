@@ -20,8 +20,6 @@ showAsideToc: true
 
 ### Diagrams
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="289" height="155" viewbox="0 0 289 155"><path class="connector" d="M0 22h25m60 0h43m-113 25q0 5 5 5h5m83 0h5q5 0 5-5m-103 30q0 5 5 5h5m59 0h29q5 0 5-5m-103 30q0 5 5 5h5m46 0h42q5 0 5-5m-108-85q5 0 5 5v110q0 5 5 5h5m69 0h19q5 0 5-5v-110q0-5 5-5m5 0h30m106 0h20m-136 25q0 5 5 5h5m57 0h54q5 0 5-5m-131-25q5 0 5 5v33q0 5 5 5h116q5 0 5-5v-33q0-5 5-5m5 0h5"/><rect class="literal" x="25" y="5" width="60" height="25" rx="7"/><text class="text" x="35" y="22">ABORT</text><rect class="literal" x="25" y="35" width="83" height="25" rx="7"/><text class="text" x="168" y="22">TRANSACTION</text><rect class="literal" x="158" y="35" width="57" height="25" rx="7"/><text class="text" x="168" y="52">WORK</text></svg>
-
 ### Syntax
 
 ```
@@ -39,13 +37,13 @@ Restart the YugaByte cluster and set the flag to enable transactions for the Pos
 For Mac/Linux: 
 
 ```sh
-$ export YB_PG_TRANSACTIONS_ENABLED=1; ./bin/yb-ctl destroy; ./bin/yb-ctl create --enable_postgres
+$ ./bin/yb-ctl destroy; ./bin/yb-ctl create --enable_postgres
 ```
 
 For Docker:
 
 ```sh
-$ export YB_PG_TRANSACTIONS_ENABLED=1; ./bin/yb-docker-ctl destroy; ./bin/yb-docker-ctl create --enable_postgres
+$ ./bin/yb-docker-ctl destroy; ./bin/yb-docker-ctl create --enable_postgres
 ```
 
 
