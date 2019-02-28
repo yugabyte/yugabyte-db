@@ -237,13 +237,14 @@ export function insertSpacesFromCamelCase(string) {
 
 // Official Version string is x.x.x.x-bx
 export function sortVersionStrings(arr) {
-  const regExp = /(\d+).(\d+).(\d+).(\d+)(?:-[a-z]+)?(\d+)?/;
+  const regExp = /^(\d+).(\d+).(\d+).(\d+)(?:-[a-z]+)?(\d+)?/;
   return arr.sort((a, b) => {
-    const a_arr = a.split(regExp);
-    const b_arr = b.split(regExp);
+    if (!a.match(regExp) || !b.match(regExp)) return -1;
+    const a_arr = a.split(regExp).filter(Boolean);
+    const b_arr = b.split(regExp).filter(Boolean);
     for(let idx = 0; idx < a_arr.length; idx++) {
       if (a_arr[idx] !== b_arr[idx]) {
-        return b_arr[idx] - a_arr[idx];
+        return parseInt(b_arr[idx], 10) - parseInt(a_arr[idx], 10);
       }
     }
     return 0;
