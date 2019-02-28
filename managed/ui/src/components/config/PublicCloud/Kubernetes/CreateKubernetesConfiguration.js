@@ -29,7 +29,7 @@ class CreateKubernetesConfiguration extends Component {
     });
   };
 
-  createProviderConfig = (vals, actions) => {
+  createProviderConfig = (vals, setSubmitting) => {
     const self = this;
     const kubeConfigFile = vals.kubeConfig;
     const pullSecretFile = vals.pullSecret;
@@ -73,7 +73,7 @@ class CreateKubernetesConfiguration extends Component {
       console.warn("File Upload gone wrong. "+reason);
     });
     this.props.toggleListView(true);
-    actions.setSubmitting(false);
+    setSubmitting(false);
   }
 
   render() {
@@ -140,8 +140,7 @@ class CreateKubernetesConfiguration extends Component {
                 providerType: values.providerType.value,
                 regionCode: values.regionCode.value,
               };
-              this.createProviderConfig(payload);
-              setSubmitting(false);
+              this.createProviderConfig(payload, setSubmitting);
             }}
             render={props => (
               <form name="kubernetesConfigForm"
