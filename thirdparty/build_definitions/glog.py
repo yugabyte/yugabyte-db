@@ -29,7 +29,8 @@ class GLogDependency(Dependency):
         self.patch_version = 2
         self.patch_strip = 0
         self.patches = ['glog-issue-198-fix-unused-warnings.patch',
-                        'glog-tsan-annotations.patch']
+                        'glog-tsan-annotations.patch',
+                        'glog-application-fingerprint.patch']
         self.post_patch = ['autoreconf', '-fvi']
 
     def build(self, builder):

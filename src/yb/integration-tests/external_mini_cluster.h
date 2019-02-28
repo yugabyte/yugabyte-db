@@ -149,6 +149,9 @@ struct ExternalMiniClusterOptions {
 
   bool start_pgsql_proxy = kDefaultStartPgsqlProxy;
 
+  // If true logs will be writen in both stderr and file
+  bool log_to_file = false;
+
   CHECKED_STATUS RemovePort(const uint16_t port);
   CHECKED_STATUS AddPort(const uint16_t port);
 };
@@ -487,6 +490,8 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   virtual void Shutdown();
 
   const std::string& data_dir() const { return full_data_dir_; }
+
+  const std::string& exe() const { return exe_; }
 
   // Return a pointer to the flags used for this server on restart.  Modifying these flags will only
   // take effect on the next restart.

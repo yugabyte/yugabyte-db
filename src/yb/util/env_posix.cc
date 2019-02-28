@@ -1203,6 +1203,15 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
+  Result<std::string> ReadLink(const std::string& link) override {
+    char buf[PATH_MAX];
+    const auto len = readlink(link.c_str(), buf, sizeof(buf));
+    if (len > -1) {
+      return std::string(buf, buf + len);
+    }
+    return STATUS_IO_ERROR(link, errno);
+  }
+
   Status RenameFile(const std::string& src, const std::string& target) override {
     TRACE_EVENT2("io", "PosixEnv::RenameFile", "src", src, "dst", target);
     ThreadRestrictions::AssertIOAllowed();
