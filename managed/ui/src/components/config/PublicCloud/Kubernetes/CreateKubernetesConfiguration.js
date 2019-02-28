@@ -154,7 +154,7 @@ class CreateKubernetesConfiguration extends Component {
                         </Col>
                         <Col lg={7}>
                           <Field name={"providerType"} component={YBFormSelect}
-                                 insetError={true} options={providerTypeOptions} />
+                                options={providerTypeOptions} />
                         </Col>
                       </Row>
                       <Row className="config-provider-row">
@@ -163,7 +163,7 @@ class CreateKubernetesConfiguration extends Component {
                         </Col>
                         <Col lg={7}>
                           <Field name="accountName" placeholder="Kube Config name"
-                                 component={YBFormInput} insetError={true}
+                                 component={YBFormInput}
                                  className={"kube-provider-input-field"}/>
                         </Col>
                       </Row>
@@ -184,7 +184,6 @@ class CreateKubernetesConfiguration extends Component {
                         <Col lg={7}>
                           <Field name="serviceAccount" placeholder="Service Account name"
                                  component={YBFormInput}
-                                 insetError={true}
                                  className={"kube-provider-input-field"}/>
                         </Col>
                       </Row>
@@ -195,7 +194,7 @@ class CreateKubernetesConfiguration extends Component {
                         </Col>
                         <Col lg={7}>
                           <Field name={"regionCode"} component={YBFormSelect}
-                                 insetError={true} options={regionOptions} />
+                                 options={regionOptions} />
                         </Col>
                       </Row>
                       <Row className="config-provider-row">
@@ -205,7 +204,6 @@ class CreateKubernetesConfiguration extends Component {
                         <Col lg={7}>
                           <Field name="zoneLabel" placeholder="Zone Label"
                                  component={YBFormInput}
-                                 insetError={true}
                                  className={"kube-provider-input-field"}/>
                         </Col>
                       </Row>
@@ -217,7 +215,6 @@ class CreateKubernetesConfiguration extends Component {
                         <Col lg={7}>
                           <Field name="imageRegistry" placeholder="Optional Image Registry"
                                  component={YBFormInput}
-                                 insetError={true}
                                  className={"kube-provider-input-field"}/>
                         </Col>
                       </Row>
@@ -238,7 +235,6 @@ class CreateKubernetesConfiguration extends Component {
                         <Col lg={7}>
                           <Field name="storageClasses" placeholder="Storage Class Names (default Standard)"
                                  component={YBFormInput}
-                                 insetError={true}
                                  className={"kube-provider-input-field"}/>
                         </Col>
                       </Row>
@@ -250,7 +246,6 @@ class CreateKubernetesConfiguration extends Component {
                           <Field name="annotations" placeholder="Optional Annotation for Internal Load Balancer"
                                  component={YBFormInput}
                                  componentClass="textarea"
-                                 insetError={true}
                                  className={"kube-provider-input-field"}/>
                         </Col>
                       </Row>
