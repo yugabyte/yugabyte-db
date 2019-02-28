@@ -29,10 +29,10 @@
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
-#include "yb/docdb/doc_operation.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/expiration.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/lock_batch.h"
 #include "yb/docdb/primitive_value.h"
@@ -81,6 +81,9 @@ namespace yb {
 class Histogram;
 
 namespace docdb {
+
+class DeadlineInfo;
+class DocOperation;
 
 // This function prepares the transaction by taking locks. The set of keys locked are returned to
 // the caller via the keys_locked argument (because they need to be saved and unlocked when the

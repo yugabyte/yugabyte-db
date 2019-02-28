@@ -14,6 +14,7 @@
 #ifndef YB_MASTER_SYS_CATALOG_INTERNAL_H_
 #define YB_MASTER_SYS_CATALOG_INTERNAL_H_
 
+#include "yb/common/ql_expr.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/tserver/tserver.pb.h"

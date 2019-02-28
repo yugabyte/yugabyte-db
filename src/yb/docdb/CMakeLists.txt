@@ -27,6 +27,7 @@ ADD_YB_LIBRARY(docdb_proto
 set(DOCDB_SRCS
     conflict_resolution.cc
     consensus_frontier.cc
+    cql_operation.cc
     deadline_info.cc
     doc_boundary_values_extractor.cc
     docdb.cc
@@ -38,7 +39,6 @@ set(DOCDB_SRCS
     doc_expr.cc
     doc_key.cc
     doc_kv_util.cc
-    doc_operation.cc
     doc_pgsql_scanspec.cc
     doc_ql_scanspec.cc
     doc_rowwise_iterator.cc
@@ -48,8 +48,10 @@ set(DOCDB_SRCS
     intent.cc
     key_bytes.cc
     lock_batch.cc
+    pgsql_operation.cc
     primitive_value.cc
     ql_rocksdb_storage.cc
+    redis_operation.cc
     shared_lock_manager.cc
     subdocument.cc
     value.cc

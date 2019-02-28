@@ -69,6 +69,7 @@
 
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
@@ -76,8 +77,10 @@
 #include "yb/docdb/docdb_compaction_filter_intents.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
-#include "yb/docdb/primitive_value.h"
 #include "yb/docdb/lock_batch.h"
+#include "yb/docdb/pgsql_operation.h"
+#include "yb/docdb/primitive_value.h"
+#include "yb/docdb/redis_operation.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/map-util.h"

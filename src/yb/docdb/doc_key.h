@@ -23,6 +23,8 @@
 #include "yb/rocksdb/filter_policy.h"
 
 #include "yb/common/schema.h"
+
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/primitive_value.h"
 
 #include "yb/util/ref_cnt_buffer.h"
@@ -33,8 +35,6 @@ namespace yb {
 namespace docdb {
 
 using DocKeyHash = uint16_t;
-
-class DocPath;
 
 // ------------------------------------------------------------------------------------------------
 // DocKey
