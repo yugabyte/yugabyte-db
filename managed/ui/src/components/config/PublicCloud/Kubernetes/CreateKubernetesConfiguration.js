@@ -134,7 +134,15 @@ class CreateKubernetesConfiguration extends Component {
           <Formik
             validationSchema={validationSchema}
             initialValues={initialValues}
-            onSubmit={this.createProviderConfig}
+            onSubmit={(values, { setSubmitting }) => {
+              const payload = {
+                ...values,
+                providerType: values.providerType.value,
+                regionCode: values.regionCode.value,
+              };
+              this.createProviderConfig(payload);
+              setSubmitting(false);
+            }}
             render={props => (
               <form name="kubernetesConfigForm"
                     onSubmit={props.handleSubmit}>
