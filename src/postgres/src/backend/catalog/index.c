@@ -1562,8 +1562,11 @@ index_drop(Oid indexId, bool concurrent)
 
 	/*
 	 * Schedule physical removal of the files
+	 * If YugaByte is enabled, there aren't any physical files to remove.
 	 */
-	RelationDropStorage(userIndexRelation);
+	if (!IsYugaByteEnabled()) {
+		RelationDropStorage(userIndexRelation);
+	}
 
 	/*
 	 * Close and flush the index's relcache entry, to ensure relcache doesn't

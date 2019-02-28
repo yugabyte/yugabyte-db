@@ -78,6 +78,7 @@ copy (select t from test1 where id = 1) to stdout csv header force quote t;
 -- Drop everything
 --
 drop table test2;
+drop view v_test1;
 drop table test1;
 
 -- psql handling of COPY in multi-command strings

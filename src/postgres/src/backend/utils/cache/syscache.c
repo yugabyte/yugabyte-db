@@ -80,6 +80,7 @@
 #include "utils/catcache.h"
 #include "utils/syscache.h"
 
+#include "catalog/pg_attrdef.h"
 #include "pg_yb_utils.h"
 
 /*---------------------------------------------------------------------------
@@ -1062,6 +1063,7 @@ YBSysTablePrimaryKey(Oid relid)
 		case AccessMethodProcedureRelationId:
 		case AccessMethodRelationId:
 		case AggregateRelationId:
+		case AttrDefaultRelationId:
 		case AuthIdRelationId:
 		case CastRelationId:
 		case CollationRelationId:

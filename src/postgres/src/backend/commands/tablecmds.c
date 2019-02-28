@@ -1128,25 +1128,6 @@ RemoveRelations(DropStmt *drop)
 		obj.objectId = relOid;
 		obj.objectSubId = 0;
 
-		if (IsYugaByteEnabled())
-		{
-			Relation full_rel = relation_openrv(rel, NoLock);
-			if (full_rel->rd_rel->relpersistence != RELPERSISTENCE_TEMP)
-			{
-				YBCDropTable(relOid);
-				/*
-				 * Remove the associated type.
-				 * TODO: When we fully support dependencies this should be
-				 * removed.
-				 */
-				if (full_rel->rd_rel->reltype != InvalidOid)
-				{
-					RemoveTypeById(full_rel->rd_rel->reltype);
-				}
-			}
-			relation_close(full_rel, NoLock);
-		}
-
 		add_exact_object_address(&obj, objects);
 	}
 
