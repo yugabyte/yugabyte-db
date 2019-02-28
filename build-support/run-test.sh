@@ -61,6 +61,8 @@ if [[ ${YB_DEBUG_RUN_TEST:-} == "1" ]]; then
   set -x
 fi
 
+is_run_test_script=true
+
 . "${BASH_SOURCE%/*}/common-build-env.sh"
 . "${BASH_SOURCE%/*}/common-test-env.sh"
 
