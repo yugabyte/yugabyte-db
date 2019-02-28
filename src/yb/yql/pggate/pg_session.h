@@ -86,6 +86,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   client::YBTableAlterer *NewTableAlterer(const client::YBTableName& table_name);
   client::YBTableAlterer *NewTableAlterer(const string table_id);
   CHECKED_STATUS DropTable(const PgObjectId& table_id);
+  CHECKED_STATUS DropIndex(const PgObjectId& index_id);
   CHECKED_STATUS TruncateTable(const PgObjectId& table_id);
   Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(const PgObjectId& table_id);

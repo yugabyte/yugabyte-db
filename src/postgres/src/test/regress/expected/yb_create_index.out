@@ -32,3 +32,9 @@ CREATE INDEX iix ON ihighway USING btree (name text_ops);
 ERROR:  relation "ihighway" does not exist
 CREATE INDEX six ON shighway USING btree (name text_ops);
 ERROR:  relation "shighway" does not exist
+CREATE INDEX onek_two_idx ON onek USING btree(two);
+DROP INDEX onek_two_idx;
+DROP INDEX onek_two_idx;
+ERROR:  index "onek_two_idx" does not exist
+DROP INDEX IF EXISTS onek_two_idx;
+NOTICE:  index "onek_two_idx" does not exist, skipping

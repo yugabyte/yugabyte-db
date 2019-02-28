@@ -493,6 +493,23 @@ Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
   return down_cast<PgCreateIndex*>(handle)->Exec();
 }
 
+Status PgApiImpl::NewDropIndex(PgSession *pg_session,
+                               const PgObjectId& index_id,
+                               bool if_exist,
+                               PgStatement **handle) {
+  auto stmt = make_scoped_refptr<PgDropIndex>(pg_session, index_id, if_exist);
+  *handle = stmt.detach();
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecDropIndex(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_INDEX)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  return down_cast<PgDropIndex*>(handle)->Exec();
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML Statment Support.
 //--------------------------------------------------------------------------------------------------

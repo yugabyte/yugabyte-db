@@ -341,6 +341,19 @@ YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecCreateIndex(handle));
 }
 
+YBCStatus YBCPgNewDropIndex(YBCPgSession pg_session,
+                            const YBCPgOid database_oid,
+                            const YBCPgOid index_oid,
+                            bool if_exist,
+                            YBCPgStatement *handle) {
+  const PgObjectId index_id(database_oid, index_oid);
+  return ToYBCStatus(pgapi->NewDropIndex(pg_session, index_id, if_exist, handle));
+}
+
+YBCStatus YBCPgExecDropIndex(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDropIndex(handle));
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML Statements.
 //--------------------------------------------------------------------------------------------------

@@ -506,6 +506,20 @@ Status YBClient::DeleteIndexTable(const YBTableName& table_name,
                             wait);
 }
 
+Status YBClient::DeleteIndexTable(const string& table_id,
+                                  YBTableName* indexed_table_name,
+                                  bool wait) {
+  MonoTime deadline = MonoTime::Now();
+  deadline.AddDelta(default_admin_operation_timeout());
+  return data_->DeleteTable(this,
+                            YBTableName(),
+                            table_id,
+                            true /* is_index_table */,
+                            deadline,
+                            indexed_table_name,
+                            wait);
+}
+
 YBTableAlterer* YBClient::NewTableAlterer(const YBTableName& name) {
   return new YBTableAlterer(this, name);
 }

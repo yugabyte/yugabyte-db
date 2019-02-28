@@ -226,6 +226,13 @@ class PgApiImpl {
 
   CHECKED_STATUS ExecCreateIndex(PgStatement *handle);
 
+  CHECKED_STATUS NewDropIndex(PgSession *pg_session,
+                              const PgObjectId& index_id,
+                              bool if_exist,
+                              PgStatement **handle);
+
+  CHECKED_STATUS ExecDropIndex(PgStatement *handle);
+
   //------------------------------------------------------------------------------------------------
   // All DML statements
   CHECKED_STATUS DmlAppendTarget(PgStatement *handle, PgExpr *expr);

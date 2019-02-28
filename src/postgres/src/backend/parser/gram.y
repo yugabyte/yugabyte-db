@@ -6457,7 +6457,7 @@ DropStmt:	DROP drop_type_any_name IF_P EXISTS any_name_list opt_drop_behavior
 				}
 			| DROP INDEX CONCURRENTLY any_name_list opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP INDEX");
+					parser_ybc_not_support(@1, "DROP INDEX CONCURRENTLY");
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_INDEX;
 					n->missing_ok = FALSE;
@@ -6489,7 +6489,7 @@ drop_type_any_name:
 					parser_ybc_not_support(@1, "DROP MATERIALIZED VIEW");
 					$$ = OBJECT_MATVIEW;
 				}
-			| INDEX { parser_ybc_not_support(@1, "DROP INDEX"); $$ = OBJECT_INDEX; }
+			| INDEX { $$ = OBJECT_INDEX; }
 			| FOREIGN TABLE
 				{
 					parser_ybc_not_support(@1, "DROP FOREIGN TABLE");
