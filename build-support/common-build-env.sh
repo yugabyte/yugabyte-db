@@ -73,6 +73,15 @@ readonly YB_VIRTUALENV_BASENAME=python_virtual_env
 
 readonly YB_LINUXBREW_LOCAL_ROOT=$HOME/.linuxbrew-yb-build
 
+readonly YB_SHARED_MVN_LOCAL_REPO=/n/jenkins/m2_repository
+readonly YB_NON_SHARED_MVN_LOCAL_REPO=$HOME/.m2/repository
+readonly YB_SHARED_MVN_SETTINGS=/n/jenkins/m2_settings.xml
+
+if [[ -z ${is_run_test_script:-} ]]; then
+  is_run_test_script=false
+fi
+readonly is_run_test_script
+
 # -------------------------------------------------------------------------------------------------
 # Functions used in initializing some constants
 # -------------------------------------------------------------------------------------------------
@@ -742,21 +751,34 @@ set_cmake_build_type_and_compiler_type() {
 
 set_mvn_parameters() {
   local should_use_shared_dirs=false
+  should_copy_artifacts_to_non_shared_repo=false
   if is_jenkins && is_src_root_on_nfs; then
-    should_use_shared_dirs=true
+    if is_mac && "$is_run_test_script" && [[ -n ${YB_TMP_GROUP_ID:-} ]]; then
+      should_use_shared_dirs=false
+      should_copy_artifacts_to_non_shared_repo=true
+      log "Will not use shared Maven repository ($YB_SHARED_MVN_LOCAL_REPO), but will copy" \
+          "the artifact with group id ${YB_TMP_GROUP_ID:-undefined} from it to" \
+          "$YB_NON_SHARED_MVN_LOCAL_REPO"
+    else
+      should_use_shared_dirs=true
+      log "Will use shared Maven repository ($YB_SHARED_MVN_LOCAL_REPO)." \
+          "Based on parameters: is_run_test_script=$is_run_test_script," \
+          "YB_TMP_GROUP_ID=${YB_TMP_GROUP_ID:-undefined}," \
+          "OSTYPE=$OSTYPE"
+    fi
   fi
   if [[ -z ${YB_MVN_LOCAL_REPO:-} ]]; then
     if "$should_use_shared_dirs"; then
-      YB_MVN_LOCAL_REPO=/n/jenkins/m2_repository
+      YB_MVN_LOCAL_REPO=$YB_SHARED_MVN_LOCAL_REPO
     else
-      YB_MVN_LOCAL_REPO=$HOME/.m2/repository
+      YB_MVN_LOCAL_REPO=$YB_NON_SHARED_MVN_LOCAL_REPO
     fi
   fi
   export YB_MVN_LOCAL_REPO
 
   if [[ -z ${YB_MVN_SETTINGS_PATH:-} ]]; then
     if "$should_use_shared_dirs"; then
-      YB_MVN_SETTINGS_PATH=/n/jenkins/m2_settings.xml
+      YB_MVN_SETTINGS_PATH=$YB_SHARED_MVN_SETTINGS
     else
       YB_MVN_SETTINGS_PATH=$HOME/.m2/settings.xml
     fi
@@ -769,6 +791,43 @@ set_mvn_parameters() {
     -Dyb.thirdparty.dir="$YB_THIRDPARTY_DIR"
     -DbinDir="$BUILD_ROOT/bin"
   )
+  log "The result of set_mvn_parameters:" \
+      "YB_MVN_LOCAL_REPO=$YB_MVN_LOCAL_REPO," \
+      "YB_MVN_SETTINGS_PATH=$YB_MVN_SETTINGS_PATH," \
+      "should_copy_artifacts_to_non_shared_repo=$should_copy_artifacts_to_non_shared_repo"
+}
+
+# Put a retry loop here since it is possible that multiple concurrent builds will try to do this
+# at the same time. However, this should converge quickly.
+rsync_with_retries() {
+  declare -i attempt=1
+  declare -i -r max_attempts=5
+  while true; do
+    if ( set -x; rsync "$@" ); then
+      return
+    fi
+    if [[ $attempt -eq $max_attempts ]]; then
+      log "rsync failed after $max_attempts attempts, giving up"
+      return 1
+    fi
+    log "This was rsync attempt $attempt out of $max_attempts. Re-trying after a delay."
+    sleep 1
+    let attempt+=1
+  done
+}
+
+copy_artifacts_to_non_shared_mvn_repo() {
+  if ! "$should_copy_artifacts_to_non_shared_repo"; then
+    return
+  fi
+  local group_id_rel_path=${YB_TMP_GROUP_ID//./\/}
+  local src_dir=$YB_SHARED_MVN_LOCAL_REPO/$group_id_rel_path
+  local dest_dir=$YB_MVN_LOCAL_REPO/$group_id_rel_path
+  log "Copying Maven artifacts from '$src_dir' to '$dest_dir'"
+  mkdir -p "${dest_dir%/*}"
+  rsync_with_retries -az "$src_dir/" "$dest_dir"
+  log "Copying non-YB artifacts from '$YB_SHARED_MVN_LOCAL_REPO' to '$YB_MVN_LOCAL_REPO'"
+  rsync_with_retries "$YB_SHARED_MVN_LOCAL_REPO/" "$YB_MVN_LOCAL_REPO" --exclude 'org/yb*'
 }
 
 # Appends the settings path specified by $YB_MVN_SETTINGS_PATH (in case that path exists), as well

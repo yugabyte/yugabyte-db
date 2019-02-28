@@ -526,15 +526,15 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
 
   # Use a unique version to avoid a race with other concurrent jobs on jar files that we install
   # into ~/.m2/repository.
-  yb_new_group_id=org.yb$random_build_id
+  export YB_TMP_GROUP_ID=org.ybtmpgroupid$random_build_id
 
   for java_project_dir in "${yb_java_project_dirs[@]}"; do
     pushd "$java_project_dir"
     heading \
-      "Changing groupId from 'org.yb' to '$yb_new_group_id' in directory '$java_project_dir'"
+      "Changing groupId from 'org.yb' to '$YB_TMP_GROUP_ID' in directory '$java_project_dir'"
     find "$java_project_dir" -name "pom.xml" | \
       while read pom_file_path; do
-        sed_i "s#<groupId>org[.]yb</groupId>#<groupId>$yb_new_group_id</groupId>#g" \
+        sed_i "s#<groupId>org[.]yb</groupId>#<groupId>$YB_TMP_GROUP_ID</groupId>#g" \
               "$pom_file_path"
       done
     heading "Building Java code in directory '$java_project_dir'"
@@ -558,7 +558,7 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
   export YB_VERSION_INFO_GIT_SHA1=$current_git_sha1
 
   heading "Committing local changes (groupId update)"
-  commit_msg="Updating groupId to $yb_new_group_id during testing"
+  commit_msg="Updating groupId to $YB_TMP_GROUP_ID during testing"
 
   (
     set -x
