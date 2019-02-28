@@ -101,6 +101,10 @@ public class Schedule extends Model {
     return find.findList();
   }
 
+  public static List<Schedule> getAllActiveByCustomerUUID(UUID customerUUID) {
+    return find.where().eq("customer_uuid", customerUUID).eq("status", "Active").findList();
+  }
+
   public static List<Schedule> getAllActive() {
     return find.where().eq("status", "Active").findList();
   }
