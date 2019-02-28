@@ -15,6 +15,7 @@
 
 #include "yb/client/transaction.h"
 
+#include "yb/util/bfql/gen_opcodes.h"
 #include "yb/util/random_util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"

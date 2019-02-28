@@ -44,8 +44,9 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/leader_lease.h"
 
-#include "yb/docdb/doc_operation.h"
+#include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/pgsql_operation.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
@@ -80,6 +81,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/trace.h"
+#include "yb/util/string_util.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/tserver/service_util.h"
 

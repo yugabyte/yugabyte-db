@@ -11,31 +11,22 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DEADLINE_INFO_H
-#define YB_DOCDB_DEADLINE_INFO_H
-
-#include "yb/util/monotime.h"
+#ifndef YB_DOCDB_DOCDB_FWD_H
+#define YB_DOCDB_DOCDB_FWD_H
 
 namespace yb {
 namespace docdb {
 
-class DeadlineInfo {
- public:
-  explicit DeadlineInfo(CoarseTimePoint deadline);
-  bool CheckAndSetDeadlinePassed();
-  std::string ToString() const;
+class DocPath;
+class DocWriteBatch;
+class IntentAwareIterator;
+class KeyValueWriteBatchPB;
+class QLWriteOperation;
+class PgsqlWriteOperation;
 
- private:
-  CoarseTimePoint deadline_;
-  uint32_t counter_ = 0;
-  bool deadline_passed_ = false;
-};
+struct DocDB;
 
-// If test_tserver_timeout is true, set the deadline to now and sleep for 100ms to simulate a
-// tserver timeout.
-void SimulateTimeoutIfTesting(CoarseTimePoint* deadline);
+}  // namespace docdb
+}  // namespace yb
 
-} // namespace docdb
-} // namespace yb
-
-#endif // YB_DOCDB_DEADLINE_INFO_H
+#endif // YB_DOCDB_DOCDB_FWD_H

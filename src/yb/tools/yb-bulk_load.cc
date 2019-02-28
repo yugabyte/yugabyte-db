@@ -28,6 +28,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/docdb/docdb.h"
+#include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"

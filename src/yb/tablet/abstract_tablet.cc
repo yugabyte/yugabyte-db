@@ -11,7 +11,11 @@
 // under the License.
 //
 
-#include "yb/docdb/doc_operation.h"
+#include "yb/common/ql_resultset.h"
+
+#include "yb/docdb/cql_operation.h"
+#include "yb/docdb/pgsql_operation.h"
+
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/util/trace.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"

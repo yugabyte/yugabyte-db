@@ -18,13 +18,16 @@
 #include "yb/rocksdb/db/internal_stats.h"
 
 #include "yb/common/partial_row.h"
+#include "yb/common/ql_resultset.h"
 #include "yb/common/transaction-test-util.h"
 
-#include "yb/docdb/ql_rocksdb_storage.h"
+#include "yb/docdb/cql_operation.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/ql_rocksdb_storage.h"
+#include "yb/docdb/redis_operation.h"
 
 #include "yb/server/hybrid_clock.h"
 

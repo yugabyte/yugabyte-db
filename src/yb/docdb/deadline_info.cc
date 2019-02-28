@@ -16,9 +16,13 @@
 
 #include "yb/docdb/deadline_info.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 
-DECLARE_bool(test_tserver_timeout);
+using namespace std::literals;
+
+DEFINE_test_flag(bool, test_tserver_timeout, false,
+                 "Sleep past the deadline to test tserver query expiration");
 
 namespace yb {
 namespace docdb {
@@ -41,6 +45,12 @@ bool DeadlineInfo::CheckAndSetDeadlinePassed() {
 std::string DeadlineInfo::ToString() const {
   return Format("{ now: $0 deadline: $1 counter: $2 }",
                 CoarseMonoClock::now(), deadline_, counter_);
+}
+
+void SimulateTimeoutIfTesting(CoarseTimePoint* deadline) {
+  if (PREDICT_FALSE(FLAGS_test_tserver_timeout)) {
+    *deadline = CoarseMonoClock::now() - 100ms;
+  }
 }
 
 } // namespace docdb
