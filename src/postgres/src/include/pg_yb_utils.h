@@ -72,6 +72,8 @@ extern bool IsYugaByteEnabled();
  */
 extern bool IsYBRelationById(Oid relid);
 
+extern bool IsYBRelationByKind(char relKind);
+
 extern bool IsYBRelation(Relation relation);
 
 extern bool YBNeedRetryAfterCacheRefresh(ErrorData *error);

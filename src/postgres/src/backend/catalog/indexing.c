@@ -380,12 +380,7 @@ CatalogTupleDelete(Relation heapRel, HeapTuple tup)
 {
 	if (IsYugaByteEnabled())
 	{
-		Bitmapset *pkey = YBSysTablePrimaryKey(RelationGetRelid(heapRel));
-
-		Assert(pkey != NULL);
-
-		YBCDeleteSysCatalogTuple(heapRel, tup, pkey);
-		bms_free(pkey);
+		YBCDeleteSysCatalogTuple(heapRel, tup);
 
 		CatalogIndexState indstate = CatalogOpenIndexes(heapRel);
 

@@ -195,6 +195,7 @@ select * from myview;
 
 alter table myview drop d;
 ERROR:  "myview" is not a table, composite type, or foreign table
+drop view myview;
 -- test some commands to make sure they fail on the dropped column
 create index "testing_idx" on atacc1(a);
 ERROR:  column "a" does not exist

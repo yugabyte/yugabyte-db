@@ -45,6 +45,7 @@
 #include "executor/tuptable.h"
 #include "executor/ybcExpr.h"
 
+#include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
@@ -411,12 +412,22 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	ybc_stmt = NULL;
 }
 
-void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple, Bitmapset *pkey)
+void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 {
 	Oid            dboid       = YBCGetDatabaseOid(rel);
 	Oid            relid       = RelationGetRelid(rel);
 	TupleDesc      tupdesc     = RelationGetDescr(rel);
 	YBCPgStatement delete_stmt = NULL;
+
+	Bitmapset *pkey = YBSysTablePrimaryKey(RelationGetRelid(rel));
+
+	/* If we don't have a primary key for the sys catalog table, we use
+ 	* the ybctid.
+ 	*/
+	if (!pkey) {
+		pkey = bms_add_member(pkey, YBTupleIdAttributeNumber
+							  - FirstLowInvalidHeapAttributeNumber);
+	}
 
 	// Execute DELETE.
 	HandleYBStatus(YBCPgNewDelete(ybc_pg_session, dboid, relid, &delete_stmt));
@@ -427,13 +438,23 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple, Bitmapset *pkey)
 	{
 		AttrNumber attno = col + FirstLowInvalidHeapAttributeNumber;
 		Oid        typid = OIDOID; // default;
+
 		if (attno > 0)
 			typid = tupdesc->attrs[attno - 1]->atttypid;
+		else if (attno == YBTupleIdAttributeNumber)
+			typid = BYTEAOID;
+		else if (attno == ObjectIdAttributeNumber)
+			typid = OIDOID;
+		else
+			elog(ERROR, "Invalid primary key for table \"%s\"", RelationGetRelationName(rel));
+
 		Datum      val   = heap_getattr(tuple, attno, tupdesc, &is_null);
 		YBCPgExpr  expr  = YBCNewConstant(delete_stmt, typid, val, is_null);
 		HandleYBStmtStatus(YBCPgDmlBindColumn(delete_stmt, attno, expr),
 		                   delete_stmt);
 	}
+
+	bms_free(pkey);
 
 	/*
 	 * Invalidate the cache now so if there is an error with delete we will

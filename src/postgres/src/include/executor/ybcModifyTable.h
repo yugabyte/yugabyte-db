@@ -34,7 +34,7 @@ extern void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTa
 
 extern void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum ybctid);
 
-extern void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple, Bitmapset *pkey);
+extern void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple);
 
 extern void YBCExecuteUpdate(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
 							 HeapTuple tuple);

@@ -107,6 +107,7 @@ alter table atacc1 drop xmin;
 create view myview as select * from atacc1;
 select * from myview;
 alter table myview drop d;
+drop view myview;
 
 -- test some commands to make sure they fail on the dropped column
 create index "testing_idx" on atacc1(a);
