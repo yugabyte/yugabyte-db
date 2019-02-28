@@ -43,6 +43,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/partial_row.h"
+#include "yb/common/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/row.h"
 #include "yb/common/schema.h"

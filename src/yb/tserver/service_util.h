@@ -19,6 +19,7 @@
 #include <boost/optional.hpp>
 
 #include "yb/rpc/rpc_context.h"
+#include "yb/server/clock.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/logging.h"

@@ -23,6 +23,7 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/conflict_resolution.h"
+#include "yb/docdb/cql_operation.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
@@ -31,6 +32,7 @@
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"

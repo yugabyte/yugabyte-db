@@ -14,9 +14,11 @@
 #ifndef YB_TABLET_ABSTRACT_TABLET_H
 #define YB_TABLET_ABSTRACT_TABLET_H
 
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_storage_interface.h"
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/common/schema.h"
-#include "yb/common/ql_storage_interface.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
