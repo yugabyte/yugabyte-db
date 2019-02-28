@@ -178,7 +178,8 @@ ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
   // These "extra mini cluster options" are added in the end of the command line.
   const auto common_extra_flags = {
       "--enable_tracing"s,
-      Substitute("--memory_limit_hard_bytes=$0", kDefaultMemoryLimitHardBytes)
+      Substitute("--memory_limit_hard_bytes=$0", kDefaultMemoryLimitHardBytes),
+      (opts.log_to_file ? "--alsologtostderr"s : "--logtostderr"s)
   };
   for (auto* extra_flags : {&opts_.extra_master_flags, &opts_.extra_tserver_flags}) {
     // Common default extra flags are inserted in the beginning so that they can be overridden by
@@ -1513,7 +1514,11 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   // Even though we set -logtostderr down below, metrics logs end up being written
   // based on -log_dir. So, we have to set that too.
   argv.push_back("--metrics_log_interval_ms=1000");
-  argv.push_back("--log_dir=" + full_data_dir_);
+
+  // Force set log_dir to empty value, process will chose default destination inside fs_data_dir
+  // In other case log_dir value will be extracted from TEST_TMPDIR env variable but it is
+  // inherited from test script
+  argv.push_back("--log_dir=");
 
   // Then the "extra flags" passed into the ctor (from the ExternalMiniCluster
   // options struct). These come at the end so they can override things like
@@ -1536,8 +1541,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
     LOG (WARNING) << "Failed to delete info paths: " << s.ToString();
   }
 
-  // Ensure that logging goes to the test output and doesn't get buffered.
-  argv.push_back("--logtostderr");
+  // Ensure that logging goes to the test output doesn't get buffered.
   argv.push_back("--logbuflevel=-1");
 
   // Use the same verbose logging level in the child process as in the test driver.

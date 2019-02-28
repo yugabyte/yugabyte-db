@@ -191,6 +191,9 @@ class Env {
   virtual CHECKED_STATUS LinkFile(const std::string& src,
                                   const std::string& target) = 0;
 
+  // Read link's actual target
+  virtual Result<std::string> ReadLink(const std::string& link) = 0;
+
   // Store the physical size of fname in *file_size.
   //
   // This differs from GetFileSize() in that it returns the actual amount
@@ -629,6 +632,9 @@ class EnvWrapper : public Env {
   }
   CHECKED_STATUS LinkFile(const std::string& s, const std::string& t) override {
     return target_->LinkFile(s, t);
+  }
+  Result<std::string> ReadLink(const std::string& s) override {
+    return target_->ReadLink(s);
   }
   CHECKED_STATUS RenameFile(const std::string& s, const std::string& t) override {
     return target_->RenameFile(s, t);
