@@ -82,7 +82,7 @@ function mapStateToProps(state, ownProps) {
     }
   }
   initalGFlagValues.ybSoftwareVersion = state.customer.softwareVersions[0];
-  initalGFlagValues.timeDelay = TASK_LONG_TIMEOUT;
+  initalGFlagValues.timeDelay = TASK_LONG_TIMEOUT / 1000;
   initalGFlagValues.rollingUpgrade = true;
   return {
     modal: state.modal,
