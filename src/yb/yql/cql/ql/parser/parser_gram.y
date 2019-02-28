@@ -632,7 +632,7 @@ using namespace yb::ql;
 
                           QUOTE
 
-                          RANGE READ REAL REASSIGN RECHECK RECURSIVE REF REFERENCES REFRESH
+                          RANGE READ REAL REASSIGN RECHECK RECURSIVE REF REFRESH
                           REINDEX RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA RESET
                           RESTART RESTRICT RETURNING RETURNS REVOKE RIGHT ROLE ROLES ROLLBACK ROLLUP
                           ROW ROWS RULE
@@ -1214,6 +1214,15 @@ columnDef:
   ColId Typename create_generic_options ColQualList {
     $$ = MAKE_NODE(@1, PTColumnDefinition, $1, $2, $4);
   }
+  | ColId Typename STATIC create_generic_options ColQualList {
+    PTStatic::SharedPtr static_option = MAKE_NODE(@3, PTStatic);
+    if ($5 == nullptr) {
+      $5 = MAKE_NODE(@5, PTListNode, static_option);
+    } else {
+      $5->Append(static_option);
+    }
+    $$ = MAKE_NODE(@1, PTColumnDefinition, $1, $2, $5);
+  }
 ;
 
 ColQualList:
@@ -1263,9 +1272,6 @@ ColConstraintElem:
   PRIMARY KEY opt_definition OptConsTableSpace {
     $$ = MAKE_NODE(@1, PTPrimaryKey);
   }
-  | STATIC {
-    $$ = MAKE_NODE(@1, PTStatic);
-  }
   | NOT NULL_P {
     PARSER_UNSUPPORTED(@1);
   }
@@ -1279,9 +1285,6 @@ ColConstraintElem:
     PARSER_UNSUPPORTED(@1);
   }
   | DEFAULT b_expr {
-    PARSER_UNSUPPORTED(@1);
-  }
-  | REFERENCES qualified_name opt_column_list key_match key_actions {
     PARSER_UNSUPPORTED(@1);
   }
 ;
@@ -1340,10 +1343,6 @@ ConstraintElem:
   }
   | EXCLUDE access_method_clause '(' ExclusionConstraintList ')'
   opt_definition OptConsTableSpace ExclusionWhereClause ConstraintAttributeSpec {
-    PARSER_UNSUPPORTED(@1);
-  }
-  | FOREIGN KEY '(' columnList ')' REFERENCES qualified_name
-  opt_column_list key_match key_actions ConstraintAttributeSpec {
     PARSER_UNSUPPORTED(@1);
   }
 ;
@@ -5112,6 +5111,7 @@ unreserved_keyword:
   | STANDALONE_P { $$ = $1; }
   | START { $$ = $1; }
   | STATEMENT { $$ = $1; }
+  | STATIC { $$ = $1; }
   | STATISTICS { $$ = $1; }
   | STATUS { $$ = $1; }
   | STDIN { $$ = $1; }
@@ -5345,14 +5345,12 @@ reserved_keyword:
   | PARTITION_HASH { $$ = $1; }
   | PLACING { $$ = $1; }
   | PRIMARY { $$ = $1; }
-  | REFERENCES { $$ = $1; }
   | RETURNING { $$ = $1; }
   | RETURNS { $$ = $1; }
   | SCHEMA { $$ = $1; }
   | SELECT { $$ = $1; }
   | SESSION_USER { $$ = $1; }
   | SOME { $$ = $1; }
-  | STATIC { $$ = $1; }
   | SYMMETRIC { $$ = $1; }
   | TABLE { $$ = $1; }
   | THEN { $$ = $1; }
@@ -7840,8 +7838,6 @@ privilege_list:
 
 privilege:
   SELECT opt_column_list {
-  }
-  | REFERENCES opt_column_list {
   }
   | CREATE opt_column_list {
   }
