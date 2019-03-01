@@ -80,7 +80,11 @@ Status Executor::EvalCount(const shared_ptr<QLRowBlock>& row_block,
                            QLValue *ql_value) {
   int64_t total_count = 0;
   for (auto row : row_block->rows()) {
-    total_count += row.column(column_index).int64_value();
+    if (!row.column(column_index).IsNull()) {
+      // Summing up the sub-counts from individual partitions.
+      // For details see DocExprExecutor::EvalTSCall() and DocExprExecutor::EvalCount().
+      total_count += row.column(column_index).int64_value();
+    }
   }
   ql_value->set_int64_value(total_count);
   return Status::OK();
