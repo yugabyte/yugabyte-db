@@ -39,7 +39,7 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
     "                            v5 float, v6 double, primary key(h, r));";
   CHECK_VALID_STMT(create_stmt);
 
-  // Insert a rows whose hash value is '1'.
+  // Insert rows whose hash value is '1'.
   CHECK_VALID_STMT("INSERT INTO test_aggr_expr(h, r, v1, v2, v3, v4, v5, v6)"
                    "  VALUES(1, 777, 11, 12, 13, 14, 15, 16);");
 
@@ -303,6 +303,306 @@ TEST_F(QLTestSelectedExpr, TestAggregateExpr) {
     double v6_min = 16;
     CHECK_GT(sum_all_row.column(5).double_value(), v6_min - 0.1);
     CHECK_LT(sum_all_row.column(5).double_value(), v6_min + 0.1);
+  }
+}
+
+TEST_F(QLTestSelectedExpr, TestAggregateExprWithNull) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  LOG(INFO) << "Test selecting numeric expressions with NULL column 'v2'.";
+
+  // Create the table and insert some value.
+  const char *create_stmt =
+    "CREATE TABLE test_aggr_expr(h int, r int,"
+    "                            v1 bigint, v2 int, v3 smallint, v4 tinyint,"
+    "                            v5 float, v6 double, v7 text, primary key(h, r));";
+  CHECK_VALID_STMT(create_stmt);
+
+  // Insert rows whose hash value is '1'.
+  // v2 = NULL - for all, v1 = NULL - first only, v7 = NULL - except first & second,
+  // v3,v4,v5,v6 = NULL second only.
+  CHECK_VALID_STMT("INSERT INTO test_aggr_expr(h, r, v3, v4, v5, v6, v7)" // v1, v2 = NULL
+                   " VALUES(1, 777, 13, 14, 15, 16, 'aaa');");
+  CHECK_VALID_STMT("INSERT INTO test_aggr_expr(h, r, v1, v7)" // v2, v3, v4, v5, v6 = NULL
+                   " VALUES(1, 888, 11, 'bbb');");
+
+  // Insert the rest of the rows, one of which has hash value of '1'.
+  int64_t v1_total = 11;
+  int16_t v3_total = 13;
+  int8_t v4_total = 14;
+  float v5_total = 15;
+  double v6_total = 16;
+  for (int i = 1; i < 20; i++) {
+    string stmt = strings::Substitute(
+        "INSERT INTO test_aggr_expr(h, r, v1, v3, v4, v5, v6)" // v2, v7 = NULL
+        " VALUES($0, $1, $2, $3, $4, $5, $6);",
+        i, i + 1, i + 1000, i + 10, i, i + 77.77, i + 999.99);
+    CHECK_VALID_STMT(stmt);
+
+    v1_total += (i + 1000);
+    v3_total += (i + 10);
+    v4_total += i;
+    v5_total += (i + 77.77);
+    v6_total += (i + 999.99);
+  }
+
+  std::shared_ptr<QLRowBlock> row_block;
+
+  //------------------------------------------------------------------------------------------------
+  // Test COUNT() aggregate function.
+  {
+    // Test COUNT() - Not existing data.
+    CHECK_VALID_STMT("SELECT count(*), count(h), count(r), count(v1), count(v2), count(v7)"
+                     " FROM test_aggr_expr WHERE h = 1 AND r = 1;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_0_row = row_block->row(0);
+    CHECK_EQ(sum_0_row.column(0).int64_value(), 0);
+    CHECK_EQ(sum_0_row.column(1).int64_value(), 0);
+    CHECK_EQ(sum_0_row.column(2).int64_value(), 0);
+    CHECK_EQ(sum_0_row.column(3).int64_value(), 0);
+    CHECK_EQ(sum_0_row.column(4).int64_value(), 0);
+    CHECK_EQ(sum_0_row.column(5).int64_value(), 0);
+
+    // Test COUNT() - Where condition provides full primary key.
+    CHECK_VALID_STMT("SELECT count(*), count(h), count(r), count(v1), count(v2), count(v7)"
+                     " FROM test_aggr_expr WHERE h = 1 AND r = 777;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_1_row = row_block->row(0);
+    CHECK_EQ(sum_1_row.column(0).int64_value(), 1);
+    CHECK_EQ(sum_1_row.column(1).int64_value(), 1);
+    CHECK_EQ(sum_1_row.column(2).int64_value(), 1);
+    CHECK_EQ(sum_1_row.column(3).int64_value(), 0); // NULL values are not counted.
+    CHECK_EQ(sum_1_row.column(4).int64_value(), 0); // NULL values are not counted.
+    CHECK_EQ(sum_1_row.column(5).int64_value(), 1);
+
+    // Test COUNT() - Where condition provides full hash key.
+    CHECK_VALID_STMT("SELECT count(*), count(h), count(r), count(v1), count(v2), count(v7)"
+                     " FROM test_aggr_expr WHERE h = 1;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_2_row = row_block->row(0);
+    CHECK_EQ(sum_2_row.column(0).int64_value(), 3);
+    CHECK_EQ(sum_2_row.column(1).int64_value(), 3);
+    CHECK_EQ(sum_2_row.column(2).int64_value(), 3);
+    CHECK_EQ(sum_2_row.column(3).int64_value(), 2);
+    CHECK_EQ(sum_2_row.column(4).int64_value(), 0); // NULL values are not counted.
+    CHECK_EQ(sum_2_row.column(5).int64_value(), 2);
+
+    // Test COUNT() - All rows.
+    CHECK_VALID_STMT("SELECT count(*), count(h), count(r), count(v1), count(v2), count(v7)"
+                     " FROM test_aggr_expr;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_all_row = row_block->row(0);
+    CHECK_EQ(sum_all_row.column(0).int64_value(), 21);
+    CHECK_EQ(sum_all_row.column(1).int64_value(), 21);
+    CHECK_EQ(sum_all_row.column(2).int64_value(), 21);
+    CHECK_EQ(sum_all_row.column(3).int64_value(), 20);
+    CHECK_EQ(sum_all_row.column(4).int64_value(), 0); // NULL values are not counted.
+    CHECK_EQ(sum_all_row.column(5).int64_value(), 2);
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Test SUM() aggregate function. NOTE: SUM(v7) - is not applicable for TEXT type.
+  {
+    // Test SUM() - Not existing data.
+    CHECK_VALID_STMT("SELECT sum(v1), sum(v2), sum(v3), sum(v4), sum(v5), sum(v6)"
+                     "  FROM test_aggr_expr WHERE h = 1 AND r = 1;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_0_row = row_block->row(0);
+    CHECK_EQ(sum_0_row.column(0).int64_value(), 0);
+    CHECK_EQ(sum_0_row.column(1).int32_value(), 0);
+    CHECK_EQ(sum_0_row.column(2).int16_value(), 0);
+    CHECK_EQ(sum_0_row.column(3).int8_value(), 0);
+    CHECK_EQ(sum_0_row.column(4).float_value(), 0);
+    CHECK_EQ(sum_0_row.column(5).double_value(), 0);
+
+    // Test SUM() - Where condition provides full primary key.
+    CHECK_VALID_STMT("SELECT sum(v1), sum(v2), sum(v3), sum(v4), sum(v5), sum(v6)"
+                     "  FROM test_aggr_expr WHERE h = 1 AND r = 777;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_1_row = row_block->row(0);
+    CHECK_EQ(sum_1_row.column(0).int64_value(), 0); // Only one NULL value.
+    CHECK_EQ(sum_1_row.column(1).int32_value(), 0); // NULL values are not counted.
+    CHECK_EQ(sum_1_row.column(2).int16_value(), 13);
+    CHECK_EQ(sum_1_row.column(3).int8_value(), 14);
+    CHECK_EQ(sum_1_row.column(4).float_value(), 15);
+    CHECK_EQ(sum_1_row.column(5).double_value(), 16);
+
+    // Test SUM() - Where condition provides full hash key.
+    CHECK_VALID_STMT("SELECT sum(v1), sum(v2), sum(v3), sum(v4), sum(v5), sum(v6)"
+                     "  FROM test_aggr_expr WHERE h = 1;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_2_row = row_block->row(0);
+    CHECK_EQ(sum_2_row.column(0).int64_value(), 1012);
+    CHECK_EQ(sum_2_row.column(1).int32_value(), 0); // NULL values are not counted.
+    CHECK_EQ(sum_2_row.column(2).int16_value(), 24);
+    CHECK_EQ(sum_2_row.column(3).int8_value(), 15);
+    // Comparing floating point for 93.77
+    CHECK_GT(sum_2_row.column(4).float_value(), 93.765);
+    CHECK_LT(sum_2_row.column(4).float_value(), 93.775);
+    // Comparing floating point for 1016.99
+    CHECK_GT(sum_2_row.column(5).double_value(), 1016.985);
+    CHECK_LT(sum_2_row.column(5).double_value(), 1016.995);
+
+    // Test SUM() - All rows.
+    CHECK_VALID_STMT("SELECT sum(v1), sum(v2), sum(v3), sum(v4), sum(v5), sum(v6)"
+                     "  FROM test_aggr_expr;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_all_row = row_block->row(0);
+    CHECK_EQ(sum_all_row.column(0).int64_value(), v1_total);
+    CHECK_EQ(sum_all_row.column(1).int32_value(), 0); // NULL values are not counted.
+    CHECK_EQ(sum_all_row.column(2).int16_value(), v3_total);
+    CHECK_EQ(sum_all_row.column(3).int8_value(), v4_total);
+    CHECK_GT(sum_all_row.column(4).float_value(), v5_total - 0.1);
+    CHECK_LT(sum_all_row.column(4).float_value(), v5_total + 0.1);
+    CHECK_GT(sum_all_row.column(5).double_value(), v6_total - 0.1);
+    CHECK_LT(sum_all_row.column(5).double_value(), v6_total + 0.1);
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Test MAX() aggregate functions.
+  {
+    // Test MAX() - Not exist.
+    CHECK_VALID_STMT("SELECT max(v1), max(v2), max(v3), max(v4), max(v5), max(v6), max(v7)"
+                     " FROM test_aggr_expr WHERE h = 1 AND r = 1;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_0_row = row_block->row(0);
+    CHECK(sum_0_row.column(0).IsNull());
+    CHECK(sum_0_row.column(1).IsNull());
+    CHECK(sum_0_row.column(2).IsNull());
+    CHECK(sum_0_row.column(3).IsNull());
+    CHECK(sum_0_row.column(4).IsNull());
+    CHECK(sum_0_row.column(5).IsNull());
+    CHECK(sum_0_row.column(6).IsNull());
+
+    // Test MAX() - Where condition provides full primary key.
+    CHECK_VALID_STMT("SELECT max(v1), max(v2), max(v3), max(v4), max(v5), max(v6), max(v7)"
+                     " FROM test_aggr_expr WHERE h = 1 AND r = 777;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_1_row = row_block->row(0);
+    CHECK(sum_1_row.column(0).IsNull()); // NULL value.
+    CHECK(sum_1_row.column(1).IsNull()); // NULL values.
+    CHECK_EQ(sum_1_row.column(2).int16_value(), 13);
+    CHECK_EQ(sum_1_row.column(3).int8_value(), 14);
+    CHECK_EQ(sum_1_row.column(4).float_value(), 15);
+    CHECK_EQ(sum_1_row.column(5).double_value(), 16);
+    CHECK_EQ(sum_1_row.column(6).string_value(), "aaa");
+
+    // Test MAX() - Where condition provides full hash key.
+    CHECK_VALID_STMT("SELECT max(v1), max(v2), max(v3), max(v4), max(v5), max(v6), max(v7)"
+                     " FROM test_aggr_expr WHERE h = 1;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_2_row = row_block->row(0);
+    CHECK_EQ(sum_2_row.column(0).int64_value(), 1001);
+    CHECK(sum_2_row.column(1).IsNull()); // NULL values.
+    CHECK_EQ(sum_2_row.column(2).int16_value(), 13);
+    CHECK_EQ(sum_2_row.column(3).int8_value(), 14);
+    // Comparing floating point for 78.77
+    CHECK_GT(sum_2_row.column(4).float_value(), 78.765);
+    CHECK_LT(sum_2_row.column(4).float_value(), 78.775);
+    // Comparing floating point for 1000.99
+    CHECK_GT(sum_2_row.column(5).double_value(), 1000.985);
+    CHECK_LT(sum_2_row.column(5).double_value(), 1000.995);
+    CHECK_EQ(sum_2_row.column(6).string_value(), "bbb");
+
+    // Test MAX() - All rows.
+    CHECK_VALID_STMT("SELECT max(v1), max(v2), max(v3), max(v4), max(v5), max(v6), max(v7)"
+                     " FROM test_aggr_expr;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_all_row = row_block->row(0);
+    CHECK_EQ(sum_all_row.column(0).int64_value(), 1019);
+    CHECK(sum_all_row.column(1).IsNull()); // NULL values.
+    CHECK_EQ(sum_all_row.column(2).int16_value(), 29);
+    CHECK_EQ(sum_all_row.column(3).int8_value(), 19);
+    float v5_max = 96.77;
+    CHECK_GT(sum_all_row.column(4).float_value(), v5_max - 0.1);
+    CHECK_LT(sum_all_row.column(4).float_value(), v5_max + 0.1);
+    double v6_max = 1018.99;
+    CHECK_GT(sum_all_row.column(5).double_value(), v6_max - 0.1);
+    CHECK_LT(sum_all_row.column(5).double_value(), v6_max + 0.1);
+    CHECK_EQ(sum_all_row.column(6).string_value(), "bbb");
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Test MIN() aggregate functions.
+  {
+    // Test MIN() - Not exist.
+    CHECK_VALID_STMT("SELECT min(v1), min(v2), min(v3), min(v4), min(v5), min(v6), min(v7)"
+                     "  FROM test_aggr_expr WHERE h = 1 AND r = 1;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_0_row = row_block->row(0);
+    CHECK(sum_0_row.column(0).IsNull());
+    CHECK(sum_0_row.column(1).IsNull());
+    CHECK(sum_0_row.column(2).IsNull());
+    CHECK(sum_0_row.column(3).IsNull());
+    CHECK(sum_0_row.column(4).IsNull());
+    CHECK(sum_0_row.column(5).IsNull());
+    CHECK(sum_0_row.column(6).IsNull());
+
+    // Test MIN() - Where condition provides full primary key.
+    CHECK_VALID_STMT("SELECT min(v1), min(v2), min(v3), min(v4), min(v5), min(v6), min(v7)"
+                     "  FROM test_aggr_expr WHERE h = 1 AND r = 777;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_1_row = row_block->row(0);
+    CHECK(sum_1_row.column(0).IsNull()); // NULL value.
+    CHECK(sum_1_row.column(1).IsNull()); // NULL values.
+    CHECK_EQ(sum_1_row.column(2).int16_value(), 13);
+    CHECK_EQ(sum_1_row.column(3).int8_value(), 14);
+    CHECK_EQ(sum_1_row.column(4).float_value(), 15);
+    CHECK_EQ(sum_1_row.column(5).double_value(), 16);
+    CHECK_EQ(sum_1_row.column(6).string_value(), "aaa");
+
+    // Test MIN() - Where condition provides full hash key.
+    CHECK_VALID_STMT("SELECT min(v1), min(v2), min(v3), min(v4), min(v5), min(v6), min(v7)"
+                     "  FROM test_aggr_expr WHERE h = 1;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_2_row = row_block->row(0);
+    CHECK_EQ(sum_2_row.column(0).int64_value(), 11);
+    CHECK(sum_2_row.column(1).IsNull()); // NULL values.
+    CHECK_EQ(sum_2_row.column(2).int16_value(), 11);
+    CHECK_EQ(sum_2_row.column(3).int8_value(), 1);
+    // Comparing floating point for 15
+    CHECK_GT(sum_2_row.column(4).float_value(), 14.9);
+    CHECK_LT(sum_2_row.column(4).float_value(), 15.1);
+    // Comparing floating point for 16
+    CHECK_GT(sum_2_row.column(5).double_value(), 15.9);
+    CHECK_LT(sum_2_row.column(5).double_value(), 16.1);
+    CHECK_EQ(sum_2_row.column(6).string_value(), "aaa");
+
+    // Test MIN() - All rows.
+    CHECK_VALID_STMT("SELECT min(v1), min(v2), min(v3), min(v4), min(v5), min(v6), min(v7)"
+                     "  FROM test_aggr_expr;");
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const QLRow& sum_all_row = row_block->row(0);
+    CHECK_EQ(sum_all_row.column(0).int64_value(), 11);
+    CHECK(sum_all_row.column(1).IsNull()); // NULL values.
+    CHECK_EQ(sum_all_row.column(2).int16_value(), 11);
+    CHECK_EQ(sum_all_row.column(3).int8_value(), 1);
+    float v5_min = 15;
+    CHECK_GT(sum_all_row.column(4).float_value(), v5_min - 0.1);
+    CHECK_LT(sum_all_row.column(4).float_value(), v5_min + 0.1);
+    double v6_min = 16;
+    CHECK_GT(sum_all_row.column(5).double_value(), v6_min - 0.1);
+    CHECK_LT(sum_all_row.column(5).double_value(), v6_min + 0.1);
+    CHECK_EQ(sum_all_row.column(6).string_value(), "aaa");
   }
 }
 
