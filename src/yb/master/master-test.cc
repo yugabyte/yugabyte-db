@@ -798,7 +798,7 @@ TEST_F(MasterTest, TestNamespaces) {
     const Status s = CreateNamespace(other_ns_name, &resp);
     ASSERT_TRUE(s.IsAlreadyPresent()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(),
-        Substitute("Keyspace $0 already exists", other_ns_name));
+        Substitute("Keyspace '$0' already exists", other_ns_name));
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -872,7 +872,7 @@ TEST_F(MasterTest, TestNamespaces) {
     const Status s = CreateNamespace(default_namespace_name, &resp);
     ASSERT_TRUE(s.IsAlreadyPresent()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(),
-        Substitute("Keyspace $0 already exists", default_namespace_name));
+        Substitute("Keyspace '$0' already exists", default_namespace_name));
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -1345,10 +1345,10 @@ TEST_F(MasterTest, TestFullTableName) {
     ASSERT_OK(proxy_->AlterTable(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
-    ASSERT_EQ(resp.error().code(), MasterErrorPB::TABLE_ALREADY_PRESENT);
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::OBJECT_ALREADY_PRESENT);
     ASSERT_EQ(resp.error().status().code(), AppStatusPB::ALREADY_PRESENT);
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-        "Table already exists");
+        " already exists");
   }
   // Check that nothing's changed (still have 3 tables).
   ASSERT_NO_FATALS(DoListAllTables(&tables));
@@ -1380,10 +1380,10 @@ TEST_F(MasterTest, TestFullTableName) {
     ASSERT_OK(proxy_->DeleteTable(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
-    ASSERT_EQ(resp.error().code(), MasterErrorPB::TABLE_NOT_FOUND);
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::OBJECT_NOT_FOUND);
     ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-        "The table does not exist");
+        "The object does not exist");
   }
 
   // Delete the table.

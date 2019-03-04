@@ -117,7 +117,7 @@ Status PTDmlStmt::LookupTable(SemContext *sem_context) {
   if (!table_ || (table_->IsIndex() && !FLAGS_allow_index_table_read_write) ||
       // Only looking for CQL tables.
       (table_->table_type() != client::YBTableType::YQL_TABLE_TYPE)) {
-    return sem_context->Error(table_loc(), ErrorCode::TABLE_NOT_FOUND);
+    return sem_context->Error(table_loc(), ErrorCode::OBJECT_NOT_FOUND);
   }
   LoadSchema(sem_context, table_, &column_map_);
   return Status::OK();
@@ -340,7 +340,7 @@ Status PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
       std::shared_ptr<client::YBTable> index_table = sem_context->GetTableDesc(index_id);
       if (index_table == nullptr) {
         return sem_context->Error(this, Substitute("Index table $0 not found", index_id).c_str(),
-                                  ErrorCode::TABLE_NOT_FOUND);
+                                  ErrorCode::OBJECT_NOT_FOUND);
       }
       pk_only_indexes_.insert(index_table);
     } else {

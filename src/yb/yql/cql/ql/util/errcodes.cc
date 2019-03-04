@@ -70,7 +70,7 @@ const std::unordered_map<ErrorCode, const char*, EnumHash> kQLErrorMessage {
   // Semantic errors [-200, -300).
   { ErrorCode::SEM_ERROR, "Semantic Error" },
   { ErrorCode::DATATYPE_MISMATCH, "Datatype Mismatch" },
-  { ErrorCode::DUPLICATE_TABLE, "Duplicate Table" },
+  { ErrorCode::DUPLICATE_OBJECT, "Duplicate Object" },
   { ErrorCode::UNDEFINED_COLUMN, "Undefined Column" },
   { ErrorCode::DUPLICATE_COLUMN, "Duplicate Column" },
   { ErrorCode::MISSING_PRIMARY_KEY, "Missing Primary Key" },
@@ -95,7 +95,7 @@ const std::unordered_map<ErrorCode, const char*, EnumHash> kQLErrorMessage {
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).
   { ErrorCode::EXEC_ERROR, "Execution Error" },
-  { ErrorCode::TABLE_NOT_FOUND, "Table Not Found" },
+  { ErrorCode::OBJECT_NOT_FOUND, "Object Not Found" },
   { ErrorCode::INVALID_TABLE_DEFINITION, "Invalid Table Definition" },
   { ErrorCode::WRONG_METADATA_VERSION, "Wrong Metadata Version" },
   { ErrorCode::INVALID_ARGUMENTS, "Invalid Arguments" },
@@ -111,6 +111,7 @@ const std::unordered_map<ErrorCode, const char*, EnumHash> kQLErrorMessage {
   { ErrorCode::ROLE_NOT_FOUND, "Role Not Found"},
   { ErrorCode::RESOURCE_NOT_FOUND, "Resource Not Found"},
   { ErrorCode::INVALID_REQUEST, "Invalid Request"},
+  { ErrorCode::PERMISSION_NOT_FOUND, "Permission Not Found"},
 };
 
 ErrorCode GetErrorCode(const Status& s) {

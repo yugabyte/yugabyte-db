@@ -44,7 +44,7 @@ CHECKED_STATUS Analyzer::Analyze(ParseTree::UniPtr parse_tree) {
     if (!ptree->reparsed()) {
       const ErrorCode errcode = GetErrorCode(s);
       if (errcode != ErrorCode::KEYSPACE_NOT_FOUND &&
-          errcode != ErrorCode::TABLE_NOT_FOUND &&
+          errcode != ErrorCode::OBJECT_NOT_FOUND &&
           errcode != ErrorCode::TYPE_NOT_FOUND &&
           sem_context_->cache_used()) {
         ptree->ClearAnalyzedTableCache(ql_env_);

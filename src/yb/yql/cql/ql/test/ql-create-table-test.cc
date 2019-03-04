@@ -27,11 +27,11 @@ class Master;
 }
 namespace ql {
 
-#define EXEC_DUPLICATE_TABLE_CREATE_STMT(stmt)                          \
+#define EXEC_DUPLICATE_OBJECT_CREATE_STMT(stmt)                         \
   do {                                                                  \
     Status s = processor->Run(stmt);                                    \
     EXPECT_FALSE(s.ok());                                               \
-    EXPECT_FALSE(s.ToString().find("Duplicate Table. Already present") == string::npos); \
+    EXPECT_FALSE(s.ToString().find("Duplicate Object. Object") == string::npos); \
   } while (false)
 
 #define EXEC_INVALID_TABLE_CREATE_STMT(stmt, msg)                       \
@@ -122,18 +122,18 @@ TEST_F(TestQLCreateTable, TestQLCreateTableSimple) {
   EXEC_VALID_STMT(CreateIfNotExistsStmt(table13));
 
   // Verify that all 'CREATE TABLE' statements fail for tables that have already been created.
-  EXEC_DUPLICATE_TABLE_CREATE_STMT(CreateStmt(table1));
-  EXEC_DUPLICATE_TABLE_CREATE_STMT(CreateStmt(table2));
-  EXEC_DUPLICATE_TABLE_CREATE_STMT(CreateStmt(table3));
-  EXEC_DUPLICATE_TABLE_CREATE_STMT(CreateStmt(table4));
-  EXEC_DUPLICATE_TABLE_CREATE_STMT(CreateStmt(table5));
-  EXEC_DUPLICATE_TABLE_CREATE_STMT(CreateStmt(table6));
-  EXEC_DUPLICATE_TABLE_CREATE_STMT(CreateStmt(table7));
-  EXEC_DUPLICATE_TABLE_CREATE_STMT(CreateStmt(table8));
-  EXEC_DUPLICATE_TABLE_CREATE_STMT(CreateStmt(table9));
-  EXEC_DUPLICATE_TABLE_CREATE_STMT(CreateStmt(table10));
-  EXEC_DUPLICATE_TABLE_CREATE_STMT(CreateStmt(table11));
-  EXEC_DUPLICATE_TABLE_CREATE_STMT(CreateStmt(table12));
+  EXEC_DUPLICATE_OBJECT_CREATE_STMT(CreateStmt(table1));
+  EXEC_DUPLICATE_OBJECT_CREATE_STMT(CreateStmt(table2));
+  EXEC_DUPLICATE_OBJECT_CREATE_STMT(CreateStmt(table3));
+  EXEC_DUPLICATE_OBJECT_CREATE_STMT(CreateStmt(table4));
+  EXEC_DUPLICATE_OBJECT_CREATE_STMT(CreateStmt(table5));
+  EXEC_DUPLICATE_OBJECT_CREATE_STMT(CreateStmt(table6));
+  EXEC_DUPLICATE_OBJECT_CREATE_STMT(CreateStmt(table7));
+  EXEC_DUPLICATE_OBJECT_CREATE_STMT(CreateStmt(table8));
+  EXEC_DUPLICATE_OBJECT_CREATE_STMT(CreateStmt(table9));
+  EXEC_DUPLICATE_OBJECT_CREATE_STMT(CreateStmt(table10));
+  EXEC_DUPLICATE_OBJECT_CREATE_STMT(CreateStmt(table11));
+  EXEC_DUPLICATE_OBJECT_CREATE_STMT(CreateStmt(table12));
 
   // Verify that all 'CREATE TABLE IF EXISTS' statements succeed for tables that have already been
   // created.
@@ -223,10 +223,10 @@ TEST_F(TestQLCreateTable, TestQLConcurrentCreateTableStmt) {
 
   // Wait until the table is already present in the tables map of the master.
   s = processor2->Run("CREATE TABLE k.t(k int PRIMARY KEY);");
-  CHECK_NE(s.ToString().find("Duplicate Table. Already present"), string::npos);
+  EXPECT_FALSE(s.ToString().find("Duplicate Object. Object ") == string::npos);
 
   s = processor2->Run("INSERT INTO k.t(k) VALUES (1)");
-  CHECK_OK(s);
+  EXPECT_OK(s);
 
   t1.join();
 }
@@ -377,7 +377,7 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithPartitionScemeOf) {
                                  "The number of hash keys in the current table "
                                      "differ from the number of hash keys in 'devices'");
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table6),
-                                 "Table Not Found");
+                                 "Object Not Found");
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table7),
                                  "The hash key 'description' in the current table has a different "
                                      "datatype from the corresponding hash key in 'devices'");
