@@ -51,7 +51,7 @@ using std::string;
   do {                                                                  \
     Status s = processor->Run(stmt);                                    \
     EXPECT_FALSE(s.ok());                                               \
-    EXPECT_FALSE(s.ToString().find("Duplicate Role. Already present") == string::npos); \
+    EXPECT_FALSE(s.ToString().find("Duplicate Role. ") == string::npos); \
   } while (false)
 
 #define EXEC_INVALID_STMT_MSG(stmt, msg)                                \

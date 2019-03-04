@@ -105,7 +105,7 @@ public class TestBasicStatements extends BaseCQLTest {
       AssertionWrappers.fail("Not expecting a client side timeout.");
     } catch (RuntimeException re) {
       LOG.info("Caught execption ", re);
-      AssertionWrappers.assertTrue(re.getMessage().contains("Timed out"));
+      AssertionWrappers.assertTrue(re.getMessage().contains("passed its deadline"));
     }
 
     // destroy the cluster, without trying to clean up the tables etc.

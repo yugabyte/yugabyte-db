@@ -1032,7 +1032,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Return all the available (user-defined) types.
   void GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo> >* types);
 
+  NamespaceName GetNamespaceNameUnlocked(const NamespaceId& id) const;
   NamespaceName GetNamespaceName(const NamespaceId& id) const;
+
+  NamespaceName GetNamespaceNameUnlocked(const scoped_refptr<TableInfo>& table) const;
+  NamespaceName GetNamespaceName(const scoped_refptr<TableInfo>& table) const;
 
   void GetAllRoles(std::vector<scoped_refptr<RoleInfo>>* roles);
 

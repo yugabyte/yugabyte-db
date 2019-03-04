@@ -669,7 +669,7 @@ public class TestIndex extends BaseCQLTest {
       fail("InvalidQueryException not thrown for " + query);
     } catch (InvalidQueryException e) {
       assertTrue(e.getMessage().startsWith(
-          String.format("Query error: Execution Error. Duplicate value disallowed by unique " +
+          String.format("Execution Error. Duplicate value disallowed by unique " +
                         "index %s", indexName)));
     }
   }

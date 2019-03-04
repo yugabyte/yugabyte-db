@@ -88,7 +88,7 @@ enum class ErrorCode : int64_t {
   // Semantic errors [-200, -300).
   SEM_ERROR = -200,
   DATATYPE_MISMATCH = -201,
-  DUPLICATE_TABLE = -202,
+  DUPLICATE_OBJECT = -202,
   UNDEFINED_COLUMN = -203,
   DUPLICATE_COLUMN = -204,
   MISSING_PRIMARY_KEY = -205,
@@ -114,7 +114,7 @@ enum class ErrorCode : int64_t {
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).
   EXEC_ERROR = -300,
-  TABLE_NOT_FOUND = -301,
+  OBJECT_NOT_FOUND = -301,
   INVALID_TABLE_DEFINITION = -302,
   WRONG_METADATA_VERSION = -303,
   INVALID_ARGUMENTS = -304,

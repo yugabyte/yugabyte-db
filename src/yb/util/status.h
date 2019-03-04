@@ -193,11 +193,11 @@ class Status {
 
   // Returns a text message of this status to be reported to users.
   // Returns empty string for success.
-  std::string ToUserMessage(bool include_file_and_line = false) const;
+  std::string ToUserMessage(bool include_code = false) const;
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
-  std::string ToString(bool include_file_and_line = true) const;
+  std::string ToString(bool include_file_and_line = true, bool include_code = true) const;
 
   // Return a string representation of the status code, without the message
   // text or posix code information.
