@@ -168,7 +168,7 @@ CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
     util::VarInt varint;
     RETURN_NOT_OK(varint.DecodeFromComparable(
         column_value.json_args(index).operand().value().varint_value()));
-    RETURN_NOT_OK(varint.ToInt64(&array_index));
+    array_index = VERIFY_RESULT(varint.ToInt64());
 
     if (array_index >= document->GetArray().Size() || array_index < 0) {
       return STATUS_SUBSTITUTE(QLError, "Array index out of bounds: ", array_index);

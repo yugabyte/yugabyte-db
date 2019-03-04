@@ -103,10 +103,6 @@ class Decimal {
   // In future, it may be better to write a direct conversion function.
   Result<long double> ToDouble() const;
 
-  // Note: The length of the varint is limited by kDefaultMaxLength by default to make sure we don't
-  // get stuck with large exponents. May be overriden.
-  CHECKED_STATUS ToVarInt(VarInt* varint_value, int max_length = kDefaultMaxLength) const;
-
   // The FromX() functions always create a canonical Decimal,
   // but the (digits, varint, sign) constructor doesn't.
 
@@ -150,7 +146,7 @@ class Decimal {
   // Encode the decimal by using to Cassandra serialization format, as described above.
   std::string EncodeToSerializedBigDecimal(bool* is_out_of_range) const;
 
-  CHECKED_STATUS DecodeFromSerializedBigDecimal(const Slice &slice);
+  CHECKED_STATUS DecodeFromSerializedBigDecimal(Slice slice);
 
   const Decimal& Negate() { is_positive_ = !is_positive_; return *this; }
 

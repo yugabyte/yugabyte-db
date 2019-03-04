@@ -244,7 +244,8 @@ set(UTIL_LIBS
   pb_util_proto
   protobuf
   version_info_proto
-  zlib)
+  zlib
+  ${OPENSSL_CRYPTO_LIBRARY})
 
 if (NOT APPLE AND NOT USING_LINUXBREW)
   set(UTIL_LIBS ${UTIL_LIBS} atomic)

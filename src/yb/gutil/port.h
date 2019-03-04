@@ -422,9 +422,12 @@ inline void* memrchr(const void* bytes, int find_char, size_t len) {
     __attribute__((no_sanitize_thread))
 #define ATTRIBUTE_NO_SANITIZE_ADDRESS \
     __attribute__((no_sanitize("address")))
+#define ATTRIBUTE_NO_SANITIZE_UNDEFINED \
+    __attribute__((no_sanitize("undefined")))
 #else
 #define ATTRIBUTE_NO_SANITIZE_THREAD
 #define ATTRIBUTE_NO_SANITIZE_ADDRESS
+#define ATTRIBUTE_NO_SANITIZE_UNDEFINED
 #endif
 
 #ifndef HAVE_ATTRIBUTE_SECTION  // may have been pre-set to 0, e.g. for Darwin
@@ -1047,7 +1050,7 @@ struct PortableHashBase { };
 // and 32-bit values (not 64-bit); older versions either raise a fatal signal,
 // do an unaligned read and rotate the words around a bit, or do the reads very
 // slowly (trip through kernel mode). There's no simple #define that says just
-// “ARMv7 or higher”, so we have to filter away all ARMv5 and ARMv6
+// "ARMv7 or higher", so we have to filter away all ARMv5 and ARMv6
 // sub-architectures. Newer gcc (>= 4.6) set an __ARM_FEATURE_ALIGNED #define,
 // so in time, maybe we can move on to that.
 //
