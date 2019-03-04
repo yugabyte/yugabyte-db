@@ -135,7 +135,7 @@ TEST_F(TransactionEntTest, RandomErrorClock) {
         } else {
           ASSERT_EQ(ql::ErrorCode::RESTART_REQUIRED, ql::GetErrorCode(read_value.status()))
               << "Bad value: " << read_value;
-          transaction = transaction->CreateRestartedTransaction();
+          transaction = ASSERT_RESULT(transaction->CreateRestartedTransaction());
         }
       }
     });
