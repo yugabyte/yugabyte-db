@@ -352,12 +352,7 @@ void QLValue::Serialize(
       return;
     }
     case VARINT: {
-      bool is_out_of_range = false;
-      CQLEncodeBytes(varint_value().EncodeToTwosComplement(&is_out_of_range), buffer);
-      // This should never happen
-      if(is_out_of_range) {
-        LOG(ERROR) << "Varint encoding returned out of range for " << varint_value().ToString();
-      }
+      CQLEncodeBytes(varint_value().EncodeToTwosComplement(), buffer);
       return;
     }
     case STRING:

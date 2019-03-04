@@ -14,13 +14,22 @@
 #ifndef YB_UTIL_VARINT_H
 #define YB_UTIL_VARINT_H
 
+#include <openssl/ossl_typ.h>
+
 #include <vector>
 
-#include "yb/util/status.h"
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
 
 namespace yb {
 namespace util {
+
+class BigNumDeleter {
+ public:
+  void operator()(BIGNUM* bn) const;
+};
+
+typedef std::unique_ptr<BIGNUM, BigNumDeleter> BigNumPtr;
 
 // VarInt holds a sequence of digits d1, d2 ... and a radix r.
 // The digits should always to be in range 0 <= d < r, and satisfy d_n-1 > 0, 0 < r < 2^15
@@ -42,67 +51,39 @@ class CoveringInt {
 };
 
 class VarInt {
-
-  friend class VarIntTest;
-  friend class Decimal;
-
  public:
-  VarInt() {}
-
-  // Precondition: 0 < d < r and d_{n-1} > 0, 0 < r < 256
-  // Note that the digit array must be Little Endian, hence VarInt("243") = VarInt({3, 4, 2}, 10)
-  VarInt(const std::vector<uint8_t>& digits, int radix, bool is_positive = true)
-      : digits_(digits), radix_(radix), is_positive_(is_positive) {}
-
-  VarInt(const VarInt& var_int) : VarInt(var_int.digits_, var_int.radix_, var_int.is_positive_) {}
-
-  // Ensure the string is parsable if you use this constructor. Otherwise it will be set to zero.
-  explicit VarInt(const std::string& string_val);
-
-  // int64's are always convertible to varint.
+  VarInt();
+  VarInt(const VarInt& var_int);
+  VarInt(VarInt&& rhs) = default;
   explicit VarInt(int64_t int64_val);
-  explicit VarInt(uint64_t uint64_val);
 
-  template<class T,
-           class U = typename std::enable_if<std::is_integral<
-                         typename std::decay<T>::type>::value>::type>
-  explicit VarInt(const T& value)
-      : VarInt(static_cast<typename CoveringInt<T>::type>(value)) {}
+  VarInt& operator=(const VarInt& rhs);
+  VarInt& operator=(VarInt&& rhs) = default;
 
-  void clear();
-
-  const std::vector<uint8_t>& digits() const { return digits_; }
-  uint8_t digit(std::size_t index) const { return digits_.size() > index ? digits_[index] : 0; }
-  int radix() const { return radix_; }
-
-  // Returns the sign of the VarInt.
-  bool IsPositive() const { return is_positive_; }
-
-  std::string ToDebugString() const;
   std::string ToString() const;
 
-  CHECKED_STATUS ToInt64(int64_t* int64_value) const;
+  Result<int64_t> ToInt64() const;
 
   // The input is expected to be of the form (-)?[0-9]+, whitespace is not allowed. Use this
   // after removing whitespace.
-  CHECKED_STATUS FromString(const Slice &slice);
-  void FromInt64(int64_t int64_val, int radix = 256);
-  void FromUInt64(uint64_t uint64_val, int radix = 256);
+  CHECKED_STATUS FromString(const std::string& input) {
+    return FromString(input.c_str());
+  }
 
-  // Arithmetic functions will probaly not be needed. Here for testing big numbers for consistency
-  // or just in case we need them in future.
-  //
-  // Preconditions:
-  //  inputs.size() > 0, all positive. radix * num_inputs <= 2^31.
-  static VarInt add(const std::vector<VarInt>& inputs);
-  // Not yet implemented
-  static VarInt multiply(const VarInt& input1, const VarInt& input2);
+  CHECKED_STATUS FromString(const char* cstr);
 
-  VarInt ConvertToBase(int radix) const;
+  static Result<VarInt> CreateFromString(const std::string& input) {
+    VarInt result;
+    RETURN_NOT_OK(result.FromString(input));
+    return std::move(result);
+  }
 
-  // Checks the representation by components, For testing purposes. This is more strict
-  // than numerical equality.
-  bool IsIdenticalTo(const VarInt &other) const;
+  static Result<VarInt> CreateFromString(const char* input) {
+    VarInt result;
+    RETURN_NOT_OK(result.FromString(input));
+    return std::move(result);
+  }
+
   // <0, =0, >0 if this <,=,> other numerically.
   int CompareTo(const VarInt& other) const;
 
@@ -113,11 +94,6 @@ class VarInt {
   bool operator<=(const VarInt& other) const { return CompareTo(other) <= 0; }
   bool operator>(const VarInt& other) const { return CompareTo(other) > 0; }
   bool operator>=(const VarInt& other) const { return CompareTo(other) >= 0; }
-  VarInt operator+() const { return VarInt(digits_, radix_, is_positive_); }
-  VarInt operator-() const { return VarInt(digits_, radix_, !is_positive_); }
-
-  VarInt operator+(const VarInt& other) const { return add({*this, other}); }
-  VarInt operator-(const VarInt& other) const { return add({*this, -other}); }
 
   /**
    * (1) Encoding algorithm for unsigned varint (with no reserved bits):
@@ -197,87 +173,39 @@ class VarInt {
   // is_Signed = true, num_reserved_bits = 0, and section 3 addresses the general case with
   // num_reserved_bits > 0.
   // Note that the first <num_reserved_bits> bits of the encoding is guaranteed to be zero.
-  std::string EncodeToComparable(bool is_signed = true, size_t num_reserved_bits = 0) const {
-    return EncodeToComparableBytes(is_signed, num_reserved_bits).ToStringFromBase256();
-  }
+  std::string EncodeToComparable(size_t num_reserved_bits = 0) const;
 
   // Convert the number to base 256 and encode each digit as a byte from high order to low order.
   // If negative x, encode 2^(8t) + x for the smallest value of t that ensures first bit is one.
   // If num_bytes is -1 then choose it based on number of digits in base 256
   CHECKED_STATUS DecodeFromComparable(
-      const Slice& slice,
-      size_t *num_decoded_bytes,
-      bool is_signed = true,
-      size_t num_reserved_bits = 0);
+      const Slice& slice, size_t *num_decoded_bytes, size_t num_reserved_bits = 0);
 
   CHECKED_STATUS DecodeFromComparable(
-      const std::string &string, size_t *num_decoded_bytes,
-      bool is_signed = true, size_t reserved_bits = 0) {
-    return DecodeFromComparable(Slice(string), num_decoded_bytes, is_signed, reserved_bits);
+      const std::string &string, size_t *num_decoded_bytes, size_t num_reserved_bits = 0) {
+    return DecodeFromComparable(Slice(string), num_decoded_bytes, num_reserved_bits);
   }
 
   CHECKED_STATUS DecodeFromComparable(const Slice& string);
   CHECKED_STATUS DecodeFromComparable(const std::string& string);
 
   // Each byte in the encoding encodes two digits, and a continuation bit in the beginning.
-  // The continuation bit is zero if and only if this is the last byte of the encoding. Assumes
-  // radix = 10.
-  std::string EncodeToTwosComplement(bool* is_out_of_range, size_t num_bytes = 0) const {
-    return EncodeToTwosComplementBytes(is_out_of_range, num_bytes).ToStringFromBase256();
-  }
+  // The continuation bit is zero if and only if this is the last byte of the encoding.
+  std::string EncodeToTwosComplement() const;
 
-  // Note, always decodes the whole slice.
-  CHECKED_STATUS DecodeFromTwosComplement(const Slice& slice);
+  CHECKED_STATUS DecodeFromTwosComplement(const std::string& string);
 
-  CHECKED_STATUS DecodeFromTwosComplement(const std::string& string) {
-    return DecodeFromTwosComplement(Slice(string));
-  }
+  const VarInt& Negate();
 
-  // Encodes pairs of digits into one byte each. The last bit in each byte is the
-  // "continuation bit" which is equal to 1 for all bytes except the last.
-  std::string EncodeToDigitPairs() const {
-    return EncodeToDigitPairsBytes().ToStringFromBase256();
-  }
-
-  CHECKED_STATUS DecodeFromDigitPairs(const Slice& slice, size_t* num_decoded_bytes);
-
-  CHECKED_STATUS DecodeFromDigitPairs(const std::string& string, size_t* num_decoded_bytes) {
-    return DecodeFromDigitPairs(Slice(string), num_decoded_bytes);
-  }
-
-  const VarInt& Negate() { is_positive_ = !is_positive_; return *this; }
+  int Sign() const;
 
  private:
+  explicit VarInt(BigNumPtr&& rhs) : impl_(std::move(rhs)) {}
 
-  // Given a uint64_t and a radix, populates digits_ with the appropriate digits for the given
-  // radix.
-  void ExtractDigits(uint64_t val, int radix);
+  BigNumPtr impl_;
 
-  // Remove all trailing zeros from the digits vector (most significant end).
-  // VarInt should be trimmed by default, most of the input VarInts in the API are
-  // assumed to be trimmed already.
-  void trim();
-  // Precondition: 0 < factor < 2^23, 0 < carry < 2^30
-  VarInt MultiplyAndAdd(int factor, int carry);
-  void AppendDigits(size_t n, uint8_t digit);
-
-  // Since encode always should provide a number of bits multiple of 8, we first express it
-  // in base 256, then treat each digit as characters.
-  VarInt EncodeToComparableBytes(bool is_signed = true, size_t num_reserved_bits = 0) const;
-  VarInt EncodeToTwosComplementBytes(bool* is_out_of_range, size_t num_bytes = 0) const;
-  VarInt EncodeToDigitPairsBytes() const;
-
-  // Following functions assuming radix == 256.
-  // A string where every byte is from the corresponding digit.
-  std::string ToStringFromBase256() const;
-  // A readable way to examine bits in a byte stream grouped by 8.
-  // For testing purposes only, may or may not be trimmed.
-  std::string ToDebugStringFromBase256() const;
-
-  std::vector<uint8_t> digits_;
-  int radix_;
-  bool is_positive_;
-
+  friend VarInt operator+(const VarInt& lhs, const VarInt& rhs);
+  friend VarInt operator-(const VarInt& lhs, const VarInt& rhs);
 };
 
 std::ostream& operator<<(ostream& os, const VarInt& v);

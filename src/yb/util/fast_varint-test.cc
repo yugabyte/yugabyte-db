@@ -35,7 +35,7 @@ namespace {
 void CheckEncoding(int64_t v) {
   SCOPED_TRACE(Substitute("v=$0", v));
 
-  const string correct_encoded(VarInt(v).EncodeToComparable(true, 0));
+  const string correct_encoded(VarInt(v).EncodeToComparable());
   uint8_t buf[16];
   size_t encoded_size = 0;
 
@@ -365,10 +365,6 @@ TEST(FastVarIntTest, Unsigned) {
     ASSERT_OK(FastDecodeUnsignedVarInt(buf, size, &decoded_value, &decoded_size));
     ASSERT_EQ(value, decoded_value);
     ASSERT_EQ(size, decoded_size) << "Value is: " << value;
-
-    varint.FromUInt64(value);
-    auto encoded_varint = varint.EncodeToComparable(false, 0);
-    ASSERT_EQ(encoded_varint, std::string(buf, buf + size)) << "Value is: " << value;
   }
   CheckUnsignedEncoding(numeric_limits<uint64_t>::max());
   CheckUnsignedEncoding(numeric_limits<uint64_t>::max() - 1);

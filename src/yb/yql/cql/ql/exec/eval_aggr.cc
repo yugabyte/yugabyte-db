@@ -192,7 +192,6 @@ Status Executor::EvalSum(const shared_ptr<QLRowBlock>& row_block,
         break;
       case DataType::DECIMAL: {
         Decimal sum;
-        RETURN_NOT_OK(sum.FromDouble(0.0));
         ql_value->set_decimal_value(sum.EncodeToComparable());
         break;
       }
@@ -266,12 +265,10 @@ Status Executor::EvalAvg(const shared_ptr<QLRowBlock>& row_block,
         util::VarInt varint(0);
         ql_value->set_varint_value(varint);
       } else {
-        int64_t tsum, tcount, average;
-        RETURN_NOT_OK(sum.varint_value().ToInt64(&tsum));
-        RETURN_NOT_OK(count.varint_value().ToInt64(&tcount));
-        average = tsum / tcount;
-        util::VarInt varint(average);
-        ql_value->set_varint_value(varint);
+        int64_t tsum = VERIFY_RESULT(sum.varint_value().ToInt64());
+        int64_t tcount = VERIFY_RESULT(count.varint_value().ToInt64());
+        util::VarInt average(tsum / tcount);
+        ql_value->set_varint_value(average);
       }
       break;
     case DataType::FLOAT:

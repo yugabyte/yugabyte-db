@@ -1110,8 +1110,7 @@ CHECKED_STATUS ConvertVarintToI8(PTypePtr source, RTypePtr target) {
   if (source->IsNull()) {
     target->SetNull();
   } else {
-    int64_t val;
-    RETURN_NOT_OK(source->varint_value().ToInt64(&val));
+    int64_t val = VERIFY_RESULT(source->varint_value().ToInt64());
     if (val < INT8_MIN || val > INT8_MAX) {
       return STATUS(QLError, "VarInt cannot be converted to int8 due to overflow");
     }
@@ -1125,8 +1124,7 @@ CHECKED_STATUS ConvertVarintToI16(PTypePtr source, RTypePtr target) {
   if (source->IsNull()) {
     target->SetNull();
   } else {
-    int64_t val;
-    RETURN_NOT_OK(source->varint_value().ToInt64(&val));
+    int64_t val = VERIFY_RESULT(source->varint_value().ToInt64());
     if (val < INT16_MIN || val > INT16_MAX) {
       return STATUS(QLError, "VarInt cannot be converted to int16 due to overflow");
     }
@@ -1140,8 +1138,7 @@ CHECKED_STATUS ConvertVarintToI32(PTypePtr source, RTypePtr target) {
   if (source->IsNull()) {
     target->SetNull();
   } else {
-    int64_t val;
-    RETURN_NOT_OK(source->varint_value().ToInt64(&val));
+    int64_t val = VERIFY_RESULT(source->varint_value().ToInt64());
     if (val < INT32_MIN || val > INT32_MAX) {
       return STATUS(QLError, "VarInt cannot be converted to int32 due to overflow");
     }
@@ -1155,8 +1152,7 @@ CHECKED_STATUS ConvertVarintToI64(PTypePtr source, RTypePtr target) {
   if (source->IsNull()) {
     target->SetNull();
   } else {
-    int64_t val;
-    RETURN_NOT_OK(source->varint_value().ToInt64(&val));
+    int64_t val = VERIFY_RESULT(source->varint_value().ToInt64());
     target->set_int64_value(val);
   }
   return Status::OK();
@@ -1168,11 +1164,8 @@ CHECKED_STATUS ConvertVarintToFloat(PTypePtr source, RTypePtr target) {
     target->SetNull();
   } else {
     // This may lose precision, it should return the closest float value to the input number.
-    util::Decimal val;
-    RETURN_NOT_OK(val.FromVarInt(source->varint_value()));
-    auto dbl = val.ToDouble();
-    RETURN_NOT_OK(dbl);
-    target->set_float_value(static_cast<float>(*dbl));
+    target->set_float_value(static_cast<float>(VERIFY_RESULT(util::CheckedStold(
+        source->varint_value().ToString()))));
   }
   return Status::OK();
 }
@@ -1183,11 +1176,8 @@ CHECKED_STATUS ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
     target->SetNull();
   } else {
     // This may lose precision, it should return the closest double value to the input number.
-    util::Decimal val;
-    RETURN_NOT_OK(val.FromVarInt(source->varint_value()));
-    auto dbl = val.ToDouble();
-    RETURN_NOT_OK(dbl);
-    target->set_double_value(*dbl);
+    target->set_double_value(VERIFY_RESULT(util::CheckedStold(
+        source->varint_value().ToString())));
   }
   return Status::OK();
 }

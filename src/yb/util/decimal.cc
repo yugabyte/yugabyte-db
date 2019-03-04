@@ -36,7 +36,7 @@ string Decimal::ToDebugString() const {
   string output = "[ ";
   output += is_positive_ ? "+" : "-";
   output += " 10^";
-  output += exponent_.is_positive_ ? "+" : "";
+  output += exponent_.Sign() >= 0 ? "+" : "";
   output += exponent_.ToString() + " * 0.";
   for (int digit : digits_) {
     output += '0' + digit;
@@ -50,8 +50,7 @@ Status Decimal::ToPointString(string* string_val, const int max_length) const {
     *string_val = "0";
     return Status::OK();
   }
-  int64_t exponent = 0;
-  RETURN_NOT_OK(exponent_.ToInt64(&exponent));
+  int64_t exponent = VERIFY_RESULT(exponent_.ToInt64());
   if (exponent > max_length || exponent < -max_length) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "Max length $0 too small to encode decimal with exponent $1", max_length, exponent);
@@ -110,7 +109,7 @@ string Decimal::ToScientificString() const {
   }
   output.push_back('e');
   VarInt exponent = exponent_ + VarInt(-1);
-  if (exponent.is_positive_) {
+  if (exponent.Sign() >= 0) {
     output += "+";
   }
   output += exponent.ToString();
@@ -128,28 +127,6 @@ string Decimal::ToString() const {
 
 Result<long double> Decimal::ToDouble() const {
   return CheckedStold(ToString());
-}
-
-Status Decimal::ToVarInt(VarInt *varint_value, const int max_length) const {
-  int64_t exponent = 0;
-  RETURN_NOT_OK(exponent_.ToInt64(&exponent));
-  if (exponent <= 0) {
-    *varint_value = VarInt(0);
-    return Status::OK();
-  }
-  if (exponent > max_length) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "Max length $0 too small to convert Decimal to VarInt, need $1",
-        max_length, exponent);
-  }
-  vector<uint8_t> digits(digits_.begin(),
-      digits_.size() > exponent ? digits_.begin() + exponent : digits_.end());
-  while (digits.size() < exponent) {
-    digits.push_back(0);
-  }
-  std::reverse(digits.begin(), digits.end());
-  *varint_value = VarInt(digits, 10, is_positive_);
-  return Status::OK();
 }
 
 Status Decimal::FromString(const Slice &slice) {
@@ -183,7 +160,7 @@ Status Decimal::FromString(const Slice &slice) {
     return STATUS_SUBSTITUTE(
         InvalidArgument,
         "There are no digits in the decimal $0 before the e / E",
-        slice.ToString());
+        slice.ToBuffer());
   }
   if (!point_found) {
     point_position = digits_.size();
@@ -191,7 +168,7 @@ Status Decimal::FromString(const Slice &slice) {
   if (i < slice.size()) {
     Slice exponent_slice(slice);
     exponent_slice.remove_prefix(i+1);
-    RETURN_NOT_OK(exponent_.FromString(exponent_slice));
+    RETURN_NOT_OK(exponent_.FromString(exponent_slice.ToBuffer()));
   } else {
     exponent_ = VarInt(0);
   }
@@ -258,17 +235,37 @@ int Decimal::CompareTo(const Decimal &other) const {
   return is_positive_ ? comp : -comp;
 }
 
+// Encodes pairs of digits into one byte each. The last bit in each byte is the
+// "continuation bit" which is equal to 1 for all bytes except the last.
+std::string EncodeToDigitPairs(const std::vector<uint8_t>& digits) {
+  if (digits.empty()) {
+    return std::string();
+  }
+  size_t len = (digits.size() + 1) / 2;
+  std::string result(len, 0);
+  for (size_t i = 0; i < len - 1; ++i) {
+    result[i] = (digits[i * 2] * 10 + digits[i * 2 + 1]) * 2 + 1;
+  }
+  size_t i = len - 1;
+  uint8_t last_byte = digits[i * 2] * 10;
+  if (i * 2 + 1 < digits.size()) {
+    last_byte += digits[i * 2 + 1];
+  }
+  result[i] = last_byte * 2;
+  return result;
+}
+
 string Decimal::EncodeToComparable() const {
   // Zero is encoded to the special value 128.
   if (digits_.empty()) {
     return string(1, 128);
   }
   // We reserve two bits for sign: -, zero, and +. Their sign portions are resp. '00', '10', '11'.
-  string exponent = exponent_.EncodeToComparable(/* is_signed */ true, /* num_reserved_bits */ 2);
-  const string mantissa = VarInt(digits_, 10).EncodeToDigitPairs();
+  string exponent = exponent_.EncodeToComparable(/* num_reserved_bits */ 2);
+  const string mantissa = EncodeToDigitPairs(digits_);
   string output = exponent + mantissa;
   // The first two (reserved) bits are set to 1 here.
-  output[0] += 192;
+  output[0] |= 0xc0;
   // For negatives, everything is complemented (including the sign bits) which were set to 1 above.
   if (!is_positive_) {
     for (int i = 0; i < output.size(); i++) {
@@ -276,6 +273,30 @@ string Decimal::EncodeToComparable() const {
     }
   }
   return output;
+}
+
+CHECKED_STATUS DecodeFromDigitPairs(
+    const Slice& slice, size_t *num_decoded_bytes, std::vector<uint8_t>* digits) {
+  digits->clear();
+  digits->reserve(slice.size() * 2);
+  *num_decoded_bytes = 0;
+  for (size_t i = 0; i < slice.size(); i++) {
+    uint8_t byte = slice[i];
+    if (!(byte & 1)) {
+      *num_decoded_bytes = i + 1;
+      i = slice.size();
+    }
+    byte /= 2;
+    digits->push_back(byte / 10);
+    digits->push_back(byte % 10);
+  }
+  if (*num_decoded_bytes == 0) {
+    return STATUS(Corruption, "Decoded the whole slice but didn't find the ending");
+  }
+  while (!digits->empty() && !digits->back()) {
+    digits->pop_back();
+  }
+  return Status::OK();
 }
 
 Status Decimal::DecodeFromComparable(const Slice& slice, size_t *num_decoded_bytes) {
@@ -291,7 +312,7 @@ Status Decimal::DecodeFromComparable(const Slice& slice, size_t *num_decoded_byt
   // The first bit is enough to decode the sign.
   is_positive_ = slice[0] >= 128;
   // We have to complement everything if negative, so we are making a copy.
-  string encoded = slice.ToString();
+  string encoded = slice.ToBuffer();
   if (!is_positive_) {
     for (size_t i = 0; i < encoded.size(); i++) {
       encoded[i] = ~encoded[i];
@@ -299,13 +320,11 @@ Status Decimal::DecodeFromComparable(const Slice& slice, size_t *num_decoded_byt
   }
   size_t num_exponent_bytes = 0;
   RETURN_NOT_OK(exponent_.DecodeFromComparable(
-      encoded, &num_exponent_bytes, /* is signed */ true, /* num_reserved_bits */ 2));
+      encoded, &num_exponent_bytes, /* num_reserved_bits */ 2));
   Slice remaining_slice(encoded);
   remaining_slice.remove_prefix(num_exponent_bytes);
-  VarInt mantissa;
   size_t num_mantissa_bytes = 0;
-  RETURN_NOT_OK(mantissa.DecodeFromDigitPairs(remaining_slice, &num_mantissa_bytes));
-  digits_ = vector<uint8_t>(mantissa.digits_.begin(), mantissa.digits_.end());
+  RETURN_NOT_OK(DecodeFromDigitPairs(remaining_slice, &num_mantissa_bytes, &digits_));
   *num_decoded_bytes = num_exponent_bytes + num_mantissa_bytes;
   return Status::OK();
 }
@@ -321,37 +340,57 @@ Status Decimal::DecodeFromComparable(const string& str) {
 
 string Decimal::EncodeToSerializedBigDecimal(bool* is_out_of_range) const {
   // Note that BigDecimal's scale is not the same as our exponent, but related by the following:
-  VarInt varint_scale = VarInt(static_cast<int64_t> (digits_.size())) - exponent_;
+  VarInt varint_scale = VarInt(static_cast<int64_t>(digits_.size())) - exponent_;
   // Must use 4 bytes for the two's complement encoding of the scale.
-  bool is_overflow = false;
-  string scale = varint_scale.EncodeToTwosComplement(&is_overflow, 4);
-  *is_out_of_range = is_overflow;
-  vector<uint8_t> digits(digits_);
-  // VarInt representation needs reversed digits.
-  std::reverse(digits.begin(), digits.end());
+  string scale = varint_scale.EncodeToTwosComplement();
+  if (scale.length() > 4) {
+    *is_out_of_range = true;
+    return std::string();
+  }
+  *is_out_of_range = false;
+  if (scale.length() < 4) {
+    scale = std::string(4 - scale.length(), varint_scale.Sign() < 0 ? 0xff : 0x00) + scale;
+  }
+
+  std::vector<char> digits;
+  digits.reserve(digits_.size() + 1);
+  for (auto digit : digits_) {
+    digits.push_back('0' + digit);
+  }
+  digits.push_back(0);
+
   // Note that the mantissa varint needs to have the same sign as the current decimal.
   // Get the digit array in int from int8_t in this class.
-  string mantissa = VarInt(digits, 10, is_positive_).EncodeToTwosComplement(&is_overflow);
+  auto temp = !digits_.empty() ? CHECK_RESULT(VarInt::CreateFromString(digits.data())) : VarInt(0);
+  if (!is_positive_) {
+    temp.Negate();
+  }
+  string mantissa = temp.EncodeToTwosComplement();
   return scale + mantissa;
 }
 
-Status Decimal::DecodeFromSerializedBigDecimal(const Slice &slice) {
+Status Decimal::DecodeFromSerializedBigDecimal(Slice slice) {
   if (slice.size() < 5) {
     return STATUS_SUBSTITUTE(
         Corruption, "Serialized BigDecimal must have at least 5 bytes. Found $0", slice.size());
   }
   // Decode the scale from the first 4 bytes.
   VarInt scale;
-  RETURN_NOT_OK(scale.DecodeFromTwosComplement(Slice(slice.data(), 4)));
+  RETURN_NOT_OK(scale.DecodeFromTwosComplement(std::string(slice.cdata(), 4)));
+  slice.remove_prefix(4);
   VarInt mantissa;
-  RETURN_NOT_OK(mantissa.DecodeFromTwosComplement(Slice(slice.data() + 4, slice.size() - 4)));
-  // Must convert to base 10 before we can interpret as digits in our Decimal representation
-  mantissa = mantissa.ConvertToBase(10);
+  RETURN_NOT_OK(mantissa.DecodeFromTwosComplement(slice.ToBuffer()));
+  bool negative = mantissa.Sign() < 0;
+  if (negative) {
+    mantissa.Negate();
+  }
+  auto mantissa_str = mantissa.ToString();
   // The sign of the BigDecimal is the sign of the mantissa
-  is_positive_ = mantissa.is_positive_;
-  digits_ = vector <uint8_t> (mantissa.digits_.begin(), mantissa.digits_.end());
-  // The varint has the digits in reverse order
-  std::reverse(digits_.begin(), digits_.end());
+  is_positive_ = !negative;
+  digits_.resize(mantissa_str.size());
+  for (size_t i = 0; i != mantissa_str.size(); ++i) {
+    digits_[i] = mantissa_str[i] - '0';
+  }
   exponent_ = VarInt(static_cast<int64_t> (digits_.size())) - scale;
   make_canonical();
   return Status::OK();
@@ -415,15 +454,13 @@ Decimal Decimal::operator+(const Decimal& other) const {
   VarInt var_int_one(1);
   if (decimal.exponent_ < max_exponent) {
     VarInt increase_varint = max_exponent - decimal.exponent_;
-    int64_t increase;
-    Status s = increase_varint.ToInt64(&increase);
+    int64_t increase = CHECK_RESULT(increase_varint.ToInt64());
     decimal.digits_.insert(decimal.digits_.begin(), increase, 0);
     decimal.exponent_ = max_exponent;
   }
   if (other1.exponent_ < max_exponent) {
     VarInt increase_varint = max_exponent - other1.exponent_;
-    int64_t increase;
-    Status s = increase_varint.ToInt64(&increase);
+    int64_t increase = CHECK_RESULT(increase_varint.ToInt64());
     other1.digits_.insert(other1.digits_.begin(), increase, 0);
     other1.exponent_ = max_exponent;
   }

@@ -60,8 +60,10 @@ TEST_F(DecimalTest, TestToStringFunctions) {
   Decimal decimal1({9, 0, 1, 2}, VarInt(-2), false);
   Decimal decimal2({9, 0, 1, 2}, VarInt(2), true);
   Decimal decimal3({9, 0, 1, 2}, VarInt(8), false);
-  Decimal decimal4({9, 0, 1, 2}, VarInt("-36546632732954564789"), true);
-  Decimal decimal5({9, 0, 1, 2}, VarInt("+36546632732954564789"), true);
+  Decimal decimal4(
+      {9, 0, 1, 2}, ASSERT_RESULT(VarInt::CreateFromString("-36546632732954564789")), true);
+  Decimal decimal5(
+      {9, 0, 1, 2}, ASSERT_RESULT(VarInt::CreateFromString("+36546632732954564789")), true);
 
   EXPECT_EQ("[ + 10^+0 * 0. ]", decimal0.ToDebugString());
   EXPECT_OK(decimal0.ToPointString(&string));
@@ -140,14 +142,17 @@ TEST_F(DecimalTest, IsIntegerTest) {
   EXPECT_FALSE(Decimal({3}, VarInt(-1), false).is_integer());
   EXPECT_FALSE(Decimal({3}, VarInt(0), false).is_integer());
   EXPECT_TRUE(Decimal({3}, VarInt(1), false).is_integer());
-  EXPECT_TRUE(Decimal({3}, VarInt("328763771921201932786301"), false).is_integer());
-  EXPECT_FALSE(Decimal({3}, VarInt("-328763771921201932786301"), false).is_integer());
+  auto big_positive = ASSERT_RESULT(VarInt::CreateFromString("328763771921201932786301"));
+  auto big_negative = ASSERT_RESULT(VarInt::CreateFromString("-328763771921201932786301"));
+  EXPECT_TRUE(Decimal({3}, big_positive, false).is_integer());
+  EXPECT_FALSE(Decimal(
+      {3}, big_negative, false).is_integer());
 
   EXPECT_FALSE(Decimal({3, 0, 7, 8}, VarInt(-1), false).is_integer());
   EXPECT_FALSE(Decimal({3, 0, 7, 8}, VarInt(3), false).is_integer());
   EXPECT_TRUE(Decimal({3, 0, 7, 8}, VarInt(4), false).is_integer());
-  EXPECT_TRUE(Decimal({3, 0, 7, 8}, VarInt("328763771921201932786301"), false).is_integer());
-  EXPECT_FALSE(Decimal({3, 0, 7, 8}, VarInt("-328763771921201932786301"), false).is_integer());
+  EXPECT_TRUE(Decimal({3, 0, 7, 8}, big_positive, false).is_integer());
+  EXPECT_FALSE(Decimal({3, 0, 7, 8}, big_negative, false).is_integer());
 }
 
 TEST_F(DecimalTest, TestDoubleConversions) {
@@ -202,25 +207,12 @@ TEST_F(DecimalTest, TestDoubleConversions) {
   EXPECT_TRUE(decimal.FromDouble(std::numeric_limits<double>::quiet_NaN()).IsCorruption());
 }
 
-TEST_F(DecimalTest, TestVarIntConversions) {
-  VarInt varint;
-
-  EXPECT_OK(Decimal("12301").ToVarInt(&varint));
-  EXPECT_EQ("12301", Decimal(varint).ToString());
-
-  EXPECT_OK(Decimal("-0").ToVarInt(&varint));
-  EXPECT_EQ("0", Decimal(varint).ToString());
-
-  EXPECT_FALSE(Decimal("-871233726138962103701973").ToVarInt(&varint).ok());
-  EXPECT_OK(Decimal("-871233726138962103701973").ToVarInt(&varint, 50));
-  EXPECT_EQ("-8.71233726138962103701973e+23", Decimal(varint).ToString());
-}
-
 TEST_F(DecimalTest, TestComparableEncoding) {
   std::vector<Decimal> test_decimals;
   std::vector<std::string> encoded_strings;
   std::vector<Decimal> decoded_decimals;
   for (int i = 0; i < test_cases.size(); i++) {
+    SCOPED_TRACE(Format("Index: $0, value: $1", i, test_cases[i]));
     test_decimals.emplace_back(test_cases[i]);
     encoded_strings.push_back(test_decimals[i].EncodeToComparable());
     EXPECT_EQ(kComparableEncodingLengths[i], encoded_strings[i].size());
@@ -245,6 +237,7 @@ TEST_F(DecimalTest, TestBigDecimalEncoding) {
   std::vector<Decimal> decoded_decimals;
   bool is_out_of_range = false;
   for (int i = 0; i < test_cases.size(); i++) {
+    SCOPED_TRACE(Format("Index: $0, value: $1", i, test_cases[i]));
     test_decimals.emplace_back(test_cases[i]);
     encoded_strings.push_back(test_decimals[i].EncodeToSerializedBigDecimal(&is_out_of_range));
     EXPECT_FALSE(is_out_of_range);

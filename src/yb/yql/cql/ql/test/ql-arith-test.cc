@@ -54,7 +54,7 @@ TEST_F(TestQLArith, TestQLArithVarint) {
   CHECK_EQ(row_block->row_count(), 1);
   const QLRow& row = row_block->row(0);
   CHECK_EQ(row.column(0).int32_value(), 1);
-  CHECK_EQ(row.column(1).varint_value(), util::VarInt("70000000000007"));
+  CHECK_EQ(row.column(1).varint_value(), util::VarInt(70000000000007));
   CHECK(row.column(2).IsNull());
   CHECK(row.column(3).IsNull());
 
@@ -67,8 +67,8 @@ TEST_F(TestQLArith, TestQLArithVarint) {
   CHECK_EQ(row_block->row_count(), 1);
   const QLRow& new_row = row_block->row(0);
   CHECK_EQ(new_row.column(0).int32_value(), 1);
-  CHECK_EQ(new_row.column(1).varint_value(), util::VarInt("70000000000027"));
-  CHECK_EQ(new_row.column(2).varint_value(), util::VarInt("140000000000014"));
+  CHECK_EQ(new_row.column(1).varint_value(), util::VarInt(70000000000027));
+  CHECK_EQ(new_row.column(2).varint_value(), util::VarInt(140000000000014));
   CHECK(new_row.column(3).IsNull());
 }
 
