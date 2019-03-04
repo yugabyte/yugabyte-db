@@ -648,8 +648,7 @@ Status Jsonb::ApplyJsonbOperatorToArray(const Slice& jsonb, const QLJsonOperatio
   // Retrieve the array index and verify.
   util::VarInt varint;
   RETURN_NOT_OK(varint.DecodeFromComparable(json_op.operand().value().varint_value()));
-  int64_t array_index;
-  RETURN_NOT_OK(varint.ToInt64(&array_index));
+  int64_t array_index = VERIFY_RESULT(varint.ToInt64());
 
   if (array_index < 0 || array_index >= num_array_entries) {
     return STATUS_SUBSTITUTE(NotFound, "Array index: $0 out of bounds [0, $1)",
