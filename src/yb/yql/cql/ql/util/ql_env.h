@@ -37,7 +37,7 @@
 namespace yb {
 namespace ql {
 
-typedef std::function<client::TransactionManager*()> TransactionManagerProvider;
+typedef std::function<client::TransactionPool*()> TransactionPoolProvider;
 
 class QLEnv {
  public:
@@ -51,7 +51,7 @@ class QLEnv {
   QLEnv(std::shared_ptr<client::YBClient> client,
         std::shared_ptr<client::YBMetaDataCache> cache,
         const server::ClockPtr& clock,
-        TransactionManagerProvider transaction_manager_provider);
+        TransactionPoolProvider transaction_pool_provider);
   virtual ~QLEnv();
 
   //------------------------------------------------------------------------------------------------
@@ -215,8 +215,8 @@ class QLEnv {
   const server::ClockPtr clock_;
 
   // Transaction manager to create distributed transactions.
-  TransactionManagerProvider transaction_manager_provider_;
-  client::TransactionManager* transaction_manager_ = nullptr;
+  TransactionPoolProvider transaction_pool_provider_;
+  client::TransactionPool* transaction_pool_ = nullptr;
 
   //------------------------------------------------------------------------------------------------
   // Transient attributes.

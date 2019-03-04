@@ -68,6 +68,12 @@ DEFINE_bool(redis_allow_reads_from_followers, false,
 TAG_FLAG(redis_allow_reads_from_followers, evolving);
 TAG_FLAG(redis_allow_reads_from_followers, runtime);
 
+// When this flag is set to false and we have separate errors for operation, then batcher would
+// report IO Error status. Otherwise we will try to combine errors from separate operation to
+// status of batch. Useful in tests, when we don't need complex error analysis.
+DEFINE_test_flag(bool, combine_batcher_errors, false,
+                 "Whether combine errors into batcher status.");
+
 using std::pair;
 using std::set;
 using std::unique_ptr;
@@ -114,7 +120,6 @@ Batcher::Batcher(YBClient* client,
     client_(client),
     weak_session_data_(session_data),
     error_collector_(error_collector),
-    had_errors_(false),
     next_op_sequence_number_(0),
     max_buffer_size_(7 * 1024 * 1024),
     buffer_bytes_used_(0),
@@ -125,25 +130,28 @@ Batcher::Batcher(YBClient* client,
 }
 
 void Batcher::Abort(const Status& status) {
-  std::unique_lock<simple_spinlock> l(lock_);
-  state_ = kAborted;
+  bool run_callback;
+  {
+    std::lock_guard<simple_spinlock> lock(mutex_);
+    state_ = kAborted;
 
-  InFlightOps to_abort;
-  for (auto& op : ops_) {
-    std::lock_guard<simple_spinlock> l(op->lock_);
-    if (op->state == InFlightOpState::kBufferedToTabletServer) {
-      to_abort.push_back(op);
+    InFlightOps to_abort;
+    for (auto& op : ops_) {
+      std::lock_guard<simple_spinlock> l(op->lock_);
+      if (op->state == InFlightOpState::kBufferedToTabletServer) {
+        to_abort.push_back(op);
+      }
     }
+
+    for (auto& op : to_abort) {
+      VLOG(1) << "Aborting op: " << op->ToString();
+      MarkInFlightOpFailedUnlocked(op, status);
+    }
+
+    run_callback = flush_callback_;
   }
 
-  for (auto& op : to_abort) {
-    VLOG(1) << "Aborting op: " << op->ToString();
-    MarkInFlightOpFailedUnlocked(op, status);
-  }
-
-  if (flush_callback_) {
-    l.unlock();
-
+  if (run_callback) {
     RunCallback(status);
   }
 }
@@ -160,17 +168,17 @@ Batcher::~Batcher() {
 
 void Batcher::SetTimeout(MonoDelta timeout) {
   CHECK_GE(timeout, MonoDelta::kZero);
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<simple_spinlock> l(mutex_);
   timeout_ = timeout;
 }
 
 bool Batcher::HasPendingOperations() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<simple_spinlock> l(mutex_);
   return !ops_.empty();
 }
 
 int Batcher::CountBufferedOperations() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<simple_spinlock> l(mutex_);
   if (state_ == kGatheringOps) {
     return ops_.size();
   } else {
@@ -183,7 +191,7 @@ int Batcher::CountBufferedOperations() const {
 void Batcher::CheckForFinishedFlush() {
   std::shared_ptr<YBSessionData> session_data;
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard<simple_spinlock> l(mutex_);
     if (state_ != kFlushing || !ops_.empty()) {
       return;
     }
@@ -200,7 +208,9 @@ void Batcher::CheckForFinishedFlush() {
   }
 
   Status s;
-  if (had_errors_) {
+  if (!combined_error_.ok()) {
+    s = combined_error_;
+  } else if (had_errors_.load(std::memory_order_acquire)) {
     // In the general case, the user is responsible for fetching errors from the error collector.
     // TODO: use the Combined status here, so it is easy to recognize.
     // https://github.com/YugaByte/yugabyte-db/issues/702
@@ -232,7 +242,7 @@ MonoTime Batcher::ComputeDeadlineUnlocked() const {
 
 void Batcher::FlushAsync(StatusFunctor callback) {
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard<simple_spinlock> l(mutex_);
     CHECK_EQ(state_, kGatheringOps);
     state_ = kFlushing;
     flush_callback_ = std::move(callback);
@@ -313,7 +323,7 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
 void Batcher::AddInFlightOp(const InFlightOpPtr& op) {
   DCHECK_EQ(op->state, InFlightOpState::kLookingUpTablet);
 
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<simple_spinlock> l(mutex_);
   CHECK_EQ(state_, kGatheringOps);
   CHECK(ops_.insert(op).second);
   op->sequence_number_ = next_op_sequence_number_++;
@@ -324,22 +334,23 @@ bool Batcher::IsAbortedUnlocked() const {
   return state_ == kAborted;
 }
 
-void Batcher::MarkHadErrors() {
-  std::lock_guard<simple_spinlock> l(lock_);
-  had_errors_ = true;
-}
-
-void Batcher::MarkInFlightOpFailed(const InFlightOpPtr& op, const Status& s) {
-  std::lock_guard<simple_spinlock> l(lock_);
-  MarkInFlightOpFailedUnlocked(op, s);
+void Batcher::CombineErrorUnlocked(const InFlightOpPtr& in_flight_op, const Status& status) {
+  error_collector_->AddError(in_flight_op->yb_op, status);
+  if (FLAGS_combine_batcher_errors) {
+    if (combined_error_.ok()) {
+      combined_error_ = status;
+    } else if (!combined_error_.IsCombined() && combined_error_.code() != status.code()) {
+      combined_error_ = STATUS(Combined, "Multiple failures");
+    }
+  }
+  had_errors_.store(true, std::memory_order_release);
 }
 
 void Batcher::MarkInFlightOpFailedUnlocked(const InFlightOpPtr& in_flight_op, const Status& s) {
   CHECK_EQ(1, ops_.erase(in_flight_op)) << "Could not remove op " << in_flight_op->ToString()
                                         << " from in-flight list";
 
-  error_collector_->AddError(in_flight_op->yb_op, s);
-  had_errors_ = true;
+  CombineErrorUnlocked(in_flight_op, s);
 }
 
 void Batcher::TabletLookupFinished(
@@ -347,45 +358,40 @@ void Batcher::TabletLookupFinished(
   // Acquire the batcher lock early to atomically:
   // 1. Test if the batcher was aborted, and
   // 2. Change the op state.
-  std::unique_lock<simple_spinlock> l(lock_);
-  if (lookup_result.ok()) {
-    op->tablet = *lookup_result;
+  {
+    std::lock_guard<simple_spinlock> l(mutex_);
+
+    if (lookup_result.ok()) {
+      op->tablet = *lookup_result;
+    }
+
+    --outstanding_lookups_;
+
+    if (IsAbortedUnlocked()) {
+      VLOG(1) << "Aborted batch: TabletLookupFinished for " << op->yb_op->ToString();
+      MarkInFlightOpFailedUnlocked(op, STATUS(Aborted, "Batch aborted"));
+      // 'op' is deleted by above function.
+      return;
+    }
+
+    VLOG(3) << "TabletLookupFinished for " << op->yb_op->ToString() << ": " << lookup_result;
+
+    if (lookup_result.ok()) {
+      std::lock_guard<simple_spinlock> l2(op->lock_);
+      CHECK_EQ(op->state, InFlightOpState::kLookingUpTablet);
+      CHECK(*lookup_result);
+
+      op->state = InFlightOpState::kBufferedToTabletServer;
+
+      ops_queue_.push_back(op);
+    } else {
+      MarkInFlightOpFailedUnlocked(op, lookup_result.status());
+    }
   }
-
-  --outstanding_lookups_;
-
-  if (IsAbortedUnlocked()) {
-    VLOG(1) << "Aborted batch: TabletLookupFinished for " << op->yb_op->ToString();
-    MarkInFlightOpFailedUnlocked(op, STATUS(Aborted, "Batch aborted"));
-    // 'op' is deleted by above function.
-    return;
-  }
-
-  VLOG(3) << "TabletLookupFinished for " << op->yb_op->ToString() << ": " << lookup_result;
 
   if (!lookup_result.ok()) {
-    MarkInFlightOpFailedUnlocked(op, lookup_result.status());
-    l.unlock();
     CheckForFinishedFlush();
-
-    // Even if we failed our lookup, it's possible that other requests were still
-    // pending waiting for our pending lookup to complete. So, we have to let them
-    // proceed.
-    FlushBuffersIfReady();
-    return;
   }
-
-  {
-    std::lock_guard<simple_spinlock> l2(op->lock_);
-    CHECK_EQ(op->state, InFlightOpState::kLookingUpTablet);
-    CHECK(*lookup_result);
-
-    op->state = InFlightOpState::kBufferedToTabletServer;
-
-    ops_queue_.push_back(op);
-  }
-
-  l.unlock();
 
   FlushBuffersIfReady();
 }
@@ -433,7 +439,7 @@ void Batcher::FlushBuffersIfReady() {
   // 2. All outstanding ops have finished lookup. Why? To avoid a situation
   //    where ops are flushed one by one as they finish lookup.
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard<simple_spinlock> l(mutex_);
     if (state_ != kFlushing) {
       VLOG(3) << "FlushBuffersIfReady: batcher not yet in flushing state";
       return;
@@ -596,7 +602,7 @@ void Batcher::AddOpCountMismatchError() {
 void Batcher::RemoveInFlightOpsAfterFlushing(
     const InFlightOps& ops, const Status& status, HybridTime propagated_hybrid_time) {
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard<simple_spinlock> l(mutex_);
     for (auto& op : ops) {
       CHECK_EQ(1, ops_.erase(op))
         << "Could not remove op " << op->ToString() << " from in-flight list";
@@ -620,10 +626,10 @@ void Batcher::ProcessRpcStatus(const AsyncRpc &rpc, const Status &s) {
 
   if (PREDICT_FALSE(!s.ok())) {
     // Mark each of the ops as failed, since the whole RPC failed.
+    std::lock_guard<simple_spinlock> lock(mutex_);
     for (auto& in_flight_op : rpc.ops()) {
-      error_collector_->AddError(in_flight_op->yb_op, s);
+      CombineErrorUnlocked(in_flight_op, s);
     }
-    MarkHadErrors();
   }
 }
 
@@ -653,9 +659,8 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
     }
     shared_ptr<YBOperation> yb_op = rpc.ops()[err_pb.row_index()]->yb_op;
     VLOG(1) << "Error on op " << yb_op->ToString() << ": " << err_pb.error().ShortDebugString();
-    Status op_status = StatusFromPB(err_pb.error());
-    error_collector_->AddError(yb_op, op_status);
-    MarkHadErrors();
+    std::lock_guard<simple_spinlock> lock(mutex_);
+    CombineErrorUnlocked(rpc.ops()[err_pb.row_index()], StatusFromPB(err_pb.error()));
   }
 }
 

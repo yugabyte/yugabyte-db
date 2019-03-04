@@ -124,8 +124,8 @@ QLMetrics::QLMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
 QLProcessor::QLProcessor(shared_ptr<YBClient> client,
                          shared_ptr<YBMetaDataCache> cache, QLMetrics* ql_metrics,
                          const server::ClockPtr& clock,
-                         TransactionManagerProvider transaction_manager_provider)
-    : ql_env_(client, cache, clock, std::move(transaction_manager_provider)),
+                         TransactionPoolProvider transaction_pool_provider)
+    : ql_env_(client, cache, clock, std::move(transaction_pool_provider)),
       analyzer_(&ql_env_),
       executor_(&ql_env_, this, ql_metrics),
       ql_metrics_(ql_metrics) {

@@ -82,7 +82,7 @@ TEST_F(SystemTableFaultTolerance, TestFaultTolerance) {
   server::ClockPtr clock(new server::HybridClock());
   ASSERT_OK(clock->Init());
   auto processor = std::make_unique<ql::QLProcessor>(client, metadata_cache, nullptr, clock,
-                                                     ql::TransactionManagerProvider());
+                                                     ql::TransactionPoolProvider());
   Synchronizer s;
   ql::StatementParameters statement_parameters;
   processor->RunAsync("SELECT * from system.peers", statement_parameters,

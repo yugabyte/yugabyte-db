@@ -100,7 +100,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   bool IsRestartRequired() const;
 
-  YBTransactionPtr CreateRestartedTransaction();
+  // Creates restarted transaction, this transaction should be in the "restart required" state.
+  Result<YBTransactionPtr> CreateRestartedTransaction();
+  // Setup precreated transaction to be restarted version of this transaction.
+  CHECKED_STATUS FillRestartedTransaction(const YBTransactionPtr& dest);
 
   // Prepares child data, so child transaction could be started in another server.
   // Should be async because status tablet could be not ready yet.
