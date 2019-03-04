@@ -19,7 +19,7 @@ A supported version of docker-engine (currently 1.7.1 to 17.03.1-ce) needs to be
 
 On a machine connected to the Internet, perform the following steps.
 
-Make a directory for downloading the binaries
+Make a directory for downloading the binaries.
 ```sh
 $ sudo mkdir /opt/downloads
 ```
@@ -29,37 +29,37 @@ Change the owner user for the directory
 $ sudo chown -R ubuntu:ubuntu /opt/downloads
 ```
 
-Change to the directory
+Change to the directory.
 ```sh
 $ cd /opt/downloads
 ```
 
-Get the replicated binary
+Get the replicated binary.
 ```sh
 $ wget https://downloads.yugabyte.com/replicated.tar.gz
 ```
 
-Get the yugaware binary where the 1.1.0.2 refers to the version of the binary. change this number as needed.
+Get the yugaware binary where the last 4 digits refer to the version of the binary. Change this number as needed.
 ```sh
 $ wget https://downloads.yugabyte.com/yugaware-1.1.9.0.airgap
 ```
 
-Change to the directory
+Change to the directory.
 ```sh
 $ cd /opt/downloads
 ```
 
-Expand the replicated binary
+Expand the replicated binary.
 ```sh
 $ tar xzvf replicated.tar.gz
 ```
 
-Install replicated (yugaware will be installed via replicated ui after replicated install completes) pick `eth0` network interface in case multiple ones show up
+Install replicated (yugaware will be installed via replicated ui after replicated install completes) pick `eth0` network interface in case multiple ones show up.
 ```sh
 $ cat ./install.sh | sudo bash -s airgap
 ```
 
-After replicated install completes, make sure it is running
+After replicated install completes, make sure it is running.
 ```sh
 $ sudo docker ps
 ```
