@@ -390,15 +390,14 @@ export default class ClusterFields extends Component {
           numVolumes: formValues[clusterType].numVolumes,
           diskIops: formValues[clusterType].diskIops,
           mountPoints: formValues[clusterType].mountPoints,
-          ebsTypes: formValues[clusterType].ebsTypes,
-          gcpTypes: formValues[clusterType].gcpTypes.data
+          storageType: formValues[clusterType].storageType,
+          storageClass: formValues[clusterType].storageClass,
         },
         accessKeyCode: formValues[clusterType].accessKeyCode,
         gflags: formValues[clusterType].gflags,
         instanceTags: formValues[clusterType].instanceTags,
         useTimeSync: formValues[clusterType].useTimeSync,
         enableYSQL: formValues[clusterType].enableYSQL,
-        storageClass: formValues[clusterType].storageClass
       };
     }
   };
