@@ -45,7 +45,7 @@ TEST_F(TestQLDropStmt, TestQLDropTable) {
   const string create_stmt = "CREATE TABLE human_resource1(id int primary key, name varchar);";
   const string drop_stmt = "DROP TABLE human_resource1";
   const string drop_cond_stmt = "DROP TABLE IF EXISTS human_resource1";
-  const string not_found_drop_error = "Table Not Found";
+  const string not_found_drop_error = "Object Not Found";
 
   // No tables exist at this point. Verify that this statement fails.
   EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);
@@ -70,6 +70,68 @@ TEST_F(TestQLDropStmt, TestQLDropTable) {
 
   // Verify that the table was indeed deleted.
   EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);
+}
+
+TEST_F(TestQLDropStmt, TestQLDropIndex) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  TestQLProcessor *processor = GetQLProcessor();
+
+  const string create_table_stmt = "CREATE TABLE human_resource1"
+                                   "(id int primary key, name varchar) "
+                                   "with transactions = {'enabled':true};";
+  const string create_index_stmt = "CREATE INDEX i ON human_resource1(name);";
+  const string drop_table_stmt = "DROP TABLE human_resource1";
+  const string drop_table_cond_stmt = "DROP TABLE IF EXISTS human_resource1";
+  const string drop_index_stmt = "DROP INDEX i";
+  const string drop_index_cond_stmt = "DROP INDEX IF EXISTS i";
+  const string not_found_table_drop_error = "Object Not Found";
+  const string not_found_index_drop_error = "Object Not Found";
+
+  // No tables exist at this point. Verify that these statements fail.
+  EXEC_INVALID_DROP_STMT(drop_table_stmt, not_found_table_drop_error);
+  EXEC_INVALID_DROP_STMT(drop_index_stmt, not_found_index_drop_error);
+
+  // Although the table and the index doesn't exist, a DROP TABLE IF EXISTS should succeed.
+  EXEC_VALID_STMT(drop_table_cond_stmt);
+  EXEC_VALID_STMT(drop_index_cond_stmt);
+
+  // Now create the table and the index.
+  EXEC_VALID_STMT(create_table_stmt);
+  EXEC_VALID_STMT(create_index_stmt);
+
+  // Now verify that we can drop the index and the table.
+  EXEC_VALID_STMT(drop_index_stmt);
+  EXEC_VALID_STMT(drop_table_stmt);
+
+  // Verify that the table and the index were indeed deleted.
+  EXEC_INVALID_DROP_STMT(drop_table_stmt, not_found_table_drop_error);
+  EXEC_INVALID_DROP_STMT(drop_index_stmt, not_found_index_drop_error);
+
+  // Create the table and index again.
+  EXEC_VALID_STMT(create_table_stmt);
+  EXEC_VALID_STMT(create_index_stmt);
+
+  // Now verify that we can drop the table with a DROP TABLE IF EXISTS statement.
+  EXEC_VALID_STMT(drop_index_cond_stmt);
+  EXEC_VALID_STMT(drop_table_cond_stmt);
+
+  // Verify that the table and the index were indeed deleted.
+  EXEC_INVALID_DROP_STMT(drop_table_stmt, not_found_table_drop_error);
+  EXEC_INVALID_DROP_STMT(drop_index_stmt, not_found_index_drop_error);
+
+  // Create the table and index again.
+  EXEC_VALID_STMT(create_table_stmt);
+  EXEC_VALID_STMT(create_index_stmt);
+
+  // Now verify that we can drop the table only and the index will be dropped automatically.
+  EXEC_VALID_STMT(drop_table_stmt);
+
+  // Verify that the table and the index were indeed deleted.
+  EXEC_INVALID_DROP_STMT(drop_table_stmt, not_found_table_drop_error);
+  EXEC_INVALID_DROP_STMT(drop_index_stmt, not_found_index_drop_error);
 }
 
 TEST_F(TestQLDropStmt, TestQLDropKeyspace) {

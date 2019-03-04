@@ -422,16 +422,16 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
     if (s.IsAlreadyPresent()) {
-      error_code = ErrorCode::DUPLICATE_TABLE;
+      error_code = ErrorCode::DUPLICATE_OBJECT;
     } else if (s.IsNotFound()) {
       error_code = tnode->opcode() == TreeNodeOpcode::kPTCreateIndex
-                   ? ErrorCode::TABLE_NOT_FOUND
+                   ? ErrorCode::OBJECT_NOT_FOUND
                    : ErrorCode::KEYSPACE_NOT_FOUND;
     } else if (s.IsInvalidArgument()) {
       error_code = ErrorCode::INVALID_TABLE_DEFINITION;
     }
 
-    if (tnode->create_if_not_exists() && error_code == ErrorCode::DUPLICATE_TABLE) {
+    if (tnode->create_if_not_exists() && error_code == ErrorCode::DUPLICATE_OBJECT) {
       return Status::OK();
     }
 
@@ -509,7 +509,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       // Drop the table.
       const YBTableName table_name = tnode->yb_table_name();
       s = ql_env_->DeleteTable(table_name);
-      error_not_found = ErrorCode::TABLE_NOT_FOUND;
+      error_not_found = ErrorCode::OBJECT_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>(
           "DROPPED", "TABLE", table_name.namespace_name(), table_name.table_name());
       ql_env_->RemoveCachedTableDesc(table_name);
@@ -521,7 +521,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       const YBTableName table_name = tnode->yb_table_name();
       YBTableName indexed_table_name;
       s = ql_env_->DeleteIndexTable(table_name, &indexed_table_name);
-      error_not_found = ErrorCode::TABLE_NOT_FOUND;
+      error_not_found = ErrorCode::OBJECT_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>(
           "UPDATED", "TABLE", indexed_table_name.namespace_name(), indexed_table_name.table_name());
       ql_env_->RemoveCachedTableDesc(indexed_table_name);
@@ -646,7 +646,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
     // If this is a system table but the table does not exist, it is okay. Just return OK with void
     // result.
     return tnode->is_system() ? Status::OK()
-                              : exec_context_->Error(tnode, ErrorCode::TABLE_NOT_FOUND);
+                              : exec_context_->Error(tnode, ErrorCode::OBJECT_NOT_FOUND);
   }
 
   const StatementParameters& params = exec_context_->params();
@@ -655,7 +655,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   // for query without index, or the index id in the leaf node (where child_select is null also).
   const bool continue_select = !tnode->child_select() && !params.table_id().empty();
   if (continue_select && params.table_id() != table->id()) {
-    return exec_context_->Error(tnode, "Table no longer exists.", ErrorCode::TABLE_NOT_FOUND);
+    return exec_context_->Error(tnode, "Object no longer exists.", ErrorCode::OBJECT_NOT_FOUND);
   }
 
   // If there is an index to select from, execute it.
@@ -1898,7 +1898,7 @@ Status Executor::ProcessStatementStatus(const ParseTree& parse_tree, const Statu
         errcode == ErrorCode::WRONG_METADATA_VERSION   ||
         errcode == ErrorCode::INVALID_TABLE_DEFINITION ||
         errcode == ErrorCode::INVALID_ARGUMENTS        ||
-        errcode == ErrorCode::TABLE_NOT_FOUND          ||
+        errcode == ErrorCode::OBJECT_NOT_FOUND         ||
         errcode == ErrorCode::TYPE_NOT_FOUND) {
       parse_tree.ClearAnalyzedTableCache(ql_env_);
       parse_tree.ClearAnalyzedUDTypeCache(ql_env_);

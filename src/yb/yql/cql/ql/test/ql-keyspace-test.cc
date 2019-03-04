@@ -109,7 +109,7 @@ TEST_F(TestQLKeyspace, TestQLCreateKeyspaceSimple) {
   // Try to create the keyspace1 once again.
   LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt(keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(CreateKeyspaceStmt(keyspace1), "Keyspace Already Exists",
-      "Already present");
+      "already exists");
 
   // Delete the keyspace1.
   LOG(INFO) << "Exec SQL: " << DropKeyspaceStmt(keyspace1);
@@ -200,7 +200,7 @@ TEST_F(TestQLKeyspace, TestQLCreateSchemaSimple) {
   // Try to create the keyspace1 once again.
   LOG(INFO) << "Exec SQL: " << CreateSchemaStmt(keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(CreateSchemaStmt(keyspace1), "Keyspace Already Exists",
-      "Already present");
+      "already exists");
 
   // Delete the keyspace1.
   LOG(INFO) << "Exec SQL: " << DropSchemaStmt(keyspace1);
@@ -350,8 +350,8 @@ TEST_F(TestQLKeyspace, TestQLUseKeyspaceWithTable) {
 
   // Use current keyspace. The table has been already created.
   LOG(INFO) << "Exec SQL: " << CreateTableStmt(table3);
-  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(table3), "Duplicate Table",
-      "Target table already exists");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(table3), "Duplicate Object",
+      " already exists");
 
   // Create the keyspace2.
   LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt(keyspace2);
@@ -401,7 +401,7 @@ TEST_F(TestQLKeyspace, TestQLSelectInvalidTable) {
   const string select_stmt = "SELECT * FROM my_keyspace1.test_table WHERE h1 = 1 AND h2 = 'h1';";
 
   LOG(INFO) << "Exec SQL: " << select_stmt;
-  EXEC_INVALID_STMT_WITH_ERROR(select_stmt, "Table Not Found", "");
+  EXEC_INVALID_STMT_WITH_ERROR(select_stmt, "Object Not Found", "");
 }
 
 } // namespace ql

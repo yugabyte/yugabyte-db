@@ -494,7 +494,7 @@ TEST_F(ClientTest, TestBadTable) {
   shared_ptr<YBTable> t;
   Status s = client_->OpenTable(YBTableName(kKeyspaceName, "xxx-does-not-exist"), &t);
   ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(false), "Not found: The table does not exist");
+  ASSERT_STR_CONTAINS(s.ToString(false), "Not found: The object does not exist");
 }
 
 // Test that, if the master is down, we experience a network error talking
@@ -1290,7 +1290,7 @@ TEST_F(ClientTest, TestDeleteTable) {
   // Try to open the deleted table
   Status s = client_table_.Open(kTableName, client_.get());
   ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(), "The table does not exist");
+  ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
 
   // Create a new table with the same name. This is to ensure that the client
   // doesn't cache anything inappropriately by table name (see KUDU-1055).
@@ -1312,7 +1312,7 @@ TEST_F(ClientTest, TestGetTableSchema) {
   Status s = client_->GetTableSchema(YBTableName(kKeyspaceName, "MissingTableName"), &schema,
                                      &partition_schema);
   ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(), "The table does not exist");
+  ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
 }
 
 TEST_F(ClientTest, TestStaleLocations) {

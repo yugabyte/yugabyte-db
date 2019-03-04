@@ -469,7 +469,7 @@ public class TestTransaction extends BaseCQLTest {
             Integer.valueOf(3), Integer.valueOf(3), "v3");
 
     thrown.expect(com.datastax.driver.core.exceptions.InvalidQueryException.class);
-    thrown.expectMessage("Table Not Found");
+    thrown.expectMessage("Object Not Found");
     Iterator<Row> rows = session.execute("SELECT * FROM system.transactions").iterator();
   }
 

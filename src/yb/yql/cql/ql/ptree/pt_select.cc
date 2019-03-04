@@ -301,7 +301,7 @@ Status PTSelectStmt::LookupIndex(SemContext *sem_context) {
   if (!table_ || !table_->IsIndex() ||
       // Only looking for CQL Indexes.
       (table_->table_type() != client::YBTableType::YQL_TABLE_TYPE)) {
-    return sem_context->Error(table_loc(), ErrorCode::TABLE_NOT_FOUND);
+    return sem_context->Error(table_loc(), ErrorCode::OBJECT_NOT_FOUND);
   }
   LoadSchema(sem_context, table_, &column_map_);
   return Status::OK();

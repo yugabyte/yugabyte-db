@@ -57,11 +57,11 @@ message MasterErrorPB {
     // The schema provided for a request was not well-formed.
     INVALID_SCHEMA = 2;
 
-    // The requested table does not exist
-    TABLE_NOT_FOUND = 3;
+    // The requested table or index does not exist
+    OBJECT_NOT_FOUND = 3;
 
-    // The name requested for the table is already in use
-    TABLE_ALREADY_PRESENT = 4;
+    // The name requested for the table or index is already in use
+    OBJECT_ALREADY_PRESENT = 4;
 
     // The number of tablets requested for a new table is over the per TS limit.
     TOO_MANY_TABLETS = 5;
