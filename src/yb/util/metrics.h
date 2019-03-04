@@ -1189,6 +1189,12 @@ class Histogram : public Metric {
   DISALLOW_COPY_AND_ASSIGN(Histogram);
 };
 
+inline void IncrementHistogram(const scoped_refptr<Histogram>& histogram, int64_t value) {
+  if (histogram) {
+    histogram->Increment(value);
+  }
+}
+
 YB_STRONGLY_TYPED_BOOL(Auto);
 
 // Measures a duration while in scope. Adds this duration to specified histogram on destruction.

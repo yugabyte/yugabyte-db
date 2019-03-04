@@ -191,15 +191,15 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // processing wherever they are.
   bool IsAbortedUnlocked() const;
 
-  // Mark the fact that errors have occurred with this batch. This ensures that
-  // the flush callback will get a bad Status.
-  void MarkHadErrors();
+  // Combines new error to existing ones. I.e. updates combined error with new status.
+  void CombineErrorUnlocked(const InFlightOpPtr& in_flight_op, const Status& status)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Remove an op from the in-flight op list, and delete the op itself.
   // The operation is reported to the ErrorReporter as having failed with the
   // given status.
-  void MarkInFlightOpFailed(const InFlightOpPtr& op, const Status& s);
-  void MarkInFlightOpFailedUnlocked(const InFlightOpPtr& in_flight_op, const Status& s);
+  void MarkInFlightOpFailedUnlocked(const InFlightOpPtr& in_flight_op, const Status& s)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void CheckForFinishedFlush();
   void FlushBuffersIfReady();
@@ -231,7 +231,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   void TransactionReady(const Status& status, const BatcherPtr& self);
 
   // See note about lock ordering in batcher.cc
-  mutable simple_spinlock lock_;
+  mutable simple_spinlock mutex_;
 
   enum State {
     kGatheringOps,
@@ -248,8 +248,9 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   scoped_refptr<ErrorCollector> const error_collector_;
 
   // Set to true if there was at least one error from this Batcher.
-  // Protected by lock_
-  bool had_errors_;
+  std::atomic<bool> had_errors_{false};
+
+  Status combined_error_;
 
   // If state is kFlushing, this member will be set to the user-provided
   // callback. Once there are no more in-flight operations, the callback
@@ -265,8 +266,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // which preserves the user's intended order. Preserving order is critical when
   // a batch contains multiple operations against the same row key. This member
   // assigns the sequence numbers.
-  // Protected by lock_.
-  int next_op_sequence_number_;
+  int next_op_sequence_number_ GUARDED_BY(mutex_);
 
   // Amount of time to wait for a given op, from start to finish.
   //

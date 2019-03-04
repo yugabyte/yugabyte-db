@@ -131,38 +131,48 @@ class YBTransaction::Impl final {
   }
 
   // This transaction is a restarted transaction, so we set it up with data from original one.
-  void SetupRestart(Impl* other) {
+  CHECKED_STATUS FillRestartedTransaction(Impl* other) {
     VLOG_WITH_PREFIX(1) << "Setup restart to " << other->ToString();
     auto transaction = transaction_->shared_from_this();
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (state_.load(std::memory_order_acquire) != TransactionState::kRunning) {
-        LOG(DFATAL) << "Restart of completed transaction";
-        return;
+        return STATUS_FORMAT(
+            IllegalState, "Restart of completed transaction: $0", metadata_.transaction_id);
       }
-      DCHECK(read_point_.IsRestartRequired());
+      if (!read_point_.IsRestartRequired()) {
+        return STATUS_FORMAT(
+            IllegalState, "Restart of transaction that does not require restart: $0",
+            metadata_.transaction_id);
+      }
       other->read_point_ = std::move(read_point_);
       other->read_point_.Restart();
       other->metadata_.isolation = metadata_.isolation;
-      other->metadata_.start_time = other->read_point_.Now();
+      if (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+        other->metadata_.start_time = other->read_point_.GetReadTime().read;
+      } else {
+        other->metadata_.start_time = other->read_point_.Now();
+      }
       state_.store(TransactionState::kAborted, std::memory_order_release);
     }
     DoAbort(Status::OK(), transaction);
+
+    return Status::OK();
   }
 
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
                Waiter waiter,
                TransactionMetadata* metadata,
                bool* may_have_metadata) {
-    CHECK_NOTNULL(metadata);
-
     VLOG_WITH_PREFIX(2) << "Prepare";
 
     bool has_tablets_without_metadata = false;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       if (!ready_) {
-        waiters_.push_back(std::move(waiter));
+        if (waiter) {
+          waiters_.push_back(std::move(waiter));
+        }
         lock.unlock();
         RequestStatusTablet();
         VLOG_WITH_PREFIX(2) << "Prepare, rejected (not ready, requesting status tablet)";
@@ -189,7 +199,9 @@ class YBTransaction::Impl final {
           has_tablets_without_metadata = has_tablets_without_metadata ||
               metadata_state != InvolvedTabletMetadataState::EXIST;
           if (metadata_state != InvolvedTabletMetadataState::MISSING) {
-            *may_have_metadata = true;
+            if (may_have_metadata) {
+              *may_have_metadata = true;
+            }
           }
         }
         // Prepare is invoked when we are going to send request to tablet server.
@@ -203,10 +215,12 @@ class YBTransaction::Impl final {
 
     VLOG_WITH_PREFIX(3) << "Prepare, has_tablets_without_metadata: "
                         << has_tablets_without_metadata;
-    if (has_tablets_without_metadata) {
-      *metadata = metadata_;
-    } else {
-      metadata->transaction_id = metadata_.transaction_id;
+    if (metadata) {
+      if (has_tablets_without_metadata) {
+        *metadata = metadata_;
+      } else {
+        metadata->transaction_id = metadata_.transaction_id;
+      }
     }
     return true;
   }
@@ -843,10 +857,14 @@ bool YBTransaction::IsRestartRequired() const {
   return impl_->IsRestartRequired();
 }
 
-YBTransactionPtr YBTransaction::CreateRestartedTransaction() {
+Result<YBTransactionPtr> YBTransaction::CreateRestartedTransaction() {
   auto result = impl_->CreateSimilarTransaction();
-  impl_->SetupRestart(result->impl_.get());
+  RETURN_NOT_OK(impl_->FillRestartedTransaction(result->impl_.get()));
   return result;
+}
+
+Status YBTransaction::FillRestartedTransaction(const YBTransactionPtr& dest) {
+  return impl_->FillRestartedTransaction(dest->impl_.get());
 }
 
 void YBTransaction::PrepareChild(PrepareChildCallback callback) {

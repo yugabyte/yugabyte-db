@@ -34,6 +34,7 @@ DECLARE_double(transaction_ignore_applying_probability_in_tests);
 DECLARE_string(time_source);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(load_balancer_max_concurrent_adds);
+DECLARE_bool(combine_batcher_errors);
 
 namespace yb {
 namespace client {
@@ -89,6 +90,8 @@ void DisableTransactionTimeout() {
 }
 
 void TransactionTestBase::SetUp() {
+  FLAGS_combine_batcher_errors = true;
+
   server::SkewedClock::Register();
   FLAGS_time_source = server::SkewedClock::kName;
   FLAGS_load_balancer_max_concurrent_adds = 100;
