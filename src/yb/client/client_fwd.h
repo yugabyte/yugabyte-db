@@ -63,6 +63,7 @@ typedef std::shared_ptr<YBOperation> YBOperationPtr;
 
 class TableHandle;
 class TransactionManager;
+class TransactionPool;
 class YBMetaDataCache;
 class YBSchema;
 class YBTableAlterer;

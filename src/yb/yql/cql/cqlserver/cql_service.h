@@ -19,6 +19,8 @@
 
 #include <vector>
 
+#include "yb/client/client_fwd.h"
+
 #include "yb/yql/cql/cqlserver/cql_message.h"
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 #include "yb/yql/cql/cqlserver/cql_statement.h"
@@ -31,12 +33,6 @@
 #include "yb/client/async_initializer.h"
 
 namespace yb {
-
-namespace client {
-class YBClient;
-class YBTable;
-class YBSession;
-}  // namespace client
 
 namespace cqlserver {
 
@@ -54,6 +50,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // Constructor.
   CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts,
                  client::LocalTabletFilter local_tablet_filter);
+  ~CQLServiceImpl();
 
   void CompleteInit();
 
@@ -94,7 +91,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // Return the messenger.
   std::weak_ptr<rpc::Messenger> messenger() { return messenger_; }
 
-  client::TransactionManager* GetTransactionManager();
+  client::TransactionPool* GetTransactionPool();
 
   server::Clock* clock();
 
@@ -163,9 +160,10 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   client::LocalTabletFilter local_tablet_filter_;
 
-  std::atomic<client::TransactionManager*> transaction_manager_{nullptr};
-  std::mutex transaction_manager_mutex_;
+  std::atomic<client::TransactionPool*> transaction_pool_{nullptr};
+  std::mutex transaction_pool_mutex_;
   std::unique_ptr<client::TransactionManager> transaction_manager_holder_;
+  std::unique_ptr<client::TransactionPool> transaction_pool_holder_;
 };
 
 }  // namespace cqlserver

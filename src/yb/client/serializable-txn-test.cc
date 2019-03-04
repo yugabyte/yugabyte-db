@@ -197,18 +197,15 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
           auto write_status = entry.write_future.get();
           entry.write_future = std::shared_future<Status>();
           if (!write_status.ok()) {
-            ASSERT_TRUE(write_status.IsIOError()) << write_status;
-            auto errors = entry.session->GetPendingErrors();
-            ASSERT_EQ(errors.size(), 1);
-            auto status = errors.front()->status();
-            ASSERT_TRUE(status.IsTryAgain() || (status.IsTimedOut() && transactional)) << status;
+            ASSERT_TRUE(write_status.IsTryAgain() ||
+                        (write_status.IsTimedOut() && transactional)) << write_status;
             entry.txn = transactional ? CreateTransaction() : nullptr;
             entry.op = nullptr;
           } else {
             if (entry.op->response().status() == QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
               auto old_txn = entry.txn;
               if (transactional) {
-                entry.txn = entry.txn->CreateRestartedTransaction();
+                entry.txn = ASSERT_RESULT(entry.txn->CreateRestartedTransaction());
               } else {
                 entry.session->SetReadPoint(Restart::kTrue);
               }
@@ -329,10 +326,7 @@ TEST_F(SerializableTxnTest, Coloring) {
           session->SetTransaction(txn);
           auto values = SelectAllRows(session);
           if (!values.ok()) {
-            ASSERT_TRUE(values.status().IsIOError()) << values.status();
-            for (const auto& error : session->GetPendingErrors()) {
-              ASSERT_TRUE(error->status().IsTryAgain()) << error->status();
-            }
+            ASSERT_TRUE(values.status().IsTryAgain()) << values.status();
             continue;
           }
           ASSERT_EQ(values->size(), kKeys);
@@ -352,10 +346,7 @@ TEST_F(SerializableTxnTest, Coloring) {
 
           auto flush_status = session->Flush();
           if (!flush_status.ok()) {
-            ASSERT_TRUE(flush_status.IsIOError()) << flush_status;
-            for (const auto& error : session->GetPendingErrors()) {
-              ASSERT_TRUE(error->status().IsTryAgain()) << error->status();
-            }
+            ASSERT_TRUE(flush_status.IsTryAgain()) << flush_status;
             break;
           }
 

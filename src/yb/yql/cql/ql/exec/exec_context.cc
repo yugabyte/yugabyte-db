@@ -53,7 +53,7 @@ Status ExecContext::StartTransaction(const IsolationLevel isolation_level, QLEnv
   if (!transaction_) {
     transaction_ = VERIFY_RESULT(ql_env->NewTransaction(transaction_, isolation_level));
   } else if (transaction_->IsRestartRequired()) {
-    transaction_ = transaction_->CreateRestartedTransaction();
+    transaction_ = VERIFY_RESULT(transaction_->CreateRestartedTransaction());
   } else {
     // If there is no need to start or restart transaction, just return. This can happen to DMLs on
     // a table with secondary index inside a "BEGIN TRANSACTION ... END TRANSACTION" block. Each DML
