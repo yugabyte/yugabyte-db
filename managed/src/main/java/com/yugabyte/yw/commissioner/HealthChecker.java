@@ -190,6 +190,7 @@ public class HealthChecker {
       clusterMetadata.put(cluster.uuid, info);
       info.ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
       info.nodePrefix = details.nodePrefix;
+      info.enableYSQL = cluster.userIntent.enableYSQL;
       Provider provider = Provider.get(UUID.fromString(cluster.userIntent.provider));
       if (provider == null) {
         LOG.warn("Skipping universe " + u.name + " due to invalid provider "
@@ -227,6 +228,14 @@ public class HealthChecker {
       }
       info.sshPort = sshPort;
       info.identityFile = accessKey.getKeyInfo().privateKey;
+      if (info.enableYSQL) {
+        for (NodeDetails nd : details.nodeDetailsSet) {
+          if (nd.isYsqlServer) {
+           info.ysqlPort = nd.ysqlServerRpcPort;
+           break;
+          }
+        }
+      }
     }
     // If any clusters were invalid, abort for this universe.
     if (invalidUniverseData) {
