@@ -603,8 +603,13 @@ Status TabletBootstrap::HandleReplicateMessage(
   // Append the replicate message to the log as is
   RETURN_NOT_OK(log_->Append(replicate_entry_ptr->get(), entry_time));
 
-  auto min_index = std::min(
-      state->regular_stored_op_id.index(), state->intents_stored_op_id.index());
+  int64_t min_index;
+  if (tablet_->HasIntentsDB()) {
+    min_index = std::min(
+        state->regular_stored_op_id.index(), state->intents_stored_op_id.index());
+  } else {
+    min_index = state->regular_stored_op_id.index();
+  }
   if (op_id.index() <= min_index) {
     // Do not update the bootstrap in-memory state for log records that have already been applied to
     // RocksDB, or were overwritten by a later entry with a higher term that has already been
@@ -879,6 +884,7 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   tablet_->mvcc_manager()->SetLastReplicated(state.max_committed_hybrid_time);
   consensus_info->last_id = state.prev_op_id;
   consensus_info->last_committed_id = state.committed_op_id;
+  consensus_info->num_log_records_replayed = state.num_entries_applied_to_rocksdb;
 
   if (data_.retryable_requests) {
     data_.retryable_requests->Clock().Adjust(last_entry_time);
