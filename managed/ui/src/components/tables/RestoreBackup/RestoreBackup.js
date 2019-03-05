@@ -91,22 +91,30 @@ export default class RestoreBackup extends Component {
     return (
       <div className="universe-apps-modal">
         <YBModalForm title={"Restore backup To"}
-                 visible={visible}
-                 onHide={onHide}
-                 showCancelButton={true}
-                 cancelLabel={"Cancel"}
-                 onFormSubmit={this.restoreBackup}
-                 initialValues= {this.props.initialValues}
-                 validationSchema={validationSchema}>
+                visible={visible}
+                onHide={onHide}
+                showCancelButton={true}
+                cancelLabel={"Cancel"}
+                onFormSubmit={(values) => {
+                  const payload = {
+                    ...values,
+                    storageLocation: values.storageLocation.trim(),
+                    restoreToUniverseUUID: values.restoreToUniverseUUID.value,
+                    storageConfigUUID: values.storageConfigUUID.value,
+                  };
+                  this.restoreBackup(payload);
+                }}
+                initialValues= {this.props.initialValues}
+                validationSchema={validationSchema}>
           {backupStorageInfo}
           <Field name="restoreToUniverseUUID" component={YBFormSelect}
-                 label={"Universe"} options={universeOptions} />
+                label={"Universe"} options={universeOptions} />
           <Field name="restoreToKeyspace"
-                 component={YBFormInput}
-                 label={"Keyspace"} />
+                component={YBFormInput}
+                label={"Keyspace"} />
           <Field name="restoreToTableName"
-                 component={YBFormInput}
-                 label={"Table"}/>
+                component={YBFormInput}
+                label={"Table"}/>
         </YBModalForm>
       </div>
     );
