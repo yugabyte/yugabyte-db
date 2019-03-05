@@ -18,10 +18,10 @@ This tutorial walks through the steps to create service instance of YugaByte DB 
 ## Prerequisites
 
 Before creating the Service Instance, you need to have YugaByte DB tile installed in your PCF marketplace. Follow the instructions
-[here] (https://docs.pivotal.io/partners/yugabyte-db/).
+[here](https://docs.pivotal.io/partners/yugabyte-db/).
 
 Also in your YugaWare instance that you brought up in your PCF environment you have configured cloud provider. If not follow the
-instructions [here] (http://localhost:1313/latest/deploy/enterprise-edition/configure-cloud-providers/) to setup appropriate cloud
+instructions [here](../enterprise-edition/configure-cloud-providers/) to setup appropriate cloud
 providers
 
 After installing the tile, you have two ways to create a YugaByte DB instance, one is through the App Manager UI, and other is through
