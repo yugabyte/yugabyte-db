@@ -31,6 +31,11 @@ const API_UI_STORAGE_TYPES = {
   'GP2': 'GP2'
 };
 
+const DEFAULT_STORAGE_TYPES = {
+  'AWS': 'GP2',
+  'GCP': 'Scratch'
+};
+
 const initialState = {
   universeName: '',
   instanceTypeSelected: '',
@@ -44,7 +49,7 @@ const initialState = {
   placementInfo: {},
   ybSoftwareVersion: '',
   gflags: {},
-  storageType: 'GP2',
+  storageType: DEFAULT_STORAGE_TYPES['AWS'],
   accessKeyCode: 'yugabyte-default',
   // Maximum Number of nodes currently in use OnPrem case
   maxNumNodes: -1,
@@ -219,11 +224,11 @@ export default class ClusterFields extends Component {
     const currentProvider = this.getCurrentProvider(providerSelected);
     // Set default storageType once API call has completed, defaults to AWS provider if current provider is not GCP
     if (typeof currentProvider !== 'undefined' && currentProvider.code === "gcp" && isNonEmptyArray(nextProps.cloud.gcpTypes.data) && !isNonEmptyArray(this.props.cloud.gcpTypes.data)) {
-      this.props.updateFormField(`${clusterType}.storageType`, 'Persistent');
-      this.setState({"storageType": "Persistent"});
+      this.props.updateFormField(`${clusterType}.storageType`, DEFAULT_STORAGE_TYPES['GCP']);
+      this.setState({"storageType": DEFAULT_STORAGE_TYPES['GCP']});
     } else if (isNonEmptyArray(nextProps.cloud.ebsTypes) && !isNonEmptyArray(this.props.cloud.ebsTypes)) {
-      this.props.updateFormField(`${clusterType}.storageType`, 'GP2');
-      this.setState({"storageType": "GP2"});
+      this.props.updateFormField(`${clusterType}.storageType`, DEFAULT_STORAGE_TYPES['AWS']);
+      this.setState({"storageType": DEFAULT_STORAGE_TYPES['AWS']});
     }
 
     if (isNonEmptyArray(nextProps.softwareVersions) && isNonEmptyObject(this.props.formValues[clusterType]) && !isNonEmptyString(this.props.formValues[clusterType].ybSoftwareVersion)) {
@@ -360,7 +365,7 @@ export default class ClusterFields extends Component {
         volumeSize: volumeDetail.volumeSizeGB,
         numVolumes: volumesList.length,
         mountPoints: mountPoints,
-        storageType: volumeDetail.volumeType === "EBS" ? "GP2" : "Persistent",
+        storageType: volumeDetail.volumeType === "EBS" ? DEFAULT_STORAGE_TYPES['AWS'] : DEFAULT_STORAGE_TYPES['GCP'],
         diskIops: null
       };
       updateFormField(`${clusterType}.volumeSize`, volumeDetail.volumeSizeGB);
@@ -648,9 +653,9 @@ export default class ClusterFields extends Component {
       updateFormField(`${clusterType}.accessKeyCode`, defaultAccessKeyCode);
 
       if (currentProviderData.code === "gcp") {
-        this.storageTypeChanged("Persistent");
+        this.storageTypeChanged(DEFAULT_STORAGE_TYPES['GCP']);
       } else if (currentProviderData.code === "aws") {
-        this.storageTypeChanged("GP2");
+        this.storageTypeChanged(DEFAULT_STORAGE_TYPES['AWS']);
       }
 
       this.setState({nodeSetViaAZList: false, regionList: [], providerSelected: providerUUID,
@@ -837,7 +842,7 @@ export default class ClusterFields extends Component {
           storageTypeSelector = (
             <span className="volume-info form-group-shrinked">
               <Field name={`${clusterType}.storageType`} component={YBSelectWithLabel}
-                options={ebsTypesList} label="EBS Type" defaultValue="GP2" onInputChanged={self.storageTypeChanged}
+                options={ebsTypesList} label="EBS Type" defaultValue={DEFAULT_STORAGE_TYPES['AWS']} onInputChanged={self.storageTypeChanged}
                 readOnlySelect={isFieldReadOnly} />
             </span>
           );
@@ -845,7 +850,7 @@ export default class ClusterFields extends Component {
           storageTypeSelector = (
             <span className="volume-info form-group-shrinked">
               <Field name={`${clusterType}.storageType`} component={YBSelectWithLabel}
-                options={gcpTypesList} label="Storage Type (SSD)" defaultValue="Persistent" onInputChanged={self.storageTypeChanged}
+                options={gcpTypesList} label="Storage Type (SSD)" defaultValue={DEFAULT_STORAGE_TYPES['GCP']} onInputChanged={self.storageTypeChanged}
                 readOnlySelect={isFieldReadOnly} />
             </span>
           );
