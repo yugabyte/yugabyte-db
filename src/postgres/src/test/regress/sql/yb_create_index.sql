@@ -45,3 +45,17 @@ DROP INDEX onek_two_idx;
 DROP INDEX onek_two_idx;
 
 DROP INDEX IF EXISTS onek_two_idx;
+
+--
+-- Create index on existing table with data
+--
+CREATE TABLE index_test (col1 int, col2 int);
+INSERT INTO index_test (col1, col2) VALUES (1, 100);
+INSERT INTO index_test (col1, col2) VALUES (2, 200);
+
+CREATE INDEX index_test_idx1 ON index_test(col1);
+CREATE INDEX index_test_idx2 ON index_test(col1, col2);
+
+DROP INDEX index_test_idx1;
+DROP INDEX index_test_idx2;
+DROP TABLE index_test;
