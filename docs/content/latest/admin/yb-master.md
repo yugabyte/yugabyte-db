@@ -41,6 +41,7 @@ Flag | Mandatory | Default | Description
 `--fs_data_dirs` | Y | N/A | Comma-separated list of directories where the `yb-master` will place all it's `yb-data/master` data directory. 
 `--fs_wal_dirs`| N | Same value as `--fs_data_dirs` | The directory where the `yb-master` will place its write-ahead logs. May be the same as one of the directories listed in `--fs_data_dirs`, but not a sub-directory of a data directory. 
 `--log_dir`| N | Same value as `--fs_data_dirs`   | The directory to store `yb-master` log files.  
+`--max_clock_skew_usec` | N | 50000 (50ms) | The expected maximum clock skew between any two nodes in your deployment.
 `--rpc_bind_addresses`| Y |`0.0.0.0:7100` | Comma-separated list of addresses to bind to for RPC connections.
 `--server_broadcast_addresses`| N |`0.0.0.0:7100` | Public IP or DNS hostname of the server (along with an optional port).
 `--use_private_ip`| N |`never` | Determines when to use private IP addresses. Possible values are `never`,`zone`,`cloud` and `region`. Based on the values of the `placement_*` config flags listed in this table.

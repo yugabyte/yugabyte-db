@@ -100,6 +100,26 @@ Service | Type | Port
 In our Enterprise installs, we change the SSH port for added security.
 {{< /note >}}
 
+## Clock Synchronization
+
+For YugaByte DB to preserve data consistency, the clock drift and clock skew across different nodes must be bounded. This can be achieved by running a clock synchronization software such as [NTP](http://www.ntp.org/). Below are some recommendations on how to configure clock synchronization.
+
+### Clock Skew
+
+Set a safe value for the maximum clock skew parameter (`--max_clock_skew_usec`) when starting the YugaByte DB processes. We recommend setting this parameter to twice the expected maximum clock skew between any two nodes in your deployment.
+
+For example, if the maximum clock skew across nodes is expected to be no more than 250ms, then set the parameter to 500ms (`--max_clock_skew_usec=500000`).
+
+### Clock Drift
+
+The maximum clock drift on any node should be bounded to no more than 500 PPM (or *parts per million*). This means that the clock on any node should drift by no more than 0.5ms per second. Note that 0.5ms per second is the standard assumption of clock drift in Linux.
+
+
+{{< note title="Note" >}}
+In practice, the clock drift would have to be orders of magnitude higher in order to cause correctness issues.
+{{< /note >}}
+
+
 ## Running on public clouds
 
 ### Amazon Web Services (AWS)
