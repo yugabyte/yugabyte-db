@@ -2,8 +2,6 @@
 title: Apache Spark
 linkTitle: Apache Spark
 description: Apache Spark
-aliases:
-  - /develop/ecosystem-integrations/apache-spark/
 menu:
   v1.1:
     identifier: apache-spark

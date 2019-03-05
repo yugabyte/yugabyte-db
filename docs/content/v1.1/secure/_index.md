@@ -4,8 +4,6 @@ linkTitle: Secure
 description: Secure YugaByte DB
 headcontent: Secure your deployment of YugaByte DB.
 image: /images/section_icons/index/secure.png
-aliases:
-  - /secure/
 menu:
   v1.1:
     identifier: secure

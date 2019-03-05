@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-redis
     weight: 2064
-aliases:
-  - /latest/api/redis/flushall
-  - /latest/api/yedis/flushall
 isTocNested: true
 showAsideToc: true
 ---

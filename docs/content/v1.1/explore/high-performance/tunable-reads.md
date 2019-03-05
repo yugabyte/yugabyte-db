@@ -2,9 +2,6 @@
 title: Tunable Reads
 linkTitle: Tunable Reads
 description: Tunable Read Latency
-aliases:
-  - /explore/tunable-reads/
-  - /latest/explore/tunable-reads/
 menu:
   v1.1:
     identifier: tunable-reads

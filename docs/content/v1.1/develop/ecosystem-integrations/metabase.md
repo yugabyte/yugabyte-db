@@ -2,8 +2,6 @@
 title: Metabase
 linkTitle: Metabase
 description: Metabase
-aliases:
-  - /develop/ecosystem-integrations/metabase/
 menu:
   v1.1:
     identifier: metabase

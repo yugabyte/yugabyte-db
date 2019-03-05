@@ -2,8 +2,6 @@
 title: Diagnostics Reporting
 linkTitle: Diagnostics Reporting
 description: Diagnostics Reporting
-aliases:
-  - /manage/diagnostics-reporting/
 menu:
   v1.1:
     identifier: diagnostics-reporting

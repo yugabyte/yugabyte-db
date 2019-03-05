@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-cassandra
     weight: 1200
-aliases:
-  - /latest/api/cassandra/ddl_alter_keyspace
-  - /latest/api/ycql/ddl_alter_keyspace
 isTocNested: true
 showAsideToc: true
 ---

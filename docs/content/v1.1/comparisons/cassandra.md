@@ -2,8 +2,6 @@
 title: Apache Cassandra
 linkTitle: Apache Cassandra
 description: Apache Cassandra
-aliases:
-  - /comparisons/cassandra/
 menu:
   v1.1:
     parent: comparisons

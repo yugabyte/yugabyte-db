@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-redis
     weight: 2520
-aliases:
-  - /latest/api/redis/zrangebyscore
-  - /latest/api/yedis/zrangebyscore
 isTocNested: true
 showAsideToc: true
 ---

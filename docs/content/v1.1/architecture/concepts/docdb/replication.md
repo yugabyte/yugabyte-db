@@ -2,8 +2,6 @@
 title: Replication
 linkTitle: Replication
 description: Replication with Raft Consensus
-aliases:
-  - /latest/architecture/concepts/replication/
 menu:
   v1.1:
     identifier: docdb-replication

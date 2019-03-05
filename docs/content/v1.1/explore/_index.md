@@ -4,8 +4,6 @@ linkTitle: Explore Core Features
 description: Explore Core Features
 headcontent:
 image: /images/section_icons/index/explore.png
-aliases:
-  - /explore/
 menu:
   v1.1:
     identifier: explore

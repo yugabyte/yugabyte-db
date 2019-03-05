@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-cassandra
     weight: 1460
-aliases:
-  - /latest/api/cassandra/type_uuid
-  - /latest/api/ycql/type_uuid
 isTocNested: true
 showAsideToc: true
 ---

@@ -2,9 +2,6 @@
 title: Auto Rebalancing
 linkTitle: 3. Auto Rebalancing
 description: Auto Rebalancing
-aliases:
-  - /explore/auto-rebalancing/
-  - /latest/explore/auto-rebalancing/
 menu:
   v1.1:
     identifier: auto-rebalancing

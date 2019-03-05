@@ -2,8 +2,6 @@
 title: MongoDB
 linkTitle: MongoDB
 description: MongoDB
-aliases:
-  - /comparisons/mongodb/
 menu:
   v1.1:
     parent: comparisons

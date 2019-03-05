@@ -4,8 +4,6 @@ linkTitle: Cloud Native
 description: Cloud Native
 headcontent:
 image: /images/section_icons/explore/cloud_native.png
-aliases:
-  - /explore/cloud-native/
 menu:
   v1.1:
     identifier: explore-cloud-native

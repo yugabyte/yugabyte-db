@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-redis
     weight: 2215
-aliases:
-  - /latest/api/redis/incrby
-  - /latest/api/yedis/incrby
 isTocNested: true
 showAsideToc: true
 ---

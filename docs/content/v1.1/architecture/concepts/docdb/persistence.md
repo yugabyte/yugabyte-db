@@ -2,8 +2,6 @@
 title: Persistence
 linkTitle: Persistence
 description: Persistence on top of RocksDB
-aliases:
-  - /latest/architecture/concepts/persistence/
 menu:
   v1.1:
     identifier: docdb-persistence

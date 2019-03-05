@@ -4,8 +4,6 @@ linkTitle: Develop
 description: Develop Apps on YugaByte DB
 headcontent: This section will help you get started with building apps on top of YugaByte DB.
 image: /images/section_icons/index/develop.png
-aliases:
-  - /develop/
 menu:
   v1.1:
     identifier: develop

@@ -2,8 +2,6 @@
 title: Change Cluster Config
 linkTitle: Change Cluster Config
 description: Change Cluster Config
-aliases:
-  - manage/change-cluster-config
 menu:
   v1.1:
     identifier: manage-change-cluster-config

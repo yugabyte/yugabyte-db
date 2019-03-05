@@ -6,9 +6,6 @@ menu:
   v1.1:
     identifier: api-postgresql-number
     parent: api-postgresql-type
-aliases:
-  - /latest/api/postgresql/type/number
-  - /latest/api/ysql/type/number
 isTocNested: true
 showAsideToc: true
 ---

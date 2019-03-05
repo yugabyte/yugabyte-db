@@ -2,8 +2,6 @@
 title: Presto
 linkTitle: Presto
 description: Presto
-aliases:
-  - /develop/ecosystem-integrations/presto/
 menu:
   v1.1:
     identifier: presto

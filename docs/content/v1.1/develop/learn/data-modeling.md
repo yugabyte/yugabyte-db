@@ -2,8 +2,6 @@
 title: 2. Data Modeling
 linkTitle: 2. Data Modeling
 description: Data Modeling
-aliases:
-  - /develop/learn/data-modeling/
 menu:
   v1.1:
     identifier: data-modeling

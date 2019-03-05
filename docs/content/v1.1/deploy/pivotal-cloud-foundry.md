@@ -2,8 +2,6 @@
 title: Pivotal Cloud Foundry
 linkTitle: Pivotal Cloud Foundry
 description: Pivotal Cloud Foundry
-aliases:
-  - /deploy/pivotal-cloud-foundry/
 menu:
   v1.1:
     identifier: pivotal-cloud-foundry

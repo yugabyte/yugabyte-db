@@ -2,8 +2,6 @@
 title: Verify Deployment
 linkTitle: 5. Verify Deployment
 description: Verify Deployment
-aliases:
-  - /deploy/manual-deployment/verify-deployment
 menu:
   v1.1:
     identifier: deploy-manual-deployment-verify-deployment

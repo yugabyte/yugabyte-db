@@ -6,9 +6,6 @@ menu:
   v1.1:
     identifier: api-postgresql-int
     parent: api-postgresql-type
-aliases:
-  - /latest/api/postgresql/type/int
-  - /latest/api/ysql/type/int
 isTocNested: true
 showAsideToc: true
 ---

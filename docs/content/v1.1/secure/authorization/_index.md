@@ -4,8 +4,6 @@ linkTitle: Authorization
 description: Authorization
 headcontent: Enable authorization using role-based access control in YugaByte DB.
 image: /images/section_icons/secure/authorization.png
-aliases:
-  - /secure/authorization/
 menu:
   v1.1:
     identifier: secure-authorization

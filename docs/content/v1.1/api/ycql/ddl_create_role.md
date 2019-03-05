@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-cassandra
     weight: 1235
-aliases:
-  - /latest/api/cassandra/ddl_create_role
-  - /latest/api/ycql/ddl_create_role
 isTocNested: true
 showAsideToc: true
 ---

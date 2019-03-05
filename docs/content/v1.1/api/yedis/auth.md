@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-redis
     weight: 2020
-aliases:
-  - /latest/api/redis/auth
-  - /latest/api/yedis/auth
 isTocNested: true
 showAsideToc: true
 ---

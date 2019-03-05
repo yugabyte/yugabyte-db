@@ -2,8 +2,6 @@
 title: Single Row Transactions
 linkTitle: Single Row Transactions
 description: Single Row ACID Transactions
-aliases:
-  - /architecture/transactions/single-row-transactions/
 menu:
   v1.1:
     identifier: architecture-single-row-transactions

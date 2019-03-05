@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-cassandra
     weight: 1250
-aliases:
-  - /latest/api/cassandra/ddl_create_type
-  - /latest/api/ycql/ddl_create_type
 isTocNested: true
 showAsideToc: true
 ---

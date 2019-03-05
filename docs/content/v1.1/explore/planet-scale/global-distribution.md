@@ -2,9 +2,6 @@
 title: Global Distribution
 linkTitle: 1. Global Distribution
 description: Global Distribution
-aliases:
-  - /explore/global-distribution/
-  - /latest/explore/global-distribution/
 menu:
   v1.1:
     identifier: global-distribution

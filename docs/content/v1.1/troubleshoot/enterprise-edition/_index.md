@@ -4,8 +4,6 @@ linkTitle: Enterprise Edition
 description: Troubleshoot Enterprise Edition
 image: /images/section_icons/manage/enterprise.png
 headcontent: Tools and issues specific to the Enterprise Edition.
-aliases:
-  - /troubleshoot/enterprise-edition/
 menu:
   v1.1:
     identifier: troubleshoot-enterprise-edition

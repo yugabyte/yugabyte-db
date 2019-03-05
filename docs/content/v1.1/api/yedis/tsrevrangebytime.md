@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-redis
     weight: 2460
-aliases:
-  - /latest/api/redis/tsrevrangebytime
-  - /latest/api/yedis/tsrevrangebytime
 isTocNested: true
 showAsideToc: true
 ---

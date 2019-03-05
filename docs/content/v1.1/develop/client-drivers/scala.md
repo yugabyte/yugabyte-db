@@ -1,8 +1,6 @@
 ---
 title: Develop Scala Apps
 linkTitle: Develop Scala Apps
-aliases:
-  - /develop/client-drivers/scala/
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">

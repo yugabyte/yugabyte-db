@@ -2,8 +2,6 @@
 title: Microsoft Azure
 linkTitle: Microsoft Azure
 description: Microsoft Azure
-aliases:
-  - /deploy/public-clouds/azure/
 menu:
   v1.1:
     identifier: deploy-in-azure

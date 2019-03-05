@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-cassandra
     weight: 1331
-aliases:
-  - /latest/api/cassandra/expr_simple
-  - /latest/api/ycql/expr_simple
 isTocNested: true
 showAsideToc: true
 ---

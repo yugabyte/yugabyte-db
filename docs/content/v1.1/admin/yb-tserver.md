@@ -7,8 +7,6 @@ menu:
     identifier: yb-tserver
     parent: admin
     weight: 2450
-aliases:
-  - admin/yb-tserver
 isTocNested: false
 showAsideToc: true
 ---

@@ -2,9 +2,6 @@
 title: Health Checking and Alerts
 linkTitle: Health Checking and Alerts
 description: Health Checking and Alerts
-aliases:
-  - /manage/enterprise-edition/cluster-health/
-  - /manage/cluster-health/
 menu:
   v1.1:
     identifier: cluster-health

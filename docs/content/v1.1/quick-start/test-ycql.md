@@ -2,10 +2,6 @@
 title: 3. Test YCQL API
 linkTitle: 3. Test YCQL API
 description: Test YugaByte Cloud QL (YCQL) API
-aliases:
-  - /quick-start/test-cassandra/
-  - /latest/quick-start/test-cassandra/
-  - /latest/quick-start/test-ycql/
 menu:
   v1.1:
     parent: quick-start

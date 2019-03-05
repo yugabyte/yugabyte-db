@@ -2,8 +2,6 @@
 title: Retail Analytics
 linkTitle: Retail Analytics
 description: Retail Analytics
-aliases:
-  - /develop/realworld-apps/retail-analytics/
 menu:
   v1.1:
     identifier: retail-analytics

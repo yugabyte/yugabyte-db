@@ -4,8 +4,6 @@ linkTitle: 1. Prepare Nodes
 description: 1. Prepare Nodes
 headcontent: Generate the per-node config and prepare the nodes with the config data.
 image: /images/section_icons/secure/prepare-nodes.png
-aliases:
-  - /secure/tls-encryption/prepare-nodes
 menu:
   v1.1:
     identifier: secure-tls-encryption-prepare-nodes

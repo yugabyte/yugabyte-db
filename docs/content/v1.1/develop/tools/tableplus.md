@@ -2,8 +2,6 @@
 title: TablePlus
 linkTitle: TablePlus
 description: TablePlus
-aliases:
-  - /develop/tools/tableplus/
 menu:
   v1.1:
     identifier: tableplus

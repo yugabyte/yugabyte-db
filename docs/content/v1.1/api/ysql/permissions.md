@@ -7,9 +7,6 @@ menu:
     identifier: api-postgresql-permissions
     parent: api-postgresql
     weight: 3500
-aliases:
-  - /latest/api/postgresql/permissions
-  - /latest/api/ysql/permissions
 isTocNested: true
 showAsideToc: true
 ---

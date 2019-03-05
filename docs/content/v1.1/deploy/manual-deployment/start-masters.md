@@ -2,8 +2,6 @@
 title: Start YB-Masters
 linkTitle: 3. Start YB-Masters
 description: Start YB-Masters
-aliases:
-  - /deploy/manual-deployment/start-masters
 menu:
   v1.1:
     identifier: deploy-manual-deployment-start-masters

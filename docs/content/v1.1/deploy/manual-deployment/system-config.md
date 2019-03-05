@@ -2,8 +2,6 @@
 title: System Configuration
 linkTitle: 1. System Configuration
 description: System Configuration
-aliases:
-  - /deploy/manual-deployment/system-config
 menu:
   v1.1:
     identifier: deploy-manual-deployment-system-config

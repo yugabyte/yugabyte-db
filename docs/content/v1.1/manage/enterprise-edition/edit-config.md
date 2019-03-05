@@ -2,8 +2,6 @@
 title: Edit Config Flags
 linkTitle: Edit Config Flags
 description: Edit Config Flags
-aliases:
-  - /manage/enterprise-edition/edit-flags/
 menu:
   v1.1:
     identifier: manage-edit-flags

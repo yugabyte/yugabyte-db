@@ -2,8 +2,6 @@
 title: Edit Universe
 linkTitle: Edit Universe
 description: Edit Universe
-aliases:
-  - /manage/enterprise-edition/edit-universe/
 menu:
   v1.1:
     identifier: manage-edit-universe

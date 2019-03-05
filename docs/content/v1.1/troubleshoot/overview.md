@@ -2,8 +2,6 @@
 title: Troubleshooting Overview
 linkTitle: Troubleshooting Overview
 description: Troubleshooting Overview
-aliases:
-  - /troubleshoot/overview/
 menu:
   v1.1:
     identifier: troubleshooting-overview

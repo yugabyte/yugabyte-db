@@ -2,8 +2,6 @@
 title: 4. ACID Transactions
 linkTitle: 4. ACID Transactions
 description: ACID Transactions
-aliases:
-  - /develop/learn/acid-transactions/
 menu:
   v1.1:
     identifier: acid-transactions

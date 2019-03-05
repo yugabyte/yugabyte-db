@@ -6,9 +6,6 @@ menu:
   v1.1:
     identifier: api-postgresql-select
     parent: api-postgresql-dml
-aliases:
-  - /latest/api/postgresql/dml/select
-  - /latest/api/ysql/dml/select
 isTocNested: true
 showAsideToc: true
 ---

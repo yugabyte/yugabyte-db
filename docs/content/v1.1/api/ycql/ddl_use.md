@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-cassandra
     weight: 1290
-aliases:
-  - /latest/api/cassandra/ddl_use
-  - /latest/api/ycql/ddl_use
 isTocNested: true
 showAsideToc: true
 ---

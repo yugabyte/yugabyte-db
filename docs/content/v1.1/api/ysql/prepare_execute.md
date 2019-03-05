@@ -7,9 +7,6 @@ menu:
     identifier: api-postgresql-prepare
     parent: api-postgresql
     weight: 3600
-aliases:
-  - /latest/api/postgresql/prepare
-  - /latest/api/ysql/prepare
 isTocNested: true
 showAsideToc: true
 ---

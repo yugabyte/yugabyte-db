@@ -2,8 +2,6 @@
 title: Product
 linkTitle: Product
 description: Product
-aliases:
-  - /faq/product/
 menu:
   v1.1:
     identifier: product

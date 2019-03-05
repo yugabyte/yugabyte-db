@@ -2,8 +2,6 @@
 title: Amazon DynamoDB
 linkTitle: Amazon DynamoDB
 description: Amazon DynamoDB
-aliases:
-  - /comparisons/amazon-dynamodb/
 menu:
   v1.1:
     parent: comparisons

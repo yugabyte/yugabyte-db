@@ -2,8 +2,6 @@
 title: Node Status & Actions
 linkTitle: Node Status & Actions
 description: Node Status & Actions
-aliases:
-  - /manage/enterprise-edition/node-actions/
 menu:
   v1.1:
     identifier: manage-node-actions

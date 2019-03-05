@@ -3,10 +3,6 @@ title: Introduction
 linkTitle: Introduction
 description: Introduction
 image: /images/section_icons/index/introduction.png
-aliases:
-  - /latest/introduction/overview/
-  - /latest/introduction/benefits/
-  - /latest/introduction/core-features/
 menu:
   v1.1:
     identifier: introduction

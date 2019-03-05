@@ -1,8 +1,6 @@
 ---
 title: TTL for data expiry
 linkTitle: TTL for data expiry
-aliases:
-  - /develop/learn/ttl-data-expiry/
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">

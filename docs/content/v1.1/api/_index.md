@@ -4,8 +4,6 @@ linkTitle: API Reference
 description: API Reference
 image: /images/section_icons/index/api.png
 headcontent: YugaByte DB's YCQL, YEDIS and YSQL APIs enable data modeling with flexible schema, key value and relational models. 
-aliases:
-  - /api/
 menu:
   v1.1:
     identifier: api

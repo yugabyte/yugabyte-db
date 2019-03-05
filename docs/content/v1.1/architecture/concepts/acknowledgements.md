@@ -2,8 +2,6 @@
 title: Acknowledgements
 linkTitle: Acknowledgements
 description: Acknowledgements
-aliases:
-  - /architecture/concepts/acknowledgements/
 menu:
   v1.1:
     identifier: architecture-acknowledgements

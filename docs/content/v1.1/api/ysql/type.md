@@ -7,9 +7,6 @@ menu:
     identifier: api-postgresql-type
     parent: api-postgresql
     weight: 3300
-aliases:
-  - /latest/api/postgresql/type
-  - /latest/api/ysql/type
 isTocNested: true
 showAsideToc: true
 ---

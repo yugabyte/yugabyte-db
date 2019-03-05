@@ -4,8 +4,6 @@ linkTitle: Manage
 description: Manage YugaByte DB
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
-aliases:
-  - /manage/
 menu:
   v1.1:
     identifier: manage

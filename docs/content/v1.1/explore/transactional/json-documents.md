@@ -2,9 +2,6 @@
 title: 3. JSON Documents
 linkTitle: 3. JSON Documents
 description: JSON Documents
-aliases:
-  - /explore/transactional/json-documents/
-  - /latest/explore/json-documents/
 menu:
   v1.1:
     identifier: json-documents

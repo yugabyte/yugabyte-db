@@ -2,8 +2,6 @@
 title: Amazon Web Services
 linkTitle: Amazon Web Services
 description: Amazon Web Services
-aliases:
-  - /deploy/public-clouds/aws/
 menu:
   v1.1:
     identifier: deploy-in-aws

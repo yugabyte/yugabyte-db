@@ -10,9 +10,6 @@ menu:
     identifier: api-cassandra
     parent: api
     weight: 1300
-aliases:
-  - /latest/api/ycql/
-  - /latest/api/cassandra/
 isTocNested: false
 showAsideToc: true
 ---

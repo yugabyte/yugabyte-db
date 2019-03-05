@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-redis
     weight: 2320
-aliases:
-  - /latest/api/redis/strlen
-  - /latest/api/yedis/strlen
 isTocNested: true
 showAsideToc: true
 ---

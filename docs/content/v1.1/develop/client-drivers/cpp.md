@@ -2,8 +2,6 @@
 title: C/C++
 linkTitle: C/C++
 description: Develop C/C++ Apps
-aliases:
-  - /develop/client-drivers/cpp/
 menu:
   v1.1:
     identifier: client-drivers-cpp

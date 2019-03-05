@@ -2,8 +2,6 @@
 title: Helm Chart
 linkTitle: Helm Chart
 description: Helm Chart
-aliases:
-  - /deploy/kubernetes/helm-chart/
 menu:
   v1.1:
     identifier: helm-chart

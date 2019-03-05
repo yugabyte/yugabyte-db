@@ -7,8 +7,6 @@ menu:
     identifier: docker-compose
     parent: admin
     weight: 2430
-aliases:
-  - admin/docker-compose
 isTocNested: false
 showAsideToc: true
 ---

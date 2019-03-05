@@ -2,8 +2,6 @@
 title: Inspect Logs
 linkTitle: Inspect Logs
 description: Inspect Logs
-aliases:
-  - /troubleshoot/nodes/check-logs/
 menu:
   v1.1:
     parent: troubleshoot-nodes

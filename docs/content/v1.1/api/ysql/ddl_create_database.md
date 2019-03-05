@@ -6,9 +6,6 @@ menu:
   v1.1:
     identifier: api-postgresql-create-db
     parent: api-postgresql-ddl
-aliases:
-  - /latest/api/postgresql/ddl_create_database
-  - /latest/api/ysql/ddl_create_database
 isTocNested: true
 showAsideToc: true
 ---

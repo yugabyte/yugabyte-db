@@ -7,8 +7,6 @@ menu:
     identifier: yb-ctl
     parent: admin
     weight: 2410
-aliases:
-  - admin/yb-ctl
 isTocNested: false
 showAsideToc: true
 ---

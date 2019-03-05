@@ -6,9 +6,6 @@ menu:
   v1.1:
     identifier: api-postgresql-text
     parent: api-postgresql-type
-aliases:
-  - /latest/api/postgresql/type/text
-  - /latest/api/ysql/type/text
 isTocNested: true
 showAsideToc: true
 ---

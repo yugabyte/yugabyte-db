@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-cassandra
     weight: 1470
-aliases:
-  - /latest/api/cassandra/type_jsonb
-  - /latest/api/ycql/type_jsonb
 isTocNested: true
 showAsideToc: true
 ---

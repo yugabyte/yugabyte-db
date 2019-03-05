@@ -2,8 +2,6 @@
 title: Google Cloud Spanner
 linkTitle: Google Cloud Spanner
 description: Google Cloud Spanner
-aliases:
-  - /comparisons/google-spanner/
 menu:
   v1.1:
     parent: comparisons

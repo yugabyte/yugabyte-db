@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-cassandra
     weight: 1265
-aliases:
-  - /latest/api/cassandra/ddl_drop_role
-  - /latest/api/ycql/ddl_drop_role
 isTocNested: true
 showAsideToc: true
 ---

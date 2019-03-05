@@ -2,8 +2,6 @@
 title: 6. Run Sample Apps
 linkTitle: 6. Run Sample Apps
 description: Run Sample Apps
-aliases:
-  - /quick-start/run-sample-apps/
 menu:
   v1.1:
     parent: quick-start

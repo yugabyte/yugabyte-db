@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-cassandra
     weight: 1390
-aliases:
-  - /latest/api/cassandra/type_collection
-  - /latest/api/ycql/type_collection
 isTocNested: true
 showAsideToc: true
 ---

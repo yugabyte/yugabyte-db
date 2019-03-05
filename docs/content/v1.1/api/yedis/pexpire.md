@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-redis
     weight: 2233
-aliases:
-  - /latest/api/redis/pexpire
-  - /latest/api/yedis/pexpire
 isTocNested: true
 showAsideToc: true
 ---

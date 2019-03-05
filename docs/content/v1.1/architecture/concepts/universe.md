@@ -2,9 +2,6 @@
 title: Key Components
 linkTitle: Key Components
 description: Key Components
-aliases:
-  - /latest/architecture/concepts/universe/
-  - /latest/architecture/concepts/single-node/
 menu:
   v1.1:
     identifier: architecture-universe

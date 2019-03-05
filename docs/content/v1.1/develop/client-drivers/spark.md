@@ -1,8 +1,6 @@
 ---
 title: Develop Apache Spark Apps
 linkTitle: Develop Apache Spark Apps
-aliases:
-  - /develop/client-drivers/spark/
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">

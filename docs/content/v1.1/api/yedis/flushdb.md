@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-redis
     weight: 2065
-aliases:
-  - /latest/api/redis/flushdb
-  - /latest/api/yedis/flushdb
 isTocNested: true
 showAsideToc: true
 ---

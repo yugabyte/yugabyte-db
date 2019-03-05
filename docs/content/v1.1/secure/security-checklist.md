@@ -2,8 +2,6 @@
 title: Security Checklist
 linkTitle: Security Checklist
 description: Security Checklist
-aliases:
-  - /secure/security-checklist/
 menu:
   v1.1:
     identifier: security-checklist

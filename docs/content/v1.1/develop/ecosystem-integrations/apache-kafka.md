@@ -2,8 +2,6 @@
 title: Apache Kafka
 linkTitle: Apache Kafka
 description: Apache Kafka
-aliases:
-  - /develop/ecosystem-integrations/apache-kafka/
 menu:
   v1.1:
     identifier: apache-kafka

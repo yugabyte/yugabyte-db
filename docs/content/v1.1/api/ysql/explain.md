@@ -7,9 +7,6 @@ menu:
     identifier: api-postgresql-explain
     parent: api-postgresql
     weight: 3700
-aliases:
-  - /latest/api/postgresql/explain
-  - /latest/api/ysql/explain
 isTocNested: true
 showAsideToc: true
 ---

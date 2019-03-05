@@ -2,8 +2,6 @@
 title: Architecture
 linkTitle: Architecture
 description: Architecture
-aliases:
-  - /faq/architecture/
 menu:
   v1.1:
     identifier: faq-architecture

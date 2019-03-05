@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-redis
     weight: 2036
-aliases:
-  - /latest/api/redis/listdb
-  - /latest/api/yedis/listdb
 isTocNested: true
 showAsideToc: true
 ---

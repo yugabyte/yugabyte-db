@@ -2,8 +2,6 @@
 title: E-Commerce App
 linkTitle: E-Commerce App
 description: E-Commerce App
-aliases:
-  - /develop/realworld-apps/ecommerce-app/
 menu:
   v1.1:
     identifier: ecommerce-app

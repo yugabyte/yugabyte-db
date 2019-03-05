@@ -7,9 +7,6 @@ menu:
   v1.1:
     parent: api-cassandra
     weight: 1283
-aliases:
-  - /latest/api/cassandra/ddl_revoke_permission
-  - /latest/api/ycql/ddl_revoke_permission
 isTocNested: true
 showAsideToc: true
 ---

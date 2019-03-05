@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-cassandra
     weight: 1560
-aliases:
-  - /latest/api/cassandra/function_datetime
-  - /latest/api/ycql/function_datetime
 isTocNested: false
 showAsideToc: true
 ---

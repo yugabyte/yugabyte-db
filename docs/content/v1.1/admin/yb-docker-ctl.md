@@ -7,8 +7,6 @@ menu:
     identifier: yb-docker-ctl
     parent: admin
     weight: 2420
-aliases:
-  - admin/yb-docker-ctl
 isTocNested: false
 showAsideToc: true
 ---

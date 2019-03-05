@@ -2,8 +2,6 @@
 title: Azure Cosmos DB
 linkTitle: Azure Cosmos DB
 description: Azure Cosmos DB
-aliases:
-  - /comparisons/azure-cosmos/
 menu:
   v1.1:
     identifier: azure-cosmos

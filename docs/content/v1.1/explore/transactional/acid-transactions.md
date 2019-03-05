@@ -2,9 +2,6 @@
 title: 1. ACID Transactions
 linkTitle: 1. ACID Transactions
 description: Distributed ACID Transactions
-aliases:
-  - /explore/transactional/acid-transactions/
-  - /latest/explore/transactions/
 menu:
   v1.1:
     identifier: transactions

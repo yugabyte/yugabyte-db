@@ -7,9 +7,6 @@ menu:
     identifier: api-postgresql-dml
     parent: api-postgresql
     weight: 3200
-aliases:
-  - /latest/api/postgresql/dml
-  - /latest/api/ysql/dml
 isTocNested: true
 showAsideToc: true
 ---

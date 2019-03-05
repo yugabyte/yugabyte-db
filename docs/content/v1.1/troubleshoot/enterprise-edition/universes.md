@@ -2,8 +2,6 @@
 title: Troubleshoot Universes
 linkTitle: Troubleshoot Universes
 description: Troubleshoot Universes
-aliases:
-  - /troubleshoot/enterprise-edition/universes/
 menu:
   v1.1:
     identifier: troubleshoot-universes

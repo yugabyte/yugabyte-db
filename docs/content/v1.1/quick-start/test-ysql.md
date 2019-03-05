@@ -3,10 +3,6 @@ title: 5. Test YSQL API
 linkTitle: 5. Test YSQL API
 description: Test YugaByte SQL (YSQL) API
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
-aliases:
-  - /quick-start/test-postgresql/
-  - /latest/quick-start/test-postgresql/
-  - /latest/quick-start/test-ysql/
 menu:
   v1.1:
     parent: quick-start

@@ -2,8 +2,6 @@
 title: C#
 linkTitle: C#
 description: Develop C# Apps
-aliases:
-  - /develop/client-drivers/csharp/
 menu:
   v1.1:
     identifier: client-drivers-csharp

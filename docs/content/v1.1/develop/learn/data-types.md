@@ -2,8 +2,6 @@
 title: 3. Data Types
 linkTitle: 3. Data Types
 description: Data Types
-aliases:
-  - /develop/learn/data-types/
 menu:
   v1.1:
     identifier: data-types

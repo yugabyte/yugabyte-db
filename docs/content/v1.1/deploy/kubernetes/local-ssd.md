@@ -2,8 +2,6 @@
 title: Local SSD
 linkTitle: Local SSD
 description: Local SSD
-aliases:
-  - /deploy/kubernetes/local-ssd/
 menu:
   v1.1:
     identifier: local-ssd

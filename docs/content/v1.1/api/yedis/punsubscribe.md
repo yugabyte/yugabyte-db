@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-redis
     weight: 2555
-aliases:
-  - /latest/api/redis/punsubscribe
-  - /latest/api/yedis/punsubscribe
 isTocNested: true
 showAsideToc: true
 ---

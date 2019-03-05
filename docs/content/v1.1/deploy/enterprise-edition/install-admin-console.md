@@ -2,9 +2,6 @@
 title: Install Admin Console
 linkTitle: 2. Install Admin Console
 description: Install Admin Console
-aliases:
-  - deploy/enterprise-edition/admin-console/
-  - deploy/enterprise-edition/install-admin-console/
 menu:
   v1.1:
     identifier: install-admin-console

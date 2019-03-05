@@ -7,9 +7,6 @@ menu:
     identifier: api-postgresql-transactions
     parent: api-postgresql
     weight: 3400
-aliases:
-  - /latest/api/postgresql/transactions
-  - /latest/api/ysql/transactions
 isTocNested: true
 showAsideToc: true
 ---

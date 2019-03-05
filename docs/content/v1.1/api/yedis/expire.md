@@ -6,9 +6,6 @@ menu:
   v1.1:
     parent: api-redis
     weight: 2061
-aliases:
-  - /latest/api/redis/expire
-  - /latest/api/yedis/expire
 isTocNested: true
 showAsideToc: true
 ---

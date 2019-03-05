@@ -2,8 +2,6 @@
 title: FoundationDB
 linkTitle: FoundationDB
 description: FoundationDB
-aliases:
-  - /comparisons/foundationdb/
 menu:
   v1.1:
     parent: comparisons

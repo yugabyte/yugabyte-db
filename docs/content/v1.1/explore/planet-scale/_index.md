@@ -4,8 +4,6 @@ linkTitle: Planet Scale
 description: Planet Scale
 headcontent:
 image: /images/section_icons/explore/planet_scale.png
-aliases:
-  - /explore/planet-scale/
 menu:
   v1.1:
     identifier: explore-planet-scale

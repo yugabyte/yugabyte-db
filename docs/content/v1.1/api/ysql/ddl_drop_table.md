@@ -6,9 +6,6 @@ menu:
   v1.1:
     identifier: api-postgresql-drop-table
     parent: api-postgresql-ddl
-aliases:
-  - /latest/api/postgresql/ddl_drop_table
-  - /latest/api/ysql/ddl_drop_table
 isTocNested: true
 showAsideToc: true
 ---

@@ -7,8 +7,6 @@ menu:
     identifier: yb-master
     parent: admin
     weight: 2440
-aliases:
-  - admin/yb-master
 isTocNested: false
 showAsideToc: true
 ---

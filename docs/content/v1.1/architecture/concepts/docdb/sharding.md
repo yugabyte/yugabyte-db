@@ -2,8 +2,6 @@
 title: Sharding
 linkTitle: Sharding
 description: Sharding into Tablets
-aliases:
-  - /latest/architecture/concepts/sharding/
 menu:
   v1.1:
     identifier: docdb-sharding
