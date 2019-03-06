@@ -1,6 +1,6 @@
 ---
-title: 6. Run Sample Apps
-linkTitle: 6. Run Sample Apps
+title: 4. Run Sample Apps
+linkTitle: 4. Run Sample Apps
 description: Run Sample Apps
 aliases:
   - /quick-start/run-sample-apps/

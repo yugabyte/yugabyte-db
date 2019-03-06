@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: faq-architecture
     parent: faq
-    weight: 2480
+    weight: 2720
 isTocNested: false
 showAsideToc: true
 ---

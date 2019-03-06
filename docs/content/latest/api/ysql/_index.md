@@ -1,6 +1,6 @@
 ---
-title: YSQL (Beta)
-linkTitle: YSQL (Beta)
+title: YSQL
+linkTitle: YSQL
 description: YugaByte Structured Query Language (YSQL) [Beta]
 summary: Reference for PostgreSQL-compatible YSQL API
 image: /images/section_icons/api/pgsql.png
@@ -12,7 +12,7 @@ menu:
   latest:
     identifier: api-postgresql
     parent: api
-    weight: 3000
+    weight: 1300
 isTocNested: true
 showAsideToc: true
 ---

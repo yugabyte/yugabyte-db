@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: cassandra-api
     parent: faq
-    weight: 2500
+    weight: 2740
 isTocNested: false
 showAsideToc: true
 ---

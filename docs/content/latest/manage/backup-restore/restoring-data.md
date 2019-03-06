@@ -19,14 +19,14 @@ This page covers how to restore data from a backup. In order to create a backup,
   <li>
     <a href="#cassandra" class="nav-link active" id="cassandra-tab" data-toggle="tab" role="tab" aria-controls="cassandra" aria-selected="true">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      Cassandra
+      YCQL
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
   <div id="cassandra" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cassandra-tab">
-    {{% includeMarkdown "cassandra/restoring-data.md" /%}}
+    {{% includeMarkdown "ycql/restoring-data.md" /%}}
   </div>
 </div>
 
