@@ -91,6 +91,25 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op) {
   return Status::OK();
 }
 
+Status PgTxnManager::RestartTransaction() {
+  if (!txn_in_progress_ || !txn_) {
+    return STATUS(IllegalState, "Attempting to restart when transaction is not in progress");
+  }
+  if (!txn_->IsRestartRequired()) {
+    return STATUS(IllegalState, "Attempting to restart when transaction does not require restart");
+  }
+  auto new_txn = VERIFY_RESULT(txn_->CreateRestartedTransaction());
+  ResetTxnAndSession();
+  txn_ = std::move(new_txn);
+  StartNewSession();
+  session_->SetTransaction(txn_);
+  return Status::OK();
+}
+
+bool PgTxnManager::HasAppliedOperations() {
+  return txn_ && txn_->HasOperations();
+}
+
 Status PgTxnManager::CommitTransaction() {
   if (!txn_in_progress_) {
     return Status::OK();
