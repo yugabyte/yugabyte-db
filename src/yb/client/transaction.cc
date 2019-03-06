@@ -305,6 +305,11 @@ class YBTransaction::Impl final {
     return read_point_.IsRestartRequired();
   }
 
+  bool HasOperations() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return !tablets_.empty();
+  }
+
   std::shared_future<TransactionMetadata> TEST_GetMetadata() {
     std::unique_lock<std::mutex> lock(mutex_);
     if (metadata_future_.valid()) {
@@ -855,6 +860,10 @@ void YBTransaction::Abort() {
 
 bool YBTransaction::IsRestartRequired() const {
   return impl_->IsRestartRequired();
+}
+
+bool YBTransaction::HasOperations() const {
+  return impl_->HasOperations();
 }
 
 Result<YBTransactionPtr> YBTransaction::CreateRestartedTransaction() {

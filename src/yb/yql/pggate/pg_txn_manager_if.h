@@ -48,6 +48,8 @@ YBC_STATUS_METHOD(SetIsolationLevel, ((int, isolation)));
   yb::Result<client::YBSession*> GetTransactionalSession();
 
   Status BeginWriteTransactionIfNecessary(bool read_only_op);
+  Status RestartTransaction();
+  bool HasAppliedOperations();
 
  private:
 

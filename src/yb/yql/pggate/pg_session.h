@@ -94,6 +94,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Apply the given operation to read and write database content.
   CHECKED_STATUS PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op, uint64_t* read_time);
   CHECKED_STATUS PgFlushAsync(StatusFunctor callback);
+  CHECKED_STATUS RestartTransaction();
+  bool HasAppliedOperations() const;
 
   // Return the number of errors which are pending.
   int CountPendingErrors() const;
