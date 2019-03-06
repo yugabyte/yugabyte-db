@@ -190,7 +190,8 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
 //--------------------------------------------------------------------------------------------------
 
 PgDocWriteOp::PgDocWriteOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlWriteOp *write_op)
-    : PgDocOp(pg_session, nullptr /* read_time */), write_op_(write_op) {
+    : PgDocOp(pg_session, nullptr /* read_time */), write_op_(write_op),
+      can_restart_(!pg_session->HasAppliedOperations()) {
 }
 
 PgDocWriteOp::~PgDocWriteOp() {
@@ -219,7 +220,22 @@ void PgDocWriteOp::ReceiveResponse(Status exec_status) {
   cv_.notify_all();
 
   if (exec_status.ok() && !write_op_->succeeded()) {
-    exec_status_ = STATUS(QLError, write_op_->response().error_message());
+    if (write_op_->response().status() == PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR &&
+        can_restart_) {
+      auto restart_status = pg_session_->RestartTransaction();
+      if (!restart_status.ok()) {
+        exec_status_ = restart_status;
+      } else {
+        auto status = SendRequestUnlocked();
+        if (!status.ok()) {
+          exec_status_ = status;
+        } else {
+          return;
+        }
+      }
+    } else {
+      exec_status_ = STATUS(QLError, write_op_->response().error_message());
+    }
   } else {
     exec_status_ = exec_status;
   }

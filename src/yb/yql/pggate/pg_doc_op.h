@@ -155,6 +155,7 @@ class PgDocWriteOp : public PgDocOp {
 
   // Operator.
   std::shared_ptr<client::YBPgsqlWriteOp> write_op_;
+  bool can_restart_;
 };
 
 // TODO(neil)
