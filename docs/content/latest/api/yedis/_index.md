@@ -94,6 +94,7 @@ Command | Description |
 [`ECHO`](echo/) | Output messages |
 [`MONITOR`](monitor/) | Debugging tool to see all requests that are processed by a YEDIS API server |
 [`ROLE`](role/) | Read role of a node |
+[`RENAME`](rename/) | Rename one key as another |
 <b> Database </b>|
 [`FLUSHALL`](flushall/) | Delete all keys from all databases |
 [`FLUSHDB`](flushdb/) | Delete all keys from a database |
