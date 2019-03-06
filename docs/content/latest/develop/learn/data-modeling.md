@@ -4,6 +4,7 @@ linkTitle: 2. Data Modeling
 description: Data Modeling
 aliases:
   - /develop/learn/data-modeling/
+  - /latest/explore/transactional/secondary-indexes/
 menu:
   latest:
     identifier: data-modeling
@@ -24,6 +25,6 @@ Data modeling is a process that involves identifying the entities (items to be s
 
 <div class="tab-content">
   <div id="cassandra" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cassandra-tab">
-    {{% includeMarkdown "cassandra/data-modeling.md" /%}}
+    {{% includeMarkdown "ycql/data-modeling.md" /%}}
   </div>
 </div>

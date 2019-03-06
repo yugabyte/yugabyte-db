@@ -22,6 +22,6 @@ menu:
 
 <div class="tab-content">
   <div id="cassandra" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cassandra-tab">
-    {{% includeMarkdown "cassandra/aggregations.md" /%}}
+    {{% includeMarkdown "ycql/aggregations.md" /%}}
   </div>
 </div>

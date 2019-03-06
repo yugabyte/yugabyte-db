@@ -22,9 +22,9 @@ aliases:
 
 <div class="tab-content">
   <div id="cassandra" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cassandra-tab">
-    {{% includeMarkdown "cassandra/ttl-data-expiry.md" /%}}
+    {{% includeMarkdown "ycql/ttl-data-expiry.md" /%}}
   </div>
   <div id="redis" class="tab-pane fade" role="tabpanel" aria-labelledby="redis-tab">
-    {{% includeMarkdown "redis/ttl-data-expiry.md" /%}}
+    {{% includeMarkdown "yedis/ttl-data-expiry.md" /%}}
   </div>
 </div>

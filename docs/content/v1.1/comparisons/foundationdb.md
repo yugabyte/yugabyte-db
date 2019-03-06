@@ -48,7 +48,7 @@ As we have previously highlighted in [How Does Consensus-Based Replication Work 
 
 Let’s compare the behavior of FoundationDB and a Raft-based DB such as YugaByte DB in the context of RF=2, 3 and 5. Note that while RF=2 is allowed in FoundationDB, it is disallowed in Raft-based DBs since it is not a fault-tolerant configuration.
 
-![FDB vs. Raft](fdb-raft.png)
+![FDB vs. Raft](/images/comparisons/fdb-raft.png)
 
 The above table shows that FoundationDB’s RF=2 is equivalent to Raft’s RF=3 and FoundationDB’s RF=3 is equivalent to Raft’s RF=5. While it may seem that FoundationDB and a Raft-based DB behave similarly under failure conditions, that is not the case in practice. In a 3-node cluster with RF=2, FoundationDB has 2 replicas of any given shard on only 2 of the 3 nodes. If the 1 node not hosting the replica dies then writes are not impacted. If any of the 2 nodes hosting a replica die, then FoundationDB has to rebuild the replica’s transaction log on the free node first before writes are allowed back on for that shard. So the probability of writes being impacted for a single shard because of faults is 2/3 i.e. RF/NumNodes.
 

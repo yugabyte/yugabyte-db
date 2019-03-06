@@ -3,9 +3,8 @@
 We will use the [`yb-ctl`](../../admin/yb-ctl/) utility located in the `bin` directory of the YugaByte DB package to create and administer a local cluster. The default data directory used is `/tmp/yugabyte-local-cluster`. You can change this directory with the `--data_dir` option. Detailed output for the *create* command is available in [yb-ctl Reference](../../admin/yb-ctl/#create-cluster).
 
 ```sh
-$ ./bin/yb-ctl create
+$ ./bin/yb-ctl create --enable_postgres
 ```
-
 
 You can now check `/tmp/yugabyte-local-cluster` to see `node-i` directories created where `i` represents the `node_id` of the node. Inside each such directory, there will be 2 disks `disk1` and `disk2` to highlight the fact that YugaByte DB can work with multiple disks at the same time. Note that the IP address of `node-i` is by default set to `127.0.0.i`.
 
@@ -18,12 +17,12 @@ $ ./bin/yb-ctl status
 ```
 
 ```sh
-2019-01-29 20:42:43,425 INFO: Server is running: type=master, node_id=1, PID=13668, admin service=http://127.0.0.1:7000
-2019-01-29 20:42:43,432 INFO: Server is running: type=master, node_id=2, PID=13671, admin service=http://127.0.0.2:7000
-2019-01-29 20:42:43,439 INFO: Server is running: type=master, node_id=3, PID=13674, admin service=http://127.0.0.3:7000
-2019-01-29 20:42:43,446 INFO: Server is running: type=tserver, node_id=1, PID=13677, admin service=http://127.0.0.1:9000, cql service=127.0.0.1:9042, redis service=127.0.0.1:6379
-2019-01-29 20:42:43,453 INFO: Server is running: type=tserver, node_id=2, PID=13680, admin service=http://127.0.0.2:9000, cql service=127.0.0.2:9042, redis service=127.0.0.2:6379
-2019-01-29 20:42:43,460 INFO: Server is running: type=tserver, node_id=3, PID=13687, admin service=http://127.0.0.3:9000, cql service=127.0.0.3:9042, redis service=127.0.0.3:6379
+2019-01-15 22:18:40,387 INFO: Server is running: type=master, node_id=1, PID=12818, admin service=http://127.0.0.1:7000
+2019-01-15 22:18:40,394 INFO: Server is running: type=master, node_id=2, PID=12821, admin service=http://127.0.0.2:7000
+2019-01-15 22:18:40,401 INFO: Server is running: type=master, node_id=3, PID=12824, admin service=http://127.0.0.3:7000
+2019-01-15 22:18:40,408 INFO: Server is running: type=tserver, node_id=1, PID=12827, admin service=http://127.0.0.1:9000, cql service=127.0.0.1:9042, redis service=127.0.0.1:6379, pgsql service=127.0.0.1:5433
+2019-01-15 22:18:40,415 INFO: Server is running: type=tserver, node_id=2, PID=12830, admin service=http://127.0.0.2:9000, cql service=127.0.0.2:9042, redis service=127.0.0.2:6379, pgsql service=127.0.0.2:5433
+2019-01-15 22:18:40,422 INFO: Server is running: type=tserver, node_id=3, PID=12833, admin service=http://127.0.0.3:9000, cql service=127.0.0.3:9042, redis service=127.0.0.3:6379, pgsql service=127.0.0.3:5433
 ```
 
 ## 3. Check cluster status with Admin UI

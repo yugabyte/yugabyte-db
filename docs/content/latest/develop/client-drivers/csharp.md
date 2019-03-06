@@ -18,19 +18,10 @@ menu:
       YCQL
     </a>
   </li>
-  <li>
-    <a href="#redis" class="nav-link" id="redis-tab" data-toggle="tab" role="tab" aria-controls="redis" aria-selected="false">
-      <i class="icon-redis" aria-hidden="true"></i>
-      YEDIS
-    </a>
-  </li>
 </ul>
 
 <div class="tab-content">
   <div id="cql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cql-tab">
-    {{% includeMarkdown "cassandra/csharp.md" /%}}
-  </div>
-  <div id="redis" class="tab-pane fade" role="tabpanel" aria-labelledby="redis-tab">
-    {{% includeMarkdown "redis/csharp.md" /%}}
+    {{% includeMarkdown "ycql/csharp.md" /%}}
   </div>
 </div>

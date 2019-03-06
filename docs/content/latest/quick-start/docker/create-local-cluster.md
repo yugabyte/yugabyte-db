@@ -3,7 +3,7 @@
 We will use the [`yb-docker-ctl`](../../admin/yb-docker-ctl/) utility downloaded in the previous step to create and administer a containerized local cluster. Detailed output for the *create* command is available in [yb-docker-ctl Reference](../../admin/yb-docker-ctl/#create-cluster).
 
 ```sh
-$ ./yb-docker-ctl create
+$ ./yb-docker-ctl create --enable_postgres
 ```
 
 Clients can now connect to YugaByte DB's Cassandra-compatible YCQL API at `localhost:9042` and to the Redis-compatible YEDIS API at  `localhost:6379`.
@@ -17,13 +17,13 @@ $ ./yb-docker-ctl status
 ```
 
 ```
-PID        Type       Node       URL                       Status          Started At          
-26132      tserver    n3         http://172.18.0.7:9000    Running         2017-10-20T17:54:54.99459154Z
-25965      tserver    n2         http://172.18.0.6:9000    Running         2017-10-20T17:54:54.412377451Z
-25846      tserver    n1         http://172.18.0.5:9000    Running         2017-10-20T17:54:53.806993683Z
-25660      master     n3         http://172.18.0.4:7000    Running         2017-10-20T17:54:53.197652566Z
-25549      master     n2         http://172.18.0.3:7000    Running         2017-10-20T17:54:52.640188158Z
-25438      master     n1         http://172.18.0.2:7000    Running         2017-10-20T17:54:52.084772289Z
+ID             PID        Type       Node                 URL                       Status          Started At
+ca16705b20bd   5861       tserver    yb-tserver-n3        http://192.168.64.7:9000  Running         2018-10-18T22:02:52.12697026Z
+0a7deab4e4db   5681       tserver    yb-tserver-n2        http://192.168.64.6:9000  Running         2018-10-18T22:02:51.181289786Z
+921494a8058d   5547       tserver    yb-tserver-n1        http://192.168.64.5:9000  Running         2018-10-18T22:02:50.187976253Z
+0d7dc9436033   5345       master     yb-master-n3         http://192.168.64.4:7000  Running         2018-10-18T22:02:49.105792573Z
+0b25dd24aea3   5191       master     yb-master-n2         http://192.168.64.3:7000  Running         2018-10-18T22:02:48.162506832Z
+feea0823209a   5039       master     yb-master-n1         http://192.168.64.2:7000  Running         2018-10-18T22:02:47.163244578Z
 ```
 
 ## 3. Check cluster status with Admin UI

@@ -7,10 +7,10 @@ aliases:
 menu:
   latest:
     parent: comparisons
-    weight: 1120
+    weight: 1080
 ---
 
-YugaByte DB’s storage and replication architecture is similar to that of [Google Cloud Spanner](https://cloud.google.com/spanner/) which is also a CP database with high write availability. While Google Cloud Spanner leverages Google’s proprietary (and expensive) network infrastructure, YugaByte DB is designed work on commodity infrastructure used by most enterprise users.
+YugaByte DB’s storage, replication and transactions architecture is similar to that of [Google Cloud Spanner](https://cloud.google.com/spanner/) which is also a CP database with high write availability. Both these databases are based on the design principles outlined in the original Google Spanner paper published in 2012. Note that while Google Cloud Spanner leverages Google’s proprietary (and expensive) network infrastructure, YugaByte DB is designed work on commodity infrastructure used by most enterprise users.
 
 Following blogs highlight how YugaByte DB works as a Spanner derivative.
 

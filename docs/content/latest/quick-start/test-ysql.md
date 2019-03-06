@@ -1,17 +1,25 @@
 ---
-title: 5. Test YSQL API
-linkTitle: 5. Test YSQL API
+title: 3. Test YSQL API
+linkTitle: 3. Test YSQL API
 description: Test YugaByte SQL (YSQL) API
-beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /quick-start/test-postgresql/
   - /latest/quick-start/test-postgresql/
   - /latest/quick-start/test-ysql/
+  - /quick-start/test-cassandra/
+  - /latest/quick-start/test-cassandra/
+  - /latest/quick-start/test-ycql/
+  - /latest/explore/postgresql/joins/
+  - /latest/explore/postgresql/aggregations/
+  - /latest/explore/postgresql/expressions/
+  - /latest/explore/postgresql/views/
 menu:
   latest:
     parent: quick-start
-    weight: 145
+    weight: 130
 type: page
+isTocNested: false
+showAsideToc: true
 ---
 
 Follow the instructions below to test YugaByte DB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
@@ -19,9 +27,36 @@ Follow the instructions below to test YugaByte DB's PostgreSQL-compatible [YSQL]
 [**psql**](https://www.postgresql.org/docs/9.3/static/app-psql.html) is a command line shell for interacting with PostgreSQL. For ease of use, YugaByte DB ships with a version of psql in its bin directory.
 
 
-## 1. Create a new cluster
+## 1. Load Data
 
-<ul class="nav nav-tabs nav-tabs-yb">
+
+- Download the sample schema.
+
+```sh
+$ wget https://raw.githubusercontent.com/YugaByte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
+```
+
+-  Download the sample data
+
+```sh
+$ wget https://github.com/YugaByte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
+```
+
+```sh
+$ tar zxvf sample-data.tgz
+```
+
+```sh
+$ ls data/
+```
+
+```
+orders.sql  products.sql  reviews.sql users.sql
+```
+
+-  Connect using psql
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
       <i class="fab fa-apple" aria-hidden="true"></i>
@@ -50,83 +85,177 @@ Follow the instructions below to test YugaByte DB's PostgreSQL-compatible [YSQL]
 
 <div class="tab-content">
   <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-    {{% includeMarkdown "binary/test-postgresql.md" /%}}
+    {{% includeMarkdown "binary/test-ysql.md" /%}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
-    {{% includeMarkdown "binary/test-postgresql.md" /%}}
+    {{% includeMarkdown "binary/test-ysql.md" /%}}
   </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
-    {{% includeMarkdown "docker/test-postgresql.md" /%}}
+    {{% includeMarkdown "docker/test-ysql.md" /%}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-    {{% includeMarkdown "kubernetes/test-postgresql.md" /%}}
+    {{% includeMarkdown "kubernetes/test-ysql.md" /%}}
   </div>
 </div>
 
-
-## 2. Create a table
-
-Create a database called 'sample'.
+-  Create a database.
 
 ```sql
-postgres=> CREATE DATABASE sample;
+postgres=> CREATE DATABASE yb_demo;
 ```
-
-Connect to the database we just created.
 
 ```sql
-postgres=> \c sample
+postgres=> GRANT ALL ON DATABASE yb_demo to postgres;
 ```
-
-```
-You are now connected to database "sample" as user "postgres".
-sample=>
-```
-
-
-Create a table named 'stock_market' which can store stock prices at various timestamps for different stock ticker symbols.
 
 ```sql
-sample=> CREATE TABLE stock_market (
-  stock_symbol text,
-  ts text,
-  current_price float,
-  PRIMARY KEY (stock_symbol, ts)
-);
+postgres=> \c yb_demo;
 ```
+-  Insert sample data
 
-
-
-
-## 3. Insert data
-
-Let us insert some data for a few stock symbols into our newly created 'stock_market' table. You can copy-paste these values directly into your psql shell.
+First create the 4 tables necessary to store the data.
 
 ```sql
-INSERT INTO stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);
-INSERT INTO stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 10:00:00',157);
-INSERT INTO stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 09:00:00',170.63);
-INSERT INTO stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 10:00:00',170.1);
-INSERT INTO stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 09:00:00',972.56);
-INSERT INTO stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 10:00:00',971.91);
+postgres=> \i 'schema.sql';
 ```
 
-## 4. Query the table
-
-Query all the values we have inserted into the table.
+Now load the data into the tables.
 
 ```sql
-sample=> SELECT * FROM stock_market ORDER BY stock_symbol ASC, ts DESC;
+postgres=> \i 'data/products.sql'
+```
+
+```sql
+postgres=> \i 'data/users.sql'
+```
+
+```sql
+postgres=> \i 'data/orders.sql'
+```
+
+```sql
+postgres=> \i 'data/reviews.sql'
+```
+
+## 2. Run Queries
+
+-  How are users signing up for my site?
+
+```sql
+yb_demo=> SELECT DISTINCT(source) FROM users;
 ```
 
 ```
- stock_symbol |         ts          | current_price
---------------+---------------------+---------------
- AAPL         | 2017-10-26 10:00:00 |           157
- AAPL         | 2017-10-26 09:00:00 |        157.41
- FB           | 2017-10-26 10:00:00 |         170.1
- FB           | 2017-10-26 09:00:00 |        170.63
- GOOG         | 2017-10-26 10:00:00 |        971.91
- GOOG         | 2017-10-26 09:00:00 |        972.56
-(6 rows)
+source
+-----------
+ Facebook
+ Twitter
+ Organic
+ Affiliate
+ Google
+(5 rows)
 ```
+
+-  What is the most effective channel for user signups?
+
+```sql
+yb_demo=> SELECT source, count(*) AS num_user_signups
+          FROM users
+          GROUP BY source
+          ORDER BY num_user_signups DESC;
+```
+
+```
+source     | num_user_signups
+-----------+------------------
+ Facebook  |              512
+ Affiliate |              506
+ Google    |              503
+ Twitter   |              495
+ Organic   |              484
+(5 rows)
+```
+
+-  What are the most effective channels for product sales by revenue?
+
+```sql
+yb_demo=> SELECT source, ROUND(SUM(orders.total)) AS total_sales
+          FROM users, orders WHERE users.id=orders.user_id
+          GROUP BY source
+          ORDER BY total_sales DESC;
+```
+
+```
+source     | total_sales
+-----------+-------------
+ Facebook  |      333454
+ Google    |      325184
+ Organic   |      319637
+ Twitter   |      319449
+ Affiliate |      297605
+(5 rows)
+```
+
+-  What is the min, max and average price of products in the store?
+
+```sql
+yb_demo=> SELECT MIN(price), MAX(price), AVG(price) FROM products;
+```
+
+```
+min               |       max        |       avg
+------------------+------------------+------------------
+ 15.6919436739704 | 98.8193368436819 | 55.7463996679207
+(1 row)
+```
+
+-  What percentage of the total sales is from the Facebook channel?
+
+```sql
+yb_demo=> CREATE VIEW channel AS
+            (SELECT source, ROUND(SUM(orders.total)) AS total_sales
+             FROM users, orders
+             WHERE users.id=orders.user_id
+             GROUP BY source
+             ORDER BY total_sales DESC);
+```
+
+Now that the view is created, we can see it in our list of relations.
+
+```sql
+yb_demo=> \d
+```
+
+```
+List of relations
+ Schema |   Name   | Type  |  Owner
+--------+----------+-------+----------
+ public | channel  | view  | postgres
+ public | orders   | table | postgres
+ public | products | table | postgres
+ public | reviews  | table | postgres
+ public | users    | table | postgres
+(5 rows)
+```
+
+```sql
+yb_demo=> SELECT source, total_sales * 100.0 / (SELECT SUM(total_sales) FROM channel) AS percent_sales
+          FROM channel WHERE source='Facebook';
+```
+
+```
+source    |  percent_sales
+----------+------------------
+ Facebook | 20.9018954710909
+(1 row)
+```
+
+## 3. Test JOINs
+
+## 4. Test Distributed Transactions
+
+## 5. Test Secondary Indexes
+
+## 6. Test JSONB Column Type
+
+
