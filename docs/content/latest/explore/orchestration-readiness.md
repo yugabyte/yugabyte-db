@@ -2,6 +2,8 @@
 title: Orchestration Readiness
 linkTitle: 8. Orchestration Readiness 
 description: Orchestration Readiness
+aliases:
+  - /latest/explore/cloud-native/orchestration-readiness/
 menu:
   latest:
     identifier: orchestration-readiness

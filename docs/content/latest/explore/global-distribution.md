@@ -5,6 +5,7 @@ description: Global Distribution
 aliases:
   - /explore/global-distribution/
   - /latest/explore/global-distribution/
+  - /latest/explore/planet-scale/global-distribution/
 menu:
   latest:
     identifier: global-distribution

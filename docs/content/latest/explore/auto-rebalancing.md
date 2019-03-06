@@ -5,6 +5,7 @@ description: Auto Rebalancing
 aliases:
   - /explore/auto-rebalancing/
   - /latest/explore/auto-rebalancing/
+  - /latest/explore/planet-scale/auto-rebalancing/
 menu:
   latest:
     identifier: auto-rebalancing

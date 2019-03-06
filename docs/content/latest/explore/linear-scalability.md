@@ -5,6 +5,7 @@ description: Linear Scalability
 aliases:
   - /explore/linear-scalability/
   - /latest/explore/linear-scalability/
+  - /latest/explore/cloud-native/linear-scalability/
   - /latest/explore/postgresql/linear-scalability/
 menu:
   latest:

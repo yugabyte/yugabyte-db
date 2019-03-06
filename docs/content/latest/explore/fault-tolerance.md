@@ -5,6 +5,7 @@ description: Fault Tolerance
 aliases:
   - /explore/fault-tolerance/
   - /latest/explore/fault-tolerance/
+  - /latest/explore/cloud-native/fault-tolerance/
   - /latest/explore/postgresql/fault-tolerance/
 menu:
   latest:

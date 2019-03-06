@@ -2,6 +2,8 @@
 title: Observability with Prometheus
 linkTitle: 7. Observability 
 description: Observability with Prometheus
+aliases:
+  - /latest/explore/cloud-native/observability/
 menu:
   latest:
     identifier: observability

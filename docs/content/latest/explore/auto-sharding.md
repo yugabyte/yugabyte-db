@@ -5,6 +5,7 @@ description: Auto Sharding
 aliases:
   - /explore/auto-sharding/
   - /latest/explore/auto-sharding/
+  - /latest/explore/planet-scale/auto-sharding/
 menu:
   latest:
     identifier: auto-sharding
