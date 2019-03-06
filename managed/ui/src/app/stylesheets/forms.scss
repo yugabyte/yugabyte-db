@@ -273,6 +273,13 @@
     margin-bottom: 0px;
   }
 
+  .form-group-hidden {
+    height: 0;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+
   .form-control {
     border-radius: 7px;
     height: 42px;

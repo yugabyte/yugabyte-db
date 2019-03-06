@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { browserHistory } from 'react-router';
 import { YBFormSelect, YBFormInput } from '../../common/forms/fields';
@@ -46,7 +46,7 @@ export default class RestoreBackup extends Component {
     // If the backup information is not provided, most likely we are trying to load the backup
     // from pre-existing location (specified by the user) into the current universe in context.
     let universeOptions = [];
-    let backupStorageInfo = null;
+    const hasBackupInfo = this.hasBackupInfo();
     const validationSchema = Yup.object().shape({
       restoreToUniverseUUID: Yup.string()
       .required('Restore To Universe is Required'),
@@ -60,33 +60,28 @@ export default class RestoreBackup extends Component {
       .required('Storage Location is Required')
     });
 
-    if (!this.hasBackupInfo()) {
-      const storageOptions = storageConfigs.map((config) => {
-        return {value: config.configUUID, label: config.name + " Storage"};
-      });
-      if (getPromiseState(currentUniverse).isSuccess() && isNonEmptyObject(currentUniverse.data)) {
-        universeOptions = [{
-          value: currentUniverse.data.universeUUID,
-          label: currentUniverse.data.name}];
-      }
-
-      backupStorageInfo = (
-        <Fragment>
-          <Field name="storageConfigUUID" component={YBFormSelect}
-                 label={"Storage"} options={storageOptions} />
-          <Field name="storageLocation" component={YBFormInput}
-                 componentClass="textarea"
-                 className="storage-location"
-                 label={"Storage Location"} />
-        </Fragment>
-      );
-    } else {
+    if (hasBackupInfo) {
       if (getPromiseState(universeList).isSuccess() && isNonEmptyArray(universeList.data)) {
         universeOptions = universeList.data.map((universe) => {
           return ({value: universe.universeUUID, label: universe.name});
         });
       }
+    } else {
+      if (getPromiseState(currentUniverse).isSuccess() && isNonEmptyObject(currentUniverse.data)) {
+        universeOptions = [{
+          value: currentUniverse.data.universeUUID,
+          label: currentUniverse.data.name}];
+      }
     }
+
+    const storageOptions = storageConfigs.map((config) => {
+      return {value: config.configUUID, label: config.name + " Storage"};
+    });
+
+    const initialValues = {
+      ...this.props.initialValues,
+      storageConfigUUID: hasBackupInfo ? storageOptions.find((element) => { return element.value === this.props.initialValues.storageConfigUUID;}) : ""
+    };
 
     return (
       <div className="universe-apps-modal">
@@ -104,9 +99,15 @@ export default class RestoreBackup extends Component {
                   };
                   this.restoreBackup(payload);
                 }}
-                initialValues= {this.props.initialValues}
+                initialValues= {initialValues}
                 validationSchema={validationSchema}>
-          {backupStorageInfo}
+          
+          <Field name="storageConfigUUID" {...(hasBackupInfo ? {type: "hidden"} : null)} component={YBFormSelect}
+                 label={"Storage"} options={storageOptions} />
+          <Field name="storageLocation" {...(hasBackupInfo ? {type: "hidden"} : null)} component={YBFormInput}
+                 componentClass="textarea"
+                 className="storage-location"
+                 label={"Storage Location"} />
           <Field name="restoreToUniverseUUID" component={YBFormSelect}
                 label={"Universe"} options={universeOptions} />
           <Field name="restoreToKeyspace"
