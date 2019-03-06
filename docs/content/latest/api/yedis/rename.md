@@ -20,6 +20,9 @@ This is currently a best-effort mechanism and is intended to only work when ther
 no concurrent updates to either the source or the destination keys. The TTL setting
 for the key itself is copied over to the destination key. However, for container
 types such as the TimeSeries type, the ttl settings for the sub-keys are not copied.
+
+## Return Value
+Returns status string.
 ## See Also
 [`set`](../set/),
 [`get`](../get/),
