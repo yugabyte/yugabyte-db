@@ -62,8 +62,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         throw new RuntimeException(msg);
       }
 
-      if (currentNode.state != NodeDetails.NodeState.Removed &&
-          currentNode.state != NodeDetails.NodeState.Decommissioned) {
+      if (currentNode.state != NodeState.Removed &&
+          currentNode.state != NodeState.Decommissioned) {
         String msg = "Node " + taskParams().nodeName + " is not in removed or decommissioned state"
                      + ", but is in " + currentNode.state + ", so cannot be added.";
         LOG.error(msg);
@@ -77,7 +77,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       Collection<NodeDetails> node = new HashSet<NodeDetails>(Arrays.asList(currentNode));
 
       // First spawn an instance for Decommissioned node.
-      boolean wasDecommissioned = currentNode.state == NodeDetails.NodeState.Decommissioned;
+      boolean wasDecommissioned = currentNode.state == NodeState.Decommissioned;
       if (wasDecommissioned) {
         createSetupServerTasks(node)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
@@ -131,6 +131,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);
+
+      // Clear the host from master's blacklist.
+      if (currentNode.state == NodeState.Removed) {
+        createModifyBlackListTask(Arrays.asList(currentNode), false /* isAdd */)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
 
       // Wait for load to balance.
       createWaitForLoadBalanceTask()

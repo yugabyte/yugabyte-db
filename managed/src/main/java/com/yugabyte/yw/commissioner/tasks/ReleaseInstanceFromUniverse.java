@@ -51,8 +51,8 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
         throw new RuntimeException(msg);
       }
 
-      if (currentNode.state != NodeDetails.NodeState.Removed &&
-          currentNode.state != NodeDetails.NodeState.Stopped) {
+      if (currentNode.state != NodeState.Removed &&
+          currentNode.state != NodeState.Stopped) {
         String msg = "Node " + taskParams().nodeName + " is not on removed or added state, but " +
                      "is in " + currentNode.state + ", so cannot be released.";
         LOG.error(msg);
