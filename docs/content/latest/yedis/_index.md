@@ -3,7 +3,7 @@ title: YEDIS
 linkTitle: YEDIS
 description: YugaByte DIctionary Service (YEDIS) 
 headcontent: 
-image: /images/section_icons/index/secure.png
+image: /images/section_icons/api/redis.png
 menu:
   latest:
     identifier: yedis
@@ -14,18 +14,18 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="quick-start/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/secure/checklist.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/index/quick_start.png" aria-hidden="true" />
         <div class="title">Quick Start</div>
       </div>
       <div class="body">
-          Get started with the YEDIS API.
+          Get started.
       </div>
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="develop/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/index/develop.png" aria-hidden="true" />
         <div class="title">Develop</div>
       </div>
       <div class="body">
@@ -36,7 +36,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="deploy/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/secure/authorization.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/index/deploy.png" aria-hidden="true" />
         <div class="title">Deploy</div>
       </div>
       <div class="body">
@@ -47,7 +47,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="api/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/secure/tls-encryption.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/index/api.png" aria-hidden="true" />
         <div class="title">API Reference</div>
       </div>
       <div class="body">

@@ -1,12 +1,12 @@
 ---
 title: Orchestration Readiness
-linkTitle: 4. Orchestration Readiness 
+linkTitle: 8. Orchestration Readiness 
 description: Orchestration Readiness
 menu:
   latest:
     identifier: orchestration-readiness
-    parent: explore-cloud-native
-    weight: 217
+    parent: explore
+    weight: 245
 ---
 
 YugaByte DB is orchestration-ready on all major infrastructure layers including containers, virtual machines (VMs) and bare metal.

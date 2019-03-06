@@ -24,6 +24,6 @@ Batch operations is the ability to send a set of operations as one operation (RP
 
 <div class="tab-content">
   <div id="cassandra" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cassandra-tab">
-    {{% includeMarkdown "cassandra/batch-operations.md" /%}}
+    {{% includeMarkdown "ycql/batch-operations.md" /%}}
   </div>
 </div>

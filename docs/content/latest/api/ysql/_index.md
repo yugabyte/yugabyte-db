@@ -2,7 +2,7 @@
 title: YSQL
 linkTitle: YSQL
 description: YugaByte Structured Query Language (YSQL) [Beta]
-summary: Reference for PostgreSQL-compatible YSQL API
+summary: Reference for the YSQL API
 image: /images/section_icons/api/pgsql.png
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 aliases:

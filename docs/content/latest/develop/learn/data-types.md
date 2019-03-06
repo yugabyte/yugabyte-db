@@ -4,6 +4,7 @@ linkTitle: 3. Data Types
 description: Data Types
 aliases:
   - /develop/learn/data-types/
+  - /latest/explore/transactional/json-documents/
 menu:
   latest:
     identifier: data-types
@@ -22,6 +23,6 @@ menu:
 
 <div class="tab-content">
   <div id="cassandra" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cassandra-tab">
-    {{% includeMarkdown "cassandra/data-types.md" /%}}
+    {{% includeMarkdown "ycql/data-types.md" /%}}
   </div>
 </div>

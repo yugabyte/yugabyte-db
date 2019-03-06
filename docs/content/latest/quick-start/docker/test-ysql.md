@@ -1,8 +1,6 @@
 ---
 ---
-- Run psql to connect to the service.
-
-You can do this as shown below.
+Run psql to connect to the service.
 
 ```sh
 $ docker exec -it yb-tserver-n1 /home/yugabyte/postgres/bin/psql -h yb-tserver-n1 -p 5433 -U postgres

@@ -1,27 +1,23 @@
 ---
-title: 1. ACID Transactions
-linkTitle: 1. ACID Transactions
-description: Distributed ACID Transactions
+title: Fault Tolerance
+linkTitle: 2. Fault Tolerance
+description: Fault Tolerance
 aliases:
-  - /explore/transactional/acid-transactions/
-  - /latest/explore/transactions/
+  - /explore/fault-tolerance/
+  - /latest/explore/fault-tolerance/
+  - /latest/explore/postgresql/fault-tolerance/
 menu:
   latest:
-    identifier: transactions
-    parent: explore-transactional
-    weight: 225
+    identifier: fault-tolerance
+    parent: explore
+    weight: 215
 ---
 
-Distributed ACID transactions batch a multi-step, multi-table operation into a single, all-or-nothing operation. The intermediate states of the database between the steps in a transaction are not visible to other concurrent transactions or the end user. If the transaction encounters any failures that prevents it from completing successfully, none of the steps are applied to the database.
+YugaByte DB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/) for YSQL tables. We will create these tables with a replication factor = 3 that allows a [fault tolerance](../../../architecture/concepts/docdb/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to 2, then writes will become unavailable on the cluster in order to preserve data consistency.
 
-YugaByte DB is designed to support transactions at the following isolation levels:
-
-- Snapshot Isolation (currently supported)
-- Serializable (work in progress)
-
-You can [read more about transactions](../../../architecture/transactions/) in our architecture docs.
 
 If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
+
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -52,15 +48,15 @@ If you haven't installed YugaByte DB yet, do so first by following the [Quick St
 
 <div class="tab-content">
   <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-    {{% includeMarkdown "binary/transactions.md" /%}}
+    {{% includeMarkdown "binary/fault-tolerance.md" /%}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
-    {{% includeMarkdown "binary/transactions.md" /%}}
+    {{% includeMarkdown "binary/fault-tolerance.md" /%}}
   </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
-    {{% includeMarkdown "docker/transactions.md" /%}}
+    {{% includeMarkdown "docker/fault-tolerance.md" /%}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-    {{% includeMarkdown "kubernetes/transactions.md" /%}}
+    {{% includeMarkdown "kubernetes/fault-tolerance.md" /%}}
   </div>
 </div>

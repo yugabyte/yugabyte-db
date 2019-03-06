@@ -7,7 +7,7 @@ aliases:
 menu:
   latest:
     parent: comparisons
-    weight: 1100
+    weight: 1129
 isTocNested: false
 showAsideToc: true
 ---

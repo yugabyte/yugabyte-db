@@ -16,6 +16,6 @@ aliases:
 
 <div class="tab-content">
   <div id="cassandra" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cassandra-tab">
-    {{% includeMarkdown "cassandra/reads-writes.md" /%}}
+    {{% includeMarkdown "ycql/reads-writes.md" /%}}
   </div>
 </div>

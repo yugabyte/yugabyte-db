@@ -1,6 +1,6 @@
 ---
 title: Global Distribution
-linkTitle: 1. Global Distribution
+linkTitle: 3. Global Distribution
 description: Global Distribution
 aliases:
   - /explore/global-distribution/
@@ -8,8 +8,8 @@ aliases:
 menu:
   latest:
     identifier: global-distribution
-    parent: explore-planet-scale
-    weight: 260
+    parent: explore
+    weight: 220
 ---
 
 YugaByte DB can easily be deployed in a globally distributed manner to serve application queries from the region closest to the end users with low latencies as well as to survive any outages to ensure high availability.

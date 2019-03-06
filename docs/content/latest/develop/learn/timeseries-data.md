@@ -23,9 +23,9 @@ aliases:
 
 <div class="tab-content">
   <div id="cassandra" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cassandra-tab">
-    {{% includeMarkdown "cassandra/timeseries-data.md" /%}}
+    {{% includeMarkdown "ycql/timeseries-data.md" /%}}
   </div>
   <div id="redis" class="tab-pane fade" role="tabpanel" aria-labelledby="redis-tab">
-    {{% includeMarkdown "redis/timeseries-data.md" /%}}
+    {{% includeMarkdown "yedis/timeseries-data.md" /%}}
   </div>
 </div>
