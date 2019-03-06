@@ -25,6 +25,13 @@ const appTypes = [
     "reads and writes to perform can be specified as a parameter.",
     options: [{"num_unique_keys": "1000000"}, {"num_reads": "-1"}, {"num_writes": "-1"},
     {"num_threads_read": "32"}, {"num_threads_write": "2"}]
+  },
+  { code: "SqlInserts", type: "ysql", title: "Sql Inserts",
+    description: "This app writes out 1M unique string keys each with a string value. There are multiple "+
+        "readers and writers that write these keys and read them indefinitely. Note that the number of " +
+        "reads and writes to perform can be specified as a parameter.",
+    options: [{"num_unique_keys": "1000000"}, {"num_reads": "-1"}, {"num_writes": "-1"},
+        {"num_threads_read": "32"}, {"num_threads_write": "2"}]
   }
 ];
 
@@ -42,7 +49,7 @@ export default class UniverseAppsModal extends Component {
   };
 
   render() {
-    const { nodeDetails } = this.props;
+    const { enableYSQL, nodeDetails } = this.props;
     const cassandraHosts = nodeDetails.map(function(nodeDetail) {
       if (nodeDetail.state === "Live" && nodeDetail.cloudInfo && isValidObject(nodeDetail.cloudInfo.private_ip))
         return nodeDetail.cloudInfo.private_ip + ":" + nodeDetail.yqlServerRpcPort;
@@ -55,11 +62,32 @@ export default class UniverseAppsModal extends Component {
       else
         return null;
     }).filter(Boolean).join(",");
+    const ysqlHosts = nodeDetails.map(function(nodeDetail) {
+      if (nodeDetail.state === "Live" && nodeDetail.cloudInfo && isValidObject(nodeDetail.cloudInfo.private_ip))
+        return nodeDetail.cloudInfo.private_ip + ":" + nodeDetail.ysqlServerRpcPort;
+      else
+        return null;
+    }).filter(Boolean).join(",");
 
     const appTabs = appTypes.map(function(appType, idx) {
-      let hostPorts = cassandraHosts;
-      if (appType.type === "redis") {
-        hostPorts = redisHosts;
+      let hostPorts;
+      let betaFeature = "";
+
+      switch (appType.type) {
+        case "cassandra":
+          hostPorts = cassandraHosts;
+          break;
+        case "redis":
+          hostPorts = redisHosts;
+          break;
+        case "ysql":
+          hostPorts = ysqlHosts;
+          if (!enableYSQL)
+            betaFeature = "NOTE: This is a beta feature. If you want to try out the Sql Inserts app, " +
+                          "create a universe with YSQL enabled.";
+          break;
+        default:
+          break;
       }
 
       const appOptions = appType.options.map(function(option, idx) {
@@ -68,6 +96,7 @@ export default class UniverseAppsModal extends Component {
       });
       return (
         <Tab eventKey={idx} title={appType.title} key={appType.code}>
+          {betaFeature}
           <label className="app-description">{appType.description}</label>
           <YBCodeBlock label="Usage:">
             java -jar /opt/yugabyte/utils/yb-sample-apps.jar --workload {appType.code} --nodes {hostPorts}
