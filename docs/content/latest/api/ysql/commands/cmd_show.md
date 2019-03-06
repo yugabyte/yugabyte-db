@@ -21,15 +21,17 @@ showAsideToc: true
 
 ### Grammar
 ```
+show_stmt ::= SHOW { name | ALL }
 ```
 
 Where
+- `name` specifies the name of the parameter to be showed.
 
 ## Semantics
 
-### PRIMARY KEY
-
-## Examples
+- Although the values of a parameter can be set, showed, and reset, the effect of these parameters are not yet supported in YugaByte. The factory-settings or default behaviors will be used for the moment.
 
 ## See Also
+[`SET`](../cmd_set)
+[`RESET`](../cmd_reset)
 [Other PostgreSQL Statements](..)

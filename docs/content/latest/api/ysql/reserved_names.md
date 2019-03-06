@@ -1,8 +1,8 @@
 ---
 title: RESERVED NAMES
 linkTitle: Reserved Names
-description: List of RESERVED NAMES
-summary: List of RESERVED NAMES
+description: List of reserved names
+summary: List of reserved names
 image: /images/section_icons/api/pgsql.png
 menu:
   latest:
@@ -14,3 +14,18 @@ aliases:
 isTocNested: true
 showAsideToc: true
 ---
+
+YSQL reserved the following names for internal usage. Exception will be raised when these names are used even when they are double-quoted.
+
+| Names | Description |
+|-------|-------------|
+| `oid` | System column |
+| `tableoid` | System column |
+| `xmin` | System column |
+| `cmin` | System column |
+| `xmax` | System column |
+| `cmax` | System column |
+| `ctid` | System column |
+| `ybctid` | Virtual column |
+| Prefixed with `pg_` | System database objects |
+| Prefixed with `yb_` | System database objects |

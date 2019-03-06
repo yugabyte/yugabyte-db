@@ -61,7 +61,7 @@ postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1,
 Insert some rows.
 
 ```sql
-postgres=# INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
+postgres=# INSERT INTO sample VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
 
@@ -78,7 +78,7 @@ postgres=# SELECT * FROM sample ORDER BY k1;
   1 |  2 |  3 | a
   2 |  3 |  4 | b
   3 |  4 |  5 | c
-(2 rows)
+(3 rows)
 ```
 
 ## See Also

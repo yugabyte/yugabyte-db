@@ -15,21 +15,20 @@ showAsideToc: true
 
 ## Synopsis
 
+`SET CONSTRAINTS` command checks timing for current transaction.
+
 ## Syntax
 
 ### Diagram 
 
 ### Grammar
 ```
+set_constraints ::= SET CONSTRAINTS { ALL | name [, ...] } { DEFERRED | IMMEDIATE }
 ```
-
-Where
 
 ## Semantics
 
-### PRIMARY KEY
-
-## Examples
+- Attributes in `SET CONSTRAINTS` does not apply to `NOT NULL` and `CHECK` constraints.
 
 ## See Also
 [Other PostgreSQL Statements](..)

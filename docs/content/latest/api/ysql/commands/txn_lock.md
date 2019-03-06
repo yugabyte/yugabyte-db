@@ -15,21 +15,34 @@ showAsideToc: true
 
 ## Synopsis
 
+`LOCK` command locks a table.
+
 ## Syntax
 
 ### Diagram 
 
 ### Grammar
 ```
+lock_stmt ::= LOCK [ TABLE ] [ ONLY ] name [ * ] [, ...] [ IN lockmode MODE ] [ NOWAIT ]
+
+lockmode ::= { ACCESS SHARE |
+               ROW SHARE |
+               ROW EXCLUSIVE |
+               SHARE UPDATE EXCLUSIVE |
+               SHARE |
+               SHARE ROW EXCLUSIVE |
+               EXCLUSIVE |
+               ACCESS EXCLUSIVE }
 ```
 
 Where
+- name specifies an existing table to be locked.
 
 ## Semantics
 
-### PRIMARY KEY
-
-## Examples
+- Only `ACCESS SHARE` lock mode is supported at this time.
+- All other modes listed in `lockmode` are under development.
 
 ## See Also
+[`CREATE TABLE`](../ddl_create_table)
 [Other PostgreSQL Statements](..)

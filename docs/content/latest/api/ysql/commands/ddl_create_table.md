@@ -99,6 +99,7 @@ postgres=# CREATE TABLE cars (id int PRIMARY KEY, brand text CHECK (brand in ('X
 
 ## See Also
 [`DROP TABLE`](../ddl_drop_table)
+[`ALTER TABLE`](../ddl_alter_table)
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
 [Other PostgreSQL Statements](..)
