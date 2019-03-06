@@ -43,6 +43,10 @@ Command | Description |
 [`EXISTS`](exists/) | Check if the keys are present |
 [`EXPIRE`](expire/) | Set key timeout in seconds |
 [`EXPIREAT`](expireat/) | Set key timeout as timestamp |
+[`SET`](set/) | Write or overwrite a string value |
+[`SETEX`](setex/) | Write or overwrite a string value and set TTL in seconds |
+[`PSETEX`](psetex/) | Write or overwrite a string value and set TTL in milliseconds |
+[`SETRANGE`](setrange/) | Write a subsection of a string |
 [`GET`](get/) | Read string value |
 [`GETRANGE`](getrange/) | Read substring |
 [`GETSET`](getset/) | Atomically read and write a string |
@@ -67,8 +71,6 @@ Command | Description |
 <b> Set Data Type </b>|
 [`SADD`](sadd/) | Add entries to a set |
 [`SCARD`](scard/) | Read the number of entries in a set |
-[`SET`](set/) | Write or overwrite a string value |
-[`SETRANGE`](setrange/) | Write a subsection of a string |
 [`SISMEMBER`](sismember/) | Check if the members are present in a set |
 [`SMEMBERS`](smembers/) | Read all members of a set |
 [`SREM`](srem/) | Remove members from a set |
