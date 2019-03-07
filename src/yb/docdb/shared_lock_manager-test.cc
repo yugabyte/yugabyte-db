@@ -46,11 +46,11 @@ class SharedLockManagerTest : public YBTest {
  protected:
   SharedLockManager lm_;
 
-  LockBatch TestLockBatch() {
+  LockBatch TestLockBatch(CoarseTimePoint deadline = CoarseTimePoint::max()) {
     return LockBatch(&lm_, {
         {kKey1, IntentTypeSet({IntentType::kStrongWrite, IntentType::kStrongRead})},
         {kKey2, IntentTypeSet({IntentType::kStrongWrite, IntentType::kStrongRead})}},
-        CoarseTimePoint::max());
+        deadline);
   }
 };
 
@@ -70,26 +70,46 @@ TEST_F(SharedLockManagerTest, LockBatchMoveConstructor) {
   LockBatch lb = TestLockBatch();
   EXPECT_EQ(2, lb.size());
   EXPECT_FALSE(lb.empty());
+  ASSERT_OK(lb.status());
+
+  LockBatch lb_fail = TestLockBatch(CoarseMonoClock::now() + 10ms);
+  ASSERT_FALSE(lb_fail.status().ok());
+  ASSERT_TRUE(lb_fail.empty());
 
   LockBatch lb2(std::move(lb));
   EXPECT_EQ(2, lb2.size());
   EXPECT_FALSE(lb2.empty());
+  ASSERT_OK(lb2.status());
 
   // lb has been moved from and is now empty
   EXPECT_EQ(0, lb.size());
   EXPECT_TRUE(lb.empty());
+  ASSERT_OK(lb.status());
+
+  LockBatch lb_fail2(std::move(lb_fail));
+  ASSERT_FALSE(lb_fail2.status().ok());
+  ASSERT_TRUE(lb_fail2.empty());
 }
 
 TEST_F(SharedLockManagerTest, LockBatchMoveAssignment) {
   LockBatch lb = TestLockBatch();
 
+  LockBatch lb_fail = TestLockBatch(CoarseMonoClock::now() + 10ms);
+  ASSERT_FALSE(lb_fail.status().ok());
+  ASSERT_TRUE(lb_fail.empty());
+
   LockBatch lb2 = std::move(lb);
   EXPECT_EQ(2, lb2.size());
   EXPECT_FALSE(lb2.empty());
+  ASSERT_OK(lb2.status());
 
   // lb has been moved from and is now empty
   EXPECT_EQ(0, lb.size());
   EXPECT_TRUE(lb.empty());
+
+  LockBatch lb_fail2 = std::move(lb_fail);
+  ASSERT_FALSE(lb_fail2.status().ok());
+  ASSERT_TRUE(lb_fail2.empty());
 }
 
 TEST_F(SharedLockManagerTest, LockBatchReset) {

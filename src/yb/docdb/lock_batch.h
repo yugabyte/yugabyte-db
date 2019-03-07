@@ -64,12 +64,12 @@ class LockBatch {
   LockBatch& operator=(const LockBatch&) = delete;
 
   // @return the number of keys in this batch
-  size_t size() const { return key_to_type_.size(); }
+  size_t size() const { return data_.key_to_type.size(); }
 
   // @return whether the batch is empty. This is also used for checking if the batch is locked.
-  bool empty() const { return key_to_type_.empty(); }
+  bool empty() const { return data_.key_to_type.empty(); }
 
-  const Status& status() const { return status_; }
+  const Status& status() const { return data_.status; }
 
   // Unlocks this batch if it is non-empty.
   void Reset();
@@ -77,13 +77,25 @@ class LockBatch {
  private:
   void MoveFrom(LockBatch* other);
 
-  LockBatchEntries key_to_type_;
+  struct Data {
+    Data() = default;
+    Data(LockBatchEntries&& key_to_type_, SharedLockManager* shared_lock_manager_) :
+      key_to_type(std::move(key_to_type_)), shared_lock_manager(shared_lock_manager_) {}
 
-  // A LockBatch is associated with a SharedLockManager instance the moment it is locked, and this
-  // field is set back to nullptr when the batch is unlocked.
-  SharedLockManager* shared_lock_manager_ = nullptr;
+    Data(Data&&) = default;
+    Data& operator=(Data&& other) = default;
 
-  Status status_;
+    Data(const Data&) = delete;
+    Data& operator=(const Data&) = delete;
+
+    LockBatchEntries key_to_type;
+
+    SharedLockManager* shared_lock_manager = nullptr;
+
+    Status status;
+  };
+
+  Data data_;
 };
 
 }  // namespace docdb
