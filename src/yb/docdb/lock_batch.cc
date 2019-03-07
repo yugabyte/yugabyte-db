@@ -22,12 +22,11 @@ namespace docdb {
 
 LockBatch::LockBatch(SharedLockManager* lock_manager, LockBatchEntries&& key_to_intent_type,
                      CoarseTimePoint deadline)
-    : key_to_type_(std::move(key_to_intent_type)),
-      shared_lock_manager_(lock_manager) {
-  if (!empty() && !lock_manager->Lock(&key_to_type_, deadline)) {
-    shared_lock_manager_ = nullptr;
-    key_to_type_.clear();
-    status_ = STATUS_FORMAT(TimedOut, "Failed to obtain locks until deadline: $0", deadline);
+    : data_(std::move(key_to_intent_type), lock_manager) {
+  if (!empty() && !lock_manager->Lock(&data_.key_to_type, deadline)) {
+    data_.shared_lock_manager = nullptr;
+    data_.key_to_type.clear();
+    data_.status = STATUS_FORMAT(TimedOut, "Failed to obtain locks until deadline: $0", deadline);
   }
 }
 
@@ -38,17 +37,17 @@ LockBatch::~LockBatch() {
 void LockBatch::Reset() {
   if (!empty()) {
     VLOG(1) << "Auto-unlocking a LockBatch with " << size() << " keys";
-    DCHECK_NOTNULL(shared_lock_manager_)->Unlock(key_to_type_);
-    key_to_type_.clear();
+    DCHECK_NOTNULL(data_.shared_lock_manager)->Unlock(data_.key_to_type);
+    data_.key_to_type.clear();
   }
 }
 
 void LockBatch::MoveFrom(LockBatch* other) {
   Reset();
-  key_to_type_ = std::move(other->key_to_type_);
-  shared_lock_manager_ = other->shared_lock_manager_;
-  other->key_to_type_.clear();
-  other->shared_lock_manager_ = nullptr;
+  data_ = std::move(other->data_);
+  // Explicitly clear other key_to_type to avoid extra unlock when it is destructed. We use
+  // key_to_type emptiness to mark that it does not hold a lock.
+  other->data_.key_to_type.clear();
 }
 
 
