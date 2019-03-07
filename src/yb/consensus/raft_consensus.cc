@@ -2346,8 +2346,9 @@ MicrosTime RaftConsensus::MajorityReplicatedHtLeaseExpiration(
   return state_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline);
 }
 
-std::string RaftConsensus::GetRequestVoteLogPrefix() const {
-  return state_->LogPrefix() + "Leader election vote request";
+std::string RaftConsensus::GetRequestVoteLogPrefix(const VoteRequestPB& request) const {
+  return Format("$0 Leader $1election vote request",
+                state_->LogPrefix(), request.preelection() ? "pre-" : "");
 }
 
 void RaftConsensus::FillVoteResponseVoteGranted(
@@ -2368,7 +2369,7 @@ Status RaftConsensus::RequestVoteRespondInvalidTerm(const VoteRequestPB* request
   FillVoteResponseVoteDenied(ConsensusErrorPB::INVALID_TERM, response);
   string msg = Substitute("$0: Denying vote to candidate $1 for earlier term $2. "
                           "Current term is $3.",
-                          GetRequestVoteLogPrefix(),
+                          GetRequestVoteLogPrefix(*request),
                           request->candidate_uuid(),
                           request->candidate_term(),
                           state_->GetCurrentTermUnlocked());
@@ -2382,7 +2383,7 @@ Status RaftConsensus::RequestVoteRespondVoteAlreadyGranted(const VoteRequestPB* 
   FillVoteResponseVoteGranted(*request, response);
   LOG(INFO) << Substitute("$0: Already granted yes vote for candidate $1 in term $2. "
                           "Re-sending same reply.",
-                          GetRequestVoteLogPrefix(),
+                          GetRequestVoteLogPrefix(*request),
                           request->candidate_uuid(),
                           request->candidate_term());
   return Status::OK();
@@ -2393,7 +2394,7 @@ Status RaftConsensus::RequestVoteRespondAlreadyVotedForOther(const VoteRequestPB
   FillVoteResponseVoteDenied(ConsensusErrorPB::ALREADY_VOTED, response);
   string msg = Substitute("$0: Denying vote to candidate $1 in current term $2: "
                           "Already voted for candidate $3 in this term.",
-                          GetRequestVoteLogPrefix(),
+                          GetRequestVoteLogPrefix(*request),
                           request->candidate_uuid(),
                           state_->GetCurrentTermUnlocked(),
                           state_->GetVotedForCurrentTermUnlocked());
@@ -2409,7 +2410,7 @@ Status RaftConsensus::RequestVoteRespondLastOpIdTooOld(const OpId& local_last_lo
   string msg = Substitute("$0: Denying vote to candidate $1 for term $2 because "
                           "replica has last-logged OpId of $3, which is greater than that of the "
                           "candidate, which has last-logged OpId of $4.",
-                          GetRequestVoteLogPrefix(),
+                          GetRequestVoteLogPrefix(*request),
                           request->candidate_uuid(),
                           request->candidate_term(),
                           local_last_logged_opid.ShortDebugString(),
@@ -2425,7 +2426,7 @@ Status RaftConsensus::RequestVoteRespondLeaderIsAlive(const VoteRequestPB* reque
   std::string msg = Format(
       "$0: Denying vote to candidate $1 for term $2 because replica is either leader or believes a "
       "valid leader to be alive. Time left: $3",
-      GetRequestVoteLogPrefix(), request->candidate_uuid(), request->candidate_term(),
+      GetRequestVoteLogPrefix(*request), request->candidate_uuid(), request->candidate_term(),
       withhold_votes_until_ - MonoTime::Now());
   LOG(INFO) << msg;
   StatusToPB(STATUS(InvalidArgument, msg), response->mutable_consensus_error()->mutable_status());
@@ -2438,7 +2439,7 @@ Status RaftConsensus::RequestVoteRespondIsBusy(const VoteRequestPB* request,
   string msg = Substitute("$0: Denying vote to candidate $1 for term $2 because "
                           "replica is already servicing an update from a current leader "
                           "or another vote.",
-                          GetRequestVoteLogPrefix(),
+                          GetRequestVoteLogPrefix(*request),
                           request->candidate_uuid(),
                           request->candidate_term());
   LOG(INFO) << msg;
@@ -2465,7 +2466,7 @@ Status RaftConsensus::RequestVoteRespondVoteGranted(const VoteRequestPB* request
   SnoozeFailureDetector(DO_NOT_LOG, additional_backoff);
 
   LOG(INFO) << Substitute("$0: Granting yes vote for candidate $1 in term $2.",
-                          GetRequestVoteLogPrefix(),
+                          GetRequestVoteLogPrefix(*request),
                           request->candidate_uuid(),
                           state_->GetCurrentTermUnlocked());
   return Status::OK();

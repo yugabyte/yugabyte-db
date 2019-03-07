@@ -265,6 +265,13 @@ class Messenger : public ProxyContext {
     return *rpc_metrics_;
   }
 
+  // Use specified IP address as base address for outbound connections from messenger.
+  void TEST_SetOutboundIpBase(const IpAddress& value) {
+    test_outbound_ip_base_ = value;
+  }
+
+  bool TEST_ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &remote);
+
  private:
   FRIEND_TEST(TestRpc, TestConnectionKeepalive);
   friend class DelayedTask;
@@ -279,14 +286,14 @@ class Messenger : public ProxyContext {
   // 'retain_self_' for more info.
   void AllExternalReferencesDropped();
 
-  bool ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &remote);
-  bool ShouldArtificiallyRejectOutgoingCallsTo(const IpAddress &remote);
   void BreakConnectivity(const IpAddress& address, bool incoming, bool outgoing);
   void RestoreConnectivity(const IpAddress& address, bool incoming, bool outgoing);
 
   // Take ownership of the socket via Socket::Release
   void RegisterInboundSocket(
       const ConnectionContextFactoryPtr& factory, Socket *new_socket, const Endpoint& remote);
+
+  bool TEST_ShouldArtificiallyRejectOutgoingCallsTo(const IpAddress &remote);
 
   const std::string name_;
 
@@ -383,6 +390,9 @@ class Messenger : public ProxyContext {
   AtomicUniquePtr<rpc::ThreadPool> high_priority_thread_pool_;
 
   std::unique_ptr<RpcMetrics> rpc_metrics_;
+
+  // Use this IP address as base address for outbound connections from messenger.
+  IpAddress test_outbound_ip_base_;
 
   #ifndef NDEBUG
   // This is so we can log where exactly a Messenger was instantiated to better diagnose a CHECK

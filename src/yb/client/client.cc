@@ -160,6 +160,8 @@ DEFINE_bool(client_suppress_created_logs, false,
 TAG_FLAG(client_suppress_created_logs, advanced);
 TAG_FLAG(client_suppress_created_logs, hidden);
 
+DECLARE_bool(running_test);
+
 namespace yb {
 namespace client {
 
@@ -397,6 +399,10 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
     builder.set_metric_entity(data_->metric_entity_);
     builder.UseDefaultConnectionContextFactory(data_->parent_mem_tracker_);
     c->data_->messenger_ = VERIFY_RESULT(builder.Build());
+
+    if (FLAGS_running_test) {
+      c->data_->messenger_->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress("127.0.0.1")));
+    }
   }
   c->data_->proxy_cache_ = std::make_unique<rpc::ProxyCache>(c->data_->messenger_);
   c->data_->metric_entity_ = data_->metric_entity_;

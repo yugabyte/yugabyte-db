@@ -125,7 +125,8 @@ class Tunnel::Impl {
         << "Tunnel shutdown has not been started";
   }
 
-  CHECKED_STATUS Start(const Endpoint& local, const Endpoint& remote) {
+  CHECKED_STATUS Start(const Endpoint& local, const Endpoint& remote,
+                       AddressChecker address_checker) {
     auto acceptor = std::make_shared<boost::asio::ip::tcp::acceptor>(io_context_);
     boost::system::error_code ec;
 
@@ -147,9 +148,11 @@ class Tunnel::Impl {
     if (ec) {
       return STATUS_FORMAT(NetworkError, "Listen failed: $0", ec.message());
     }
-    strand_.dispatch([this, acceptor, local, remote]() {
+    strand_.dispatch([
+        this, acceptor, local, remote, address_checker]() {
       local_ = local;
       remote_ = remote;
+      address_checker_ = address_checker;
       acceptor_.emplace(std::move(*acceptor));
       StartAccept();
     });
@@ -191,6 +194,14 @@ class Tunnel::Impl {
       return;
     }
 
+    if (!CheckAddress()) {
+      boost::system::error_code ec;
+      socket_->close(ec);
+      LOG_IF(WARNING, ec) << "Close failed: " << ec.message();
+      StartAccept();
+      return;
+    }
+
     auto connection = std::make_shared<TunnelConnection>(socket_.get_ptr());
     connection->Start(remote_);
     bool found = false;
@@ -208,8 +219,25 @@ class Tunnel::Impl {
     StartAccept();
   }
 
+  bool CheckAddress() {
+    if (!address_checker_) {
+      return true;
+    }
+
+    boost::system::error_code ec;
+    auto endpoint = socket_->remote_endpoint(ec);
+
+    if (ec) {
+      LOG(WARNING) << "Cannot get remote endpoint: " << ec.message();
+      return true;
+    }
+
+    return address_checker_(endpoint.address());
+  }
+
   boost::asio::io_context& io_context_;
   boost::asio::io_context::strand strand_;
+  AddressChecker address_checker_;
   Endpoint local_;
   Endpoint remote_;
   boost::optional<boost::asio::ip::tcp::acceptor> acceptor_;
@@ -224,8 +252,9 @@ Tunnel::Tunnel(boost::asio::io_context* io_context) : impl_(new Impl(io_context)
 Tunnel::~Tunnel() {
 }
 
-Status Tunnel::Start(const Endpoint& local, const Endpoint& remote) {
-  return impl_->Start(local, remote);
+Status Tunnel::Start(const Endpoint& local, const Endpoint& remote,
+                     AddressChecker address_checker) {
+  return impl_->Start(local, remote, std::move(address_checker));
 }
 
 void Tunnel::Shutdown() {

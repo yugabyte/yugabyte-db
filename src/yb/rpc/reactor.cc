@@ -534,15 +534,23 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
 
   // Create a new socket and start connecting to the remote.
   auto sock = VERIFY_RESULT(CreateClientSocket(conn_id.remote()));
-  if (FLAGS_local_ip_for_outbound_sockets.empty()) {
+  if (!messenger_->test_outbound_ip_base_.is_unspecified()) {
+    auto address_bytes(messenger_->test_outbound_ip_base_.to_v4().to_bytes());
+    // Use different addresses for public/private endpoints.
+    // Private addresses are even, and public are odd.
+    // So if base address is "private" and destination address is "public" we will modify
+    // originating address to be "public" also.
+    address_bytes[3] |= conn_id.remote().address().to_v4().to_bytes()[3] & 1;
+    boost::asio::ip::address_v4 outbound_address(address_bytes);
+    auto status = sock.Bind(Endpoint(outbound_address, 0));
+    LOG_IF(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: " << status;
+  } else if (FLAGS_local_ip_for_outbound_sockets.empty()) {
     auto outbound_address = conn_id.remote().address().is_v6()
         ? messenger_->outbound_address_v6()
         : messenger_->outbound_address_v4();
     if (!outbound_address.is_unspecified()) {
-      auto status = sock.Bind(Endpoint(outbound_address, 0), /* explain_addr_in_use */ false);
-      if (!status.ok()) {
-        LOG(WARNING) << "Bind " << outbound_address << " failed: " << status.ToString();
-      }
+      auto status = sock.Bind(Endpoint(outbound_address, 0));
+      LOG_IF(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: " << status;
     }
   }
 

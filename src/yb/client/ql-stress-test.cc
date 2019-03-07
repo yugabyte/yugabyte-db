@@ -39,6 +39,7 @@
 DECLARE_double(respond_write_failed_probability);
 DECLARE_bool(detect_duplicates_for_retryable_requests);
 DECLARE_int32(raft_heartbeat_interval_ms);
+DECLARE_bool(combine_batcher_errors);
 
 using namespace std::literals;
 
@@ -479,6 +480,75 @@ TEST_F_EX(QLStressTest, FlushCompact, QLStressTestSingleTablet) {
     ASSERT_NO_FATALS(VerifyFlushedFrontiers());
   }
   ASSERT_GE(num_iter, 5);
+}
+
+// The scenario of this test is the following:
+// We do writes in background.
+// Isolate leader for 10 seconds.
+// Restore connectivity.
+// Check that old leader was able to catch up after the partition is healed.
+TEST_F_EX(QLStressTest, OldLeaderCatchUpAfterNetworkPartition, QLStressTestSingleTablet) {
+  FLAGS_combine_batcher_errors = true;
+
+  tablet::TabletPeer* leader_peer = nullptr;
+  std::atomic<int> key(0);
+  {
+    std::atomic<bool> stop(false);
+
+    std::thread writer([this, &stop, &key] {
+      auto session = NewSession();
+      std::string value_prefix = "value_";
+      while (!stop.load(std::memory_order_acquire)) {
+        ASSERT_OK(WriteRow(session, key, value_prefix + std::to_string(key)));
+        ++key;
+      }
+    });
+
+    BOOST_SCOPE_EXIT(&stop, &writer) {
+      stop.store(true);
+      writer.join();
+    } BOOST_SCOPE_EXIT_END;
+
+    tserver::MiniTabletServer* leader = nullptr;
+    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto current = cluster_->mini_tablet_server(i);
+      auto peers = current->server()->tablet_manager()->GetTabletPeers();
+      ASSERT_EQ(peers.size(), 1);
+      if (peers.front()->LeaderStatus() != consensus::LeaderStatus::NOT_LEADER) {
+        leader = current;
+        leader_peer = peers.front().get();
+        break;
+      }
+    }
+
+    ASSERT_NE(leader, nullptr);
+
+    std::this_thread::sleep_for(5s * yb::kTimeMultiplier);
+
+    auto pre_isolate_op_id = leader_peer->GetLatestLogEntryOpId();
+    LOG(INFO) << "Isolate, last op id: " << pre_isolate_op_id << ", key: " << key;
+    ASSERT_EQ(pre_isolate_op_id.term, 1);
+    ASSERT_GT(pre_isolate_op_id.index, key);
+    leader->SetIsolated(true);
+    std::this_thread::sleep_for(10s * yb::kTimeMultiplier);
+
+    auto pre_restore_op_id = leader_peer->GetLatestLogEntryOpId();
+    LOG(INFO) << "Restore, last op id: " << pre_restore_op_id << ", key: " << key;
+    ASSERT_EQ(pre_restore_op_id.term, 1);
+    ASSERT_GE(pre_restore_op_id.index, pre_isolate_op_id.index);
+    ASSERT_LE(pre_restore_op_id.index, pre_isolate_op_id.index + 10);
+    leader->SetIsolated(false);
+    std::this_thread::sleep_for(5s * yb::kTimeMultiplier);
+  }
+
+  ASSERT_OK(WaitFor([leader_peer, &key] {
+    return leader_peer->GetLatestLogEntryOpId().index > key;
+  }, 5s, "Old leader has enough operations"));
+
+  auto finish_op_id = leader_peer->GetLatestLogEntryOpId();
+  LOG(INFO) << "Finish, last op id: " << finish_op_id << ", key: " << key;
+  ASSERT_GT(finish_op_id.term, 1);
+  ASSERT_GT(finish_op_id.index, key);
 }
 
 } // namespace client

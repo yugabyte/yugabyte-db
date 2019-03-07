@@ -22,6 +22,8 @@
 namespace yb {
 namespace client {
 
+YB_STRONGLY_TYPED_BOOL(AutoStart);
+
 class AsyncClientInitialiser {
  public:
   AsyncClientInitialiser(
@@ -34,6 +36,8 @@ class AsyncClientInitialiser {
   ~AsyncClientInitialiser();
 
   void Shutdown() { stopping_ = true; }
+
+  void Start();
 
   const std::shared_ptr<client::YBClient>& client() const;
   const std::shared_future<client::YBClientPtr>& get_client_future() const {

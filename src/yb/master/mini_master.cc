@@ -135,7 +135,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
 
   master_.swap(server);
 
-  server::TEST_BreakConnectivity(master_->messenger().get(), index_);
+  server::TEST_SetupConnectivity(master_->messenger().get(), index_);
 
   tunnel_ = std::make_unique<Tunnel>(&master_->messenger()->io_service());
   std::vector<Endpoint> local;

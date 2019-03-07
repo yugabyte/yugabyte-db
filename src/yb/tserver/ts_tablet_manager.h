@@ -137,6 +137,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Upon return of this method all existing tablets are registered, but
   // the bootstrap is performed asynchronously.
   CHECKED_STATUS Init();
+  CHECKED_STATUS Start();
 
   // Waits for all the bootstraps to complete.
   // Returns Status::OK if all tablets bootstrapped successfully. If

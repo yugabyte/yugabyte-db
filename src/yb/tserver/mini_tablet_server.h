@@ -122,6 +122,8 @@ class MiniTabletServer {
 
   void FailHeartbeats();
 
+  void SetIsolated(bool isolated);
+
  private:
   bool started_;
   TabletServerOptions opts_;

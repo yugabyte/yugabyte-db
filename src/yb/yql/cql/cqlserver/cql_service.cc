@@ -84,6 +84,8 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts,
       "",
       Substitute("SELECT $0, $1 FROM system_auth.roles WHERE role = ?",
                  kRoleColumnNameSaltedHash, kRoleColumnNameCanLogin));
+
+  async_client_init_.Start();
 }
 
 CQLServiceImpl::~CQLServiceImpl() {

@@ -272,7 +272,7 @@ void Messenger::BreakConnectivity(const IpAddress& address, bool incoming, bool 
   LOG(INFO) << "TEST: Break " << (incoming ? "incoming" : "") << "/" << (outgoing ? "outgoing" : "")
             << " connectivity with: " << address;
 
-  std::unique_ptr<CountDownLatch> latch;
+  boost::optional<CountDownLatch> latch;
   {
     std::lock_guard<percpu_rwlock> guard(lock_);
     if (broken_connectivity_from_.empty() || broken_connectivity_to_.empty()) {
@@ -287,7 +287,7 @@ void Messenger::BreakConnectivity(const IpAddress& address, bool incoming, bool 
       inserted_to = broken_connectivity_to_.insert(address).second;
     }
     if (inserted_from || inserted_to) {
-      latch.reset(new CountDownLatch(reactors_.size()));
+      latch.emplace(reactors_.size());
       for (auto* reactor : reactors_) {
         auto scheduled = reactor->ScheduleReactorTask(MakeFunctorReactorTask(
             [&latch, address, incoming, outgoing](Reactor* reactor) {
@@ -340,7 +340,7 @@ void Messenger::RestoreConnectivity(const IpAddress& address, bool incoming, boo
   }
 }
 
-bool Messenger::ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &remote) {
+bool Messenger::TEST_ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &remote) {
   if (has_broken_connectivity_.load(std::memory_order_acquire)) {
     shared_lock<rw_spinlock> guard(lock_.get_lock());
     return broken_connectivity_from_.count(remote) != 0;
@@ -348,7 +348,7 @@ bool Messenger::ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &remot
   return false;
 }
 
-bool Messenger::ShouldArtificiallyRejectOutgoingCallsTo(const IpAddress &remote) {
+bool Messenger::TEST_ShouldArtificiallyRejectOutgoingCallsTo(const IpAddress &remote) {
   if (has_broken_connectivity_.load(std::memory_order_acquire)) {
     shared_lock<rw_spinlock> guard(lock_.get_lock());
     return broken_connectivity_to_.count(remote) != 0;
@@ -456,7 +456,7 @@ void Messenger::QueueOutboundCall(OutboundCallPtr call) {
   const auto& remote = call->conn_id().remote();
   Reactor *reactor = RemoteToReactor(remote, call->conn_id().idx());
 
-  if (ShouldArtificiallyRejectOutgoingCallsTo(remote.address())) {
+  if (TEST_ShouldArtificiallyRejectOutgoingCallsTo(remote.address())) {
     VLOG(1) << "TEST: Rejected connection to " << remote;
     auto scheduled = reactor->ScheduleReactorTask(std::make_shared<NotifyDisconnectedReactorTask>(
         call, SOURCE_LOCATION()));
@@ -502,7 +502,7 @@ void Messenger::Handle(InboundCallPtr call) {
 
 void Messenger::RegisterInboundSocket(
     const ConnectionContextFactoryPtr& factory, Socket *new_socket, const Endpoint& remote) {
-  if (ShouldArtificiallyRejectIncomingCallsFrom(remote.address())) {
+  if (TEST_ShouldArtificiallyRejectIncomingCallsFrom(remote.address())) {
     auto status = new_socket->Close();
     VLOG(1) << "TEST: Rejected connection from " << remote
             << ", close status: " << status.ToString();
