@@ -43,8 +43,18 @@
 set -euo pipefail
 readonly YB_COMPLETED_TEST_FLAG_DIR=/tmp/yb_completed_tests
 
+declare -i process_tree_supervisor_pid=0
+process_supervisor_log_path=""
+
 cleanup() {
   local exit_code=$?
+
+  # In the most commen case, we will call the stop_process_tree_supervisor function earlier, before
+  # the test logs have been deleted and while we still have a chance to patch up the JUnit-style XML
+  # file. However, we also call it once again here just in case.
+  stop_process_tree_supervisor
+
+  # Yet another approach to garbage-collecting stuck processes, based on the command line pattern.
   kill_stuck_processes
   if [[ -n ${YB_TEST_INVOCATION_ID:-} ]]; then
     mkdir -p /tmp/yb_completed_tests
@@ -53,6 +63,7 @@ cleanup() {
   if [[ $exit_code -eq 0 ]] && "$killed_stuck_processes"; then
     exit_code=1
   fi
+
   exit "$exit_code"
 }
 
@@ -65,6 +76,9 @@ is_run_test_script=true
 
 . "${BASH_SOURCE%/*}/common-build-env.sh"
 . "${BASH_SOURCE%/*}/common-test-env.sh"
+yb_readonly_virtualenv=true
+
+activate_virtualenv
 
 detect_edition
 
@@ -81,7 +95,18 @@ echo "Test is running on host $HOSTNAME, arguments: $*"
 
 set_java_home
 set_test_invocation_id
+
 trap cleanup EXIT
+
+readonly process_supervisor_log_path=\
+${TEST_TMPDIR:-/tmp}/yb_process_supervisor_for_pid_$$__$RANDOM.log
+
+"$YB_SRC_ROOT/python/yb/process_tree_supervisor.py" \
+  --pid $$ \
+  --terminate-subtree \
+  --timeout-sec "$PROCESS_TREE_SUPERVISOR_TEST_TIMEOUT_SEC" \
+  --log-to-file "$process_supervisor_log_path" &
+process_tree_supervisor_pid=$!
 
 if [[ -z ${BUILD_ROOT:-} ]]; then
   handle_build_root_from_current_dir

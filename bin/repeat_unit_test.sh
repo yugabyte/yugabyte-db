@@ -267,7 +267,7 @@ $RANDOM.$RANDOM.$RANDOM.$$
     determine_test_timeout
   fi
 
-  # TODO: deduplicate the setup here against run_one_test() in common-test-env.sh.
+  # TODO: deduplicate the setup here against run_one_cxx_test() in common-test-env.sh.
   if "$is_java_test"; then
     test_wrapper_cmd_line=(
       "$YB_BUILD_SUPPORT_DIR"/run-test.sh "${positional_args[@]}"
