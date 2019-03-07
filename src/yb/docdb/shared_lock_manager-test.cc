@@ -162,51 +162,21 @@ TEST_F(SharedLockManagerTest, QuickLockUnlock) {
 TEST_F(SharedLockManagerTest, LockConflicts) {
   rpc::ThreadPool tp(rpc::ThreadPoolOptions{"test_pool"s, 10, 1});
 
-  struct ThreadPoolTask : public rpc::ThreadPoolTask {
-   public:
-    explicit ThreadPoolTask(SharedLockManager* lock_manager, IntentTypeSet set)
-        : lock_manager_(lock_manager), set_(set) {
-    }
-
-    virtual ~ThreadPoolTask() {}
-
-    void Run() override {
-      LockBatch lb(lock_manager_, {{kKey1, set_}}, CoarseTimePoint::max() /* deadline */);
-    }
-
-    void Done(const Status& status) override {
-      promise_.set_value(true);
-    }
-
-    std::future<bool> GetFuture() {
-      return promise_.get_future();
-    }
-
-   private:
-    SharedLockManager* lock_manager_;
-    IntentTypeSet set_;
-    std::promise<bool> promise_;
-  };
-
   for (size_t idx1 = 0; idx1 != kIntentTypeSetMapSize; ++idx1) {
     IntentTypeSet set1(idx1);
     SCOPED_TRACE(Format("Set1: $0", set1));
     for (size_t idx2 = 0; idx2 != kIntentTypeSetMapSize; ++idx2) {
       IntentTypeSet set2(idx2);
       SCOPED_TRACE(Format("Set2: $0", set2));
-      LockBatch lb(&lm_, {{kKey1, set1}}, CoarseTimePoint::max());
-      ThreadPoolTask task(&lm_, set2);
-      auto future = task.GetFuture();
-      tp.Enqueue(&task);
-      if (future.wait_for(200ms) == std::future_status::ready) {
+      LockBatch lb1(&lm_, {{kKey1, set1}}, CoarseTimePoint::max());
+      ASSERT_OK(lb1.status());
+      LockBatch lb2(&lm_, {{kKey1, set2}}, CoarseMonoClock::now());
+      if (lb2.status().ok()) {
         // Lock on set2 was taken fast enough, it means that sets should NOT conflict.
         ASSERT_FALSE(IntentTypeSetsConflict(set1, set2));
       } else {
         // Lock on set2 was taken not taken for too long, it means that sets should conflict.
         ASSERT_TRUE(IntentTypeSetsConflict(set1, set2));
-        // Release lock on set1 and check that set2 was successfully locked after it.
-        lb.Reset();
-        ASSERT_EQ(future.wait_for(200ms), std::future_status::ready);
       }
     }
   }
