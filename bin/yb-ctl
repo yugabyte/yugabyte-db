@@ -74,7 +74,6 @@ import shutil
 import random
 import json
 
-
 DAEMON_TYPE_MASTER = 'master'
 DAEMON_TYPE_TSERVER = 'tserver'
 
@@ -121,6 +120,10 @@ def adjust_env_for_postgres():
     for k in os.environ.keys():
         if k == 'LANG' or k.startswith('LC_'):
             del os.environ[k]
+
+
+def get_data_dir():
+    return os.path.join(os.environ['HOME'], 'yugabyte-data')
 
 
 class SetAndRestoreEnv:
@@ -224,7 +227,7 @@ class ClusterOptions:
         self.node_type = DAEMON_TYPE_TSERVER
         self.is_shell_master = False
         self.is_startup_command = False
-        self.enable_ysql = False
+        self.enable_ysql = True
 
     def parse_flag_args(self, flag_args):
         flags = [] if flag_args is None else flag_args.split(",")
@@ -267,8 +270,8 @@ class ClusterOptions:
         if hasattr(args, "master") and args.master:
             self.node_type = DAEMON_TYPE_MASTER
 
-        if hasattr(args, "enable_ysql"):
-            self.enable_ysql = args.enable_ysql
+        if hasattr(args, "disable_ysql"):
+            self.enable_ysql = not args.disable_ysql
 
     def validate_daemon_type(self, daemon_type):
         if daemon_type not in DAEMON_TYPES:
@@ -385,10 +388,10 @@ class ClusterControl:
             "--binary_dir", default=None,
             help="Specify a custom directory in which to find the yugabyte binaries.")
         self.parser.add_argument(
-            "--data_dir", default="/tmp/yugabyte-local-cluster",
+            "--data_dir", default=get_data_dir(),
             help="Specify a custom directory where to store data.")
         self.parser.add_argument(
-            "--replication_factor", "--rf", default=3, type=int,
+            "--replication_factor", "--rf", default=1, type=int,
             help="Replication factor for the cluster as well as default number of masters. ")
         self.parser.add_argument(
             "--require_clock_sync", default=False, type=bool,
@@ -452,7 +455,11 @@ class ClusterControl:
 
             subparsers[cmd].add_argument("--enable_ysql", "--enable_postgres",
                                          action='store_true',
-                                         help="Enable YugaByte PostgreSQL API.")
+                                         help="Enable YugaByte SQL API.")
+
+            subparsers[cmd].add_argument("--disable_ysql",
+                                         action='store_true',
+                                         help="Disable YugaByte SQL API.")
             ClusterControl.add_extra_flags_arguments(subparsers[cmd])
             self.options.is_startup_command = True
 
@@ -694,6 +701,13 @@ class ClusterControl:
                  "Commands to wipe out the old directory.").format(
                     self.options.cluster_base_dir))
 
+        if not os.access(
+                os.path.abspath(os.path.join(self.options.cluster_base_dir, '..')), os.W_OK):
+            raise ExitWithError(
+                ("No write permission on {}. "
+                 "Use --data_dir to specify a different data directory.").format(
+                    self.options.cluster_base_dir))
+
         os.makedirs(self.options.cluster_base_dir)
         self.for_all_daemons(self.start_daemon, server_counts_map)
 
@@ -925,21 +939,23 @@ class ClusterControl:
     def run_cluster_wide_postgres_initdb(self):
         initdb_binary_path = self.options.get_binary_path("initdb")
 
-        logging.info("Running initdb to initialize PostgreSQL metadata in the YugaByte cluster")
+        logging.info("Running initdb to initialize PostgreSQL metadata in the YugaByte cluster. "
+                     "This may take up to a minute.")
         with SetAndRestoreEnv(
             {'FLAGS_pggate_master_addresses': self.options.master_addresses,
              'YB_ENABLED_IN_POSTGRES': '1'}):
             adjust_env_for_postgres()
 
-            tmp_pg_data_dir = '/tmp/yb-ctl_tmp_pg_data_{}'.format(''.join(
-                [random.choice('0123456789abcdef') for _ in range(32)]))
+            tmp_pg_data_dir = os.path.join(get_data_dir(), 'yb-ctl_tmp_pg_data_{}'.format(''.join(
+                [random.choice('0123456789abcdef') for _ in range(32)])))
 
             try:
-                subprocess.check_call([
-                    initdb_binary_path,
-                    '-D', tmp_pg_data_dir,
-                    '-U', 'postgres'
-                ])
+                with open(os.devnull, 'w') as fnull:
+                    subprocess.check_call([
+                        initdb_binary_path,
+                        '-D', tmp_pg_data_dir,
+                        '-U', 'postgres'
+                    ], stdout=fnull, stderr=subprocess.STDOUT)
             finally:
                 if os.path.exists(tmp_pg_data_dir):
                     logging.info("Deleting temporary PostgreSQL data directory: %s",
