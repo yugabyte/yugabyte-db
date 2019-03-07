@@ -6,16 +6,7 @@ menu:
   v1.0:
     identifier: api-postgresql-type
     parent: api-postgresql
-<<<<<<< HEAD:content/v1.0/api/postgresql/type.md
     weight: 3300
-=======
-    weight: 3400
-aliases:
-  - /latest/api/postgresql/type
-  - /latest/api/ysql/type
-isTocNested: true
-showAsideToc: true
->>>>>>> Documentation for CREATE SEQUENCE:content/latest/api/ysql/type.md
 ---
 
 The following table lists all supported primitive types.
