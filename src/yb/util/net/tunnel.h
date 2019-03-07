@@ -21,6 +21,9 @@
 
 namespace yb {
 
+// Check that we should accept connections from specified address.
+typedef std::function<bool(const IpAddress&)> AddressChecker;
+
 // Tunnel that accepts connections at local endpoints and transparently transfer traffic
 // to remote endpoint.
 class Tunnel {
@@ -28,7 +31,11 @@ class Tunnel {
   explicit Tunnel(boost::asio::io_context* io_context);
   ~Tunnel();
 
-  CHECKED_STATUS Start(const Endpoint& local, const Endpoint& remote);
+  // Listen local and forward data to/from remote.
+  // If address_checker is specified, we use it to check whether we originating address of
+  // connection is acceptable.
+  CHECKED_STATUS Start(const Endpoint& local, const Endpoint& remote,
+                       AddressChecker address_checker = AddressChecker());
   void Shutdown();
 
  private:

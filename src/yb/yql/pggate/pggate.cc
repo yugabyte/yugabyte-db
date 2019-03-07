@@ -94,6 +94,8 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count)
     const YBCPgTypeEntity *type_entity = &YBCDataTypeArray[idx];
     type_map_[type_entity->type_oid] = type_entity;
   }
+
+  async_client_init_.Start();
 }
 
 PgApiImpl::~PgApiImpl() {

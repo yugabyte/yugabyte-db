@@ -560,11 +560,18 @@ string TEST_RpcBindEndpoint(int index, uint16_t port) {
   return Format("$0:$1", TEST_RpcAddress(index, Private::kTrue), port);
 }
 
-void TEST_BreakConnectivity(rpc::Messenger* messenger, int index) {
+constexpr int kMaxServers = 20;
+
+void TEST_SetupConnectivity(rpc::Messenger* messenger, int index) {
   if (!FLAGS_TEST_check_broadcast_address) {
     return;
   }
-  const int kMaxServers = 20;
+
+  CHECK_GE(index, 1);
+  CHECK_LE(index, kMaxServers);
+
+  messenger->TEST_SetOutboundIpBase(
+      CHECK_RESULT(HostToAddress(TEST_RpcAddress(index, Private::kTrue))));
   for (int i = 1; i <= kMaxServers; ++i) {
     // We group servers by 2. When servers belongs to the same group, they should use
     // private ip for communication, otherwise public ip should be used.
@@ -572,6 +579,17 @@ void TEST_BreakConnectivity(rpc::Messenger* messenger, int index) {
     auto broken_address = CHECK_RESULT(HostToAddress(TEST_RpcAddress(i, Private(!same_group))));
     LOG(INFO) << "Break " << index << " => " << broken_address;
     messenger->BreakConnectivityWith(broken_address);
+    auto working_address = CHECK_RESULT(HostToAddress(TEST_RpcAddress(i, Private(same_group))));
+    messenger->RestoreConnectivityWith(working_address);
+  }
+}
+
+void TEST_Isolate(rpc::Messenger* messenger) {
+  for (int i = 1; i <= kMaxServers; ++i) {
+    messenger->BreakConnectivityWith(
+        CHECK_RESULT(HostToAddress(TEST_RpcAddress(i, Private::kFalse))));
+    messenger->BreakConnectivityWith(
+        CHECK_RESULT(HostToAddress(TEST_RpcAddress(i, Private::kTrue))));
   }
 }
 

@@ -118,11 +118,12 @@ Status MiniTabletServer::Start() {
 
   gscoped_ptr<TabletServer> server(new YB_EDITION_NS_PREFIX TabletServer(opts_));
   RETURN_NOT_OK(server->Init());
+
+  server::TEST_SetupConnectivity(server->messenger().get(), index_);
+
   RETURN_NOT_OK(server->Start());
 
   server_.swap(server);
-
-  server::TEST_BreakConnectivity(server_->messenger().get(), index_);
 
   tunnel_ = std::make_unique<Tunnel>(&server_->messenger()->io_service());
   BOOST_SCOPE_EXIT(this_) {
@@ -134,10 +135,21 @@ Status MiniTabletServer::Start() {
   std::vector<Endpoint> local;
   RETURN_NOT_OK(opts_.broadcast_addresses[0].ResolveAddresses(&local));
   Endpoint remote = VERIFY_RESULT(ParseEndpoint(opts_.rpc_opts.rpc_bind_addresses, 0));
-  RETURN_NOT_OK(tunnel_->Start(local.front(), remote));
+  RETURN_NOT_OK(tunnel_->Start(
+      local.front(), remote, [messenger = server_->messenger()](const IpAddress& address) {
+    return !messenger->TEST_ShouldArtificiallyRejectIncomingCallsFrom(address);
+  }));
 
   started_ = true;
   return Status::OK();
+}
+
+void MiniTabletServer::SetIsolated(bool isolated) {
+  if (isolated) {
+    server::TEST_Isolate(server_->messenger().get());
+  } else {
+    server::TEST_SetupConnectivity(server_->messenger().get(), index_);
+  }
 }
 
 Status MiniTabletServer::WaitStarted() {

@@ -407,7 +407,7 @@ void WriteRpc::CallRemoteMethod() {
   ADOPT_TRACE(trace.get());
 
   tablet_invoker_.proxy()->WriteAsync(
-      req_, &resp_, PrepareController(MonoDelta::kMax),
+      req_, &resp_, PrepareController(),
       std::bind(&WriteRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
