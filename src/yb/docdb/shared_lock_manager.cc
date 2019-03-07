@@ -103,7 +103,7 @@ bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs) {
 
 struct LockedBatchEntry {
   // Taken only for short duration, with no blocking wait.
-  std::mutex mutex;
+  mutable std::mutex mutex;
 
   std::condition_variable cond_var;
 
@@ -119,12 +119,24 @@ struct LockedBatchEntry {
   MUST_USE_RESULT bool Lock(IntentTypeSet lock, CoarseTimePoint deadline);
 
   void Unlock(IntentTypeSet lock);
+
+  std::string ToString() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return Format("{ ref_count: $0 num_holding: $1 num_waiters: $2 }",
+                  ref_count, num_holding.load(std::memory_order_acquire),
+                  num_waiters.load(std::memory_order_acquire));
+  }
 };
 
 class SharedLockManager::Impl {
  public:
   MUST_USE_RESULT bool Lock(LockBatchEntries* key_to_intent_type, CoarseTimePoint deadline);
   void Unlock(const LockBatchEntries& key_to_intent_type);
+
+  ~Impl() {
+    std::lock_guard<std::mutex> lock(global_mutex_);
+    LOG_IF(DFATAL, !locks_.empty()) << "Locks not empty in dtor: " << yb::ToString(locks_);
+  }
 
  private:
   typedef std::unordered_map<RefCntPrefix, LockedBatchEntry*, RefCntPrefixHash> LockEntryMap;
@@ -252,6 +264,7 @@ bool SharedLockManager::Impl::Lock(LockBatchEntries* key_to_intent_type, CoarseT
         --it;
         it->locked->Unlock(it->intent_types);
       }
+      Cleanup(*key_to_intent_type);
       return false;
     }
   }

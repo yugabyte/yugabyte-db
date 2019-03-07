@@ -176,6 +176,8 @@ class RefCntPrefix {
     return r;
   }
 
+  std::string ShortDebugString() const;
+
  private:
   RefCntBuffer bytes_;
   size_t size_;
