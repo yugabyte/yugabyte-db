@@ -4,7 +4,7 @@ linkTitle: SETEX
 description: SETEX
 menu:
   latest:
-    parent: api-redis
+    parent: api-yedis
     weight: 2271
 aliases:
   - /latest/api/redis/setex
