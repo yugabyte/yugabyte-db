@@ -4,11 +4,10 @@ summary: Create a sequence in the current schema
 description: CREATE SEQUENCE
 menu:
   latest:
-    identifier: api-postgresql-create-sequence
-    parent: api-postgresql-sequences
+    identifier: api-ysql-commands-create-sequence
+    parent: api-ysql-commands
 aliases:
-  - /latest/api/postgresql/create_sequence
-  - /latest/api/ysql/create_sequence
+  - /latest/api/ysql/commands/ddl_create_sequence
 isTocNested: true
 showAsideToc: true
 ---

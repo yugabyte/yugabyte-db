@@ -4,11 +4,10 @@ summary: Drop a sequence in the current schema
 description: DROP SEQUENCE
 menu:
   latest:
-    identifier: api-postgresql-drop-sequence
-    parent: api-postgresql-sequences
+    identifier: api-ysql-commands-drop-sequence
+    parent: api-ysql-commands
 aliases:
-  - /latest/api/postgresql/drop_sequence
-  - /latest/api/ysql/drop_sequence
+  - /latest/api/ysql/commands/drop_sequence
 isTocNested: true
 showAsideToc: true
 ---
@@ -95,7 +94,7 @@ DROP SEQUENCE
 ```
 
 ## See Also
-[`CREATE SEQUENCE`](../create_sequence)
+[`CREATE SEQUENCE`](../ddl_create_sequence)
 [`currval()`](../currval_sequence)
 [`lastval()`](../lastval_sequence)
 [`nextval()`](../nextval_sequence)

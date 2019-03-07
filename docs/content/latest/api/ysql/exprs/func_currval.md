@@ -4,11 +4,10 @@ summary: Get the last value returned by `nextval()` in the current session
 description: currval()
 menu:
   latest:
-    identifier: api-postgresql-currval
-    parent: api-postgresql-sequences
+    identifier: api-ysql-exprs-currval
+    parent: api-ysql-exprs
 aliases:
-  - /latest/api/postgresql/currval_sequence
-  - /latest/api/ysql/currval_sequence
+  - /latest/api/ysql/exprs/func_currval
 isTocNested: true
 showAsideToc: true
 ---

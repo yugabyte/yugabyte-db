@@ -4,11 +4,10 @@ summary: Get the value returned from the last call to `nextval()`
 description: lastval()
 menu:
   latest:
-    identifier: api-postgresql-lastval
-    parent: api-postgresql-sequences
+    identifier: api-ysql-exprs-lastval
+    parent: api-ysql-exprs
 aliases:
-  - /latest/api/postgresql/lastval_sequence
-  - /latest/api/ysql/lastval_sequence
+  - /latest/api/ysql/exprs/func_lastval
 isTocNested: true
 showAsideToc: true
 ---

@@ -4,11 +4,10 @@ summary: Get the next value from the session's sequence cache
 description: nextval()
 menu:
   latest:
-    identifier: api-postgresql-nextval
-    parent: api-postgresql-sequences
+    identifier: api-ysql-exprs-nextval
+    parent: api-ysql-exprs
 aliases:
-  - /latest/api/postgresql/nextval_sequence
-  - /latest/api/ysql/nextval_sequence
+  - /latest/api/ysql/exprs/func_nextval
 isTocNested: true
 showAsideToc: true
 ---
