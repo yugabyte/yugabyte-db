@@ -53,7 +53,7 @@ export default class CreateBackup extends Component {
     } else {
       tableOptions = universeTables.map((tableInfo) => {
         return {value: tableInfo.tableUUID, label: tableInfo.keySpace + "." + tableInfo.tableName};
-      });
+      }).sort((a, b) => a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1);
     }
 
     return (
