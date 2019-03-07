@@ -476,7 +476,9 @@ Status MiniCluster::DoCreateClient(YBClientBuilder* builder,
     CHECK(master);
     builder->add_master_server_addr(master->bound_rpc_addr_str());
   }
-  return builder->Build(client);
+  RETURN_NOT_OK(builder->Build(client));
+
+  return Status::OK();
 }
 
 HostPort MiniCluster::DoGetLeaderMasterBoundRpcAddr() {

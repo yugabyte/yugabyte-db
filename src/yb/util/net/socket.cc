@@ -344,12 +344,10 @@ Status Socket::GetPeerAddress(Endpoint* out) const {
 
 Status Socket::Bind(const Endpoint& endpoint, bool explain_addr_in_use) {
   DCHECK_GE(fd_, 0);
-  if (PREDICT_FALSE(::bind(fd_, endpoint.data(), endpoint.size()))) {
+  if (PREDICT_FALSE(::bind(fd_, endpoint.data(), endpoint.size()) != 0)) {
     int err = errno;
     Status s = STATUS(NetworkError,
-                      strings::Substitute("Error binding socket to $0: $1",
-                                          ToString(endpoint),
-                                          ErrnoToString(err)),
+                      Format("Error binding socket to $0: $1", endpoint, ErrnoToString(err)),
                       Slice(),
                       err);
 

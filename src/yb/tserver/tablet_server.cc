@@ -287,6 +287,8 @@ Status TabletServer::Start() {
   CHECK(initted_.load(std::memory_order_acquire));
 
   AutoInitServiceFlags();
+
+  RETURN_NOT_OK(tablet_manager_->Start());
   RETURN_NOT_OK(RegisterServices());
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
 

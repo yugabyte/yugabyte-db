@@ -259,6 +259,14 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
         include_trace_(trace) {}
 
   void OperationCompleted() override {
+    // When we don't need to return any data, we could return success on duplicate request.
+    if (status_.IsAlreadyPresent() &&
+        state_->ql_write_ops()->empty() &&
+        state_->pgsql_write_ops()->empty() &&
+        state_->request()->redis_write_batch().empty()) {
+      status_ = Status::OK();
+    }
+
     if (!status_.ok()) {
       SetupErrorAndRespond(get_error(), status_, code_, context_.get());
       return;

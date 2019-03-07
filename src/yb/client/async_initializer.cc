@@ -56,13 +56,17 @@ AsyncClientInitialiser::AsyncClientInitialiser(
   if (messenger) {
     client_builder_.use_messenger(messenger);
   }
-
-  init_client_thread_ = std::thread(std::bind(&AsyncClientInitialiser::InitClient, this));
 }
 
 AsyncClientInitialiser::~AsyncClientInitialiser() {
   Shutdown();
-  init_client_thread_.join();
+  if (init_client_thread_.joinable()) {
+    init_client_thread_.join();
+  }
+}
+
+void AsyncClientInitialiser::Start() {
+  init_client_thread_ = std::thread(std::bind(&AsyncClientInitialiser::InitClient, this));
 }
 
 const std::shared_ptr<client::YBClient>& AsyncClientInitialiser::client() const {

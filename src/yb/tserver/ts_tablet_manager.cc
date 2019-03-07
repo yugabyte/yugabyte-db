@@ -465,6 +465,12 @@ Status TSTabletManager::Init() {
   return Status::OK();
 }
 
+Status TSTabletManager::Start() {
+  async_client_init_->Start();
+
+  return Status::OK();
+}
+
 Status TSTabletManager::WaitForAllBootstrapsToFinish() {
   CHECK_EQ(state(), MANAGER_RUNNING);
 

@@ -195,6 +195,7 @@ Status RemoteYsckMaster::Build(const HostPort& address, shared_ptr<YsckMaster>* 
   MessengerBuilder builder(kMessengerName);
   auto messenger = builder.Build();
   RETURN_NOT_OK(messenger);
+  (**messenger).TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress("127.0.0.1")));;
   master->reset(new RemoteYsckMaster(address, *messenger));
   return Status::OK();
 }
