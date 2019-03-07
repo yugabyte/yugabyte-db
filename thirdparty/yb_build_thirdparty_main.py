@@ -108,21 +108,14 @@ class Builder:
         ]
 
         if is_linux():
-            llvm_major_version = self.get_llvm_major_version()
-            if llvm_major_version == '6':
-                self.dependencies.append(build_definitions.llvm6.LLVM6Dependency())
-            else:
-                self.dependencies.append(build_definitions.llvm.LLVMDependency())
-
             self.dependencies += [
+                build_definitions.llvm.LLVMDependency(),
                 build_definitions.libcxx.LibCXXDependency(),
 
                 build_definitions.libunwind.LibUnwindDependency(),
                 build_definitions.libbacktrace.LibBacktraceDependency(),
-            ]
-
-            if llvm_major_version == '7':
                 build_definitions.include_what_you_use.IncludeWhatYouUseDependency()
+            ]
 
         self.dependencies += [
             build_definitions.protobuf.ProtobufDependency(),
@@ -150,40 +143,6 @@ class Builder:
 
         self.detect_linuxbrew()
         self.load_expected_checksums()
-
-    def get_llvm_major_version(self):
-        """
-        Decide what major version of LLVM to use, and persist that in a file so only allow setting
-        it once.
-        """
-        version_from_file = None
-        version_file_path = os.path.join(self.tp_build_dir, 'llvm_major_version')
-        if os.path.exists(version_file_path):
-            with open(version_file_path) as version_file:
-                version_from_file = version_file.read().strip()
-
-        env_var_name = 'YB_LLVM_MAJOR_VERSION'
-        version_from_env = os.environ.get(env_var_name)
-        if (version_from_file is not None and
-            version_from_env is not None and
-            version_from_file != version_from_env):
-            raise RuntimeError(
-                "LLVM major version from {} is '{}', but the {} env var specifies '{}'".format(
-                    version_file_path, version_from_file, env_var_name, version_from_env
-                ))
-        version = version_from_env or version_from_file
-        if version is None:
-            version = '7'
-        if version not in ['6', '7']:
-            raise RuntimeError(
-                "LLVM major version should be either 6 or 7, found: {}".format(version))
-        if version_from_file != version:
-            version_file_dir = os.path.dirname(os.path.abspath(version_file_path))
-            if not os.path.isdir(version_file_dir):
-                os.makedirs(version_file_dir)
-            with open(version_file_path, 'wt') as version_file:
-                version_file.write(version)
-        return version
 
     def set_compiler(self, compiler_type):
         if is_mac():
@@ -235,7 +194,6 @@ class Builder:
         if self.args.make_parallelism:
             os.environ['YB_MAKE_PARALLELISM'] = str(self.args.make_parallelism)
 
-
     def run(self):
         self.set_compiler('gcc')
         if self.args.clean:
@@ -249,7 +207,6 @@ class Builder:
         if is_linux():
             self.build(BUILD_TYPE_ASAN)
             self.build(BUILD_TYPE_TSAN)
-
 
     def find_compiler_by_type(self, compiler_type):
         compilers = None
@@ -376,6 +333,7 @@ class Builder:
         if hasattr(dep, 'patches'):
             with PushDir(src_path):
                 for patch in dep.patches:
+                    log("Applying patch: {}".format(patch))
                     process = subprocess.Popen(['patch', '-p{}'.format(dep.patch_strip)],
                                                stdin=subprocess.PIPE)
                     with open(os.path.join(self.tp_dir, 'patches', patch), 'rt') as inp:
@@ -702,6 +660,14 @@ class Builder:
                 old_build_stamp = inp.read()
 
         new_build_stamp = self.get_build_stamp_for_dependency(dep)
+
+        if dep.dir is not None:
+            src_dir = self.source_path(dep)
+            if not os.path.exists(src_dir):
+                log("Have to rebuild {} ({}): source dir {} does not exist".format(
+                    dep.name, self.build_type, src_dir
+                ))
+                return True
 
         if old_build_stamp == new_build_stamp:
             log("Not rebuilding {} ({}) -- nothing changed.".format(dep.name, self.build_type))

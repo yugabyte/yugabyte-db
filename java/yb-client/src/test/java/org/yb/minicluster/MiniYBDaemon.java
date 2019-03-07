@@ -91,7 +91,7 @@ public class MiniYBDaemon {
       List<String> masterTserverPsLines = new ArrayList<String>();
       for (String line : cmdResult.getStdoutLines()) {
         // Four parts: RSS, pid, executable path, arguments.
-        String[] items = line.split("\\s+", 4);
+        String[] items = line.trim().split("\\s+", 4);
         if (items.length < 4) {
           LOG.warn("Could not parse a ps output line: " + line + " (got " +
               items.length + " parts, expected 4)");

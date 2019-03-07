@@ -114,8 +114,9 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
     LOG.info("BaseCQLTest.setUpBeforeClass is running");
-    BaseMiniClusterTest.tserverArgs.add(
-        "--client_read_write_timeout_ms=180000");
+    BaseMiniClusterTest.tserverArgs.add("--client_read_write_timeout_ms=180000");
+    BaseMiniClusterTest.tserverArgs.add("--start_redis_proxy=false");
+    BaseMiniClusterTest.tserverArgs.add("--start_pgsql_proxy=false");
 
     // Disable extended peer check, to ensure "SELECT * FROM system.peers" works without
     // all columns.

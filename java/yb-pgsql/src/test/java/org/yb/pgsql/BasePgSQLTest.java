@@ -82,11 +82,29 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
    */
   private Map<String, String> getTServerAndInitDbFlags() {
     Map<String, String> flagMap = new TreeMap<>();
-    flagMap.put("retryable_rpc_single_call_timeout_ms",
-        String.valueOf(nonTsanVsTsan(10000, 30000)));
+
+    int callTimeoutMs;
+    if (TestUtils.isReleaseBuild()) {
+      callTimeoutMs = 10000;
+    } else if (TestUtils.IS_LINUX) {
+      if (SanitizerUtil.isASAN()) {
+        callTimeoutMs = 20000;
+      } else if (SanitizerUtil.isTSAN()) {
+        callTimeoutMs = 45000;
+      } else {
+        // Linux debug builds.
+        callTimeoutMs = 15000;
+      }
+    } else {
+      // We get a lot of timeouts in macOS debug builds.
+      callTimeoutMs = 45000;
+    }
+    flagMap.put("retryable_rpc_single_call_timeout_ms", String.valueOf(callTimeoutMs));
     if (isTSAN()) {
       flagMap.put("yb_client_admin_operation_timeout_sec", "120");
     }
+    flagMap.put("start_redis_proxy", "false");
+    flagMap.put("start_cql_proxy", "false");
 
     return flagMap;
   }
@@ -634,7 +652,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return nonTsanVsTsan(720, 1080);
+    // initdb takes a really long time on macOS in debug mode.
+    return 1200;
   }
 
 }
