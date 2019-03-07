@@ -4,7 +4,7 @@ linkTitle: RENAME
 description: RENAME
 menu:
   latest:
-    parent: api-redis
+    parent: api-yedis
     weight: 2265
 aliases:
   - /latest/api/redis/rename

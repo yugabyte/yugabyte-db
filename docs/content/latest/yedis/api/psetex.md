@@ -4,7 +4,7 @@ linkTitle: PSETEX
 description: PSETEX
 menu:
   latest:
-    parent: api-redis
+    parent: api-yedis
     weight: 2272
 aliases:
   - /latest/api/redis/psetex
