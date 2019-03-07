@@ -5,7 +5,10 @@ description: Explore Core Features
 headcontent:
 image: /images/section_icons/index/explore.png
 aliases:
-  - /explore/
+  - /latest/explore/cloud-native/
+  - /latest/explore/transactional/
+  - /latest/explore/high-performance/
+  - /latest/explore/planet-scale/
 menu:
   latest:
     identifier: explore
@@ -16,63 +19,94 @@ menu:
 {{< tip title="Tip" >}}You can use your [local cluster](../quick-start/) to explore all the core features of YugaByte DB.{{< /tip >}}<br>
 
 <div class="row">
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cloud-native/">
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="linear-scalability/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/cloud_native.png" aria-hidden="true" />
-        <div class="articles">4 articles</div>
-        <div class="title">Cloud Native</div>
+        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
+        <div class="title">Linear Scalability</div>
       </div>
       <div class="body">
-        Linear scalability, fault tolerance, observability and orchestration readiness.
+        Reliable, rapid scaling for both writes and reads.
       </div>
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="transactional/">
+    <a class="section-link icon-offset" href="fault-tolerance/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/transactional.png" aria-hidden="true" />
-        <div class="articles">3 articles</div>       
-        <div class="title">Transactional</div>
+        <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
+        <div class="title">Fault Tolerance</div>
       </div>
       <div class="body">
-        Distributed ACID transactions, secondary indexes and JSON documents.
+        Resilient and self-healing.
       </div>
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="high-performance/">
+    <a class="section-link icon-offset" href="global-distribution/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />        
+        <div class="title">Global Distribution</div>
+      </div>
+      <div class="body">
+        Multi-region deployments made easy.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="auto-sharding/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />        
+        <div class="title">Auto Sharding</div>
+      </div>
+      <div class="body">
+        Purpose-built for large, ever-growing datasets.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="auto-rebalancing/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/auto_rebalance.png" aria-hidden="true" />     
+        <div class="title">Auto Rebalancing</div>
+      </div>
+      <div class="body">
+        Uniform query & data distribution without manual intervention.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="tunable-reads/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />       
-        <div class="title">High Performance</div>
+        <div class="title">Tunable Reads</div>
       </div>
       <div class="body">
-        Tunable read latency.
+        Reduce read latency by reading from follower replicas.
+      </div>
+    </a>
+  </div>
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="observability/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
+        <div class="title">Observabililty</div>
+      </div>
+      <div class="body">
+        Observable at every layer of the database using Prometheus.
       </div>
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="planet-scale/">
+    <a class="section-link icon-offset" href="orchestration-readiness/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" /> 
-       <div class="articles">3 articles</div>
-        <div class="title">Planet Scale</div>
+        <img class="icon" src="/images/section_icons/explore/administer.png" aria-hidden="true" />
+        <div class="title">Orchestration Readiness</div>
       </div>
       <div class="body">
-        Global data distribution, auto-sharding and auto-rebalancing.
+        Automate and orchestrate on containers, VMs and bare metal servers.
       </div>
     </a>
   </div>
-    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="postgresql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/api/pgsql.png" aria-hidden="true" /> 
-       <div class="articles">6 articles</div>
-        <div class="title">PostgreSQL (Beta)</div>
-      </div>
-      <div class="body">
-       Multiple features in the PostgreSQL-compatible YSQL API.
-      </div>
-    </a>
-  </div>
+
+ 
 </div>

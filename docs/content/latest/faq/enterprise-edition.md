@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: enterprise-edition
     parent: faq
-    weight: 2490
+    weight: 2730
 isTocNested: false
 showAsideToc: true
 ---

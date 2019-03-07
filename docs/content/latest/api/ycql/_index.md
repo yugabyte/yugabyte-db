@@ -2,14 +2,14 @@
 title: YCQL
 linkTitle: YCQL
 description: YugaByte Cloud Query Language (YCQL)
-summary: Reference for Cassandra-compatible YCQL API
+summary: Reference for the YCQL API
 image: /images/section_icons/api/cql.png
 headcontent:
 menu:
   latest:
     identifier: api-cassandra
     parent: api
-    weight: 1300
+    weight: 3000
 aliases:
   - /latest/api/ycql/
   - /latest/api/cassandra/
@@ -18,7 +18,7 @@ showAsideToc: true
 ---
 
 ## Introduction
-YCQL is a transactional flexible-schema API that is compatible with the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). It supports the following features.
+YCQL is a SQL-based flexible-schema API that has its roots in [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). It supports the following features.
 
 - Data definition language (DDL) statements.
 - Data manipulation language (DML) statements.

@@ -14,7 +14,7 @@ menu:
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#ysql" class="nav-link active" id="ysql-tab" data-toggle="tab" role="tab" aria-controls="ysql" aria-selected="true">
-      <i class="icon-ysql" aria-hidden="true"></i>
+      <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>

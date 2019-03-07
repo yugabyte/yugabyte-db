@@ -1,6 +1,6 @@
 ---
-title: 6. Run Sample Apps
-linkTitle: 6. Run Sample Apps
+title: 4. Run Sample Apps
+linkTitle: 4. Run Sample Apps
 description: Run Sample Apps
 aliases:
   - /quick-start/run-sample-apps/
@@ -8,9 +8,11 @@ menu:
   latest:
     parent: quick-start
     weight: 150
+isTocNested: false
+showAsideToc: true
 ---
 
-After [creating a local cluster](../create-local-cluster/), follow the instructions below to run [Yugastore](https://github.com/YugaByte/yugastore), one of simplest sample apps we have created for YugaByte DB. Yugastore is a fully open source, online bookstore app built using React, Express, NodeJS and is powered by the YCQL and YEDIS APIs of YugaByte DB. Enhancements to add YSQL API access from Yugastore is currently in the works. You can review Yugastore's architecture and data model [here](../../develop/realworld-apps/ecommerce-app/).
+After [creating a local cluster](../create-local-cluster/), follow the instructions below to run [Yugastore](https://github.com/YugaByte/yugastore), one of simplest sample apps we have created for YugaByte DB. Yugastore is a fully open source, online bookstore app built using React, Express, NodeJS and is powered by the YSQL and YCQL APIs of YugaByte DB. You can review Yugastore's architecture and data model [here](../../develop/realworld-apps/ecommerce-app/).
 
 After running Yugastore, we recommend running the [IoT Fleet Management](../../develop/realworld-apps/iot-spark-kafka-ksql/) app. This app is built on top of YugaByte DB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
 

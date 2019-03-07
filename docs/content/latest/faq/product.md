@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: product
     parent: faq
-    weight: 2470
+    weight: 2710
 isTocNested: false
 showAsideToc: true
 ---

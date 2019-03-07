@@ -47,37 +47,13 @@ We do not recommend a local multi-node cluster setup on a single host for produc
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="test-ycql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/test_cql.png" aria-hidden="true" />
-        <div class="title">3. Test YCQL API</div>
-      </div>
-      <div class="body">
-        Test Cassandra-compatible YugaByte Cloud Query Language (YCQL) API.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="test-yedis/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/test_redis.png" aria-hidden="true" />
-        <div class="title">4. Test YEDIS API</div>
-      </div>
-      <div class="body">
-        Test Redis-compatible YugaByte Dictionary Service (YEDIS) API.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="test-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-        <div class="title">5. Test YSQL API</div>
+        <div class="title">3. Test YSQL API</div>
       </div>
       <div class="body">
-        Test PostgreSQL-compatible YugaByte SQL (YSQL) API.
+        Test YugaByte SQL (YSQL) API.
       </div>
     </a>
   </div>
@@ -86,7 +62,7 @@ We do not recommend a local multi-node cluster setup on a single host for produc
     <a class="section-link icon-offset" href="run-sample-apps/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/sample_apps.png" aria-hidden="true" />
-        <div class="title">6. Run Sample Apps</div>
+        <div class="title">4. Run Sample Apps</div>
       </div>
       <div class="body">
         Run pre-packaged sample apps.

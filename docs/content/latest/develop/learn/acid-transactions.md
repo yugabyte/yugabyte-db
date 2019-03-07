@@ -4,6 +4,7 @@ linkTitle: 4. ACID Transactions
 description: ACID Transactions
 aliases:
   - /develop/learn/acid-transactions/
+  - /latest/explore/transactional/acid-transactions/
 menu:
   latest:
     identifier: acid-transactions
@@ -35,6 +36,6 @@ A transaction is a sequence of operations performed as a single logical unit of 
 
 <div class="tab-content">
   <div id="cassandra" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cassandra-tab">
-    {{% includeMarkdown "cassandra/acid-transactions.md" /%}}
+    {{% includeMarkdown "ycql/acid-transactions.md" /%}}
   </div>
 </div>

@@ -1,5 +1,12 @@
 ## 1. Create a 3 node cluster with replication factor 3 
 
+First uncomment the following flags in the YAML file. 
+```
+         # To support postgres functionality, uncomment the following flags.
+         #  - "--start_pgsql_proxy"
+         #  - "--pgsql_proxy_bind_address=$(POD_IP):5433"
+```
+
 Run the following command to create the cluster.
 
 ```sh
@@ -47,21 +54,13 @@ yb-tserver-1   1/1       Running   1          12s
 yb-tserver-2   1/1       Running   1          12s
 ```
 
-## 3. Initialize the Redis-compatible YEDIS API
-
-Initialize Redis-compatible YEDIS API in the YugaByte DB Universe we just setup by running the following `yb-admin` command. 
+## 3. Initialize the YSQL API
 
 ```sh
-$ kubectl exec -it yb-master-0 /home/yugabyte/bin/yb-admin -- --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100,yb-master-1.yb-masters.default.svc.cluster.local:7100,yb-master-2.yb-masters.default.svc.cluster.local:7100 setup_redis_table
+$ kubectl exec -it yb-tserver-0 bash --  -c "YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=yb-master-0.yb-masters.default.svc.cluster.local:7100,yb-master-1.yb-masters.default.svc.cluster.local:7100,yb-master-2.yb-masters.default.svc.cluster.local:7100 /home/yugabyte/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres"
 ```
 
-```
-...
-I0127 19:38:10.358551   115 client.cc:1292] Created table system_redis.redis of type REDIS_TABLE_TYPE
-I0127 19:38:10.358872   115 yb-admin_client.cc:400] Table 'system_redis.redis' created.
-```
-
-Clients can now connect to this YugaByte DB universe using Cassandra and Redis APIs on the 9042 and 6379 ports respectively.
+Clients can now connect to this YugaByte DB universe using YSQL and YCQL APIs on the 5433 and 9042 ports respectively.
 
 ## 4. Check cluster status via Kubernetes
 
