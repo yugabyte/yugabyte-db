@@ -331,28 +331,46 @@ if [[ $local_build_only == "false" &&
 
   trap remote_build_exit_handler EXIT
 
+  cached_build_workers_file=/tmp/cached_build_workers_$USER
+  declare -i num_missing_build_workers_file_retries=0
+
   current_dir=$PWD
   declare -i attempt=0
   declare -i no_worker_count=0
   sleep_deciseconds=1  # a decisecond is one-tenth of a second
   while [[ $attempt -lt 100 ]]; do
     let attempt+=1
+    effective_build_workers_file=$YB_BUILD_WORKERS_FILE
     if [[ ! -f $YB_BUILD_WORKERS_FILE ]]; then
-      log "The build worker list file ('$YB_BUILD_WORKERS_FILE') does not exist. Will retry" \
-          "after 0.1 sec."
-      log "Current mounts on $( hostname ): $( mount )"
-      sleep 0.1
-      continue
+      if [[ $num_missing_build_workers_file_retries -ge 5 && -f $cached_build_workers_file ]]; then
+        log "The build worker list file ('$YB_BUILD_WORKERS_FILE') has been missing for" \
+            "$num_missing_build_workers_file_retries attempts. Will use cached build worker list" \
+            "file."
+        effective_build_workers_file=$cached_build_workers_file
+      else
+        log "The build worker list file ('$YB_BUILD_WORKERS_FILE') does not exist. Will retry".
+        log "Current mounts on $( hostname ):"
+        mount
+        sleep 0.5
+        let num_missing_build_workers_file_retries+=1
+        continue
+      fi
     fi
     set +e
-    build_worker_name=$( shuf -n 1 "$YB_BUILD_WORKERS_FILE" )
+    build_worker_name=$( shuf -n 1 "$effective_build_workers_file" )
     if [[ $? -ne 0 ]]; then
       set -e
-      log "shuf failed, trying again in 0.1 sec"
-      sleep 0.1
+      log "shuf failed, trying again in a moment"
+      sleep 0.5
       continue
     fi
     set -e
+    if [[ -f $YB_BUILD_WORKERS_FILE ]]; then
+      if ! cp "$YB_BUILD_WORKERS_FILE" "$cached_build_workers_file"; then
+        log "Failed copying $YB_BUILD_WORKERS_FILE even though it just existed!"
+      fi
+      num_missing_build_workers_file_retries=0
+    fi
     if [[ -z $build_worker_name ]]; then
       let no_worker_count+=1
       if [[ $no_worker_count -ge 100 ]]; then
@@ -662,6 +680,39 @@ if [[ ${YB_DISABLE_RELATIVE_RPATH:-0} == "0" ]] &&
   fi
 fi
 
+if [[ $PWD == $BUILD_ROOT/postgres_build ||
+      $PWD == $BUILD_ROOT/postgres_build/* ]]; then
+  new_cmd=()
+  for arg in "${cmd[@]}"; do
+    if [[ $arg == -I* ]]; then
+      include_dir=${arg#-I}
+      if [[ -d $include_dir ]]; then
+        include_dir=$( cd "$include_dir" && pwd )
+        if [[ $include_dir == $BUILD_ROOT/postgres_build/* ]]; then
+          rel_include_dir=${include_dir#$BUILD_ROOT/postgres_build/}
+          updated_include_dir=$YB_SRC_ROOT/src/postgres/$rel_include_dir
+          if [[ -d $updated_include_dir ]]; then
+            new_cmd+=( -I"$updated_include_dir" )
+          fi
+        fi
+      fi
+      new_cmd+=( "$arg" )
+    elif [[ -f $arg && $arg != "conftest.c" ]]; then
+      file_path=$PWD/${arg#./}
+      rel_file_path=${file_path#$BUILD_ROOT/postgres_build/}
+      updated_file_path=$YB_SRC_ROOT/src/postgres/$rel_file_path
+      if [[ -f $updated_file_path ]] && cmp --quiet "$file_path" "$updated_file_path"; then
+        new_cmd+=( "$updated_file_path" )
+      else
+        new_cmd+=( "$arg" )
+      fi
+    else
+      new_cmd+=( "$arg" )
+    fi
+  done
+  cmd=( "${new_cmd[@]}" )
+fi
+
 compiler_exit_code=UNKNOWN
 trap local_build_exit_handler EXIT
 
@@ -679,7 +730,19 @@ ${cmd[*]}
 fi
   unset IFS
 
-run_compiler_and_save_stderr "${cmd[@]}"
+if [[ $YB_COMPILER_TYPE == "clang" ]]; then
+  if [[ -n ${YB_DXR_CXX_CLANG_OBJECT_FOLDER:-} ]]; then
+    export DXR_CXX_CLANG_OBJECT_FOLDER=$YB_DXR_CXX_CLANG_OBJECT_FOLDER
+  fi
+  if [[ -n ${YB_DXR_CXX_CLANG_TEMP_FOLDER:-} ]]; then
+    export DXR_CXX_CLANG_TEMP_FOLDER=$YB_DXR_CXX_CLANG_TEMP_FOLDER
+  fi
+else
+  # DXR only works with clang.
+  YB_DXR_CLANG_FLAGS=""
+fi
+
+run_compiler_and_save_stderr "${cmd[@]}" ${YB_DXR_CLANG_FLAGS:-}
 
 # Skip printing some command lines commonly used by CMake for detecting compiler/linker version.
 # Extra output might break the version detection.

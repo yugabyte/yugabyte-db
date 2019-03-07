@@ -132,6 +132,7 @@ DECLARE_int32(replication_factor);
 DECLARE_bool(mem_tracker_logging);
 DECLARE_bool(mem_tracker_log_stack_trace);
 DECLARE_string(minicluster_daemon_id);
+DECLARE_bool(use_libbacktrace);
 
 DEFINE_string(external_daemon_heap_profile_prefix, "",
               "If this is not empty, tcmalloc's HEAPPROFILE is set this, followed by a unique "
@@ -1556,6 +1557,9 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   }
   if (FLAGS_mem_tracker_log_stack_trace) {
     argv.push_back("--mem_tracker_log_stack_trace");
+  }
+  if (FLAGS_use_libbacktrace) {
+    argv.push_back("--use_libbacktrace");
   }
 
   const char* test_invocation_id = getenv("YB_TEST_INVOCATION_ID");

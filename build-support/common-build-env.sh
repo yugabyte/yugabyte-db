@@ -82,6 +82,10 @@ if [[ -z ${is_run_test_script:-} ]]; then
 fi
 readonly is_run_test_script
 
+# Setting this to "true" will prevent any changes to the virtualenv (creating it or installing
+# modules into it) as part of activate_virtualenv.
+yb_readonly_virtualenv=false
+
 # -------------------------------------------------------------------------------------------------
 # Functions used in initializing some constants
 # -------------------------------------------------------------------------------------------------
@@ -1995,7 +1999,8 @@ activate_virtualenv() {
     fatal "Internal error: virtualenv_dir ('$virtualenv_dir') must end" \
           "with YB_VIRTUALENV_BASENAME ('$YB_VIRTUALENV_BASENAME')"
   fi
-  if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" && -d $virtualenv_dir ]]; then
+  if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" && -d $virtualenv_dir ]] && \
+     ! "$yb_readonly_virtualenv"; then
     log "YB_RECREATE_VIRTUALENV is set, deleting virtualenv at '$virtualenv_dir'"
     rm -rf "$virtualenv_dir"
     unset YB_RECREATE_VIRTUALENV
@@ -2005,6 +2010,9 @@ activate_virtualenv() {
   add_python_wrappers_dir_to_path
 
   if [[ ! -d $virtualenv_dir ]]; then
+    if "$yb_readonly_virtualenv"; then
+      fatal "virtualenv does not exist at '$virtualenv_dir', and we are not allowed to create it"
+    fi
     if [[ -n ${VIRTUAL_ENV:-} && -f $VIRTUAL_ENV/bin/activate ]]; then
       local old_virtual_env=$VIRTUAL_ENV
       # Re-activate and deactivate the other virtualenv we're in. Otherwise the deactivate
@@ -2026,6 +2034,7 @@ activate_virtualenv() {
       python2 -m virtualenv "$YB_VIRTUALENV_BASENAME"
     )
   fi
+
   set +u
   . "$virtualenv_dir"/bin/activate
   set -u
@@ -2034,8 +2043,10 @@ activate_virtualenv() {
     pip_no_cache="--no-cache-dir"
   fi
 
-  run_with_retries 10 0.5 pip2 install -r "$YB_SRC_ROOT/python_requirements_frozen.txt" \
-    $pip_no_cache
+  if ! "$yb_readonly_virtualenv"; then
+    run_with_retries 10 0.5 pip2 install -r "$YB_SRC_ROOT/python_requirements_frozen.txt" \
+      $pip_no_cache
+  fi
 }
 
 check_python_interpreter_version() {
@@ -2232,6 +2243,14 @@ set_java_home() {
 # -------------------------------------------------------------------------------------------------
 
 detect_os
+
+# http://man7.org/linux/man-pages/man7/signal.7.html
+if is_mac; then
+  declare -i -r SIGUSR1_EXIT_CODE=158  # 128 + 30
+else
+  # Linux
+  declare -i -r SIGUSR1_EXIT_CODE=138  # 128 + 10
+fi
 
 # This script is expected to be in build-support, a subdirectory of the repository root directory.
 set_yb_src_root "$( cd "$( dirname "$BASH_SOURCE" )"/.. && pwd )"

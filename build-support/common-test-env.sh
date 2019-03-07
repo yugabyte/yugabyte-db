@@ -47,6 +47,9 @@ VALID_TEST_BINARY_DIRS_RE="^${VALID_TEST_BINARY_DIRS_PREFIX}-[0-9a-zA-Z\-]+"
 DEFAULT_TEST_TIMEOUT_SEC=${DEFAULT_TEST_TIMEOUT_SEC:-600}
 INCREASED_TEST_TIMEOUT_SEC=$(($DEFAULT_TEST_TIMEOUT_SEC * 2))
 
+# This timeout will be applied by the process_tree_supervisor.py script.
+PROCESS_TREE_SUPERVISOR_TEST_TIMEOUT_SEC=$(( 30 * 60 ))
+
 # We grep for these log lines and show them in the main log on test failure. This regular expression
 # is used with egrep.
 RELEVANT_LOG_LINES_RE="^[[:space:]]*(Value of|Actual|Expected):|^Expected|^Failed|^Which is:"
@@ -675,6 +678,61 @@ process_core_file() {
   fi
 }
 
+stop_process_tree_supervisor() {
+  process_supervisor_success=true
+  if [[ ${process_tree_supervisor_pid:-0} -eq 0 ]]; then
+    return
+  fi
+
+  if ! kill -SIGUSR1 "$process_tree_supervisor_pid"; then
+    log "Warning: could not stop the process tree supervisor (pid $process_tree_supervisor_pid)." \
+        "This could be because it has already terminated."
+  fi
+
+  set +e
+  wait "$process_tree_supervisor_pid"
+  declare -i supervisor_exit_code=$?
+  set -e
+  if [[ $supervisor_exit_code -eq $SIGUSR1_EXIT_CODE ]]; then
+    # This could happen when we killed the supervisor script before it had a chance to set the
+    # signal handler for SIGUSR1.
+    supervisor_exit_code=0
+  fi
+
+  declare -i return_code=0
+  if [[ $supervisor_exit_code -ne 0 ]]; then
+    log "Process tree supervisor exited with code $supervisor_exit_code"
+    process_supervisor_success=false
+  fi
+
+  if [[ -f $process_supervisor_log_path ]]; then
+    log "Process supervisor log dump ($process_supervisor_log_path):"
+    cat "$process_supervisor_log_path" >&2
+    # TODO: Re-enable the logic below for treating stray processes as test failures, when the
+    # following tests are fixed:
+    # - org.yb.pgsql.TestPgRegressFeature.testPgRegressFeature
+    # - org.yb.pgsql.TestPgRegressTypesNumeric.testPgRegressTypes
+    # See https://github.com/YugaByte/yugabyte-db/issues/946 for details.
+    if false && grep -q YB_STRAY_PROCESS "$process_supervisor_log_path"; then
+      log "Stray processes reported in $process_supervisor_log_path, considering the test failed."
+      log "The JUnit-compatible XML file will be updated to reflect this error."
+      process_supervisor_success=false
+
+      if [[ -f ${process_tree_supervisor_append_log_to_on_error:-} ]]; then
+        log "Appending process supervisor log to $process_tree_supervisor_append_log_to_on_error"
+        (
+          echo "Process supervisor log:";
+          cat "$process_supervisor_log_path"
+        ) >>"$process_tree_supervisor_append_log_to_on_error"
+      fi
+    fi
+    rm -f "$process_supervisor_log_path"
+  fi
+
+  # To make future calls to this function a no-op.
+  process_tree_supervisor_pid=0
+}
+
 # Checks if the there is no XML file at path "$xml_output_file". This may happen if a gtest test
 # suite fails before it has a chance to generate an XML output file. In that case, this function
 # generates a substitute XML output file using parse_test_failure.py, but only if the log file
@@ -721,8 +779,16 @@ handle_xml_output() {
     fi
   fi
 
+  process_tree_supervisor_append_log_to_on_error=$test_log_path
+
+  stop_process_tree_supervisor
+
+  if ! "$process_supervisor_success"; then
+    log "Process tree supervisor reported that the test failed"
+    test_failed=true
+  fi
   if "$test_failed"; then
-    echo "Updating $xml_output_file with a link to test log" >&2
+    log "Updating $xml_output_file with a link to test log"
   fi
   "$YB_SRC_ROOT"/build-support/update_test_result_xml.py \
     --result-xml "$xml_output_file" \
@@ -816,7 +882,7 @@ try_set_ulimited_ulimit() {
   fi
 }
 
-run_one_test() {
+run_one_cxx_test() {
   expect_num_args 0 "$@"
   expect_vars_to_be_set \
     BUILD_ROOT \
@@ -842,6 +908,8 @@ run_one_test() {
   pushd "$TEST_TMPDIR" >/dev/null
 
   export YB_FATAL_DETAILS_PATH_PREFIX=$test_log_path_prefix.fatal_failure_details
+
+  about_to_start_running_test
 
   local attempts_left
   for attempts_left in {1..0}; do
@@ -962,7 +1030,7 @@ delete_successful_output_if_needed() {
 }
 
 run_test_and_process_results() {
-  run_one_test
+  run_one_cxx_test
   postprocess_test_log
   handle_test_failure
   handle_xml_output
@@ -1304,6 +1372,16 @@ fix_cxx_test_name() {
   fi
 }
 
+# This is called immediately before we start running the test. The Spark-based test runner watches
+# for this "flag file" to appear to catch a case where run-test.sh gets totally stuck on macOS
+# before even getting to the test.
+about_to_start_running_test() {
+  if [[ -n ${YB_TEST_STARTED_RUNNING_FLAG_FILE:-} ]]; then
+    touch "$YB_TEST_STARTED_RUNNING_FLAG_FILE"
+    log "Created file $YB_TEST_STARTED_RUNNING_FLAG_FILE to indicate that the test is starting"
+  fi
+}
+
 # Arguments: <maven_module_name> <test_class_and_maybe_method>
 # The second argument could have slashes instead of dots, and could have an optional .java
 # extension.
@@ -1398,7 +1476,7 @@ run_java_test() {
   )
 
   if is_jenkins; then
-    # When running on Jenkins we'd like to see more debug output.
+    # When running on Jenkins we would like to see more debug output.
     mvn_opts+=( -X )
   fi
 
@@ -1416,6 +1494,7 @@ run_java_test() {
     fatal "Maven not found on PATH. PATH: $PATH"
   fi
   local mvn_output_path=""
+  about_to_start_running_test
   if [[ ${YB_REDIRECT_MVN_OUTPUT_TO_FILE:-0} == 1 ]]; then
     mkdir -p "$surefire_reports_dir"
     mvn_output_path=$surefire_reports_dir/${test_class}__mvn_output.log
@@ -1430,7 +1509,49 @@ run_java_test() {
 
   log "Maven exited with code $mvn_exit_code"
 
-  if is_jenkins || [[ ${YB_REMOVE_SUCCESSFUL_JAVA_TEST_OUTPUT:-} == "1" ]]; then
+  local xml_valid=true
+  if [[ -f $junit_xml_path ]]; then
+    # No reason to include mini cluster logs in the JUnit XML. In fact, these logs can interfere
+    # with XML parsing by Jenkins.
+    local filtered_junit_xml_path=$junit_xml_path.filtered
+    egrep -v "\
+^(m|ts|initdb|postgres)[0-9]*[|]pid[0-9]+[|]|\
+^[[:space:]]+at|\
+^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2},[0-9]{3} |\
+^redis[.]clients[.]jedis[.]exceptions[.]JedisConnectionException: |\
+^Caused by: |\
+^[[:space:]][.]{3} +[0-9]+ more|\
+^java[.]lang[.][a-zA-Z.]+Exception: " "$junit_xml_path" >"$filtered_junit_xml_path"
+    # See if we have got a valid XML file after filtering.
+    if xmllint "$filtered_junit_xml_path" >/dev/null; then
+      mv -f "$filtered_junit_xml_path" "$junit_xml_path"
+      log "Filtered JUnit XML file '$junit_xml_path' is valid"
+    else
+      log "Failed to filter JUnit XML file '$junit_xml_path': invalid after filtering"
+      if xmllint "$junit_xml_path"; then
+        log "JUnit XML file '$junit_xml_path' is valid with no filtering done"
+      else
+        log "JUnit XML file '$junit_xml_path' is already invalid even with no filtering!"
+        xml_valid=false
+      fi
+      rm -f "$filtered_junit_xml_path"
+    fi
+  fi
+
+  process_tree_supervisor_append_log_to_on_error=$test_log_path
+  stop_process_tree_supervisor
+
+  if ! "$process_supervisor_success"; then
+    log "Process tree supervisor script reported an error, marking the test as failed in" \
+        "$junit_xml_path"
+    "$YB_SRC_ROOT"/build-support/update_test_result_xml.py \
+      --result-xml "$junit_xml_path" \
+      --mark-as-failed true \
+      --extra-message "Process supervisor script reported errors (e.g. unterminated processes)."
+  fi
+
+  if is_jenkins ||
+     [[ ${YB_REMOVE_SUCCESSFUL_JAVA_TEST_OUTPUT:-} == "1" && $mvn_exit_code -eq 0 ]]; then
     # If the test is successful, all expected files exist, and no failures are found in the JUnit
     # test XML, delete the test log files to save disk space in the Jenkins archive.
     #
@@ -1456,20 +1577,6 @@ run_java_test() {
     fi
   fi
 
-  if [[ -f $junit_xml_path ]]; then
-    # No reason to include mini cluster logs in the JUnit XML. In fact, these logs can interfere
-    # with XML parsing by Jenkins.
-    local filtered_junit_xml_path=$junit_xml_path.filtered
-    egrep -v '^(m|ts)[0-9]+[|]pid[0-9]+[|]' "$junit_xml_path" >"$filtered_junit_xml_path"
-    # See if we've got a valid XML file after filtering.
-    if xmllint "$filtered_junit_xml_path" >/dev/null; then
-      log "Filtered JUnit XML file '$junit_xml_path'"
-      mv -f "$filtered_junit_xml_path" "$junit_xml_path"
-    else
-      rm -f "$filtered_junit_xml_path"
-    fi
-  fi
-
   if should_gzip_test_logs; then
     gzip_if_exists "$test_log_path" "$mvn_output_path"
     local per_test_method_log_path
@@ -1478,7 +1585,11 @@ run_java_test() {
     done
   fi
 
-  return "$mvn_exit_code"
+  declare -i java_test_exit_code=$mvn_exit_code
+  if [[ $java_test_exit_code -eq 0 ]] && ! "$process_supervisor_success"; then
+    java_test_exit_code=1
+  fi
+  return "$java_test_exit_code"
 }
 
 collect_java_tests() {

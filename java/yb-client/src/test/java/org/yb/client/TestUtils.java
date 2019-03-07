@@ -240,6 +240,10 @@ public class TestUtils {
     }
   }
 
+  public static boolean isReleaseBuild() {
+    return TestUtils.getBuildType().equals("release");
+  }
+
   /**
    * @return the base directory within which we will store server data
    */

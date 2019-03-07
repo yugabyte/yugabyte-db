@@ -31,11 +31,8 @@ def main():
 
     parser = argparse.ArgumentParser(
         usage="usage: %(prog)s <options>",
-        description="Updates a JUnit-formatted test result XML to include the given URL pointing " +
-                    "to the test log. We need this so we can navigate directly to the test log " +
-                    "from a test result page such as https://jenkins.dev.yugabyte.com/job/" +
-                    "yugabyte-ubuntu-phabricator/131/testReport/junit/(root)/ClientTest" +
-                    "/TestInvalidPredicates/.")
+        description="Updates a JUnit-style test result XML file, e.g. to add a log URL or "
+                    "to mark the test as failed.")
 
     parser.add_argument(
         "--result-xml",
@@ -47,11 +44,20 @@ def main():
 
     parser.add_argument(
         "--log-url",
-        help="The test log URL to insert into the test result XML file",
+        help="The test log URL to insert into the test result XML file. "
+             "We need this so we can navigate directly to the test log "
+             "from a test result page such as https://jenkins.dev.yugabyte.com/job/"
+             "yugabyte-ubuntu-phabricator/131/testReport/junit/(root)/ClientTest"
+             "/TestInvalidPredicates/.",
         type=unicode,
         dest="log_url",
-        metavar="LOG_URL",
-        required=True)
+        metavar="LOG_URL")
+
+    parser.add_argument(
+        "--extra-message",
+        help="An extra message to add to the test result.",
+        type=unicode,
+        metavar="EXTRA_MESSAGE")
 
     parser.add_argument(
         "--mark-as-failed",
@@ -95,8 +101,6 @@ def main():
 
     xml_dom = minidom.parse(args.result_xml)
 
-    log_url_with_prefix = "Log: %s\n\n" % args.log_url
-
     # It might happen that test case passed and produced XML with passed results, but after that
     # fails due to additional instrumented checks (ThreadSanitizer, AddressSanitizer, etc)
     # with non-zero exit code. In this case we need to mark test case as failed by adding <error>
@@ -120,17 +124,24 @@ def main():
                             pass
                     container_node = container_node.parentNode
 
-    # I am assuming that there may be some distinction between "failure" and "error" nodes. E.g. in
-    # some xUnit test frameworks "failures" are assertion failures and "errors" are test program
-    # crashes happening even before we get to an assertion. We are treating these two XML node types
-    # the same for the purpose of adding a log URL here.
-    for tag_name in ('failure', 'error'):
-        for failure_node in xml_dom.getElementsByTagName(tag_name):
-            new_node = xml_dom.createTextNode(log_url_with_prefix)
-            if len(failure_node.childNodes) > 0:
-                failure_node.insertBefore(new_node, failure_node.firstChild)
-            else:
-                failure_node.appendChild(new_node)
+    extra_text = ""
+    if args.extra_message:
+        extra_text += "%s\n\n" % args.extra_message
+    if args.log_url:
+        extra_text += "Log: %s\n\n" % args.log_url
+
+    if extra_text:
+        # We are assuming that there may be some distinction between "failure" and "error" nodes.
+        # E.g.  in some xUnit test frameworks "failures" are assertion failures and "errors" are
+        # test program crashes happening even before we get to an assertion. We are treating these
+        # two XML node types the same for the purpose of adding a log URL here.
+        for tag_name in ('failure', 'error'):
+            for failure_node in xml_dom.getElementsByTagName(tag_name):
+                new_node = xml_dom.createTextNode(extra_text)
+                if len(failure_node.childNodes) > 0:
+                    failure_node.insertBefore(new_node, failure_node.firstChild)
+                else:
+                    failure_node.appendChild(new_node)
 
     output_xml_str = xml_dom.toxml()
     with open(args.result_xml, 'w') as output_file:
