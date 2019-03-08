@@ -43,6 +43,7 @@
     "particles.js": "^2.0.0",
     "react-dev-tools": "0.0.1",
     "react-dev-utils": "^4.2.1",
+    "run-p": "0.0.0",
     "webpack": "^3.8.1",
     "webpack-dev-server": "^2.9.4"
   }

@@ -5,29 +5,26 @@ description: YugaByte Structured Query Language (YSQL) [Beta]
 summary: Reference for the YSQL API
 image: /images/section_icons/api/pgsql.png
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
-aliases:
-  - /latest/api/postgresql/
-  - /latest/api/ysql/
 menu:
   latest:
-    identifier: api-postgresql
+    identifier: api-ysql
     parent: api
-    weight: 1300
+    weight: 3000
+aliases:
+  - /latest/api/ysql/
 isTocNested: true
 showAsideToc: true
 ---
 
 ## Introduction
-YSQL is a distributed SQL API compatible with PostgreSQL. It supports the following features.
+YSQL - YugaByte Structured Query Language - is a distributed SQL API compatible with PostgreSQL. Similar to PostgreSQL, YSQL has several components being constructed by a number of elements.
 
-- Data definition language (DDL) statements.
-- Data manipulation language (DML) statements.
-- Builtin functions and Expression operators.
-- Primitive user-defined datatypes.
+The main components of YSQL are Data definition language (DDL), Data manipulation language (DML), and Data control language (DCL). Several other components are also provided for different purposes such as system control, transaction control, and performance tuning.
+
+A number of elements are used to construct the languages in YSQL such as datatypes, database objects, names and qualifiers, expressions, and comments.
 
 ## Example
-The following example illustrates how to use `psql` to connect to YugaByte DB's PostgreSQL API.
-It assumes you have [installed YugaByte](../../quick-start/install/) and started a [PostgreSQL-enabled cluster](../../quick-start/test-postgresql/).
+The following example illustrates how to use `psql` to connect to YugaByte DB's PostgreSQL-compatible API. It assumes you have [installed YugaByte](../../quick-start/install/) and started a [PostgreSQL-enabled cluster](../../quick-start/test-postgresql/).
 
 ```sh
 $ bin/psql -p 5433 -U postgres
@@ -59,73 +56,13 @@ postgres=# select * from sample ORDER BY id DESC;
 ```
 The examples given in the rest of this section assume the cluster is running and `psql` is connected to it as described above.
 
-## DDL Statements
-Data definition language (DDL) statements are instructions for the following database operations.
+## References
 
-- Create and drop database objects.
+### Commands
+All suppoted commands are listed in the [Commands](commands/) section.
 
-Statement | Description |
-----------|-------------|
-[`CREATE DATABASE`](ddl_create_database) | Create a new database |
-[`CREATE TABLE`](ddl_create_table) | Create a new table |
-[`DROP DATABASE`](ddl_drop_database) | Delete a database and associated objects |
-[`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
-[`CREATE VIEW`](ddl_create_view) | Create a new view |
-[`CREATE USER`](permissions) | Create a new user/role |
-[`GRANT`](permissions) | Grant permissions|
-[`REVOKE`](permissions) | Revoke permissions |
+### Data Types
+All PostgresSQL-compatible types are supported although not all of them can be used for columns in PRIMARY KEY yet. All suppoted types are listed in the [Data Types](datatypes/) section.
 
-## DML Statements
-Data manipulation language (DML) statements read from and write to the existing database objects. Currently, YugaByte DB implicitly commits any updates by DML statements.
-
-Statement | Description |
-----------|-------------|
-[`INSERT`](dml_insert) | Insert rows into a table |
-[`SELECT`](dml_select) | Select rows from a table |
-[`UPDATE`] | In progress. Update rows in a table |
-[`DELETE`] | In progress. Delete rows from a table |
-
-## Transactions
-Statement | Description |
-----------|-------------|
-[`ABORT` &#124; `ROLLBACK`](transactions) | Rollback a transaction |
-[`BEGIN`](transactions) | Start a transaction |
-[`END` &#124; `COMMIT`](transactions) | Commit a transaction |
-
-## Sequences
-Statement | Description |
-----------|------------|
-[`CREATE SEQUENCE`](create_sequence) | Create a new sequence |
-[`DROP SEQUENCE`](drop_sequence) | Drop a sequence |
-[`nextval(sequence)`](nextval_sequence) | Get the next value in the sequence
-[`currval(sequence)`](currval_sequence) | Get the last value returned by the most recent nextval call for the specified sequence
-[`lastval()`](lastval_sequence) | Get the last value returned by the most recent nextval call for any sequence
-
-- `ALTER SEQUENCE` and  `setval()` are not supported yet.
-
-## Other SQL Statements
-
-Statement | Description |
-----------|-------------|
-[`EXECUTE`](prepare_execute) | Insert rows into a table |
-[`EXPLAIN`](explain) | Insert rows into a table |
-[`PREPARE`](prepare_execute) | Select rows from a table |
-[`SET`](transactions) | Select rows from a table |
-[`SHOW`](transactions) | Select rows from a table |
-
-## Expressions
-PostgreSQL builtin functions and operators are supported.
-User-defined functions are currently in progress.
-
-## Data Types
-The following table lists all supported primitive types.
-
-Primitive Type | Allowed in Key | Type Parameters | Description |
----------------|----------------|-----------------|-------------|
-[`BIGINT`](type_int) | Yes | - | 64-bit signed integer |
-[`DOUBLE PRECISION`](type_number) | Yes | - | 64-bit, inexact, floating-point number |
-[`FLOAT`](type_number) | Yes | - | 64-bit, inexact, floating-point number |
-[`REAL`](type_number) | Yes | - | 32-bit, inexact, floating-point number |
-[`INT` &#124; `INTEGER`](type_int) | Yes | - | 32-bit signed integer |
-[`SMALLINT`](type_int) | Yes | - | 16-bit signed integer |
-[`TEXT` &#124; `VARCHAR`](type_text) | Yes | - | Variable-size string of Unicode characters |
+### Expressions
+All PostgreSQL-compatible builtin functions and operators are supported. User-defined functions are currently in progress. All suppoted expressions are listed in the [Expressions](exprs/) section.
