@@ -109,6 +109,9 @@ struct ConsensusBootstrapInfo {
   // These are owned by the ConsensusBootstrapInfo instance.
   ReplicateMsgs orphaned_replicates;
 
+  // The number of of WAL log records that tablet bootstrap replayed.
+  int64_t num_log_records_replayed;
+
  private:
   DISALLOW_COPY_AND_ASSIGN(ConsensusBootstrapInfo);
 };
