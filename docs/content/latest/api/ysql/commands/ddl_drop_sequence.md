@@ -17,7 +17,7 @@ The `DROP SEQUENCE` statement deletes a sequence in the current schema.
 
 ## Syntax
 
-### Diagram
+### Diagrams
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="573" height="70" viewbox="0 0 573 70"><path class="connector" d="M0 22h5m53 0h10m87 0h30m32 0h10m64 0h20m-141 0q5 0 5 5v8q0 5 5 5h116q5 0 5-5v-8q0-5 5-5m5 0h10m118 0h30m77 0h22m-109 25q0 5 5 5h5m79 0h5q5 0 5-5m-104-25q5 0 5 5v33q0 5 5 5h89q5 0 5-5v-33q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="53" height="25" rx="7"/><text class="text" x="15" y="22">DROP</text><rect class="literal" x="68" y="5" width="87" height="25" rx="7"/><text class="text" x="78" y="22">SEQUENCE</text><rect class="literal" x="185" y="5" width="32" height="25" rx="7"/><text class="text" x="195" y="22">IF</text><rect class="literal" x="227" y="5" width="64" height="25" rx="7"/><text class="text" x="237" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#sequence-name"><rect class="rule" x="321" y="5" width="118" height="25"/><text class="text" x="331" y="22">sequence_name</text></a><rect class="literal" x="469" y="5" width="77" height="25" rx="7"/><text class="text" x="479" y="22">CASCADE</text><rect class="literal" x="469" y="35" width="79" height="25" rx="7"/><text class="text" x="479" y="52">RESTRICT</text></svg>
 
 ### sequence_name

@@ -17,7 +17,7 @@ The `CREATE VIEW` statement creates a new view in a database. It defines the vie
 
 ## Syntax
 
-### Diagram 
+### Diagrams
 
 #### create_view
 

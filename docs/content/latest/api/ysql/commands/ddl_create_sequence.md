@@ -17,7 +17,7 @@ The `CREATE SEQUENCE` statement creates a new sequence in the current schema.
 
 ## Syntax
 
-### Diagram
+### Diagrams
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="650" height="50" viewbox="0 0 650 50"><path class="connector" d="M0 22h5m67 0h10m87 0h30m32 0h10m45 0h10m64 0h20m-196 0q5 0 5 5v8q0 5 5 5h171q5 0 5-5v-8q0-5 5-5m5 0h10m118 0h10m127 0h5"/><rect class="literal" x="5" y="5" width="67" height="25" rx="7"/><text class="text" x="15" y="22">CREATE</text><rect class="literal" x="82" y="5" width="87" height="25" rx="7"/><text class="text" x="92" y="22">SEQUENCE</text><rect class="literal" x="199" y="5" width="32" height="25" rx="7"/><text class="text" x="209" y="22">IF</text><rect class="literal" x="241" y="5" width="45" height="25" rx="7"/><text class="text" x="251" y="22">NOT</text><rect class="literal" x="296" y="5" width="64" height="25" rx="7"/><text class="text" x="306" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#sequence-name"><rect class="rule" x="390" y="5" width="118" height="25"/><text class="text" x="400" y="22">sequence_name</text></a><a xlink:href="../grammar_diagrams#sequence-options"><rect class="rule" x="518" y="5" width="127" height="25"/><text class="text" x="528" y="22">sequence_options</text></a></svg>
 
 ### sequence_name
