@@ -19,9 +19,8 @@ YugaByte supports the `CREATE USER` and limited `GRANT`/`REVOKE` commands to cre
 ## Syntax
 
 ### Diagrams
-
 #### create_user
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="204" height="35" viewbox="0 0 204 35"><path class="connector" d="M0 22h5m67 0h10m53 0h10m54 0h5"/><rect class="literal" x="5" y="5" width="67" height="25" rx="7"/><text class="text" x="15" y="22">CREATE</text><rect class="literal" x="82" y="5" width="53" height="25" rx="7"/><text class="text" x="92" y="22">USER</text><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="145" y="5" width="54" height="25"/><text class="text" x="155" y="22">name</text></a></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="205" height="34" viewbox="0 0 205 34"><path class="connector" d="M0 21h5m67 0h10m53 0h10m55 0h5"/><rect class="literal" x="5" y="5" width="67" height="24" rx="7"/><text class="text" x="15" y="21">CREATE</text><rect class="literal" x="82" y="5" width="53" height="24" rx="7"/><text class="text" x="92" y="21">USER</text><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="145" y="5" width="55" height="24"/><text class="text" x="155" y="21">name</text></a></svg>
 
 ### Grammar
 

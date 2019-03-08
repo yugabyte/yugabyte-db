@@ -20,6 +20,8 @@ showAsideToc: true
 
 ### Diagrams
 
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="224" height="68" viewbox="0 0 224 68"><path class="connector" d="M0 21h5m60 0h30m104 0h20m-134 24q0 5 5 5h5m55 0h54q5 0 5-5m-129-24q5 0 5 5v32q0 5 5 5h114q5 0 5-5v-32q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="60" height="24" rx="7"/><text class="text" x="15" y="21">ABORT</text><rect class="literal" x="95" y="5" width="104" height="24" rx="7"/><text class="text" x="105" y="21">TRANSACTION</text><rect class="literal" x="95" y="34" width="55" height="24" rx="7"/><text class="text" x="105" y="50">WORK</text></svg>
+
 ### Syntax
 
 ```

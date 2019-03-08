@@ -21,7 +21,7 @@ Additionally the `SET` and `SHOW` commands can be used to set and, respectively,
 
 ### Diagrams
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="349" height="35" viewbox="0 0 349 35"><path class="connector" d="M0 22h5m58 0h10m106 0h10m87 0h10m58 0h5"/><rect class="literal" x="5" y="5" width="58" height="25" rx="7"/><text class="text" x="15" y="22">SHOW</text><rect class="literal" x="73" y="5" width="106" height="25" rx="7"/><text class="text" x="83" y="22">TRANSACTION</text><rect class="literal" x="189" y="5" width="87" height="25" rx="7"/><text class="text" x="199" y="22">ISOLATION</text><rect class="literal" x="286" y="5" width="58" height="25" rx="7"/><text class="text" x="296" y="22">LEVEL</text></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="339" height="34" viewbox="0 0 339 34"><path class="connector" d="M0 21h5m57 0h10m104 0h10m82 0h10m56 0h5"/><rect class="literal" x="5" y="5" width="57" height="24" rx="7"/><text class="text" x="15" y="21">SHOW</text><rect class="literal" x="72" y="5" width="104" height="24" rx="7"/><text class="text" x="82" y="21">TRANSACTION</text><rect class="literal" x="186" y="5" width="82" height="24" rx="7"/><text class="text" x="196" y="21">ISOLATION</text><rect class="literal" x="278" y="5" width="56" height="24" rx="7"/><text class="text" x="288" y="21">LEVEL</text></svg>
 
 ### Syntax
 

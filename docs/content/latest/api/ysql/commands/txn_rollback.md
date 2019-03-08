@@ -18,9 +18,9 @@ showAsideToc: true
 
 ## Grammar
 
-### Diagrams
+### Diagram
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="289" height="155" viewbox="0 0 289 155"><path class="connector" d="M0 22h25m60 0h43m-113 25q0 5 5 5h5m83 0h5q5 0 5-5m-103 30q0 5 5 5h5m59 0h29q5 0 5-5m-103 30q0 5 5 5h5m46 0h42q5 0 5-5m-108-85q5 0 5 5v110q0 5 5 5h5m69 0h19q5 0 5-5v-110q0-5 5-5m5 0h30m106 0h20m-136 25q0 5 5 5h5m57 0h54q5 0 5-5m-131-25q5 0 5 5v33q0 5 5 5h116q5 0 5-5v-33q0-5 5-5m5 0h5"/><rect class="literal" x="25" y="5" width="60" height="25" rx="7"/><text class="text" x="35" y="22">ABORT</text><rect class="literal" x="25" y="35" width="83" height="25" rx="7"/><text class="text" x="35" y="52">ROLLBACK</text><rect class="literal" x="25" y="65" width="59" height="25" rx="7"/><text class="text" x="35" y="82">BEGIN</text><rect class="literal" x="25" y="95" width="46" height="25" rx="7"/><text class="text" x="35" y="112">END</text><rect class="literal" x="25" y="125" width="69" height="25" rx="7"/><text class="text" x="35" y="142">COMMIT</text><rect class="literal" x="158" y="5" width="106" height="25" rx="7"/><text class="text" x="168" y="22">TRANSACTION</text><rect class="literal" x="158" y="35" width="57" height="25" rx="7"/><text class="text" x="168" y="52">WORK</text></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="244" height="68" viewbox="0 0 244 68"><path class="connector" d="M0 21h5m80 0h30m104 0h20m-134 24q0 5 5 5h5m55 0h54q5 0 5-5m-129-24q5 0 5 5v32q0 5 5 5h114q5 0 5-5v-32q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="80" height="24" rx="7"/><text class="text" x="15" y="21">ROLLBACK</text><rect class="literal" x="115" y="5" width="104" height="24" rx="7"/><text class="text" x="125" y="21">TRANSACTION</text><rect class="literal" x="115" y="34" width="55" height="24" rx="7"/><text class="text" x="125" y="50">WORK</text></svg>
 
 ### Syntax
 
