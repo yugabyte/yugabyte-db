@@ -22,6 +22,11 @@ Follow these steps if this is the first time you are setting up the YugaByte doc
 git clone git@github.com:<YOUR_GITHUB_ID>/docs.git
 ```
 
+Add the master as a remote branch by running the following:
+```
+$ git remote add --track master upstream https://github.com/YugaByte/docs.git
+```
+
 2. Install Hugo. For example, on a Mac, you can run the following commands:
 ```
 brew update
@@ -41,18 +46,21 @@ $ npm install
 
 ## Step 2. Update your docs repo and start the local webserver
 
-1. Add the master as a remote branch by running the following:
+The assumption here is that you are working on a local clone of your fork. See the previous step.
+
+1. Rebase your fork to fetch the latest docs changes:
+Ensure you are on the master branch.
 ```
-$ git remote add --track master upstream https://github.com/YugaByte/docs.git
+$ git checkout master
 ```
 
-2. Fetch the latest docs:
+Now rebase to the latest changes.
 ```
-$ git fetch upstream
-$ git merge upstream/master
+$ git pull --rebase upstream master
+$ git push origin master
 ```
 
-3. Start the local webserver on `127.0.0.1` interface by running the following:
+2. Start the local webserver on `127.0.0.1` interface by running the following:
 ```
 $ npm start
 ```
