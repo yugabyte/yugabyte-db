@@ -40,6 +40,7 @@ DECLARE_double(respond_write_failed_probability);
 DECLARE_bool(detect_duplicates_for_retryable_requests);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_bool(combine_batcher_errors);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 
 using namespace std::literals;
 
@@ -322,6 +323,13 @@ class QLStressTestSingleTablet : public QLStressTest {
   }
 };
 
+class QLStressTestThreeTablets : public QLStressTest {
+ private:
+  int NumTablets() override {
+    return 3;
+  }
+};
+
 // This test has the following scenario:
 // Add some operations to the old leader, but don't add to other nodes.
 // Switch leadership to a new leader, but don't accept updates from new leader by old leader.
@@ -480,6 +488,77 @@ TEST_F_EX(QLStressTest, FlushCompact, QLStressTestSingleTablet) {
     ASSERT_NO_FATALS(VerifyFlushedFrontiers());
   }
   ASSERT_GE(num_iter, 5);
+}
+
+TEST_F_EX(QLStressTest, LogReplayAfterCompaction, QLStressTestSingleTablet) {
+  SetAtomicFlag(false, &FLAGS_flush_rocksdb_on_shutdown);
+  auto session = NewSession();
+  int num_writes = 1000;
+  for (int j = 0; j < num_writes; ++j) {
+    ASSERT_OK(WriteRow(session, j, "value" + std::to_string(j)));
+  }
+  vector<OpId> op_ids;
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+  ASSERT_NO_FATALS(VerifyFlushedFrontiers());
+  for (const auto& mini_tserver : cluster_->mini_tablet_servers()) {
+    auto peers = mini_tserver->server()->tablet_manager()->GetTabletPeers();
+    for (const auto &peer : peers) {
+      rocksdb::DB *db = peer->tablet()->TEST_db();
+      OpId op_id;
+      ASSERT_NO_FATALS(VerifyFlushedFrontier(db->GetFlushedFrontier(), &op_id));
+      op_ids.push_back(op_id);
+    }
+  }
+
+  ASSERT_OK(cluster_->CompactTablets());
+  int num_unflushed_writes = 2000;
+  for (int j = 100; j < 100+num_unflushed_writes; ++j) {
+    ASSERT_OK(WriteRow(session, j, "value" + std::to_string(j)));
+  }
+  ASSERT_OK(cluster_->RestartSync());
+  int i = 0;
+  for (const auto& mini_tserver : cluster_->mini_tablet_servers()) {
+    auto peers = mini_tserver->server()->tablet_manager()->GetTabletPeers();
+    for (const auto &peer : peers) {
+      rocksdb::DB *db = peer->tablet()->TEST_db();
+      OpId op_id;
+      ASSERT_NO_FATALS(VerifyFlushedFrontier(db->GetFlushedFrontier(), &op_id));
+      OpId expected = op_ids[i];
+      ASSERT_EQ(op_id, expected);
+      i++;
+    }
+    ASSERT_WITHIN_INCLUSIVE(num_unflushed_writes - 5, num_unflushed_writes + 5,
+        mini_tserver->server()->tablet_manager()->num_replayed());
+  }
+}
+
+TEST_F_EX(QLStressTest, LogReplayAfterCompactionThreeTablets, QLStressTestThreeTablets) {
+  SetAtomicFlag(false, &FLAGS_flush_rocksdb_on_shutdown);
+  auto session = NewSession();
+  int num_writes = 1000;
+  for (int j = 0; j < num_writes; ++j) {
+    ASSERT_OK(WriteRow(session, j, "value" + std::to_string(j)));
+  }
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+  ASSERT_NO_FATALS(VerifyFlushedFrontiers());
+  for (const auto& mini_tserver : cluster_->mini_tablet_servers()) {
+    auto peers = mini_tserver->server()->tablet_manager()->GetTabletPeers();
+    for (const auto &peer : peers) {
+      rocksdb::DB *db = peer->tablet()->TEST_db();
+      OpId op_id;
+      ASSERT_NO_FATALS(VerifyFlushedFrontier(db->GetFlushedFrontier(), &op_id));
+    }
+  }
+  ASSERT_OK(cluster_->CompactTablets());
+  int num_unflushed_writes = 2000;
+  for (int j = 100; j < 100+num_unflushed_writes; ++j) {
+    ASSERT_OK(WriteRow(session, j, "value" + std::to_string(j)));
+  }
+  ASSERT_OK(cluster_->RestartSync());
+  for (const auto& mini_tserver : cluster_->mini_tablet_servers()) {
+    ASSERT_WITHIN_INCLUSIVE(num_unflushed_writes - 5, num_unflushed_writes + 5,
+                            mini_tserver->server()->tablet_manager()->num_replayed());
+  }
 }
 
 // The scenario of this test is the following:

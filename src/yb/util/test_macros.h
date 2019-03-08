@@ -65,6 +65,12 @@
 
 #define ASSERT_NOK(s) ASSERT_FALSE((s).ok())
 
+#define ASSERT_WITHIN_INCLUSIVE(lower, upper, val) \
+  do { \
+    ASSERT_GE(val, lower); \
+    ASSERT_LE(val, upper); \
+  } while (0)
+
 #define ASSERT_OK_PREPEND(status, msg) do { \
   auto&& _s = (status); \
   if (_s.ok()) { \
