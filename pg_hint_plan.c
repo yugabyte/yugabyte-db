@@ -3082,19 +3082,19 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	}
 
 	/*
+	 * The planner call below may replace current_hint_str. Store and restore
+	 * it so that the subsequent planning in the upper level doesn't get
+	 * confused.
+	 */
+	recurse_level++;
+	prev_hint_str = current_hint_str;
+	
+	/*
 	 * Use PG_TRY mechanism to recover GUC parameters and current_hint_state to
 	 * the state when this planner started when error occurred in planner.
 	 */
 	PG_TRY();
 	{
-		/*
-		 * The planner call below may replace current_hint_str. Store and
-		 * restore it so that the subsequent planning in the upper level
-		 * doesn't get confused.
-		 */
-		recurse_level++;
-		prev_hint_str = current_hint_str;
-
 		if (prev_planner)
 			result = (*prev_planner) (parse, cursorOptions, boundParams);
 		else
