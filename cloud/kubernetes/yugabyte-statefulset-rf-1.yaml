@@ -15,9 +15,7 @@
 #    - Run psql          :
 #      - Init Postgres DB: kubectl exec -it yb-tserver-0 bash -- -c "YB_ENABLED_IN_POSTGRES=1
 #                             FLAGS_pggate_master_addresses=
-#                             yb-master-0.yb-masters.default.svc.cluster.local:7100,
-#                             yb-master-1.yb-masters.default.svc.cluster.local:7100,
-#                             yb-master-2.yb-masters.default.svc.cluster.local:7100
+#                             yb-master-0.yb-masters.default.svc.cluster.local:7100
 #                             /home/yugabyte/postgres/bin/initdb
 #                             -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres"
 #      - Run psql        : kubectl exec -it yb-tserver-0 /home/yugabyte/postgres/bin/psql --
@@ -70,7 +68,7 @@ metadata:
 spec:
   serviceName: yb-masters
   podManagementPolicy: "Parallel"
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: yb-master
@@ -114,7 +112,8 @@ spec:
           - "--server_broadcast_addresses=$(POD_NAME).yb-masters:7100"
           - "--use_private_ip=never"
           - "--master_addresses=yb-masters.default.svc.cluster.local:7100"
-          - "--master_replication_factor=3"
+          - "--master_replication_factor=1"
+          - "--replication_factor=1"
           - "--logtostderr"
         ports:
         - containerPort: 7000
@@ -187,7 +186,7 @@ metadata:
 spec:
   serviceName: yb-tservers
   podManagementPolicy: "Parallel"
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: yb-tserver
@@ -234,7 +233,7 @@ spec:
           - "--pgsql_proxy_bind_address=$(POD_IP):5433"
           - "--use_private_ip=never"
           - "--tserver_master_addrs=yb-masters.default.svc.cluster.local:7100"
-          - "--tserver_master_replication_factor=3"
+          - "--tserver_master_replication_factor=1"
           - "--logtostderr"
         ports:
         - containerPort: 9000
