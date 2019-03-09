@@ -10,6 +10,7 @@ test: yb_bytea
 test: yb_text
 test: yb_int2_array
 test: yb_int4_array
+test: yb_interval
 test: yb_timestamp
 test: yb_jsonb
 test: yb_uuid
