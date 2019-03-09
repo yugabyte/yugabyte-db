@@ -13174,13 +13174,11 @@ SimpleTypename:
 			| ConstDatetime	{ $$ = $1; }
 			| ConstInterval opt_interval
 				{
-					parser_ybc_not_support(@1, "Interval");
 					$$ = $1;
 					$$->typmods = $2;
 				}
 			| ConstInterval '(' Iconst ')'
 				{
-					parser_ybc_not_support(@1, "Interval");
 					$$ = $1;
 					$$->typmods = list_make2(makeIntConst(INTERVAL_FULL_RANGE, -1),
 											 makeIntConst($3, @3));
@@ -13496,7 +13494,6 @@ ConstDatetime:
 ConstInterval:
 			INTERVAL
 				{
-					parser_ybc_not_support(@1, "INTERVAL");
 					$$ = SystemTypeName("interval");
 					$$->location = @1;
 				}

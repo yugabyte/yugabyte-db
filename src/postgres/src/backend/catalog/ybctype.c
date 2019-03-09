@@ -74,6 +74,7 @@
 #include "utils/syscache.h"
 #include "utils/numeric.h"
 #include "utils/uuid.h"
+#include "utils/timestamp.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -424,6 +425,26 @@ Datum YBCTimeToDatum(const int64 *data, int64 bytes, const YBCPgTypeAttrs *type_
 }
 
 /*
+ * INTERVAL conversions.
+ * PG represents INTERVAL as 128 bit structure, store it as binary
+ */
+void YBCDatumToInterval(Datum datum, void **data, int64 *bytes) {
+  *data = DatumGetIntervalP(datum);
+  *bytes = sizeof(Interval);
+}
+
+Datum YBCIntervalToDatum(const void *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+  const size_t sz = sizeof(Interval);
+  if (bytes != sz) {
+    ereport(ERROR, (errcode(ERRCODE_DATA_CORRUPTED),
+        errmsg("Unexpected size for Interval (%ld)", bytes)));
+  }
+  Interval* result = palloc(sz);
+  memcpy(result, data, sz);
+  return IntervalPGetDatum(result);
+}
+
+/*
  * Other conversions.
  */
 
@@ -656,9 +677,9 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToInt64,
 		(YBCPgDatumFromData)YBCInt64ToDatum },
 
-	{ INTERVALOID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, false,
-		(YBCPgDatumToData)NULL,
-		(YBCPgDatumFromData)NULL },
+	{ INTERVALOID, YB_YQL_DATA_TYPE_BINARY, true,
+		(YBCPgDatumToData)YBCDatumToInterval,
+		(YBCPgDatumFromData)YBCIntervalToDatum },
 
 	{ TIMETZOID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, false,
 		(YBCPgDatumToData)NULL,
