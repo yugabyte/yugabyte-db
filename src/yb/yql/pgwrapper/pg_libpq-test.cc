@@ -113,6 +113,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
 // The described prodecure is repeated multiple times to increase probability of catching bug,
 // w/o running test multiple times.
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
+  static const std::string kTryAgain = "Try again.";
   constexpr auto kKeys = RegularBuildVsSanitizers(10, 20);
   constexpr auto kColors = 2;
   constexpr auto kIterations = 20;
@@ -126,7 +127,11 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
   for (int iteration = 0; iterations_left > 0; ++iteration) {
     SCOPED_TRACE(Format("Iteration: $0", iteration));
 
-    ASSERT_OK(Execute(conn.get(), "DELETE FROM t"));
+    auto status = Execute(conn.get(), "DELETE FROM t");
+    if (!status.ok()) {
+      ASSERT_STR_CONTAINS(status.ToString(), kTryAgain);
+      continue;
+    }
     for (int k = 0; k != kKeys; ++k) {
       int32_t color = RandomUniformInt(0, kColors - 1);
       ASSERT_OK(Execute(conn.get(),
@@ -146,7 +151,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
         auto res = Fetch(conn.get(), "SELECT * FROM t");
         if (!res.ok()) {
           auto msg = res.status().message().ToBuffer();
-          ASSERT_TRUE(msg.find("Try again.") != std::string::npos) << res.status();
+          ASSERT_STR_CONTAINS(res.status().ToString(), kTryAgain);
           return;
         }
         auto columns = PQnfields(res->get());
