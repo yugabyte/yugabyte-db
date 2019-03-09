@@ -43,6 +43,7 @@ import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
 import com.datastax.driver.core.policies.DefaultRetryPolicy;
 import com.datastax.driver.core.policies.LoadBalancingPolicy;
 import com.datastax.driver.core.policies.LoggingRetryPolicy;
+import com.datastax.driver.core.policies.RoundRobinPolicy;
 import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
 import com.yugabyte.sample.common.CmdLineOpts;
 import com.yugabyte.sample.common.CmdLineOpts.ContactPoint;
@@ -198,13 +199,16 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   }
 
   protected LoadBalancingPolicy getLoadBalancingPolicy() {
-    DCAwareRoundRobinPolicy.Builder builder = DCAwareRoundRobinPolicy.builder();
+    LoadBalancingPolicy policy;
     if (appConfig.localDc != null && !appConfig.localDc.isEmpty()) {
-      builder.withLocalDc(appConfig.localDc)
-             .withUsedHostsPerRemoteDc(Integer.MAX_VALUE)
-             .allowRemoteDCsForLocalConsistencyLevel();
+      policy = DCAwareRoundRobinPolicy.builder()
+                                      .withUsedHostsPerRemoteDc(Integer.MAX_VALUE)
+                                      .withLocalDc(appConfig.localDc)
+                                      .allowRemoteDCsForLocalConsistencyLevel()
+                                      .build();
+    } else {
+      policy = new RoundRobinPolicy();
     }
-    LoadBalancingPolicy policy = builder.build();
     if (!appConfig.disableYBLoadBalancingPolicy) {
       policy = new PartitionAwarePolicy(policy);
     }
