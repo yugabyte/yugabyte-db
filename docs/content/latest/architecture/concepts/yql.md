@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: architecture-yql
     parent: architecture-concepts
-    weight: 935
+    weight: 1128
 ---
 
 The YQL layer implements the server-side of multiple protocols/APIs that YugaByte DB supports. Currently, YugaByte DB supports YCQL and YEDIS, 2 transactional NoSQL APIs, and YSQL, a distributed SQL API. The 2 NoSQL APIs are wire compatible with Cassandra Query Language (CQL) and Redis while the SQL API is wire compatible with PostgreSQL.

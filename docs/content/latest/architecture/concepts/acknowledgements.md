@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: architecture-acknowledgements
     parent: architecture-concepts
-    weight: 990
+    weight: 1130
 ---
 
 The YugaByte DB code base has leveraged several open source projects as a starting point.

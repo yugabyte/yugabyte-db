@@ -3,12 +3,13 @@ title: Replication
 linkTitle: Replication
 description: Replication with Raft Consensus
 aliases:
+  - /latest/architecture/docdb/replication/
   - /latest/architecture/concepts/replication/
 menu:
   latest:
     identifier: docdb-replication
     parent: docdb
-    weight: 960
+    weight: 1144
 isTocNested: false
 showAsideToc: true
 ---
