@@ -1124,7 +1124,8 @@ void HandleFlushAll(LocalCommandData data) {
 void HandleCreateDB(LocalCommandData data) {
   RedisResponsePB resp;
   // Ensure that the rediskeyspace exists. If not create it.
-  Status s = data.client()->CreateNamespaceIfNotExists(common::kRedisKeyspaceName);
+  Status s = data.client()->CreateNamespaceIfNotExists(common::kRedisKeyspaceName,
+                                                       YQLDatabase::YQL_DATABASE_REDIS);
   if (!s.ok()) {
     VLOG(1) << "Namespace '" << common::kRedisKeyspaceName << "' could not be created.";
     const Slice message = s.message();

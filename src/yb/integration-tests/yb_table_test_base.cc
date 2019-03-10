@@ -151,7 +151,8 @@ void YBTableTestBase::OpenTable() {
 
 void YBTableTestBase::CreateRedisTable(shared_ptr<yb::client::YBClient> client,
                                        YBTableName table_name) {
-  ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name()));
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
+                                                YQLDatabase::YQL_DATABASE_REDIS));
   ASSERT_OK(NewTableCreator()->table_name(table_name)
                 .table_type(YBTableType::REDIS_TABLE_TYPE)
                 .num_tablets(CalcNumTablets(3))

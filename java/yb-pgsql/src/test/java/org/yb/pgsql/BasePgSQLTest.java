@@ -53,6 +53,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final String PG_DATA_FLAG = "PGDATA";
   private static final String YB_ENABLED_IN_PG_ENV_VAR_NAME = "YB_ENABLED_IN_POSTGRES";
 
+  // CQL and Redis settings.
+  protected static boolean startCqlProxy = false;
+  protected static boolean startRedisProxy = false;
+
   protected static Connection connection;
 
   private static File initdbDataDir;
@@ -103,8 +107,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     if (isTSAN()) {
       flagMap.put("yb_client_admin_operation_timeout_sec", "120");
     }
-    flagMap.put("start_redis_proxy", "false");
-    flagMap.put("start_cql_proxy", "false");
+    flagMap.put("start_cql_proxy", Boolean.toString(startCqlProxy));
+    flagMap.put("start_redis_proxy", Boolean.toString(startRedisProxy));
 
     return flagMap;
   }

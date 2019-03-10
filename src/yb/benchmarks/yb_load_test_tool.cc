@@ -125,6 +125,7 @@ using yb::CountDownLatch;
 using yb::Slice;
 using yb::YBPartialRow;
 using yb::TableType;
+using yb::YQLDatabase;
 
 using strings::Substitute;
 
@@ -246,7 +247,8 @@ void SetupYBTable(const shared_ptr<YBClient> &client) {
     keyspace = yb::common::kRedisKeyspaceName;
   }
   const YBTableName table_name(keyspace, FLAGS_table_name);
-  CHECK_OK(client->CreateNamespaceIfNotExists(table_name.namespace_name()));
+  CHECK_OK(client->CreateNamespaceIfNotExists(table_name.namespace_name(),
+                                              YQLDatabase::YQL_DATABASE_REDIS));
 
   if (!YBTableExistsAlready(client, table_name) || DropTableIfNecessary(client, table_name)) {
     CreateTable(table_name, client);

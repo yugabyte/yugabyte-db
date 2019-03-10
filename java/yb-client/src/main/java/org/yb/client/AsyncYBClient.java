@@ -54,6 +54,7 @@ import com.stumbleupon.async.Deferred;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.Common;
+import org.yb.Common.YQLDatabase;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
@@ -371,6 +372,20 @@ public class AsyncYBClient implements AutoCloseable {
       throws Exception {
     checkIsClosed();
     CreateKeyspaceRequest request = new CreateKeyspaceRequest(this.masterTable, keyspace);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /*
+   * Create a keyspace (namespace) for the specified database type.
+   * @param name of the keyspace.
+   */
+  public Deferred<CreateKeyspaceResponse> createKeyspace(String keyspace, YQLDatabase databaseType)
+      throws Exception {
+    checkIsClosed();
+    CreateKeyspaceRequest request = new CreateKeyspaceRequest(this.masterTable,
+                                                              keyspace,
+                                                              databaseType);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

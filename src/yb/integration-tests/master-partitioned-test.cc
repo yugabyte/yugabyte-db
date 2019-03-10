@@ -195,7 +195,8 @@ void MasterPartitionedTest::CheckLeaderMasterIsResponsive(int master_idx) {
 }
 
 void MasterPartitionedTest::CreateTable(const YBTableName& table_name, int num_tablets) {
-  ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name()));
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
+                                                YQLDatabase::YQL_DATABASE_REDIS));
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   master::ReplicationInfoPB replication_info;
   replication_info.mutable_live_replicas()->set_num_replicas(3);

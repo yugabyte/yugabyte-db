@@ -127,7 +127,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              bool if_not_exist,
                              bool add_primary_key)
     : PgDdl(pg_session),
-      table_name_(database_name, table_name),
+      table_name_(GetPgsqlNamespaceId(table_id.database_oid), database_name, table_name),
       table_id_(table_id),
       is_pg_catalog_table_(strcmp(schema_name, "pg_catalog") == 0 ||
                            strcmp(schema_name, "information_schema") == 0),
@@ -209,7 +209,7 @@ Status PgCreateTable::Exec() {
       return STATUS(InvalidArgument, "Duplicate table");
     }
     if (s.IsNotFound()) {
-      return STATUS(InvalidArgument, "Schema not found");
+      return STATUS(InvalidArgument, "Database not found", table_name_.namespace_name());
     }
     return STATUS_FORMAT(InvalidArgument, "Invalid table definition: $0", s.ToString());
   }

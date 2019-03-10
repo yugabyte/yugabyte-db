@@ -28,6 +28,7 @@
 namespace yb {
 
 namespace master {
+class NamespaceIdentifierPB;
 class TableIdentifierPB;
 }
 
@@ -50,23 +51,21 @@ class YBTableName {
     set_table_name(table_name);
   }
 
+  YBTableName(const std::string& namespace_id, const std::string& namespace_name,
+              const std::string& table_name) {
+    set_namespace_id(namespace_id);
+    set_namespace_name(namespace_name);
+    set_table_name(table_name);
+  }
+
   // Simple table name (no namespace provided at the moment of construction).
   // In this case the namespace has not been set yet and it MUST be set later.
   explicit YBTableName(const std::string& table_name) {
     set_table_name(table_name);
   }
 
-  // Copy constructor.
-  YBTableName(const YBTableName& name) {
-    *this = name;
-  }
-
-  // Move constructor.
-  YBTableName(YBTableName&& name) : namespace_name_(std::move(name.namespace_name_)),
-      table_name_(std::move(name.table_name_)) {}
-
   bool empty() const {
-    return namespace_name_.empty() && table_name_.empty();
+    return namespace_id_.empty() && namespace_name_.empty() && table_name_.empty();
   }
 
   bool has_namespace() const {
@@ -110,6 +109,11 @@ class YBTableName {
     return (has_namespace() ? namespace_name_ + '.' + table_name_ : table_name_);
   }
 
+  void set_namespace_id(const std::string& namespace_id) {
+    DCHECK(!namespace_id.empty());
+    namespace_id_ = namespace_id;
+  }
+
   void set_namespace_name(const std::string& namespace_name) {
     DCHECK(!namespace_name.empty());
     namespace_name_ = namespace_name;
@@ -120,24 +124,23 @@ class YBTableName {
     table_name_ = table_name;
   }
 
-  YBTableName& operator =(const YBTableName& name) {
-    namespace_name_ = name.namespace_name_;
-    table_name_ = name.table_name_;
-    return *this;
-  }
-
   // ProtoBuf helpers.
   void SetIntoTableIdentifierPB(master::TableIdentifierPB* id) const;
   void GetFromTableIdentifierPB(const master::TableIdentifierPB& id);
 
+  void SetIntoNamespaceIdentifierPB(master::NamespaceIdentifierPB* id) const;
+  void GetFromNamespaceIdentifierPB(const master::NamespaceIdentifierPB& id);
+
   static bool IsSystemNamespace(const std::string& namespace_name);
 
  private:
+  std::string namespace_id_; // Optional. Can be set when the client knows the namespace id also.
   std::string namespace_name_; // Can be empty, that means the namespace has not been set yet.
   std::string table_name_;
 };
 
 inline bool operator ==(const YBTableName& lhs, const YBTableName& rhs) {
+  // Not comparing namespace_id because it is optional.
   return (lhs.namespace_name() == rhs.namespace_name() && lhs.table_name() == rhs.table_name());
 }
 
