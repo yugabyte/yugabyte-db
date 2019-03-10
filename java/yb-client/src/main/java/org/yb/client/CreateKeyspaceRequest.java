@@ -19,6 +19,7 @@ import org.jboss.netty.buffer.ChannelBuffer;
 
 import org.yb.annotations.InterfaceAudience;
 import org.yb.Common.HostPortPB;
+import org.yb.Common.YQLDatabase;
 import org.yb.consensus.Consensus;
 import org.yb.consensus.Metadata;
 import org.yb.consensus.Metadata.RaftPeerPB;
@@ -31,10 +32,17 @@ import java.util.List;
 @InterfaceAudience.Public
 class CreateKeyspaceRequest extends YRpc<CreateKeyspaceResponse> {
   private String name;
+  private YQLDatabase databaseType;
 
   public CreateKeyspaceRequest(YBTable masterTable, String name) {
     super(masterTable);
     this.name = name;
+  }
+
+  public CreateKeyspaceRequest(YBTable masterTable, String name, YQLDatabase databaseType) {
+    super(masterTable);
+    this.name = name;
+    this.databaseType = databaseType;
   }
 
   @Override
@@ -43,6 +51,8 @@ class CreateKeyspaceRequest extends YRpc<CreateKeyspaceResponse> {
     final Master.CreateNamespaceRequestPB.Builder builder =
       Master.CreateNamespaceRequestPB.newBuilder();
     builder.setName(this.name);
+    if (this.databaseType != null)
+      builder.setDatabaseType(this.databaseType);
 
     return toChannelBuffer(header, builder.build());
   }

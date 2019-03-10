@@ -481,7 +481,7 @@ struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB, SysRowEn
   }
 
   YQLDatabase database_type() const {
-    return pb.has_database_type() ? pb.database_type() : YQL_DATABASE_UNDEFINED;
+    return pb.database_type();
   }
 };
 
@@ -1172,6 +1172,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS WaitForWorkerPoolTests(
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const;
 
+  // Returns whether the namespace is a YCQL namespace.
+  static bool IsYcqlNamespace(const NamespaceInfo& ns);
+
   // Returns whether the table is a YCQL table.
   static bool IsYcqlTable(const TableInfo& table);
 
@@ -1593,6 +1596,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   typedef rw_spinlock LockType;
   mutable LockType lock_;
 
+  // Note: Namespaces and tables for YSQL databases are identified by their ids only and therefore
+  // are not saved in the name maps below.
   TableInfoMap table_ids_map_;         // Table map: table-id -> TableInfo
   TableInfoByNameMap table_names_map_; // Table map: [namespace-id, table-name] -> TableInfo
 

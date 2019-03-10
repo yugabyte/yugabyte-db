@@ -150,7 +150,7 @@ message NamespaceIdentifierPB {
   optional string name = 2;
 
   // Database type.
-  optional YQLDatabase database_type = 3 [ default = YQL_DATABASE_UNDEFINED ];
+  optional YQLDatabase database_type = 3 [ default = YQL_DATABASE_CQL ];
 }
 
 message TableIdentifierPB {
@@ -352,7 +352,7 @@ message SysNamespaceEntryPB {
   optional bytes name = 1;
 
   // Namespace/Database type.
-  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
+  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_CQL ];
 
   // For Postgres:
   optional uint32 next_pg_oid = 3; // Next oid to assign.
@@ -1053,7 +1053,7 @@ message CreateNamespaceRequestPB {
   optional string name = 1;
 
   // Database type.
-  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
+  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_CQL ];
 
   // For RBAC.
   optional string creator_role_name = 3;
@@ -1078,7 +1078,7 @@ message DeleteNamespaceRequestPB {
   optional NamespaceIdentifierPB namespace = 1;
 
   // Database type.
-  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
+  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_CQL ];
 }
 // Fails if the namespace is NOT empty
 
@@ -1088,7 +1088,7 @@ message DeleteNamespaceResponsePB {
 }
 
 message ListNamespacesRequestPB {
-  optional YQLDatabase database_type = 1 [ default = YQL_DATABASE_UNDEFINED ];
+  optional YQLDatabase database_type = 1 [ default = YQL_DATABASE_CQL ];
 }
 
 message ListNamespacesResponsePB {

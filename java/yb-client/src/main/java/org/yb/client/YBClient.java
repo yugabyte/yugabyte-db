@@ -42,6 +42,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
 import org.yb.Common.TableType;
+import org.yb.Common.YQLDatabase;
 import org.yb.Schema;
 import org.yb.Type;
 import org.yb.annotations.InterfaceAudience;
@@ -116,7 +117,8 @@ public class YBClient implements AutoCloseable {
   }
 
   public void createRedisNamespace() throws Exception {
-    CreateKeyspaceResponse resp = this.createKeyspace(REDIS_KEYSPACE_NAME);
+    CreateKeyspaceResponse resp = this.createKeyspace(REDIS_KEYSPACE_NAME,
+                                                      YQLDatabase.YQL_DATABASE_REDIS);
     if (resp.hasError()) {
       throw new RuntimeException("Could not create keyspace " + REDIS_KEYSPACE_NAME +
                                  ". Error :" + resp.errorMessage());
@@ -184,6 +186,16 @@ public class YBClient implements AutoCloseable {
   public CreateKeyspaceResponse createKeyspace(String keyspace)
       throws Exception {
     Deferred<CreateKeyspaceResponse> d = asyncClient.createKeyspace(keyspace);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /*
+   * Create a keyspace (namespace) for the specified database type.
+   * @param non-null name of the keyspace.
+   */
+  public CreateKeyspaceResponse createKeyspace(String keyspace, YQLDatabase databaseType)
+      throws Exception {
+    Deferred<CreateKeyspaceResponse> d = asyncClient.createKeyspace(keyspace, databaseType);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

@@ -183,7 +183,13 @@ class MasterTest : public YBTest {
   }
 
   void DoListAllNamespaces(ListNamespacesResponsePB* resp);
+  void DoListAllNamespaces(const boost::optional<YQLDatabase>& database_type,
+                           ListNamespacesResponsePB* resp);
+
   Status CreateNamespace(const NamespaceName& ns_name, CreateNamespaceResponsePB* resp);
+  Status CreateNamespace(const NamespaceName& ns_name,
+                         const boost::optional<YQLDatabase>& database_type,
+                         CreateNamespaceResponsePB* resp);
 
   RpcController* ResetAndGetController() {
     controller_->Reset();
@@ -718,7 +724,15 @@ TEST_F(MasterTest, TestInvalidPlacementInfo) {
 }
 
 void MasterTest::DoListAllNamespaces(ListNamespacesResponsePB* resp) {
+  DoListAllNamespaces(boost::none, resp);
+}
+
+void MasterTest::DoListAllNamespaces(const boost::optional<YQLDatabase>& database_type,
+                                     ListNamespacesResponsePB* resp) {
   ListNamespacesRequestPB req;
+  if (database_type) {
+    req.set_database_type(*database_type);
+  }
 
   ASSERT_OK(proxy_->ListNamespaces(req, resp, ResetAndGetController()));
   SCOPED_TRACE(resp->DebugString());
@@ -726,8 +740,17 @@ void MasterTest::DoListAllNamespaces(ListNamespacesResponsePB* resp) {
 }
 
 Status MasterTest::CreateNamespace(const NamespaceName& ns_name, CreateNamespaceResponsePB* resp) {
+  return CreateNamespace(ns_name, boost::none, resp);
+}
+
+Status MasterTest::CreateNamespace(const NamespaceName& ns_name,
+                                   const boost::optional<YQLDatabase>& database_type,
+                                   CreateNamespaceResponsePB* resp) {
   CreateNamespaceRequestPB req;
   req.set_name(ns_name);
+  if (database_type) {
+    req.set_database_type(*database_type);
+  }
 
   RETURN_NOT_OK(proxy_->CreateNamespace(req, resp, ResetAndGetController()));
   if (resp->has_error()) {
@@ -883,6 +906,64 @@ TEST_F(MasterTest, TestNamespaces) {
             EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES
         }, namespaces);
   }
+}
+
+TEST_F(MasterTest, TestNamespaceSeparation) {
+  ListNamespacesResponsePB namespaces;
+
+  // Check default namespace.
+  {
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
+    // Including system namespace.
+    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
+    CheckNamespaces(
+        {
+            EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES
+        }, namespaces);
+  }
+
+  // Create a new namespace for each of YCQL, YSQL and YEDIS database types.
+  CreateNamespaceResponsePB resp;
+  ASSERT_OK(CreateNamespace("test_cql", YQLDatabase::YQL_DATABASE_CQL, &resp));
+  const NamespaceId cql_ns_id = resp.id();
+  ASSERT_OK(CreateNamespace("test_pgsql", YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  const NamespaceId pgsql_ns_id = resp.id();
+  ASSERT_OK(CreateNamespace("test_redis", YQLDatabase::YQL_DATABASE_REDIS, &resp));
+  const NamespaceId redis_ns_id = resp.id();
+
+  // List all namespaces and by each database type.
+  ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
+  ASSERT_EQ(4 + kNumSystemNamespaces, namespaces.namespaces_size());
+  CheckNamespaces(
+      {
+        EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES,
+        std::make_tuple("test_cql", cql_ns_id),
+        std::make_tuple("test_pgsql", pgsql_ns_id),
+        std::make_tuple("test_redis", redis_ns_id),
+      }, namespaces);
+
+  ASSERT_NO_FATALS(DoListAllNamespaces(YQLDatabase::YQL_DATABASE_CQL, &namespaces));
+  ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
+  CheckNamespaces(
+      {
+        // Defalt and system namespaces are created in YCQL.
+        EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES,
+        std::make_tuple("test_cql", cql_ns_id),
+      }, namespaces);
+
+  ASSERT_NO_FATALS(DoListAllNamespaces(YQLDatabase::YQL_DATABASE_PGSQL, &namespaces));
+  ASSERT_EQ(1, namespaces.namespaces_size());
+  CheckNamespaces(
+      {
+        std::make_tuple("test_pgsql", pgsql_ns_id),
+      }, namespaces);
+
+  ASSERT_NO_FATALS(DoListAllNamespaces(YQLDatabase::YQL_DATABASE_REDIS, &namespaces));
+  ASSERT_EQ(1, namespaces.namespaces_size());
+  CheckNamespaces(
+      {
+        std::make_tuple("test_redis", redis_ns_id),
+      }, namespaces);
 }
 
 TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {

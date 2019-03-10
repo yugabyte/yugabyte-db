@@ -70,13 +70,8 @@ void PgSession::Reset() {
 }
 
 Status PgSession::ConnectDatabase(const string& database_name) {
-  Result<bool> namespace_exists = client_->NamespaceExists(database_name, YQL_DATABASE_PGSQL);
-  if (namespace_exists.ok() && namespace_exists.get()) {
-    connected_database_ = database_name;
-    return Status::OK();
-  }
-
-  return STATUS_FORMAT(NotFound, "Database '$0' does not exist", database_name);
+  connected_database_ = database_name;
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------

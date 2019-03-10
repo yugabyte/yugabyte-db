@@ -52,13 +52,10 @@ enum QLClient {
 
 // Client type.
 enum YQLDatabase {
-  YQL_DATABASE_UNDEFINED = 1;
+  YQL_DATABASE_UNKNOWN = 1;
   YQL_DATABASE_CQL = 2;
   YQL_DATABASE_PGSQL = 3; // Pgsql database
   YQL_DATABASE_REDIS = 4;
-
-  // Pgsql Schema. Its name should be qualified name <database>.<schema>
-  // YQL_DATABASE_PGSQL_SUBDB = 4;
 }
 
 // To ensure compatibility between release versions, the numeric values of these datatypes cannot
