@@ -318,7 +318,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // TODO(neil) When database_type is undefined, backend will not check error on database type.
   // Except for testing we should use proper database_types for all creations.
   CHECKED_STATUS CreateNamespace(const std::string& namespace_name,
-                                 YQLDatabase database_type = YQL_DATABASE_UNDEFINED,
+                                 const boost::optional<YQLDatabase>& database_type = boost::none,
                                  const std::string& creator_role_name = "",
                                  const std::string& namespace_id = "",
                                  const std::string& source_namespace_id = "",
@@ -329,11 +329,12 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // TODO(neil) When database_type is undefined, backend will not check error on database type.
   // Except for testing we should use proper database_types for all creations.
   CHECKED_STATUS CreateNamespaceIfNotExists(const std::string& namespace_name,
-                                            YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
+                                            const boost::optional<YQLDatabase>& database_type =
+                                            boost::none);
 
   // Delete namespace with the given name.
   CHECKED_STATUS DeleteNamespace(const std::string& namespace_name,
-                                 YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
+                                 const boost::optional<YQLDatabase>& database_type = boost::none);
 
   // For Postgres: reserve oids for a Postgres database.
   CHECKED_STATUS ReservePgsqlOids(const std::string& namespace_id,
@@ -353,14 +354,15 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // List all namespace names.
   // 'namespaces' is appended to only on success.
   CHECKED_STATUS ListNamespaces(std::vector<std::string>* namespaces) {
-    return ListNamespaces(YQL_DATABASE_UNDEFINED, namespaces);
+    return ListNamespaces(boost::none, namespaces);
   }
-  CHECKED_STATUS ListNamespaces(YQLDatabase database_type, std::vector<std::string>* namespaces);
+  CHECKED_STATUS ListNamespaces(const boost::optional<YQLDatabase>& database_type,
+                                std::vector<std::string>* namespaces);
 
   // Check if the namespace given by 'namespace_name' exists.
   // Result value is set only on success.
   Result<bool> NamespaceExists(const std::string& namespace_name,
-                               YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
+                               const boost::optional<YQLDatabase>& database_type = boost::none);
 
   // Authentication and Authorization
   // Create a new role.

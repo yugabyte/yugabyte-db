@@ -26,13 +26,31 @@ DEFINE_bool(yb_system_namespace_readonly, true, "Set system keyspace read-only."
 using std::string;
 
 void YBTableName::SetIntoTableIdentifierPB(master::TableIdentifierPB* id) const {
+  SetIntoNamespaceIdentifierPB(id->mutable_namespace_());
   id->set_table_name(table_name());
-  id->mutable_namespace_()->set_name(resolved_namespace_name());
 }
 
 void YBTableName::GetFromTableIdentifierPB(const master::TableIdentifierPB& id) {
+  GetFromNamespaceIdentifierPB(id.namespace_());
   table_name_ = id.table_name();
-  namespace_name_ = id.namespace_().name();
+}
+
+void YBTableName::SetIntoNamespaceIdentifierPB(master::NamespaceIdentifierPB* id) const {
+  id->set_name(resolved_namespace_name());
+  if (!namespace_id_.empty()) {
+    id->set_id(namespace_id_);
+  } else {
+    id->clear_id();
+  }
+}
+
+void YBTableName::GetFromNamespaceIdentifierPB(const master::NamespaceIdentifierPB& id) {
+  namespace_name_ = id.name();
+  if (id.has_id()) {
+    namespace_id_ = id.id();
+  } else {
+    namespace_id_.clear();
+  }
 }
 
 bool YBTableName::IsSystemNamespace(const std::string& namespace_name) {

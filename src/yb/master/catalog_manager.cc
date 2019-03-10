@@ -426,9 +426,18 @@ class NamespaceLoader : public Visitor<PersistentNamespaceInfo> {
     auto l = ns->LockForWrite();
     l->mutable_data()->pb.CopyFrom(metadata);
 
+    if (!l->data().pb.has_database_type() ||
+        l->data().pb.database_type() == YQL_DATABASE_UNKNOWN) {
+      LOG(INFO) << Substitute("Updating database type of namespace $0", l->data().pb.name());
+      l->mutable_data()->pb.set_database_type(l->data().pb.name() == common::kRedisKeyspaceName
+                                              ? YQLDatabase::YQL_DATABASE_REDIS
+                                              : YQLDatabase::YQL_DATABASE_CQL);
+    }
+
     // Add the namespace to the IDs map and to the name map (if the namespace is not deleted).
+    // Do not add Postgres namespace to the name map as it will be identified by id only.
     catalog_manager_->namespace_ids_map_[ns_id] = ns;
-    if (!l->data().pb.name().empty()) {
+    if (!l->data().pb.name().empty() && l->data().pb.database_type() != YQL_DATABASE_PGSQL) {
       catalog_manager_->namespace_names_map_[l->data().pb.name()] = ns;
     }
 
@@ -749,6 +758,18 @@ std::string RequestorString(RpcContext* rpc) {
   } else {
     return "internal request";
   }
+}
+
+YQLDatabase GetDatabaseTypeForTable(const TableType table_type) {
+  switch (table_type) {
+    case TableType::YQL_TABLE_TYPE: return YQLDatabase::YQL_DATABASE_CQL;
+    case TableType::REDIS_TABLE_TYPE: return YQLDatabase::YQL_DATABASE_REDIS;
+    case TableType::PGSQL_TABLE_TYPE: return YQLDatabase::YQL_DATABASE_PGSQL;
+    case TableType::TRANSACTION_STATUS_TABLE_TYPE:
+      // Transactions status table is created in "system" keyspace in CQL.
+      return YQLDatabase::YQL_DATABASE_CQL;
+  }
+  return YQL_DATABASE_UNKNOWN;
 }
 
 }  // anonymous namespace
@@ -1360,6 +1381,10 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
   return Status::OK();
 }
 
+bool CatalogManager::IsYcqlNamespace(const NamespaceInfo& ns) {
+  return ns.database_type() == YQLDatabase::YQL_DATABASE_CQL;
+}
+
 bool CatalogManager::IsYcqlTable(const TableInfo& table) {
   return table.GetTableType() == TableType::YQL_TABLE_TYPE && table.id() != kSysCatalogTableId;
 }
@@ -1380,6 +1405,7 @@ Status CatalogManager::PrepareNamespace(
   // Create entry.
   SysNamespaceEntryPB ns_entry;
   ns_entry.set_name(name);
+  ns_entry.set_database_type(YQLDatabase::YQL_DATABASE_CQL);
 
   // Create in memory object.
   scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(id);
@@ -2018,6 +2044,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TRACE("Looking up namespace");
   scoped_refptr<NamespaceInfo> ns;
   RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req.namespace_(), &ns), resp);
+  if (ns->database_type() != GetDatabaseTypeForTable(req.table_type())) {
+    Status s = STATUS(NotFound, "Namespace not found");
+    return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+  }
   NamespaceId namespace_id = ns->id();
 
   // Validate schema.
@@ -4310,12 +4340,15 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
     // Validate the user request.
 
-    // Verify that the namespace does not exist.
-    ns = FindPtrOrNull(namespace_names_map_, req->name());
-    if (ns != nullptr) {
-      resp->set_id(ns->id());
-      s = STATUS(AlreadyPresent, Substitute("Keyspace $0 already exists", req->name()), ns->id());
-      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT, s);
+    // Verify that the namespace does not exist except for namespace for YSQL database that is
+    // identified by id only.
+    if (req->database_type() != YQL_DATABASE_PGSQL) {
+      ns = FindPtrOrNull(namespace_names_map_, req->name());
+      if (ns != nullptr) {
+        resp->set_id(ns->id());
+        s = STATUS(AlreadyPresent, Substitute("Keyspace $0 already exists", req->name()), ns->id());
+        return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT, s);
+      }
     }
 
     // Add the new namespace.
@@ -4364,9 +4397,12 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
       }
     }
 
-    // Add the namespace to the in-memory map for the assignment.
+    // Add the namespace to the in-memory map for the assignment. Namespaces for YSQL databases
+    // are identified by the id only and should not be added to the name map.
     namespace_ids_map_[ns->id()] = ns;
-    namespace_names_map_[req->name()] = ns;
+    if (req->database_type() != YQL_DATABASE_PGSQL) {
+      namespace_names_map_[req->name()] = ns;
+    }
 
     resp->set_id(ns->id());
   }
@@ -4508,14 +4544,11 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
 
   boost::shared_lock<LockType> l(lock_);
 
-  for (const NamespaceInfoMap::value_type& entry : namespace_names_map_) {
+  for (const NamespaceInfoMap::value_type& entry : namespace_ids_map_) {
     auto ltm = entry.second->LockForRead();
-
-    if (entry.second->database_type() == YQL_DATABASE_PGSQL) {
-      if (!req->has_database_type() || req->database_type() != YQL_DATABASE_PGSQL) {
-        // Not a match as we do not allow UNDEFINED database type for PGSQL.
-        continue;
-      }
+    // If the request asks for namespaces for a specific database type, filter by the type.
+    if (req->has_database_type() && entry.second->database_type() != req->database_type()) {
+      continue;
     }
 
     NamespaceIdentifierPB *ns = resp->add_namespaces();
@@ -5022,6 +5055,10 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
   if (req->has_namespace_()) {
     TRACE("Looking up namespace");
     RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
+    if (ns->database_type() != YQLDatabase::YQL_DATABASE_CQL) {
+      Status s = STATUS(NotFound, "Namespace not found");
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    }
   }
 
   {
@@ -7350,8 +7387,7 @@ const NamespaceName& NamespaceInfo::name() const {
 
 YQLDatabase NamespaceInfo::database_type() const {
   auto l = LockForRead();
-  return l->data().pb.has_database_type() ? l->data().pb.database_type()
-                                          : YQL_DATABASE_UNDEFINED;
+  return l->data().pb.database_type();
 }
 
 std::string NamespaceInfo::ToString() const {

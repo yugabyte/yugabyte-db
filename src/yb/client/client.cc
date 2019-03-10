@@ -561,7 +561,7 @@ Status YBClient::GetTableSchema(const YBTableName& table_name,
 }
 
 Status YBClient::CreateNamespace(const std::string& namespace_name,
-                                 const YQLDatabase database_type,
+                                 const boost::optional<YQLDatabase>& database_type,
                                  const std::string& creator_role_name,
                                  const std::string& namespace_id,
                                  const std::string& source_namespace_id,
@@ -572,8 +572,8 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
   if (!creator_role_name.empty()) {
     req.set_creator_role_name(creator_role_name);
   }
-  if (database_type != YQL_DATABASE_UNDEFINED) {
-    req.set_database_type(database_type);
+  if (database_type) {
+    req.set_database_type(*database_type);
   }
   if (!namespace_id.empty()) {
     req.set_namespace_id(namespace_id);
@@ -589,7 +589,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
 }
 
 Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
-                                            YQLDatabase database_type) {
+                                            const boost::optional<YQLDatabase>& database_type) {
   Result<bool> namespace_exists = NamespaceExists(namespace_name);
   RETURN_NOT_OK(namespace_exists);
   return namespace_exists.get() ? Status::OK()
@@ -597,22 +597,23 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
 }
 
 Status YBClient::DeleteNamespace(const std::string& namespace_name,
-                                 YQLDatabase database_type) {
+                                 const boost::optional<YQLDatabase>& database_type) {
   DeleteNamespaceRequestPB req;
   DeleteNamespaceResponsePB resp;
   req.mutable_namespace_()->set_name(namespace_name);
-  if (database_type != YQL_DATABASE_UNDEFINED) {
-    req.set_database_type(database_type);
+  if (database_type) {
+    req.set_database_type(*database_type);
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteNamespace);
   return Status::OK();
 }
 
-Status YBClient::ListNamespaces(YQLDatabase database_type, std::vector<std::string>* namespaces) {
+Status YBClient::ListNamespaces(const boost::optional<YQLDatabase>& database_type,
+                                std::vector<std::string>* namespaces) {
   ListNamespacesRequestPB req;
   ListNamespacesResponsePB resp;
-  if (database_type != YQL_DATABASE_UNDEFINED) {
-    req.set_database_type(database_type);
+  if (database_type) {
+    req.set_database_type(*database_type);
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListNamespaces);
 
@@ -673,7 +674,7 @@ Status YBClient::GrantRevokePermission(GrantRevokeStatementType statement_type,
 }
 
 Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
-                                       YQLDatabase database_type) {
+                                       const boost::optional<YQLDatabase>& database_type) {
   std::vector<std::string> namespaces;
   RETURN_NOT_OK(ListNamespaces(database_type, &namespaces));
 
@@ -1557,7 +1558,7 @@ Status YBTableCreator::Create() {
   // Build request.
   CreateTableRequestPB req;
   req.set_name(data_->table_name_.table_name());
-  req.mutable_namespace_()->set_name(data_->table_name_.resolved_namespace_name());
+  data_->table_name_.SetIntoNamespaceIdentifierPB(req.mutable_namespace_());
   req.set_table_type(data_->table_type_);
 
   if (!data_->creator_role_name_.empty()) {
