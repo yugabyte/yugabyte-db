@@ -32,7 +32,7 @@ The following table lists all SQL commands that are supported by YugaByte Databa
 | [`CREATE TABLE AS`](ddl_create_table_as) | Create a new table |
 | [`CREATE USER`](dcl_create_user) | Create a new user (role) |
 | [`CREATE VIEW`](ddl_create_view) | Create a new view |
-| [`DEALLOCATE`](txn_deallocate) | Deallocate a prepared statement |
+| [`DEALLOCATE`](perf_deallocate) | Deallocate a prepared statement |
 | [`DELETE`](dml_delete) | Delete rows from a table |
 | [`DROP DATABASE`](ddl_drop_database) | Delete a database and associated objects |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
@@ -49,7 +49,7 @@ The following table lists all SQL commands that are supported by YugaByte Databa
 | [`ROLLBACK`](txn_rollback) | Rollback a transaction |
 | [`SELECT`](dml_select) | Select rows from a table |
 | [`SET`](cmd_set) | Set a system, session, or transactional parameter |
-| [`SET CONSTRAINTS`](cmd_set_constraints) | Set constraints on current transaction|
+| [`SET CONSTRAINTS`](txn_set_constraints) | Set constraints on current transaction|
 | [`SET TRANSACTION`](txn_set) | Set transaction behaviors |
 | [`SHOW`](cmd_show) | Show value of a system, session, or transactional parameter |
 | [`SHOW TRANSACTION`](txn_show) | Show properties of a transaction |

@@ -2,7 +2,7 @@
 title: ALTER DATABASE
 linkTitle: ALTER DATABASE
 summary: Alter database
-description: ALTER DATABASE
+description: ALTER DATABASE (underdevelopment)
 menu:
   latest:
     identifier: api-ysql-commands-alter-db

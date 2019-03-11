@@ -1,6 +1,6 @@
 ---
 title: GRANT
-description: GRANT Command
+description: GRANT Command (underdevelopment)
 summary: GRANT Command
 menu:
   latest:

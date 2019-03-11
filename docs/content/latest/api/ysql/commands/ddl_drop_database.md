@@ -1,7 +1,7 @@
 ---
 title: DROP DATABASE
 summary: Removes a database and all of its database objects
-description: DROP DATABASE
+description: DROP DATABASE (underdevelopment)
 menu:
   latest:
     identifier: api-ysql-commands-drop-db

@@ -1,6 +1,6 @@
 ---
 title: REVOKE
-description: REVOKE
+description: REVOKE Command (underdevelopment)
 summary: REVOKE
 menu:
   latest:

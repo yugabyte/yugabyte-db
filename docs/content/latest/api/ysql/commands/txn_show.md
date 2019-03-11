@@ -14,8 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-YugaByte's PostgresSQL API currently supports the following transactions-related SQL commands `BEGIN`, `ABORT`, `ROLLBACK`, `END`, `COMMIT`.
-Additionally the `SET` and `SHOW` commands can be used to set and, respectively, show the current transaction isolation level.
+YugaByte's PostgresSQL API currently supports the following transactions-related SQL commands `BEGIN`, `ABORT`, `ROLLBACK`, `END`, `COMMIT`. Additionally the `SET` and `SHOW` commands can be used to set and, respectively, show the current transaction isolation level.
 
 ## Grammar
 
