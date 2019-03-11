@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: architecture-single-row-transactions
     parent: architecture-acid-transactions
-    weight: 1052
+    weight: 1152
 isTocNested: false
 showAsideToc: true
 ---

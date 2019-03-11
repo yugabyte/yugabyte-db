@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: high-availability
     parent: core-functions
-    weight: 1040
+    weight: 1190
 isTocNested: true
 showAsideToc: true
 ---

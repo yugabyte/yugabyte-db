@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: architecture-isolation-levels
     parent: architecture-acid-transactions
-    weight: 1051
+    weight: 1151
 isTocNested: false
 showAsideToc: true
 ---

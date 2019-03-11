@@ -6,7 +6,7 @@ menu:
   latest:
     identifier: read-path
     parent: core-functions
-    weight: 1030
+    weight: 1188
 aliases:
   - /architecture/core-functions/read-path/
 isTocNested: false
