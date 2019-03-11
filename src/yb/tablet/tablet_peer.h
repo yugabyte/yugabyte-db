@@ -292,7 +292,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   const std::string& tablet_id() const override { return tablet_id_; }
 
   // Convenience method to return the permanent_uuid of this peer.
-  const std::string& permanent_uuid() const {
+  const std::string& permanent_uuid() const override {
     return permanent_uuid_;
   }
 
