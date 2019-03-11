@@ -1,11 +1,11 @@
 ---
 title: REVOKE
-description: REVOKE Command (underdevelopment)
+description: REVOKE Command
 summary: REVOKE
 menu:
   latest:
     identifier: api-ysql-commands-revoke
-    parent: api-ysql-commands
+    parent: api-ysql-commands-revoke
 aliases:
   - /latest/api/ysql/commands/dcl_revoke
 isTocNested: true

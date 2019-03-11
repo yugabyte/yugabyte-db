@@ -2,7 +2,7 @@
 title: ALTER TABLE
 linkTitle: ALTER TABLE
 summary: Alter a table in a database
-description: ALTER TABLE (underdevelopment)
+description: ALTER TABLE
 menu:
   latest:
     identifier: api-ysql-commands-alter-table

@@ -2,11 +2,11 @@
 title: ALTER DATABASE
 linkTitle: ALTER DATABASE
 summary: Alter database
-description: ALTER DATABASE (underdevelopment)
+description: ALTER DATABASE
 menu:
   latest:
     identifier: api-ysql-commands-alter-db
-    parent: api-ysql-commands
+    parent: api-ysql-commands-alter-db
 aliases:
   - /latest/api/ysql/commands/ddl_alter_db
 isTocNested: true

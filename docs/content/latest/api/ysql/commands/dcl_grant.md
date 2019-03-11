@@ -1,11 +1,11 @@
 ---
 title: GRANT
-description: GRANT Command (underdevelopment)
+description: GRANT Command
 summary: GRANT Command
 menu:
   latest:
     identifier: api-ysql-commands-grant
-    parent: api-ysql-commands
+    parent: api-ysql-commands-grant
 aliases:
   - /latest/api/ysql/commands/dcl_grant
 isTocNested: true

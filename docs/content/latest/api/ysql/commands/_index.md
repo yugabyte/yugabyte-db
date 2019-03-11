@@ -19,7 +19,6 @@ The following table lists all SQL commands that are supported by YugaByte Databa
 | Statement | Description |
 |-----------|-------------|
 | [`ABORT`](txn_abort) | Rollback a transaction |
-| [`ALTER DATABASE`](ddl_alter_db) | Change database definition |
 | [`ALTER TABLE`](ddl_alter_table) | Change table definition |
 | [`BEGIN TRANSACTION`](txn_begin) | Start a transaction |
 | [`COMMIT`](txn_commit) | Commit a transaction |
@@ -34,18 +33,15 @@ The following table lists all SQL commands that are supported by YugaByte Databa
 | [`CREATE VIEW`](ddl_create_view) | Create a new view |
 | [`DEALLOCATE`](perf_deallocate) | Deallocate a prepared statement |
 | [`DELETE`](dml_delete) | Delete rows from a table |
-| [`DROP DATABASE`](ddl_drop_database) | Delete a database and associated objects |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
 | [`END TRANSACTION`](txn_end) | Commit a transaction |
 | [`EXECUTE`](perf_execute) | Insert rows into a table |
 | [`EXPLAIN`](perf_explain) | Insert rows into a table |
-| [`GRANT`](dcl_grant) | Grant permissions |
 | [`INSERT`](dml_insert) | Insert rows into a table |
 | [`LOCK`](txn_lock) | Lock a table |
 | [`PREPARE`](perf_prepare) | Select rows from a table |
 | [`RESET`](cmd_reset) | Reset a variable to factory settings |
-| [`REVOKE`](dcl_revoke) | Revoke permissions |
 | [`ROLLBACK`](txn_rollback) | Rollback a transaction |
 | [`SELECT`](dml_select) | Select rows from a table |
 | [`SET`](cmd_set) | Set a system, session, or transactional parameter |
