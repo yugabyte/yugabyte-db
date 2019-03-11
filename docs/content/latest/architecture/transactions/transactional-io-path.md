@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: architecture-transactional-io-path
     parent: architecture-acid-transactions
-    weight: 1054
+    weight: 1154
 isTocNested: true
 showAsideToc: true
 ---

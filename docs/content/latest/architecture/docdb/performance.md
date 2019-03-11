@@ -1,7 +1,7 @@
 ---
 title: Performance
 linkTitle: Performance
-description: Enhancing performance of RocksDB to build DocDB
+description: Making DocDB High-Performance
 aliases:
   - /latest/architecture/docdb/performance/
 menu:

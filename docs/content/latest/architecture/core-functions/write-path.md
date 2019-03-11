@@ -6,7 +6,7 @@ menu:
   latest:
     identifier: write-path
     parent: core-functions
-    weight: 1020
+    weight: 1186
 aliases:
   - /architecture/core-functions/write-path/
 isTocNested: false

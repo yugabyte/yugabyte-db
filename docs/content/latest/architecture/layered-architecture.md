@@ -39,6 +39,10 @@ YCQL or the *YugaByte Cloud Query Language* is a semi-relational language that h
 
 YEDIS or the *YugaByte Dictionary Service* is a key to data-structure language that is wire-compatible with the Redis protocol.
 
+{{< tip title="Read More" >}}
+Understanding [the design of the query layer](../query-layer/overview/).
+{{< /tip >}}
+
 
 ## DocDB
 
@@ -56,17 +60,40 @@ Data in DocDB is stored in tables. Each table is composed of rows, each row cont
 
 #### Sharding
 
-Data is stored inside tables in DocDB. A DocDB table is often sharded into a number of **tablets**.
+Data is stored inside tables in DocDB. A DocDB table is often sharded into a number of **tablets**. This sharding of tables is transparent to users.
+
+You can read more about [how sharding works in DocDB](../docdb/sharding/).
 
 #### Replication
 
-Each tablet consisting of user data is replicated according to some replication factor.
+Each tablet consisting of user data is replicated according to some replication factor using the Raft consensus algorithm. Replication is performed at a tablet level, and ensures single row linearizability even in the presence of failures.
+
+You can read more about [how replication works in DocDB](../docdb/replication/).
+
 
 #### Persistence
 
-In order to persist data, a [log-structured row/document-oriented storage](../docdb/persistence/) is used. It includes several optimizations for handling ever-growing datasets efficiently.
+In order to persist data, a log-structured row/document-oriented storage is used. It includes several optimizations for handling ever-growing datasets efficiently.
 
+You can read more about [how persistence of data works in DocDB](../docdb/persistence/).
 
 #### Transactions Support
 
-DocDB has support for multi-row transactions. This means that it allows modifying multiple keys while preserving ACID properties.
+DocDB has support for both single-row and multi-row transactions. This means that DocDB allows modifying multiple keys while preserving ACID properties.
+
+* Read about the [isolation levels supported in DocDB](../transactions/isolation-levels/).
+* [Single-row transactions](../transactions/single-row-transactions/).
+* [Multi-row transactions](../transactions/distributed-txns/).
+
+## What's Next?
+
+You can now read about the following:
+
+{{< note title="" >}}
+* [The design goals of YugaByte DB](../design-goals/)
+* [Architecture of DocDB](../docdb/)
+* [Transactions in DocDB](../transactions/)
+* [Design of the query layer](../query-layer/)
+* [How various functions work, like the read and write IO paths](../core-functions/)
+{{< /note >}}
+

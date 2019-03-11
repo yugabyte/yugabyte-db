@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: table-creation
     parent: core-functions
-    weight: 1010
+    weight: 1184
 isTocNested: false
 showAsideToc: true
 ---

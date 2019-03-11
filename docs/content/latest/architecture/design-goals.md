@@ -9,9 +9,12 @@ menu:
     identifier: architecture-design-goals
     parent: architecture
     weight: 1105
-isTocNested: false
+isTocNested: true
 showAsideToc: true
+hidePagination: true
 ---
+
+This page outlines the design goals with which YugaByte DB has been built.
 
 ## Consistency
 
@@ -19,28 +22,34 @@ YugaByte DB offers strong consistency guarantees guarantees in the face of a var
 
 ### CAP Theorem
 
-In terms of the [CAP theorem](https://en.wikipedia.org/wiki/CAP_theorem), YugaByte DB is a CP database (consistent and partition tolerant), but achieves very high availability.
-
-The architectural design of YugaByte is similar to Google Cloud Spanner, which is also a CP system. The description about [Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) is just as valid for YugaByte DB. The key takeaway is that no system provides 100% availability, so the pragmatic question is whether or not the system delivers availability that is so high that most users no longer have to be concerned about outages. For example, given there are many sources of outages for an application, if YugaByte DB is an insignificant contributor to its downtime, then users are correct to not worry about it.
+In terms of the [CAP theorem](https://en.wikipedia.org/wiki/CAP_theorem), YugaByte DB is a CP database (consistent and partition tolerant), but achieves very high availability. The architectural design of YugaByte is similar to Google Cloud Spanner, which is also a CP system. The description about [Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) is just as valid for YugaByte DB. The key takeaway is that no system provides 100% availability, so the pragmatic question is whether or not the system delivers availability that is so high that most users no longer have to be concerned about outages. For example, given there are many sources of outages for an application, if YugaByte DB is an insignificant contributor to its downtime, then users are correct to not worry about it.
 
 ### Single-key lineazibility
 
-Linearizability is one of the strongest single-key consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single key:
-Operations can execute concurrently, but the state of the database at any point in time must appear to be the result of some totally ordered, sequential execution of operations.
-If operation A completes before operation B begins, then B should logically take effect after A.
+YugaByte DB supports single-key lineazible writes. Linearizability is one of the strongest single-key consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single key: 
 
+* Operations can execute concurrently, but the state of the database at any point in time must appear to be the result of some totally ordered, sequential execution of operations.
+* If operation A completes before operation B begins, then B should logically take effect after A.
 
 ### Multi-key ACID transactions
 
 YugaByte DB supports multi-key transactions with Snapshot Isolation, note that the Serializable Isolation level is nearing completion as of this writing (Feb 2019).
 
 
+{{< tip title="Read More about Consistency" >}}
+* Achieving [consistency with Raft consensus](../docdb/replication/).
+* How [fault tolerance and high availability](../core-functions/high-availability/) are achieved.
+* [Single-key linearizable transactions](../transactions/single-row-transactions/) in YugaByte DB.
+* The architecture of [distributed transactions](../transactions/single-row-transactions/).
+{{< /tip >}}
+
+
 ## Query APIs
 
 YugaByte DB does not re-invent storage APIs. It is wire-compatible with existing APIs and extends functionality. It supports the following APIs:
 
-* **YSQL** which is wire-compatible with PostgreSQL and intends to be ANSI-SQL compliant and is
-* **YugaByte Cloud Query Language** or **YCQL** which is a semi-relational API with Cassandra roots
+* **YSQL** which is being built to be ANSI-SQL compliant and is wire-compatible with PostgreSQL
+* **YCQL** (or the *YugaByte Cloud Query Language*) which is a semi-relational API with Cassandra roots
 
 
 ### Distributed SQL
@@ -62,6 +71,11 @@ The YSQL API is PostgreSQL compatible as noted before. It re-uses PostgreSQL cod
   * Stored Procedures
   * Triggers
 
+{{< tip title="Read More" >}}
+Understanding [the design of the query layer](../query-layer/overview/).
+{{< /tip >}}
+
+
 ## Performance
 
 Written ground-up in C++ to ensure high performance and the ability to leverage large memory heaps (RAM) as an internal database cache. It is optimized primarily to run on SSDs and NVMe drives. It is designed with the following workloads in mind:
@@ -71,31 +85,55 @@ Written ground-up in C++ to ensure high performance and the ability to leverage 
 * High data density (total data set size per node)
 * Ability to handle ever growing event data use-cases well
 
+{{< tip title="Read More" >}}
+Achieving [high performance in YugaByte DB](../docdb/performance/).
+{{< /tip >}}
 
 
 ## Geo-Distributed
 
-* Make drivers across the various languages aware of the cluster nodes.
+### Multi-Region Deployments
 
-* A single YugaByte DB cluster should be deployable across multiple clouds (both public and private clouds).
+YugaByte DB should work well in deployments where the nodes of the cluster span:
 
-* Topology-aware drivers.
+* single zone
+* multiple zones
+* multiple regions that are geographically replicated
+* multiple clouds (both public and private clouds)
 
-* Read-replicas
+In order to achieve this, a number of features would be required. For example, client drivers across the various languages should be:
+
+* Cluster-aware, with ability to handle node failures seamlessly
+* Topology-aware, with ability to route traffic seamlessly
 
 ## Cloud-Native
 
 YugaByte DB is a cloud-native database. It has been designed with the following cloud-native principles in mind:
 
-### Multi-Cloud
+### Run on Commodity Hardware
 
-* Should run on any public cloud or on-premise datacenter. This means YugaByte DB should be able to run on commodity hardware on bare metal machines, VMs or containers.
+* Run on any public cloud or on-premise datacenter. This means YugaByte DB should be able to run on commodity hardware on bare metal machines, VMs or containers.
 
 * No hard external dependencies. For example, YugaByte DB should not rely on atomic clocks, but should be able to utilize one if available.
 
-* Support multi—zone and geographically replicated deployments
+### Kubernetes Ready
 
-* Work natively in Kubernetes environments as a stateful application.
+The database should work natively in Kubernetes and other containerized environments as a stateful application.
 
-* YugaByte DB is open source under the very permissive Apache 2.0 license.
+### Open Source
+
+YugaByte DB is open source under the very permissive Apache 2.0 license.
+
+## What's Next?
+
+You can now read about the following:
+
+{{< note title="" >}}
+* [Overview of the architectural layers in YugaByte DB](../layered-architecture/)
+* [Architecture of DocDB](../docdb/)
+* [Transactions in DocDB](../transactions/)
+* [Design of the query layer](../query-layer/)
+* [How various functions work, like the read and write IO paths](../core-functions/)
+{{< /note >}}
+
 
