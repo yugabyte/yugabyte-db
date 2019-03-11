@@ -654,7 +654,8 @@ std::string TransactionApplyData::ToString() const {
 class TransactionParticipant::Impl : public RunningTransactionContext {
  public:
   explicit Impl(TransactionParticipantContext* context, TransactionIntentApplier* applier)
-      : RunningTransactionContext(context, applier), log_prefix_(context->tablet_id() + ": ") {
+      : RunningTransactionContext(context, applier),
+        log_prefix_(Format("T $0 P $1: ", context->tablet_id(), context->permanent_uuid())) {
     LOG_WITH_PREFIX(INFO) << "Start";
   }
 

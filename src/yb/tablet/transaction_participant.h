@@ -85,6 +85,7 @@ class TransactionIntentApplier {
 
 class TransactionParticipantContext {
  public:
+  virtual const std::string& permanent_uuid() const = 0;
   virtual const std::string& tablet_id() const = 0;
   virtual const std::shared_future<client::YBClientPtr>& client_future() const = 0;
   virtual const server::ClockPtr& clock_ptr() const = 0;

@@ -55,6 +55,8 @@ DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
 DECLARE_int32(master_inject_latency_on_transactional_tablet_lookups_ms);
 DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_bool(rocksdb_disable_compactions);
+DECLARE_int32(delay_init_tablet_peer_ms);
 
 namespace yb {
 namespace client {
@@ -755,6 +757,62 @@ TEST_F(QLTransactionTest, CheckCompactionAbortCleanup) {
   ASSERT_EQ(CountIntents(), 0);
 
   ASSERT_OK(cluster_->RestartSync());
+}
+
+class QLTransactionTestWithDisabledCompactions : public QLTransactionTest {
+ public:
+  void SetUp() override {
+    FLAGS_rocksdb_disable_compactions = true;
+    QLTransactionTest::SetUp();
+  }
+};
+
+TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDisabledCompactions) {
+  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
+  FLAGS_transaction_disable_proactive_cleanup_in_tests = true;
+  FLAGS_aborted_intent_cleanup_ms = 1000; // 1 sec
+
+  const int kTransactions = 10;
+
+  LOG(INFO) << "Write values";
+
+  for (size_t i = 0; i != kTransactions; ++i) {
+    SCOPED_TRACE(Format("Transaction $0", i));
+    auto txn = CreateTransaction();
+    auto session = CreateSession(txn);
+    for (int row = 0; row != kNumRows; ++row) {
+      ASSERT_OK(WriteRow(session, i * kNumRows + row, row));
+    }
+    txn->Abort();
+
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kAsync));
+  }
+
+  ASSERT_OK(WaitTransactionsCleaned());
+
+  LOG(INFO) << "Shutdown cluster";
+  cluster_->Shutdown();
+
+  std::this_thread::sleep_for(FLAGS_aborted_intent_cleanup_ms * 1ms);
+
+  FLAGS_delay_init_tablet_peer_ms = 100;
+  FLAGS_rocksdb_disable_compactions = false;
+
+  LOG(INFO) << "Start cluster";
+  ASSERT_OK(cluster_->StartSync());
+
+  ASSERT_OK(WaitFor([cluster = cluster_.get()] {
+    auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
+    int64_t bytes = 0;
+    for (const auto& peer : peers) {
+      if (peer->tablet()) {
+        bytes += peer->tablet()->rocksdb_statistics()->getTickerCount(rocksdb::COMPACT_READ_BYTES);
+      }
+    }
+    LOG(INFO) << "Compact read bytes: " << bytes;
+
+    return bytes >= 10_KB;
+  }, 10s, "Enough compactions happen"));
 }
 
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {

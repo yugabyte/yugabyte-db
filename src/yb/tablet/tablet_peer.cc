@@ -76,6 +76,7 @@
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/stopwatch.h"
@@ -86,6 +87,9 @@ using namespace std::literals;
 using namespace std::placeholders;
 using std::shared_ptr;
 using std::string;
+
+DEFINE_test_flag(int32, delay_init_tablet_peer_ms, 0,
+                 "Wait before executing init tablet peer for specified amount of milliseconds.");
 
 namespace yb {
 namespace tablet {
@@ -168,6 +172,10 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
 
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
+
+  if (FLAGS_delay_init_tablet_peer_ms > 0) {
+    std::this_thread::sleep_for(FLAGS_delay_init_tablet_peer_ms * 1ms);
+  }
 
   {
     std::lock_guard<simple_spinlock> lock(lock_);
