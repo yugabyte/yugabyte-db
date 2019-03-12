@@ -58,4 +58,4 @@ postgres=# REVOKE ALL ON DATABASE postgres FROM John;
 
 ## See Also
 
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

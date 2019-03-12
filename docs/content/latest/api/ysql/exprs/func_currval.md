@@ -89,4 +89,4 @@ ERROR:  currval of sequence "s2" is not yet defined in this session
 [`DROP SEQUENCE`](../drop_sequence)
 [`lastval()`](../lastval_sequence)
 [`nextval()`](../nextval_sequence)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

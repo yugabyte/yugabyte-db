@@ -14,7 +14,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
-The `CREATE TABLE` statement creates a new table in a database. It defines the table name, column names and types, primary key, and table properties.
+The `CREATE TABLE` command creates a new table in a database. It defines the table name, column names and types, primary key, and table properties.
 
 ## Syntax
 
@@ -86,4 +86,4 @@ postgres=# CREATE TABLE cars (id int PRIMARY KEY, brand text CHECK (brand in ('X
 [`ALTER TABLE`](../ddl_alter_table)
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

@@ -14,7 +14,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
-UUID datatype represents Universally Unique Identifiers (UUID). A UUID is a sequence of 32 hexadecimal digits separated by hyphens (8 digits - 4 digits - 4 digits - 4 digits - 12 digits) representing the 128 bits.
+UUID datatype represents Universally Unique Identifiers. A UUID is a sequence of 32 hexadecimal digits separated by hyphens (8 digits - 4 digits - 4 digits - 4 digits - 12 digits) representing the 128 bits.
 
 ## Description
 

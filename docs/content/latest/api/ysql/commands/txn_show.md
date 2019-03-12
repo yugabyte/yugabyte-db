@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-YugaByte's PostgresSQL API currently supports the following transactions-related SQL commands `BEGIN`, `ABORT`, `ROLLBACK`, `END`, `COMMIT`. Additionally the `SET` and `SHOW` commands can be used to set and, respectively, show the current transaction isolation level.
+YSQL API currently supports the following transactions-related SQL commands `BEGIN`, `ABORT`, `ROLLBACK`, `END`, `COMMIT`. Additionally the `SET` and `SHOW` commands can be used to set and, respectively, show the current transaction isolation level.
 
 ## Grammar
 
@@ -34,21 +34,6 @@ show ::= SHOW TRANSACTION ISOLATION LEVEL
 - Currently YugaByte will always use the snapshot isolation level internally. See more [here](../../../architecture/transactions/isolation-levels/).
 
 ## Examples
-
-Restart the YugaByte cluster and set the flag to enable transactions for the PostgreSQL API. 
-
-For Mac/Linux: 
-
-```sh
-$ ./bin/yb-ctl destroy; ./bin/yb-ctl create --enable_postgres
-```
-
-For Docker:
-
-```sh
-$ ./bin/yb-docker-ctl destroy; ./bin/yb-docker-ctl create --enable_postgres
-```
-
 
 Create a sample table.
 
@@ -147,4 +132,4 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 ## See Also
 
 [`SET`](../txn_set)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

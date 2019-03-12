@@ -18,13 +18,13 @@ Character-based datatypes are used to specify data of a string of Unicode charac
 
 DataType | Description |
 ---------|-------------|
-`CHAR` | Character string of size 1 |
+`CHAR` | Character string of 1 byte |
 `CHAR` (n) | Character string of fixed-length (n) and blank padded |
 `CHARACTER` (n) | Character string of fixed-length (n) and blank padded |
-`CHARACTER` `VARYING` (n) | Variable-length with maximum limit (n) |
-`VARCHAR` (n) | Variable-length with maximum limit (n) |
-`VARCHAR` | Variable and unlimited length |
-`TEXT` | Variable and unlimited length |
+`CHARACTER` `VARYING` (n) | Character string of variable-length with maximum limit (n) |
+`VARCHAR` (n) | Character string of variable-length with maximum limit (n) |
+`VARCHAR` | Character string of variable and unlimited length |
+`TEXT` | Character string of variable and unlimited length |
 
 ## Description
 ```

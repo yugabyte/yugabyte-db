@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`SET` command is used to set the current transaction isolation level.
+`SET TRANSACTION` command sets the current transaction isolation level.
 
 ## Grammar
 
@@ -34,21 +34,6 @@ set ::= SET TRANSACTION ISOLATION LEVEL { READ UNCOMMITTED | READ COMMITTED | RE
 - Currently YugaByte will always use the snapshot isolation level internally. See more [here](../../../architecture/transactions/isolation-levels/).
 
 ## Examples
-
-Restart the YugaByte cluster and set the flag to enable transactions for the PostgreSQL API. 
-
-For Mac/Linux: 
-
-```sh
-$ ./bin/yb-ctl destroy; ./bin/yb-ctl create --enable_postgres
-```
-
-For Docker:
-
-```sh
-$ ./bin/yb-docker-ctl destroy; ./bin/yb-docker-ctl create --enable_postgres
-```
-
 
 Create a sample table.
 
@@ -148,4 +133,4 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

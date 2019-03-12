@@ -1,6 +1,6 @@
 ---
 title: INSERT
-summary: Add a new row to a table
+summary: Add new rows to a table
 description: INSERT
 menu:
   latest:
@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `INSERT` statement adds a row to a specified table.
+The `INSERT` command adds one or more rows to the specified table.
 
 ## Syntax
 
@@ -88,4 +88,4 @@ postgres=# SELECT * FROM sample ORDER BY k1;
 
 [`CREATE TABLE`](../ddl_create_table)
 [`SELECT`](../dml_select)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

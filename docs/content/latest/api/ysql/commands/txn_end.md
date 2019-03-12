@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`END` commits the current transaction. All changes made by the transaction become visible to others and are guaranteed to be durable if a crash occurs.
+`END` command commits the current transaction. All changes made by the transaction become visible to others and are guaranteed to be durable if a crash occurs.
 
 ## Grammar
 
@@ -32,21 +32,6 @@ end_transaction ::= 'END' [ 'TRANSACTION' | 'WORK' ] ;
 - Currently YugaByte will always use the snapshot isolation level internally. See more [here](../../../architecture/transactions/isolation-levels/).
 
 ## Examples
-
-Restart the YugaByte cluster and set the flag to enable transactions for the PostgreSQL API. 
-
-For Mac/Linux: 
-
-```sh
-$ ./bin/yb-ctl destroy; ./bin/yb-ctl create --enable_postgres
-```
-
-For Docker:
-
-```sh
-$ ./bin/yb-docker-ctl destroy; ./bin/yb-docker-ctl create --enable_postgres
-```
-
 
 Create a sample table.
 
@@ -146,4 +131,4 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

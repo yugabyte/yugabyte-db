@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
-The `DROP TABLE` statement removes a table and all of its data from the database.
+The `DROP TABLE` command removes a table and all of its data from the database.
 
 ## Syntax
 
@@ -39,4 +39,4 @@ Where
 [`CREATE TABLE`](../ddl_create_table)
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
-The `CREATE DATABASE` statement creates a `database` that functions as a grouping mechanism for database objects such as [tables](../ddl_create_table).
+The `CREATE DATABASE` command creates a `database` that functions as a grouping mechanism for database objects such as [tables](../ddl_create_table).
 
 ## Syntax
 
@@ -51,24 +51,24 @@ Where
 
 - `encoding` specifies the character set encoding to use in the new database.
 
-- lc_collate specifies the collation order (LC_COLLATE).
+- `lc_collate` specifies the collation order (LC_COLLATE).
 
-- lc_ctype specifies the character classification (LC_CTYPE).
+- `lc_ctype` specifies the character classification (LC_CTYPE).
 
-- tablespace_name specifies the tablespace that is associated with the database to be created.
+- `tablespace_name` specifies the tablespace that is associated with the database to be created.
 
-- allowconn is either `true` or `false`.
+- `allowconn` is either `true` or `false`.
 
-- connlimit specifies the number of concurrent connections can be made to this database. -1 means there is no limit.
+- `connlimit` specifies the number of concurrent connections can be made to this database. -1 means there is no limit.
 
-- istemplate is either `true` or `false`.
+- `istemplate` is either `true` or `false`.
 
 ## Semantics
 
-- An error is raised if a database with the specified `name` already exists.
+- An error is raised if YSQL database of the given `name` already exists.
 
 - Some options in DATABASE are under development.
 
 ## See Also
 [`ALTER DATABASE`](../ddl_alter_db)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

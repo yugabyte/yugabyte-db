@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-DELETE removes rows that meet certain conditions, and when conditions are not provided in WHERE clause, all rows are deleted. DELETE outputs the number of rows that are being deleted.
+`DELETE` command removes rows that meet certain conditions, and when conditions are not provided in WHERE clause, all rows are deleted. DELETE outputs the number of rows that are being deleted.
 
 ## Syntax
 
@@ -99,4 +99,4 @@ DELETE 1
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
 [`UPDATE`](../dml_update)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

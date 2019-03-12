@@ -38,4 +38,4 @@ Where
 ## See Also
 [`SHOW`](../cmd_show)
 [`SET`](../cmd_set)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

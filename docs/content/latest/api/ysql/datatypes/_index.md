@@ -40,7 +40,7 @@ The following table lists all primitive types in YSQL.
 | `LSEG` <sup>1<sup> | | Line segment |
 | `MACADDR` <sup>1<sup> | | MAC address |
 | `MACADDR8` <sup>1<sup> | | MAC address (EUI-64 format) |
-| [`MONEY <sup>1<sup>`[(type_money) | | Currency amount |
+| [`MONEY`](type_money) | | Currency amount |
 | [`NUMERIC [(p, s)]`](type_numeric) | [`DECIMAL [(p, s)]`](type_numeric) | Exact fixed-point numeric |
 | `PATH` <sup>1<sup> | | Geometric path |
 | `PG_LSN` <sup>1<sup> | | Log Sequence Number |

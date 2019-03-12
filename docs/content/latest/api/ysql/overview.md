@@ -17,7 +17,7 @@ showAsideToc: true
 This section provides a summary of what YSQL is offering.
 
 ## Data Definition Language (DDL)
-DDL commands are provided to define structures in YSQL Database, change their definition, and remove them by using CREATE, ALTER, and DROP commands respectively.
+DDL commands are provided to define structures in YSQL Database, change their definitions, and remove them by using CREATE, ALTER, and DROP commands respectively.
 
 | Statement | Description |
 |-----------|-------------|
@@ -51,8 +51,8 @@ DCL commands are provided to protect and prevent YSQL Database from corruptions.
 | Statement | Description |
 |-----------|-------------|
 | [`CREATE USER`](dcl_create_user) | Create a new user (role) |
-| [`GRANT`](dcl_grant) | Grant permissions |
-| [`REVOKE`](dcl_revoke) | Revoke permissions |
+| [`GRANT`](dcl_grant) | Grant permissions (under development) |
+| [`REVOKE`](dcl_revoke) | Revoke permissions (under development) |
 
 ## Transaction Control Language (TCL)
 TCL commands are provided to manage transactions of operations on YSQL database.
@@ -63,28 +63,27 @@ TCL commands are provided to manage transactions of operations on YSQL database.
 | [`BEGIN TRANSACTION`](txn_begin) | Start a transaction |
 | [`COMMIT`](txn_commit) | Commit a transaction |
 | [`END TRANSACTION`](txn_end) | Commit a transaction |
-| [`LOCK`](txn_lock) | Lock a table |
 | [`ROLLBACK`](txn_rollback) | Rollback a transaction |
 | [`SET CONSTRAINTS`](txn_set_constraints) | Set constraints on current transaction|
 | [`SET TRANSACTION`](txn_set) | Set transaction behaviors |
 | [`SHOW TRANSACTION`](txn_show) | Show properties of a transaction |
 
-## Session and system Control
+## Session and System Control
 
 | Statement | Description |
 |-----------|-------------|
-| [`RESET`](cmd_reset) | Reset a variable to factory settings |
+| [`RESET`](cmd_reset) | Reset a parameter to factory settings |
 | [`SET`](cmd_set) | Set a system, session, or transactional parameter |
 | [`SHOW`](cmd_show) | Show value of a system, session, or transactional parameter |
 
-## Perfomance Control
+## Performance Control
 
 | Statement | Description |
 |-----------|-------------|
 | [`DEALLOCATE`](perf_deallocate) | Deallocate a prepared statement |
-| [`EXECUTE`](perf_execute) | Insert rows into a table |
-| [`EXPLAIN`](perf_explain) | Insert rows into a table |
-| [`PREPARE`](perf_prepare) | Select rows from a table |
+| [`EXECUTE`](perf_execute) | Execute a prepared statement |
+| [`EXPLAIN`](perf_explain) | Explain an execution plan for a statement |
+| [`PREPARE`](perf_prepare) | Prepare a statement |
 
 ## Other commands
 | Statement | Description |
@@ -96,7 +95,7 @@ This section lists the main elements of YSQL.
 
 - Keywords: List or [keywords](keywords).
 - Names and Qualifiers: Some names are reserved for the system. List of [reserved names](reserved_names).
-- Datatypes: All PostgreSQL compatible datatypes are provided. List of [datatypes](datatypes).
+- Datatypes: Most PostgreSQL-compatible datatypes are provided in YSQL version 1.2 while others will be supported in the next release. List of [datatypes](datatypes).
 - Expressions
 - Database Objects
 - Comments

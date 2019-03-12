@@ -14,4 +14,4 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YSQL supported all builtin functions and operators that are specified in PostgreSQL.
+YSQL supported all PostgreSQL-compatible builtin functions and operators.

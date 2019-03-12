@@ -6,7 +6,7 @@ description: SET CONSTRAINTS
 menu:
   latest:
     identifier: api-ysql-commands-set-constraints
-    parent: api-ysql-commands
+    parent: api-ysql-commands-set-constraints
 aliases:
   - /latest/api/ysql/commands/cmd_set_constraints
 isTocNested: true
@@ -33,4 +33,4 @@ set_constraints ::= SET CONSTRAINTS { ALL | name [, ...] } { DEFERRED | IMMEDIAT
 - Attributes in `SET CONSTRAINTS` does not apply to `NOT NULL` and `CHECK` constraints.
 
 ## See Also
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

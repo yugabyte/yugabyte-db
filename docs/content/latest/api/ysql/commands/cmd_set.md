@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`SET` command update a run-time control parameter.
+`SET` command updates a run-time control parameter.
 
 ## Syntax
 
@@ -29,6 +29,7 @@ SET [ SESSION | LOCAL ] { configuration_parameter { TO | = } { value | 'value' |
 ```
 
 Where
+
 - `SESSION` option specifies that the command affects only the current session.
 
 - `LOCAL` option specifies that the command affect only the current transaction. After COMMIT or ROLLBACK, the session-level setting takes effect again.
@@ -44,4 +45,4 @@ Where
 ## See Also
 [`SHOW`](../cmd_show)
 [`RESET`](../cmd_reset)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

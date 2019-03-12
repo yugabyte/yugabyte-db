@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
-The `DROP SEQUENCE` statement deletes a sequence in the current schema.
+The `DROP SEQUENCE` command deletes a sequence in the current schema.
 
 ## Syntax
 
@@ -98,4 +98,4 @@ DROP SEQUENCE
 [`currval()`](../currval_sequence)
 [`lastval()`](../lastval_sequence)
 [`nextval()`](../nextval_sequence)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)
