@@ -65,6 +65,18 @@ YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="instance-tags/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />    
+        <div class="title">Instance Tags</div>
+      </div>
+      <div class="body">
+        Create and Edit Instance tags.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cluster-health/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
