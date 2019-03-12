@@ -103,7 +103,7 @@ DEFINE_test_flag(int32, simulate_long_remote_bootstrap_sec, 0,
                  "We use this for testing a scenario where a remote bootstrap takes longer than "
                  "follower_unavailable_considered_failed_sec seconds");
 
-DEFINE_int64(remote_boostrap_rate_limit_bytes_per_sec, 100_MB,
+DEFINE_int64(remote_boostrap_rate_limit_bytes_per_sec, 256_MB,
              "Maximum transmission rate during a remote bootstrap. This is across all the remote "
              "bootstrap sessions for which this process is acting as a sender or receiver. So "
              "the total limit will be 2 * remote_boostrap_rate_limit_bytes_per_sec because a "
