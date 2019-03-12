@@ -62,6 +62,14 @@ public class Provider extends Model {
 
   public void setConfig(Map<String, String> configMap) { this.config = Json.toJson(configMap); }
 
+  public void updateConfig(Map<String, String> configMap) {
+    Map<String, String> currConfig = Json.fromJson(this.config, Map.class);
+    for (String key : configMap.keySet()) {
+      currConfig.put(key, configMap.get(key));
+    }
+    setConfig(currConfig);
+  }
+
   @JsonIgnore
   public JsonNode getMaskedConfig() {
     if (this.config == null) {
