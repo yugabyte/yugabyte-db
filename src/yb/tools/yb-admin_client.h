@@ -41,10 +41,10 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/common/entity_ids.h"
 #include "yb/tools/yb-admin_cli.h"
-
 #include "yb/consensus/consensus.pb.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
+#include "yb/rpc/rpc_fwd.h"
 
 namespace yb {
 
@@ -54,10 +54,6 @@ class ConsensusServiceProxy;
 
 namespace client {
 class YBClient;
-}
-
-namespace rpc {
-class Messenger;
 }
 
 namespace tools {
@@ -104,7 +100,7 @@ class ClusterAdminClient {
   CHECKED_STATUS ListTables();
 
   // List all tablets of this table
-  CHECKED_STATUS ListTablets(const client::YBTableName& table_name, const int max_tablets);
+  CHECKED_STATUS ListTablets(const client::YBTableName& table_name, int max_tablets);
 
   // Per Tablet list of all tablet servers
   CHECKED_STATUS ListPerTabletTabletServers(const PeerId& tablet_id);
@@ -124,7 +120,7 @@ class ClusterAdminClient {
   // List all the tablets a certain tablet server is serving
   CHECKED_STATUS ListTabletsForTabletServer(const PeerId& ts_uuid);
 
-  CHECKED_STATUS SetLoadBalancerEnabled(const bool is_enabled);
+  CHECKED_STATUS SetLoadBalancerEnabled(bool is_enabled);
 
   CHECKED_STATUS GetLoadMoveCompletion();
 
@@ -184,6 +180,19 @@ class ClusterAdminClient {
   std::shared_ptr<client::YBClient> yb_client_;
 
  private:
+  // Perform RPC call without checking Response structure for error
+  template<class Response, class Request, class Object>
+  Result<Response> InvokeRpcNoResponseCheck(
+      Status (Object::*func)(const Request&, Response*, rpc::RpcController*),
+      Object* obj, const Request& req, const char* error_message = nullptr);
+
+  // Perform RPC call by calling InvokeRpcNoResponseCheck
+  // and check Response structure for error by using its has_error method (if any)
+  template<class Response, class Request, class Object>
+  Result<Response> InvokeRpc(
+      Status (Object::*func)(const Request&, Response*, rpc::RpcController*),
+      Object* obj, const Request& req, const char* error_message = nullptr);
+
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };
 
