@@ -16,66 +16,49 @@ showAsideToc: true
 
 The following table lists all primitive types in YSQL.
 
-| Datatype | Alias | Description | Literals |
-|----------|-------|-------------|----------|
-| `bigint` | `int8` | signed eight-byte integer | 9,223,372,036,854,775,807 |
-| `bigserial` | `serial8` | autoincrementing eight-byte integer |  |
-| `bit [(n)]` <sup>1<sup> | | fixed-length bit string |  |
-| `bit varying [(n)]` <sup>1<sup> | `varbit [(n)]` | variable-length bit string |  |
-| `boolean` | `bool` | logical Boolean (true/false) |  |
-| `box` <sup>1<sup> | | rectangular box on a plane |  |
-| `bytea` | | binary data (“byte array”) |  |
-| `character [(n)]` | `char [(n)]` | fixed-length character string |  |
-| `character varying [(n)]` | `varchar [(n)]` | variable-length character string |  |
-| `cidr` <sup>1<sup> | | IPv4 or IPv6 network address |  |
-| `circle` <sup>1<sup> | | circle on a plane |  |
-| `date` | | calendar date (year, month, day) |  |
-| `double precision` | `float8` | double precision floating-point number (8 bytes) |  |
-| `inet` | | IPv4 or IPv6 host address |  |
-| `integer` | `int`, `int4` | signed four-byte integer | 2,147,483,647 |
-| `interval [fields] [(p)]` | | time span |  |
-| `json` <sup>1<sup> | | textual JSON data |  |
-| `jsonb` | | binary JSON data, decomposed |  |
-| `line` <sup>1<sup> | | infinite line on a plane |  |
-| `lseg` <sup>1<sup> | | line segment on a plane |  |
-| `macaddr` <sup>1<sup> | | MAC (Media Access Control) address |  |
-| `macaddr8` <sup>1<sup> | | MAC (Media Access Control) address (EUI-64 format) |  |
-| `money <sup>1<sup>` | | currency amount |  |
-| `numeric [(p, s)]` | `decimal [(p, s)]` | exact numeric of selectable precision |  |
-| `path` <sup>1<sup> | | geometric path on a plane |  |
-| `pg_lsn` <sup>1<sup> | | PostgreSQL Log Sequence Number |  |
-| `point` <sup>1<sup> | | geometric point on a plane |  |
-| `polygon` <sup>1<sup> | | closed geometric path on a plane |  |
-| `real` | `float4` | single precision floating-point number (4 bytes) |  |
-| `smallint` | `int2` | signed two-byte integer | 32,767 |
-| `smallserial` | `serial2` | autoincrementing two-byte integer |  |
-| `serial` | `serial4` | autoincrementing four-byte integer |  |
-| `text` | | variable-length character string |  |
-| `time [(p)] [without time zone]` | | time of day (no time zone) |  |
-| `time [(p)] with time zone` | `timetz` | time of day, including time zone |  |
-| `timestamp [(p)] [without time zone]` | | date and time (no time zone) |  |
-| `timestamp [(p)] with time zone` | `timestamptz` | date and time, including time zone |  |
-| `tsquery` <sup>1<sup> | | text search query |  |
-| `tsvector` <sup>1<sup> | | text search document |  |
-| `txid_snapshot` <sup>1<sup> | | user-level transaction ID snapshot |  |
-| `uuid` | | universally unique identifier |  |
-| `xml` <sup>1<sup> | | XML data |  |
+| Datatype | Alias | Description |
+|----------|-------|-------------|
+| [`BIGINT`](type_numeric) | [`INT8`](type_numeric) | Signed 8-byte integer |
+| [`BIGSERIAL`](type_serial) | [`SERIAL8`](type_serial) | Autoincrement 8-byte integer |
+| `BIT [(n)]` <sup>1<sup> | | Fixed-length bit string |
+| `BIT VARYING [(n)]` <sup>1<sup> | `VARBIT [(n)]` | Variable-length bit string |
+| [`BOOLEAN`](type_bool) | [`BOOL`](type_bool) | Logical boolean (true/false) |
+| `BOX` <sup>1<sup> | | Rectangular box |
+| [`BYTEA`](type_binary) | | Binary data |
+| [`CHARACTER [(n)]`](type_character) | [`CHAR [(n)]`](type_character) | Fixed-length character string |
+| [`CHARACTER VARYING [(n)]`](type_character) | [`VARCHAR [(n)]`](type_character) | Variable-length character string |
+| `CIDR` <sup>1<sup> | | IPv4 or IPv6 network address |
+| `CIRCLE` <sup>1<sup> | | Circle |
+| [`DATE`](type_datetime) | | Date (year, month, day) |
+| [`DOUBLE PRECISION`](type_numeric) | [`FLOAT8`](type_numeric) | Floating-point number (8 bytes) |
+| `INET` <sup>1<sup> | | IPv4 or IPv6 host address |
+| [`INTEGER`](type_numeric) | [`INT`, `INT4`](type_numeric) | Signed 4-byte integer |
+| [`INTERVAL [fields] [(p)]`](type_datetime) | | Time span |
+| `JSON` <sup>1<sup> | | Textual JSON data |
+| `JSONB` | | Binary JSON data |
+| `LINE` <sup>1<sup> | | Infinite line |
+| `LSEG` <sup>1<sup> | | Line segment |
+| `MACADDR` <sup>1<sup> | | MAC address |
+| `MACADDR8` <sup>1<sup> | | MAC address (EUI-64 format) |
+| [`MONEY <sup>1<sup>`[(type_money) | | Currency amount |
+| [`NUMERIC [(p, s)]`](type_numeric) | [`DECIMAL [(p, s)]`](type_numeric) | Exact fixed-point numeric |
+| `PATH` <sup>1<sup> | | Geometric path |
+| `PG_LSN` <sup>1<sup> | | Log Sequence Number |
+| `POINT` <sup>1<sup> | | Geometric point |
+| `POLYGON` <sup>1<sup> | | Closed geometric path |
+| [`REAL`](type_numeric) | [`FLOAT4`](type_numeric) | Floating-point number (4 bytes) |
+| [`SMALLINT`](type_numeric) | [`INT2`](type_numeric) | Signed 2-byte integer |
+| [`SMALLSERIAL`](type_serial) | [`SERIAL2`](type_serial) | Autoincrement 2-byte integer |
+| [`SERIAL`](type_serial) | [`SERIAL4`](type_serial) | Autoincrement 4-byte integer |
+| [`TEXT`](type_character) | | Variable-length character string |
+| [`TIME [(p)] [WITHOUT TIME ZONE]](type_datetime)` | | Time of day |
+| [`TIME [(p)] WITH TIME ZONE](type_datetime)` | [`TIMETZ`](type_datetime) | Time of day |
+| [`TIMESTAMP [(p)] [WITHOUT TIME ZONE]`](type_datetime) | | Date and time |
+| [`TIMESTAMP [(p)] WITH TIME ZONE`](type_datetime) | [`TIMESTAMPTZ`](type_datetime) | Date and time |
+| `TSQUERY` <sup>1<sup> | | Text search query |
+| `TSVECTOR` <sup>1<sup> | | Text search document |
+| `TXID_SNAPSHOT` <sup>1<sup> | | Transaction ID snapshot |
+| [`UUID`](type_uuid) | | Universally unique identifier |
+| `XML` <sup>1<sup> | | XML data |
 
 <sup>1<sup>: Under development
-
-<!--
-Primitive Type | Allowed in Key | Type Parameters | Description |
----------------|----------------|-----------------|-------------|
-[`BIGINT`](type_int) | Yes | - | 64-bit signed integer |
-[`BOOLEAN`](type_bool) | Yes | - | Boolean |
-[`DECIMAL`](type_number) | Yes | - | Exact, fixed-point number |
-[`DOUBLE PRECISION`](type_number) | Yes | - | 64-bit, inexact, floating-point number |
-[`FLOAT`](type_number) | Yes | - | 64-bit, inexact, floating-point number |
-[`REAL`](type_number) | Yes | - | 32-bit, inexact, floating-point number |
-[`INT`](type_int) | Yes | - | 32-bit signed integer |
-[`INTEGER`](type_int) | Yes | - | 32-bit signed integer |
-[`SMALLINT`](type_int) | Yes | - | 16-bit signed integer |
-[`TEXT`](type_text) | Yes | - | Variable-size string of Unicode characters |
-[`VARCHAR`](type_text) | Yes | - | Variable-size string of Unicode characters |
-[`BYTEA`](type_binary) | Yes | - | Variable-size string of 8-bit integer |
---->

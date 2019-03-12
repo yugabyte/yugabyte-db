@@ -1,6 +1,6 @@
 ---
 title: SERIAL Datatypes
-linktitle: SERIAL
+linktitle: Serial
 summary: SERIAL Datatypes
 description: SERIAL Datatypes
 menu:
@@ -14,15 +14,17 @@ showAsideToc: true
 ---
 
 ## Synopsis
+SMALLSERIAL, SERIAL, and BIGSERIAL are short notation for sequences of SMALLINTs, INTEGERs, and BIGINTs respectively.
 
-## Syntax
+## Description
 
 ```
 type_specification ::= SMALLSERIAL | SERIAL | BIGSERIAL
 ```
 
-## Semantics
+- Columns of serial types are auto-incremented.
+- `SERIAL` does not imply that an index is created on the column.
 
 ## See Also
 
-[Data Types](../type)
+[Data Types](../datatypes)

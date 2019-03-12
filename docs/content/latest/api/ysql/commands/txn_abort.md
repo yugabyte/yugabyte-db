@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`ABORT` commands rolls back the current transaction and discards all updates by the transaction.
+`ABORT` command rolls back the current transaction and discards all updates by the transaction.
 
 ## Grammar
 
