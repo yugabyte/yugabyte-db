@@ -1054,6 +1054,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Is the table a system table?
   bool IsSystemTable(const TableInfo& table) const;
 
+  // Is the table a user created table?
+  bool IsUserTable(const TableInfo& table) const;
+
+  // Is the table a user created index?
+  bool IsUserIndex(const TableInfo& table) const;
+
+  // Is the table a special sequences system table?
+  bool IsSequencesSystemTable(const TableInfo& table) const;
+
+  // Is the table created by user?
+  // Note that table can be regular table or index in this case.
+  bool IsUserCreatedTable(const TableInfo& table) const;
+
   // Let the catalog manager know that we have received a response for a delete tablet request,
   // and that we either deleted the tablet successfully, or we received a fatal error.
   void NotifyTabletDeleteFinished(const TabletServerId& tserver_uuid, const TableId& table_id);
