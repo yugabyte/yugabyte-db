@@ -76,6 +76,9 @@ class TabletInvoker {
   bool local_tserver_only() const { return local_tserver_only_; }
 
  private:
+  friend class TabletRpcTest;
+  FRIEND_TEST(TabletRpcTest, TabletInvokerSelectTabletServerRace);
+
   void SelectTabletServer();
 
   // This is an implementation of ReadRpc with consistency level as CONSISTENT_PREFIX. As a result,
