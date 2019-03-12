@@ -220,10 +220,16 @@ public class AccessManager extends DevopsBase {
     return credentialsFilePath;
   }
 
-  public String createKubernetesConfig(UUID providerUUID, Map<String, String> config) throws IOException {
+  public String createKubernetesConfig(UUID providerUUID, Map<String, String> config, boolean edit) throws IOException {
     // Grab the kubernetes config file name and file content and create the physical file.
     String configFileName = config.remove("KUBECONFIG_NAME");
     String configFileContent = config.remove("KUBECONFIG_CONTENT");
+
+    // In case of edit, don't throw exception if conf file isn't provided.
+    if (edit && (configFileName == null || configFileContent == null)) {
+      return null;
+    }
+    
     if (configFileName == null) {
       throw new RuntimeException("Missing KUBECONFIG_NAME data in the provider config.");
     } else if (configFileContent == null) {
@@ -231,7 +237,7 @@ public class AccessManager extends DevopsBase {
     }
     String configFilePath = getOrCreateKeyFilePath(providerUUID);
     Path configFile = Paths.get(configFilePath, configFileName);
-    if (Files.exists(configFile)) {
+    if (!edit && Files.exists(configFile)) {
       throw new RuntimeException("File " + configFile.getFileName() + " already exists.");
     }
     Files.write(configFile, configFileContent.getBytes());
@@ -239,7 +245,7 @@ public class AccessManager extends DevopsBase {
     return configFile.toAbsolutePath().toString();
   }
 
-  public String createPullSecret(UUID providerUUID, Map<String, String> config) throws IOException {
+  public String createPullSecret(UUID providerUUID, Map<String, String> config, boolean edit) throws IOException {
     // Grab the kubernetes config file name and file content and create the physical file.
     String pullSecretFileName = config.remove("KUBECONFIG_PULL_SECRET_NAME");
     String pullSecretFileContent = config.remove("KUBECONFIG_PULL_SECRET_CONTENT");
@@ -250,7 +256,7 @@ public class AccessManager extends DevopsBase {
     }
     String pullSecretFilePath = getOrCreateKeyFilePath(providerUUID);
     Path pullSecretFile = Paths.get(pullSecretFilePath, pullSecretFileName);
-    if (Files.exists(pullSecretFile)) {
+    if (!edit && Files.exists(pullSecretFile)) {
       throw new RuntimeException("File " + pullSecretFile.getFileName() + " already exists.");
     }
     Files.write(pullSecretFile, pullSecretFileContent.getBytes());
@@ -258,4 +264,3 @@ public class AccessManager extends DevopsBase {
     return pullSecretFile.toAbsolutePath().toString();
   }
 }
-

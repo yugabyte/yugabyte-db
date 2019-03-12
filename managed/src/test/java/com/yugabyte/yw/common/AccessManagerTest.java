@@ -414,7 +414,7 @@ import static org.mockito.Mockito.when;
       Map<String, String> config = new HashMap<>();
       config.put("KUBECONFIG_NAME", "demo.conf");
       config.put("KUBECONFIG_CONTENT", "hello world");
-      String configFile = accessManager.createKubernetesConfig(defaultProvider.uuid, config);
+      String configFile = accessManager.createKubernetesConfig(defaultProvider.uuid, config, false);
       assertEquals("/tmp/yugaware_tests/keys/" + defaultProvider.uuid + "/demo.conf", configFile);
       List<String> lines = Files.readAllLines(Paths.get(configFile));
       assertEquals("hello world", lines.get(0));
@@ -430,7 +430,7 @@ import static org.mockito.Mockito.when;
   public void testCreateKubernetesConfigMissingConfig() {
     try {
       Map<String, String> config = new HashMap<>();
-      accessManager.createKubernetesConfig(defaultProvider.uuid, config);
+      accessManager.createKubernetesConfig(defaultProvider.uuid, config, false);
     } catch (IOException | RuntimeException e) {
       assertEquals("Missing KUBECONFIG_NAME data in the provider config.", e.getMessage());
     }
@@ -448,7 +448,7 @@ import static org.mockito.Mockito.when;
       );
       config.put("KUBECONFIG_NAME", "demo.conf");
       config.put("KUBECONFIG_CONTENT", "hello world");
-      accessManager.createKubernetesConfig(defaultProvider.uuid, config);
+      accessManager.createKubernetesConfig(defaultProvider.uuid, config, false);
     } catch (IOException | RuntimeException e) {
       assertEquals("File demo.conf already exists.", e.getMessage());
     }
