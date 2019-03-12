@@ -40,7 +40,7 @@ Note that when there are more than 1 nodes, an nfs mounted on each server is rec
 creating a local backup folder on each server will not work.
 
 ### AWS Cloud Storage
-One can also backup to Amazon cloud using the `amazone S3` tab in Backup configuration.
+One can also backup to Amazon cloud using the `amazon S3` tab in Backup configuration.
 
 ![AWS Backup](/images/ee/br-aws-s3.png)
 
@@ -58,7 +58,7 @@ Now, go to the `Backups` tab. There, click on `Create Backup`. A modal should ap
 enter the table (this demo uses the default redis table) and NFS Storage option. If S3 was selected
 as the storage, the "S3 Storage" dropdown option can be chosen during this backup creation.
 
-![Backup Modal](/images/ee/br-aws-s3.png)
+![Backup Modal](/images/ee/create-backup-modal.png)
 
 Select `OK`. If you refresh the page, you'll eventually see a completed task.
 

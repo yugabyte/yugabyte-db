@@ -38,7 +38,7 @@ You would first need to choose a replication factor. You would need at least as 
 - Number of YB-TServer processes running in the cluster should not be less than the replication factor. Run each process on a separate machine to prevent losing data on failures.
 - Specify the replication factor using the `--replication_factor` when bringing up the YB-Master processes.
 
-See the [yb-master command reference](../admin/yb-master/) for more information.
+See the [yb-master command reference](../manual-deployment/start-masters) for more information.
 
 ## Hardware Requirements
 

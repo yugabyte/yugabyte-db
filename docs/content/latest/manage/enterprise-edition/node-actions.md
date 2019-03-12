@@ -139,4 +139,4 @@ In any universe, one cannot have more than (RF - 1)/2 `Master` nodes in `Stop` o
 {{< /note >}}
 
 ## Interaction with other operations
-If there is a node in any of the in-transit states of `Stopped`, `Removed` or `Decommissioned` in the universe, we disallow [edit operations](manage/enterprise-edition/edit-universe/) and [rolling upgrade operations](latest/manage/enterprise-edition/upgrade-universe/). These operations are allowed once such a node comes out of that in-transit state.
+If there is a node in any of the in-transit states of `Stopped`, `Removed` or `Decommissioned` in the universe, we disallow [edit operations](../edit-universe/) and [rolling upgrade operations](../upgrade-universe/). These operations are allowed once such a node comes out of that in-transit state.

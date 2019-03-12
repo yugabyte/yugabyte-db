@@ -314,6 +314,7 @@ cqlsh:example> INSERT INTO test_uuid (k, v) VALUES (1, uuid());
 
 ```sql
 cqlsh:example> SELECT v FROM test_uuid WHERE k = 1;
+```
 
 ```
  v
