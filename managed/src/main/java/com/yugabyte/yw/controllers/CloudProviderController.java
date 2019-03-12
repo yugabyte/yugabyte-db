@@ -152,20 +152,8 @@ public class CloudProviderController extends AuthenticatedController {
     // Since the Map<String, String> doesn't get parsed, so for now we would just
     // parse it from the requestBody
     JsonNode requestBody = request().body().asJson();
-    Map<String, String> config = new HashMap<>();
-    JsonNode configNode = requestBody.get("config");
-    // Confirm we had a "config" key and it was not null.
-    if (configNode != null && !configNode.isNull()) {
-      if (providerCode.equals(Common.CloudType.gcp)) {
-        // We may receive a config file, or we may be asked to use the local service account.
-        JsonNode contents = configNode.get("config_file_contents");
-        if (contents != null) {
-          config = Json.fromJson(contents, Map.class);
-        }
-      } else {
-        config = Json.fromJson(configNode, Map.class);
-      }
-    }
+    Map<String, String> config = processConfig(requestBody, providerCode);
+
     try {
       Provider provider = Provider.create(customerUUID, providerCode, formData.get().name, config);
       if (!config.isEmpty()) {
@@ -180,7 +168,7 @@ public class CloudProviderController extends AuthenticatedController {
             updateGCPConfig(provider, config);
             break;
           case "kubernetes":
-            updateKubeConfig(provider, config);
+            updateKubeConfig(provider, config, false);
             try {
               createKubernetesInstanceTypes(provider);
             } catch (javax.persistence.PersistenceException ex) {
@@ -261,12 +249,12 @@ public class CloudProviderController extends AuthenticatedController {
 
   }
 
-  private void updateKubeConfig(Provider provider, Map<String, String> config) {
+  private void updateKubeConfig(Provider provider, Map<String, String> config, boolean edit) {
     String kubeConfigFile = null;
     String pullSecretFile = null;
     try {
       kubeConfigFile = accessManager.createKubernetesConfig(
-          provider.uuid, config
+          provider.uuid, config, edit
       );
     } catch (IOException e) {
       LOG.error(e.getMessage());
@@ -276,7 +264,7 @@ public class CloudProviderController extends AuthenticatedController {
       if (config.get("KUBECONFIG_PULL_SECRET_NAME") != null) {
         try {
           pullSecretFile = accessManager.createPullSecret(
-              provider.uuid, config
+              provider.uuid, config, edit
           );
         } catch (IOException e) {
           LOG.error(e.getMessage());
@@ -291,11 +279,18 @@ public class CloudProviderController extends AuthenticatedController {
 
     config.remove("KUBECONFIG_PULL_SECRET_NAME");
     config.remove("KUBECONFIG_PULL_SECRET_CONTENT");
-    config.put("KUBECONFIG", kubeConfigFile);
+    
+    if (kubeConfigFile != null) {
+      config.put("KUBECONFIG", kubeConfigFile);
+    }
     if (pullSecretFile != null) {
       config.put("KUBECONFIG_PULL_SECRET", pullSecretFile);
     }
-    provider.setConfig(config);
+    if (!edit) {
+      provider.setConfig(config);
+    } else {
+      provider.updateConfig(config);
+    }
     provider.save();
   }
 
@@ -434,18 +429,29 @@ public class CloudProviderController extends AuthenticatedController {
       ApiResponse.error(BAD_REQUEST, "Invalid Customer Context.");
     }
     JsonNode formData =  request().body().asJson();
-    String hostedZoneId = formData.get("hostedZoneId").asText();
     Provider provider = Provider.get(customerUUID, providerUUID);
     if (provider == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
     }
-    if (!provider.code.equals("aws")) {
-      return ApiResponse.error(BAD_REQUEST, "Expected aws found providers with code: " + provider.code);
+
+    if (provider.code.equals("aws")) {
+      String hostedZoneId = formData.get("hostedZoneId").asText();
+      if (hostedZoneId == null || hostedZoneId.length() == 0) {
+        return ApiResponse.error(BAD_REQUEST, "Required field hosted zone id");
+      }
+      return validateAwsHostedZoneUpdate(provider, hostedZoneId);
+    } else if (provider.code.equals("kubernetes")) {
+      Map<String, String> config = processConfig(formData, Common.CloudType.kubernetes);
+      if (config != null) {
+        updateKubeConfig(provider, config, true);
+        return ApiResponse.success(provider);
+      }
+      else {
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, "Could not parse config");
+      }
+    } else {
+      return ApiResponse.error(BAD_REQUEST, "Expected aws/k8s, but found providers with code: " + provider.code);
     }
-    if (hostedZoneId == null || hostedZoneId.length() == 0) {
-      return ApiResponse.error(BAD_REQUEST, "Required field hosted zone id");
-    }
-    return validateAwsHostedZoneUpdate(provider, hostedZoneId);
   }
 
   private Result validateAwsHostedZoneUpdate(Provider provider, String hostedZoneId) {
@@ -470,5 +476,23 @@ public class CloudProviderController extends AuthenticatedController {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
     return ApiResponse.success(provider);
+  }
+
+  private Map<String, String> processConfig(JsonNode requestBody, Common.CloudType providerCode) {
+    Map<String, String> config = new HashMap<String,String>();
+    JsonNode configNode = requestBody.get("config");
+    // Confirm we had a "config" key and it was not null.
+    if (configNode != null && !configNode.isNull()) {
+      if (providerCode.equals(Common.CloudType.gcp)) {
+        // We may receive a config file, or we may be asked to use the local service account.
+        JsonNode contents = configNode.get("config_file_contents");
+        if (contents != null) {
+          config = Json.fromJson(contents, Map.class);
+        }
+      } else {
+        config = Json.fromJson(configNode, Map.class);
+      }
+    }
+    return config;
   }
 }

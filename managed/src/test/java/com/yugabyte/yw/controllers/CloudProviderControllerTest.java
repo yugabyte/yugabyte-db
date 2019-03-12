@@ -67,16 +67,19 @@ import play.test.Helpers;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.UUID;
 
 public class CloudProviderControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
   Customer customer;
 
-  AccessManager mockAccessManager;
   CloudQueryHelper mockQueryHelper;
   DnsManager mockDnsManager;
   NetworkManager mockNetworkManager;
@@ -85,7 +88,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Override
   protected Application provideApplication() {
     ApiHelper mockApiHelper = mock(ApiHelper.class);
-    mockAccessManager = mock(AccessManager.class);
     mockQueryHelper = mock(CloudQueryHelper.class);
     mockDnsManager = mock(DnsManager.class);
     mockNetworkManager = mock(NetworkManager.class);
@@ -93,7 +95,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
-        .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
         .overrides(bind(CloudQueryHelper.class).toInstance(mockQueryHelper))
         .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
         .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
@@ -332,6 +333,56 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEditProviderKubernetes() {
+    Map<String, String> config = new HashMap<String, String>();
+    config.put("KUBECONFIG_PROVIDER", "gke");
+    config.put("KUBECONFIG_SERVICE_ACCOUNT", "yugabyte-helm");
+    config.put("KUBECONFIG_STORAGE_CLASSES", "");
+    config.put("KUBECONFIG", "test.conf");
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.kubernetes, config);
+    
+    ObjectNode bodyJson = Json.newObject();
+    config.put("KUBECONFIG_STORAGE_CLASSES", "slow");
+    bodyJson.put("config", Json.toJson(config));
+    
+    Result result = editProvider(bodyJson, p.uuid);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(p.uuid, UUID.fromString(json.get("uuid").asText()));
+    p.refresh();
+    assertEquals("slow", p.getConfig().get("KUBECONFIG_STORAGE_CLASSES"));
+  }
+
+   @Test
+  public void testEditProviderKubernetesConfigEdit() {
+    Map<String, String> config = new HashMap<String, String>();
+    config.put("KUBECONFIG_PROVIDER", "gke");
+    config.put("KUBECONFIG_SERVICE_ACCOUNT", "yugabyte-helm");
+    config.put("KUBECONFIG_STORAGE_CLASSES", "");
+    config.put("KUBECONFIG", "test.conf");
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.kubernetes, config);
+
+    ObjectNode bodyJson = Json.newObject();
+    config.put("KUBECONFIG_NAME", "test2.conf");
+    config.put("KUBECONFIG_CONTENT", "test5678");
+    bodyJson.put("config", Json.toJson(config));
+
+    Result result = editProvider(bodyJson, p.uuid);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(p.uuid, UUID.fromString(json.get("uuid").asText()));
+    p.refresh();
+    assertTrue(p.getConfig().get("KUBECONFIG").contains("test2.conf"));
+    Path path = Paths.get(p.getConfig().get("KUBECONFIG"));
+    try {
+      List contents = Files.readAllLines(path);
+      assertEquals(contents.get(0), "test5678");
+    } catch(IOException e) {
+      // Do nothing
+    }
+  }
+
+  @Test
   public void testEditProviderWithAWSProviderType() {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
     ObjectNode bodyJson = Json.newObject();
@@ -353,7 +404,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.put("hostedZoneId", "1234");
     Result result = editProvider(bodyJson, p.uuid);
     verify(mockDnsManager, times(0)).listDnsRecord(any(), any());
-    assertBadRequest(result, "Expected aws found providers with code: onprem");
+    assertBadRequest(result, "Expected aws/k8s, but found providers with code: onprem");
   }
 
   @Test
