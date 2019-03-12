@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
-The `SELECT` statement retrieves (part of) rows of specified columns that meet a given condition from a table. It specifies the columns to be retrieved, the name of the table, and the condition each selected row must satisfy.
+The `SELECT` command retrieves (part of) rows of specified columns that meet a given condition from a table. It specifies the columns to be retrieved, the name of the table, and the condition each selected row must satisfy.
 
 ## Syntax
 

@@ -14,7 +14,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
-The `CREATE TABLE` statement creates a new table in a database. It defines the table name, column names and types, primary key, and table properties.
+The `CREATE TABLE` command creates a new table in a database. It defines the table name, column names and types, primary key, and table properties.
 
 ## Syntax
 

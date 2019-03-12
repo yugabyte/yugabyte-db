@@ -28,6 +28,7 @@ type_specification ::= BYTEA
 ```
 
 - Escaped input can be used for input binary data.
+
 ```
 SELECT E'\\001'::bytea
 ```

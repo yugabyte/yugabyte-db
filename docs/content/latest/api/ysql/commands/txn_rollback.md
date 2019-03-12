@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`ROLLBACK` roll back the current transactions. All changes included in this transactions will be discarded.
+`ROLLBACK` command rolls back the current transactions. All changes included in this transactions will be discarded.
 
 ## Grammar
 

@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following table lists all SQL commands that are supported by YugaByte Database.
+The following table lists all YSQL commands that are supported by YugaByte Database.
 
 | Statement | Description |
 |-----------|-------------|
@@ -36,16 +36,15 @@ The following table lists all SQL commands that are supported by YugaByte Databa
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
 | [`END TRANSACTION`](txn_end) | Commit a transaction |
-| [`EXECUTE`](perf_execute) | Insert rows into a table |
-| [`EXPLAIN`](perf_explain) | Insert rows into a table |
+| [`EXECUTE`](perf_execute) | Execute a prepared statement |
+| [`EXPLAIN`](perf_explain) | Display execution plan for a statement |
 | [`INSERT`](dml_insert) | Insert rows into a table |
-| [`LOCK`](txn_lock) | Lock a table |
-| [`PREPARE`](perf_prepare) | Select rows from a table |
-| [`RESET`](cmd_reset) | Reset a variable to factory settings |
+| [`PREPARE`](perf_prepare) | Prepare a statement |
+| [`RESET`](cmd_reset) | Reset a parameter to factory settings |
 | [`ROLLBACK`](txn_rollback) | Rollback a transaction |
 | [`SELECT`](dml_select) | Select rows from a table |
 | [`SET`](cmd_set) | Set a system, session, or transactional parameter |
-| [`SET CONSTRAINTS`](txn_set_constraints) | Set constraints on current transaction|
+| [`SET CONSTRAINTS`](txn_set_constraints) | Set constraints on current transaction |
 | [`SET TRANSACTION`](txn_set) | Set transaction behaviors |
 | [`SHOW`](cmd_show) | Show value of a system, session, or transactional parameter |
 | [`SHOW TRANSACTION`](txn_show) | Show properties of a transaction |

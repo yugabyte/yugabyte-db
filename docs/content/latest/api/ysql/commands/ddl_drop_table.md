@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
-The `DROP TABLE` statement removes a table and all of its data from the database.
+The `DROP TABLE` command removes a table and all of its data from the database.
 
 ## Syntax
 

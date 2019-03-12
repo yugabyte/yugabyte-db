@@ -15,6 +15,8 @@ showAsideToc: true
 
 ## Synopsis
 
+`SHOW` command displays the value of specified parameters.
+
 ## Syntax
 
 ### Diagram 

@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
-The `CREATE VIEW` statement creates a new view in a database. It defines the view name and the (select) statement defining it.  
+The `CREATE VIEW` command creates a new view in a database. It defines the view name and the (select) statement defining it.  
 
 ## Syntax
 

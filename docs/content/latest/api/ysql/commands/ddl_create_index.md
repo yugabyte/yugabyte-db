@@ -36,9 +36,10 @@ index_elem ::= { column_name | '(' expression ')' } [ opclass ] [ 'ASC' | 'DESC'
 ```
 
 Where
-- `UNIQUE` enforced that duplicate values in a table in not allowed.
 
-- `INCLUDE clause` specifies a list of columns which will be included in the index as non-key columns.
+- `UNIQUE` enforced that duplicate values in a table are not allowed.
+
+- `INCLUDE` clause specifies a list of columns which will be included in the index as non-key columns.
 
 - `name` specifies the index to be created.
 
@@ -46,15 +47,15 @@ Where
 
 - `column_name` specifies the name of a column of the table.
 
-- expression specifies one or more columns of the table and must be surrounded by parentheses.
+- `expression` specifies one or more columns of the table and must be surrounded by parentheses.
 
 - `ASC` indicates ascending sort order.
 
-- DESC indicates descending sort order.
+- `DESC` indicates descending sort order.
 
 ## Semantics
 
-- `CONCURRENTLY`, `USING method`, `COLLATE`, `NULL order`, and `tablespace` options are not yet supported.
+- `CONCURRENTLY`, `USING method`, `COLLATE`, `NULL` order, and `TABLESPACE` options are not yet supported.
 
 ## See Also
 [Other YSQL Statements](..)

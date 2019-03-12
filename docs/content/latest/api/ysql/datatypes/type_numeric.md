@@ -23,11 +23,11 @@ DataType | Description | Min | Max |
 `DECIMAL` | Exact 64-bit fixed point number | variable | variable |
 `DOUBLE PRECISION` | Inexact 64-bit floating point number | 15-digit precision | 15-digit precision|
 `FLOAT` | Inexact 64-bit floating point number | variable | variable |
-`INTEGER` | 4 bytes | -2,147,483,648 | 2,147,483,647 |
-`INT` | 4 bytes | -2,147,483,648 | 2,147,483,647 |
+`INTEGER` | 4-byte integer | -2,147,483,648 | 2,147,483,647 |
+`INT` | 4-byte interger | -2,147,483,648 | 2,147,483,647 |
 `NUMERIC` | Exact 64-bit fixed point number | variable | variable |
 `REAL` | Inexact 32-bit floating point number | 6-digit precision | 6-digit precision |
-`SMALLINT` | 2 bytes | -32,768 | 32,767 |
+`SMALLINT` | 2-byte integer | -32,768 | 32,767 |
 
 ## Integers
 - The following keywords are used to specify a column of type integer for different constraints including its value ranges.

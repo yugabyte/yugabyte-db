@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
-The `DROP SEQUENCE` statement deletes a sequence in the current schema.
+The `DROP SEQUENCE` command deletes a sequence in the current schema.
 
 ## Syntax
 

@@ -6,7 +6,7 @@ description: SET CONSTRAINTS
 menu:
   latest:
     identifier: api-ysql-commands-set-constraints
-    parent: api-ysql-commands
+    parent: api-ysql-commands-set-constraints
 aliases:
   - /latest/api/ysql/commands/cmd_set_constraints
 isTocNested: true

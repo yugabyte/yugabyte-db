@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`CREATE TABLE AS` command create new table using the output of a subquery.
+`CREATE TABLE AS` command creates new table using the output of a subquery.
 
 ## Syntax
 

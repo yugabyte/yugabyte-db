@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`SET` command is used to set the current transaction isolation level.
+`SET TRANSACTION` command sets the current transaction isolation level.
 
 ## Grammar
 

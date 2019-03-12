@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `PREPARE` command creates a prepared statement by parsing, analyzing and rewriting (but not executing) the target statement. 
+The `PREPARE` command creates a handle to a prepared statement by parsing, analyzing and rewriting (but not executing) the target statement. 
 
 ## Syntax
 
