@@ -38,6 +38,10 @@ $ ./bin/yb-tserver \
   >& /home/centos/disk1/yb-tserver.out &
 ```
 
+{{< note title="Note" >}}
+The number of comma seperated values in `tserver_master_addrs` parameter should match the total number of masters (aka replication factor).
+{{< /note >}}
+
 ## Run yb-tserver with conf file
 
 - Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the `--flagfile` option as shown below.

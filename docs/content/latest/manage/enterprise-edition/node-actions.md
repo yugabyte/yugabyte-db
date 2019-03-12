@@ -133,3 +133,10 @@ In the worst case scenario, when the system runs into some unrecoverable errors 
 As a summary of all the actions that were run on this universe, one can check the 'Tasks' tab to see the remove/add and stop/start tasks that were run on that universe.
 
 ![Tasks Node Actions](/images/ee/node-actions-tasks.png)
+
+{{< note title="Note" >}}
+In any universe, one cannot have more than (RF - 1)/2 `Master` nodes in `Stop` or `Remove` status at the same time.
+{{< /note >}}
+
+## Interaction with other operations
+If there is a node in any of the in-transit states of `Stopped`, `Removed` or `Decommissioned` in the universe, we disallow [edit operations](manage/enterprise-edition/edit-universe/) and [rolling upgrade operations](latest/manage/enterprise-edition/upgrade-universe/). These operations are allowed once such a node comes out of that in-transit state.

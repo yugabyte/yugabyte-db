@@ -45,6 +45,7 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 | [ToUnixTimestamp](../function_datetime/#tounixtimestamp) | [`BIGINT`](../type_int) | ([`TIMESTAMP`](../type_datetime))  | Conversion |
 | [ToUnixTimestamp](../function_datetime/#tounixtimestamp) | [`BIGINT`](../type_int) | ([`TIMEUUID`](../type_uuid)) | Conversion |
 | [UnixTimestampOf](../function_datetime/#unixtimestampof) | [`BIGINT`](../type_int) | ([`TIMEUUID`](../type_uuid)) | Conversion |
+| [UUID](../function_datetime/#uuid) | [`UUID`](../type_uuid) | () | Returns a version 4 UUID |
 | WriteTime | [`BIGINT`](../type_int) | (<AnyType>) | Returns the time when the column was written |
 
 ## Aggregate Functions

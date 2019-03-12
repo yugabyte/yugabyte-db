@@ -14,7 +14,8 @@ showAsideToc: true
 ---
 
 {{< note title="Note" >}}
-For any cluster, the number of nodes on which the YB-Masters need to be started on **must** equal the replication factor.
+- For any cluster, the number of nodes on which the YB-Masters need to be started on **must** equal the replication factor.
+- The number of comma seperated addresses present in `master_addresses` should also equal the replication factor.
 {{< /note >}}
 
 ## Example Scenario

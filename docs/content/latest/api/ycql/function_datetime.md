@@ -291,6 +291,48 @@ cqlsh:example> SELECT v from test_unixtimestampof WHERE v < unixtimestampof(now(
  1525474356781
 ```
 
+## uuid()
+
+This function generates a new unique version 4 UUID (`UUID`).
+
+- It takes in no arguments.
+- The return value is a `UUID`.
+
+### Examples
+
+#### Insert values using uuid()
+
+```sql
+cqlsh:example> CREATE TABLE test_uuid (k INT PRIMARY KEY, v UUID);
+```
+
+```sql
+cqlsh:example> INSERT INTO test_uuid (k, v) VALUES (1, uuid());
+```
+
+#### Selecting the inserted uuid value
+
+```sql
+cqlsh:example> SELECT v FROM test_uuid WHERE k = 1;
+
+```
+ v
+---------------------------------------
+ 71bb5104-4fe9-11e8-8839-6336e659252a
+```
+
+#### Select using uuid()
+
+```sql
+cqlsh:example> SELECT uuid() FROM test_uuid;
+```
+
+```
+ uuid()
+--------------------------------------
+ 12f91a52-ebba-4461-94c5-b73f0914284a
+```
+
 ## See Also
 
 [`DATE`, `TIME` and `TIMESTAMP`](../type_datetime)
