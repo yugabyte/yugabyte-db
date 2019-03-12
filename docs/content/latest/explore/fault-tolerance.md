@@ -14,10 +14,10 @@ menu:
     weight: 215
 ---
 
-YugaByte DB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/) for YSQL tables. We will create these tables with a replication factor = 3 that allows a [fault tolerance](../../../architecture/concepts/docdb/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to 2, then writes will become unavailable on the cluster in order to preserve data consistency.
+YugaByte DB can automatically handle failures and therefore provides [high availability](../../architecture/core-functions/high-availability/). We will create YSQL tables with a replication factor = 3 that allows a [fault tolerance](../../architecture/concepts/docdb/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to 2, then writes will become unavailable on the cluster in order to preserve data consistency.
 
 
-If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
+If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
 
 
 <ul class="nav nav-tabs nav-tabs-yb">

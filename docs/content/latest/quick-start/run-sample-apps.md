@@ -12,7 +12,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-After [creating a local cluster](../create-local-cluster/), follow the instructions below to run [Yugastore](https://github.com/YugaByte/yugastore), one of simplest sample apps we have created for YugaByte DB. Yugastore is a fully open source, online bookstore app built using React, Express, NodeJS and is powered by the YSQL and YCQL APIs of YugaByte DB. You can review Yugastore's architecture and data model [here](../../develop/realworld-apps/ecommerce-app/).
+After [creating a local cluster](../create-local-cluster/), follow the instructions below to run [Yugastore](https://github.com/YugaByte/yugastore), one of simplest sample apps we have created for YugaByte DB. Yugastore is a fully open source, online bookstore app built using React, Express, NodeJS and is powered by the YCQL and YEDIS APIs of YugaByte DB. YSQL support is coming soon. You can review Yugastore's architecture and data model [here](../../develop/realworld-apps/ecommerce-app/).
 
 After running Yugastore, we recommend running the [IoT Fleet Management](../../develop/realworld-apps/iot-spark-kafka-ksql/) app. This app is built on top of YugaByte DB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
 

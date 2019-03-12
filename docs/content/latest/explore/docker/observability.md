@@ -1,4 +1,4 @@
-## 1. Setup - create universe
+## 1. Create universe
 
 If you have a previously running local universe, destroy it using the following.
 
@@ -6,10 +6,10 @@ If you have a previously running local universe, destroy it using the following.
 $ ./yb-docker-ctl destroy
 ```
 
-Start a new local universe with default replication factor 3.
+Start a new local universe with replication factor 3.
 
 ```sh
-$ ./yb-docker-ctl create  
+$ ./yb-docker-ctl create  --rf 3
 ```
 
 ## 2. Run sample key-value app

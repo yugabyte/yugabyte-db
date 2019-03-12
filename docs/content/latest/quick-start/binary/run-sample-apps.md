@@ -1,10 +1,9 @@
-
-## 1. Create cluster and initialize YEDIS API.
+## 1. Create cluster
 
 Create a cluster.
 
 ```sh
-$ ./bin/yb-ctl create
+$ ./bin/yb-ctl --rf 3 create
 ``` 
 
 Setup the redis_keyspace keyspace and the .redis table so that this cluster becomes ready for redis clients. Detailed output for the setup_redis command is available in the [yb-ctl Reference](../../admin/yb-ctl/#setup-redis).
@@ -13,7 +12,7 @@ Setup the redis_keyspace keyspace and the .redis table so that this cluster beco
 $ ./bin/yb-ctl setup_redis
 ```
 
-Clients can now connect to the YCQL API at `localhost:9042` and to the YEDIS API at  `localhost:6379`.
+Clients can now connect to the YSQL API at `localhost:5433`, YCQL API at `localhost:9042` and YEDIS API at  `localhost:6379`.
 
 ## 2. Install Yugastore
 

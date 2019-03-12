@@ -3,7 +3,7 @@ title: RESERVED NAMES
 linkTitle: Reserved Names
 description: List of reserved names
 summary: List of reserved names
-image: /images/section_icons/api/pgsql.png
+image: /images/section_icons/api/ysql.png
 menu:
   latest:
     identifier: api-ysql-reserved-names

@@ -16,8 +16,8 @@ YugaByte DB consists of two distributed services - the YB-Master service and the
 ## Basics
 
 - YugaByte DB works on a variety of OSes. For production workloads, the recommended OS is **Centos 7.x** or **RHEL 7.x**.
-- Set the appropriate [system limits using `ulimit`](../manual-deployment/system-config/#setting-ulimits/) on each node running a YugaByte DB process.
-- Use [ntp](../manual-deployment/system-config/#ntp/) to synchronize time among the machines.
+- Set the appropriate [system limits using `ulimit`](../manual-deployment/system-config/#setting-ulimits) on each node running a YugaByte DB process.
+- Use [ntp](../manual-deployment/system-config/#ntp) to synchronize time among the machines.
 
 ## Replication
 

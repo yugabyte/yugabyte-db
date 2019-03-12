@@ -3,7 +3,7 @@
 Create a cluster. The YEDIS API is initialized along with cluster creation so nothing additional needs to be done.
 
 ```sh
-$ ./yb-docker-ctl create
+$ ./yb-docker-ctl create --rf 3
 ```
 
 Clients can now connect to the YCQL API at `localhost:9042` and to the YEDIS API at  `localhost:6379`.

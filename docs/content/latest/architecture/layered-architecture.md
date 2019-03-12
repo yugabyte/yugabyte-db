@@ -15,48 +15,41 @@ showAsideToc: true
 
 YugaByte DB architecture follows a layered design. It is comprised of 2 logical layers as shown in the diagram below:
 
-* The **YugaByte Query Layer** or **YQL**
-* A distributed document store called **DocDB**
+* **YugaByte Query Layer**
+* **DocDB** distributed document store
 
 ![YugaByte DB Logical Architecture](/images/architecture/yb-arch-new.png)
 
 
-## YugaByte Query Layer (YQL)
+## YugaByte Query Layer
 
-The [YugaByte Query Layer or YQL](../yql/) is the upper layer of YugaByte DB. Applications interact directly with YQL using client drivers. This layer deals with the API specific aspects such as query/command compilation and the run-time (data type representations, built-in operations and more). YQL is built with extensibility in mind, and allows for new APIs to be added.
+The [YugaByte Query Layer or YQL](../query-layer/) is the upper layer of YugaByte DB. Applications interact directly with YQL using client drivers. This layer deals with the API specific aspects such as query/command compilation and the run-time (data type representations, built-in operations and more). YQL is built with extensibility in mind, and allows for new APIs to be added.
 
-Currently, YQL supports the server-side implementations of three different APIs - YSQL, YCQL and YEDIS.
+Currently, YQL supports two flavors of distributed SQL APIs.
 
-#### YSQL
+#### YugaByte SQL (YSQL)
 
-YSQL is an SQL API. It is built from PostgreSQL code. It is a stateless SQL query engine that is wire-format compatible with PostgreSQL.
+YSQL is a distributed SQL API that is built by re-using the PostgreSQL language layer code. It is a stateless SQL query engine that is wire-format compatible with PostgreSQL.
 
-#### YCQL
+#### YugaByte Cloud QL (YCQL)
 
-YCQL or the *YugaByte Cloud Query Language* is a semi-relational language that has its roots in Apache Cassandra's CQL. It is a SQL-like language built specifically to be aware of clustering of data across nodes.
-
-#### YEDIS
-
-YEDIS or the *YugaByte Dictionary Service* is a key to data-structure language that is wire-compatible with the Redis protocol.
+YCQL is a semi-relational language that has its roots in Cassandra Query Language. It is a SQL-like language built specifically to be aware of clustering of data across nodes.
 
 {{< tip title="Read More" >}}
 Understanding [the design of the query layer](../query-layer/overview/).
 {{< /tip >}}
-
 
 ## DocDB
 
 [DocDB](../docdb/) is a distributed document store. It has the following properties:
 
 * [Strong write consistency](../docdb/replication/#strong-write-consistency)
-* Resilient to failures
-* High availability
-* Automatic sharding and load-balancing
+* Extremely resilient to failures
+* Automatic sharding and load balancing
 * Zone/region/cloud aware data placement policies
 * [Tunable read consistency](../docdb/replication/#tunable-read-consistency)
 
 Data in DocDB is stored in tables. Each table is composed of rows, each row contains a key and a document. Here are some key points:
-
 
 #### Sharding
 

@@ -21,11 +21,11 @@ Python 2.7.10
 Download the YugaByte DB CE package as shown below.
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugabyte-ce-1.1.15.0-linux.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-ce-1.2.0.0-linux.tar.gz
 ```
 
 ```sh
-$ tar xvfz yugabyte-ce-1.1.15.0-linux.tar.gz && cd yugabyte-1.1.15.0/
+$ tar xvfz yugabyte-ce-1.2.0.0-linux.tar.gz && cd yugabyte-1.2.0.0/
 ```
 
 ## Configure

@@ -20,8 +20,8 @@ showAsideToc: true
 ```sh
 $ ./bin/yb-master \
 --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
---fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
 --rpc_bind_addresses 172.151.17.130 \
+--fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
 --replication_factor=3 &
 ```
 

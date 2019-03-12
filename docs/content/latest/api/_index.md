@@ -17,22 +17,22 @@ menu:
  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="./ysql/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/api/pgsql.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
         <div class="title">YSQL (Beta)</div>
       </div>
       <div class="body">
-        Complete reference for <b>Y</b>ugaByte <b>S</b>tructured <b>Q</b>uery <b>L</b>anguage (<b>YSQL</b>) API.
+        Complete reference for YugaByte Structured Query Language (YSQL) API.
       </div>
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="./ycql/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/api/cql.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/api/ycql.png" aria-hidden="true" />
         <div class="title">YCQL</div>
       </div>
       <div class="body">
-        Complete reference for <b>Y</b>ugaByte <b>C</b>loud <b>Q</b>uery <b>L</b>anguage (<b>YCQL</b>) API.
+        Complete reference for YugaByte Cloud Query Language (YCQL) API.
       </div>
     </a>
   </div> 

@@ -2,7 +2,7 @@
 title: Overview
 description: YugaByte Structured Query Language
 summary: Overview on YSQL
-image: /images/section_icons/api/pgsql.png
+image: /images/section_icons/api/ysql.png
 menu:
   latest:
     identifier: api-ysql-overview

@@ -73,27 +73,18 @@ A more detailed comparison of the two editions is available [here](https://www.y
 
 See [YugaByte DB in Comparison](../../comparisons/)
 
-- [MongoDB](../../comparisons/mongodb/)
-- [Amazon DynamoDB](../../comparisons/amazon-dynamodb/)
-- [FoundationDB](../../comparisons/foundationdb/)
-- [Apache Cassandra](../../comparisons/cassandra/)
 - [Google Cloud Spanner](../../comparisons/google-spanner/)
+- [CockroachDB](https://www.yugabyte.com/yugabyte-db-vs-cockroachdb/)
+- [MongoDB](../../comparisons/mongodb/)
+- [FoundationDB](../../comparisons/foundationdb/)
+- [Amazon DynamoDB](../../comparisons/amazon-dynamodb/)
+- [Apache Cassandra](../../comparisons/cassandra/)
 - [Azure Cosmos DB](../../comparisons/azure-cosmos/)
 - [Apache HBase](../../comparisons/hbase/)
 - [Redis In-Memory Store](../../comparisons/redis/)
 
-## Why not use a Redis cluster alongside a sharded SQL cluster?
+## What is the status of the YEDIS API?
 
-Independent cache and database clusters should be avoided for multiple reasons.
+In the near-term, YugaByte is not actively working on new feature or driver enhancements to the [YEDIS](../../yedis/) API other than bug fixes and stability improvements. Current focus is on [YSQL](../../api/ysql) and [YCQL](../../api/ycql).
 
-### Development and operational complexity
-
-Sharding has to be implemented at two tiers. Scale out (expanding/shrinking the cluster) has to be re-implemented twice - once at the Redis layer and again for the sharded SQL layer. You need to also worry about resharding the data in the Redis layer. The application has to be aware of two tiers, move data between them, deal with consistency issues, etc. It has to write to Redis and sharded SQL, read from Redis, deal with staleness of data, etc.
-
-### Higher cost
-
-Typically not all the data needs to be cached, and the cache has to adapt to the query pattern. Most people deploying Redis this way end up caching all the data. Some queries need to be answered with low latency from the cache, and others are longer running queries that should not pollute the cache. This is hard to achieve if two systems deal with different access patterns for the same data.
-
-### Cross-DC administration complexity
-
-You need to solve all the failover and failback issues at two layers especially when both sync and async replicas are needed. Additionally, the latency/consistency/throughput tracking needs to be done at two levels, which makes the app deployment architecture very complicated.
+For key-value workloads that need persistence, elasticity and fault-tolerance, YCQL (with notion of keyspaces, tables, role-based acces control and more) is often a great fit, especially if the application new rather than an existing one already written in Redis. The YCQL drivers are also more clustering aware, and hence YCQL is expected to perform better than YEDIS for equivalent scenarios. In general, our new feature development (support for data types, built-ins, TLS, backups and more), correctness testing (using Jepsen) and performance optimization is in the YSQL and YCQL areas.

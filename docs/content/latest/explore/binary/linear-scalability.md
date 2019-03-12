@@ -1,4 +1,4 @@
-## 1. Setup - create universe
+## 1. Create universe
 
 If you have a previously running local universe, destroy it using the following.
 
@@ -6,10 +6,10 @@ If you have a previously running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local cluster - by default, this will create a 3-node universe with a replication factor of 3. We configure the number of [shards](../../../architecture/concepts/sharding/) (aka tablets) per table per tserver to 4 so that we can better observe the load balancing during scale-up and scale-down. Each table will now have 4 tablet-leaders in each tserver and with replication factor 3, there will be 2 tablet-followers for each tablet-leader distributed in the 2 other tservers. So each tserver will have 12 tablets (i.e. sum of 4 tablet-leaders and 8 tablet-followers) per table.
+Start a new 3-node RF3 cluster. We configure the number of [shards](../../architecture/concepts/docdb/sharding/) (aka tablets) per table per tserver to 4 so that we can better observe the load balancing during scale-up and scale-down. Each table will now have 4 tablet-leaders in each tserver and with replication factor 3, there will be 2 tablet-followers for each tablet-leader distributed in the 2 other tservers. So each tserver will have 12 tablets (i.e. sum of 4 tablet-leaders and 8 tablet-followers) per table.
 
 ```sh
-$ ./bin/yb-ctl --num_shards_per_tserver 4 create --enable_postgres
+$ ./bin/yb-ctl --rf 3 --num_shards_per_tserver 4 create
 ```
 
 ## 2. Run sample key-value app
@@ -29,7 +29,7 @@ $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
                                     --num_threads_read 4
 ```
 
-The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](../../../quick-start/run-sample-apps/).
+The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](../../quick-start/run-sample-apps/).
 
 ```
 2018-05-10 09:10:19,538 [INFO|...] Read: 8988.22 ops/sec (0.44 ms/op), 818159 total ops  |  Write: 1095.77 ops/sec (0.91 ms/op), 97120 total ops  | ... 
@@ -42,7 +42,7 @@ You can check a lot of the per-node stats by browsing to the <a href='http://127
 
 ![Read and write IOPS with 3 nodes](/images/ce/linear-scalability-3-nodes.png)
 
-## 4. Add node and observe linear scale out
+## 4. Add node and observe linear scaling
 
 Add a node to the universe.
 

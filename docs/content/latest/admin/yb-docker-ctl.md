@@ -54,14 +54,20 @@ optional arguments:
 
 ## Create cluster
 
-- Create a 3 node local cluster with replication factor 3. 
-
-Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal to the replication factor for the cluster to be considered as operating normally and the number of yb-tservers is equal to be the number of nodes.
+- Create a 1 node local cluster with replication factor 1. 
 
 Note that the create command pulls the latest `yugabytedb/yugabyte` image at the outset in case the image is not yet downloaded or is not the latest.
 
 ```sh
 $ ./yb-docker-ctl create
+```
+
+- Create a 3 node local cluster with replication factor 3. 
+
+Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal to the replication factor for the cluster to be considered as operating normally and the number of yb-tservers is equal to be the number of nodes.
+
+```sh
+$ ./yb-docker-ctl create --rf 3
 ```
 
 ```
@@ -86,9 +92,9 @@ PID        Type       Node                 URL                       Status     
 11133      master     yb-master-n1         http://172.19.0.2:9000    Running         2017-11-28T23:32:57.905097927Z
 ```
 
-- Create a 5 node local cluster with replication factor 5. 
-
 The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. With the [add_node](#add-a-node) and [remove_node](#remove-a-node) commands the size of the cluster can thereafter be expanded or shrinked as necessary. 
+
+- Create a 5 node local cluster with replication factor 5. 
 
 ```sh
 $ ./yb-docker-ctl create --rf 5
@@ -113,7 +119,6 @@ PID        Type       Node                 URL                       Status     
 ```
 
 ## Add a node
-
 
 Add a new node to the cluster. This will start a new yb-tserver process and give it a new `node_id` for tracking purposes.
 

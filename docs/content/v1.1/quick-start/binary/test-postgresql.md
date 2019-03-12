@@ -12,7 +12,7 @@ $ ./bin/yb-ctl destroy
 
 You can do this as shown below.
 ```sh
-$ ./bin/yb-ctl create --enable_postgres
+$ ./bin/yb-ctl --rf 3 create --enable_postgres
 ```
 
 

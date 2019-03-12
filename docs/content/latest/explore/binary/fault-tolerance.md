@@ -1,4 +1,4 @@
-## 1. Setup - create universe
+## 1. Create universe
 
 If you have a previously running local universe, destroy it using the following.
 
@@ -6,10 +6,10 @@ If you have a previously running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local cluster - by default, this will create a 3-node universe with a replication factor of 3. 
+Start a new local cluster - a 3-node universe with a replication factor of 3. 
 
 ```sh
-$ ./bin/yb-ctl create --enable_postgres
+$ ./bin/yb-ctl --rf 3 create
 ```
 
 ## 2. Run sample key-value app
@@ -30,7 +30,7 @@ $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
 ```
 
 
-The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](../../../quick-start/run-sample-apps/).
+The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](../../quick-start/run-sample-apps/).
 
 ```
 2018-05-10 09:10:19,538 [INFO|...] Read: 8988.22 ops/sec (0.44 ms/op), 818159 total ops  |  Write: 1095.77 ops/sec (0.91 ms/op), 97120 total ops  | ... 

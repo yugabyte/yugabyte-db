@@ -1,14 +1,33 @@
 ---
 title: YEDIS
 linkTitle: YEDIS
-description: YugaByte DIctionary Service (YEDIS) 
+description: YugaByte Dictionary Service (YEDIS) 
 headcontent: 
-image: /images/section_icons/api/redis.png
+image: /images/section_icons/api/yedis.png
+aliases:
+  - /latest/api/yedis
+  - /latest/api/redis
 menu:
   latest:
     identifier: yedis
     weight: 2800
 ---
+
+The YEDIS API allows YugaByte DB to function as a clustered, auto-sharded, globally distributed and persistent key-value database that is compatible with the Redis commands library. A Redis client can connect, send requests, and receive results from this API. 
+
+{{< note title="Note" >}}
+While YEDIS supports many Redis data types (such as string, hash, set, sorted set and a new Timeseries type) and commands, there are a some notable exceptions at present.
+
+* Only a subset of sorted set commands (ZCARD, ZADD, ZRANGEBYSCORE, ZREM, ZRANGE, ZREVRANGE, ZSCORE) have been implemented. Several commands like ZCOUNT, ZREVRANGEBYSCORE, ZRANK, ZREVRANK are not yet implemented.
+* List, Bitmaps, HyperLogLogs, GeoSpatial types/commands are not yet implemented.
+
+<b>
+In the near-term, YugaByte is not actively working on new feature or driver enhancements to the YEDIS API other than bug fixes and stability improvements. Current focus is on YSQL (Postgres-compatible distributed SQL API) and YCQL (a flexible-schema API with Cassandra QL roots).
+</b> 
+
+For key-value workloads that need persistence, elasticity and fault-tolerance, YCQL (with notion of keyspaces, tables, role-based acces control and more) is often a great fit, especially if the application new rather than an existing one already written in Redis. The YCQL drivers are also more clustering aware, and hence YCQL is expected to perform better than YEDIS for equivalent scenarios. In general, our new feature development (support for data types, built-ins, TLS, backups and more), correctness testing (using Jepsen) and performance optimization is in the YSQL and YCQL areas.
+{{< /note >}}
+
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -33,6 +52,7 @@ menu:
       </div>
     </a>
   </div>
+  <!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="deploy/">
       <div class="head">
@@ -44,6 +64,7 @@ menu:
       </div>
     </a>
   </div>
+  -->
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="api/">
       <div class="head">
@@ -51,7 +72,7 @@ menu:
         <div class="title">API Reference</div>
       </div>
       <div class="body">
-          Enable TLS encryption over the wire in YugaByte DB to secure and protect network communication.
+         Complete API reference.
       </div>
     </a>
   </div>

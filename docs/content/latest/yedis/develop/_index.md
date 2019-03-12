@@ -1,7 +1,7 @@
 ---
 title: Develop
 linkTitle: Develop
-description: Develop Apps on YugaByte DB
+description: Develop Apps on YEDIS
 headcontent: 
 image: /images/section_icons/index/develop.png
 aliases:

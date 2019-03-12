@@ -30,7 +30,7 @@ menu:
     <a class="section-link icon-offset" href="client-drivers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-        <div class="articles">6 articles</div>
+        <div class="articles">8 articles</div>
         <div class="title">Client Drivers</div>
       </div>
       <div class="body">
@@ -43,7 +43,7 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
         <div class="articles">6 articles</div>
-        <div class="title">Learn</div>
+        <div class="title">Learn App Development</div>
       </div>
       <div class="body">
         Learn how to build cloud services and applications on YugaByte DB.

@@ -1,4 +1,4 @@
-## 1. Setup - create universe and table
+## 1. Create universe
 
 If you have a previously running local universe, destroy it using the following.
 

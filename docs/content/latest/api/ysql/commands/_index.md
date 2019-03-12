@@ -2,7 +2,7 @@
 title: Commands
 description: Overview on YSQL Commands
 summary: Overview on YSQL Commands
-image: /images/section_icons/api/pgsql.png
+image: /images/section_icons/api/ysql.png
 menu:
   latest:
     identifier: api-ysql-commands
