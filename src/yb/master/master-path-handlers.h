@@ -82,6 +82,16 @@ class MasterPathHandlers {
     kNumTypes
   };
 
+  struct TabletCounts {
+    uint32_t user_tablet_leaders = 0;
+    uint32_t user_tablet_followers = 0;
+    uint32_t system_tablet_leaders = 0;
+    uint32_t system_tablet_followers = 0;
+  };
+
+  // Map of tserver UUID -> TabletCounts
+  typedef std::unordered_map<std::string, TabletCounts> TabletCountMap;
+
   const string table_type_[3] = {"User", "Index", "System"};
 
   const string kNoPlacementUUID = "NONE";
@@ -90,6 +100,7 @@ class MasterPathHandlers {
 
   void TServerDisplay(const std::string& current_uuid,
                       std::vector<std::shared_ptr<TSDescriptor>>* descs,
+                      TabletCountMap* tmap,
                       std::stringstream* output);
 
   void CallIfLeaderOrPrintRedirect(const Webserver::WebRequest& req, std::stringstream* output,
@@ -110,10 +121,7 @@ class MasterPathHandlers {
                           std::stringstream* output);
   void HandleGetClusterConfig(const Webserver::WebRequest& req, std::stringstream* output);
 
-  // Checks if the table is system managed table (including redis table).
-  bool IsSystemTable(const TableInfo& table);
-
-    // Convert location of peers to HTML, indicating the roles
+  // Convert location of peers to HTML, indicating the roles
   // of each tablet server in a consensus configuration.
   // This method will display 'locations' in the order given.
   std::string RaftConfigToHtml(const std::vector<TabletReplica>& locations,

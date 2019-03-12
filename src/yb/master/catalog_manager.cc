@@ -3771,6 +3771,44 @@ bool CatalogManager::IsSystemTable(const TableInfo& table) const {
   return false;
 }
 
+// True if table is created by user.
+// Table can be regular table or index in this case.
+bool CatalogManager::IsUserCreatedTable(const TableInfo& table) const {
+  if (table.GetTableType() == PGSQL_TABLE_TYPE || table.GetTableType() == YQL_TABLE_TYPE) {
+    if (!IsSystemTable(table) && !IsSequencesSystemTable(table)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool CatalogManager::IsUserTable(const TableInfo& table) const {
+  return IsUserCreatedTable(table) && table.indexed_table_id().empty();
+}
+
+bool CatalogManager::IsUserIndex(const TableInfo& table) const {
+  return IsUserCreatedTable(table) && !table.indexed_table_id().empty();
+}
+
+bool CatalogManager::IsSequencesSystemTable(const TableInfo& table) const {
+  if (table.GetTableType() == PGSQL_TABLE_TYPE) {
+    Result<uint32_t> database_oid = GetPgsqlDatabaseOid(table.namespace_id());
+    if (!database_oid.ok()) {
+      LOG(WARNING) << "Invalid Namespace ID " << table.namespace_id();
+      return false;
+    }
+    Result<uint32_t> table_oid = GetPgsqlTableOid(table.id());
+    if (!table_oid.ok()) {
+      LOG(WARNING) << "Invalid Table ID " << table.id();
+      return false;
+    }
+    if (*database_oid == kPgSequencesDataDatabaseOid && *table_oid == kPgSequencesDataTableOid) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uuid,
                                                 const TabletId& tablet_id) {
   scoped_refptr<DeletedTableInfo> deleted_table;
