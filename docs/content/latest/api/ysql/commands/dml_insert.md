@@ -88,4 +88,4 @@ postgres=# SELECT * FROM sample ORDER BY k1;
 
 [`CREATE TABLE`](../ddl_create_table)
 [`SELECT`](../dml_select)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

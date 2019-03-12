@@ -71,4 +71,4 @@ Where
 
 ## See Also
 [`ALTER DATABASE`](../ddl_alter_db)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

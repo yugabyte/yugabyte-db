@@ -57,4 +57,4 @@ Where
 - `CONCURRENTLY`, `USING method`, `COLLATE`, `NULL order`, and `tablespace` options are not yet supported.
 
 ## See Also
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

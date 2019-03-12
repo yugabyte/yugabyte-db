@@ -64,4 +64,4 @@ postgres=# SELECT * FROM selective_sample ORDER BY k1;
 
 ## See Also
 [`CREATE TABLE`](../dml_create_table)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

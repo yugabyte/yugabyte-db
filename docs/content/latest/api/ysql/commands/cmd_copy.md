@@ -70,4 +70,4 @@ Where
 - `COPY FROM` can be used with either tables, foreign tables, or views.
 
 ## See Also
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

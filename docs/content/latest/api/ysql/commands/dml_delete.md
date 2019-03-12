@@ -99,4 +99,4 @@ DELETE 1
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
 [`UPDATE`](../dml_update)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

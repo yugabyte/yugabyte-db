@@ -39,4 +39,4 @@ Where
 [`CREATE TABLE`](../ddl_create_table)
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

@@ -36,4 +36,4 @@ Where
 
 ## See Also
 [`CREATE DATABASE`](ddl_create_database)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

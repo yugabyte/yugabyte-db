@@ -104,4 +104,4 @@ nextval
 [`DROP SEQUENCE`](../drop_sequence)
 [`currval()`](../currval_sequence)
 [`lastval()`](../lastval_sequence)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

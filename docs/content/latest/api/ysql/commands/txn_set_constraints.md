@@ -33,4 +33,4 @@ set_constraints ::= SET CONSTRAINTS { ALL | name [, ...] } { DEFERRED | IMMEDIAT
 - Attributes in `SET CONSTRAINTS` does not apply to `NOT NULL` and `CHECK` constraints.
 
 ## See Also
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

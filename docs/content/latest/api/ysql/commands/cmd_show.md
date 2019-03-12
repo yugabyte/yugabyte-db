@@ -36,4 +36,4 @@ Where
 ## See Also
 [`SET`](../cmd_set)
 [`RESET`](../cmd_reset)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

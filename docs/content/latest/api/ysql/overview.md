@@ -77,7 +77,7 @@ TCL commands are provided to manage transactions of operations on YSQL database.
 | [`SET`](cmd_set) | Set a system, session, or transactional parameter |
 | [`SHOW`](cmd_show) | Show value of a system, session, or transactional parameter |
 
-## Perfomance Control
+## Performance Control
 
 | Statement | Description |
 |-----------|-------------|
@@ -96,7 +96,7 @@ This section lists the main elements of YSQL.
 
 - Keywords: List or [keywords](keywords).
 - Names and Qualifiers: Some names are reserved for the system. List of [reserved names](reserved_names).
-- Datatypes: All PostgreSQL compatible datatypes are provided. List of [datatypes](datatypes).
+- Datatypes: Most PostgreSQL compatible datatypes are provided while others will be supported by April 2019. List of [datatypes](datatypes).
 - Expressions
 - Database Objects
 - Comments

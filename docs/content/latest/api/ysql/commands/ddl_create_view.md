@@ -76,4 +76,4 @@ postgres=# SELECT * FROM sample_view;
 
 ## See Also
 [`SELECT`](../dml_select)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

@@ -41,4 +41,4 @@ Where
 [`CREATE VIEW`](../ddl_create_view)
 [`CREATE INDEX`](../ddl_create_index)
 [`CREATE SEQUENCE`](../ddl_create_seq)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

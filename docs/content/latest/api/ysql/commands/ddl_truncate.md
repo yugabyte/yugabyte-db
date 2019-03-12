@@ -74,4 +74,4 @@ postgres=# SELECT * FROM sample;
 ```
 
 ## See Also
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

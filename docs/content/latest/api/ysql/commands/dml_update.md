@@ -124,4 +124,4 @@ postgres=# SELECT * FROM sample ORDER BY k1;
 [`DELETE`](../dml_delete)
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

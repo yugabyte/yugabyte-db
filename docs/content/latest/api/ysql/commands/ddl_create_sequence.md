@@ -166,4 +166,4 @@ nextval
 [`currval()`](../currval_sequence)
 [`lastval()`](../lastval_sequence)
 [`nextval()`](../nextval_sequence)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

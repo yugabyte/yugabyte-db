@@ -44,4 +44,4 @@ Where
 ## See Also
 [`SHOW`](../cmd_show)
 [`RESET`](../cmd_reset)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)

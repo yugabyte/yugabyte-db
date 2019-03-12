@@ -6,7 +6,7 @@ description: LOCK
 menu:
   latest:
     identifier: api-ysql-commands-lock
-    parent: api-ysql-commands
+    parent: api-ysql-commands-lock
 aliases:
   - /latest/api/ysql/commands/txn_lock
 isTocNested: true
@@ -52,4 +52,4 @@ Where
 
 ## See Also
 [`CREATE TABLE`](../ddl_create_table)
-[Other PostgreSQL Statements](..)
+[Other YSQL Statements](..)
