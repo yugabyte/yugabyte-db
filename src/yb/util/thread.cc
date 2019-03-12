@@ -314,20 +314,77 @@ void ThreadMgr::RemoveThread(const pthread_t& pthread_id, const string& category
   ANNOTATE_IGNORE_READS_AND_WRITES_END();
 }
 
-void ThreadMgr::PrintThreadCategoryRows(const ThreadCategory& category,
-    stringstream* output) {
-  for (const ThreadCategory::value_type& thread : category) {
+int Compare(const Result<StackTrace>& lhs, const Result<StackTrace>& rhs) {
+  if (lhs.ok()) {
+    if (!rhs.ok()) {
+      return -1;
+    }
+    return lhs->compare(*rhs);
+  }
+  if (rhs.ok()) {
+    return 1;
+  }
+  return lhs.status().message().compare(rhs.status().message());
+
+}
+
+void ThreadMgr::PrintThreadCategoryRows(const ThreadCategory& category, stringstream* output) {
+  struct ThreadData {
+    const std::string* name;
     ThreadStats stats;
-    Status status = GetThreadStats(thread.second.thread_id(), &stats);
+    Result<StackTrace> stack_trace = StackTrace();
+    int rowspan = -1;
+  };
+  std::vector<ThreadData> threads;
+  threads.resize(category.size());
+  auto* data = threads.data();
+  for (const ThreadCategory::value_type& thread : category) {
+    data->name = &thread.second.name();
+    Status status = GetThreadStats(thread.second.thread_id(), &data->stats);
     if (!status.ok()) {
       YB_LOG_EVERY_N(INFO, 100) << "Could not get per-thread statistics: "
                               << status.ToString();
     }
-    (*output) << "<tr><td>" << thread.second.name() << "</td><td>"
-              << (static_cast<double>(stats.user_ns) / 1e9) << "</td><td>"
-              << (static_cast<double>(stats.kernel_ns) / 1e9) << "</td><td>"
-              << (static_cast<double>(stats.iowait_ns) / 1e9) << "</td>"
-              << "<td><pre>" << DumpThreadStack(thread.second.thread_id()) << "</pre></td></tr>";
+    data->stack_trace = ThreadStack(thread.second.thread_id());
+    ++data;
+  }
+
+  if (threads.empty()) {
+    return;
+  }
+
+  std::sort(threads.begin(), threads.end(), [](const ThreadData& lhs, const ThreadData& rhs) {
+    return Compare(lhs.stack_trace, rhs.stack_trace) < 0;
+  });
+
+  auto it = threads.begin();
+  auto first = it;
+  first->rowspan = 1;
+  while (++it != threads.end()) {
+    if (Compare(it->stack_trace, first->stack_trace) != 0) {
+      first = it;
+      first->rowspan = 1;
+    } else {
+      ++first->rowspan;
+    }
+  }
+
+  for (const auto& thread : threads) {
+    (*output)
+          << "<tr><td>" << *thread.name << "</td><td>"
+          << (static_cast<double>(thread.stats.user_ns) / 1e9) << "</td><td>"
+          << (static_cast<double>(thread.stats.kernel_ns) / 1e9) << "</td><td>"
+          << (static_cast<double>(thread.stats.iowait_ns) / 1e9) << "</td>";
+    if (thread.rowspan > 0) {
+      *output << Format("<td rowspan=\"$0\"><pre>", thread.rowspan);
+      if (thread.stack_trace.ok()) {
+        *output << thread.stack_trace->Symbolize();
+      } else {
+        *output << thread.stack_trace.status().message().ToBuffer();
+      }
+      *output << "</pre></td>";
+    }
+    *output << "</tr>\n";
   }
 }
 

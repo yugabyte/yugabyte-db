@@ -149,7 +149,7 @@ bool IsSignalHandlerRegistered(int signum) {
 
 TEST_F(DebugUtilTest, TestStackTraceInvalidTid) {
   string s = DumpThreadStack(1);
-  ASSERT_STR_CONTAINS(s, "unable to deliver signal");
+  ASSERT_STR_CONTAINS(s, "Unable to deliver signal");
 }
 
 TEST_F(DebugUtilTest, TestStackTraceSelf) {
@@ -199,11 +199,11 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
   // we get a bad Status if we try to use it.
   signal(SIGUSR1, &fake_signal_handler);
   ASSERT_STR_CONTAINS(SetStackTraceSignal(SIGUSR1).ToString(),
-                      "unable to install signal handler");
+                      "Unable to install signal handler");
   signal(SIGUSR1, SIG_IGN);
 
   // Stack traces should be disabled
-  ASSERT_STR_CONTAINS(DumpThreadStack(t->tid()), "unable to take thread stack");
+  ASSERT_STR_CONTAINS(DumpThreadStack(t->tid()), "Unable to take thread stack");
 
   // Re-enable so that other tests pass.
   ASSERT_OK(SetStackTraceSignal(SIGUSR2));
