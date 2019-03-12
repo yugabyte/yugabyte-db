@@ -55,9 +55,6 @@ static MonoDelta kSessionTimeout = 60s;
 static constexpr const char* const kPgSequencesNamespaceName = "system_postgres";
 static constexpr const char* const kPgSequencesDataTableName = "sequences_data";
 
-// Used to build this table's uuid.
-static constexpr const YBCPgOid kPgSequencesDataTableOid = 0xFFFF;
-static constexpr const YBCPgOid kPgSequencesDataDatabaseOid = 0xFFFF;
 static const string kPgSequencesDataNamespaceId = GetPgsqlNamespaceId(kPgSequencesDataDatabaseOid);
 
 // Columns names and ids.
