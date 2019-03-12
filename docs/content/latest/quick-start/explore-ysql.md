@@ -252,10 +252,16 @@ source    |  percent_sales
 
 ## 3. Test JOINs
 
+Coming soon.
+
 ## 4. Test Distributed Transactions
+
+Coming soon.
 
 ## 5. Test Secondary Indexes
 
+Coming soon.
+
 ## 6. Test JSONB Column Type
 
-
+Coming soon.

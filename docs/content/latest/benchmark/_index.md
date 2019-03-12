@@ -14,7 +14,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="ycsb/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
         <div class="title">YCSB</div>
       </div>
       <div class="body">
@@ -26,7 +26,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="jepsen/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/explore/transactional.png" aria-hidden="true" />
         <div class="articles"></div>
         <div class="title">Jepsen</div>
       </div>

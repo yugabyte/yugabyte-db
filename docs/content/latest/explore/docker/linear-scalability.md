@@ -22,10 +22,11 @@ $ wget https://github.com/YugaByte/yb-sql-workshop/blob/master/running-sample-ap
 
 
 ```sh
-$ java -jar ./yb-sample-apps.jar --workload SqlInserts \
+$ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --nodes localhost:9042 \
                                     --num_threads_write 1 \
                                     --num_threads_read 4 \
+                                    --value_size 4096
 ```
 
 The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](../../quick-start/run-sample-apps/).

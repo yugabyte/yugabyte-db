@@ -16,7 +16,7 @@ showAsideToc: true
 As before, we shall assume that we brought up a universe on four nodes with replication factor `3`. Let us assume their IP addresses are `172.151.17.130`, `172.151.17.220`, `172.151.17.140` and `172.151.17.150`
 
 
-## Setup YEDIS service
+## Setup YEDIS service (Optional)
 
 {{< note title="Note" >}}
 If you want this cluster to be able to support Redis clients, you **must** perform this step.

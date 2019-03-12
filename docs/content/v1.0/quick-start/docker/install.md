@@ -52,5 +52,5 @@ $ python --version
 Pull the YugaByte DB container.
 
 ```sh
-$ docker pull yugabytedb/yugabyte
+$ docker pull yugabytedb/yugabyte:1.0.7.0-b13
 ```

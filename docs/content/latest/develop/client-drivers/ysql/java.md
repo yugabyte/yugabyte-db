@@ -18,7 +18,7 @@ To build your Java application using the Postgresql JDBC driver, add the followi
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [quick start guide](../../../quick-start/test-ysql/).
+- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [quick start guide](../../../quick-start/explore-ysql/).
 - installed JDK version 1.8+ and maven 3.3+
 
 

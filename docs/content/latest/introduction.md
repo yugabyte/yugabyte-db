@@ -27,13 +27,13 @@ YugaByte DB Community Edition is developed and distributed as an [Apache 2.0 ope
 
 ## What makes YugaByte DB unique?
 
-YugaByte DB is a transactional database that brings together three must-have needs of user-facing cloud applications, namely SQL as a flexible query language, low-latency reads and globally-distributed write scalability. Monolithic SQL databases offer SQL and low-latency reads but do not have ability to scale writes across nodes and regions. Distributed NoSQL databases offer performance and write scalablility but give up on SQL semantics.
+YugaByte DB is a transactional database that brings together three must-have needs of user-facing cloud applications, namely SQL as a flexible query language, low-latency reads and globally-distributed write scalability. Monolithic SQL databases offer SQL and low-latency reads but do not have ability to scale writes across multiple nodes and/or regions. Distributed NoSQL databases offer performance and write scalablility but give up on SQL semantics such as multi-key access, ACID transactions and strong consistency.
 
 YugaByte DB feature highlights are listed below.
 
 ### 1. SQL and ACID Transactions
 
-- SQL [JOINs](../quick-start/explore-ysql/#3-joins) and [distributed acid transactions](../quick-start/explore-ysql/#4-distributed-transactions) that allow multi-row access across any number of shards at any scale.
+- SQL [JOINs](../quick-start/explore-ysql/#3-joins) and [distributed transactions](../quick-start/explore-ysql/#4-distributed-transactions) that allow multi-row access across any number of shards at any scale.
 
 - Transactional [document store](../architecture/concepts/docdb/) backed by self-healing, strongly consistent [replication](../architecture/concepts/docdb/replication/).
 
@@ -64,9 +64,9 @@ YugaByte DB feature highlights are listed below.
 
 YugaByte DB supports two flavors of distributed SQL.
 
-1. [YugaByte SQL (Beta)](../api/ysql/) - YSQL is a fully relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal scalability and global distribution while also using relational data modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Get started by [exploring YSQL features](../quick-start/explore-ysql/).
+1. [YugaByte SQL (Beta)](../api/ysql/) - YSQL is a fully relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Get started by [exploring YSQL features](../quick-start/explore-ysql/).
 
-2. [YugaByte Cloud QL](../api/ycql/) - YCQL is a SQL-based flexible-schema API that is best fit for internet-scale OLTP apps needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. Get started by [exploring YCQL features](../quick-start/explore-ysql/).
+2. [YugaByte Cloud QL](../api/ycql/) - YCQL is a SQL-based flexible-schema API that is best fit for internet-scale OLTP apps needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. Get started by [exploring YCQL features](../develop/learn/).
 
 {{< note title="Note" >}}
 The YugaByte DB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../develop/ecosystem-integrations/presto/) can help for simple cases). 
@@ -77,5 +77,5 @@ The YugaByte DB APIs are isolated and independent from one another today. This m
 
 ## How does YugaByte DB's common document store work?
 
-[DocDB](../architecture/concepts/docdb/), YugaByte DB's distributed document store common across all APIs, is built on an custom integration of Raft replication, distributed ACID transactions and the RocksDB storage engine. Specifically, it enhances RocksDB by transforming RocksDB from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB’s [sharding](../architecture/concepts/docdb/sharding/), [replication/fault-tolerance](../architecture/concepts/docdb/replication/) and [distributed ACID transactions](../architecture/transactions/distributed-txns/) architecture are all based on the the [Google Spanner design](https://research.google.com/archive/spanner-osdi2012.pdf) first published in 2012. [How We Built a High Performance Document Store on RocksDB?](https://blog.yugabyte.com/how-we-built-a-high-performance-document-store-on-rocksdb/) provides an in-depth look into DocDB.
+[DocDB](../architecture/concepts/docdb/), YugaByte DB's distributed document store common across all APIs, is built using a custom integration of Raft replication, distributed ACID transactions and the RocksDB storage engine. Specifically, DocDB enhances RocksDB by transforming it from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB’s [sharding](../architecture/concepts/docdb/sharding/), [replication/fault-tolerance](../architecture/concepts/docdb/replication/) and [distributed ACID transactions](../architecture/transactions/distributed-txns/) architecture are all based on the the [Google Spanner design](https://research.google.com/archive/spanner-osdi2012.pdf) first published in 2012. [How We Built a High Performance Document Store on RocksDB?](https://blog.yugabyte.com/how-we-built-a-high-performance-document-store-on-rocksdb/) provides an in-depth look into DocDB.
 
