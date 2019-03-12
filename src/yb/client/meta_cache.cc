@@ -216,9 +216,9 @@ RemoteTablet::~RemoteTablet() {
     // enough time so that the lookup cache can be refreshed after force_lookup_cache_refresh_secs.
     for (const auto& replica : replicas_) {
       if (replica.Failed()) {
-        LOG(FATAL) << "Remote tablet server " << replica.ts->ToString()
-                   << " with role " << consensus::RaftPeerPB::Role_Name(replica.role)
-                   << " is marked as failed";
+        LOG_WITH_PREFIX(FATAL) << "Remote tablet server " << replica.ts->ToString()
+                               << " with role " << consensus::RaftPeerPB::Role_Name(replica.role)
+                               << " is marked as failed";
       }
     }
   }
@@ -251,9 +251,9 @@ bool RemoteTablet::stale() const {
 
 bool RemoteTablet::MarkReplicaFailed(RemoteTabletServer *ts, const Status& status) {
   std::lock_guard<simple_spinlock> l(lock_);
-  VLOG(2) << "Tablet " << tablet_id_ << ": Current remote replicas in meta cache: "
-          << ReplicasAsStringUnlocked() << ". Replica " << ts->ToString()
-          << " has failed: " << status.ToString();
+  VLOG_WITH_PREFIX(2) << "Current remote replicas in meta cache: "
+                      << ReplicasAsStringUnlocked() << ". Replica " << ts->ToString()
+                      << " has failed: " << status.ToString();
   for (RemoteReplica& rep : replicas_) {
     if (rep.ts == ts) {
       rep.MarkFailed();
@@ -307,15 +307,16 @@ void RemoteTablet::GetRemoteTabletServers(vector<RemoteTabletServer*>* servers) 
             const Status status =
                 CHECK_NOTNULL(replica.ts->local_tserver())->GetTabletStatus(&req, &resp);
             if (!status.ok() || resp.has_error()) {
-              LOG(ERROR) << "Received error from GetTabletStatus: "
-                         << (!status.ok() ? status : StatusFromPB(resp.error().status()));
+              LOG_WITH_PREFIX(ERROR)
+                  << "Received error from GetTabletStatus: "
+                  << (!status.ok() ? status : StatusFromPB(resp.error().status()));
               continue;
             }
 
             DCHECK_EQ(resp.tablet_status().tablet_id(), tablet_id_);
-            VLOG(3) << "GetTabletStatus returned status: "
-                    << tablet::TabletStatePB_Name(resp.tablet_status().state())
-                    << " for replica " << replica.ts->ToString();
+            VLOG_WITH_PREFIX(3) << "GetTabletStatus returned status: "
+                                << tablet::TabletStatePB_Name(resp.tablet_status().state())
+                                << " for replica " << replica.ts->ToString();
             replica.state = resp.tablet_status().state();
             if (replica.state != tablet::TabletStatePB::RUNNING) {
               continue;
@@ -332,15 +333,15 @@ void RemoteTablet::GetRemoteTabletServers(vector<RemoteTabletServer*>* servers) 
           continue;
       }
 
-      VLOG(3) << "Changing state of replica " << replica.ts->ToString() << " for tablet "
-              << tablet_id_ << " from failed to not failed";
+      VLOG_WITH_PREFIX(3) << "Changing state of replica " << replica.ts->ToString()
+                          << " from failed to not failed";
       replica.ClearFailed();
     }
     servers->push_back(replica.ts);
   }
 }
 
-void RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
+bool RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
   bool found = false;
   std::lock_guard<simple_spinlock> l(lock_);
   for (RemoteReplica& replica : replicas_) {
@@ -351,9 +352,10 @@ void RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
       replica.role = RaftPeerPB::FOLLOWER;
     }
   }
-  VLOG(3) << "Latest replicas: " << ReplicasAsStringUnlocked();
-  DCHECK(found) << "Tablet " << tablet_id_ << ": Specified server not found: "
-                << server->ToString() << ". Replicas: " << ReplicasAsStringUnlocked();
+  VLOG_WITH_PREFIX(3) << "Latest replicas: " << ReplicasAsStringUnlocked();
+  VLOG_IF_WITH_PREFIX(3, !found) << "Specified server not found: " << server->ToString()
+                                 << ". Replicas: " << ReplicasAsStringUnlocked();
+  return found;
 }
 
 void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
@@ -365,7 +367,7 @@ void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
       found = true;
     }
   }
-  VLOG(3) << "Latest replicas: " << ReplicasAsStringUnlocked();
+  VLOG_WITH_PREFIX(3) << "Latest replicas: " << ReplicasAsStringUnlocked();
   DCHECK(found) << "Tablet " << tablet_id_ << ": Specified server not found: "
                 << server->ToString() << ". Replicas: " << ReplicasAsStringUnlocked();
 }
