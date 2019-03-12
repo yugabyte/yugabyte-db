@@ -9,7 +9,7 @@ $ ./bin/yb-ctl destroy
 Start a new local universe with replication factor 3, and each replica placed in different zones (`us-west-2a`, `us-west-2b`, `us-west-2c`) in the `us-west-2` (Oregon) region of AWS. This can be done by running the following: 
 
 ```sh
-$ ./bin/yb-ctl create --placement_info "aws.us-west-2.us-west-2a,aws.us-west-2.us-west-2b,aws.us-west-2.us-west-2c"
+$ ./bin/yb-ctl --rf 3 create --placement_info "aws.us-west-2.us-west-2a,aws.us-west-2.us-west-2b,aws.us-west-2.us-west-2c"
 ```
 
 In this deployment, the YB Masters are each placed in a separate zone to allow them to survive the loss of a zone. You can view the masters on the [dashboard](http://localhost:7000/).

@@ -17,7 +17,7 @@ YugaByte DB can easily be deployed in a globally distributed manner to serve app
 
 This tutorial will simulate AWS regions on a local machine. First, we will deploy YugaByte DB in the `us-west-2` region across multiple availability zones (`a`, `b`, `c`). We will start a key-value workload against this universe. Next, we will change this setup to run across multiple geographic regions in US East (`us-east-1`) and Tokyo (`ap-northeast-1`), with the workload running uninterrupted during the entire transition.
 
-If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
+If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
 
 
 <ul class="nav nav-tabs nav-tabs-yb">

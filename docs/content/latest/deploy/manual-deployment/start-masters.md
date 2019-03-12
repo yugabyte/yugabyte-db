@@ -35,6 +35,7 @@ This section covers deployment for a single region/zone (or a single datacenter/
 ```sh
 $ ./bin/yb-master \
   --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
+  --rpc_bind_addresses 172.151.17.130 \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
   >& /home/centos/disk1/yb-master.out &
 ```
@@ -44,6 +45,7 @@ $ ./bin/yb-master \
 
 ```sh
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
+--rpc_bind_addresses=172.151.17.130
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2 
 ```
 
@@ -51,7 +53,7 @@ $ ./bin/yb-master \
 $ ./bin/yb-master --flagfile master.conf >& /home/centos/disk1/yb-master.out &
 ```
 
-## Verify health
+## Verify Health
 - Make sure all the 3 yb-masters are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
 ```sh

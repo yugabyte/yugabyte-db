@@ -5,7 +5,7 @@
 - Initialize YEDIS API in the YugaByte DB universe we just setup by running the following `yb-admin` command. 
 
 ```sh
-$ kubectl exec -it yb-master-0 /home/yugabyte/bin/yb-admin -- --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100,yb-master-1.yb-masters.default.svc.cluster.local:7100,yb-master-2.yb-masters.default.svc.cluster.local:7100 setup_redis_table
+$ kubectl exec -it yb-master-0 /home/yugabyte/bin/yb-admin -- --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100 setup_redis_table
 ```
 
 ```

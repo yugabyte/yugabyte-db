@@ -1,4 +1,4 @@
-## 1. Setup - create universe
+## 1. Create universe
 
 If you have a previously running local universe, destroy it using the following.
 
@@ -6,29 +6,29 @@ If you have a previously running local universe, destroy it using the following.
 $ ./yb-docker-ctl destroy
 ```
 
-Start a new local cluster. By default, this will create a 3-node universe with a replication factor of 3. We configure the number of [shards](../../../architecture/concepts/sharding/) (aka tablets) per table per tserver to 4 so that we can better observe the load balancing during scale-up and scale-down. Each table will now have 4 tablet-leaders in each tserver and with replication factor 3, there will be 2 tablet-followers for each tablet-leader distributed in the 2 other tservers. So each tserver will have 12 tablets (i.e. sum of 4 tablet-leaders and 8 tablet-followers) per table.
+Start a new local cluster with 3-nodes with replication factor 3. We configure the number of [shards](../../architecture/concepts/docdb/sharding/) (aka tablets) per table per tserver to 4 so that we can better observe the load balancing during scale-up and scale-down. Each table will now have 4 tablet-leaders in each tserver and with replication factor 3, there will be 2 tablet-followers for each tablet-leader distributed in the 2 other tservers. So each tserver will have 12 tablets (i.e. sum of 4 tablet-leaders and 8 tablet-followers) per table.
 
 ```sh
-$ ./yb-docker-ctl create --num_shards_per_tserver 4
+$ ./yb-docker-ctl create --rf 3 --num_shards_per_tserver 4
 ```
 
 ## 2. Run sample key-value app
 
-Run the Cassandra sample key-value app against the local universe by typing the following command.
+Download the sample app jar.
 
 ```sh
-$ docker cp yb-master-n1:/home/yugabyte/java/yb-sample-apps.jar .
+$ wget https://github.com/YugaByte/yb-sql-workshop/blob/master/running-sample-apps/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
+
 ```sh
-$ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
+$ java -jar ./yb-sample-apps.jar --workload SqlInserts \
                                     --nodes localhost:9042 \
                                     --num_threads_write 1 \
                                     --num_threads_read 4 \
-                                    --value_size 4096
 ```
 
-The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](../../../quick-start/run-sample-apps/).
+The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](../../quick-start/run-sample-apps/).
 
 ```
 2017-11-20 14:02:48,114 [INFO|...] Read: 9893.73 ops/sec (0.40 ms/op), 233458 total ops  |

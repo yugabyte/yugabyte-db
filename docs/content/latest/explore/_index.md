@@ -9,6 +9,7 @@ aliases:
   - /latest/explore/transactional/
   - /latest/explore/high-performance/
   - /latest/explore/planet-scale/
+  - /latest/explore/cloud-native/orchestration-readiness/
 menu:
   latest:
     identifier: explore
@@ -56,21 +57,10 @@ menu:
     <a class="section-link icon-offset" href="auto-sharding/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />        
-        <div class="title">Auto Sharding</div>
+        <div class="title">Auto Sharding & Rebalancing</div>
       </div>
       <div class="body">
         Purpose-built for large, ever-growing datasets.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="auto-rebalancing/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/auto_rebalance.png" aria-hidden="true" />     
-        <div class="title">Auto Rebalancing</div>
-      </div>
-      <div class="body">
-        Uniform query & data distribution without manual intervention.
       </div>
     </a>
   </div>
@@ -96,17 +86,4 @@ menu:
       </div>
     </a>
   </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="orchestration-readiness/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/administer.png" aria-hidden="true" />
-        <div class="title">Orchestration Readiness</div>
-      </div>
-      <div class="body">
-        Automate and orchestrate on containers, VMs and bare metal servers.
-      </div>
-    </a>
-  </div>
-
- 
 </div>

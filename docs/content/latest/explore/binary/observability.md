@@ -5,7 +5,7 @@ Prometheus is installed on your local machine. If you have not done so already, 
 - [Download Prometheus](https://prometheus.io/download/)
 - [Get Started with Prometheus](https://prometheus.io/docs/prometheus/latest/getting_started/)
 
-## 1. Setup - create universe
+## 1. Create universe
 
 If you have a previously running local universe, destroy it using the following.
 

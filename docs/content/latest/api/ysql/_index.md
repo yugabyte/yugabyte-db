@@ -3,7 +3,7 @@ title: YSQL
 linkTitle: YSQL
 description: YugaByte Structured Query Language (YSQL) [Beta]
 summary: Reference for the YSQL API
-image: /images/section_icons/api/pgsql.png
+image: /images/section_icons/api/ysql.png
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   latest:
@@ -20,7 +20,7 @@ showAsideToc: true
 YSQL - YugaByte Structured Query Language - is a distributed SQL API that is compatible with PostgreSQL. YSQL has several different components to serve different purposes. The main components of YSQL are Data definition language (DDL), Data manipulation language (DML), and Data control language (DCL), which offer commands to create, modify, and secure the database, respectively. There are also several other components for system control, transaction control, performance tuning, etc.
 
 ## Example
-The following example illustrates how to use `psql` to connect to YugaByte DB's PostgreSQL-compatible API. It assumes you have [installed YugaByte](../../quick-start/install/) and started a [PostgreSQL-enabled cluster](../../quick-start/test-postgresql/).
+The following example illustrates how to use `psql` to connect to the YSQL API. It assumes you have [installed YugaByte DB](../../quick-start/install/) and started a [YSQL-enabled cluster](../../quick-start/explore-ysql/).
 
 ```sh
 $ bin/psql -p 5433 -U postgres

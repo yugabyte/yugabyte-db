@@ -3,7 +3,7 @@ title: PostgreSQL (Beta)
 linkTitle: PostgreSQL (Beta)
 description: PostgreSQL (Beta)
 summary: PostgreSQL overview and features
-image: /images/section_icons/api/pgsql.png
+image: /images/section_icons/api/ysql.png
 beta: /faq/product/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v1.0:

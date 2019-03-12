@@ -1,9 +1,15 @@
-## 1. Create a cluster and initialize the YEDIS API
+## 1. Create a cluster
 
 Create a cluster. 
 
 ```sh
 $ kubectl apply -f yugabyte-statefulset.yaml
+```
+
+Initialize the YSQL API.
+
+```sh
+$ kubectl exec -it yb-master-0 bash --  -c "YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=yb-master-0.yb-masters.default.svc.cluster.local:7100,yb-master-1.yb-masters.default.svc.cluster.local:7100,yb-master-2.yb-masters.default.svc.cluster.local:7100 /home/yugabyte/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres"
 ```
 
 Initialize the YEDIS API.
@@ -12,7 +18,7 @@ Initialize the YEDIS API.
 $ kubectl exec -it yb-master-0 /home/yugabyte/bin/yb-admin -- --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100,yb-master-1.yb-masters.default.svc.cluster.local:7100,yb-master-2.yb-masters.default.svc.cluster.local:7100 setup_redis_table
 ```
 
-Clients can now connect to the YCQL and YEDIS APIs of the cluster at 9042 and 6379 ports respectively.
+Clients can now connect to the YSQL, YCQL and YEDIS APIs of the cluster at 5433, 9042 and 6379 ports respectively.
 
 ## 2. Install Yugastore
 

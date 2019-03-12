@@ -1,4 +1,4 @@
-## 1. Setup - create universe
+## 1. Create universe
 
 If you have a previously running local universe, destroy it using the following.
 
@@ -9,18 +9,16 @@ $ ./bin/yb-ctl destroy
 
 Start a new local universe with a replication factor of 1 (rf=1). We are passing the following options/flags:
 
-- `--replication_factor 1` This creates a universe with a replication factor of 1.
+- `--rf 1` This creates a universe with a replication factor of 1.
 - `--num_shards_per_tserver 4`  This option controls the total number of tablets (or partitions) when creating a new table. By making this number 4, we will end up creating 12 tablets on a 3 node cluster. 
 - `--tserver_flags "memstore_size_mb=1"` This sets the total size of memstores on the tablet-servers to 1MB. We do this in order to force a flush of the data to disk when we insert a value more than 1MB, so that we can observe which tablets the data gets written to.
 
 You can do this as shown below.
 
 ```sh
-$ ./bin/yb-ctl --replication_factor 1 --num_shards_per_tserver 4 create \
+$ ./bin/yb-ctl --rf 1 --num_shards_per_tserver 4 create \
              --tserver_flags "memstore_size_mb=1"
 ```
-
-
 
 The above command creates a universe with one node. Let us add 2 more nodes to make this a 3-node, rf=1 universe. We need to pass the memstore size flag to each new tserver we add. You can do that by running the following:
 

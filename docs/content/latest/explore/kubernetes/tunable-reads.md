@@ -1,4 +1,4 @@
-## 1. Setup - create universe
+## 1. Create universe
 
 If you have a previously running local universe, destroy it using the following.
 
@@ -7,7 +7,7 @@ $ ./yb-docker-ctl destroy
 ```
 
 
-Start a new local universe with replication factor 5. This will create 5 nodes by default.
+Start a new local universe with replication factor 5. This will create 5 nodes.
 
 ```sh
 $ ./yb-docker-ctl create --rf 5 

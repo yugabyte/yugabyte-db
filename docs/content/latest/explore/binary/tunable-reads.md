@@ -1,4 +1,4 @@
-## 1. Setup - create universe
+## 1. Create universe
 
 If you have a previously running local universe, destroy it using the following.
 
@@ -6,10 +6,10 @@ If you have a previously running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local universe with the default 3 nodes and default replication factor 3.
+Start a new local universe with the 3 nodes and replication factor 3.
 
 ```sh
-$ ./bin/yb-ctl create
+$ ./bin/yb-ctl --rf 3 create
 ```
 
 Add 1 more node.

@@ -6,7 +6,7 @@
 - Run redis-cli to connect to the service.
 
 ```sh
-$ docker exec -it yb-tserver-n3 /home/yugabyte/bin/redis-cli
+$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/redis-cli
 ```
 
 ```

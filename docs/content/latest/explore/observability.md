@@ -1,6 +1,6 @@
 ---
 title: Observability with Prometheus
-linkTitle: 7. Observability 
+linkTitle: 6. Observability 
 description: Observability with Prometheus
 aliases:
   - /latest/explore/cloud-native/observability/
@@ -13,7 +13,7 @@ menu:
 
 You can monitor your local YugaByte DB cluster with a local instance of [Prometheus](https://prometheus.io/), the de-facto standard for time-series monitoring of cloud native infrastructure. Every YugaByte DB service exposes metrics in the Prometheus format at the `/prometheus-metrics` endpoint.
 
-If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
+If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](../../quick-start/install/) guide.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

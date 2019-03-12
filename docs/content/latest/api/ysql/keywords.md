@@ -3,7 +3,7 @@ title: KEYWORDS
 linkTitle: Keywords
 description: List of YSQL Keywords
 summary: Reference for YSQL API
-image: /images/section_icons/api/pgsql.png
+image: /images/section_icons/api/ysql.png
 menu:
   latest:
     identifier: api-ysql-keywords

@@ -34,6 +34,8 @@ This section covers deployment for a single region/zone (or a single datacenter/
 ```sh
 $ ./bin/yb-tserver \
   --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
+  --rpc_bind_addresses 172.151.17.130 \
+  --start_pgsql_proxy \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
   >& /home/centos/disk1/yb-tserver.out &
 ```
@@ -48,6 +50,8 @@ The number of comma seperated values in `tserver_master_addrs` parameter should 
 
 ```sh
 --tserver_master_addrs=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
+--rpc_bind_addresses=172.151.17.130
+--start_pgsql_proxy
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
 ```
 
@@ -55,8 +59,14 @@ The number of comma seperated values in `tserver_master_addrs` parameter should 
 $ ./bin/yb-tserver --flagfile tserver.conf >& /home/centos/disk1/yb-tserver.out &
 ```
 
+## Initialize YSQL
 
-## Verify health
+On any yb-tserver or yb-master, run the following command.
+```sh
+YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 /home/yugabyte/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres
+```
+
+## Verify Health
 
 - Make sure all the 4 yb-tservers are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 

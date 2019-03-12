@@ -20,8 +20,8 @@ YugaByte DB consists of two distributed services - the YB-Master service and the
 ## Basics
 
 - YugaByte DB works on a variety of OSes. For production workloads, the recommended OS is **Centos 7.x** or **RHEL 7.x**.
-- Set the appropriate [system limits using `ulimit`](../deploy/manual-deployment/system-config/#setting-ulimits/) on each node running a YugaByte DB process.
-- Use [ntp](../deploy/manual-deployment/system-config/#ntp/) to synchronize time among the machines.
+- Set the appropriate [system limits using `ulimit`](../manual-deployment/system-config/#setting-ulimits) on each node running a YugaByte DB process.
+- Use [ntp](../manual-deployment/system-config/#ntp) to synchronize time among the machines.
 
 ## Replication
 
@@ -87,12 +87,12 @@ Service | Type | Port
 `yb-master` | admin web server | 7000
 `yb-tserver` | rpc | 9100
 `yb-tserver` | admin web server | 9000
+`ysql` | rpc | 5433
+`ysql` | admin web server | 13000
 `ycql` | rpc | 9042
 `ycql` | admin web server | 12000
 `yedis` | rpc | 6379
 `yedis` | admin web server | 11000
-`pgsql` | rpc | 5433
-`pgsql` | admin web server | 13000
 `node_exporter` | Prometheus node exporter | 9300
 `ssh` | SSH access | 22
 

@@ -3,8 +3,7 @@ title: Community Edition Quick Start
 linkTitle: Quick Start
 description: Community Edition Quick Start
 image: /images/section_icons/index/quick_start.png
-
-headcontent: The easiest way to test YugaByte DB's basic features and APIs is to create a local multi-node cluster on a single host.
+headcontent: The easiest way to test YugaByte DB's basic features and APIs is to create a local cluster on a single host.
 type: page
 aliases:
   - /quick-start/
@@ -15,7 +14,7 @@ menu:
 ---
 
 {{< note title="Note" >}}
-We do not recommend a local multi-node cluster setup on a single host for production deployments or performance benchmarking. For those, consider deploying a true multi-node on multi-host setup using the <a href="../../latest/deploy">manual or orchestrated deployment steps</a>.
+We do not recommend a local cluster setup on a single host for production deployments or performance benchmarking. For those, consider deploying a true multi-node on multi-host setup using the <a href="../../latest/deploy">manual or orchestrated deployment steps</a>.
 {{< /note >}}
 
 
@@ -41,19 +40,19 @@ We do not recommend a local multi-node cluster setup on a single host for produc
         <div class="title">2. Create Local Cluster</div>
       </div>
       <div class="body">
-        Create a 3-node local cluster.
+        Create a local cluster.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="test-ysql/">
+    <a class="section-link icon-offset" href="explore-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-        <div class="title">3. Test YSQL API</div>
+        <div class="title">3. Explore YSQL</div>
       </div>
       <div class="body">
-        Test YugaByte SQL (YSQL) API.
+        Explore YugaByte SQL (YSQL).
       </div>
     </a>
   </div>

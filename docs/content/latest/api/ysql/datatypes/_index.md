@@ -2,7 +2,7 @@
 title: Datatypes
 description: List of YSQL Builtin Datatypes
 summary: Datatype overview and specification.
-image: /images/section_icons/api/pgsql.png
+image: /images/section_icons/api/ysql.png
 menu:
   latest:
     identifier: api-ysql-datatypes

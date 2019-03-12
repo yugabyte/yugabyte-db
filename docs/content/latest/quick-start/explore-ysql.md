@@ -1,7 +1,7 @@
 ---
-title: 3. Test YSQL API
-linkTitle: 3. Test YSQL API
-description: Test YugaByte SQL (YSQL) API
+title: 3. Explore YSQL 
+linkTitle: 3. Explore YSQL 
+description: Explore YugaByte SQL (YSQL)
 aliases:
   - /quick-start/test-postgresql/
   - /latest/quick-start/test-postgresql/
@@ -22,7 +22,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-Follow the instructions below to test YugaByte DB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
+After [creating a local cluster](../create-local-cluster/), follow the instructions here to explore YugaByte DB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
 
 [**psql**](https://www.postgresql.org/docs/9.3/static/app-psql.html) is a command line shell for interacting with PostgreSQL. For ease of use, YugaByte DB ships with a version of psql in its bin directory.
 
@@ -85,16 +85,16 @@ orders.sql  products.sql  reviews.sql users.sql
 
 <div class="tab-content">
   <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-    {{% includeMarkdown "binary/test-ysql.md" /%}}
+    {{% includeMarkdown "binary/explore-ysql.md" /%}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
-    {{% includeMarkdown "binary/test-ysql.md" /%}}
+    {{% includeMarkdown "binary/explore-ysql.md" /%}}
   </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
-    {{% includeMarkdown "docker/test-ysql.md" /%}}
+    {{% includeMarkdown "docker/explore-ysql.md" /%}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-    {{% includeMarkdown "kubernetes/test-ysql.md" /%}}
+    {{% includeMarkdown "kubernetes/explore-ysql.md" /%}}
   </div>
 </div>
 

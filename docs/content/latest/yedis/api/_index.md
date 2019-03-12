@@ -3,25 +3,22 @@ title: YEDIS API Reference
 linkTitle: API Reference
 description: API Reference
 summary: Reference for the YEDIS API
-image: /images/section_icons/api/redis.png
+image: /images/section_icons/api/yedis.png
 headcontent: 
 menu:
   latest:
     identifier: api-yedis
     parent: yedis
     weight: 4000
-aliases:
-  - /latest/api/yedis
-  - /latest/api/redis
 isTocNested: true
 showAsideToc: true
 ---
 
 ## Introduction
-YEDIS API is a transactional (single-key ACID) key-value API that is compatible with the Redis commands library. A Redis client can connect, send request, and receive result from YugaByte DB.
+The YEDIS API provides a clustered, auto-sharded, globally distributed and persistent key-value API that is compatible with the Redis commands library.  A Redis client can connect, send requests, and receive results from YugaByte DB. 
 
 ## Data Types
-The following datatypes can be read and written via the YEDIS API. All data are on-disk persistent in YugaByte DB.<br>
+The following datatypes can be read and written via the YEDIS API. 
 
 Data Type | Development Status |
 ---------|-------------|
@@ -30,7 +27,10 @@ Hash | Supported |
 Set | Supported |
 Sorted set | Supported |
 List | Not yet supported |
-Time series | New datatype in YugaByte! |
+Bitmaps | Not yet supported |
+HyperLogLogs | Not yet supported |
+GeoSpatial | Not yet supported |
+Time series | New datatype in YugaByte DB |
 
 ## Commands
 Redis-cli or any Redis applications can access YugaByte DB using the YEDIS API. The following Redis commands are accepted.

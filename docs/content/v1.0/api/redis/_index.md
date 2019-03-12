@@ -3,7 +3,7 @@ title: YEDIS API
 linkTitle: YEDIS
 description: YugaByte DIctionary Service (YEDIS)
 summary: Reference for Redis-compatible YEDIS API
-image: /images/section_icons/api/redis.png
+image: /images/section_icons/api/yedis.png
 headcontent: 
 menu:
   v1.0:

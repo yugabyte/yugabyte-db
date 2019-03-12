@@ -1,8 +1,8 @@
 ---
 title: Quick Start
 linkTitle: Quick Start
-description: Quick Start
-image: /images/section_icons/index/secure.png
+description: Quick Start YEDIS
+image: /images/section_icons/index/quick_start.png
 aliases:
   - /quick-start/test-redis/
   - /latest/quick-start/test-redis/
