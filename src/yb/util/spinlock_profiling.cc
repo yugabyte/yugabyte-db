@@ -163,8 +163,8 @@ void ContentionStacks::AddStack(const StackTrace& s, int64_t cycles) {
     if (e->trip_count == 0) {
       // It's an un-claimed slot. Claim it.
       e->hash = hash;
-      e->trace.CopyFrom(s);
-    } else if (e->hash != hash || !e->trace.Equals(s)) {
+      e->trace = s;
+    } else if (e->hash != hash || e->trace != s) {
       // It's claimed by a different stack trace.
       e->lock.Unlock();
       continue;
@@ -208,7 +208,7 @@ bool ContentionStacks::CollectSample(uint64_t* iterator, StackTrace* s, int64_t*
 
     *trip_count = e->trip_count;
     *cycles = e->cycle_count;
-    s->CopyFrom(e->trace);
+    *s = e->trace;
 
     e->trip_count = 0;
     e->cycle_count = 0;
