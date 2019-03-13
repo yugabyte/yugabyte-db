@@ -5,6 +5,7 @@ description: Persistence on top of RocksDB
 aliases:
   - /latest/architecture/docdb/persistence/
   - /latest/architecture/concepts/persistence/
+  - /latest/architecture/concepts/docdb/persistence/
 menu:
   latest:
     identifier: docdb-persistence

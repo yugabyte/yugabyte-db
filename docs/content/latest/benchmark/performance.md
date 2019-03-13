@@ -1,16 +1,16 @@
 ---
-title: Test Performance
-linkTitle: Test Performance
-description: Test Performance
+title: Performance
+linkTitle: Performance
+description: Performance
 image: /images/section_icons/architecture/concepts.png
 headcontent: Test the performance of YugaByte DB for various workloads.
 menu:
   latest:
-    identifier: benchmark-test-performance
+    identifier: benchmark-performance
     parent: benchmark
     weight: 720
 aliases:
-  - /benchmark/test-performance/
+  - /benchmark/performance/
 showAsideToc: True
 isTocNested: True
 ---

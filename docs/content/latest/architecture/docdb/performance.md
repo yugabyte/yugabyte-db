@@ -3,7 +3,7 @@ title: Performance
 linkTitle: Performance
 description: Making DocDB High-Performance
 aliases:
-  - /latest/architecture/docdb/performance/
+  - /latest/architecture/concepts/docdb/performance/
 menu:
   latest:
     identifier: docdb-performance

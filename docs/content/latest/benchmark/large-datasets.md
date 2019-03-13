@@ -1,16 +1,16 @@
 ---
-title: Test Large Datasets
-linkTitle: Test Large Datasets
-description: Test Large Datasets
+title: Large Datasets
+linkTitle: Large Datasets
+description: Large Datasets
 image: /images/section_icons/architecture/concepts.png
 headcontent: Testing YugaByte DB with large data sets.
 menu:
   latest:
-    identifier: benchmark-test-large-datasets
+    identifier: benchmark-large-datasets
     parent: benchmark
-    weight: 740
+    weight: 750
 aliases:
-  - /benchmark/test-large-datasets/
+  - /benchmark/large-datasets/
 showAsideToc: True
 isTocNested: True
 ---
