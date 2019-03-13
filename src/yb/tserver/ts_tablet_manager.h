@@ -154,7 +154,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
   ThreadPool* read_pool() const { return read_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
-  int64_t num_replayed() const { return num_log_records_replayed_during_bootstrap; }
 
   // Create a new tablet and register it with the tablet manager. The new tablet
   // is persisted on disk and opened before this method returns.
@@ -440,9 +439,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   // Next tablet report seqno.
   int32_t next_report_seq_;
-
-  // Number of log records replayed during tablet bootstrap
-  std::atomic<int> num_log_records_replayed_during_bootstrap{0};
 
   MetricRegistry* metric_registry_;
 
