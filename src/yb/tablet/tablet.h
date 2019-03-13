@@ -463,10 +463,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return *ql_storage_;
   }
 
-  bool HasIntentsDB() {
-    return intents_db_ != nullptr;
-  }
-
   // Used from tests
   const std::shared_ptr<rocksdb::Statistics>& rocksdb_statistics() const {
     return rocksdb_statistics_;
