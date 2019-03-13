@@ -244,7 +244,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
       *output << "    <td>" << (no_tablets ? 0
         : tserver->second.system_tablet_leaders + tserver->second.system_tablet_followers)
         << "</td>";
-      *output << "    <td>" << (no_tablets ? 0 : tserver->second.user_tablet_leaders) << "</td>";
+      *output << "    <td>" << (no_tablets ? 0 : tserver->second.system_tablet_leaders) << "</td>";
       *output << "  </tr>\n";
     }
   }
