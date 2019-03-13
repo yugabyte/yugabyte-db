@@ -1007,8 +1007,6 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
     tablet_peer->RegisterMaintenanceOps(server_->maintenance_manager());
   }
 
-  num_log_records_replayed_during_bootstrap += bootstrap_info.num_log_records_replayed;
-
   int elapsed_ms = MonoTime::Now().GetDeltaSince(start).ToMilliseconds();
   if (elapsed_ms > FLAGS_tablet_start_warn_threshold_ms) {
     LOG(WARNING) << kLogPrefix << "Tablet startup took " << elapsed_ms << "ms";
