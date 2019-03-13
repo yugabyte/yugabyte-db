@@ -18,7 +18,6 @@
 #include <boost/scope_exit.hpp>
 
 #include "yb/client/transaction.h"
-#include "yb/client/transaction_pool.h"
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/consensus/consensus.h"
@@ -1457,114 +1456,6 @@ TEST_F(QLTransactionTest, DelayedInit) {
     ASSERT_EQ(1, row1);
     auto row2 = SelectRow(read_session, 2);
     ASSERT_TRUE(!row2.ok() && row2.status().IsNotFound()) << row2;
-  }
-}
-
-TEST_F(QLTransactionTest, BankAccounts) {
-  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
-  const int kAccounts = 20;
-  const int kThreads = 5;
-  const int kInitialAmount = 100;
-
-  {
-    auto txn = ASSERT_RESULT(pool.TakeAndInit(IsolationLevel::SNAPSHOT_ISOLATION));
-    auto init_session = CreateSession(txn);
-    for (int i = 1; i <= kAccounts; ++i) {
-      ASSERT_OK(WriteRow(init_session, i, kInitialAmount));
-    }
-    ASSERT_OK(txn->CommitFuture().get());
-  }
-
-  std::atomic<bool> stop(false);
-  std::atomic<int64_t> updates(0);
-  std::vector<std::thread> threads;
-  BOOST_SCOPE_EXIT(&stop, &threads, &updates) {
-    stop.store(true, std::memory_order_release);
-
-    for (auto& thread : threads) {
-      thread.join();
-    }
-
-    LOG(INFO) << "Total updates: " << updates.load(std::memory_order_acquire);
-    ASSERT_GT(updates.load(std::memory_order_acquire), 100);
-  } BOOST_SCOPE_EXIT_END;
-
-  while (threads.size() != kThreads) {
-    threads.emplace_back([this, &stop, &pool, &updates] {
-      auto session = CreateSession();
-      YBTransactionPtr txn;
-      int32_t key1 = 0, key2 = 0;
-      while (!stop.load(std::memory_order_acquire)) {
-        if (!txn) {
-          key1 = RandomUniformInt(1, kAccounts);
-          key2 = RandomUniformInt(1, kAccounts - 1);
-          if (key2 >= key1) {
-            ++key2;
-          }
-          txn = ASSERT_RESULT(pool.TakeAndInit(IsolationLevel::SNAPSHOT_ISOLATION));
-        }
-        session->SetTransaction(txn);
-        auto result = SelectRow(session, key1);
-        int32_t balance1 = -1;
-        if (result.ok()) {
-          balance1 = *result;
-          result = SelectRow(session, key2);
-        }
-        if (!result.ok()) {
-          if (txn->IsRestartRequired()) {
-            ASSERT_TRUE(result.status().IsQLError()) << result;
-            txn = ASSERT_RESULT(pool.TakeRestarted(txn));
-            continue;
-          }
-          ASSERT_OK(result);
-        }
-        auto balance2 = *result;
-        if (balance1 == 0) {
-          std::swap(key1, key2);
-          std::swap(balance1, balance2);
-        }
-        if (balance1 == 0) {
-          txn = nullptr;
-          continue;
-        }
-        auto transfer = RandomUniformInt(1, balance1);
-        auto status = ResultToStatus(WriteRow(session, key1, balance1 - transfer));
-        if (status.ok()) {
-          status = ResultToStatus(WriteRow(session, key2, balance2 + transfer));
-        }
-        if (status.ok()) {
-          status = txn->CommitFuture().get();
-        }
-        txn = nullptr;
-        if (status.ok()) {
-          ++updates;
-        } else {
-          ASSERT_TRUE(status.IsTryAgain() || status.IsExpired()) << status;
-        }
-      }
-    });
-  }
-
-  auto end_time = CoarseMonoClock::now() + 30s;
-
-  auto session = CreateSession();
-  YBTransactionPtr txn;
-  while (CoarseMonoClock::now() < end_time) {
-    if (!txn) {
-      txn = ASSERT_RESULT(pool.TakeAndInit(IsolationLevel::SNAPSHOT_ISOLATION));
-    }
-    session->SetTransaction(txn);
-    auto rows = SelectAllRows(session);
-    if (!rows.ok() && txn->IsRestartRequired()) {
-      txn = ASSERT_RESULT(pool.TakeRestarted(txn));
-      continue;
-    }
-    txn = nullptr;
-    int sum_balance = 0;
-    for (const auto& pair : *rows) {
-      sum_balance += pair.second;
-    }
-    ASSERT_EQ(sum_balance, kAccounts * kInitialAmount);
   }
 }
 
