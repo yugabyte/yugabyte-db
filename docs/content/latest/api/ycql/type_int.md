@@ -16,7 +16,7 @@ showAsideToc: true
 ## Synopsis
 There are several different datatypes for integers of different value ranges. Integers can be set, inserted, incremented, and decremented while `COUNTER` can only be incremented or decremented. We've extend Apache Cassandra to support increment and decrement operators for integer datatypes.
 
-DataType | Min | Max |
+Datatype | Min | Max |
 ---------|-----|-----|
 `TINYINT` | -128 | 127 |
 `SMALLINT` | -32,768 | 32,767 |
@@ -41,7 +41,7 @@ integer_literal ::= [ + | - ] digit [ { digit | , } ... ]
 - Values of integer datatypes are convertible but not comparable to floating point number.
 - Values of floating point datatypes are not convertible to integers.
 
-### Counter DataType
+### Counter Datatype
 `COUNTER` is an alias of `BIGINT` but has additional constraints.
 
 - Columns of type `COUNTER` cannot be part of the`PRIMARY KEY`.

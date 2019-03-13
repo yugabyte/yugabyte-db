@@ -16,7 +16,7 @@ showAsideToc: true
 ## Synopsis
 `UUID` datatype is used to specify columns for data of universally unique ids. `TIMEUUID` is a universal unique identifier variant that includes time information.
 
-DataType | Description |
+Datatype | Description |
 ---------|-----|
 `UUID` | [UUID (all versions)](https://tools.ietf.org/html/rfc4122) |
 `TIMEUUID` | [UUID (version 1)](https://tools.ietf.org/html/rfc4122#section-4.2.2) |

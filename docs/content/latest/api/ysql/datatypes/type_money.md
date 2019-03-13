@@ -16,7 +16,7 @@ showAsideToc: true
 ## Synopsis
 MONEY datatype represents currency with a fixed precision for fraction.
 
-DataType | Description | Min | Max |
+Datatype | Description | Min | Max |
 ---------|-------------|-----|-----|
 MONEY | 8 bytes | -92233720368547758.08 | +92233720368547758.07 |
 

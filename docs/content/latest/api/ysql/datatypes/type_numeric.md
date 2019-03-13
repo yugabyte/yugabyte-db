@@ -16,7 +16,7 @@ showAsideToc: true
 ## Synopsis
 YSQL support integers and floating-point and fixed-point numbers of different value ranges and precisions.
 
-DataType | Description | Min | Max |
+Datatype | Description | Min | Max |
 ---------|-------------|-----|-----|
 `BIGINT` | 8 bytes | -9,223,372,036,854,775,808 | 9,223,372,036,854,775,807 |
 `DEC` | Exact 64-bit fixed point number | variable | variable |
