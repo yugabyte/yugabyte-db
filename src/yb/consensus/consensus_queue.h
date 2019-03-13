@@ -102,6 +102,8 @@ class PeerMessageQueue {
 
     std::string ToString() const;
 
+    void ResetLeaderLeases();
+
     // UUID of the peer.
     const std::string uuid;
 
@@ -271,6 +273,9 @@ class PeerMessageQueue {
 
   // Returns the current majority replicated OpId, for tests.
   OpId GetMajorityReplicatedOpIdForTests() const;
+
+  // Returns true if specified peer accepted our lease request.
+  bool PeerAcceptedOurLease(const std::string& uuid) const;
 
   // Returns a copy of the TrackedPeer with 'uuid' or crashes if the peer is not being tracked.
   TrackedPeer GetTrackedPeerForTests(std::string uuid);

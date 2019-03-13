@@ -63,6 +63,10 @@ namespace consensus {
 
 class RetryableRequests;
 
+YB_DEFINE_ENUM(SetMajorityReplicatedLeaseExpirationFlag,
+               (kResetOldLeaderLease)(kResetOldLeaderHtLease));
+
+
 // Class that coordinates access to the replica state (independently of Role).
 // This has a 1-1 relationship with RaftConsensus and is essentially responsible for
 // keeping state and checking if state changes are viable.
@@ -276,8 +280,8 @@ class ReplicaState {
   //
   // If this advanced the committed index, sets *committed_index_changed to true.
   CHECKED_STATUS UpdateMajorityReplicatedUnlocked(const OpId& majority_replicated,
-                                          OpId* committed_index,
-                                          bool* committed_index_changed);
+                                                  OpId* committed_index,
+                                                  bool* committed_index_changed);
 
   // Advances the committed index.
   // This is a no-op if the committed index has not changed.
@@ -357,13 +361,12 @@ class ReplicaState {
 
   // Update the point in time we have to wait until before starting to act as a leader in case
   // we win an election.
-  void UpdateOldLeaderLeaseExpirationUnlocked(
-      MonoDelta lease_duration, MicrosTime ht_lease_expiration);
-  void UpdateOldLeaderLeaseExpirationUnlocked(
-      CoarseTimePoint lease_expiration, MicrosTime ht_lease_expiration);
+  void UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
+      const CoarseTimeLease& lease, const PhysicalComponentLease& ht_lease);
 
   void SetMajorityReplicatedLeaseExpirationUnlocked(
-      const MajorityReplicatedData& majority_replicated_data);
+      const MajorityReplicatedData& majority_replicated_data,
+      EnumBitSet<SetMajorityReplicatedLeaseExpirationFlag> flags);
 
   // Checks two conditions:
   // - That the old leader definitely does not have a lease.
@@ -378,8 +381,12 @@ class ReplicaState {
   // returns an uninitialized MonoDelta value.
   MonoDelta RemainingOldLeaderLeaseDuration(CoarseTimePoint* now = nullptr) const;
 
-  MicrosTime old_leader_ht_lease_expiration() const {
-    return old_leader_ht_lease_expiration_;
+  const PhysicalComponentLease& old_leader_ht_lease() const {
+    return old_leader_ht_lease_;
+  }
+
+  const CoarseTimeLease& old_leader_lease() const {
+    return old_leader_lease_;
   }
 
   // A lock-free way to read role and term atomically.
@@ -503,9 +510,10 @@ class ReplicaState {
   //
   // This is marked mutable because it can be reset on to MonoTime::kMin on the read path after the
   // deadline has passed, so that we avoid querying the clock unnecessarily from that point on.
-  mutable CoarseTimePoint old_leader_lease_expiration_;
+  mutable CoarseTimeLease old_leader_lease_;
 
-  mutable MicrosTime old_leader_ht_lease_expiration_ = HybridTime::kMin.GetPhysicalValueMicros();
+  // The same as old_leader_lease_ but for hybrid time.
+  mutable PhysicalComponentLease old_leader_ht_lease_;
 
   // LEADER only: the latest committed lease expiration deadline for the current leader. The leader
   // is allowed to serve up-to-date reads and accept writes only while the current time is less than
@@ -515,8 +523,8 @@ class ReplicaState {
 
   // LEADER only: the latest committed hybrid time lease expiration deadline for the current leader.
   // The leader is allowed to add new log entries only when lease of old leader is expired.
-  std::atomic<MicrosTime> majority_replicated_ht_lease_expiration_
-      {HybridTime::kMin.GetPhysicalValueMicros()};
+  std::atomic<MicrosTime> majority_replicated_ht_lease_expiration_{
+      PhysicalComponentLease::NoneValue()};
 
   RetryableRequests retryable_requests_;
 

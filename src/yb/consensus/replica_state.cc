@@ -1065,19 +1065,15 @@ Status ReplicaState::CheckOpInSequence(const OpId& previous, const OpId& current
   return Status::OK();
 }
 
-void ReplicaState::UpdateOldLeaderLeaseExpirationUnlocked(
-    MonoDelta lease_duration,
-    MicrosTime ht_lease_expiration) {
-  // Update both leader leases, i.e. regular and hybrid time.
-  UpdateOldLeaderLeaseExpirationUnlocked(
-      CoarseMonoClock::Now() + lease_duration, ht_lease_expiration);
-}
+void ReplicaState::UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
+    const CoarseTimeLease& lease, const PhysicalComponentLease& ht_lease) {
+  old_leader_lease_.TryUpdate(lease);
+  old_leader_ht_lease_.TryUpdate(ht_lease);
 
-void ReplicaState::UpdateOldLeaderLeaseExpirationUnlocked(
-    CoarseTimePoint lease_expiration,
-    MicrosTime ht_lease_expiration) {
-  old_leader_lease_expiration_ = std::max(old_leader_lease_expiration_, lease_expiration);
-  old_leader_ht_lease_expiration_ = std::max(ht_lease_expiration, old_leader_ht_lease_expiration_);
+  // Reset our lease, since we are non leader now. I.e. follower or candidate.
+  majority_replicated_lease_expiration_ = CoarseTimeLease::NoneValue();
+  majority_replicated_ht_lease_expiration_.store(PhysicalComponentLease::NoneValue(),
+                                                 std::memory_order_release);
 }
 
 template <class Policy>
@@ -1176,7 +1172,7 @@ struct GetHybridTimeLeaseStatusAtPolicy {
       : replica_state(rs), micros_time(ht) {}
 
   bool OldLeaderLeaseExpired() {
-    return micros_time > replica_state->old_leader_ht_lease_expiration();
+    return micros_time > replica_state->old_leader_ht_lease().expiration;
   }
 
   bool MajorityReplicatedLeaseExpired() {
@@ -1195,18 +1191,18 @@ LeaderLeaseStatus ReplicaState::GetHybridTimeLeaseStatusAtUnlocked(
 
 MonoDelta ReplicaState::RemainingOldLeaderLeaseDuration(CoarseTimePoint* now) const {
   MonoDelta result;
-  if (old_leader_lease_expiration_ != CoarseTimePoint()) {
+  if (old_leader_lease_) {
     CoarseTimePoint now_local;
     if (!now) {
       now = &now_local;
     }
     *now = CoarseMonoClock::Now();
 
-    if (*now > old_leader_lease_expiration_) {
+    if (*now > old_leader_lease_.expiration) {
       // Reset the old leader lease expiration time so that we don't have to check it anymore.
-      old_leader_lease_expiration_ = CoarseTimePoint::min();
+      old_leader_lease_.Reset();
     } else {
-      result = old_leader_lease_expiration_ - *now;
+      result = old_leader_lease_.expiration - *now;
     }
   }
 
@@ -1239,10 +1235,19 @@ MicrosTime ReplicaState::MajorityReplicatedHtLeaseExpiration(
 }
 
 void ReplicaState::SetMajorityReplicatedLeaseExpirationUnlocked(
-    const MajorityReplicatedData& majority_replicated_data) {
+    const MajorityReplicatedData& majority_replicated_data,
+    EnumBitSet<SetMajorityReplicatedLeaseExpirationFlag> flags) {
   majority_replicated_lease_expiration_ = majority_replicated_data.leader_lease_expiration;
   majority_replicated_ht_lease_expiration_.store(majority_replicated_data.ht_lease_expiration,
                                                  std::memory_order_release);
+
+  if (flags.Test(SetMajorityReplicatedLeaseExpirationFlag::kResetOldLeaderLease)) {
+    old_leader_lease_.Reset();
+  }
+
+  if (flags.Test(SetMajorityReplicatedLeaseExpirationFlag::kResetOldLeaderHtLease)) {
+    old_leader_ht_lease_.Reset();
+  }
 
   CoarseTimePoint now;
   RefreshLeaderStateCacheUnlocked(&now);

@@ -53,6 +53,7 @@ DECLARE_string(time_source);
 DECLARE_int32(TEST_delay_execute_async_ms);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_int32(retryable_request_timeout_secs);
+DECLARE_bool(enable_lease_revocation);
 
 namespace yb {
 namespace client {
@@ -452,7 +453,7 @@ TEST_F(QLTabletTest, GCLogWithRestartWithoutWrites) {
 }
 
 TEST_F(QLTabletTest, LeaderLease) {
-  google::FlagSaver saver;
+  FLAGS_enable_lease_revocation = false;
 
   TableHandle table;
   CreateTable(kTable1Name, &table);
