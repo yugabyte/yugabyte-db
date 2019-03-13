@@ -57,6 +57,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/path_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
@@ -552,6 +553,18 @@ void StepDownAllTablets(MiniCluster* cluster) {
       consensus::LeaderStepDownResponsePB resp;
       ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
     }
+  }
+}
+
+void StepDownRandomTablet(MiniCluster* cluster) {
+  auto peers = ListTabletPeers(cluster, ListPeersFilter::kLeaders);
+  if (!peers.empty()) {
+    auto peer = RandomElement(peers);
+
+    consensus::LeaderStepDownRequestPB req;
+    req.set_tablet_id(peer->tablet_id());
+    consensus::LeaderStepDownResponsePB resp;
+    ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
   }
 }
 

@@ -136,9 +136,11 @@ class YBTransaction::Impl final {
     auto transaction = transaction_->shared_from_this();
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      if (state_.load(std::memory_order_acquire) != TransactionState::kRunning) {
+      auto state = state_.load(std::memory_order_acquire);
+      if (state != TransactionState::kRunning) {
         return STATUS_FORMAT(
-            IllegalState, "Restart of completed transaction: $0", metadata_.transaction_id);
+            IllegalState, "Restart of completed transaction $0: $1",
+            metadata_.transaction_id, state);
       }
       if (!read_point_.IsRestartRequired()) {
         return STATUS_FORMAT(

@@ -350,15 +350,16 @@ void LeaderElection::HandleVoteGrantedUnlocked(const string& voter_uuid, const V
   DCHECK_EQ(state.response.responder_term(), election_term());
   DCHECK(state.response.vote_granted());
   if (state.response.has_remaining_leader_lease_duration_ms()) {
-    result_.old_leader_lease_expiration = std::max(
-        result_.old_leader_lease_expiration,
+    CoarseTimeLease lease(
+        state.response.leader_lease_uuid(),
         CoarseMonoClock::Now() + state.response.remaining_leader_lease_duration_ms() * 1ms);
+    result_.old_leader_lease.TryUpdate(lease);
   }
 
   if (state.response.has_leader_ht_lease_expiration()) {
-    result_.old_leader_ht_lease_expiration = std::max(
-        result_.old_leader_ht_lease_expiration,
-        state.response.leader_ht_lease_expiration());
+    PhysicalComponentLease lease(
+        state.response.leader_ht_lease_uuid(), state.response.leader_ht_lease_expiration());
+    result_.old_leader_ht_lease.TryUpdate(lease);
   }
 
   LOG_WITH_PREFIX(INFO) << "Vote granted by peer " << voter_uuid;
