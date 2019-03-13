@@ -90,6 +90,7 @@ Command | Description |
 [`ZRANGEBYSCORE`](zrangebyscore/) | Retrieve sorted set entries for a given score range |
 [`ZREM`](zrem/) | Delete a sorted set entry |
 [`ZREVRANGE`](zrevrange/) | Retrieve sorted set entries for given index range ordered from highest to lowest score |
+[`ZSCORE`](zscore/) | Get the score of member at a sorted set key |
 <b> General </b>|
 [`AUTH`](auth/) | Authenticates a client connection to YEDIS API |
 [`CONFIG`](config/) | Not fully supported. Only used to set the required password(s) for YEDIS API |
