@@ -7,10 +7,34 @@ headcontent:
 menu:
   latest:
     identifier: benchmark
-    weight: 700
+    weight: 685
 ---
 
 <div class="row">
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="test-performance/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Test Performance</div>
+      </div>
+      <div class="body">
+        Performance testing various workloads using the YugaBench tool.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="test-large-datasets/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Test Large Datasets</div>
+      </div>
+      <div class="body">
+        Testing event-data like workloads where the data density per node is high and the read/writes IOPS requirement is high.
+      </div>
+    </a>
+  </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="ycsb/">
       <div class="head">
@@ -19,19 +43,6 @@ menu:
       </div>
       <div class="body">
         Performance testing with Yahoo Cloud Serving Benchmark.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="jepsen/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/transactional.png" aria-hidden="true" />
-        <div class="articles"></div>
-        <div class="title">Jepsen</div>
-      </div>
-      <div class="body">
-        Data safety/correctness testing under failure conditions with Jepsen.
       </div>
     </a>
   </div>
