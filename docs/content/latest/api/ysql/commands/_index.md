@@ -1,7 +1,7 @@
 ---
 title: Commands
-description: Overview on YSQL Commands
-summary: Overview on YSQL Commands
+description: Commands
+summary: Commands
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following table lists all YSQL commands that are supported by YugaByte Database.
+The following table lists the commands in YSQL.
 
 | Statement | Description |
 |-----------|-------------|

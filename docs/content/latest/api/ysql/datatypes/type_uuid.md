@@ -1,6 +1,6 @@
 ---
 title: UUID Datatypes
-linktitle: Uuid
+linktitle: UUID
 summary: UUID Datatypes
 description: UUID Datatypes
 menu:

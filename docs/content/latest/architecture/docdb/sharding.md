@@ -5,6 +5,7 @@ description: Sharding into Tablets
 aliases:
   - /latest/architecture/docdb/sharding/
   - /latest/architecture/concepts/sharding/
+  - /latest/architecture/concepts/docdb/sharding/
 menu:
   latest:
     identifier: docdb-sharding

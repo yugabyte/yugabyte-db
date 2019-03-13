@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: benchmark-ycsb
     parent: benchmark
-    weight: 750
+    weight: 740
 aliases:
   - /benchmark/ycsb/
 showAsideToc: True
@@ -23,7 +23,7 @@ For more information about YCSB see:
 {{< /note >}}
 
 
-We will first setup YCSB and configure it to use YugaByte-Cassandra Driver.
+We will first setup YCSB and configure it to use the YCQL Driver for Cassandra.
 
 ## Step 1.Clone the YCSB repository
 

@@ -5,6 +5,7 @@ description: Persistence on top of RocksDB
 aliases:
   - /latest/architecture/docdb/persistence/
   - /latest/architecture/concepts/persistence/
+  - /latest/architecture/concepts/docdb/persistence/
 menu:
   latest:
     identifier: docdb-persistence
@@ -15,11 +16,6 @@ showAsideToc: true
 ---
 
 Once data is replicated via Raft across a majority of the tablet-peers, it is applied to each tablet peer’s local DocDB document storage layer.
-
-{{< note title="Note" >}}
-DocDB is the storage layer that acts as the common backbone of different APIs that are supported by
-YugaByte DB (currently YCQL, YEDIS, and YSQL(beta)).
-{{< /note >}}
 
 ## Storage Model
 

@@ -27,7 +27,7 @@ YugaByte DB Community Edition is developed and distributed as an [Apache 2.0 ope
 
 ## What makes YugaByte DB unique?
 
-YugaByte DB is a transactional database that brings together three must-have needs of user-facing cloud applications, namely SQL as a flexible query language, low-latency reads and globally-distributed write scalability. Monolithic SQL databases offer SQL and low-latency reads but do not have ability to scale writes across multiple nodes and/or regions. Distributed NoSQL databases offer performance and write scalablility but give up on SQL semantics such as multi-key access, ACID transactions and strong consistency.
+YugaByte DB is a transactional database that brings together three must-have needs of cloud native microservices, namely SQL as a flexible query language, low-latency reads and globally-distributed write scalability. Monolithic SQL databases offer SQL and low-latency reads but do not have ability to scale writes across multiple nodes and/or regions. Distributed NoSQL databases offer performance and write scalablility but give up on SQL semantics such as multi-key access, ACID transactions and strong consistency.
 
 YugaByte DB feature highlights are listed below.
 

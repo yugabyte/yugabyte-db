@@ -1,7 +1,7 @@
 ---
 title: Datatypes
-description: List of YSQL Builtin Datatypes
-summary: Datatype overview and specification.
+description: Datatypes
+summary: YSQL datatype overview and specification.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following table lists all primitive types in YSQL.
+The following table lists the primitive types in YSQL.
 
 | Datatype | Alias | Description |
 |----------|-------|-------------|

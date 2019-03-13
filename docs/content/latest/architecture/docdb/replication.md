@@ -5,6 +5,7 @@ description: Replication with Raft Consensus
 aliases:
   - /latest/architecture/docdb/replication/
   - /latest/architecture/concepts/replication/
+  - /latest/architecture/concepts/docdb/replication/
 menu:
   latest:
     identifier: docdb-replication

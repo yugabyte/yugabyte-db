@@ -16,7 +16,7 @@ showAsideToc: true
 ## Synopsis
 Floating-point and fixed-point numbers are used to specify non-integer numbers. Different floating point datatypes represent different precision numbers.
 
-DataType | Description | Decimal Precision |
+Datatype | Description | Decimal Precision |
 ---------|-----|-----|
 `FLOAT` | Inexact 32-bit floating point number | 7 |
 `DOUBLE` | Inexact 64-bit floating point number | 15 |

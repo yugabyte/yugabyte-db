@@ -16,7 +16,7 @@ showAsideToc: true
 ## Synopsis
 DATE, TIME, TIMESTAMP, and INTERVAL datatypes are supported in YSQL.
 
-DataType | Description | Min | Max |
+Datatype | Description | Min | Max |
 ---------|-------------|-----|-----|
 TIMESTAMP [ (p) ] [ WITHOUT TIME ZONE ] | 8-byte date and time | 4713 BC | 294276 AD |
 TIMESTAMP [ (p) ] WITH TIME ZONE | 8-byte date and time | 4713 BC | 294276 AD |

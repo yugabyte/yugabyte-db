@@ -250,6 +250,8 @@ source    |  percent_sales
 (1 row)
 ```
 
+<!--
+
 ## 3. Test JOINs
 
 Coming soon.
@@ -265,3 +267,4 @@ Coming soon.
 ## 6. Test JSONB Column Type
 
 Coming soon.
+-->

@@ -13,10 +13,6 @@ menu:
     weight: 715
 ---
 
-{{< note title="Note" >}}
-YEDIS does not have role based access control.
-{{< /note >}}
-
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="rbac-model/">
@@ -25,7 +21,7 @@ YEDIS does not have role based access control.
         <div class="title">1. RBAC Model</div>
       </div>
       <div class="body">
-          Understanding the Role-Based Access model in YCQL
+          Understanding Role-Based Access Control.
       </div>
     </a>
   </div>
