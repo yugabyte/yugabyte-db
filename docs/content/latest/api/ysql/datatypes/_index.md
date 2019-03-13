@@ -51,8 +51,8 @@ The following table lists all primitive types in YSQL.
 | [`SMALLSERIAL`](type_serial) | [`SERIAL2`](type_serial) | Autoincrement 2-byte integer |
 | [`SERIAL`](type_serial) | [`SERIAL4`](type_serial) | Autoincrement 4-byte integer |
 | [`TEXT`](type_character) | | Variable-length character string |
-| [`TIME [(p)] [WITHOUT TIME ZONE]](type_datetime)` | | Time of day |
-| [`TIME [(p)] WITH TIME ZONE](type_datetime)` | [`TIMETZ`](type_datetime) | Time of day |
+| [`TIME [(p)] [WITHOUT TIME ZONE]`](type_datetime) | | Time of day |
+| [`TIME [(p)] WITH TIME ZONE`](type_datetime) | [`TIMETZ`](type_datetime) | Time of day |
 | [`TIMESTAMP [(p)] [WITHOUT TIME ZONE]`](type_datetime) | | Date and time |
 | [`TIMESTAMP [(p)] WITH TIME ZONE`](type_datetime) | [`TIMESTAMPTZ`](type_datetime) | Date and time |
 | `TSQUERY` <sup>1<sup> | | Text search query |
