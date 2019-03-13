@@ -38,7 +38,7 @@ Built using a unique combination of high-performance document store, auto shardi
 
 ## Architecture
 
-YugaByte DB architecture has 2 layers. At the core is DocDB, YugaByte DB's distributed document store. DocDB is the common database engine for the YugaByte DB API layer. Applications interact with YugaByte DB using the APIs listed below.
+YugaByte DB architecture has 2 layers. At the core is DocDB, YugaByte DB's distributed document store. DocDB is the common database engine for the YugaByte Query Layer (YQL). Applications interact with YQL using the APIs listed below.
 
 ### YugaByte DB APIs
 
@@ -50,14 +50,14 @@ YugaByte DB supports two flavors of distributed SQL APIs.
 
 ### DocDB, YugaByte DB's Distributed Document Store
 
-[DocDB](https://docs.yugabyte.com/latest/architecture/concepts/docdb/) builds on top of the popular [RocksDB](https://rocksdb.org/) project by transforming RocksDB from a key-value store (with only primitive data types) to a document store (with complex data types). Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key. DocDB’s sharding, replication/fault-tolerance and distributed ACID transactions architecture are all based on the the [Google Spanner](https://ai.google/research/pubs/pub39966) design first published in 2012.
+[DocDB](https://docs.yugabyte.com/latest/architecture/docdb/) builds on top of the popular [RocksDB](https://rocksdb.org/) project by transforming RocksDB from a key-value store (with only primitive data types) to a document store (with complex data types). Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key. DocDB’s sharding, replication/fault-tolerance and distributed ACID transactions architecture are all based on the the [Google Spanner](https://ai.google/research/pubs/pub39966) design first published in 2012.
 
 ## Getting Started
 
 Here are a few resources for getting started with YugaByte DB:
 
 * [Quick start guide](http://docs.yugabyte.com/latest/quick-start/) - install, create a local cluster and read/write from YugaByte DB.
-* [Explore core features](https://docs.yugabyte.com/latest/explore/) - automatic sharding & re-balancing, linear scalability, fault tolerance, tunable reads etc.
+* [Explore core features](https://docs.yugabyte.com/latest/explore/) - automatic sharding & re-balancing, linear scalability, fault tolerance, tunable reads and more.
 * [Ecosystem integrations](https://docs.yugabyte.com/latest/develop/ecosystem-integrations/) - integrations with Apache Kafka/KSQL, Apache Spark, JanusGraph, KairosDB, Presto and more.
 * [Real world apps](https://docs.yugabyte.com/latest/develop/realworld-apps/) - sample real-world, end-to-end applications built using YugaByte DB.
 * [Architecture docs](https://docs.yugabyte.com/latest/architecture/) - to understand how YugaByte DB is designed and how it works
