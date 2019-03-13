@@ -75,7 +75,7 @@ $ docker-compose up -d
 
 ## 2. Initialize the APIs
 
-Optionally, you can enable YEDIS API by running the following command.
+Enable the YSQL API by running the following command.
 
 ```sh
 $ docker exec -it yb-master-n1 --  -c "YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=yb-master-n1:7100 home/yugabyte/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres"
