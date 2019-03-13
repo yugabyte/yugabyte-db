@@ -44,9 +44,9 @@ YugaByte DB architecture has 2 layers. At the core is DocDB, YugaByte DB's distr
 
 YugaByte DB supports two flavors of distributed SQL APIs.
 
-* [YugaByte Cloud Query Language (YCQL)](https://docs.yugabyte.com/latest/api/ycql/) - A SQL-based flexible-schema API with strong consistency, multi-shard transactions, globally-consistent secondary indexes and a native JSONB column type. This API has its roots in the Cassandra Query Language and is best fit for internet-scale OLTP apps that need a semi-relational SQL highly optimized for write-intensive applications as well as blazing-fast query needs. 
-
 * [YugaByte Structured Query Language (YSQL)](https://docs.yugabyte.com/latest/api/ysql/) - A PostgreSQL-compatible fully relational SQL API (currently in beta) with horizontal write scalability and extreme fault tolerance against infrastructure failures. This API is best fit for RDBMS workloads that need scale-out, auto failover and global data distribution while also using relational data modeling features such as JOINs, referential integrity, and multi-shard transactions.
+
+* [YugaByte Cloud Query Language (YCQL)](https://docs.yugabyte.com/latest/api/ycql/) - A SQL-based flexible-schema API with strong consistency, multi-shard transactions, globally-consistent secondary indexes and a native JSONB column type. This API has its roots in the Cassandra Query Language and is best fit for internet-scale OLTP apps that need a semi-relational SQL highly optimized for write-intensive applications as well as blazing-fast query needs. 
 
 ### DocDB, YugaByte DB's Distributed Document Store
 
