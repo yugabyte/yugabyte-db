@@ -16,11 +16,6 @@ showAsideToc: true
 
 Once data is replicated via Raft across a majority of the tablet-peers, it is applied to each tablet peer’s local DocDB document storage layer.
 
-{{< note title="Note" >}}
-DocDB is the storage layer that acts as the common backbone of different APIs that are supported by
-YugaByte DB (currently YCQL, YEDIS, and YSQL(beta)).
-{{< /note >}}
-
 ## Storage Model
 
 This storage layer is a persistent **key to object/document** store. The storage model is shown in the figure below:

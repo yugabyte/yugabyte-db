@@ -36,10 +36,10 @@ Authentication should be enabled to verify the identity of a client that connect
 
 <div class="tab-content">
   <div id="ycql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ycql-tab">
-    {{% includeMarkdown "cassandra.md" /%}}
+    {{% includeMarkdown "ycql.md" /%}}
   </div>
   <div id="yedis" class="tab-pane fade" role="tabpanel" aria-labelledby="yedis-tab">
-    {{% includeMarkdown "redis.md" /%}}
+    {{% includeMarkdown "yedis.md" /%}}
   </div>
 </div>
 

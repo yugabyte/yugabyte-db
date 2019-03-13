@@ -49,7 +49,8 @@ services:
       image: yugabytedb/yugabyte:latest
       container_name: yb-tserver-n1
       command: [ "/home/yugabyte/bin/yb-tserver", 
-                "--fs_data_dirs=/mnt/disk0,/mnt/disk1", 
+                "--fs_data_dirs=/mnt/disk0,/mnt/disk1",
+                "--start_pgsql_proxy", 
                 "--tserver_master_addrs=yb-master-n1:7100"]
       ports:
       - "9042:9042"
@@ -57,9 +58,9 @@ services:
       - "5433:5433"
       - "9000:9000"
       environment:
+        SERVICE_5433_NAME: ysql
         SERVICE_9042_NAME: ycql
         SERVICE_6379_NAME: yedis
-        SERVICE_5433_NAME: ysql
         SERVICE_9000_NAME: yb-tserver
       depends_on:
       - yb-master
@@ -72,29 +73,27 @@ services:
 $ docker-compose up -d
 ```
 
+## 2. Initialize the APIs
 
-## 2. Setup the YEDIS API
+Optionally, you can enable YEDIS API by running the following command.
+
+```sh
+$ docker exec -it yb-master-n1 --  -c "YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=yb-master-n1:7100 home/yugabyte/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres"
+```
+
+Optionally, you can enable YEDIS API by running the following command.
 
 ```sh
 $ docker exec -it yb-master-n1 /home/yugabyte/bin/yb-admin --master_addresses yb-master-n1:7100 setup_redis_table
 ```
 
-Clients can now connect to the YCQL service at localhost:9042, to the YEDIS API at localhost:6379, and to the YSQL(Beta) service at localhost:5433. The yb-master admin service is available at http://localhost:7000.
-
+Clients can now connect to the YSQL(Beta) API at localhost:5433, YCQL API at localhost:9042 and YEDIS API at localhost:6379. The yb-master admin service is available at http://localhost:7000.
 
 ## 3. Test YugaByte DB APIs
 
-Follow the instructions in the Quick Start section with Docker using the links below.
-
-- [YCQL API](../../quick-start/test-cassandra/#docker)
-
-- [YEDIS API](../../quick-start/test-redis/#docker)
-
-- [YSQL API (Beta)](../../quick-start/test-postgresql/#docker)
-
+Follow the instructions in the [Quick Start](../../quick-start/) section with Docker.
 
 ## 4. Stop the cluster
-
 
 ```sh
 $ docker-compose down
