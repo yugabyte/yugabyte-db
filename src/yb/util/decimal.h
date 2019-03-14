@@ -15,6 +15,7 @@
 #define YB_UTIL_DECIMAL_H
 
 #include <vector>
+#include <limits>
 
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
@@ -79,7 +80,8 @@ namespace util {
 
 class Decimal {
  public:
-  static constexpr int kDefaultMaxLength = 10;
+  static constexpr int kDefaultMaxLength = 20; // Enough for MIN_BIGINT=-9223372036854775808.
+  static constexpr int kUnlimitedMaxLength = std::numeric_limits<int>::max();
 
   Decimal() {}
   Decimal(const std::vector<uint8_t>& digits,
@@ -102,6 +104,8 @@ class Decimal {
   // Note: We are using decimal -> string -> double using std::stod() function.
   // In future, it may be better to write a direct conversion function.
   Result<long double> ToDouble() const;
+
+  Result<VarInt> ToVarInt() const;
 
   // The FromX() functions always create a canonical Decimal,
   // but the (digits, varint, sign) constructor doesn't.

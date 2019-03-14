@@ -129,9 +129,22 @@ Result<long double> Decimal::ToDouble() const {
   return CheckedStold(ToString());
 }
 
+Result<VarInt> Decimal::ToVarInt() const {
+  string string_val;
+  RETURN_NOT_OK(ToPointString(&string_val, kUnlimitedMaxLength));
+
+  if (!is_integer()) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "Cannot convert non-integer Decimal into integer: $0", string_val);
+  }
+
+  return VarInt::CreateFromString(string_val);
+}
+
 Status Decimal::FromString(const Slice &slice) {
   if (slice.empty()) {
-    return STATUS(InvalidArgument, "Cannot decode empty slice to Decimal");
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "Cannot decode empty slice to Decimal: $0", slice.ToString());
   }
   is_positive_ = slice[0] != '-';
   size_t i = 0;
