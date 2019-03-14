@@ -62,6 +62,8 @@ Flag | Mandatory | Default | Description
 `--flagfile` | N | N/A  | Load flags from the specified file.
 `--version` | N | N/A | Show version and build info.
 `--use_cassandra_authentication` | N | false | If enabled, it will require YCQL client authentication (username/password), enable YCQL security statements (CREATE/DROP/GRANT/REVOKE ROLE and GRANT/REVOKE PERMISSION), and enforce permissions for YCQL statements.
+`rocksdb_compact_flush_rate_limit_bytes_per_sec` | N | 256MB | Used to control rate of memstore flush and SSTable file compaction.
+`remote_boostrap_rate_limit_bytes_per_sec` | N | 256MB | Rate control across all tablets being remote bootstrapped from or to this process.
 
 ## Admin UI
 
