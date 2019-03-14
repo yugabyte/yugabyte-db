@@ -278,10 +278,6 @@ ProcArrayAdd(PGPROC *proc)
 	ProcArrayStruct *arrayP = procArray;
 	int			index;
 
-	if (IsYugaByteEnabled()) {
-		return;
-	}
-
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 
 	if (arrayP->numProcs >= arrayP->maxProcs)
@@ -340,10 +336,6 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 	ProcArrayStruct *arrayP = procArray;
 	int			index;
 
-	if (IsYugaByteEnabled()) {
-		return;
-	}
-
 #ifdef XIDCACHE_DEBUG
 	/* dump stats at backend shutdown, but not prepared-xact end */
 	if (proc->pid != 0)
@@ -352,19 +344,25 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 
-	if (TransactionIdIsValid(latestXid))
-	{
-		Assert(TransactionIdIsValid(allPgXact[proc->pgprocno].xid));
+	/*
+	 * Postgres transaction related code-paths are disabled for YB.
+	 */
 
-		/* Advance global latestCompletedXid while holding the lock */
-		if (TransactionIdPrecedes(ShmemVariableCache->latestCompletedXid,
-								  latestXid))
-			ShmemVariableCache->latestCompletedXid = latestXid;
-	}
-	else
-	{
-		/* Shouldn't be trying to remove a live transaction here */
-		Assert(!TransactionIdIsValid(allPgXact[proc->pgprocno].xid));
+	if (!IsYugaByteEnabled()) {
+		if (TransactionIdIsValid(latestXid))
+		{
+			Assert(TransactionIdIsValid(allPgXact[proc->pgprocno].xid));
+
+			/* Advance global latestCompletedXid while holding the lock */
+			if (TransactionIdPrecedes(ShmemVariableCache->latestCompletedXid,
+																latestXid))
+				ShmemVariableCache->latestCompletedXid = latestXid;
+		}
+		else
+		{
+			/* Shouldn't be trying to remove a live transaction here */
+			Assert(!TransactionIdIsValid(allPgXact[proc->pgprocno].xid));
+		}
 	}
 
 	for (index = 0; index < arrayP->numProcs; index++)
