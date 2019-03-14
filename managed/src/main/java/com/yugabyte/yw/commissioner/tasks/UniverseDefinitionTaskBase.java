@@ -70,7 +70,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public enum ServerType {
     MASTER,
     TSERVER,
+    // TODO: Replace all YQLServer with YCQLserver
     YQLSERVER,
+    YSQLSERVER,
     REDISSERVER,
     EITHER
   }
@@ -303,6 +305,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       int startIndex = PlacementInfoUtil.getStartIndex(
                            universe.getUniverseDetails().getNodesInCluster(cluster.uuid));
       int iter = 0;
+      boolean isYSQL = universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
       for (NodeDetails node : nodesInCluster) {
         if (node.state == NodeDetails.NodeState.ToBeAdded) {
           if (node.nodeName != null) {
@@ -313,7 +316,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                                       node.cloudInfo.region, node.cloudInfo.az);
           iter++;
         }
+        node.isYsqlServer = isYSQL;
       }
+
     }
 
     PlacementInfoUtil.ensureUniqueNodeNames(taskParams().nodeDetailsSet);
