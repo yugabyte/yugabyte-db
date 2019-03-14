@@ -29,6 +29,3 @@ type_specification ::= { `JSON` | `JSONB` }
 - When data is inserted into `JSONB` column, the text string will be parsed and converted to binary form before storing.
 - When selected, data of `JSONB` type will be converted and returned in the text format.
 
-## See Also
-
-[Data Types](../datatypes)

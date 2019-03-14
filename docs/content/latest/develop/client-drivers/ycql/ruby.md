@@ -64,7 +64,7 @@ cluster.close()
 To run the application, type the following:
 
 ```sh
-$ ruby yb-cql-helloworld.py
+$ ruby yb-cql-helloworld.rb
 ```
 
 You should see the following output.

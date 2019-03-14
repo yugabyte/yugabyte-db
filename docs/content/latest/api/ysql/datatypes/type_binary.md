@@ -33,6 +33,3 @@ type_specification ::= BYTEA
 SELECT E'\\001'::bytea
 ```
 
-## See Also
-
-[Data Types](../datatypes)
