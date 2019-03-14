@@ -146,7 +146,7 @@ TEST_F(TestRpc, TestCall) {
   Proxy p(client_messenger, server_addr);
 
   for (int i = 0; i < 10; i++) {
-    ASSERT_OK(DoTestSyncCall(&p, GenericCalculatorService::AddMethod()));
+    ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
   }
 }
 
@@ -159,7 +159,7 @@ TEST_F(TestRpc, TestCallToBadServer) {
   // Loop a few calls to make sure that we properly set up and tear down
   // the connections.
   for (int i = 0; i < 5; i++) {
-    Status s = DoTestSyncCall(&p, GenericCalculatorService::AddMethod());
+    Status s = DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod());
     LOG(INFO) << "Status: " << s.ToString();
     ASSERT_TRUE(s.IsRemoteError()) << "unexpected status: " << s.ToString();
   }
@@ -177,8 +177,8 @@ TEST_F(TestRpc, TestInvalidMethodCall) {
   Proxy p(client_messenger, server_addr);
 
   // Call the method which fails.
-  static RemoteMethod method(GenericCalculatorService::static_service_name(),
-                             "ThisMethodDoesNotExist");
+  static RemoteMethod method(
+      rpc_test::CalculatorServiceIf::static_service_name(), "ThisMethodDoesNotExist");
   Status s = DoTestSyncCall(&p, &method);
   ASSERT_TRUE(s.IsRemoteError()) << "unexpected status: " << s.ToString();
   ASSERT_STR_CONTAINS(s.ToString(), "bad method");
@@ -240,7 +240,7 @@ TEST_F(TestRpc, TestHighFDs) {
   StartTestServer(&server_addr);
   shared_ptr<Messenger> client_messenger(CreateMessenger("Client"));
   Proxy p(client_messenger, server_addr);
-  ASSERT_OK(DoTestSyncCall(&p, GenericCalculatorService::AddMethod()));
+  ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
 }
 
 // Test that connections are kept alive between calls.
@@ -260,7 +260,7 @@ TEST_F(TestRpc, TestConnectionKeepalive) {
     shared_ptr<Messenger> client_messenger(CreateMessenger("Client", messenger_options));
     Proxy p(client_messenger, server_addr);
 
-    ASSERT_OK(DoTestSyncCall(&p, GenericCalculatorService::AddMethod()));
+    ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
 
     SleepFor(MonoDelta::FromMilliseconds(5));
 
@@ -310,7 +310,7 @@ TEST_F(TestRpc, TestCallLongerThanKeepalive) {
   req.set_sleep_micros(200 * 1000);
   req.set_deferred(true);
   rpc_test::SleepResponsePB resp;
-  ASSERT_OK(p.SyncRequest(GenericCalculatorService::SleepMethod(), req, &resp, &controller));
+  ASSERT_OK(p.SyncRequest(CalculatorServiceMethods::SleepMethod(), req, &resp, &controller));
 }
 
 // Test that the RpcSidecar transfers the expected messages.
@@ -425,7 +425,7 @@ TEST_F(TestRpc, TestServerShutsDown) {
   for (int i = 0; i < n_calls; i++) {
     auto controller = new RpcController();
     controllers.push_back(controller);
-    p.AsyncRequest(GenericCalculatorService::AddMethod(), req, &resp, controller, [&latch]() {
+    p.AsyncRequest(CalculatorServiceMethods::AddMethod(), req, &resp, controller, [&latch]() {
       latch.CountDown();
     });
   }
@@ -506,9 +506,7 @@ TEST_F(TestRpc, TestRpcHandlerLatencyMetric) {
   req.set_sleep_micros(sleep_micros);
   req.set_deferred(true);
   rpc_test::SleepResponsePB resp;
-  RemoteMethod method(yb::rpc_test::CalculatorServiceIf::static_service_name(),
-                      GenericCalculatorService::SleepMethod()->method_name());
-  ASSERT_OK(p.SyncRequest(&method, req, &resp, &controller));
+  ASSERT_OK(p.SyncRequest(CalculatorServiceMethods::SleepMethod(), req, &resp, &controller));
 
   const unordered_map<const MetricPrototype*, scoped_refptr<Metric> > metric_map =
     server_messenger().metric_entity()->UnsafeMetricsMapForTests();
@@ -545,7 +543,8 @@ TEST_F(TestRpc, TestRpcCallbackDestroysMessenger) {
   controller.set_timeout(MonoDelta::FromMilliseconds(1));
   {
     Proxy p(client_messenger, bad_addr);
-    static RemoteMethod method(GenericCalculatorService::static_service_name(), "my-fake-method");
+    static RemoteMethod method(
+        rpc_test::CalculatorServiceIf::static_service_name(), "my-fake-method");
     p.AsyncRequest(&method, req, &resp, &controller, [&latch]() { latch.CountDown(); });
   }
   latch.Wait();
@@ -569,15 +568,14 @@ TEST_F(TestRpc, TestRpcContextClientDeadline) {
   req.set_client_timeout_defined(true);
   rpc_test::SleepResponsePB resp;
   RpcController controller;
-  RemoteMethod method(yb::rpc_test::CalculatorServiceIf::static_service_name(),
-                      GenericCalculatorService::SleepMethod()->method_name());
-  Status s = p.SyncRequest(&method, req, &resp, &controller);
+  const auto* method = CalculatorServiceMethods::SleepMethod();
+  Status s = p.SyncRequest(method, req, &resp, &controller);
   ASSERT_TRUE(s.IsRemoteError());
   ASSERT_STR_CONTAINS(s.ToString(), "Missing required timeout");
 
   controller.Reset();
   controller.set_timeout(MonoDelta::FromMilliseconds(1000));
-  ASSERT_OK(p.SyncRequest(&method, req, &resp, &controller));
+  ASSERT_OK(p.SyncRequest(method, req, &resp, &controller));
 }
 
 struct DisconnectShare {
@@ -595,7 +593,7 @@ class DisconnectTask {
 
   void Launch() {
     controller_.set_timeout(MonoDelta::FromSeconds(1));
-    share_->proxy.AsyncRequest(GenericCalculatorService::DisconnectMethod(),
+    share_->proxy.AsyncRequest(CalculatorServiceMethods::DisconnectMethod(),
                                rpc_test::DisconnectRequestPB(),
                                &response_,
                                &controller_,
