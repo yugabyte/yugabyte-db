@@ -262,6 +262,8 @@ public class TestJson extends BaseCQLTest {
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
         "bigint) = 4294967295"));
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
+        "decimal) = 4294967295"));
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
         "text) = '4294967295'"));
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'r' as " +
         "integer) = -2147483648"));
@@ -293,6 +295,8 @@ public class TestJson extends BaseCQLTest {
         "bigint) = 100").all().size());
     assertEquals(0, session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
         "bigint) < 99").all().size());
+    assertEquals(0, session.execute("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as " +
+        "decimal) < 99").all().size());
 
     // Invalid cast types.
     runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as boolean) = 123");
@@ -304,7 +308,6 @@ public class TestJson extends BaseCQLTest {
     runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as timeuuid) = 123");
     runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as uuid) = 123");
     runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as varint) = 123");
-    runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->>'p' as decimal) = 123");
     runInvalidStmt("SELECT * FROM test_json WHERE CAST(c2->'a'->'q'->'p' as text) = '123'");
 
     // Test update.

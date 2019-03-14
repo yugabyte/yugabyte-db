@@ -260,6 +260,7 @@ const vector<BFDecl> kBFDirectory = {
   { "ConvertToI64",            "cql_cast", "", INT64,     {ANYTYPE, INT64} },
   { "ConvertToDouble",         "cql_cast", "", DOUBLE,    {ANYTYPE, DOUBLE} },
   { "ConvertToFloat",          "cql_cast", "", FLOAT,     {ANYTYPE, FLOAT} },
+  { "ConvertToDecimal",        "cql_cast", "", DECIMAL,   {ANYTYPE, DECIMAL} },
   { "ConvertToString",         "cql_cast", "", STRING,    {ANYTYPE, STRING} },
   { "ConvertToTimestamp",      "cql_cast", "", TIMESTAMP, {ANYTYPE, TIMESTAMP} },
   { "ConvertToDate",           "cql_cast", "", DATE,      {ANYTYPE, DATE} },

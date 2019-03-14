@@ -196,7 +196,10 @@ PTExpr::SharedPtr PTExpr::CreateConst(MemoryContext *memctx,
       return PTConstTimestamp::MakeShared(memctx, loc, 0);
     case DataType::DATE:
       return PTConstDate::MakeShared(memctx, loc, 0);
+    case DataType::DECIMAL:
+      return PTConstDecimal::MakeShared(memctx, loc, MCMakeShared<MCString>(memctx));
     default:
+      LOG(WARNING) << "Unexpected QL type: " << data_type->ql_type()->ToString();
       return nullptr;
   }
 }

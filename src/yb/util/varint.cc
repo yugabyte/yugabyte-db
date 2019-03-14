@@ -23,7 +23,7 @@ void BigNumDeleter::operator()(BIGNUM* bn) const {
 }
 
 ATTRIBUTE_NO_SANITIZE_UNDEFINED VarInt::VarInt(int64_t int64_val) : impl_(BN_new()) {
-  if (int64_val > 0) {
+  if (int64_val >= 0) {
     BN_set_word(impl_.get(), int64_val);
   } else {
     BN_set_word(impl_.get(), -int64_val);
