@@ -38,6 +38,3 @@ Where
 - Character-based datatypes can be part of the `PRIMARY KEY`.
 - Value of character datatype are convertible and comparable to non-text datatypes.
 
-## See Also
-
-[Data Types](../datatypes)

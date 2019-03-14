@@ -29,6 +29,3 @@ INTERVAL [ fields ] [ (p) ] | 16-byte time interval | -178000000 years | 1780000
 
 - Date and time inputs can be in various format including ISO, SQL, Postgres-extension, and many others.
 
-## See Also
-
-[Data Types](../datatypes)

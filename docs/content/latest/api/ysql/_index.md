@@ -12,6 +12,7 @@ menu:
     weight: 2900
 aliases:
   - /latest/api/ysql/
+  - /latest/api/postgresql/
 isTocNested: true
 showAsideToc: true
 ---

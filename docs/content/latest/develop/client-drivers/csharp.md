@@ -13,7 +13,7 @@ menu:
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#cql" class="nav-link active" id="cql-tab" data-toggle="tab" role="tab" aria-controls="cql" aria-selected="true">
+    <a href="#ycql" class="nav-link active" id="ycql-tab" data-toggle="tab" role="tab" aria-controls="ycql" aria-selected="true">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -21,7 +21,7 @@ menu:
 </ul>
 
 <div class="tab-content">
-  <div id="cql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cql-tab">
+  <div id="ycql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ycql-tab">
     {{% includeMarkdown "ycql/csharp.md" /%}}
   </div>
 </div>

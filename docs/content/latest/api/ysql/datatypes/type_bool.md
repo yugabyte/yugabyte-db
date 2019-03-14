@@ -24,6 +24,3 @@ literal ::= { TRUE | true | 't' | 'y' | 'yes' | 'on' | 1 |
               FALSE | false | 'f' | 'n' | 'no' | 'off' | 0 }
 ```
 
-## See Also
-
-[Data Types](../datatypes)

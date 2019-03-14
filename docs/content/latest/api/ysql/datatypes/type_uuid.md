@@ -29,7 +29,3 @@ ffffffff-ffff-ffff-ffff-ffffffffffff
 {aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}
 12341234-1234-1234-1234-123412341234
 ```
-
-## See Also
-
-[Data Types](../datatypes)

@@ -28,6 +28,3 @@ type_specification ::= MONEY
 
 - To avoid precision loss, MONEY value can be cast to NUMERIC type before applying calculations.
 
-## See Also
-
-[Data Types](../datatypes)

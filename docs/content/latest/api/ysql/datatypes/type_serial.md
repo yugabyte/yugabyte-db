@@ -25,6 +25,3 @@ type_specification ::= SMALLSERIAL | SERIAL | BIGSERIAL
 - Columns of serial types are auto-incremented.
 - `SERIAL` does not imply that an index is created on the column.
 
-## See Also
-
-[Data Types](../datatypes)

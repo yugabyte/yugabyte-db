@@ -12,21 +12,20 @@ Start a new local cluster with 3-nodes with replication factor 3. We configure t
 $ ./yb-docker-ctl create --rf 3 --num_shards_per_tserver 4
 ```
 
-## 2. Run sample key-value app
+## 2. Run sample SQL app
 
-Download the sample app jar.
+Pull the [yb-sample-apps](https://github.com/YugaByte/yb-sample-apps) docker container. This container has built-in Java client programs for various workloads including SQL inserts and updates.
 
 ```sh
-$ wget https://github.com/YugaByte/yb-sql-workshop/blob/master/running-sample-apps/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
+$ docker pull yugabytedb/yb-sample-apps
 ```
 
 
 ```sh
-$ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
-                                    --nodes localhost:9042 \
-                                    --num_threads_write 1 \
-                                    --num_threads_read 4 \
-                                    --value_size 4096
+$ docker run --name yb-sample-apps --hostname yb-sample-apps --net yb-net yugabytedb/yb-sample-apps --workload SqlInserts \
+	--nodes yb-tserver-n1:5433 \
+	--num_threads_write 1 \
+	--num_threads_read 4
 ```
 
 The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](../../quick-start/run-sample-apps/).

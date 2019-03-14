@@ -68,6 +68,3 @@ fixed_point_literal ::= [ + | - ] { digit [ digit ...] '.' [ digit ...] | '.' di
 - Columns of type `DEC`, `DECIMAL`, and `NUMERIC` can be part of the `PRIMARY KEY`.
 - Values of different floating-point and fixed-point datatypes are comparable and convertible to one another.
 - Values of non-integer numeric datatypes are neither comparable nor convertible to integer although integers are convertible to them. This restriction will be removed.
-
-## See Also
-[Data Types](../datatypes)
