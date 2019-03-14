@@ -366,8 +366,17 @@ public class Universe extends Model {
    *
    * @return a list of YQL server nodes
    */
-  public List<NodeDetails> getYsqlServers() {
+  public List<NodeDetails> getYqlServers() {
     return getServers(ServerType.YQLSERVER);
+  }
+
+  /**
+   * Return the list of YSQL servers for this universe.
+   *
+   * @return a list of YSQL server nodes
+   */
+  public List<NodeDetails> getYsqlServers() {
+    return getServers(ServerType.YSQLSERVER);
   }
 
   /**
@@ -393,6 +402,8 @@ public class Universe extends Model {
       switch(type) {
       case YQLSERVER:
         if (nodeDetails.isYqlServer && nodeDetails.isTserver) servers.add(nodeDetails); break;
+      case YSQLSERVER:
+        if (nodeDetails.isYsqlServer && nodeDetails.isTserver) servers.add(nodeDetails); break;
       case TSERVER:
         if (nodeDetails.isTserver) servers.add(nodeDetails); break;
       case MASTER:
@@ -458,7 +469,17 @@ public class Universe extends Model {
    * @return a comma separated string of 'host:port'.
    */
   public String getYQLServerAddresses() {
-    return getHostPortsString(getYsqlServers(), ServerType.YQLSERVER);
+    return getHostPortsString(getYqlServers(), ServerType.YQLSERVER);
+  }
+
+  /**
+   * Returns a comma separated list of <privateIp:ysqlRPCPort> for all nodes that have the
+   * isYSQLServer flag set to true in this cluster.
+   *
+   * @return a comma separated string of 'host:port'.
+   */
+  public String getYSQLServerAddresses() {
+    return getHostPortsString(getYsqlServers(), ServerType.YSQLSERVER);
   }
 
   /**
@@ -480,6 +501,8 @@ public class Universe extends Model {
         switch (type) {
         case YQLSERVER:
           if (node.isYqlServer) port = node.yqlServerRpcPort; break;
+        case YSQLSERVER:
+          if (node.isYsqlServer) port = node.ysqlServerRpcPort; break;
         case TSERVER:
           if (node.isTserver) port = node.tserverRpcPort; break;
         case MASTER:

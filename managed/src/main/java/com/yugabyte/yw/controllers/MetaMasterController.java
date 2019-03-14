@@ -62,6 +62,10 @@ public class MetaMasterController extends Controller {
     return getServerAddresses(customerUUID, universeUUID, ServerType.YQLSERVER);
   }
 
+  public Result getYSQLServerAddresses(UUID customerUUID, UUID universeUUID) {
+    return getServerAddresses(customerUUID, universeUUID, ServerType.YSQLSERVER);
+  }
+
   public Result getRedisServerAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.REDISSERVER);
   }
@@ -86,6 +90,7 @@ public class MetaMasterController extends Controller {
       switch (type) {
         case MASTER: return ApiResponse.success(universe.getMasterAddresses());
         case YQLSERVER: return ApiResponse.success(universe.getYQLServerAddresses());
+        case YSQLSERVER: return ApiResponse.success(universe.getYSQLServerAddresses());
         case REDISSERVER: return ApiResponse.success(universe.getRedisServerAddresses()); 
         default: throw new IllegalArgumentException("Unexpected type " + type);
       }
