@@ -157,6 +157,32 @@ public class ApiUtils {
     };
   }
 
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithYSQLNodes(final boolean enableYSQL) {
+    return new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        UserIntent userIntent = new UserIntent();
+        // Add a desired number of nodes.
+        userIntent.enableYSQL = enableYSQL;
+        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        userIntent.numNodes = userIntent.replicationFactor;
+        for (int idx = 1; idx <= userIntent.numNodes; idx++) {
+          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live,
+            true, enableYSQL);
+          universeDetails.nodeDetailsSet.add(node);
+        }
+        universeDetails.upsertPrimaryCluster(userIntent, null);
+
+        NodeDetails node = getDummyNodeDetails(userIntent.numNodes + 1,
+          NodeDetails.NodeState.Removed);
+        universeDetails.nodeDetailsSet.add(node);
+        universeDetails.nodePrefix = "host";
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+  }
+
   public static Universe.UniverseUpdater mockUniverseUpdaterWith1TServer0Masters() {
     return new Universe.UniverseUpdater() {
       @Override
@@ -201,12 +227,19 @@ public class ApiUtils {
   }
 
   public static NodeDetails getDummyNodeDetails(int idx, NodeDetails.NodeState state) {
-    return getDummyNodeDetails(idx, state, false /* isMaster */);
+    return getDummyNodeDetails(idx, state, false /* isMaster */, false);
   }
 
   private static NodeDetails getDummyNodeDetails(int idx,
                                                  NodeDetails.NodeState state,
                                                  boolean isMaster) {
+    return getDummyNodeDetails(idx, state, isMaster, false);
+  }
+
+  private static NodeDetails getDummyNodeDetails(int idx,
+                                                 NodeDetails.NodeState state,
+                                                 boolean isMaster,
+                                                 boolean isYSQL) {
     NodeDetails node = new NodeDetails();
     // TODO: Set nodeName to null for ToBeAdded state
     node.nodeName = "host-n" + idx;
@@ -221,6 +254,7 @@ public class ApiUtils {
     node.state = state;
     node.isMaster = isMaster;
     node.nodeIdx = idx;
+    node.isYsqlServer = isYSQL;
     return node;
   }
 

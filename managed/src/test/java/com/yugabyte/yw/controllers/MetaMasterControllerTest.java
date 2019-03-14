@@ -125,6 +125,16 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testGetYsqlServers() {
+    testYSQLServers();
+  }
+
+  @Test
+  public void testGetNoYsqlServers() {
+    testNoYSQLServers();
+  }
+
+  @Test
   public void testRedisGetWithInvalidUniverse() {
     testServerGetWithInvalidUniverse(false);
   }
@@ -261,5 +271,29 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     Result r = route(fakeRequest("GET", "/api/customers/" + defaultCustomer.uuid + "/universes/" +
                                  u1.universeUUID + (isYql ? "/yqlservers" : "/redisservers")));
     assertRestResult(r, true, OK);
+  }
+
+  private void testNoYSQLServers() {
+    Universe u1 = createUniverse("Universe-1", defaultCustomer.getCustomerId());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdaterWithYSQLNodes(false));
+    defaultCustomer.addUniverseUUID(u1.universeUUID);
+    defaultCustomer.save();
+
+    Result r = route(fakeRequest("GET", "/api/customers/" + defaultCustomer.uuid + "/universes/" +
+      u1.universeUUID + "/ysqlservers"));
+    assertRestResult(r, true, OK);
+    assertEquals("", Json.parse(contentAsString(r)).asText());
+  }
+
+  private void testYSQLServers() {
+    Universe u1 = createUniverse("Universe-1", defaultCustomer.getCustomerId());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdaterWithYSQLNodes(true));
+    defaultCustomer.addUniverseUUID(u1.universeUUID);
+    defaultCustomer.save();
+
+    Result r = route(fakeRequest("GET", "/api/customers/" + defaultCustomer.uuid + "/universes/" +
+      u1.universeUUID + "/ysqlservers"));
+    assertRestResult(r, true, OK);
+    assertEquals("host-n1:5433,host-n2:5433,host-n3:5433", Json.parse(contentAsString(r)).asText());
   }
 }
