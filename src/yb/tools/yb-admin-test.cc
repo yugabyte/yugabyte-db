@@ -31,14 +31,26 @@
 //
 // Tests for the yb-admin command-line tool.
 
+#include <regex>
+
+#include <boost/algorithm/string.hpp>
+
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/master/master_defaults.h"
+
+#include "yb/util/net/net_util.h"
+#include "yb/util/stol_utils.h"
+#include "yb/util/string_trim.h"
+#include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 
@@ -49,11 +61,67 @@ using client::YBClient;
 using client::YBClientBuilder;
 using client::YBTableName;
 using std::shared_ptr;
+using std::vector;
 using itest::TabletServerMap;
 using itest::TServerDetails;
 using strings::Substitute;
 
+namespace {
+
 static const char* const kAdminToolName = "yb-admin";
+
+//  Helper to check hosts list by requesting cluster config via yb-admin and parse its output:
+//
+//  Config:
+//  version: 1
+//  server_blacklist {
+//    hosts {
+//      host: "node1"
+//      port: 9100
+//    }
+//    hosts {
+//      host: "node2"
+//      port: 9100
+//    }
+//    initial_replica_load: 0
+//  }
+//
+class BlacklistChecker {
+ public:
+  BlacklistChecker(const string& yb_admin_exe, const string& master_address) :
+      args_{yb_admin_exe, "-master_addresses", master_address, "get_universe_config"} {
+  }
+
+  CHECKED_STATUS operator()(const vector<HostPort>& servers) const {
+    string out;
+    RETURN_NOT_OK(Subprocess::Call(args_, &out));
+    boost::erase_all(out, "\n");
+    size_t match_count = 0;
+    std::regex re(R"(.*?hosts \{\s*host:\s*\"([^\"]*)\"\s*port:\s*(\d+)[^\}]*\})");
+    for (std::sregex_iterator i = std::sregex_iterator(out.cbegin(), out.cend(), re), end;
+        i != end; ++i) {
+      HostPort server(i->str(1), VERIFY_RESULT(util::CheckedStoll(i->str(2))));
+      if (std::find(servers.begin(), servers.end(), server) == servers.end()) {
+        return STATUS_FORMAT(
+            NotFound, "Item $0 not found in list of expected hosts $1",
+            server, servers);
+      } else {
+        ++match_count;
+      }
+    }
+    if (match_count != servers.size()) {
+      return STATUS_FORMAT(
+          NotFound, "$0 items expected but $1 found",
+          servers.size(), match_count);
+    }
+    return Status::OK();
+  }
+
+ private:
+  vector<string> args_;
+};
+
+} // namespace
 
 class AdminCliTest : public tserver::TabletServerIntegrationTestBase {
  protected:
@@ -124,11 +192,9 @@ TEST_F(AdminCliTest, TestChangeConfig) {
 
   LOG(INFO) << "Adding tserver with uuid " << new_node->uuid() << " as PRE_VOTER ...";
   string exe_path = GetAdminToolPath();
-  string arg_str = Substitute("$0 -master_addresses $1 change_config $2 ADD_SERVER $3 PRE_VOTER",
-                              exe_path,
-                              ToString(cluster_->master()->bound_rpc_addr()),
-                              tablet_id_, new_node->uuid());
-  ASSERT_OK(Subprocess::Call(arg_str));
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      exe_path, "-master_addresses", cluster_->master()->bound_rpc_addr(), "change_config",
+      tablet_id_, "ADD_SERVER", new_node->uuid(), "PRE_VOTER")));
 
   InsertOrDie(&active_tablet_servers, new_node->uuid(), new_node);
   ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
@@ -158,12 +224,9 @@ TEST_F(AdminCliTest, TestChangeConfig) {
 
   // Now remove the server once again.
   LOG(INFO) << "Removing tserver with uuid " << new_node->uuid() << " from the config...";
-  arg_str = Substitute("$0 -master_addresses $1 change_config $2 REMOVE_SERVER $3",
-                       exe_path,
-                       ToString(cluster_->master()->bound_rpc_addr()),
-                       tablet_id_, new_node->uuid());
-
-  ASSERT_OK(Subprocess::Call(arg_str));
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      exe_path, "-master_addresses", cluster_->master()->bound_rpc_addr(), "change_config",
+      tablet_id_, "REMOVE_SERVER", new_node->uuid())));
 
   ASSERT_EQ(1, active_tablet_servers.erase(new_node->uuid()));
   ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
@@ -190,17 +253,28 @@ TEST_F(AdminCliTest, TestDeleteTable) {
   string keyspace = kTableName.namespace_name();
 
   string exe_path = GetAdminToolPath();
-  string arg_str = Substitute("$0 -master_addresses $1 delete_table $2 $3",
-                              exe_path,
-                              master_address,
-                              keyspace,
-                              table_name);
-
-  ASSERT_OK(Subprocess::Call(arg_str));
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      exe_path, "-master_addresses", master_address, "delete_table", keyspace, table_name)));
 
   vector<YBTableName> tables;
   ASSERT_OK(client->ListTables(&tables));
   ASSERT_EQ(master::kNumSystemTables, tables.size());
+}
+
+TEST_F(AdminCliTest, BlackList) {
+  BuildAndStart();
+  const auto master_address = ToString(cluster_->master()->bound_rpc_addr());
+  const auto exe_path = GetAdminToolPath();
+  const auto default_port = 9100;
+  vector<HostPort> hosts{{"node1", default_port}, {"node2", default_port}, {"node3", default_port}};
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      exe_path, "-master_addresses", master_address, "change_blacklist", "ADD", unpack(hosts))));
+  const BlacklistChecker checker(exe_path, master_address);
+  ASSERT_OK(checker(hosts));
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      exe_path, "-master_addresses", master_address, "change_blacklist", "REMOVE", hosts.back())));
+  hosts.pop_back();
+  ASSERT_OK(checker(hosts));
 }
 
 }  // namespace tools

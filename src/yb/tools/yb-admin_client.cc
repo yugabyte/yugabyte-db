@@ -862,9 +862,7 @@ Status ClusterAdminClient::ModifyPlacementInfo(
   RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
 
   // Get the cluster config from the master leader.
-  auto resp_cluster_config = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::GetMasterClusterConfig,
-      master_proxy_.get(), master::GetMasterClusterConfigRequestPB(),
-      "MasterServiceImpl::GetMasterClusterConfig call failed."));
+  auto resp_cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
 
   // Create a new cluster config.
   std::vector<std::string> placement_info_split = strings::Split(
@@ -909,6 +907,48 @@ Status ClusterAdminClient::ModifyPlacementInfo(
   return Status::OK();
 }
 
+Status ClusterAdminClient::GetUniverseConfig() {
+  const auto cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
+  cout << "Config: "  << endl << cluster_config.cluster_config().DebugString();
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers, bool add) {
+  auto config = VERIFY_RESULT(GetMasterClusterConfig());
+  auto& cluster_config = *config.mutable_cluster_config();
+  auto& blacklist = *cluster_config.mutable_server_blacklist();
+  std::vector<HostPort> result_blacklist;
+  for (const auto& host : blacklist.hosts()) {
+    const HostPort hostport(host.host(), host.port());
+    if (std::find(servers.begin(), servers.end(), hostport) == servers.end()) {
+      result_blacklist.emplace_back(host.host(), host.port());
+    }
+  }
+  if (add) {
+    result_blacklist.insert(result_blacklist.end(), servers.begin(), servers.end());
+  }
+  auto result_begin = result_blacklist.begin(), result_end = result_blacklist.end();
+  std::sort(result_begin, result_end);
+  result_blacklist.erase(std::unique(result_begin, result_end), result_end);
+  blacklist.clear_hosts();
+  for (const auto& hostport : result_blacklist) {
+    auto& new_host = *blacklist.add_hosts();
+    new_host.set_host(hostport.host());
+    new_host.set_port(hostport.port());
+  }
+  master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
+  req_new_cluster_config.mutable_cluster_config()->Swap(&cluster_config);
+  return ResultToStatus(InvokeRpc(&MasterServiceProxy::ChangeMasterClusterConfig,
+                                  master_proxy_.get(), req_new_cluster_config,
+                                  "MasterServiceImpl::ChangeMasterClusterConfig call failed."));
+}
+
+Result<master::GetMasterClusterConfigResponsePB> ClusterAdminClient::GetMasterClusterConfig() {
+  return InvokeRpc(&MasterServiceProxy::GetMasterClusterConfig, master_proxy_.get(),
+                   master::GetMasterClusterConfigRequestPB(),
+                   "MasterServiceImpl::GetMasterClusterConfig call failed.");
+}
+
 template<class Response, class Request, class Object>
 Result<Response> ClusterAdminClient::InvokeRpcNoResponseCheck(
     Status (Object::*func)(const Request&, Response*, rpc::RpcController*),
@@ -917,7 +957,7 @@ Result<Response> ClusterAdminClient::InvokeRpcNoResponseCheck(
   rpc.set_timeout(timeout_);
   Response response;
   auto result = (obj->*func)(req, &response, &rpc);
-  if(error_message) {
+  if (error_message) {
     RETURN_NOT_OK_PREPEND(result, error_message);
   } else {
     RETURN_NOT_OK(result);
