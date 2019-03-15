@@ -73,3 +73,17 @@ SELECT * FROM test_index ORDER BY v1;
   4 | 14 | 24
   5 | 15 | 25
 (3 rows)
+
+-- These search options are not supported in an index yet.
+SELECT * FROM test_index WHERE v1 IS NULL;
+ERROR:  WHERE condition option 65 not supported yet
+DETAIL:  The WHERE condition option is not supported yet.
+HINT:  Rewrite the condition differently.
+SELECT * FROM test_index WHERE v1 IS NOT NULL;
+ERROR:  WHERE condition option 129 not supported yet
+DETAIL:  The WHERE condition option is not supported yet.
+HINT:  Rewrite the condition differently.
+SELECT * FROM test_index WHERE v1 IN (1, 2, 3);
+ERROR:  WHERE condition option 32 not supported yet
+DETAIL:  The WHERE condition option is not supported yet.
+HINT:  Rewrite the condition differently.
