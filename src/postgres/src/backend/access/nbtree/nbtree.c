@@ -113,7 +113,7 @@ bthandler(PG_FUNCTION_ARGS)
 	{
 		amroutine->amstrategies = BTMaxStrategyNumber;
 		amroutine->amsupport = BTNProcs;
-		amroutine->amcanorder = true;
+		amroutine->amcanorder = false; /* TODO: support ordering with range-based index */
 		amroutine->amcanorderbyop = false;
 		amroutine->amcanbackward = true;
 		amroutine->amcanunique = true;
@@ -141,10 +141,10 @@ bthandler(PG_FUNCTION_ARGS)
 		amroutine->ambeginscan = ybcinbeginscan;
 		amroutine->amrescan = ybcinrescan;
 		amroutine->amgettuple = ybcingettuple;
-		amroutine->amgetbitmap = ybcingetbitmap;
+		amroutine->amgetbitmap = NULL; /* TODO: support bitmap scan */
 		amroutine->amendscan = ybcinendscan;
-		amroutine->ammarkpos = ybcinmarkpos;
-		amroutine->amrestrpos = ybcinrestrpos;
+		amroutine->ammarkpos = NULL; /* TODO: support mark/restore pos with ordering */
+		amroutine->amrestrpos = NULL;
 		amroutine->amestimateparallelscan = NULL; /* TODO: support parallel scan */
 		amroutine->aminitparallelscan = NULL;
 		amroutine->amparallelrescan = NULL;

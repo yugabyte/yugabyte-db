@@ -177,28 +177,10 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	return scan->xs_ctup.t_ybctid != 0;
 }
 
-int64
-ybcingetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
-{
-	return 0;
-}
-
 void 
 ybcinendscan(IndexScanDesc scan)
 {
 	ybc_index_endscan(scan);
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-void 
-ybcinmarkpos(IndexScanDesc scan)
-{
-}
-
-void 
-ybcinrestrpos(IndexScanDesc scan)
-{
 }
 
 /* --------------------------------------------------------------------------------------------- */
