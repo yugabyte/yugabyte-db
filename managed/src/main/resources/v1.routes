@@ -52,6 +52,9 @@ PUT     /customers/:cUUID/releases                com.yugabyte.yw.controllers.Re
 POST    /customers/:cUUID/releases                com.yugabyte.yw.controllers.ReleaseController.create(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/releases/:name          com.yugabyte.yw.controllers.ReleaseController.update(cUUID: java.util.UUID, name: String)
 
+# Certificate API
+GET     /customers/:cUUID/certificates            com.yugabyte.yw.controllers.CertificateController.list(cUUID: java.util.UUID)
+GET     /customers/:cUUID/certificates/:name      com.yugabyte.yw.controllers.CertificateController.get(cUUID: java.util.UUID, name: String)
 
 # Access Key API
 GET     /customers/:cUUID/providers/:pUUID/access_keys/:keyCode    com.yugabyte.yw.controllers.AccessKeyController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: java.lang.String)

@@ -50,19 +50,6 @@ public class CertificateInfo extends Model {
 
     public static final Logger LOG = LoggerFactory.getLogger(CertificateInfo.class);
 
-
-    public static CertificateInfo create(UUID uuid, UUID customerUUID, Date startDate, Date expiryDate, String privateKey, String certificate) {
-        CertificateInfo cert = new CertificateInfo();
-        cert.uuid = uuid;
-        cert.customerUUID = customerUUID;
-        cert.startDate = startDate;
-        cert.expiryDate= expiryDate;
-        cert.privateKey = privateKey;
-        cert.certificate = certificate;
-        cert.save();
-        return cert;
-    }
-
     public static CertificateInfo create(UUID uuid, UUID customerUUID, String label, Date startDate, Date expiryDate, String privateKey, String certificate) {
         CertificateInfo cert = new CertificateInfo();
         cert.uuid = uuid;
