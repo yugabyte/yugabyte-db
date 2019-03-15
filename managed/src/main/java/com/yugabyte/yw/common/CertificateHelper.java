@@ -96,7 +96,7 @@ public class CertificateHelper {
         certWriter.flush();
         keyWriter.writeObject(keyPair.getPrivate());
         keyWriter.flush();
-        CertificateInfo cert = CertificateInfo.create(rootCA_UUID, customerUUID, certStart, certExpiry, keyPath, certPath);
+        CertificateInfo cert = CertificateInfo.create(rootCA_UUID, customerUUID, nodePrefix, certStart, certExpiry, keyPath, certPath);
         LOG.info("Created Root CA for {}.", nodePrefix);
         return cert.uuid;
       } catch (NoSuchAlgorithmException | IOException | OperatorCreationException | CertificateException e) {
