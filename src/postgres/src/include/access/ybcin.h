@@ -60,11 +60,7 @@ extern IndexScanDesc ybcinbeginscan(Relation rel, int nkeys, int norderbys);
 extern void ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 						ScanKey orderbys, int norderbys);
 extern bool ybcingettuple(IndexScanDesc scan, ScanDirection dir);
-extern int64 ybcingetbitmap(IndexScanDesc scan, TIDBitmap *tbm);
 extern void ybcinendscan(IndexScanDesc scan);
-
-extern void ybcinmarkpos(IndexScanDesc scan);
-extern void ybcinrestrpos(IndexScanDesc scan);
 
 extern HeapTuple YBCIndexExecuteSelect(Relation relation, Datum ybctid);
 
