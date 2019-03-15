@@ -194,6 +194,7 @@ public class NodeManagerTest extends FakeDBApplication {
     UUID rootCAuuid = UUID.randomUUID();
     CertificateInfo cert = CertificateInfo.create(rootCAuuid,
       t.provider.customerUUID,
+      params.nodePrefix,
       today,
       nextYear,
       "/path/to/private.key",
