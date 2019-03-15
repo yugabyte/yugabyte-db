@@ -279,8 +279,9 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 
 			/*
 			 * Fetch the ordering information for the index, if any.
+			 * TODO: support ordering with range-based index in YugaByte.
 			 */
-			if (info->relam == BTREE_AM_OID)
+			if (info->relam == BTREE_AM_OID && !IsYugaByteEnabled())
 			{
 				/*
 				 * If it's a btree index, we can use its opfamily OIDs
