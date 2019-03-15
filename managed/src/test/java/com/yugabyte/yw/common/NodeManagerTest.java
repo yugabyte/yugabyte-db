@@ -31,6 +31,8 @@ import play.libs.Json;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -184,6 +186,25 @@ public class NodeManagerTest extends FakeDBApplication {
     return accessKey;
   }
 
+  private UUID createUniverseWithCert(TestData t, AnsibleConfigureServers.Params params){
+    Calendar cal = Calendar.getInstance();
+    Date today = cal.getTime();
+    cal.add(Calendar.YEAR, 1); // to get previous year add -1
+    Date nextYear = cal.getTime();
+    UUID rootCAuuid = UUID.randomUUID();
+    CertificateInfo cert = CertificateInfo.create(rootCAuuid,
+      t.provider.customerUUID,
+      today,
+      nextYear,
+      "/path/to/private.key",
+      "/path/to/cert.crt");
+    Universe u = createUniverse();
+    u.getUniverseDetails().rootCA = cert.uuid;
+    buildValidParams(t, params, Universe.saveDetails(u.universeUUID,
+      ApiUtils.mockUniverseUpdater(t.cloudType)));
+    return cert.uuid;
+  }
+
   @Before
   public void setUp() {
     Customer customer = ModelFactory.testCustomer();
@@ -281,7 +302,6 @@ public class NodeManagerTest extends FakeDBApplication {
         }
         gflags.put("metric_node_name", params.nodeName);
         if (configureParams.type == Everything) {
-          expectedCommand.add("--extra_gflags");
           if (configureParams.enableYSQL) {
             gflags.put("start_pgsql_proxy", "true");
             gflags.put("pgsql_proxy_bind_address", String.format("%s:%s", configureParams.nodeName,
@@ -294,6 +314,21 @@ public class NodeManagerTest extends FakeDBApplication {
               gflags.put("callhome_enabled", "false");
             }
           }
+          if (configureParams.enableNodeToNodeEncrypt || configureParams.enableClientToNodeEncrypt) {
+            CertificateInfo cert = CertificateInfo.get(configureParams.rootCA);
+            if (cert == null) {
+              throw new RuntimeException("No valid rootCA found for " + configureParams.universeUUID);
+            }
+            if (configureParams.enableNodeToNodeEncrypt) gflags.put("use_node_to_node_encryption", "true");
+            if (configureParams.enableClientToNodeEncrypt) gflags.put("use_client_to_server_encryption", "true");
+            gflags.put("allow_insecure_connections", "true");
+            gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
+            expectedCommand.add("--rootCA_cert");
+            expectedCommand.add(cert.certificate);
+            expectedCommand.add("--rootCA_key");
+            expectedCommand.add(cert.privateKey);
+          }
+          expectedCommand.add("--extra_gflags");
           expectedCommand.add(Json.stringify(Json.toJson(gflags)));
         } else if (configureParams.type == GFlags) {
           if (!configureParams.gflags.isEmpty()) {
@@ -895,6 +930,62 @@ public class NodeManagerTest extends FakeDBApplication {
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.enableYSQL = true;
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand,
+        t.region.provider.getConfig());
+    }
+  }
+
+  @Test
+  public void testEnableNodeToNodeTLSNodeCommand() {
+    for (TestData t : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      params.nodeName = t.node.getNodeName();
+      params.type = Everything;
+      params.ybSoftwareVersion = "0.0.1";
+      params.enableNodeToNodeEncrypt = true;
+      params.rootCA = createUniverseWithCert(t, params);
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand,
+        t.region.provider.getConfig());
+    }
+  }
+
+  @Test
+  public void testEnableClientToNodeTLSNodeCommand() {
+    for (TestData t : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+        ApiUtils.mockUniverseUpdater(t.cloudType)));
+      params.nodeName = t.node.getNodeName();
+      params.type = Everything;
+      params.ybSoftwareVersion = "0.0.1";
+      params.enableClientToNodeEncrypt = true;
+      params.rootCA = createUniverseWithCert(t, params);
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand,
+        t.region.provider.getConfig());
+    }
+  }
+
+  @Test
+  public void testEnableAllTLSNodeCommand() {
+    for (TestData t : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+        ApiUtils.mockUniverseUpdater(t.cloudType)));
+      params.nodeName = t.node.getNodeName();
+      params.type = Everything;
+      params.ybSoftwareVersion = "0.0.1";
+      params.enableNodeToNodeEncrypt = true;
+      params.enableClientToNodeEncrypt = true;
+      params.rootCA = createUniverseWithCert(t, params);
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);

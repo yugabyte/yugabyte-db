@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -64,6 +65,9 @@ public class UniverseController extends AuthenticatedController {
 
   @Inject
   MetricQueryHelper metricQueryHelper;
+
+  @Inject
+  play.Configuration appConfig;
 
   // The YB client to use.
   public YBClientService ybService;
@@ -213,6 +217,12 @@ public class UniverseController extends AuthenticatedController {
 
       if (taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes)) {
         taskType = TaskType.CreateKubernetesUniverse;
+      }
+
+      if ((taskParams.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt ||
+        taskParams.getPrimaryCluster().userIntent.enableClientToNodeEncrypt) &&
+        taskParams.rootCA == null) {
+        taskParams.rootCA =  CertificateHelper.createRootCA(taskParams.nodePrefix, customerUUID, appConfig.getString("yb.storage.path"));
       }
 
       // Submit the task to create the universe.

@@ -7,7 +7,6 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
@@ -15,10 +14,10 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -220,6 +219,20 @@ public class NodeManager extends DevopsBase {
           NodeDetails node = universe.getNode(taskParam.nodeName);
           extra_gflags.put("start_pgsql_proxy", "true");
           extra_gflags.put("pgsql_proxy_bind_address", String.format("%s:%s", node.cloudInfo.private_ip, node.ysqlServerRpcPort));
+        }
+        if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
+          CertificateInfo cert = CertificateInfo.get(taskParam.rootCA);
+          if (cert == null) {
+            throw new RuntimeException("No valid rootCA found for " + taskParam.universeUUID);
+          }
+          if (taskParam.enableNodeToNodeEncrypt) extra_gflags.put("use_node_to_node_encryption", "true");
+          if (taskParam.enableClientToNodeEncrypt) extra_gflags.put("use_client_to_server_encryption", "true");
+          extra_gflags.put("allow_insecure_connections", "true");
+          extra_gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
+          subcommand.add("--rootCA_cert");
+          subcommand.add(cert.certificate);
+          subcommand.add("--rootCA_key");
+          subcommand.add(cert.privateKey);
         }
         if (taskParam.callhomeLevel != null){
           extra_gflags.put("callhome_collection_level", taskParam.callhomeLevel.toString().toLowerCase());

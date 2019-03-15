@@ -16,7 +16,6 @@ import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableSet;
 
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
@@ -39,11 +38,9 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -132,6 +129,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           universeDetails.nodeDetailsSet = taskParams().nodeDetailsSet;
           universeDetails.nodePrefix = taskParams().nodePrefix;
           universeDetails.universeUUID = taskParams().universeUUID;
+          universeDetails.rootCA = taskParams().rootCA;
           Cluster cluster = taskParams().getPrimaryCluster();
           if (cluster != null) {
             universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
@@ -577,7 +575,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes : a collection of nodes that need to be created
    * @param isMasterInShellMode : true if we are configuring a master node in shell mode
-   * @param updateMasterAddrsOnly if true, only want to set master addresses gflags.
    * @return subtask group
    */
   public SubTaskGroup createConfigureServerTasks(Collection<NodeDetails> nodes,
@@ -610,6 +607,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
+      params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+      params.rootCA = taskParams().rootCA;
       UUID custUUID = Customer.get(Universe.get(taskParams().universeUUID).customerId).uuid;
       params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
       // Set if updating master addresses only.
@@ -713,6 +713,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.ybSoftwareVersion = ybSoftwareVersion;
     }
     params.rollingUpgradePartition = partition;
+    params.enableNodeToNodeEncrypt = primary.userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = primary.userIntent.enableClientToNodeEncrypt;
+    params.rootCA = taskParams().rootCA;
     params.serverType = serverType;
     KubernetesCommandExecutor task = new KubernetesCommandExecutor();
     task.initialize(params);

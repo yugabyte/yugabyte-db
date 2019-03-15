@@ -12,7 +12,6 @@ import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updateUniverseDefinition;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.CREATE;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterOperationType.EDIT;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -32,11 +31,12 @@ import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.*;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -58,6 +58,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 
 import com.yugabyte.yw.models.helpers.TaskType;
+import org.apache.commons.io.FileUtils;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -160,6 +162,11 @@ public class UniverseControllerTest extends WithApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     authToken = customer.createAuthToken();
+  }
+
+  @After
+  public void tearDown() throws IOException {
+    FileUtils.deleteDirectory(new File("/tmp/certs"));
   }
 
   @Test
@@ -362,6 +369,83 @@ public class UniverseControllerTest extends WithApplication {
     assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("SingleUserUniverse")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Create)));
+  }
+
+  @Test
+  public void testUniverseCreateWithSelfSignedTLS() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode userIntentJson = Json.newObject()
+      .put("universeName", "SingleUserUniverse")
+      .put("instanceType", i.getInstanceTypeCode())
+      .put("enableNodeToNodeEncrypt", true)
+      .put("enableClientToNodeEncrypt", true)
+      .put("replicationFactor", 3)
+      .put("numNodes", 3)
+      .put("provider", p.uuid.toString());
+
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    JsonNode bodyJson = Json.newObject()
+      .put("nodePrefix", "demo-node")
+      .set("clusters", clustersJsonArray);
+
+    String url = "/api/customers/" + customer.uuid + "/universes";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    ArgumentCaptor<UniverseTaskParams> taskParams = ArgumentCaptor.forClass(UniverseTaskParams.class);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+    verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), taskParams.capture());
+    UniverseDefinitionTaskParams taskParam = (UniverseDefinitionTaskParams) taskParams.getValue();
+    assertNotNull(taskParam.rootCA);
+  }
+
+  @Test
+  public void testUniverseCreateWithoutSelfSignedTLS() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson = Json.newObject()
+      .put("universeName", "SingleUserUniverse")
+      .put("instanceType", i.getInstanceTypeCode())
+      .put("enableNodeToNodeEncrypt", false)
+      .put("enableClientToNodeEncrypt", false)
+      .put("replicationFactor", 3)
+      .put("numNodes", 3)
+      .put("provider", p.uuid.toString());
+
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+
+    String url = "/api/customers/" + customer.uuid + "/universes";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    ArgumentCaptor<UniverseTaskParams> taskParams = ArgumentCaptor.forClass(UniverseTaskParams.class);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+    verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), taskParams.capture());
+    UniverseDefinitionTaskParams taskParam = (UniverseDefinitionTaskParams) taskParams.getValue();
+    assertNull(taskParam.rootCA);
   }
 
   @Test

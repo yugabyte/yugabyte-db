@@ -181,6 +181,8 @@ class UniverseForm extends Component {
         assignPublicIP: formValues[clusterType].assignPublicIP,
         useTimeSync: formValues[clusterType].useTimeSync,
         enableYSQL: self.getYSQLstate(),
+        enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
+        enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
         providerType: self.getCurrentProvider(formValues[clusterType].provider).code,
         instanceType: formValues[clusterType].instanceType,
         numNodes: formValues[clusterType].numNodes,
@@ -400,7 +402,8 @@ class PrimaryClusterFields extends Component {
       <Fields names={['primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList', 'primary.replicationFactor',
         'primary.numNodes', 'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.ybSoftwareVersion',
         'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
-        'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.storageClass']} component={ClusterFields} {...this.props} clusterType={"primary"} />
+        'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.enableNodeToNodeEncrypt',
+        'primary.enableClientToNodeEncrypt', 'primary.storageClass']} component={ClusterFields} {...this.props} clusterType={"primary"} />
     );
   }
 }
@@ -411,7 +414,8 @@ class ReadOnlyClusterFields extends Component {
       <Fields names={['primary.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
         'async.numNodes', 'async.instanceType', 'async.ybSoftwareVersion', 'async.diskIops',
         'async.numVolumes','async.volumeSize',
-        'async.storageType', 'async.assignPublicIP', 'async.useTimeSync', 'async.enableYSQL', 'async.storageClass']}
+        'async.storageType', 'async.assignPublicIP', 'async.useTimeSync', 'async.enableYSQL', 'async.enableNodeToNodeEncrypt',
+        'async.enableClientToNodeEncrypt', 'async.storageClass']}
       component={ClusterFields} {...this.props} clusterType={"async"}/>
     );
   }
