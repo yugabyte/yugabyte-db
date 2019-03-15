@@ -224,8 +224,8 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 	{
 		HandleYBStatus(YBCInsertSequenceTuple(ybc_pg_session,
 											  MyDatabaseId,
-											  ObjectIdGetDatum(seqoid),
-											  Int64GetDatumFast(seqdataform.last_value),
+											  seqoid,
+											  seqdataform.last_value,
 											  false /* is_called */));
 	}
 	else
@@ -470,7 +470,9 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 	if (IsYugaByteEnabled())
 	{
 		int64_t last_val = 0;
-		HandleYBStatus(YBCReadSequenceTuple(ybc_pg_session, MyDatabaseId, ObjectIdGetDatum(relid),
+		HandleYBStatus(YBCReadSequenceTuple(ybc_pg_session,
+											MyDatabaseId,
+											relid,
 											&last_val, &seq_data.is_called));
 
 		seq_data.last_value = last_val;
@@ -551,8 +553,7 @@ DeleteSequenceTuple(Oid relid)
 
 	if (IsYugaByteEnabled())
 	{
-		HandleYBStatus(
-				YBCDeleteSequenceTuple(ybc_pg_session, MyDatabaseId, ObjectIdGetDatum(relid)));
+		HandleYBStatus(YBCDeleteSequenceTuple(ybc_pg_session, MyDatabaseId, relid));
 	}
 
 	CatalogTupleDelete(rel, tuple);
@@ -671,7 +672,7 @@ retry:
 		bool is_called;
 		HandleYBStatus(YBCReadSequenceTuple(ybc_pg_session,
 											MyDatabaseId,
-											ObjectIdGetDatum(relid),
+											relid,
 											&last_val,
 											&is_called));
 		seq_data.last_value = last_val;
@@ -821,7 +822,7 @@ check_bounds:
 		 */
 		HandleYBStatus(YBCUpdateSequenceTuple(ybc_pg_session,
 											  MyDatabaseId,
-											  ObjectIdGetDatum(relid),
+											  relid,
 											  last /* last_val */,
 											  true /* is_called */,
 											  seq->last_value /* expected_last_val */,
