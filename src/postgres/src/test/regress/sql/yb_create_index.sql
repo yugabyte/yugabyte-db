@@ -71,3 +71,8 @@ SELECT * FROM test_index ORDER BY v1;
 -- Verify delete with hash value in index
 DELETE FROM test_index WHERE v2 = 12 OR v2 = 13;
 SELECT * FROM test_index ORDER BY v1;
+
+-- These search options are not supported in an index yet.
+SELECT * FROM test_index WHERE v1 IS NULL;
+SELECT * FROM test_index WHERE v1 IS NOT NULL;
+SELECT * FROM test_index WHERE v1 IN (1, 2, 3);
