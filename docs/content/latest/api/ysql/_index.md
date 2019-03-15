@@ -22,6 +22,10 @@ YSQL is a distributed SQL API that is compatible with the SQL dialect of Postgre
 
 The main components of YSQL are data definition language (DDL), data manipulation language (DML), and data control language (DCL). A number of elements are used to construct these components including datatypes, database objects, names and qualifiers, expressions, and comments. Several other components are also provided for different purposes such as system control, transaction control, and performance tuning.
 
+## Quick Start
+
+You can explore the basics of the YSQL API using the [Quick Start](../../quick-start/explore-ysql) steps.
+
 ## Data Definition Language (DDL)
 DDL commands define structures in the database, change their definitions, as well as remove them by using CREATE, ALTER, and DROP commands respectively.
 

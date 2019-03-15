@@ -28,6 +28,10 @@ YCQL supports the following features.
 - Builtin functions and Expression operators.
 - Primitive user-defined datatypes.
 
+## Quick Start
+
+You can explore the basics of the YCQL API using the [Quick Start](quick-start/) steps.
+
 ## DDL Statements
 Data definition language (DDL) statements are instructions for the following database operations.
 

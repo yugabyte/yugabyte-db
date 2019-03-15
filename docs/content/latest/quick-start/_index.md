@@ -48,7 +48,7 @@ We do not recommend a local cluster setup on a single host for production deploy
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="explore-ysql/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/quick_start/explore_ysql.png" aria-hidden="true" />
         <div class="title">3. Explore YSQL</div>
       </div>
       <div class="body">
