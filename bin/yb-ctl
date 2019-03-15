@@ -486,8 +486,13 @@ class ClusterControl:
             raise RuntimeError("Could not modify placement info for the cluster.")
 
     def get_number_of_servers(self, daemon_type):
-        return len(glob.glob("{}/*/{}/yb-data/{}".format(
-            self.options.cluster_base_dir, self.options.drives[0], daemon_type)))
+        # When the cluster is being created, YB data directory may not be ready on disk.
+        # In that case, use replication_factor to determine number of servers.
+        if self.creating_cluster:
+            return self.options.replication_factor
+        else:
+            return len(glob.glob("{}/*/{}/yb-data/{}".format(
+                self.options.cluster_base_dir, self.options.drives[0], daemon_type)))
 
     def get_pgrep_regex(self, daemon_id):
         return "yb-{} .* --rpc_bind_addresses {}".format(
@@ -591,10 +596,7 @@ class ClusterControl:
         """
         :param running_only: if we're only interested in running masters and not in stopped ones
         """
-        num_servers = (
-            self.options.replication_factor if self.creating_cluster
-            else self.get_number_of_servers(DAEMON_TYPE_MASTER)
-        )
+        num_servers = self.get_number_of_servers(DAEMON_TYPE_MASTER)
         self.options.master_addresses = ",".join(
             [self.options.get_address(DaemonId(DAEMON_TYPE_MASTER, i), "rpc", True)
              for i in range(1, num_servers + 1)
@@ -737,6 +739,7 @@ class ClusterControl:
                              "--master_addresses",
                              self.options.master_addresses,
                              "list_all_tablet_servers"]
+
         max_num_tservers = self.get_number_of_servers(DAEMON_TYPE_TSERVER)
         num_alive_ts = None
         num_yb_admin_ts = None
@@ -937,6 +940,7 @@ class ClusterControl:
         print ("Setup Redis successful.")
 
     def run_cluster_wide_postgres_initdb(self):
+        self.wait_for_cluster_or_raise()
         initdb_binary_path = self.options.get_binary_path("initdb")
 
         logging.info("Running initdb to initialize PostgreSQL metadata in the YugaByte cluster. "
@@ -950,12 +954,12 @@ class ClusterControl:
                 [random.choice('0123456789abcdef') for _ in range(32)])))
 
             try:
-                with open(os.devnull, 'w') as fnull:
+                with open(os.path.join(get_data_dir(), "initdb.log"), 'w') as finitdb:
                     subprocess.check_call([
                         initdb_binary_path,
                         '-D', tmp_pg_data_dir,
                         '-U', 'postgres'
-                    ], stdout=fnull, stderr=subprocess.STDOUT)
+                    ], stdout=finitdb, stderr=subprocess.STDOUT)
             finally:
                 if os.path.exists(tmp_pg_data_dir):
                     logging.info("Deleting temporary PostgreSQL data directory: %s",
