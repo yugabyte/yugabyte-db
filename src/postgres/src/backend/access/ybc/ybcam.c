@@ -104,6 +104,16 @@ setup_ybcscan_from_scankey(Relation relation,
 		if (sk_attno == InvalidOid)
 			break;
 
+		/*
+		 * TODO: support the different search options like SK_SEARCHARRAY and SK_SEARCHNULL,
+		 *  SK_SEARCHNOTNULL.
+		 */
+		if (key[i].sk_flags != 0)
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("WHERE condition option %d not supported yet", key[i].sk_flags),
+							errdetail("The WHERE condition option is not supported yet."),
+							errhint("Rewrite the condition differently.")));
+
 		OpExpr *cond = makeNode(OpExpr);
 		/*
 		 * Note: YugaByte will only use the operator to decide whether it is
