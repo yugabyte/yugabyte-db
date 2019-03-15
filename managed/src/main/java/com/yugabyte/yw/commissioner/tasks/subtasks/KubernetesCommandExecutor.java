@@ -10,6 +10,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.forms.AbstractTaskParams;
@@ -118,6 +119,9 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     // so we would need that for any sort helm operations.
     public String nodePrefix;
     public String ybSoftwareVersion = null;
+    public boolean enableNodeToNodeEncrypt = false;
+    public boolean enableClientToNodeEncrypt = false;
+    public UUID rootCA = null;
     public ServerType serverType = ServerType.EITHER;
     public int rollingUpgradePartition = 0;
   }
@@ -390,6 +394,15 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     }
     overrides.put("Image", imageInfo);
 
+    if (userIntent.enableNodeToNodeEncrypt || userIntent.enableClientToNodeEncrypt) {
+      Map<String, Object> tlsInfo = new HashMap<>();
+      tlsInfo.put("enabled", true);
+      Map<String, Object> rootCA = new HashMap<>();
+      rootCA.put("cert", CertificateHelper.getCertPEM(taskParams().rootCA));
+      rootCA.put("key", CertificateHelper.getKeyPEM(taskParams().rootCA));
+      tlsInfo.put("rootCA", rootCA);
+      overrides.put("tls", tlsInfo);
+    }
     Map<String, Object> partition = new HashMap<>();
     if (taskParams().serverType == ServerType.TSERVER) {
       partition.put("tserver", taskParams().rollingUpgradePartition);
@@ -445,6 +458,10 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     if (placementUuid != null && masterOverrides.get("placement_uuid") == null) {
       masterOverrides.put("placement_uuid", placementUuid.toString());
     }
+    if (userIntent.enableClientToNodeEncrypt || userIntent.enableNodeToNodeEncrypt) {
+      masterOverrides.put("use_node_to_node_encryption", true);
+      masterOverrides.put("allow_insecure_connections", true);
+    }
     if (!masterOverrides.isEmpty()) {
       gflagOverrides.put("master", masterOverrides);
     }
@@ -466,6 +483,13 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       tserverOverrides.put("start_pgsql_proxy", "true");
       tserverOverrides.put("pgsql_proxy_bind_address", String.format("$(POD_IP):%s", YSQL_PORT));
     }
+
+    if (userIntent.enableClientToNodeEncrypt || userIntent.enableNodeToNodeEncrypt) {
+      tserverOverrides.put("use_node_to_node_encryption", true);
+      tserverOverrides.put("allow_insecure_connections", true);
+      tserverOverrides.put("use_client_to_server_encryption", true);
+    }
+
     if (!tserverOverrides.isEmpty()) {
       gflagOverrides.put("tserver", tserverOverrides);
     }

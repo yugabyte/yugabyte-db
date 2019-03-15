@@ -5,18 +5,22 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import org.apache.commons.io.FileUtils;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -30,14 +34,12 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
@@ -54,6 +56,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   Universe defaultUniverse;
   Region defaultRegion;
   AvailabilityZone defaultAZ;
+  CertificateInfo defaultCert;
   // TODO: when trying to fetch the cluster UUID directly, we get:
   // javax.persistence.EntityNotFoundException: Bean not found during lazy load or refresh
   //
@@ -83,6 +86,12 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultAZ = AvailabilityZone.create(defaultRegion, "az-1", "PlacementAZ 1", "subnet-1");
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     defaultUniverse = updateUniverseDetails("small");
+    defaultCert = CertificateInfo.get(CertificateHelper.createRootCA(defaultUniverse.getUniverseDetails().nodePrefix, defaultProvider.customerUUID, "/tmp/certs"));
+  }
+
+  @After
+  public void tearDown() throws IOException {
+    FileUtils.deleteDirectory(new File("/tmp/certs"));
   }
 
   private Universe updateUniverseDetails(String instanceTypeCode) {
@@ -176,7 +185,15 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     expectedOverrides.put("Image", ImmutableMap.of("tag", ybSoftwareVersion));
     expectedOverrides.put("replicas", ImmutableMap.of("tserver", numNodes,
         "master", defaultUserIntent.replicationFactor));
-
+    if (defaultUserIntent.enableNodeToNodeEncrypt || defaultUserIntent.enableClientToNodeEncrypt) {
+      Map<String, Object> tlsInfo = new HashMap<>();
+      tlsInfo.put("enabled", true);
+      Map<String, Object> rootCA = new HashMap<>();
+      rootCA.put("cert", CertificateHelper.getCertPEM(defaultCert));
+      rootCA.put("key", CertificateHelper.getKeyPEM(defaultCert));
+      tlsInfo.put("rootCA", rootCA);
+      expectedOverrides.put("tls", tlsInfo);
+    }
     // All flags as overrides.
     Map<String, Object> gflagOverrides = new HashMap<>();
     // Master flags.
@@ -186,6 +203,10 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     masterOverrides.put("placement_zone", defaultAZ.code);
     // masterOverrides.put("placement_uuid", defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     masterOverrides.put("placement_uuid", hackPlacementUUID.toString());
+    if (defaultUserIntent.enableClientToNodeEncrypt || defaultUserIntent.enableNodeToNodeEncrypt) {
+      masterOverrides.put("use_node_to_node_encryption", true);
+      masterOverrides.put("allow_insecure_connections", true);
+    }
     gflagOverrides.put("master", masterOverrides);
 
     // Tserver flags.
@@ -197,6 +218,12 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     tserverOverrides.put("placement_uuid", hackPlacementUUID.toString());
     tserverOverrides.put("start_pgsql_proxy", "true");
     tserverOverrides.put("pgsql_proxy_bind_address", String.format("$(POD_IP):%s", KubernetesCommandExecutor.YSQL_PORT));
+    if (defaultUserIntent.enableClientToNodeEncrypt || defaultUserIntent.enableNodeToNodeEncrypt) {
+      tserverOverrides.put("use_node_to_node_encryption", true);
+      tserverOverrides.put("allow_insecure_connections", true);
+      tserverOverrides.put("use_client_to_server_encryption", true);
+    }
+
     gflagOverrides.put("tserver", tserverOverrides);
     // Put all the flags together.
     expectedOverrides.put("gflags", gflagOverrides);
@@ -258,6 +285,39 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     verify(kubernetesManager, times(1))
         .helmInstall(expectedProviderUUID.capture(), expectedNodePrefix.capture(),
             expectedOverrideFile.capture());
+    assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
+    assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
+    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+
+    // TODO implement exposeAll false case
+    assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+  @Test
+  public void testHelmInstallWithTLS() throws IOException {
+    defaultUserIntent.masterGFlags = ImmutableMap.of("yb-master-flag", "demo-flag");
+    defaultUserIntent.tserverGFlags = ImmutableMap.of("yb-tserver-flag", "demo-flag");
+    defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
+    defaultUserIntent.enableNodeToNodeEncrypt = true;
+    defaultUserIntent.enableClientToNodeEncrypt = true;
+    Universe u = Universe.saveDetails(defaultUniverse.universeUUID,
+      ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+      createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
+      kubernetesCommandExecutor.taskParams().rootCA = defaultCert.uuid;
+      kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
+    ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+      .helmInstall(expectedProviderUUID.capture(), expectedNodePrefix.capture(),
+        expectedOverrideFile.capture());
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";

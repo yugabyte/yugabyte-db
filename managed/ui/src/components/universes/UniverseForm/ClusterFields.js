@@ -56,6 +56,8 @@ const initialState = {
   assignPublicIP: true,
   useTimeSync: false,
   enableYSQL: false,
+  enableNodeToNodeEncrypt: false,
+  enableClientToNodeEncrypt: false,
   storageClass: ''
 };
 
@@ -79,6 +81,8 @@ export default class ClusterFields extends Component {
     this.toggleAssignPublicIP = this.toggleAssignPublicIP.bind(this);
     this.toggleUseTimeSync = this.toggleUseTimeSync.bind(this);
     this.toggleEnableYSQL = this.toggleEnableYSQL.bind(this);
+    this.toggleEnableNodeToNodeEncrypt = this.toggleEnableNodeToNodeEncrypt.bind(this);
+    this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
     this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
     this.replicationFactorChanged = this.replicationFactorChanged.bind(this);
     this.softwareVersionChanged = this.softwareVersionChanged.bind(this);
@@ -132,6 +136,8 @@ export default class ClusterFields extends Component {
           replicationFactor: userIntent.replicationFactor,
           ybSoftwareVersion: userIntent.ybSoftwareVersion,
           enableYSQL: userIntent.enableYSQL,
+          enableNodeToNodeEncrypt: userIntent.enableNodeToNodeEncrypt,
+          enableClientToNodeEncrypt: userIntent.enableClientToNodeEncrypt,
           accessKeyCode: userIntent.accessKeyCode,
           deviceInfo: userIntent.deviceInfo,
           storageClass: userIntent.deviceInfo.storageClass,
@@ -172,6 +178,14 @@ export default class ClusterFields extends Component {
           if (formValues[clusterType].enableYSQL) {
             // We would also default to whatever primary cluster's state for this one.
             this.setState({enableYSQL: formValues['primary'].enableYSQL});
+          }
+          if (formValues[clusterType].enableNodeToNodeEncrypt) {
+            // We would also default to whatever primary cluster's state for this one.
+            this.setState({enableNodeToNodeEncrypt: formValues['primary'].enableNodeToNodeEncrypt});
+          }
+          if (formValues[clusterType].enableClientToNodeEncrypt) {
+            // We would also default to whatever primary cluster's state for this one.
+            this.setState({enableClientToNodeEncrypt: formValues['primary'].enableClientToNodeEncrypt});
           }
         }
       } else {
@@ -403,6 +417,9 @@ export default class ClusterFields extends Component {
         instanceTags: formValues[clusterType].instanceTags,
         useTimeSync: formValues[clusterType].useTimeSync,
         enableYSQL: formValues[clusterType].enableYSQL,
+        enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
+        enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
+        storageClass: formValues[clusterType].storageClass
       };
     }
   };
@@ -473,6 +490,28 @@ export default class ClusterFields extends Component {
       updateFormField('primary.enableYSQL', event.target.checked);
       updateFormField('async.enableYSQL', event.target.checked);
       this.setState({enableYSQL: event.target.checked});
+    }
+  }
+
+  toggleEnableNodeToNodeEncrypt(event) {
+    const {updateFormField, clusterType} = this.props;
+    // Right now we only let primary cluster to update this flag, and
+    // keep the async cluster to use the same value as primary.
+    if (clusterType === "primary") {
+      updateFormField('primary.enableNodeToNodeEncrypt', event.target.checked);
+      updateFormField('async.NodeToNodeEncrypt', event.target.checked);
+      this.setState({enableNodeToNodeEncrypt: event.target.checked});
+    }
+  }
+
+  toggleEnableClientToNodeEncrypt(event) {
+    const {updateFormField, clusterType} = this.props;
+    // Right now we only let primary cluster to update this flag, and
+    // keep the async cluster to use the same value as primary.
+    if (clusterType === "primary") {
+      updateFormField('primary.enableClientToNodeEncrypt', event.target.checked);
+      updateFormField('async.ClientToNodeEncrypt', event.target.checked);
+      this.setState({enableClientToNodeEncrypt: event.target.checked});
     }
   }
 
@@ -588,6 +627,8 @@ export default class ClusterFields extends Component {
       assignPublicIP: formValues[clusterType].assignPublicIP,
       useTimeSync: formValues[clusterType].useTimeSync,
       enableYSQL: formValues[clusterType].enableYSQL,
+      enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
+      enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
       numNodes: formValues[clusterType].numNodes,
       instanceType: formValues[clusterType].instanceType,
       ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
@@ -861,6 +902,8 @@ export default class ClusterFields extends Component {
     let assignPublicIP = <span />;
     let useTimeSync = <span />;
     let enableYSQL = <span />;
+    let enableNodeToNodeEncrypt = <span />;
+    let enableClientToNodeEncrypt = <span />;
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
 
     if (isDefinedNotNull(currentProvider) &&
@@ -875,6 +918,36 @@ export default class ClusterFields extends Component {
           onToggle={this.toggleEnableYSQL}
           label="Enable YSQL"
           subLabel="Whether or not to enable YSQL."/>
+      );
+    }
+
+    if (isDefinedNotNull(currentProvider) &&
+       (currentProvider.code === "aws" || currentProvider.code === "gcp" ||
+        currentProvider.code === "onprem" || currentProvider.code === "kubernetes")){
+      const disableOnChange = clusterType !== "primary";
+      enableNodeToNodeEncrypt = (
+        <Field name={`${clusterType}.enableNodeToNodeEncrypt`}
+          component={YBToggle} isReadOnly={isFieldReadOnly}
+          disableOnChange={disableOnChange}
+          checkedVal={this.state.enableNodeToNodeEncrypt}
+          onToggle={this.toggleEnableNodeToNodeEncrypt}
+          label="Enable Node-to-Node TLS"
+          subLabel="Whether or not to enable TLS Encryption for node to node communication."/>
+      );
+    }
+
+    if (isDefinedNotNull(currentProvider) &&
+       (currentProvider.code === "aws" || currentProvider.code === "gcp" ||
+        currentProvider.code === "onprem" || currentProvider.code === "kubernetes")){
+      const disableOnChange = clusterType !== "primary";
+      enableClientToNodeEncrypt = (
+        <Field name={`${clusterType}.enableClientToNodeEncrypt`}
+          component={YBToggle} isReadOnly={isFieldReadOnly}
+          disableOnChange={disableOnChange}
+          checkedVal={this.state.enableClientToNodeEncrypt}
+          onToggle={this.toggleEnableClientToNodeEncrypt}
+          label="Enable Client-to-Node TLS"
+          subLabel="Whether or not to enable TLS encryption for client to node communication."/>
       );
     }
     
@@ -1103,6 +1176,8 @@ export default class ClusterFields extends Component {
                 {assignPublicIP}
                 {useTimeSync}
                 {enableYSQL}
+                {enableNodeToNodeEncrypt}
+                {enableClientToNodeEncrypt}
                 <Field name={`${clusterType}.mountPoints`} component={YBTextInput}  type="hidden"/>
               </div>
             </Col>

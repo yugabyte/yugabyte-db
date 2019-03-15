@@ -68,6 +68,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // id. This is used as the prefix of node names in the universe.
   public String nodePrefix = null;
 
+  // The UUID of the rootCA to be used to generate client certificates and facilitate TLS communication.
+  public UUID rootCA = null;
+
   // This flag represents whether user has chosen to provide placement info
   // In Edit Universe if this flag is set we go through the NEW_CONFIG_FROM_PLACEMENT_INFO path
   public boolean userAZSelected = false;
@@ -252,6 +255,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public boolean enableYSQL = false;
 
+    public boolean enableNodeToNodeEncrypt = false;
+
+    public boolean enableClientToNodeEncrypt = false;
+
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
     // existing nodes' settings.
@@ -288,6 +295,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.assignPublicIP = assignPublicIP;
       newUserIntent.useTimeSync = useTimeSync;
       newUserIntent.enableYSQL = enableYSQL;
+      newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
+      newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       newUserIntent.instanceTags = instanceTags;
       return newUserIntent;
     }
