@@ -134,6 +134,10 @@ class ClusterAdminClient {
 
   CHECKED_STATUS ModifyPlacementInfo(std::string placement_infos, int replication_factor);
 
+  CHECKED_STATUS GetUniverseConfig();
+
+  CHECKED_STATUS ChangeBlacklist(const std::vector<HostPort>& servers, bool add);
+
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id,
@@ -180,6 +184,8 @@ class ClusterAdminClient {
   std::shared_ptr<client::YBClient> yb_client_;
 
  private:
+  Result<master::GetMasterClusterConfigResponsePB> GetMasterClusterConfig();
+
   // Perform RPC call without checking Response structure for error
   template<class Response, class Request, class Object>
   Result<Response> InvokeRpcNoResponseCheck(
