@@ -50,6 +50,21 @@ TEST_F(QLTestParser, TestQLParser) {
   // Invalid statement: CREATE with unterminated double quoted column.
   PARSE_INVALID_STMT("CREATE TABLE human_resource(\"id# int primary key, name varchar)");
 
+  // Invalid statement: CREATE with tuple.
+  // Tuples are not supported until #936
+  PARSE_INVALID_STMT_ERR("CREATE TABLE human_resource(id int primary key, name tuple);",
+                         "expecting '<'");
+  PARSE_INVALID_STMT_ERR("CREATE TABLE human_resource(id int primary key, name tuple<>);",
+                         "expecting '<'");
+  PARSE_INVALID_STMT_ERR("CREATE TABLE human_resource(id int primary key, name tuple< >);",
+                         "unexpected '>'");
+  PARSE_INVALID_STMT_ERR("CREATE TABLE human_resource(id int primary key, name tuple<int>);",
+                         "Feature Not Supported");
+  PARSE_INVALID_STMT_ERR("CREATE TABLE human_resource(id int primary key, name tuple<int,int>);",
+                         "Feature Not Supported");
+  PARSE_INVALID_STMT_ERR("CREATE TABLE human_resource(id int primary key, name tuple<int,stuff>);",
+                         "Feature Not Supported");
+
   // Valid statement: INSERT.
   PARSE_VALID_STMT("INSERT INTO human_resource(id, name) VALUES(7, \"Scott Tiger\");");
 
