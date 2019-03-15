@@ -51,6 +51,13 @@ namespace ql {
     EXPECT_FALSE(s.ok());                      \
   } while (false)
 
+#define PARSE_INVALID_STMT_ERR(stmt, err_msg)  \
+  do {                                         \
+    Status s = TestParser(stmt);               \
+    EXPECT_FALSE(s.ok());                      \
+    EXPECT_FALSE(s.ToString().find(err_msg) == string::npos); \
+  } while (false)
+
 #define EXEC_VALID_STMT(stmt)                  \
   do {                                         \
     Status s = processor->Run(stmt);           \
