@@ -11,6 +11,8 @@
 // under the License.
 //
 
+package org.yb.pgsql;
+
 import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -553,6 +555,17 @@ public class TestPgSequences extends BasePgSQLTest {
       thrown.expect(org.postgresql.util.PSQLException.class);
       thrown.expectMessage("CYCLE not supported yet");
       statement.execute("CREATE SEQUENCE s1 CYCLE");
+    }
+  }
+
+  @Test
+  public void testSelectDirectlyFromSequenceTable() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE SEQUENCE s1");
+
+      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expectMessage("Querying sequence tables is not supported yet");
+      statement.execute("SELECT last_value FROM s1");
     }
   }
 

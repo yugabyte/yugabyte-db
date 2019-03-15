@@ -239,6 +239,15 @@ YbScanState ybcBeginScan(Relation rel, Relation index, List *target_attrs, List 
 	YbScanState ybc_state = NULL;
 	ListCell    *lc;
 
+	/* Give more specific error for sequence tables */
+	if (RelationGetForm(rel)->relkind == RELKIND_SEQUENCE)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("\"%s\" is a sequence table",
+							   RelationGetRelationName(rel)),
+						errdetail("Querying sequence tables is not supported yet."),
+						errhint("Use lastval() and currval() instead.")));
+
 	/* Allocate and initialize YB scan state. */
 	ybc_state = (YbScanState) palloc0(sizeof(YbScanStateData));
 
