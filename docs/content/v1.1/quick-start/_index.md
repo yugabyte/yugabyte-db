@@ -47,7 +47,7 @@ We do not recommend a local multi-node cluster setup on a single host for produc
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="test-ycql/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/api/ycql.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/quick_start/explore_ycql.png" aria-hidden="true" />
         <div class="title">3. Test YCQL API</div>
       </div>
       <div class="body">
@@ -59,7 +59,7 @@ We do not recommend a local multi-node cluster setup on a single host for produc
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="test-yedis/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/api/yedis.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/quick_start/explore_yedis.png" aria-hidden="true" />
         <div class="title">4. Test YEDIS API</div>
       </div>
       <div class="body">
@@ -71,7 +71,7 @@ We do not recommend a local multi-node cluster setup on a single host for produc
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="test-ysql/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/quick_start/explore_ysql.png" aria-hidden="true" />
         <div class="title">5. Test YSQL API</div>
       </div>
       <div class="body">

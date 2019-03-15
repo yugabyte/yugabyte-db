@@ -6,13 +6,11 @@ aliases:
   - /quick-start/test-postgresql/
   - /latest/quick-start/test-postgresql/
   - /latest/quick-start/test-ysql/
-  - /quick-start/test-cassandra/
-  - /latest/quick-start/test-cassandra/
-  - /latest/quick-start/test-ycql/
   - /latest/explore/postgresql/joins/
   - /latest/explore/postgresql/aggregations/
   - /latest/explore/postgresql/expressions/
   - /latest/explore/postgresql/views/
+  - /latest/api/ysql/quick-start/
 menu:
   latest:
     parent: quick-start

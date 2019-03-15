@@ -1,12 +1,13 @@
 ---
 title: Quick Start
 linkTitle: Quick Start
-description: Quick Start YEDIS
-image: /images/section_icons/index/quick_start.png
+description: Quick Start
+image: /images/section_icons/quick_start/explore_yedis.png
 aliases:
   - /quick-start/test-redis/
   - /latest/quick-start/test-redis/
   - /latest/quick-start/test-yedis/
+  - /latest/api/yedis/quick-start/
 menu:
   latest:
     parent: yedis

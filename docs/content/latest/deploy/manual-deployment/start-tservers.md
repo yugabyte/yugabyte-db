@@ -22,7 +22,7 @@ Let us assume the following.
 
 - We want to create a a 4 node cluster with replication factor `3`.
       - We would need to run the YB-TServer process on all the 4 nodes say `node-a`, `node-b`, `node-c`, `node-d`
-      - Let us assume the master IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140` (`node-a`, `node-b`, `node-c`)
+      - Let us assume the master private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140` (`node-a`, `node-b`, `node-c`)
 - We have multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`
 
 This section covers deployment for a single region/zone (or a single datacenter/rack). Execute the following steps on each of the instances.
@@ -36,9 +36,13 @@ $ ./bin/yb-tserver \
   --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
   --rpc_bind_addresses 172.151.17.130 \
   --start_pgsql_proxy \
+  --pgsql_proxy_bind_address=172.151.17.130:5433 \
+  --cql_proxy_bind_address=172.151.17.130:9042 \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
   >& /home/centos/disk1/yb-tserver.out &
 ```
+
+Add `--redis_proxy_bind_address=172.22.25.108:6379` to the above list if you need to turn on the YEDIS API as well.
 
 {{< note title="Note" >}}
 The number of comma seperated values in `tserver_master_addrs` parameter should match the total number of masters (aka replication factor).
@@ -52,8 +56,12 @@ The number of comma seperated values in `tserver_master_addrs` parameter should 
 --tserver_master_addrs=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
 --rpc_bind_addresses=172.151.17.130
 --start_pgsql_proxy
+--pgsql_proxy_bind_address=172.151.17.130:5433
+--cql_proxy_bind_address=172.151.17.130:9042
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
 ```
+
+Add `--redis_proxy_bind_address=172.22.25.108:6379` to the above list if you need to turn on the YEDIS API as well.
 
 ```sh
 $ ./bin/yb-tserver --flagfile tserver.conf >& /home/centos/disk1/yb-tserver.out &
