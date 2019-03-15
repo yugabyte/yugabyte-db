@@ -136,10 +136,11 @@ const formFieldNames =
   ['formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
     'primary.numNodes', 'primary.instanceType', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
     'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes',
-    'primary.volumeSize', 'primary.storageType', 'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.mountPoints',
+    'primary.volumeSize', 'primary.storageType', 'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL',
+    'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.mountPoints',
     'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.numNodes',
     'async.instanceType', 'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP', 'async.useTimeSync',
-    'async.enableYSQL', 'async.mountPoints',
+    'async.enableYSQL', 'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt', 'async.mountPoints',
     'masterGFlags', 'tserverGFlags', 'instanceTags', 'asyncClusters'];
 
 
@@ -153,6 +154,8 @@ function getFormData(currentUniverse, formType, clusterType) {
     data.formType = formType;
     data[clusterType].assignPublicIP = userIntent.assignPublicIP;
     data[clusterType].enableYSQL = userIntent.enableYSQL;
+    data[clusterType].enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+    data[clusterType].enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
     data[clusterType].provider = userIntent.provider;
     data[clusterType].numNodes = userIntent.numNodes;
     data[clusterType].replicationFactor = userIntent.replicationFactor;
@@ -195,7 +198,9 @@ function mapStateToProps(state, ownProps) {
       "accessKeyCode": "yugabyte-default",
       "assignPublicIP":  true,
       "useTimeSync": false,
-      "enableYSQL": false
+      "enableYSQL": false,
+      "enableNodeToNodeEncrypt": false,
+      "enableClientToNodeEncrypt": false
     },
     "async": {
       "universeName": "",
@@ -203,7 +208,9 @@ function mapStateToProps(state, ownProps) {
       "isMultiAZ": true,
       "assignPublicIP":  true,
       "useTimeSync": false,
-      "enableYSQL": false
+      "enableYSQL": false,
+      "enableNodeToNodeEncrypt": false,
+      "enableClientToNodeEncrypt": false
     }
   };
 
@@ -228,11 +235,12 @@ function mapStateToProps(state, ownProps) {
       'formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
       'primary.numNodes', 'primary.instanceType', 'primary.replicationFactor', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
       'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
-      'primary.diskIops', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.storageClass',
+      'primary.diskIops', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync', 'primary.enableYSQL',
+      'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.storageClass',
       'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
       'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.ybSoftwareVersion', 'async.accessKeyCode',
       'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.storageType', 'async.assignPublicIP',
-      'async.enableYSQL','async.mountPoints', 'async.useTimeSync', 'async.storageClass', 'masterGFlags', 'tserverGFlags', 'instanceTags' )
+      'async.enableYSQL', 'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt', 'async.mountPoints', 'async.useTimeSync', 'async.storageClass', 'masterGFlags', 'tserverGFlags', 'instanceTags' )
   };
 }
 

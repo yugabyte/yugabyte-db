@@ -22,7 +22,8 @@ libraryDependencies ++= Seq(
   "org.flywaydb" %% "flyway-play" % "3.0.1",
   "com.datastax.cassandra" % "cassandra-driver-core" % "3.1.2",
   "org.yaml" % "snakeyaml" % "1.17",
-  "com.google.protobuf" % "protobuf-java" % "2.6.1"
+  "com.google.protobuf" % "protobuf-java" % "2.6.1",
+  "org.bouncycastle" % "bcpkix-jdk15on" % "1.61"
 )
 // Default to true if nothing passed on the env, so we can pick up YB jars from local java itest.
 lazy val mavenLocal = Option(System.getenv("USE_MAVEN_LOCAL")).getOrElse("false")
