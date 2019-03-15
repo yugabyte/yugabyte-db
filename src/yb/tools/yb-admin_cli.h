@@ -48,6 +48,8 @@ typedef YB_EDITION_NS_PREFIX ClusterAdminClient ClusterAdminClientClass;
 // Tool to administer a cluster from the CLI.
 class ClusterAdminCli {
  public:
+  typedef std::vector<std::string> CLIArguments;
+
   virtual ~ClusterAdminCli() = default;
 
   int Run(int argc, char** argv);
@@ -55,7 +57,6 @@ class ClusterAdminCli {
   static void UsageAndExit(const std::string& prog_name);
 
  protected:
-  typedef std::vector<std::string> CLIArguments;
   typedef std::function<Status(const CLIArguments&)> CommandFn;
   struct Command {
     std::string name_;
