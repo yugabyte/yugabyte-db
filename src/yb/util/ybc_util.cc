@@ -64,6 +64,7 @@ Status InitInternal(const char* argv0) {
   }
 
   RETURN_NOT_OK(CheckCPUFlags());
+
   return Status::OK();
 }
 

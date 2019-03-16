@@ -125,7 +125,8 @@ Reactor::Reactor(const std::shared_ptr<Messenger>& messenger,
       cur_time_(CoarseMonoClock::Now()),
       last_unused_tcp_scan_(cur_time_),
       connection_keepalive_time_(bld.connection_keepalive_time()),
-      coarse_timer_granularity_(bld.coarse_timer_granularity()) {
+      coarse_timer_granularity_(bld.coarse_timer_granularity()),
+      num_connections_to_server_(bld.num_connections_to_server()) {
   static std::once_flag libev_once;
   std::call_once(libev_once, DoInitLibEv);
 
@@ -625,7 +626,7 @@ void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
   // Unlink connection from lists.
   if (conn->direction() == ConnectionDirection::CLIENT) {
     bool erased = false;
-    for (int idx = 0; idx < FLAGS_num_connections_to_server; idx++) {
+    for (int idx = 0; idx < num_connections_to_server_; idx++) {
       auto it = client_conns_.find(ConnectionId(conn->remote(), idx, conn->protocol()));
       if (it != client_conns_.end() && it->second.get() == conn) {
         client_conns_.erase(it);

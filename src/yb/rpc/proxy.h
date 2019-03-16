@@ -83,6 +83,9 @@ class ProxyContext {
 
   virtual RpcMetrics& rpc_metrics() = 0;
 
+  // Number of connections to create per destination address.
+  virtual int num_connections_to_server() const = 0;
+
   virtual ~ProxyContext() {}
 };
 
@@ -177,6 +180,9 @@ class Proxy {
   ConcurrentPod<Endpoint> resolved_ep_;
 
   scoped_refptr<Histogram> latency_hist_;
+
+  // Number of outbound connections to create per each destination server address.
+  int num_connections_to_server_;
 };
 
 class ProxyCache {

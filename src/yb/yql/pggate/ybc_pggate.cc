@@ -10,12 +10,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/util/ybc-internal.h"
+#include "yb/util/atomic.h"
 
+#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/pggate.h"
 
 DECLARE_bool(client_suppress_created_logs);
+
+DEFINE_int32(pggate_num_connections_to_server, 1,
+             "Number of underlying connections to each server from a PostgreSQL backend process. "
+             "This overrides the value of --num_connections_to_server.");
+
+DECLARE_int32(num_connections_to_server);
 
 namespace yb {
 namespace pggate {
@@ -43,6 +50,10 @@ void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count) {
     YBCSetInitDbMode();
   }
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
+
+  SetAtomicFlag(GetAtomicFlag(&FLAGS_pggate_num_connections_to_server),
+                &FLAGS_num_connections_to_server);
+
   pgapi_shutdown_done.exchange(false);
   pgapi = new pggate::PgApiImpl(YBCDataTypeTable, count);
   VLOG(1) << "PgGate open";

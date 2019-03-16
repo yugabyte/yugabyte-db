@@ -112,7 +112,8 @@ MessengerBuilder::MessengerBuilder(std::string name)
       coarse_timer_granularity_(100ms),
       listen_protocol_(TcpStream::StaticProtocol()),
       queue_limit_(FLAGS_rpc_queue_limit),
-      workers_limit_(FLAGS_rpc_workers_limit) {
+      workers_limit_(FLAGS_rpc_workers_limit),
+      num_connections_to_server_(GetAtomicFlag(&FLAGS_num_connections_to_server)) {
   AddStreamFactory(TcpStream::StaticProtocol(), TcpStream::Factory());
 }
 
@@ -509,7 +510,7 @@ void Messenger::RegisterInboundSocket(
     return;
   }
 
-  int idx = num_connections_accepted_.fetch_add(1) % FLAGS_num_connections_to_server;
+  int idx = num_connections_accepted_.fetch_add(1) % num_connections_to_server_;
   Reactor *reactor = RemoteToReactor(remote, idx);
   reactor->RegisterInboundSocket(new_socket, remote, factory->Create());
 }
@@ -524,7 +525,8 @@ Messenger::Messenger(const MessengerBuilder &bld)
       io_thread_pool_(name_, FLAGS_io_thread_pool_size),
       scheduler_(&io_thread_pool_.io_service()),
       normal_thread_pool_(new rpc::ThreadPool(name_, bld.queue_limit_, bld.workers_limit_)),
-      rpc_metrics_(new RpcMetrics(bld.metric_entity_)) {
+      rpc_metrics_(new RpcMetrics(bld.metric_entity_)),
+      num_connections_to_server_(bld.num_connections_to_server_) {
 #ifndef NDEBUG
   creation_stack_trace_.Collect(/* skip_frames */ 1);
 #endif
@@ -549,7 +551,7 @@ Messenger::~Messenger() {
 }
 
 size_t Messenger::max_concurrent_requests() const {
-  return FLAGS_num_connections_to_server;
+  return num_connections_to_server_;
 }
 
 Reactor* Messenger::RemoteToReactor(const Endpoint& remote, uint32_t idx) {

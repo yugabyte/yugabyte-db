@@ -495,6 +495,9 @@ class Reactor {
 
   std::vector<ConnectionPtr> processing_connections_;
   ReactorTaskPtr process_outbound_queue_task_;
+
+  // Number of outbound connections to create per each destination server address.
+  int num_connections_to_server_;
 };
 
 }  // namespace rpc
