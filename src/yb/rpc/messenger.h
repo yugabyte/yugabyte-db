@@ -140,6 +140,10 @@ class MessengerBuilder {
     return *this;
   }
 
+  int num_connections_to_server() const {
+    return num_connections_to_server_;
+  }
+
  private:
   const std::string name_;
   CoarseMonoClock::Duration connection_keepalive_time_;
@@ -151,6 +155,7 @@ class MessengerBuilder {
   const Protocol* listen_protocol_;
   size_t queue_limit_;
   size_t workers_limit_;
+  int num_connections_to_server_;
 };
 
 // A Messenger is a container for the reactor threads which run event loops for the RPC services.
@@ -263,6 +268,10 @@ class Messenger : public ProxyContext {
 
   RpcMetrics& rpc_metrics() override {
     return *rpc_metrics_;
+  }
+
+  int num_connections_to_server() const override {
+    return num_connections_to_server_;
   }
 
   // Use specified IP address as base address for outbound connections from messenger.
@@ -394,7 +403,10 @@ class Messenger : public ProxyContext {
   // Use this IP address as base address for outbound connections from messenger.
   IpAddress test_outbound_ip_base_;
 
-  #ifndef NDEBUG
+  // Number of outbound connections to create per each destination server address.
+  int num_connections_to_server_;
+
+#ifndef NDEBUG
   // This is so we can log where exactly a Messenger was instantiated to better diagnose a CHECK
   // failure in the destructor (ENG-2838). This can be removed when that is fixed.
   StackTrace creation_stack_trace_;

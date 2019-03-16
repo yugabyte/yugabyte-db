@@ -57,7 +57,9 @@
 #include "yb/util/status.h"
 #include "yb/util/user.h"
 
-DEFINE_int32(num_connections_to_server, 8, "Number of underlying connections to each server");
+DEFINE_int32(num_connections_to_server, 8,
+             "Number of underlying connections to each server");
+
 DEFINE_int32(proxy_resolve_cache_ms, 5000,
              "Time in milliseconds to cache resolution result in Proxy");
 
@@ -80,8 +82,12 @@ Proxy::Proxy(std::shared_ptr<ProxyContext> context, const HostPort& remote,
       call_local_service_(remote == HostPort()),
       resolve_waiters_(30),
       resolved_ep_(std::chrono::milliseconds(FLAGS_proxy_resolve_cache_ms)),
-      latency_hist_(ScopedDnsTracker::active_metric()) {
-  VLOG(1) << "Create proxy to " << remote;
+      latency_hist_(ScopedDnsTracker::active_metric()),
+      // Use the context->num_connections_to_server() here as opposed to directly reading the
+      // FLAGS_num_connections_to_server, because the flag value could have changed since then.
+      num_connections_to_server_(context_->num_connections_to_server()) {
+  VLOG(1) << "Create proxy to " << remote << " with num_connections_to_server="
+          << num_connections_to_server_;
 }
 
 Proxy::~Proxy() {
@@ -247,7 +253,7 @@ void Proxy::ResolveDone(
 }
 
 void Proxy::QueueCall(RpcController* controller, const Endpoint& endpoint) {
-  uint8_t idx = num_calls_.fetch_add(1) % FLAGS_num_connections_to_server;
+  uint8_t idx = num_calls_.fetch_add(1) % num_connections_to_server_;
   ConnectionId conn_id(endpoint, idx, protocol_);
   controller->call_->SetConnectionId(conn_id, &remote_.host());
   context_->QueueOutboundCall(controller->call_);

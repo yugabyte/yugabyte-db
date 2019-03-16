@@ -379,6 +379,12 @@ T GetAtomicFlag(T* flag) {
   return atomic_flag.load(std::memory_order::memory_order_relaxed);
 }
 
+template <class U, class T>
+void SetAtomicFlag(U value, T* flag) {
+  std::atomic<T>& atomic_flag = *pointer_cast<std::atomic<T>*>(flag);
+  atomic_flag.store(value);
+}
+
 template<typename T>
 void UpdateAtomicMax(std::atomic<T>* max_holder, T new_value) {
   auto current_max = max_holder->load(std::memory_order_acquire);
