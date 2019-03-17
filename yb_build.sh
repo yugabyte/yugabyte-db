@@ -376,6 +376,9 @@ run_cxx_build() {
     log_empty_line
   fi
 
+  fix_gtest_cxx_test_name
+  set_vars_for_cxx_test
+
   log "Running $make_program in $PWD"
   capture_sec_timestamp "make_start"
   set +u +e  # "set -u" may cause failures on empty lists
@@ -950,6 +953,12 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+
+if [[ -n $YB_GTEST_FILTER && -z $cxx_test_name ]]; then
+  test_name=${YB_GTEST_FILTER%%.*}
+  set_cxx_test_name "GTEST_${test_name,,}"
+fi
+
 set_use_ninja
 handle_predefined_build_root
 
@@ -1097,7 +1106,6 @@ if "$verbose"; then
 fi
 
 set_build_root
-set_vars_for_cxx_test
 
 validate_cmake_build_type "$cmake_build_type"
 

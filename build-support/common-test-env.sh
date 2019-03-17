@@ -1372,6 +1372,35 @@ fix_cxx_test_name() {
   fi
 }
 
+# Fixes cxx_test_name based on gtest_filter
+fix_gtest_cxx_test_name() {
+  if [[ $cxx_test_name != GTEST_* || $make_program != *ninja ]]; then
+    return
+  fi
+  local gtest_name=${cxx_test_name#*_}
+  local targets=$("$make_program" -t targets all)
+  while read line; do
+    # Sample lines from "ninja -t targets all"
+    # CMakeFiles/latest_symlink: CUSTOM_COMMAND
+    # src/yb/rocksdb/CMakeFiles/edit_cache.util: CUSTOM_COMMAND
+    # src/yb/rocksdb/edit_cache: phony
+    # src/yb/rocksdb/rocksdb_transaction_test: phony
+    # cmake_object_order_depends_target_transaction_test: phony
+    # tests-rocksdb/transaction_test: CXX_EXECUTABLE_LINKER__transaction_test
+    if [[ ${line#*:} == " phony" ]]; then
+      local target_name=${line%%:*}
+      local stripped_target_name="${target_name//[_-]/}"
+      if [[ $stripped_target_name == $gtest_name ]]; then
+        log "Found target $target_name for $gtest_name"
+        cxx_test_name=$target_name
+        return
+      fi
+    fi
+  done <<< "$targets"
+
+  log "Unable to find test matching gtest_filter $YB_GTEST_FILTER"
+}
+
 # This is called immediately before we start running the test. The Spark-based test runner watches
 # for this "flag file" to appear to catch a case where run-test.sh gets totally stuck on macOS
 # before even getting to the test.
