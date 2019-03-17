@@ -334,7 +334,10 @@ public class AsyncYBClient implements AutoCloseable {
       throw new IllegalStateException("Could not create a client to " + hp.toString());
     }
     IsTabletServerReadyRequest rpc = new IsTabletServerReadyRequest();
-    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    // TODO: Allow these two to be paramters in all such user API's.
+    rpc.maxAttempts = 1;
+    rpc.setTimeoutMillis(5000);
+
     Deferred<IsTabletServerReadyResponse> d = rpc.getDeferred();
     rpc.attempt++;
     client.sendRpc(rpc);
@@ -1159,13 +1162,13 @@ public class AsyncYBClient implements AutoCloseable {
   /**
    * Checks whether or not an RPC can be retried once more.
    * @param rpc The RPC we're going to attempt to execute.
-   * @return {@code true} if this RPC already had too many attempts,
+   * @return {@code true} if this RPC already had too many attempts or ran out of time,
    * {@code false} otherwise (in which case it's OK to retry once more).
    * @throws NonRecoverableException if the request has had too many attempts
    * already.
    */
   static boolean cannotRetryRequest(final YRpc<?> rpc) {
-    return rpc.deadlineTracker.timedOut() || rpc.attempt > 100;  // TODO Don't hardcode.
+    return rpc.deadlineTracker.timedOut() || rpc.attempt >= rpc.maxAttempts;
   }
 
   /**
