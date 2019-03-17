@@ -111,6 +111,9 @@ public abstract class YRpc<R> {
    */
   byte attempt;  // package-private for TabletClient and AsyncYBClient only.
 
+  // Maximum number of attempts to try the RPC. Default 100 times.
+  byte maxAttempts = 100;
+
   // Whether or not retries for this RPC should always go to the same server. This is required in
   // some cases where we do not want the RPC retries to hit a different server serving the same
   // tablet.
@@ -242,6 +245,7 @@ public abstract class YRpc<R> {
       buf.append(tablet.getTabletIdAsString());
     }
     buf.append(", attempt=").append(attempt);
+    buf.append(", maxAttempts=").append(maxAttempts);
     buf.append(", ").append(deadlineTracker);
     buf.append(", ").append(deferred);
     buf.append(')');
