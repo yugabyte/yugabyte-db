@@ -179,15 +179,29 @@ body {
   }
 
   .navbar-brand {
-    height: $HEADER_HEIGHT;
-    line-height: 70px;
+    height: 75px;
     padding: 0;
-    width: 192px;
+    width: 180px;
     margin-right: 0;
 
     @media screen and (max-width: 991px) {
-      max-width: 35px;
+      max-width: 39px;
       overflow: hidden;
+    }
+
+    .nav-logo {
+      width: 100%;
+      line-height: inherit;
+      background-image: url('/images/ybdocs-color.png');
+      background-repeat: no-repeat;
+      background-position: left 23px;
+      background-size: auto 33px;
+      height: 75px;
+
+      @media screen and (max-width: 991px) {
+        background-image: url('/images/yblogo_whitebg.3fea4ef9.png');
+        background-size: auto 33px;
+      }
     }
   }
 
@@ -233,7 +247,7 @@ body {
 
   .navbar-text {
     display: block;
-    margin: 0 4px;
+    margin: 0 2px;
     padding: 0;
     line-height: 18px;
     font-size: 18px;
