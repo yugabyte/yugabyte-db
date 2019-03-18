@@ -238,8 +238,6 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       JsonNode podSpec = podInfo.path("spec");
       pod.put("startTime", statusNode.path("startTime").asText());
       pod.put("status", statusNode.path("phase").asText());
-      // TODO: change the podIP to use cname ENG-3490, we need related jira ENG-3491 as well done.
-      pod.put("privateIP", statusNode.get("podIP").asText());
       pods.set(podSpec.path("hostname").asText(), pod);
     }
 
