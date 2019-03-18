@@ -226,6 +226,50 @@ do { \
 			 (RELATION)->rd_id); \
 } while(0)
 
+#define RelCacheInitFileName(filename, shared) \
+do { \
+	if (shared) \
+	{ \
+		snprintf(filename, sizeof(filename), "global/%s", \
+		         RELCACHE_INIT_FILENAME); \
+	} \
+	else \
+	{ \
+		if (IsYugaByteEnabled()) \
+		{ \
+			snprintf(filename, sizeof(filename), "%d_%s", \
+			         MyDatabaseId, RELCACHE_INIT_FILENAME); \
+		} \
+		else \
+		{ \
+			snprintf(filename, sizeof(filename), "%s/%s", \
+			         DatabasePath, RELCACHE_INIT_FILENAME); \
+		} \
+	} \
+} while (0)
+
+#define RelCacheInitTempFileName(filename, shared) \
+do { \
+	if (shared) \
+	{ \
+		snprintf(filename, sizeof(filename), "global/%s.%d", \
+		         RELCACHE_INIT_FILENAME, MyProcPid); \
+	} \
+	else \
+	{ \
+		if (IsYugaByteEnabled()) \
+		{ \
+			snprintf(filename, sizeof(filename), "%d_%s.%d", \
+			         MyDatabaseId, RELCACHE_INIT_FILENAME, MyProcPid); \
+		} \
+		else \
+		{ \
+			snprintf(filename, sizeof(filename), "%s/%s.%d", \
+			         DatabasePath, RELCACHE_INIT_FILENAME, MyProcPid); \
+		} \
+	} \
+} while (0)
+
 
 /*
  * Special cache for opclass-related information
@@ -1072,7 +1116,7 @@ equalPartitionDescs(PartitionKey key, PartitionDesc partdesc1,
  *  Note: We assume that any error happening here will fatal so as to not end
  *  up with partial information in the cache.
  */
-void YBCInitializeRelCache()
+void YBPreloadRelCache()
 {
 	Relation      relation;
 	Oid           relid;
@@ -4049,9 +4093,9 @@ RelationCacheInitializePhase3(void)
 	 * In YB mode initialize the relache at the beginning so that we need
 	 * fewer cache lookups in steady state.
 	 */
-	if (IsYugaByteEnabled())
+	if (needNewCacheFile && IsYugaByteEnabled())
 	{
-		YBCInitializeRelCache();
+		YBPreloadRelCache();
 	}
 
 	/*
@@ -4291,13 +4335,18 @@ RelationCacheInitializePhase3(void)
 		 */
 		InitCatalogCachePhase2();
 
-		/* We do not use a relation map file in YugaByte mode yet */
-		if (!IsYugaByteEnabled())
-		{
-			/* now write the files */
-			write_relcache_init_file(true);
-			write_relcache_init_file(false);
-		}
+		/* now write the files */
+		write_relcache_init_file(true);
+		write_relcache_init_file(false);
+	}
+
+	/*
+	 * During initdb also preload catalog caches (not just relation cache) as
+	 * they will be used heavily.
+	 */
+	if (IsYugaByteEnabled() && YBIsPreparingTemplates())
+	{
+		YBPreloadCatalogCaches();
 	}
 }
 
@@ -5848,13 +5897,9 @@ load_relcache_init_file(bool shared)
 				nailed_indexes,
 				magic;
 	int			i;
+	uint64      ybc_stored_cache_version = 0;
 
-	if (shared)
-		snprintf(initfilename, sizeof(initfilename), "global/%s",
-				 RELCACHE_INIT_FILENAME);
-	else
-		snprintf(initfilename, sizeof(initfilename), "%s/%s",
-				 DatabasePath, RELCACHE_INIT_FILENAME);
+	RelCacheInitFileName(initfilename, shared);
 
 	fp = AllocateFile(initfilename, PG_BINARY_R);
 	if (fp == NULL)
@@ -5875,6 +5920,40 @@ load_relcache_init_file(bool shared)
 		goto read_failed;
 	if (magic != RELCACHE_INIT_FILEMAGIC)
 		goto read_failed;
+
+	if (IsYugaByteEnabled())
+	{
+		/* Read the stored catalog version number */
+		if (fread(&ybc_stored_cache_version,
+		          1,
+		          sizeof(ybc_stored_cache_version),
+		          fp) != sizeof(ybc_stored_cache_version))
+		{
+			goto read_failed;
+		}
+
+		/*
+		 * If we already have a newer cache version (e.g. from reading the
+		 * shared init file) then this file is too old.
+		 */
+		if (yb_catalog_cache_version > ybc_stored_cache_version)
+		{
+			unlink_initfile(initfilename, ERROR);
+			goto read_failed;
+		}
+
+		/* Else, still need to check with the master version to be sure. */
+		uint64 catalog_master_version = 0;
+		YBCPgGetCatalogMasterVersion(ybc_pg_session,
+		                             (uint64_t * ) & catalog_master_version);
+
+		/* File version does not match actual master version (i.e. too old) */
+		if (ybc_stored_cache_version != catalog_master_version)
+		{
+			unlink_initfile(initfilename, ERROR);
+			goto read_failed;
+		}
+	}
 
 	for (relno = 0;; relno++)
 	{
@@ -6216,6 +6295,19 @@ load_relcache_init_file(bool shared)
 	pfree(rels);
 	FreeFile(fp);
 
+	if (IsYugaByteEnabled())
+	{
+		/*
+		 * Set the catalog version if needed.
+		 * The checks above will ensure that if it is already initialized then
+		 * we should leave it unchanged (see also comment in pg_yb_utils.h).
+		 */
+		if (yb_catalog_cache_version == YB_CATCACHE_VERSION_UNINITIALIZED)
+		{
+			yb_catalog_cache_version = ybc_stored_cache_version;
+		}
+	}
+
 	if (shared)
 		criticalSharedRelcachesBuilt = true;
 	else
@@ -6261,20 +6353,8 @@ write_relcache_init_file(bool shared)
 	 * another backend starting at about the same time might crash trying to
 	 * read the partially-complete file.
 	 */
-	if (shared)
-	{
-		snprintf(tempfilename, sizeof(tempfilename), "global/%s.%d",
-				 RELCACHE_INIT_FILENAME, MyProcPid);
-		snprintf(finalfilename, sizeof(finalfilename), "global/%s",
-				 RELCACHE_INIT_FILENAME);
-	}
-	else
-	{
-		snprintf(tempfilename, sizeof(tempfilename), "%s/%s.%d",
-				 DatabasePath, RELCACHE_INIT_FILENAME, MyProcPid);
-		snprintf(finalfilename, sizeof(finalfilename), "%s/%s",
-				 DatabasePath, RELCACHE_INIT_FILENAME);
-	}
+	RelCacheInitTempFileName(tempfilename, shared);
+	RelCacheInitFileName(finalfilename, shared);
 
 	unlink(tempfilename);		/* in case it exists w/wrong permissions */
 
@@ -6300,6 +6380,18 @@ write_relcache_init_file(bool shared)
 	magic = RELCACHE_INIT_FILEMAGIC;
 	if (fwrite(&magic, 1, sizeof(magic), fp) != sizeof(magic))
 		elog(FATAL, "could not write init file");
+
+	if (IsYugaByteEnabled())
+	{
+		/* Write the ysql_catalog_version */
+		if (fwrite(&yb_catalog_cache_version,
+		           1,
+		           sizeof(yb_catalog_cache_version),
+		           fp) != sizeof(yb_catalog_cache_version))
+		{
+			elog(FATAL, "could not write init file");
+		}
+	}
 
 	/*
 	 * Write all the appropriate reldescs (in no particular order).
@@ -6544,10 +6636,8 @@ RelationCacheInitFilePreInvalidate(void)
 	char		sharedinitfname[MAXPGPATH];
 
 	if (DatabasePath)
-		snprintf(localinitfname, sizeof(localinitfname), "%s/%s",
-				 DatabasePath, RELCACHE_INIT_FILENAME);
-	snprintf(sharedinitfname, sizeof(sharedinitfname), "global/%s",
-			 RELCACHE_INIT_FILENAME);
+		RelCacheInitFileName(localinitfname, false);
+	RelCacheInitFileName(sharedinitfname, true);
 
 	LWLockAcquire(RelCacheInitLock, LW_EXCLUSIVE);
 
@@ -6584,6 +6674,15 @@ RelationCacheInitFileRemove(void)
 	DIR		   *dir;
 	struct dirent *de;
 	char		path[MAXPGPATH + 10 + sizeof(TABLESPACE_VERSION_DIRECTORY)];
+
+	/*
+	 * In YugaByte mode we anyway do a cache version check on each backend init
+	 * so no need to preemptively clean up the init files here.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		return;
+	}
 
 	snprintf(path, sizeof(path), "global/%s",
 			 RELCACHE_INIT_FILENAME);

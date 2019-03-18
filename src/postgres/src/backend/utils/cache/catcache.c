@@ -715,13 +715,6 @@ ResetCatalogCaches(void)
 
 	CACHE1_elog(DEBUG2, "ResetCatalogCaches called");
 
-
-	if (IsYugaByteEnabled())
-	{
-		/* Reset catalog version. */
-		ybc_catalog_cache_version = 0;
-	}
-
 	slist_foreach(iter, &CacheHdr->ch_caches)
 	{
 		CatCache   *cache = slist_container(CatCache, cc_next, iter.cur);
@@ -1282,6 +1275,10 @@ InitCatCachePhase2(CatCache *cache, bool touch_index)
 	if (cache->cc_tupdesc == NULL)
 		CatalogCacheInitializeCache(cache);
 
+	/*
+	 * TODO(mihnea/robert) This could be enabled if we handle
+	 * "primary key as index" so that PG can open the primary indexes by id.
+	 */
 	if (IsYugaByteEnabled())
 	{
 		return;

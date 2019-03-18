@@ -345,7 +345,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 	/* Set the current syscatalog version (will check that we are up to date) */
 	HandleYBStmtStatusWithOwner(YBCPgSetCatalogCacheVersion(ybc_state->handle,
-	                                                        ybc_catalog_cache_version),
+	                                                        yb_catalog_cache_version),
 	                            ybc_state->handle,
 	                            ybc_state->stmt_owner);
 
@@ -465,7 +465,7 @@ ybc_fdw_handler()
 	fdwroutine->EndForeignScan     = ybcEndForeignScan;
 
 	/* TODO: These are optional but we should support them eventually. */
-	/* fdwroutine->ExplainForeignScan = fileExplainForeignScan; */
+	/* fdwroutine->ExplainForeignScan = ybcExplainForeignScan; */
 	/* fdwroutine->AnalyzeForeignTable = ybcAnalyzeForeignTable; */
 	/* fdwroutine->IsForeignScanParallelSafe = ybcIsForeignScanParallelSafe; */
 

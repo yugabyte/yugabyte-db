@@ -378,7 +378,7 @@ YbScanState ybcBeginScan(Relation rel, Relation index, List *target_attrs, List 
 	if (!IsSystemRelation(rel))
 	{
 		HandleYBStmtStatusWithOwner(YBCPgSetCatalogCacheVersion(ybc_state->handle,
-		                                                        ybc_catalog_cache_version),
+		                                                        yb_catalog_cache_version),
 		                            ybc_state->handle,
 		                            ybc_state->stmt_owner);
 	}

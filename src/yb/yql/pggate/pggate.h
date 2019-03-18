@@ -229,7 +229,7 @@ class PgApiImpl {
                                bool *is_primary,
                                bool *is_hash);
 
-  CHECKED_STATUS SetIsSystemCatalogChange(PgStatement *handle);
+  CHECKED_STATUS SetIfIsSysCatalogVersionChange(PgStatement *handle, bool *is_version_change);
 
   CHECKED_STATUS SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_cache_version);
 

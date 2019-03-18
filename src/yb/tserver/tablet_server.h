@@ -161,8 +161,12 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   void set_ysql_catalog_version(uint64_t new_version) {
     std::lock_guard<simple_spinlock> l(lock_);
-    DCHECK(new_version >= ysql_catalog_version_);
-    ysql_catalog_version_ = new_version;
+    if (new_version > ysql_catalog_version_) {
+      ysql_catalog_version_ = new_version;
+    } else if (new_version < ysql_catalog_version_) {
+      LOG(WARNING) << "Ignoring ysql catalog version update: new version too old. "
+                      "New: " << new_version << ", Old: " << ysql_catalog_version_;
+    }
   }
 
   uint64_t ysql_catalog_version() const override {
