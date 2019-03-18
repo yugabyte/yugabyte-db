@@ -223,7 +223,7 @@ class UniverseDetail extends Component {
               {!isReadOnlyUniverse && <YBButton btnClass=" btn"
                         btnText="Edit Universe" btnIcon="fa fa-pencil" onClick={this.onEditUniverseButtonClick} />}
 
-              <UniverseAppsModal nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet} enableYSQL={currentUniverse.data.universeDetails.clusters[0].userIntent.enableYSQL}/>
+              <UniverseAppsModal currentUniverse={currentUniverse.data} />
               <DropdownButton title="More" className={this.showUpgradeMarker() ? "btn-marked": ""} id="bg-nested-dropdown" pullRight>
                 <MenuItem eventKey="1" onClick={showSoftwareUpgradesModal} >
 
