@@ -2157,12 +2157,12 @@ lint_java_code() {
     local java_test_file
     for java_test_file in "${java_test_files[@]}"; do
       local log_prefix="YB JAVA LINT: $java_test_file"
-      if ! grep -Fq '@RunWith(value=YBParameterizedTestRunner.class)' "$java_test_file" &&
-         ! grep -Fq       '@RunWith(YBParameterizedTestRunner.class)' "$java_test_file" &&
-         ! grep -Fq '@RunWith(value=YBTestRunner.class)'              "$java_test_file" &&
-         ! grep -Fq       '@RunWith(YBTestRunner.class)'              "$java_test_file" &&
-         ! grep -Fq '@RunWith(value=YBTestRunnerNonTsanOnly.class)'   "$java_test_file" &&
-         ! grep -Fq       '@RunWith(YBTestRunnerNonTsanOnly.class)'   "$java_test_file"
+      if ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBParameterizedTestRunner\.class\)' \
+             "$java_test_file" &&
+         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunner\.class\)' \
+             "$java_test_file" &&
+         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonTsanOnly\.class\)' \
+             "$java_test_file"
       then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, nor" \
             "YBTestRunnerNonTsanOnly are being used in test"
