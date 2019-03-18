@@ -7,6 +7,7 @@ import { YBModal, YBButton } from '../../common/forms/fields';
 import { YBCodeBlock } from '../../common/descriptors';
 import { isValidObject } from 'utils/ObjectUtils';
 import { Tab, Tabs } from 'react-bootstrap';
+import { isKubernetesUniverse } from 'utils/UniverseUtils';
 
 import './UniverseAppsModal.scss';
 
@@ -37,7 +38,7 @@ const appTypes = [
 
 export default class UniverseAppsModal extends Component {
   static propTypes = {
-    nodeDetails: PropTypes.array.isRequired
+    currentUniverse: PropTypes.object.isRequired
   };
   constructor(props) {
     super(props);
@@ -49,7 +50,10 @@ export default class UniverseAppsModal extends Component {
   };
 
   render() {
-    const { enableYSQL, nodeDetails } = this.props;
+    const { currentUniverse: {universeDetails} } = this.props;
+    const enableYSQL = universeDetails.clusters[0].userIntent.enableYSQL;
+    const isItKubernetesUniverse = isKubernetesUniverse(this.props.currentUniverse);
+    const nodeDetails = universeDetails.nodeDetailsSet.filter((nodeDetails) => nodeDetails.isTserver);
     const cassandraHosts = nodeDetails.map(function(nodeDetail) {
       if (nodeDetail.state === "Live" && nodeDetail.cloudInfo && isValidObject(nodeDetail.cloudInfo.private_ip))
         return nodeDetail.cloudInfo.private_ip + ":" + nodeDetail.yqlServerRpcPort;
@@ -94,12 +98,17 @@ export default class UniverseAppsModal extends Component {
         const option_data = Array.shift(Object.entries(option));
         return <p key={idx}>--{ option_data[0] + " " + option_data[1]}</p>;
       });
+
+      const commandSyntax = isItKubernetesUniverse ?
+        "kubectl run --image=yugabytedb/yb-sample-apps yb-sample-apps -n "
+          + universeDetails.nodePrefix + " --":
+        "docker run -d yugabytedb/yb-sample-apps";
       return (
         <Tab eventKey={idx} title={appType.title} key={appType.code}>
           {betaFeature}
           <label className="app-description">{appType.description}</label>
           <YBCodeBlock label="Usage:">
-            java -jar /opt/yugabyte/utils/yb-sample-apps.jar --workload {appType.code} --nodes {hostPorts}
+            {commandSyntax} --workload {appType.code} --nodes {hostPorts}
           </YBCodeBlock>
           <YBCodeBlock label="Other options (with default values):">
             {appOptions}
