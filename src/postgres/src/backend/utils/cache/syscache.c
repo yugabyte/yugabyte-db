@@ -1086,7 +1086,7 @@ YBSysTablePrimaryKey(Oid relid)
  * Utility function for YugaByte mode. Is used to automatically add entries
  * from common catalog tables to the cache immediately after they are inserted.
  */
-void SetSysCacheTuple(Relation rel, HeapTuple tup)
+void YBSetSysCacheTuple(Relation rel, HeapTuple tup)
 {
 	TupleDesc tupdesc = RelationGetDescr(rel);
 	switch (RelationGetRelid(rel))
@@ -1260,6 +1260,24 @@ YBCInitCatalogCache(int cacheId)
 }
 
 /*
+ * Preload catalog caches with data from the master to avoid master lookups
+ * later.
+ */
+void
+YBPreloadCatalogCaches(void)
+{
+	int			cacheId;
+
+	Assert(CacheInitialized);
+
+	/* Ensure individual caches are initialized */
+	InitCatalogCachePhase2();
+
+	for (cacheId = 0; cacheId < SysCacheSize; cacheId++)
+		YBCInitCatalogCache(cacheId);
+}
+
+/*
  * InitCatalogCache - initialize the caches
  *
  * Note that no database access is done here; we only allocate memory
@@ -1349,15 +1367,7 @@ InitCatalogCachePhase2(void)
 
 	for (cacheId = 0; cacheId < SysCacheSize; cacheId++)
 		InitCatCachePhase2(SysCache[cacheId], true);
-
-	if (IsYugaByteEnabled())
-	{
-		for (cacheId = 0; cacheId < SysCacheSize; cacheId++)
-			YBCInitCatalogCache(cacheId);
-	}
-
 }
-
 
 /*
  * SearchSysCache

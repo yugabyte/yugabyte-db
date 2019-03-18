@@ -338,8 +338,8 @@ YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle,
   return ToYBCStatus(pgapi->SetCatalogCacheVersion(handle, catalog_cache_version));
 }
 
-YBCStatus YBCPgSetIsSystemCatalogChange(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->SetIsSystemCatalogChange(handle));
+YBCStatus YBCPgSetIfIsSysCatalogVersionChange(YBCPgStatement handle, bool *is_version_change) {
+  return ToYBCStatus(pgapi->SetIfIsSysCatalogVersionChange(handle, is_version_change));
 }
 
 YBCStatus YBCPgNewTruncateTable(YBCPgSession pg_session,

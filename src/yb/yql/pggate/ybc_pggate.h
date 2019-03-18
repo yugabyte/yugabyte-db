@@ -192,7 +192,7 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              bool *is_primary,
                              bool *is_hash);
 
-YBCStatus YBCPgSetIsSystemCatalogChange(YBCPgStatement handle);
+YBCStatus YBCPgSetIfIsSysCatalogVersionChange(YBCPgStatement handle, bool *is_version_change);
 
 YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle, uint64_t catalog_cache_version);
 

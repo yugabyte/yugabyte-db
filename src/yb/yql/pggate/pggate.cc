@@ -458,16 +458,19 @@ Status PgApiImpl::GetColumnInfo(YBCPgTableDesc table_desc,
   return table_desc->GetColumnInfo(attr_number, is_primary, is_hash);
 }
 
-Status PgApiImpl::SetIsSystemCatalogChange(PgStatement *handle) {
+Status PgApiImpl::SetIfIsSysCatalogVersionChange(PgStatement *handle, bool *is_version_change) {
   if (!handle) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
   switch (handle->stmt_op()) {
-    case StmtOp::STMT_INSERT:
     case StmtOp::STMT_UPDATE:
     case StmtOp::STMT_DELETE:
+      *is_version_change = true;
       down_cast<PgDmlWrite *>(handle)->SetIsSystemCatalogChange();
+      return Status::OK();
+    case StmtOp::STMT_INSERT:
+      *is_version_change = false;
       return Status::OK();
     default:
       break;

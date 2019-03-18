@@ -1027,7 +1027,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	if (IsYugaByteEnabled() && !IsBootstrapProcessingMode())
 	{
 		YBCPgGetCatalogMasterVersion(ybc_pg_session,
-		                             (uint64_t *) &ybc_catalog_cache_version);
+		                             (uint64_t *) &yb_catalog_cache_version);
 	}
 	RelationCacheInitializePhase3();
 
