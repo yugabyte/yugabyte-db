@@ -70,7 +70,7 @@ In order to persist data, a log-structured row/document-oriented storage is used
 
 You can read more about [how persistence of data works in DocDB](../docdb/persistence/).
 
-#### Transactions Support
+#### Transactions
 
 DocDB has support for both single-row and multi-row transactions. This means that DocDB allows modifying multiple keys while preserving ACID properties.
 

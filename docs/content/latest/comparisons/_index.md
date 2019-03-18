@@ -3,7 +3,7 @@ title: Comparisons
 linkTitle: Comparisons
 description: Comparisons
 image: /images/section_icons/index/comparisons.png
-headcontent: This page highlights how YugaByte DB compares against other operational databases in the NoSQL and distributed SQL categories. Click on the database name in the table header to see a more detailed comparison.
+headcontent: This page highlights how YugaByte DB compares against other operational databases in the distributed SQL and NoSQL categories. Click on the database name in the table header to see a more detailed comparison.
 aliases:
   - /comparisons/
 menu:
@@ -14,7 +14,7 @@ menu:
 
 ## Distributed SQL Databases
 
-Feature | [CockroachDB](https://www.yugabyte.com/yugabyte-db-vs-cockroachdb/) | TiDB | Amazon Aurora | [MS Azure CosmosDB](azure-cosmos/) | [Google Cloud Spanner](google-spanner/) | YugaByte DB
+Feature | [CockroachDB](cockroachdb/) | TiDB | Amazon Aurora | [MS Azure CosmosDB](azure-cosmos/) | [Google Cloud Spanner](google-spanner/) | YugaByte DB
 --------|-----------------|------------|----------------|----------------|-------------|-----------
 Horizontal Write Scalability | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-times"></i> | <i class="fas fa-check">| <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
 Automated Failover &amp; Repair  | <i class="fas fa-check"></i> | <i class="fas fa-check"></i> | <i class="fas fa-times"></i> | <i class="fas fa-check"> | <i class="fas fa-check"></i> | <i class="fas fa-check"></i>
