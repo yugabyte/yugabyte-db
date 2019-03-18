@@ -117,7 +117,8 @@ enum SysCacheIdentifier
 extern Bitmapset *YBSysTablePrimaryKey(Oid relid);
 
 /* Used in IsYugaByteEnabled() mode only */
-extern void SetSysCacheTuple(Relation rel, HeapTuple tup);
+extern void YBSetSysCacheTuple(Relation rel, HeapTuple tup);
+extern void YBPreloadCatalogCaches(void);
 
 extern void InitCatalogCache(void);
 extern void InitCatalogCachePhase2(void);

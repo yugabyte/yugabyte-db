@@ -48,7 +48,7 @@
 
 YBCPgSession ybc_pg_session = NULL;
 
-uint64 ybc_catalog_cache_version = 0;
+uint64 yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 /** These values are lazily initialized based on corresponding environment variables. */
 int ybc_pg_double_write = -1;

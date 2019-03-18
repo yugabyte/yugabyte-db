@@ -46,7 +46,7 @@ extern YBCPgSession ybc_pg_session;
  * version, otherwise all bets are off and we need to refresh.)
  *
  * So we should handle cases like:
- * 1. ybc_catalog_cache_version being behind the actual data in the caches.
+ * 1. yb_catalog_cache_version being behind the actual data in the caches.
  * 2. Data in the caches spanning multiple version (because catalog was updated
  *    during a cache refresh).
  * As long as the invariant above is not violated we should (at most) end up
@@ -55,7 +55,9 @@ extern YBCPgSession ybc_pg_session;
  * TODO: Improve cache versioning and refresh logic to be more fine-grained to
  * reduce frequency and/or duration of cache refreshes.
  */
-extern uint64 ybc_catalog_cache_version;
+extern uint64 yb_catalog_cache_version;
+
+#define YB_CATCACHE_VERSION_UNINITIALIZED (0)
 
 /*
  * Checks whether YugaByte functionality is enabled within PostgreSQL.

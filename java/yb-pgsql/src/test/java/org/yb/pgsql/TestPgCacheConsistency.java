@@ -58,8 +58,8 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       statement2.execute("DROP TABLE cache_test1");
 
       // Check that insert now fails on both tables.
-      runInvalidQuery(statement1, "INSERT INTO cache_test1(a) VALUES (3)");
-      runInvalidQuery(statement2, "INSERT INTO cache_test1(a) VALUES (4)");
+      runInvalidQuery(statement1, "INSERT INTO cache_test1(a) VALUES (3)", "does not exist");
+      runInvalidQuery(statement2, "INSERT INTO cache_test1(a) VALUES (4)", "does not exist");
 
       // Create and use a new table on connection 1.
       statement1.execute("CREATE TABLE cache_test2(a int)");
@@ -86,7 +86,8 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       statement1.execute("CREATE TABLE cache_test2(a bool)");
 
       // Check that we cannot still insert a float (but that bool will work).
-      runInvalidQuery(statement2, "INSERT INTO cache_test2(a) VALUES (1.0)");
+      runInvalidQuery(statement2, "INSERT INTO cache_test2(a) VALUES (1.0)",
+                      "type boolean but expression is of type numeric");
       statement2.execute("INSERT INTO cache_test2(a) VALUES (true)");
       expectedRows.add(new Row(true));
       statement1.execute("INSERT INTO cache_test2(a) VALUES (false)");
@@ -98,6 +99,26 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       }
       expectedRows.clear();
 
+      // Alter the table to add a column.
+      statement1.execute("ALTER TABLE cache_test2 ADD COLUMN b int");
+      expectedRows.add(new Row(true, null));
+      expectedRows.add(new Row(false, null));
+
+      // First query should fail because we cannot yet retry parsing errors within
+      // parse-bind-execute blocks (JDBC default execution). But it should refresh cache so
+      // second attempt should succeed.
+      runInvalidQuery(statement2,"INSERT INTO cache_test2(a,b) VALUES (true, 11)",
+                      "Catalog Version Mismatch");
+      statement2.execute("INSERT INTO cache_test2(a,b) VALUES (true, 11)");
+      expectedRows.add(new Row(true, 11));
+      statement1.execute("INSERT INTO cache_test2(a,b) VALUES (false, 12)");
+      expectedRows.add(new Row(false, 12));
+
+      // Check values.
+      try (ResultSet rs = statement2.executeQuery("SELECT * FROM cache_test2")) {
+        assertEquals(expectedRows, getRowSet(rs));
+      }
+      expectedRows.clear();
     }
   }
 }

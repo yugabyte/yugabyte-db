@@ -253,7 +253,7 @@ CatalogTupleInsert(Relation heapRel, HeapTuple tup)
 	{
 		oid = YBCExecuteInsert(heapRel, RelationGetDescr(heapRel), tup);
 		/* Update the local cache automatically */
-		SetSysCacheTuple(heapRel, tup);
+		YBSetSysCacheTuple(heapRel, tup);
 	}
 	else
 	{
@@ -286,7 +286,7 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 	{
 		oid = YBCExecuteInsert(heapRel, RelationGetDescr(heapRel), tup);
 		/* Update the local cache automatically */
-		SetSysCacheTuple(heapRel, tup);
+		YBSetSysCacheTuple(heapRel, tup);
 	}
 	else
 	{
@@ -334,7 +334,7 @@ CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 
 		YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
 		/* Update the local cache automatically */
-		SetSysCacheTuple(heapRel, tup);
+		YBSetSysCacheTuple(heapRel, tup);
 
 		if (heapRel->rd_rel->relhasindex)
 			CatalogIndexInsert(indstate, tup);
@@ -379,7 +379,7 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 
 		YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
 		/* Update the local cache automatically */
-		SetSysCacheTuple(heapRel, tup);
+		YBSetSysCacheTuple(heapRel, tup);
 
 		if (heapRel->rd_rel->relhasindex)
 			CatalogIndexInsert(indstate, tup);

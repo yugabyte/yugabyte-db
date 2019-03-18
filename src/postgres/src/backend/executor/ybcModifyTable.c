@@ -154,13 +154,13 @@ Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot)
 }
 
 /*
- * Need to update the version whenever we write to a system catalogs table (or
- * indexes) except in bootstrap mode (initdb) where there is no point
- * to keep track of versions yet.
+ * Check if operation changes a system table, ignore changes during
+ * initialization (bootstrap mode).
  */
-static bool IsSystemCatalogVersionChange(Relation rel)
+static bool IsSystemCatalogChange(Relation rel)
 {
-	return IsSystemRelation(rel) && !IsBootstrapProcessingMode();
+	return IsSystemRelation(rel) &&
+	       !IsBootstrapProcessingMode();
 }
 
 /*
@@ -170,17 +170,19 @@ static bool IsSystemCatalogVersionChange(Relation rel)
  */
 static void YBCExecWriteStmt(YBCPgStatement ybc_stmt, Relation rel)
 {
-	bool is_syscatalog_change = IsSystemCatalogVersionChange(rel);
+	bool is_syscatalog_change = IsSystemCatalogChange(rel);
+	bool is_syscatalog_version_change = false;
 
 	/* Let the master know if this should increment the catalog version. */
 	if (is_syscatalog_change)
 	{
-		YBCPgSetIsSystemCatalogChange(ybc_stmt);
+		YBCPgSetIfIsSysCatalogVersionChange(ybc_stmt,
+		                                    &is_syscatalog_version_change);
 	}
 
 	HandleYBStmtStatus(YBCPgSetCatalogCacheVersion(ybc_stmt,
-		                                             ybc_catalog_cache_version),
-		                 ybc_stmt);
+		                                           yb_catalog_cache_version),
+		               ybc_stmt);
 
 	/* Execute the insert. */
 	HandleYBStmtStatus(YBCPgDmlExecWriteOp(ybc_stmt), ybc_stmt);
@@ -195,9 +197,9 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt, Relation rel)
 	 * other backends).
 	 * If changes occurred, then a cache refresh will be needed as usual.
 	 */
-	if (is_syscatalog_change)
+	if (is_syscatalog_version_change)
 	{
-		ybc_catalog_cache_version += 1;
+		yb_catalog_cache_version += 1;
 	}
 }
 
@@ -214,7 +216,7 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	AttrNumber     minattr  = FirstLowInvalidHeapAttributeNumber + 1;
 	int            natts    = RelationGetNumberOfAttributes(rel);
 	Bitmapset      *pkey    = GetTablePrimaryKey(rel);
-	YBCPgStatement ybc_stmt = NULL;
+	YBCPgStatement insert_stmt = NULL;
 	bool           is_null  = false;
 
 	/* Generate a new oid for this row if needed */
@@ -229,7 +231,7 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	                              dboid,
 	                              relid,
 	                              is_single_row_txn,
-	                              &ybc_stmt));
+	                              &insert_stmt));
 
 	for (AttrNumber attnum = minattr; attnum <= natts; attnum++)
 	{
@@ -245,16 +247,16 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 		/* Check not-null constraint on primary key early */
 		if (is_null && bms_is_member(attnum - minattr, pkey))
 		{
-			HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
+			HandleYBStatus(YBCPgDeleteStatement(insert_stmt));
 			ereport(ERROR,
 			        (errcode(ERRCODE_NOT_NULL_VIOLATION), errmsg(
 					        "Missing/null value for primary key column")));
 		}
 
 		/* Add the column value to the insert request */
-		YBCPgExpr ybc_expr = YBCNewConstant(ybc_stmt, type_id, datum, is_null);
-		HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, attnum, ybc_expr),
-		                   ybc_stmt);
+		YBCPgExpr ybc_expr = YBCNewConstant(insert_stmt, type_id, datum, is_null);
+		HandleYBStmtStatus(YBCPgDmlBindColumn(insert_stmt, attnum, ybc_expr),
+		                   insert_stmt);
 	}
 
 	/*
@@ -264,15 +266,15 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	if (rel->rd_rel->relhasindex)
 	{
 		YBCPgTypeAttrs type_attrs = {0};
-		YBCPgExpr      ybc_expr   = YBCNewColumnRef(ybc_stmt,
+		YBCPgExpr      ybc_expr   = YBCNewColumnRef(insert_stmt,
 		                                            YBTupleIdAttributeNumber,
 		                                            InvalidOid,
 		                                            &type_attrs);
-		HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_stmt, ybc_expr), ybc_stmt);
+		HandleYBStmtStatus(YBCPgDmlAppendTarget(insert_stmt, ybc_expr), insert_stmt);
 	}
 
 	/* Execute the insert */
-	YBCExecWriteStmt(ybc_stmt, rel);
+	YBCExecWriteStmt(insert_stmt, rel);
 
 	/*
 	 * If the relation has indexes, save ybctid to insert the new row into the
@@ -283,13 +285,13 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 		YBCPgSysColumns syscols;
 		bool            has_data = false;
 
-		HandleYBStmtStatus(YBCPgDmlFetch(ybc_stmt,
+		HandleYBStmtStatus(YBCPgDmlFetch(insert_stmt,
 		                                 0 /* natts */,
 		                                 NULL /* values */,
 		                                 NULL /* isnulls */,
 		                                 &syscols,
 		                                 &has_data),
-		                   ybc_stmt);
+		                   insert_stmt);
 		if (has_data && syscols.ybctid != NULL)
 		{
 			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
@@ -297,8 +299,8 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	}
 
 	/* Clean up */
-	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
-	ybc_stmt = NULL;
+	HandleYBStatus(YBCPgDeleteStatement(insert_stmt));
+	insert_stmt = NULL;
 
 	return HeapTupleGetOid(tuple);
 }
@@ -329,7 +331,7 @@ void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	Oid            relid    = RelationGetRelid(index);
 	TupleDesc      tupdesc  = RelationGetDescr(index);
 	int            natts    = RelationGetNumberOfAttributes(index);
-	YBCPgStatement ybc_stmt = NULL;
+	YBCPgStatement insert_stmt = NULL;
 
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 
@@ -338,7 +340,7 @@ void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	                              dboid,
 	                              relid,
 	                              false /* is_single_row_txn */,
-	                              &ybc_stmt));
+	                              &insert_stmt));
 
 	for (AttrNumber attnum = 1; attnum <= natts; attnum++)
 	{
@@ -347,22 +349,26 @@ void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum yb
 		bool  is_null = isnull[attnum - 1];
 
 		/* Add the column value to the insert request */
-		YBCPgExpr ybc_expr = YBCNewConstant(ybc_stmt, type_id, value, is_null);
-		HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, attnum, ybc_expr), ybc_stmt);
+		YBCPgExpr ybc_expr = YBCNewConstant(insert_stmt,
+		                                    type_id,
+		                                    value,
+		                                    is_null);
+		HandleYBStmtStatus(YBCPgDmlBindColumn(insert_stmt, attnum, ybc_expr),
+		                   insert_stmt);
 	}
 
 	/*
 	 * Bind the ybctid from the base table to the ybbasectid column.
 	 */
 	Assert(ybctid != 0);
-	YBCPgExpr ybc_expr = YBCNewConstant(ybc_stmt, BYTEAOID, ybctid, false /* is_null */);
-	HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, YBBaseTupleIdAttributeNumber, ybc_expr),
-					   ybc_stmt);
+	YBCPgExpr ybc_expr = YBCNewConstant(insert_stmt, BYTEAOID, ybctid, false /* is_null */);
+	HandleYBStmtStatus(YBCPgDmlBindColumn(insert_stmt, YBBaseTupleIdAttributeNumber, ybc_expr),
+					   insert_stmt);
 
 	/* Execute the insert and clean up. */
-	YBCExecWriteStmt(ybc_stmt, index);
-	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
-	ybc_stmt = NULL;
+	YBCExecWriteStmt(insert_stmt, index);
+	HandleYBStatus(YBCPgDeleteStatement(insert_stmt));
+	insert_stmt = NULL;
 }
 
 void YBCExecuteDelete(Relation rel, TupleTableSlot *slot)
