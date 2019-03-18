@@ -20,7 +20,7 @@ for an overview of some common concepts used in YugaByte DB's implementation of 
 transactions. In this section, we will go over the write path of a transaction modifying multiple
 keys, and the read path for reading a consistent combination of values from multiple tablets.
 
-## Write path overview
+## Write Path 
 
 Let us walk through the lifecycle of a single distributed write-only transaction. Suppose we are
 trying to modify rows with keys `k1` and `k2`. If they belong to the same tablet, we could execute
@@ -117,7 +117,7 @@ special "applied everywhere" entry to the Raft log of the status tablet. Raft lo
 to this transaction will be cleaned up from the status tablet's Raft log as part of regular
 garbage-collection of old Raft logs soon after this point.
 
-## Read path overview
+## Read Path
 
 YugaByte DB is an [MVCC](https://en.wikipedia.org/wiki/Multiversion_concurrency_control) database,
 which means it internally keeps track of multiple versions of the same value. Read operations don't
@@ -208,16 +208,16 @@ it is treated as if DocDB already contained permanent records with hybrid time e
 transaction's commit time. The [cleanup](../transactional-io-path/#6-asynchronously-applying-and-cleaning-up-provisional-records)
 of provisional records happens independently and asynchronously.
 
-### 4. Tablets respond to the YQL engine
+### 4. Tablets respond to YQL 
 
-Each tablet's response to the YQL engine contains the following:
+Each tablet's response to YQL contains the following:
 
   * Whether or not read restart is required.
   * **local_limit<sub>tablet</sub>** to be used to restrict future read restarts caused by this
     tablet.
   * The actual values that have been read from this tablet.
 
-### 5. The YQL engine sends the response to the client
+### 5. YQL sends the response to the client
 
 As soon as all read operations from all participating tablets succeed and it has been determined
 that there is no need to restart the read transaction, a response is sent to the client using the

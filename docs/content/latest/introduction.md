@@ -11,7 +11,7 @@ menu:
   latest:
     identifier: introduction
     weight: 20
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 
@@ -37,13 +37,13 @@ YugaByte DB feature highlights are listed below.
 
 - Transactional [document store](../architecture/concepts/docdb/) backed by self-healing, strongly consistent [replication](../architecture/concepts/docdb/replication/).
 
-### 2. High Performance
+### 2. High Performance & Massively Scalable
 
 - Low latency for geo-distributed applications with multiple [read consistency levels](../architecture/concepts/docdb/replication/#tunable-read-consistency) and [read-only replicas](../architecture/concepts/docdb/replication/#read-only-replicas).
 
-- High throughput for ingesting and serving ever-growing datasets.
+- Linearly scalable throughput for ingesting and serving ever-growing datasets.
 
-### 3. Planet Scale
+### 3. Geo-Distributed
 
 - [Global data distribution](../explore/global-distribution/) that brings consistent data close to users through multi-region and multi-cloud deployments.
 
@@ -79,3 +79,68 @@ The YugaByte DB APIs are isolated and independent from one another today. This m
 
 [DocDB](../architecture/concepts/docdb/), YugaByte DB's distributed document store common across all APIs, is built using a custom integration of Raft replication, distributed ACID transactions and the RocksDB storage engine. Specifically, DocDB enhances RocksDB by transforming it from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB’s [sharding](../architecture/concepts/docdb/sharding/), [replication/fault-tolerance](../architecture/concepts/docdb/replication/) and [distributed ACID transactions](../architecture/transactions/distributed-txns/) architecture are all based on the the [Google Spanner design](https://research.google.com/archive/spanner-osdi2012.pdf) first published in 2012. [How We Built a High Performance Document Store on RocksDB?](https://blog.yugabyte.com/how-we-built-a-high-performance-document-store-on-rocksdb/) provides an in-depth look into DocDB.
 
+## What are the trade-offs involved in using YugaByte DB?
+
+Trade-offs depend on the type of database used as baseline for comparison.
+
+### Monolithic SQL
+
+Examples: PostgreSQL, MySQL, Oracle, Amazon Aurora.
+
+Benefits of YugaByte DB
+
+- Scale write throughput linearly across multiple nodes and/or geographic regions. 
+- Automatic failover and native repair.
+
+Trade-offs
+
+- Transactions and JOINs can now span multiple nodes, thereby increasing latency.
+
+Learn more: [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-query-layer/)
+
+### Traditional NewSQL
+
+Examples: Vitess, Citus
+
+Benefits of YugaByte DB
+
+- Distributed transactions across any number of nodes.
+- No single point of failure given all nodes are equal.
+
+Trade-offs
+
+- None
+
+Learn more: [Rise of Globally Distributed SQL Databases – Redefining Transactional Stores for Cloud Native Era](https://blog.yugabyte.com/rise-of-globally-distributed-sql-databases-redefining-transactional-stores-for-cloud-native-era/)
+
+### Transactional NoSQL 
+
+Examples: MongoDB, Amazon DynamoDB, FoundationDB, Azure Cosmos DB.
+
+Benefits of YugaByte DB
+
+- Flexibility of SQL as query needs change in response to business changes.
+- Distributed transactions across any number of nodes.
+- Low latency, strongly consistent reads given that read-time quorum is avoided altogether.
+
+Trade-offs
+
+- None
+
+Learn more: [Why are NoSQL Databases Becoming Transactional?](https://blog.yugabyte.com/nosql-databases-becoming-transactional-mongodb-dynamodb-faunadb-cosmosdb/)
+
+### Eventually Consistent NoSQL
+
+Examples: Apache Cassandra, Couchbase.
+
+Benefits of YugaByte DB
+
+- Flexibility of SQL as query needs change in response to business changes.
+- Strongly consistent, zero data loss writes.
+- Strongly consistent as well as timeline-consistent reads without resorting to eventual consistency-related penalties such as read repairs and anti-entropy.
+
+Trade-offs
+
+- Extremely short unavailability during the leader election time for all shard leaders lost during a node failure or network partition. 
+
+Learn more: [Apache Cassandra: The Truth Behind Tunable Consistency, Lightweight Transactions & Secondary Indexes](https://blog.yugabyte.com/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/)

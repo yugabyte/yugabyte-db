@@ -11,7 +11,7 @@ menu:
     weight: 1130
 ---
 
-The YugaByte DB code base has leveraged several open source projects as a starting point.
+The YugaByte DB codebase has leveraged several open source projects as a starting point.
 
 * Postgres stateless language layer for implementing YSQL.
 
