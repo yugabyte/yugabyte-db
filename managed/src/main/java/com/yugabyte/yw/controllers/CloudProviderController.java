@@ -120,7 +120,6 @@ public class CloudProviderController extends AuthenticatedController {
         }
         accessKey.delete();
       }
-      InstanceType.deleteInstanceTypesForProvider(provider);
       NodeInstance.deleteByProvider(providerUUID);
       provider.delete();
       return ApiResponse.success("Deleted provider: " + providerUUID);
