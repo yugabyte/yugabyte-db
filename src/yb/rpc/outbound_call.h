@@ -226,10 +226,8 @@ class OutboundCall : public RpcCall {
 
   // Mark the call as failed. This also triggers the callback to notify
   // the caller. If the call failed due to a remote error, then err_pb
-  // should be set to the error returned by the remote server. Takes
-  // ownership of 'err_pb'.
-  void SetFailed(const Status& status,
-                 ErrorStatusPB* err_pb = NULL);
+  // should be set to the error returned by the remote server.
+  void SetFailed(const Status& status, std::unique_ptr<ErrorStatusPB> err_pb = nullptr);
 
   // Mark the call as timed out. This also triggers the callback to notify
   // the caller.
@@ -330,7 +328,7 @@ class OutboundCall : public RpcCall {
   mutable simple_spinlock lock_;
   std::atomic<State> state_ = {READY};
   Status status_;
-  gscoped_ptr<ErrorStatusPB> error_pb_;
+  std::unique_ptr<ErrorStatusPB> error_pb_;
 
   // Call the user-provided callback.
   void CallCallback();

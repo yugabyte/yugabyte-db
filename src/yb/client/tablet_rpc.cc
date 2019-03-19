@@ -244,7 +244,7 @@ bool TabletInvoker::Done(Status* status) {
 
   // Prefer controller failures over response failures.
   Status resp_error_status = ErrorStatus(rpc_->response_error());
-  if (status->ok() && !resp_error_status.ok()) {
+  if ((status->ok() || status->IsRemoteError()) && !resp_error_status.ok()) {
     *status = resp_error_status;
   }
 

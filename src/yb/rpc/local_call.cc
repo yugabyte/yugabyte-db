@@ -93,7 +93,7 @@ void LocalYBInboundCall::Respond(const google::protobuf::MessageLite& response, 
     call->SetFinished();
   } else {
     call->SetFailed(STATUS(RemoteError, "Local call error"),
-                    new ErrorStatusPB(yb::down_cast<const ErrorStatusPB&>(response)));
+                    std::make_unique<ErrorStatusPB>(yb::down_cast<const ErrorStatusPB&>(response)));
   }
 }
 

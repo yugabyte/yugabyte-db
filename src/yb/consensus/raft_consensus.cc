@@ -1701,7 +1701,7 @@ Result<bool> RaftConsensus::EnqueuePreparesUnlocked(const ConsensusRequestPB& re
           msg, last ? propagated_safe_time : HybridTime::kInvalid);
       if (PREDICT_FALSE(!prepare_status.ok())) {
         --iter;
-        LOG(WARNING) << "StartReplicaOperationUnlocked failed: " << prepare_status.ToString();
+        LOG_WITH_PREFIX(WARNING) << "StartReplicaOperationUnlocked failed: " << prepare_status;
         break;
       }
       if (last) {

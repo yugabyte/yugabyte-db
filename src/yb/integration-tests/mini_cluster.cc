@@ -594,6 +594,9 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     auto server = cluster->mini_tablet_server(i)->server();
     auto peers = server->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
+      WARN_NOT_OK(
+          WaitFor([peer] { return peer->consensus() != nullptr; }, 5s, "Waiting peer ready"),
+          "List tablet peers failure");
       if (filter(peer)) {
         result.push_back(peer);
       }
