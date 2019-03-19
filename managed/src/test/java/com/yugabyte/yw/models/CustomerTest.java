@@ -164,13 +164,14 @@ public class CustomerTest extends FakeDBApplication {
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     Universe universe = createUniverse(c.getCustomerId());
     UniverseDefinitionTaskParams.UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.provider = p.code;
+    UUID randProviderUUID = UUID.randomUUID();
+    userIntent.provider = randProviderUUID.toString();
     userIntent.regionList = new ArrayList<UUID>();
     userIntent.regionList.add(r.uuid);
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
     c.addUniverseUUID(universe.universeUUID);
     c.save();
-    Set<Universe> universes = c.getUniversesForProvider("aws");
+    Set<Universe> universes = c.getUniversesForProvider(randProviderUUID);
     assertEquals(1, universes.size());
   }
 }
