@@ -60,6 +60,19 @@ Create chart name and version as used by the chart label.
 {{- end -}}
 
 {{/*
+  Get YugaByte master addresses for PostStart
+*/}}
+{{- define "yugabyte.master_addresses_ps" -}}
+{{- $master_replicas := .Values.replicas.master | int -}}
+  {{- range .Values.Services }}
+    {{- if eq .name "yb-masters" }}
+      {{- $domain_name := .domainName -}}
+      {{range $index := until $master_replicas }}{{if ne $index 0}},{{end}}yb-master-{{ $index }}.yb-masters.$NAMESPACE.svc.{{ $domain_name }}:7100{{end}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{/*
 Get the fully qualified server address
 */}}
 {{- define "yugabyte.server_address" -}}

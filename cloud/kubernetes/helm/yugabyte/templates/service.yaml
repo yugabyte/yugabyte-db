@@ -180,6 +180,22 @@ spec:
       containers:
       - name: "{{ .label }}"
         image: "{{ $root.Values.Image.repository }}:{{ $root.Values.Image.tag }}"
+        {{ if $root.Values.initDb}}
+        {{ if eq .name "yb-tservers" }}
+        lifecycle:
+          postStart:
+            exec:
+              command:
+                - "sh"
+                - "-c"
+                - >
+                  if [ "$HOSTNAME" == "yb-tserver-0" ]; then
+                  while ! ./bin/yb-admin -master_addresses {{ template "yugabyte.master_addresses_ps" $root }} list_all_masters | grep -q "LEADER"; do true; done;
+                  YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses={{ template "yugabyte.master_addresses_ps" $root }} /home/yugabyte/tserver/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres > /tmp/initdb.log;
+                  ./bin/yb-admin -master_addresses {{ template "yugabyte.master_addresses_ps" $root }} setup_redis_table;
+                  fi
+        {{ end }}
+        {{ end }}
         imagePullPolicy: {{ $root.Values.Image.pullPolicy }}
         env:
         - name: POD_IP
