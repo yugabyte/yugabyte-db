@@ -189,10 +189,12 @@ spec:
                 - "sh"
                 - "-c"
                 - >
+                  if ! ./bin/yb-admin -master_addresses {{ template "yugabyte.master_addresses_ps" $root }} list_tables | grep -q "postgres.pg_enum"; then
                   if [ "$HOSTNAME" == "yb-tserver-0" ]; then
                   while ! ./bin/yb-admin -master_addresses {{ template "yugabyte.master_addresses_ps" $root }} list_all_masters | grep -q "LEADER"; do true; done;
                   YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses={{ template "yugabyte.master_addresses_ps" $root }} /home/yugabyte/tserver/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres > /tmp/initdb.log;
                   ./bin/yb-admin -master_addresses {{ template "yugabyte.master_addresses_ps" $root }} setup_redis_table;
+                  fi;
                   fi
         {{ end }}
         {{ end }}
