@@ -206,7 +206,9 @@ std::ostream& operator<<(std::ostream& out, const ReplicateData& data) {
 
 class RetryableRequests::Impl {
  public:
-  explicit Impl(std::string log_prefix) : log_prefix_(std::move(log_prefix)) {}
+  explicit Impl(std::string log_prefix) : log_prefix_(std::move(log_prefix)) {
+    VLOG_WITH_PREFIX(1) << "Start";
+  }
 
   bool Register(const ConsensusRoundPtr& round, RestartSafeCoarseTimePoint entry_time) {
     auto data = ReplicateData::FromMsg(*round->replicate_msg());
@@ -310,7 +312,8 @@ class RetryableRequests::Impl {
       LOG_WITH_PREFIX(DFATAL) << "Replication finished for request with unknown id " << data;
       return;
     }
-    VLOG_WITH_PREFIX(4) << "Running replicated " << data << ", " << status;
+    VLOG_WITH_PREFIX(4) << "Running " << (status.ok() ? "replicated " : "aborted ") << data
+                        << ", " << status;
 
     static Status duplicate_write_status = STATUS(AlreadyPresent, "Duplicate request");
     auto status_for_duplicate = status.ok() ? duplicate_write_status : status;
@@ -370,7 +373,7 @@ class RetryableRequests::Impl {
     for (const auto& p : clients_) {
       result.running += p.second.running.size();
       result.replicated += p.second.replicated.size();
-      LOG(INFO) << "Replicated: " << yb::ToString(p.second.replicated);
+      LOG_WITH_PREFIX(INFO) << "Replicated: " << yb::ToString(p.second.replicated);
     }
     return result;
   }
