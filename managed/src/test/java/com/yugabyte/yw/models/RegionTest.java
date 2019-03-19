@@ -7,6 +7,7 @@ import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.*;
 
 import java.util.Set;
+import java.util.List;
 import java.util.UUID;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -179,5 +180,24 @@ public class RegionTest extends FakeDBApplication {
     AvailabilityZone.create(r, "az-1", "az 1", "subnet-1");
     r.delete();
     assertEquals(0, AvailabilityZone.find.all().size());
+  }
+
+  @Test
+  public void testGetByProviderMultipleProviders() {
+    Provider testProvider = ModelFactory.gcpProvider(defaultCustomer);
+    Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
+    Region r1 = Region.create(testProvider, "region-2", "region 2", "default-image");
+    UUID randomUUID = UUID.randomUUID();
+    List<Region> fetchedRegions = Region.getByProvider(defaultProvider.uuid);
+    assertEquals(fetchedRegions.size(), 1);
+  }
+
+  @Test
+  public void testGetByProviderMultipleRegions() {
+    Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
+    Region r1 = Region.create(defaultProvider, "region-2", "region 2", "default-image");
+    UUID randomUUID = UUID.randomUUID();
+    List<Region> fetchedRegions = Region.getByProvider(defaultProvider.uuid);
+    assertEquals(fetchedRegions.size(), 2);
   }
 }

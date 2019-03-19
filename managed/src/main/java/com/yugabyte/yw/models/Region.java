@@ -140,6 +140,10 @@ public class Region extends Model {
     return find.where().eq("provider_uuid", provider.uuid).eq("code", code).findUnique();
   }
 
+  public static List<Region> getByProvider(UUID providerUUID) {
+    return find.where().eq("provider_uuid", providerUUID).findList();
+  }
+
   public static Region get(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     String regionQuery
         = " select r.uuid, r.code, r.name"

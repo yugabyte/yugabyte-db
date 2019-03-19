@@ -15,6 +15,8 @@ import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.Id;
 
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+
 import org.joda.time.DateTime;
 import org.mindrot.jbcrypt.BCrypt;
 import org.slf4j.Logger;
@@ -120,10 +122,20 @@ public class Customer extends Model {
   }
 
   @JsonIgnore
-  public Set<Universe> getUniversesForProvider(String providerCode) {
-    return getUniverses()
-        .stream().filter(u -> u.getUniverseDetails().getPrimaryCluster().userIntent.provider.equals(providerCode))
+  public Set<Universe> getUniversesForProvider(UUID providerUUID) {
+    Set<Universe> universesInProvider = getUniverses()
+        .stream().filter(u -> checkClusterInProvider(u, providerUUID))
         .collect(Collectors.toSet());
+    return universesInProvider;
+  }
+
+  private boolean checkClusterInProvider(Universe universe, UUID providerUUID) {
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      if (cluster.userIntent.provider.equals(providerUUID.toString())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public static final Find<UUID, Customer> find = new Find<UUID, Customer>() {
