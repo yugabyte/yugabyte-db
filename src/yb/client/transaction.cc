@@ -567,7 +567,7 @@ class YBTransaction::Impl final {
 
     manager_->UpdateClock(propagated_hybrid_time);
     manager_->rpcs().Unregister(&commit_handle_);
-    commit_callback_(status);
+    commit_callback_(status.IsAlreadyPresent() ? Status::OK() : status);
   }
 
   void AbortDone(const Status& status,
