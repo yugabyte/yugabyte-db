@@ -19,6 +19,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyBoolean;
+import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -80,6 +82,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
   Customer customer;
 
+  AccessManager mockAccessManager;
   CloudQueryHelper mockQueryHelper;
   DnsManager mockDnsManager;
   NetworkManager mockNetworkManager;
@@ -88,6 +91,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Override
   protected Application provideApplication() {
     ApiHelper mockApiHelper = mock(ApiHelper.class);
+    mockAccessManager = mock(AccessManager.class);
     mockQueryHelper = mock(CloudQueryHelper.class);
     mockDnsManager = mock(DnsManager.class);
     mockNetworkManager = mock(NetworkManager.class);
@@ -95,6 +99,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
+        .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
         .overrides(bind(CloudQueryHelper.class).toInstance(mockQueryHelper))
         .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
         .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
@@ -106,6 +111,12 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     new File(TestHelper.TMP_PATH).mkdirs();
+    try{
+      String kubeFile = createTempFile("test2.conf", "test5678");
+      when(mockAccessManager.createKubernetesConfig(any(), anyMap(), anyBoolean())).thenReturn(kubeFile);
+    } catch (Exception e) {
+      // Do nothing
+    }
   }
 
   @After
@@ -274,7 +285,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public void testDeleteProviderWithAccessKey() {
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "region 1", "yb image");
-    AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
+    AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
     Result result = deleteProvider(p.uuid);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
@@ -282,6 +293,24 @@ public class CloudProviderControllerTest extends FakeDBApplication {
         allOf(notNullValue(), equalTo("Deleted provider: " + p.uuid)));
     assertEquals(0, AccessKey.getAll(p.uuid).size());
     assertNull(Provider.get(p.uuid));
+    verify(mockAccessManager, times(1)).deleteKey(r.uuid, ak.getKeyCode());
+  }
+
+  @Test
+  public void testDeleteProviderWithMultiRegionAccessKey() {
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "region 1", "yb image");
+    Region r1 = Region.create(p, "region-2", "region 2", "yb image");
+    AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
+    Result result = deleteProvider(p.uuid);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.asText(),
+        allOf(notNullValue(), equalTo("Deleted provider: " + p.uuid)));
+    assertEquals(0, AccessKey.getAll(p.uuid).size());
+    assertNull(Provider.get(p.uuid));
+    verify(mockAccessManager, times(1)).deleteKey(r.uuid, ak.getKeyCode());
+    verify(mockAccessManager, times(1)).deleteKey(r1.uuid, ak.getKeyCode());
   }
 
   @Test
@@ -296,7 +325,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Provider p = ModelFactory.awsProvider(customer);
     Universe universe = createUniverse(customer.getCustomerId());
     UniverseDefinitionTaskParams.UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.provider = p.code;
+    userIntent.provider = p.uuid.toString();
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");

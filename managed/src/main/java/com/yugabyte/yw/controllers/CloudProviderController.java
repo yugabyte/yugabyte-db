@@ -108,7 +108,7 @@ public class CloudProviderController extends AuthenticatedController {
     }
 
     Customer customer = Customer.get(customerUUID);
-    if (customer.getUniversesForProvider(provider.code).size() > 0) {
+    if (customer.getUniversesForProvider(providerUUID).size() > 0) {
       return ApiResponse.error(BAD_REQUEST, "Cannot delete Provider with Universes");
     }
 
@@ -117,6 +117,9 @@ public class CloudProviderController extends AuthenticatedController {
       for (AccessKey accessKey : AccessKey.getAll(providerUUID)) {
         if (!accessKey.getKeyInfo().provisionInstanceScript.isEmpty()) {
           new File(accessKey.getKeyInfo().provisionInstanceScript).delete();
+        }
+        for(Region region : Region.getByProvider(providerUUID)) {
+          accessManager.deleteKey(region.uuid, accessKey.getKeyCode());
         }
         accessKey.delete();
       }
