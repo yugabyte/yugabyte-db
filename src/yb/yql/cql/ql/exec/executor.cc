@@ -1563,9 +1563,10 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
       if (response.has_child_transaction_result()) {
         const auto& result = response.child_transaction_result();
         const Status s = exec_context_->ApplyChildTransactionResult(result);
+        // If restart is needed, reset the current context and return immediately.
         if (NeedsRestart(s)) {
           exec_context_->Reset(client::Restart::kTrue, rescheduler_);
-          break;
+          return false;
         }
         RETURN_NOT_OK(s);
       }
