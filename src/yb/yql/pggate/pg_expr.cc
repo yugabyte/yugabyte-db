@@ -290,7 +290,7 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool 
     case YB_YQL_DATA_TYPE_STRING:
       if (!is_null) {
         char *value;
-        int64_t bytes = 0;
+        int64_t bytes = type_entity_->datum_fixed_size;
         type_entity_->datum_to_yb(datum, &value, &bytes);
         ql_value_.set_string_value(value, bytes);
       }
@@ -327,7 +327,7 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool 
     case YB_YQL_DATA_TYPE_BINARY:
       if (!is_null) {
         uint8_t *value;
-        int64_t bytes;
+        int64_t bytes = type_entity_->datum_fixed_size;
         type_entity_->datum_to_yb(datum, &value, &bytes);
         ql_value_.set_binary_value(value, bytes);
       }
