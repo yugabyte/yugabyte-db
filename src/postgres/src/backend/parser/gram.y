@@ -13129,7 +13129,6 @@ Typename:	SimpleTypename opt_array_bounds
 			/* SQL standard syntax, currently only one-dimensional */
 			| SimpleTypename ARRAY '[' Iconst ']'
 				{
-					parser_ybc_not_support(@1, "Complex type");
 					$$ = $1;
 					$$->arrayBounds = list_make1(makeInteger($4));
 				}
@@ -13169,7 +13168,7 @@ opt_array_bounds:
 SimpleTypename:
 			GenericType	{ $$ = $1; }
 			| Numeric	{ $$ = $1; }
-			| Bit	{ parser_ybc_not_support(@1, "Bit type"); $$ = $1; }
+			| Bit	{ $$ = $1; }
 			| Character	{ $$ = $1; }
 			| ConstDatetime	{ $$ = $1; }
 			| ConstInterval opt_interval
@@ -13328,12 +13327,10 @@ opt_float:	'(' Iconst ')'
  */
 Bit:		BitWithLength
 				{
-					parser_ybc_not_support(@1, "BIT");
 					$$ = $1;
 				}
 			| BitWithoutLength
 				{
-					parser_ybc_not_support(@1, "BIT");
 					$$ = $1;
 				}
 		;
@@ -13354,7 +13351,6 @@ ConstBit:	BitWithLength
 BitWithLength:
 			BIT opt_varying '(' expr_list ')'
 				{
-					parser_ybc_not_support(@1, "BIT");
 					char *typname;
 
 					typname = $2 ? "varbit" : "bit";
@@ -13367,7 +13363,6 @@ BitWithLength:
 BitWithoutLength:
 			BIT opt_varying
 				{
-					parser_ybc_not_support(@1, "BIT");
 					/* bit defaults to bit(1), varbit to no limit */
 					if ($2)
 					{

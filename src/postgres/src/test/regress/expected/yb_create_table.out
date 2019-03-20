@@ -75,7 +75,6 @@ CREATE TABLE person (
 	age			int4,
 	location 	point
 );
-ERROR:  Type not yet supported in YugaByte: 600 (POINT)
 CREATE TABLE emp (
 	salary 		int4,
 	manager 	name
@@ -113,16 +112,13 @@ CREATE TABLE dept (
 CREATE TABLE slow_emp4000 (
 	home_base	 box
 );
-ERROR:  Type not yet supported in YugaByte: 603 (BOX)
 CREATE TABLE fast_emp4000 (
 	home_base	 box
 );
-ERROR:  Type not yet supported in YugaByte: 603 (BOX)
 CREATE TABLE road (
 	name		text,
 	thepath 	path
 );
-ERROR:  Type not yet supported in YugaByte: 602 (PATH)
 CREATE TABLE ihighway () INHERITS (road);
 ERROR:  INHERITS not supported yet
 LINE 1: CREATE TABLE ihighway () INHERITS (road);
@@ -140,4 +136,3 @@ CREATE TABLE real_city (
 	cname		text,
 	outline 	path
 );
-ERROR:  Type not yet supported in YugaByte: 602 (PATH)

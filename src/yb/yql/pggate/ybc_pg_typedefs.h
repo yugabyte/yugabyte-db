@@ -121,6 +121,13 @@ typedef struct PgTypeEntity {
   // Allow to be used for primary key.
   bool allow_for_primary_key;
 
+  // Datum in-memory fixed size.
+  // - Size of in-memory representation for a type. Usually it's sizeof(a_struct).
+  //   Example: BIGINT in-memory size === sizeof(int64)
+  //            POINT in-memory size === sizeof(struct Point)
+  // - Set to (-1) for types of variable in-memory size - VARSIZE_ANY should be used.
+  int64_t datum_fixed_size;
+
   // Converting Postgres datum to YugaByte expression.
   YBCPgDatumToData datum_to_yb;
 
