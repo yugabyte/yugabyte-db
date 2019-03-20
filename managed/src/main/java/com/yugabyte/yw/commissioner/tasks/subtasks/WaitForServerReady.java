@@ -86,8 +86,21 @@ public class WaitForServerReady extends AbstractTaskBase {
     int numIters = 0;
     int userWaitTimeMs = taskParams().waitTimeMs != 0 ? taskParams().waitTimeMs :
                              RollingRestartParams.DEFAULT_SLEEP_AFTER_RESTART_MS;
+
+    // Need not perform any rpc for MASTER.
+    if (taskParams().serverType == ServerType.MASTER) {
+      LOG.info("Waiting for master on " + taskParams().nodeName);
+      sleepFor(userWaitTimeMs);
+      return;
+    }
+
     String masterAddresses = Universe.get(taskParams().universeUUID).getMasterAddresses();
     LOG.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
+
+    if (masterAddresses == null || masterAddresses.isEmpty()) {
+      throw new IllegalArgumentException("Invalid master addresses " + masterAddresses + " for " +
+          taskParams().universeUUID);
+    }
 
     client = ybService.getClient(masterAddresses);
     NodeDetails node = Universe.get(taskParams().universeUUID).getNode(taskParams().nodeName);
@@ -102,9 +115,7 @@ public class WaitForServerReady extends AbstractTaskBase {
                                          "not for a node running tserver : " + node.toString());
     }
 
-    HostAndPort hp = HostAndPort.fromParts(
-        node.cloudInfo.private_ip,
-        taskParams().serverType == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
+    HostAndPort hp = HostAndPort.fromParts(node.cloudInfo.private_ip, node.tserverRpcPort);
 
     IsTabletServerReadyResponse response = null;
     while (true) {
@@ -112,22 +123,28 @@ public class WaitForServerReady extends AbstractTaskBase {
       try {
         response = client.isTServerReady(hp);
       } catch (Exception e) {
+        String excepMsg = getName() + " hit error " + e.getMessage();
         // There is no generic mechanism from proto/rpc to check if an older server does not have
         // this rpc implemented. So, we just sleep for remaining time on any such error.
+        if (e.getMessage().contains("invalid method name: IsTabletServerReady")) {
+          LOG.info(excepMsg);
+          break;
+        }
+
         if (numIters > (MAX_TOTAL_WAIT_MS / WAIT_EACH_ATTEMPT_MS)) {
-          LOG.info("Timing out after iters={}, message={}, numNotRunning={}.",
-                   numIters, response.errorMessage(), response.getNumNotRunningTablets());
+          LOG.info("Timing out after iters={}, message={}, numNotRunning={}, excepMsg={}.",
+                   numIters, response != null ? response.errorMessage() : "",
+                   response != null ? response.getNumNotRunningTablets() : 0, excepMsg);
           break;
         }
 
         if (numIters % LOG_EVERY_NUM_ITERS == 0) {
-          LOG.info("Iters={}, message={}, numNotRunning={}.",
-                   numIters, response.errorMessage(), response.getNumNotRunningTablets());
+          LOG.info("Iters={}, message={}, numNotRunning={}, excepMsg={}.",
+                   numIters, response != null ? response.errorMessage() : "",
+                   response != null ? response.getNumNotRunningTablets() : 0, excepMsg);
         }
 
-        try {
-          Thread.sleep(WAIT_EACH_ATTEMPT_MS);
-        } catch (InterruptedException ie) {}
+        sleepFor(WAIT_EACH_ATTEMPT_MS);
 
         continue;
       }

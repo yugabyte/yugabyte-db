@@ -328,10 +328,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createWaitForServerReady(NodeDetails node, ServerType serverType,
                                                int sleepTimeMs) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForServerReady", executor);
-    // Do not need check for MASTER as there is only one tablet 'load' on them.
-    if (serverType != ServerType.TSERVER) {
-      return subTaskGroup;
-    }
     WaitForServerReady.Params params = new WaitForServerReady.Params();
     params.universeUUID = taskParams().universeUUID;
     params.nodeName = node.nodeName;
