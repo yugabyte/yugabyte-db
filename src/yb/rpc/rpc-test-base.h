@@ -63,22 +63,11 @@ std::unique_ptr<ServiceIf> CreateCalculatorService(
 
 class CalculatorServiceMethods {
  public:
-  static const constexpr auto kSendStringsMethodName = "SendStrings";
-  static const constexpr auto kSleepMethodName = "Sleep";
   static const constexpr auto kAddMethodName = "Add";
   static const constexpr auto kDisconnectMethodName = "Disconnect";
-
-  static RemoteMethod* SendStringsMethod() {
-    static RemoteMethod method(
-        rpc_test::CalculatorServiceIf::static_service_name(), kSendStringsMethodName);
-    return &method;
-  }
-
-  static RemoteMethod* SleepMethod() {
-    static RemoteMethod method(
-        rpc_test::CalculatorServiceIf::static_service_name(), kSleepMethodName);
-    return &method;
-  }
+  static const constexpr auto kEchoMethodName = "Echo";
+  static const constexpr auto kSendStringsMethodName = "SendStrings";
+  static const constexpr auto kSleepMethodName = "Sleep";
 
   static RemoteMethod* AddMethod() {
     static RemoteMethod method(
@@ -89,6 +78,24 @@ class CalculatorServiceMethods {
   static RemoteMethod* DisconnectMethod() {
     static RemoteMethod method(
         rpc_test::CalculatorServiceIf::static_service_name(), kDisconnectMethodName);
+    return &method;
+  }
+
+  static RemoteMethod* EchoMethod() {
+    static RemoteMethod method(
+        rpc_test::CalculatorServiceIf::static_service_name(), kEchoMethodName);
+    return &method;
+  }
+
+  static RemoteMethod* SendStringsMethod() {
+    static RemoteMethod method(
+        rpc_test::CalculatorServiceIf::static_service_name(), kSendStringsMethodName);
+    return &method;
+  }
+
+  static RemoteMethod* SleepMethod() {
+    static RemoteMethod method(
+        rpc_test::CalculatorServiceIf::static_service_name(), kSleepMethodName);
     return &method;
   }
 };
