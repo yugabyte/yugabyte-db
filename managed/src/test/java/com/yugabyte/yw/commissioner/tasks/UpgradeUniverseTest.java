@@ -130,15 +130,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       TaskType.WaitForServer
   );
 
-  List<TaskType> GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE_MASTER = ImmutableList.of(
-      TaskType.SetNodeState,
-      TaskType.AnsibleConfigureServers,
-      TaskType.AnsibleClusterServerCtl,
-      TaskType.AnsibleClusterServerCtl,
-      TaskType.SetNodeState
-  );
-
-  List<TaskType> GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER = ImmutableList.of(
+  List<TaskType> GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE = ImmutableList.of(
       TaskType.SetNodeState,
       TaskType.AnsibleConfigureServers,
       TaskType.AnsibleClusterServerCtl,
@@ -156,15 +148,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       TaskType.WaitForServer
   );
 
-  List<TaskType> SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE_MASTER = ImmutableList.of(
-      TaskType.SetNodeState,
-      TaskType.AnsibleClusterServerCtl,
-      TaskType.AnsibleConfigureServers,
-      TaskType.AnsibleClusterServerCtl,
-      TaskType.SetNodeState
-  );
-
-  List<TaskType> SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER = ImmutableList.of(
+  List<TaskType> SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE = ImmutableList.of(
       TaskType.SetNodeState,
       TaskType.AnsibleClusterServerCtl,
       TaskType.AnsibleConfigureServers,
@@ -178,9 +162,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
                                             int startPosition, boolean isRollingUpgrade) {
     int position = startPosition;
     if (isRollingUpgrade) {
-      List<TaskType> taskSequence =
-          serverType.equals(MASTER) ? SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE_MASTER
-                                    : SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER;
+      List<TaskType> taskSequence = SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE;
       for (int nodeIdx = 1; nodeIdx <= 3; nodeIdx++) {
         String nodeName = String.format("host-n%d", nodeIdx);
         for (int j = 0; j < taskSequence.size(); j++) {
@@ -249,9 +231,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
                                           boolean isEdit) {
     int position = startPosition;
     if (isRollingUpgrade) {
-      List<TaskType> taskSequence =
-          serverType.equals(MASTER) ? GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE_MASTER
-                                    : GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER;
+      List<TaskType> taskSequence = GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE;
       for (int nodeIdx = 1; nodeIdx <= 3; nodeIdx++) {
         String nodeName = String.format("host-n%d", nodeIdx);
         for (int j = 0; j < taskSequence.size(); j++) {
@@ -446,7 +426,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     position = assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false);
     position = assertSoftwareUpgradeSequence(subTasksByPosition, TSERVER, position, true);
     assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(36, position);
+    assertEquals(39, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
@@ -553,7 +533,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     position = assertGFlagsUpgradeSequence(subTasksByPosition, MASTER, position, true);
     position = assertGFlagsCommonTasks(subTasksByPosition, position,
                                        UpgradeType.ROLLING_UPGRADE_MASTER_ONLY, true);
-    assertEquals(18, position);
+    assertEquals(21, position);
   }
 
   @Test
@@ -597,7 +577,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     position = assertGFlagsUpgradeSequence(subTasksByPosition, TSERVER, position, true);
     position = assertGFlagsCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE,
                                        true);
-    assertEquals(39, position);
+    assertEquals(42, position);
   }
 
   @Test
@@ -678,6 +658,6 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     position = assertGFlagsUpgradeSequence(subTasksByPosition, MASTER, position, true, true);
     position = assertGFlagsCommonTasks(subTasksByPosition, position,
                    UpgradeType.ROLLING_UPGRADE_MASTER_ONLY, true);
-    assertEquals(18, position);
+    assertEquals(21, position);
   }
 }
