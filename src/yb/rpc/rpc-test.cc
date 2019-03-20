@@ -648,5 +648,52 @@ TEST_F(TestRpc, TestDisconnect) {
   ASSERT_EQ(kRequests, total);
 }
 
+// Check that we could perform DumpRunningRpcs while timed out calls are in queue.
+//
+// Start listenting socket, that will accept one connection and does not read it.
+// Send big RPC request, that does not fit into socket buffer, so it will be sending forever.
+// Wait until this call is timed out.
+// Check that we could invoke DumpRunningRpcs after it.
+TEST_F(TestRpc, DumpTimedOutCall) {
+  // Set up a simple socket server which accepts a connection.
+  HostPort server_addr;
+  Socket listen_sock;
+  ASSERT_OK(StartFakeServer(&listen_sock, &server_addr));
+
+  std::atomic<bool> stop(false);
+
+  std::thread thread([&listen_sock, &stop] {
+    Socket socket;
+    Endpoint remote;
+    ASSERT_OK(listen_sock.Accept(&socket, &remote, 0));
+    while (!stop.load(std::memory_order_acquire)) {
+      std::this_thread::sleep_for(100ms);
+    }
+  });
+
+  auto messenger = CreateMessenger("Client");
+  Proxy p(messenger, server_addr);
+
+  {
+    rpc_test::EchoRequestPB req;
+    req.set_data(std::string(1_MB, 'X'));
+    rpc_test::EchoResponsePB resp;
+    std::aligned_storage<sizeof(RpcController), alignof(RpcController)>::type storage;
+    auto controller = new (&storage) RpcController;
+    controller->set_timeout(100ms);
+    auto status = p.SyncRequest(CalculatorServiceMethods::EchoMethod(), req, &resp, controller);
+    ASSERT_TRUE(status.IsTimedOut()) << status;
+    controller->~RpcController();
+    memset(&storage, 0xff, sizeof(storage));
+  }
+
+  DumpRunningRpcsRequestPB dump_req;
+  DumpRunningRpcsResponsePB dump_resp;
+  ASSERT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp));
+
+  stop.store(true, std::memory_order_release);
+  thread.join();
+}
+
 } // namespace rpc
 } // namespace yb

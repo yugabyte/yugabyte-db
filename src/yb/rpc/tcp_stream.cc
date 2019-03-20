@@ -390,7 +390,7 @@ void TcpStream::Send(OutboundDataPtr data) {
 void TcpStream::DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) {
   auto call_in_flight = resp->add_calls_in_flight();
   for (auto& entry : sending_) {
-    if (entry.data && entry.data->DumpPB(req, call_in_flight)) {
+    if (entry.data && !entry.data->IsFinished() && entry.data->DumpPB(req, call_in_flight)) {
       call_in_flight = resp->add_calls_in_flight();
     }
   }
