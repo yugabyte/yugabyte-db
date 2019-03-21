@@ -18,11 +18,11 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
 
+import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.Configuration;
 import play.Environment;
 import play.Logger;
-import play.libs.Yaml;
 
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.SoftwareVersion;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.YugawareMetadata;
@@ -41,6 +41,7 @@ public class AppInit {
                  AWSInitializer awsInitializer) {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
+    Yaml yaml = new Yaml();
     String devopsHome = appConfig.getString("yb.devops.home");
     String storagePath = appConfig.getString("yb.storage.path");
 
@@ -58,15 +59,14 @@ public class AppInit {
           appConfig.getBoolean("yb.seedData", false)) {
         Logger.debug("Seed the Yugaware DB");
 
-        List<?> all = (ArrayList<?>) Yaml.load(
-            application.resourceAsStream("db_seed.yml"),
-            application.classloader()
+        List<?> all = (ArrayList<?>) yaml.load(
+            application.resourceAsStream("db_seed.yml")
         );
         Ebean.saveAll(all);
       }
 
       // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
-      Object version = Yaml.load(application.resourceAsStream("version.txt"), application.classloader());
+      Object version = yaml.load(application.resourceAsStream("version.txt"));
       configHelper.loadConfigToDB(SoftwareVersion, ImmutableMap.of("version", version));
       Map <String, Object> ywMetadata = new HashMap<String, Object>();
       // Assign a new Yugaware UUID if not already present in the DB i.e. first install
@@ -92,9 +92,8 @@ public class AppInit {
       }
 
       // Load metrics configurations.
-      Map<String, Object> configs = (HashMap<String, Object>) Yaml.load(
-        application.resourceAsStream("metrics.yml"),
-        application.classloader()
+      Map<String, Object> configs = (HashMap<String, Object>) yaml.load(
+        application.resourceAsStream("metrics.yml")
       );
       MetricConfig.loadConfig(configs);
       

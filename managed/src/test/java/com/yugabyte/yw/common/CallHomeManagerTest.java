@@ -11,7 +11,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 
-import org.asynchttpclient.util.Base64;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -23,6 +22,7 @@ import org.mockito.runners.MockitoJUnitRunner;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
 
@@ -108,7 +108,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
     assertEquals(expectedPayload, params.getValue());
 
     System.out.println(params.getValue());
-    String expectedToken = Base64.encode(defaultCustomer.uuid.toString().getBytes());
+    String expectedToken = Base64.getEncoder().encodeToString(defaultCustomer.uuid.toString().getBytes());
     assertEquals(expectedToken, headers.getValue().get("X-AUTH-TOKEN"));
     assertEquals("http://yw-diagnostics.yugabyte.com", url.getValue());
   }
