@@ -203,6 +203,10 @@ CREATE TABLE bit_defaults(
   b3 bit varying(5) DEFAULT '1001',
   b4 bit varying(5) DEFAULT B'0101'
 );
-\d bit_defaults
+-- Describing table with default values causes memory leaks in Postgres code.
+-- TODO(neil) Add the test case back after the following github is fixed.
+--   https://github.com/YugaByte/yugabyte-db/issues/1049
+--
+-- \d bit_defaults
 -- INSERT INTO bit_defaults DEFAULT VALUES;
 -- TABLE bit_defaults;
