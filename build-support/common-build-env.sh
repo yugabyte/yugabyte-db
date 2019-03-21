@@ -1605,7 +1605,7 @@ is_jenkins_phabricator_build() {
 
 # Check if we're using an NFS partition in YugaByte's build environment.
 is_src_root_on_nfs() {
-  if [[ $YB_SRC_ROOT =~ ^/(n|z|u|net)/ ]]; then
+  if [[ $YB_SRC_ROOT =~ ^/(n|z|u|net|Volumes/net)/ ]]; then
     return 0
   fi
   return 1
