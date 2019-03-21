@@ -5,9 +5,9 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.YugawareProperty;
+import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.libs.Json;
-import play.libs.Yaml;
 
 import javax.inject.Singleton;
 import java.util.Collections;
@@ -95,9 +95,9 @@ public class ConfigHelper {
       if (type.getConfigFile() == null) {
         continue;
       }
-      Map<String, Object> config = (HashMap<String, Object>) Yaml.load(
-          app.resourceAsStream(type.getConfigFile()),
-          app.classloader()
+      Yaml yaml = new Yaml();
+      Map<String, Object> config = (HashMap<String, Object>) yaml.load(
+          app.resourceAsStream(type.getConfigFile())
       );
       loadConfigToDB(type, config);
     }
