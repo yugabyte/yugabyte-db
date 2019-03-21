@@ -55,6 +55,7 @@ Flag | Mandatory | Default | Description
 `--logtostderr`| N | N/A  | Log to standard error.
 `--flagfile`| N | N/A  | Load flags from the specified file.
 `--version` | N | N/A | Show version and build info.
+`--yb_num_shards_per_tserver` | N | -1 | The number of shards per yb-tserver per table when a user table is created. Server automatically picks a valid default internally.
 
 ## Admin UI
 
