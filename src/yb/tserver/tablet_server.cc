@@ -382,9 +382,11 @@ void TabletServer::DisplayRpcIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-tasks", "Redis RPCs", redis_url);
 
   // PGSQL RPCs in Progress.
-  string sql_url = GetDynamicUrlTile("/rpcz", FLAGS_pgsql_proxy_bind_address,
-                                     FLAGS_pgsql_proxy_webserver_port);
-  DisplayIconTile(output, "fa-tasks", "SQL RPCs", sql_url);
+
+  // Commenting this out until we have an http port for YSQL set up. (See ENG-4891)
+  // string sql_url = GetDynamicUrlTile("/rpcz", FLAGS_pgsql_proxy_bind_address,
+  //                                    FLAGS_pgsql_proxy_webserver_port);
+  // DisplayIconTile(output, "fa-tasks", "SQL RPCs", sql_url);
 
 }
 
