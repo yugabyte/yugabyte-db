@@ -7,7 +7,7 @@ menu:
     identifier: api-ysql-commands-select
     parent: api-ysql-commands
 aliases:
-  - /latest/api/ysql/commands/select
+  - /latest/api/ysql/dml_select/
 isTocNested: true
 showAsideToc: true
 ---

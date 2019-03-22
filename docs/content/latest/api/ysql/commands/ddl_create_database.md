@@ -7,7 +7,7 @@ menu:
     identifier: api-ysql-commands-create-db
     parent: api-ysql-commands
 aliases:
-  - /latest/api/ysql/commands/ddl_create_database
+  - /latest/api/ysql/ddl_create_database/
 isTocNested: true
 showAsideToc: true
 ---

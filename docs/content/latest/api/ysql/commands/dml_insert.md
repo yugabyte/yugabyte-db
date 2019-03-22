@@ -7,7 +7,7 @@ menu:
     identifier: api-ysql-commands-insert
     parent: api-ysql-commands
 aliases:
-  - /latest/api/ysql/dml/commands/insert
+  - /latest/api/ysql/dml_insert/
 isTocNested: true
 showAsideToc: true
 ---

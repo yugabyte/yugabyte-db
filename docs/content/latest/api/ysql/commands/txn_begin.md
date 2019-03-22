@@ -7,7 +7,7 @@ menu:
     identifier: api-ysql-commands-txn-begin
     parent: api-ysql-commands
 aliases:
-  - /latest/api/ysql/commands/txn-begin
+  - /latest/api/ysql/transactions/
 isTocNested: true
 showAsideToc: true
 ---

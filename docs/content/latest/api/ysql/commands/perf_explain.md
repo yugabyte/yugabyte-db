@@ -7,7 +7,7 @@ menu:
     identifier: api-ysql-commands-explain
     parent: api-ysql-commands
 aliases:
-  - /latest/api/ysql/commands/perf_explain
+  - /latest/api/ysql/explain/
 isTocNested: true
 showAsideToc: true
 ---
