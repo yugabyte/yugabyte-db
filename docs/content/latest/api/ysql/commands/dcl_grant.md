@@ -7,7 +7,7 @@ menu:
     identifier: api-ysql-commands-grant
     parent: api-ysql-commands-grant
 aliases:
-  - /latest/api/ysql/commands/dcl_grant
+  - /latest/api/ysql/permissions/
 isTocNested: true
 showAsideToc: true
 ---

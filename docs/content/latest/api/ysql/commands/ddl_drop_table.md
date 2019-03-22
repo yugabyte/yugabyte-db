@@ -7,7 +7,7 @@ menu:
     identifier: api-ysql-commands-drop-table
     parent: api-ysql-commands
 aliases:
-  - /latest/api/ysql/commands/ddl_drop_table
+  - /latest/api/ysql/ddl_drop_table/
 isTocNested: true
 showAsideToc: true
 ---

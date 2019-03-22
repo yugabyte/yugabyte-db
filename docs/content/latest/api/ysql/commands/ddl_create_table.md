@@ -8,7 +8,7 @@ menu:
     identifier: api-ysql-commands-create-table
     parent: api-ysql-commands
 aliases:
-  - /latest/api/ysql/commands/ddl_create_table
+  - /latest/api/ysql/ddl_create_table/
 isTocNested: true
 showAsideToc: true
 ---

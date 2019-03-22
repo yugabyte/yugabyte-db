@@ -7,7 +7,7 @@ menu:
     identifier: api-ysql-commands-prepare
     parent: api-ysql-commands
 aliases:
-  - /latest/api/ysql/commands/perf_prepare
+  - /latest/api/ysql/prepare_execute/
 isTocNested: true
 showAsideToc: true
 ---

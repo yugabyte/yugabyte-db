@@ -8,7 +8,7 @@ menu:
     identifier: api-ysql-datatypes-character
     parent: api-ysql-datatypes
 aliases:
-  - /latest/api/ysql/datatypes/type_character
+  - /latest/api/ysql/type_text/
 isTocNested: true
 showAsideToc: true
 ---

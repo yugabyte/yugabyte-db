@@ -7,7 +7,7 @@ menu:
     identifier: api-ysql-commands-create-view
     parent: api-ysql-commands
 aliases:
-  - /latest/api/ysql/commands/ddl_create_view
+  - /latest/api/ysql/ddl_create_view/
 isTocNested: true
 showAsideToc: true
 ---
