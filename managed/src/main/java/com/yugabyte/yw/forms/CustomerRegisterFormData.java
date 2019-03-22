@@ -12,7 +12,7 @@ import play.data.validation.Constraints;
  */
 public class CustomerRegisterFormData {
   @Constraints.Required()
-  @Constraints.MaxLength(5)
+  @Constraints.MaxLength(15)
   public String code;
 
   @Constraints.Required()
