@@ -309,12 +309,81 @@ Status SecureContext::UseCertificate(const Slice& data) {
   return Status::OK();
 }
 
-SecureStream::SecureStream(
-    const SecureContext& context, std::unique_ptr<Stream> lower_stream,
-    const StreamCreateData& data)
+namespace {
+
+class SecureStream : public Stream, public StreamContext {
+ public:
+  SecureStream(const SecureContext& context, std::unique_ptr<Stream> lower_stream,
+               size_t receive_buffer_size, const MemTrackerPtr& buffer_tracker,
+               const StreamCreateData& data)
     : secure_context_(context), lower_stream_(std::move(lower_stream)),
-      remote_hostname_(data.remote_hostname), received_data_(data.allocator, data.limit) {
-}
+      remote_hostname_(data.remote_hostname),
+      encrypted_read_buffer_(receive_buffer_size, buffer_tracker) {
+  }
+
+  SecureStream(const SecureStream&) = delete;
+  void operator=(const SecureStream&) = delete;
+
+  size_t GetPendingWriteBytes() override {
+    return lower_stream_->GetPendingWriteBytes();
+  }
+
+ private:
+  CHECKED_STATUS Start(bool connect, ev::loop_ref* loop, StreamContext* context) override;
+  void Close() override;
+  void Shutdown(const Status& status) override;
+  void Send(OutboundDataPtr data) override;
+  CHECKED_STATUS TryWrite() override;
+  void ParseReceived() override;
+
+  bool Idle(std::string* reason_not_idle) override;
+  bool IsConnected() override;
+  void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
+
+  const Endpoint& Remote() override;
+  const Endpoint& Local() override;
+
+  const Protocol* GetProtocol() override {
+    return SecureStreamProtocol();
+  }
+
+  // Implementation StreamContext
+  void UpdateLastActivity() override;
+  void Transferred(const OutboundDataPtr& data, const Status& status) override;
+  void Destroy(const Status& status) override;
+  Result<ProcessDataResult> ProcessReceived(
+      const IoVecs& data, ReadBufferFull read_buffer_full) override;
+  void Connected() override;
+
+  StreamReadBuffer& ReadBuffer() override {
+    return encrypted_read_buffer_;
+  }
+
+  CHECKED_STATUS Handshake();
+
+  CHECKED_STATUS Init();
+  void Established(SecureState state);
+  static int VerifyCallback(int preverified, X509_STORE_CTX* store_context);
+  bool Verify(bool preverified, X509_STORE_CTX* store_context);
+  void WriteEncrypted(OutboundDataPtr data);
+  CHECKED_STATUS ReadDecrypted();
+
+  std::string ToString() override;
+
+  const SecureContext& secure_context_;
+  std::unique_ptr<Stream> lower_stream_;
+  const std::string remote_hostname_;
+  StreamContext* context_;
+  SecureState state_ = SecureState::kInitial;
+  bool need_connect_ = false;
+  std::vector<OutboundDataPtr> pending_data_;
+  std::vector<std::string> certificate_entries_;
+
+  CircularReadBuffer encrypted_read_buffer_;
+
+  detail::BIOPtr bio_;
+  detail::SSLPtr ssl_;
+};
 
 Status SecureStream::Start(bool connect, ev::loop_ref* loop, StreamContext* context) {
   context_ = context;
@@ -419,11 +488,12 @@ void SecureStream::Destroy(const Status& status) {
   context_->Destroy(status);
 }
 
-Result<size_t> SecureStream::ProcessReceived(const IoVecs& data, ReadBufferFull read_buffer_full) {
+Result<ProcessDataResult> SecureStream::ProcessReceived(
+    const IoVecs& data, ReadBufferFull read_buffer_full) {
   switch (state_) {
     case SecureState::kInitial: {
       if (data[0].iov_len < 2) {
-        return 0;
+        return ProcessDataResult{0, Slice()};
       }
       const uint8_t* bytes = static_cast<const uint8_t*>(data[0].iov_base);
       if (bytes[0] == 0x16 && bytes[1] == 0x03) { // TLS handshake header
@@ -452,7 +522,7 @@ Result<size_t> SecureStream::ProcessReceived(const IoVecs& data, ReadBufferFull 
       auto handshake_status = Handshake();
       LOG_IF_WITH_PREFIX(INFO, !handshake_status.ok()) << "Handshake failed: " << handshake_status;
       RETURN_NOT_OK(handshake_status);
-      return result;
+      return ProcessDataResult{ result, Slice() };
     }
 
     case SecureState::kEnabled: {
@@ -470,7 +540,7 @@ Result<size_t> SecureStream::ProcessReceived(const IoVecs& data, ReadBufferFull 
         }
       }
       RETURN_NOT_OK(ReadDecrypted());
-      return result;
+      return ProcessDataResult{ result, Slice() };
     }
   }
 
@@ -479,9 +549,10 @@ Result<size_t> SecureStream::ProcessReceived(const IoVecs& data, ReadBufferFull 
 
 Status SecureStream::ReadDecrypted() {
   // TODO handle IsBusy
+  auto& decrypted_read_buffer = context_->ReadBuffer();
   bool done = false;
   while (!done) {
-    auto out = VERIFY_RESULT(received_data_.PrepareAppend());
+    auto out = VERIFY_RESULT(decrypted_read_buffer.PrepareAppend());
     size_t appended = 0;
     for (auto iov = out.begin(); iov != out.end();) {
       auto len = SSL_read(ssl_.get(), iov->iov_base, iov->iov_len);
@@ -497,10 +568,13 @@ Status SecureStream::ReadDecrypted() {
         ++iov;
       }
     }
-    received_data_.DataAppended(appended);
-    auto temp = VERIFY_RESULT(context_->ProcessReceived(
-        received_data_.AppendedVecs(), ReadBufferFull(received_data_.full())));
-    received_data_.Consume(temp);
+    decrypted_read_buffer.DataAppended(appended);
+    if (decrypted_read_buffer.ReadyToRead()) {
+      auto temp = VERIFY_RESULT(context_->ProcessReceived(
+          decrypted_read_buffer.AppendedVecs(), ReadBufferFull(decrypted_read_buffer.Full())));
+      decrypted_read_buffer.Consume(temp.consumed, temp.buffer);
+      DCHECK(decrypted_read_buffer.Empty());
+    }
   }
 
   return Status::OK();
@@ -738,7 +812,7 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
   if (common_name && common_name->data && common_name->length) {
     Slice common_name_slice(common_name->data, common_name->length);
     VLOG_WITH_PREFIX(4) << "Common name: " << common_name_slice.ToBuffer() << " vs "
-            << Remote().address() << "/" << remote_hostname_;
+                        << Remote().address() << "/" << remote_hostname_;
     if (FLAGS_dump_certificate_entries) {
       certificate_entries_.push_back(Format("CN:$0", common_name_slice.ToBuffer()));
     }
@@ -752,32 +826,45 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
   return false;
 }
 
-const Protocol* SecureStream::StaticProtocol() {
+} // namespace
+
+const Protocol* SecureStreamProtocol() {
   static Protocol result("tcps");
   return &result;
 }
 
-StreamFactoryPtr SecureStream::Factory(
-    StreamFactoryPtr lower_layer_factory, SecureContext* context) {
+StreamFactoryPtr SecureStreamFactory(
+    StreamFactoryPtr lower_layer_factory, const MemTrackerPtr& buffer_tracker,
+    SecureContext* context) {
   class SecureStreamFactory : public StreamFactory {
    public:
-    SecureStreamFactory(StreamFactoryPtr lower_layer_factory, SecureContext* context)
-        : lower_layer_factory_(std::move(lower_layer_factory)), context_(context) {
+    SecureStreamFactory(
+        StreamFactoryPtr lower_layer_factory, const MemTrackerPtr& buffer_tracker,
+        SecureContext* context)
+        : lower_layer_factory_(std::move(lower_layer_factory)), buffer_tracker_(buffer_tracker),
+          context_(context) {
     }
 
    private:
     std::unique_ptr<Stream> Create(const StreamCreateData& data) override {
+      auto receive_buffer_size = data.socket->GetReceiveBufferSize();
+      if (!receive_buffer_size.ok()) {
+        LOG(WARNING) << "Secure stream failure: " << receive_buffer_size.status();
+        receive_buffer_size = 256_KB;
+      }
       auto lower_stream = lower_layer_factory_->Create(data);
-      return std::make_unique<SecureStream>(*context_, std::move(lower_stream), data);
+      return std::make_unique<SecureStream>(
+          *context_, std::move(lower_stream), *receive_buffer_size, buffer_tracker_, data);
     }
 
     StreamFactoryPtr lower_layer_factory_;
+    MemTrackerPtr buffer_tracker_;
     SecureContext* context_;
   };
 
-  return std::make_shared<SecureStreamFactory>(std::move(lower_layer_factory), context);
+  return std::make_shared<SecureStreamFactory>(
+      std::move(lower_layer_factory), buffer_tracker, context);
 }
-
 
 } // namespace rpc
 } // namespace yb
