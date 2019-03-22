@@ -9,6 +9,8 @@ import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
+import static org.mockito.Mockito.mock;
+import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.mvc.Http.Status.UNAUTHORIZED;
@@ -17,8 +19,11 @@ import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.scheduler.Scheduler;
 import org.junit.After;
 import org.junit.Test;
 
@@ -34,11 +39,23 @@ import play.test.Helpers;
 import java.util.Map;
 
 public class SessionControllerTest {
+
+  HealthChecker mockHealthChecker;
+  Scheduler mockScheduler;
+  CallHome mockCallHome;
+
   Application app;
+
   private void startApp(boolean isMultiTenant) {
+    mockHealthChecker = mock(HealthChecker.class);
+    mockScheduler = mock(Scheduler.class);
+    mockCallHome = mock(CallHome.class);
     app = new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .configure(ImmutableMap.of("yb.multiTenant", isMultiTenant))
+        .overrides(bind(Scheduler.class).toInstance(mockScheduler))
+        .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
+        .overrides(bind(CallHome.class).toInstance(mockCallHome))
         .build();
     Helpers.start(app);
   }
@@ -119,7 +136,7 @@ public class SessionControllerTest {
   public void testRegisterCustomerWithLongerCode() {
     startApp(true);
     ObjectNode registerJson = Json.newObject();
-    registerJson.put("code", "fb12345");
+    registerJson.put("code", "abcabcabcabcabcabc");
     registerJson.put("email", "foo2@bar.com");
     registerJson.put("password", "password");
     registerJson.put("name", "Foo");
@@ -128,7 +145,7 @@ public class SessionControllerTest {
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(BAD_REQUEST, result.status());
-    assertValue(json, "error", "{\"code\":[\"Maximum length is 5\"]}");
+    assertValue(json, "error", "{\"code\":[\"Maximum length is 15\"]}");
   }
 
   @Test
