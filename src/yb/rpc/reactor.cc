@@ -73,6 +73,7 @@ using namespace std::literals;
 
 DECLARE_string(local_ip_for_outbound_sockets);
 DECLARE_int32(num_connections_to_server);
+DECLARE_int32(socket_receive_buffer_size);
 
 namespace yb {
 namespace rpc {
@@ -555,12 +556,17 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
     }
   }
 
-  auto context = messenger_->connection_context_factory_->Create();
-  auto& allocator = context->Allocator();
+  if (FLAGS_socket_receive_buffer_size) {
+    WARN_NOT_OK(sock.SetReceiveBufferSize(FLAGS_socket_receive_buffer_size),
+                "Set receive buffer size failed: ");
+  }
+
+  auto receive_buffer_size = VERIFY_RESULT(sock.GetReceiveBufferSize());
+
+  auto context = messenger_->connection_context_factory_->Create(receive_buffer_size);
   auto stream = VERIFY_RESULT(CreateStream(
       messenger_->stream_factories_, conn_id.protocol(),
-      {conn_id.remote(), hostname, &sock, &allocator,
-       context->BufferLimit() + allocator.block_size()}));
+      {conn_id.remote(), hostname, &sock}));
 
   // Register the new connection in our map.
   auto connection = std::make_shared<Connection>(
@@ -858,8 +864,7 @@ void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote,
 
   auto stream = CreateStream(
       messenger_->stream_factories_, messenger_->listen_protocol_,
-      {remote, std::string(), socket, &connection_context->Allocator(),
-       connection_context->BufferLimit()});
+      {remote, std::string(), socket});
   if (!stream.ok()) {
     LOG(DFATAL) << "Failed to create stream for " << remote << ": " << stream.status();
     return;

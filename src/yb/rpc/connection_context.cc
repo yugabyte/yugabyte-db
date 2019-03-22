@@ -29,8 +29,7 @@ namespace yb {
 namespace rpc {
 
 ConnectionContextFactory::ConnectionContextFactory(
-    size_t block_size, int64_t memory_limit,
-    const std::string& name,
+    int64_t memory_limit, const std::string& name,
     const std::shared_ptr<MemTracker>& parent_mem_tracker)
     : parent_tracker_(parent_mem_tracker) {
   int64_t root_limit = AbsRelMemLimit(FLAGS_read_buffer_memory_limit, [] {
@@ -44,11 +43,12 @@ ConnectionContextFactory::ConnectionContextFactory(
   memory_limit = AbsRelMemLimit(memory_limit, [&root_buffer_tracker] {
     return root_buffer_tracker->limit();
   });
-  auto buffer_tracker = MemTracker::FindOrCreateTracker(memory_limit, name, root_buffer_tracker);
-  allocator_ = std::make_unique<GrowableBufferAllocator>(block_size, buffer_tracker);
+  buffer_tracker_ = MemTracker::FindOrCreateTracker(memory_limit, name, root_buffer_tracker);
   auto root_call_tracker = MemTracker::FindOrCreateTracker("Call", parent_mem_tracker);
   call_tracker_ = MemTracker::FindOrCreateTracker(name, root_call_tracker);
 }
+
+ConnectionContextFactory::~ConnectionContextFactory() = default;
 
 } // namespace rpc
 } // namespace yb

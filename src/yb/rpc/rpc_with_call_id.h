@@ -27,7 +27,7 @@ namespace rpc {
 
 class ConnectionContextWithCallId : public ConnectionContextBase {
  protected:
-  explicit ConnectionContextWithCallId(GrowableBufferAllocator* allocator);
+  ConnectionContextWithCallId();
 
   InboundCall::CallProcessedListener call_processed_listener() {
     return std::bind(&ConnectionContextWithCallId::CallProcessed, this, std::placeholders::_1);

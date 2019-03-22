@@ -90,11 +90,12 @@ DEFINE_int32(rpc_default_keepalive_time_ms, 65000,
 TAG_FLAG(rpc_default_keepalive_time_ms, advanced);
 DEFINE_uint64(io_thread_pool_size, 4, "Size of allocated IO Thread Pool.");
 
-DEFINE_int64(outbound_rpc_block_size, 1_MB, "Outbound RPC block size");
 DEFINE_int64(outbound_rpc_memory_limit, 0, "Outbound RPC memory limit");
 
 DEFINE_int32(rpc_queue_limit, 10000, "Queue limit for rpc server");
 DEFINE_int32(rpc_workers_limit, 256, "Workers limit for rpc server");
+
+DEFINE_int32(socket_receive_buffer_size, 0, "Socket receive buffer size, 0 to use default");
 
 namespace yb {
 namespace rpc {
@@ -161,8 +162,11 @@ MessengerBuilder &MessengerBuilder::AddStreamFactory(
 
 MessengerBuilder &MessengerBuilder::UseDefaultConnectionContextFactory(
     const std::shared_ptr<MemTracker>& parent_mem_tracker) {
+  if (parent_mem_tracker) {
+    last_used_parent_mem_tracker_ = parent_mem_tracker;
+  }
   connection_context_factory_ = rpc::CreateConnectionContextFactory<YBOutboundConnectionContext>(
-      FLAGS_outbound_rpc_block_size, FLAGS_outbound_rpc_memory_limit, parent_mem_tracker);
+      FLAGS_outbound_rpc_memory_limit, parent_mem_tracker);
   return *this;
 }
 
@@ -510,9 +514,20 @@ void Messenger::RegisterInboundSocket(
     return;
   }
 
+  if (FLAGS_socket_receive_buffer_size) {
+    WARN_NOT_OK(new_socket->SetReceiveBufferSize(FLAGS_socket_receive_buffer_size),
+                "Set receive buffer size failed: ");
+  }
+
+  auto receive_buffer_size = new_socket->GetReceiveBufferSize();
+  if (!receive_buffer_size.ok()) {
+    LOG(WARNING) << "Register inbound socket failed: " << receive_buffer_size.status();
+    return;
+  }
+
   int idx = num_connections_accepted_.fetch_add(1) % num_connections_to_server_;
   Reactor *reactor = RemoteToReactor(remote, idx);
-  reactor->RegisterInboundSocket(new_socket, remote, factory->Create());
+  reactor->RegisterInboundSocket(new_socket, remote, factory->Create(*receive_buffer_size));
 }
 
 Messenger::Messenger(const MessengerBuilder &bld)

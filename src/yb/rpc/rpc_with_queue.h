@@ -62,7 +62,6 @@ class QueueableInboundCall : public InboundCall {
 class ConnectionContextWithQueue : public ConnectionContextBase {
  protected:
   explicit ConnectionContextWithQueue(
-      rpc::GrowableBufferAllocator* allocator,
       size_t max_concurrent_calls,
       size_t max_queued_bytes);
 

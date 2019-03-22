@@ -47,11 +47,12 @@ class MonoDelta;
 class MonoTime;
 
 // Vector of io buffers. Could be used with receive, already received data etc.
-typedef boost::container::small_vector<::iovec, 2> IoVecs;
+typedef boost::container::small_vector<::iovec, 4> IoVecs;
 
 size_t IoVecsFullSize(const IoVecs& io_vecs);
 // begin and end are positions in concatenated io_vecs.
 void IoVecsToBuffer(const IoVecs& io_vecs, size_t begin, size_t end, std::vector<char>* result);
+void IoVecsToBuffer(const IoVecs& io_vecs, size_t begin, size_t end, char* result);
 inline const char* IoVecBegin(const iovec& inp) { return static_cast<const char*>(inp.iov_base); }
 inline const char* IoVecEnd(const iovec& inp) { return IoVecBegin(inp) + inp.iov_len; }
 
@@ -163,6 +164,10 @@ class Socket {
   // Upon return, nread will contain the number of bytes actually read.
   // See also readn() from Stevens (2004) or Kerrisk (2010)
   CHECKED_STATUS BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoTime& deadline);
+
+  // Implements the SOL_SOCKET/SO_RCVBUF socket option.
+  Result<int32_t> GetReceiveBufferSize();
+  CHECKED_STATUS SetReceiveBufferSize(int32_t size);
 
  private:
   // Called internally from SetSend/RecvTimeout().

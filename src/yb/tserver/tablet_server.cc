@@ -113,7 +113,6 @@ DEFINE_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
 DEFINE_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
 DEFINE_int32(pgsql_proxy_webserver_port, 0, "Webserver port for PostgreSQL proxy");
 
-DEFINE_int64(inbound_rpc_block_size, 1_MB, "Inbound RPC block size");
 DEFINE_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
 DEFINE_bool(start_pgsql_proxy, false,
@@ -133,7 +132,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       master_config_index_(0),
       tablet_server_service_(nullptr) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
-      FLAGS_inbound_rpc_block_size, FLAGS_inbound_rpc_memory_limit, mem_tracker()));
+      FLAGS_inbound_rpc_memory_limit, mem_tracker()));
 }
 
 TabletServer::~TabletServer() {
