@@ -304,6 +304,10 @@ class PgApiImpl {
   //   - API for "order_by_expr"
   //   - API for "group_by_expr"
 
+  // Buffer write operations.
+  CHECKED_STATUS StartBufferingWriteOperations(PgSession *pg_session);
+  CHECKED_STATUS FlushBufferedWriteOperations(PgSession *pg_session);
+
   //------------------------------------------------------------------------------------------------
   // Insert.
   CHECKED_STATUS NewInsert(PgSession *pg_session,

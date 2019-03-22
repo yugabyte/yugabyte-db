@@ -41,6 +41,7 @@ using client::YBSession;
 using client::YBMetaDataCache;
 using client::YBSchema;
 using client::YBColumnSchema;
+using client::YBOperation;
 using client::YBTable;
 using client::YBTableName;
 using client::YBTableType;
@@ -382,7 +383,56 @@ void PgSession::InvalidateTableCache(const PgObjectId& table_id) {
   table_cache_.erase(yb_table_id);
 }
 
-Status PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op, uint64_t* read_time) {
+Status PgSession::StartBufferingWriteOperations() {
+  if (buffer_write_ops_) {
+    return STATUS(IllegalState, "Buffering write operations already");
+  }
+  buffer_write_ops_ = true;
+  return Status::OK();
+}
+
+Status PgSession::FlushBufferedWriteOperations() {
+  if (!buffer_write_ops_) {
+    return STATUS(IllegalState, "Not buffering write operations currently");
+  }
+  Status s;
+  if (!buffered_write_ops_.empty()) {
+    // Only non-transactional ops should be buffered currently.
+    client::YBSessionPtr session =
+        VERIFY_RESULT(GetSession(false /* transactional */,
+                                 false /* read_only_op */))->shared_from_this();
+    for (const auto& op : buffered_write_ops_) {
+      DCHECK(!op->IsTransactional());
+      RETURN_NOT_OK(session->Apply(op));
+    }
+    Synchronizer sync;
+    StatusFunctor callback = sync.AsStatusFunctor();
+    session->FlushAsync([this, session, callback] (const Status& status) {
+      callback(CombineErrorsToStatus(session->GetPendingErrors(), status));
+    });
+    s = sync.Wait();
+    buffered_write_ops_.clear();
+  }
+  buffer_write_ops_ = false;
+  return s;
+}
+
+Result<OpBuffered> PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op,
+                                           uint64_t* read_time) {
+  // If the operation is a write op and we are in buffered write mode, save the op and return false
+  // to indicate the op should not be flushed except in bulk by FlushBufferedWriteOperations().
+  //
+  // We allow read ops while buffering writes because it can happen when building indexes for sys
+  // catalog tables during initdb. Continuing read ops to scan the table can be issued while
+  // writes to its index are being buffered.
+  if (buffer_write_ops_ && op->type() == YBOperation::Type::PGSQL_WRITE) {
+    if (op->IsTransactional()) {
+      return STATUS(IllegalState, "Only non-transactional ops should be buffered");
+    }
+    buffered_write_ops_.push_back(op);
+    return OpBuffered::kTrue;
+  }
+
   if (op->IsTransactional()) {
     has_txn_ops_ = true;
   } else {
@@ -396,7 +446,9 @@ Status PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op, uin
     }
     session->SetInTxnLimit(HybridTime(*read_time));
   }
-  return session->Apply(op);
+  RETURN_NOT_OK(session->Apply(op));
+
+  return OpBuffered::kFalse;
 }
 
 Status PgSession::PgFlushAsync(StatusFunctor callback) {

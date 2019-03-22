@@ -31,6 +31,8 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/toasting.h"
 #include "commands/defrem.h"
@@ -52,6 +54,7 @@
 #include "utils/rel.h"
 
 #include "pg_yb_utils.h"
+#include "executor/ybcModifyTable.h"
 #include "bootstrap/ybcbootstrap.h"
 
 /*
@@ -160,6 +163,11 @@ Boot_OpenStmt:
 				{
 					do_start();
 					boot_openrel($2);
+                    if (IsYugaByteEnabled())
+					{
+						/* Buffer the inserts into the table */
+						YBCStartBufferingWriteOperations();
+					}
 					do_end();
 				}
 		;
@@ -169,6 +177,11 @@ Boot_CloseStmt:
 				{
 					do_start();
 					closerel($2);
+                    if (IsYugaByteEnabled())
+					{
+						/* End the buffering of inserts and flush them */
+						YBCFlushBufferedWriteOperations();
+					}
 					do_end();
 				}
 		;
@@ -298,6 +311,19 @@ Boot_CreateStmt:
 					if (IsYugaByteEnabled())
 					{
 						YBCCreateSysCatalogTable($2, $3, tupdesc, shared_relation, $13);
+
+						/*
+						 * Start buffering for pg_proc, pg_type, pg_attribute and pg_class
+						 * explicitly. They are not opened explicitly in the generated
+						 * postgres.bki so we need to start buffering here.
+						 */
+						if ($3 == ProcedureRelationId ||
+							$3 == TypeRelationId      ||
+							$3 == AttributeRelationId ||
+							$3 == RelationRelationId)
+						{
+							YBCStartBufferingWriteOperations();
+						}
 					}
 
                     do_end();

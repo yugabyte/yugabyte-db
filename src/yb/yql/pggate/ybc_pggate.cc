@@ -424,11 +424,17 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));
 }
 
+YBCStatus YBCPgStartBufferingWriteOperations(YBCPgSession pg_session) {
+  return ToYBCStatus(pgapi->StartBufferingWriteOperations(pg_session));
+}
+
+YBCStatus YBCPgFlushBufferedWriteOperations(YBCPgSession pg_session) {
+  return ToYBCStatus(pgapi->FlushBufferedWriteOperations(pg_session));
+}
 
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->DmlExecWriteOp(handle));
 }
-
 
 // INSERT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgSession pg_session,
