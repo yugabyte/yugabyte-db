@@ -234,7 +234,10 @@ Status PgSelect::Exec() {
   }
 
   // Execute select statement asynchronously.
-  return doc_op_->Execute();
+  SCHECK_EQ(VERIFY_RESULT(doc_op_->Execute()), RequestSent::kTrue, IllegalState,
+            "YSQL read operation was not sent");
+
+  return Status::OK();
 }
 
 }  // namespace pggate

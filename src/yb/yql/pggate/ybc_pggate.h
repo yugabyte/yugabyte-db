@@ -277,6 +277,11 @@ YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle);
 //   - API for "order_by_expr"
 //   - API for "group_by_expr"
 
+
+// Buffer write operations.
+YBCStatus YBCPgStartBufferingWriteOperations(YBCPgSession pg_session);
+YBCStatus YBCPgFlushBufferedWriteOperations(YBCPgSession pg_session);
+
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgSession pg_session,
                          YBCPgOid database_oid,

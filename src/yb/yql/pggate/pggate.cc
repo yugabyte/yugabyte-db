@@ -582,6 +582,14 @@ Status PgApiImpl::DmlFetch(PgStatement *handle, int32_t natts, uint64_t *values,
   return down_cast<PgDml*>(handle)->Fetch(natts, values, isnulls, syscols, has_data);
 }
 
+Status PgApiImpl::StartBufferingWriteOperations(PgSession *pg_session) {
+  return pg_session->StartBufferingWriteOperations();
+}
+
+Status PgApiImpl::FlushBufferedWriteOperations(PgSession *pg_session) {
+  return pg_session->FlushBufferedWriteOperations();
+}
+
 Status PgApiImpl::DmlExecWriteOp(PgStatement *handle) {
   switch (handle->stmt_op()) {
     case StmtOp::STMT_INSERT:

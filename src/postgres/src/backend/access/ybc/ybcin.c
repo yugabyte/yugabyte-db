@@ -59,10 +59,15 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 
 	Assert(!index->rd_index->indisprimary);
 
+	/* Buffer the inserts into the index */
+	YBCStartBufferingWriteOperations();
+
 	/* Do the heap scan */
 	buildstate.index_tuples = 0;
 	heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true, ybcinbuildCallback,
 									 &buildstate, NULL);
+
+	YBCFlushBufferedWriteOperations();
 
 	/*
 	 * Return statistics
