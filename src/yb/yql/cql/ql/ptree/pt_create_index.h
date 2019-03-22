@@ -97,7 +97,7 @@ class PTCreateIndex : public PTCreateTable {
   // Is it a unique index?
   const bool is_unique_ = false;
   // Index name.
-  const MCSharedPtr<MCString> name_;
+  MCSharedPtr<MCString> name_;
   // Additional covering columns.
   const PTListNode::SharedPtr covering_;
 
