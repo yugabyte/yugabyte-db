@@ -21,14 +21,14 @@ SELECT * FROM r;
 SELECT * FROM cypher(NULL) AS r(c text);
 ERROR:  a string constant is expected
 LINE 1: SELECT * FROM cypher(NULL) AS r(c text);
-                            ^
+                             ^
 WITH q(s) AS (
   VALUES ($$RETURN 0$$)
 )
 SELECT * FROM q, cypher(q.s) AS r(c text);
 ERROR:  a string constant is expected
 LINE 4: SELECT * FROM q, cypher(q.s) AS r(c text);
-                               ^
+                                ^
 -- cypher() function can be called in ROWS FROM only if it is there solely.
 SELECT * FROM ROWS FROM (cypher($$RETURN 0$$) AS (c text));
     c     
@@ -40,18 +40,18 @@ SELECT * FROM ROWS FROM (cypher($$RETURN 0$$) AS (c text),
                          generate_series(1, 2));
 ERROR:  cypher(...) in ROWS FROM is not supported
 LINE 1: SELECT * FROM ROWS FROM (cypher($$RETURN 0$$) AS (c text),
-                                ^
+                                 ^
 -- WITH ORDINALITY is not supported.
 SELECT * FROM ROWS FROM (cypher($$RETURN 0$$) AS (c text)) WITH ORDINALITY;
 ERROR:  WITH ORDINALITY is not supported
 LINE 1: SELECT * FROM ROWS FROM (cypher($$RETURN 0$$) AS (c text)) W...
-                                ^
+                                 ^
 -- cypher() function cannot be called in expressions.
 -- However, it can be called in subqueries.
 SELECT cypher($$RETURN 0$$);
 ERROR:  cypher(...) in expressions is not supported
 LINE 1: SELECT cypher($$RETURN 0$$);
-              ^
+               ^
 HINT:  Use subquery instead if possible.
 SELECT (SELECT * FROM cypher($$RETURN 0$$) AS r(c text));
     c     

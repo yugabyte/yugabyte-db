@@ -20,10 +20,10 @@
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook;
 
 static void post_parse_analyze(ParseState *pstate, Query *query);
-static bool convert_cypher_walker(Node *node, void *context);
+static bool convert_cypher_walker(Node *node, ParseState *pstate);
 static bool is_rte_cypher(RangeTblEntry *rte);
 static bool is_func_cypher(FuncExpr *funcexpr);
-static void convert_cypher_to_subquery(RangeTblEntry *rte);
+static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate);
 static Query *parse_and_analyze_cypher(const char *query_str);
 static Query *generate_values_query_with_str(const char *str);
 
@@ -43,11 +43,11 @@ static void post_parse_analyze(ParseState *pstate, Query *query)
     if (prev_post_parse_analyze_hook)
         prev_post_parse_analyze_hook(pstate, query);
 
-    convert_cypher_walker((Node *)query, NULL);
+    convert_cypher_walker((Node *)query, pstate);
 }
 
 // find cypher() calls in FROM clauses and convert them to SELECT subqueries
-static bool convert_cypher_walker(Node *node, void *context)
+static bool convert_cypher_walker(Node *node, ParseState *pstate)
 {
     if (!node)
         return false;
@@ -58,10 +58,10 @@ static bool convert_cypher_walker(Node *node, void *context)
         switch (rte->rtekind) {
         case RTE_SUBQUERY:
             // traverse other RTE_SUBQUERYs
-            return convert_cypher_walker((Node *)rte->subquery, context);
+            return convert_cypher_walker((Node *)rte->subquery, pstate);
         case RTE_FUNCTION:
             if (is_rte_cypher(rte))
-                convert_cypher_to_subquery(rte);
+                convert_cypher_to_subquery(rte, pstate);
             return false;
         default:
             return false;
@@ -81,11 +81,11 @@ static bool convert_cypher_walker(Node *node, void *context)
             ereport(ERROR,
                     (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                      errmsg("cypher(...) in ROWS FROM is not supported"),
-                     errposition(exprLocation((Node *)funcexpr))));
+                     parser_errposition(pstate, exprLocation((Node *)funcexpr))));
         }
 
         return expression_tree_walker((Node *)funcexpr->args,
-                                      convert_cypher_walker, context);
+                                      convert_cypher_walker, pstate);
     }
 
     // This handles cypher() calls in expressions. Those in RTE_FUNCTIONs are
@@ -99,11 +99,11 @@ static bool convert_cypher_walker(Node *node, void *context)
                     (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                      errmsg("cypher(...) in expressions is not supported"),
                      errhint("Use subquery instead if possible."),
-                     errposition(exprLocation(node))));
+                     parser_errposition(pstate, exprLocation(node))));
         }
 
         return expression_tree_walker((Node *)funcexpr->args,
-                                      convert_cypher_walker, context);
+                                      convert_cypher_walker, pstate);
     }
 
     if (IsA(node, Query)) {
@@ -123,11 +123,11 @@ static bool convert_cypher_walker(Node *node, void *context)
         flags = QTW_EXAMINE_RTES | QTW_IGNORE_RT_SUBQUERIES |
                 QTW_IGNORE_JOINALIASES;
 
-        return query_tree_walker((Query *)node, convert_cypher_walker, context,
+        return query_tree_walker((Query *)node, convert_cypher_walker, pstate,
                                  flags);
     }
 
-    return expression_tree_walker(node, convert_cypher_walker, context);
+    return expression_tree_walker(node, convert_cypher_walker, pstate);
 }
 
 static bool is_rte_cypher(RangeTblEntry *rte)
@@ -147,20 +147,7 @@ static bool is_rte_cypher(RangeTblEntry *rte)
 
     rtfunc = linitial(rte->functions);
     funcexpr = (FuncExpr *)rtfunc->funcexpr;
-    if (!is_func_cypher(funcexpr))
-        return false;
-
-    // We cannot apply this feature directly to SELECT subquery because the
-    // planner does not support it. Adding a "row_number() OVER ()" expression
-    // to the subquery as a result target might be a workaround but we throw an
-    // error for now.
-    if (rte->funcordinality) {
-        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                        errmsg("WITH ORDINALITY is not supported"),
-                        errposition(exprLocation((Node *)funcexpr))));
-    }
-
-    return true;
+    return is_func_cypher(funcexpr);
 }
 
 // Return true if the qualified name of the given function is
@@ -188,13 +175,24 @@ static bool is_func_cypher(FuncExpr *funcexpr)
 }
 
 // convert cypher() call to SELECT subquery in-place
-static void convert_cypher_to_subquery(RangeTblEntry *rte)
+static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
 {
     RangeTblFunction *rtfunc = linitial(rte->functions);
     FuncExpr *funcexpr = (FuncExpr *)rtfunc->funcexpr;
     Node *arg;
     const char *query_str;
     Query *query;
+
+    // We cannot apply this feature directly to SELECT subquery because the
+    // planner does not support it. Adding a "row_number() OVER ()" expression
+    // to the subquery as a result target might be a workaround but we throw an
+    // error for now.
+    if (rte->funcordinality) {
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("WITH ORDINALITY is not supported"),
+                 parser_errposition(pstate, exprLocation((Node *)funcexpr))));
+    }
 
     // NOTE: Remove this once the prototype of cypher() function is fixed.
     Assert(list_length(funcexpr->args) == 1);
@@ -206,7 +204,7 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte)
     if (!IsA(arg, Const) || ((Const *)arg)->constisnull) {
         ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
                         errmsg("a string constant is expected"),
-                        errposition(exprLocation(arg))));
+                        parser_errposition(pstate, exprLocation(arg))));
     }
     Assert(exprType(arg) == TEXTOID);
 
