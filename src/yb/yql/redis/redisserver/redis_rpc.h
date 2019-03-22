@@ -22,6 +22,7 @@
 #include "yb/common/redis_protocol.pb.h"
 
 #include "yb/rpc/connection_context.h"
+#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_with_queue.h"
 
 namespace yb {
@@ -75,17 +76,21 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
     return rpc::RpcConnectionPB::OPEN;
   }
 
-  Result<size_t> ProcessCalls(const rpc::ConnectionPtr& connection,
-                              const IoVecs& bytes_to_process,
-                              rpc::ReadBufferFull read_buffer_full) override;
-  size_t BufferLimit() override;
+  Result<rpc::ProcessDataResult> ProcessCalls(const rpc::ConnectionPtr& connection,
+                                              const IoVecs& bytes_to_process,
+                                              rpc::ReadBufferFull read_buffer_full) override;
+
+  rpc::StreamReadBuffer& ReadBuffer() override {
+    return read_buffer_;
+  }
 
   // Takes ownership of data content.
   CHECKED_STATUS HandleInboundCall(const rpc::ConnectionPtr& connection,
                                    size_t commands_in_batch,
-                                   std::vector<char>* data);
+                                   rpc::CallData* data);
 
   std::unique_ptr<RedisParser> parser_;
+  rpc::GrowableBuffer read_buffer_;
   size_t commands_in_batch_ = 0;
   size_t end_of_batch_ = 0;
   std::atomic<bool> authenticated_{false};
@@ -106,8 +111,7 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
   ~RedisInboundCall();
   // Takes ownership of data content.
-  CHECKED_STATUS ParseFrom(
-      const MemTrackerPtr& mem_tracker, size_t commands, std::vector<char>* data);
+  CHECKED_STATUS ParseFrom(const MemTrackerPtr& mem_tracker, size_t commands, rpc::CallData* data);
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.

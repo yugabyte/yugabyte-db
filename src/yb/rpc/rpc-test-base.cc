@@ -79,7 +79,7 @@ MessengerBuilder CreateMessengerBuilder(const std::string& name,
   bld.set_coarse_timer_granularity(coarse_time_granularity);
   bld.set_metric_entity(metric_entity);
   bld.CreateConnectionContextFactory<YBOutboundConnectionContext>(
-      FLAGS_outbound_rpc_block_size, FLAGS_outbound_rpc_memory_limit,
+      FLAGS_outbound_rpc_memory_limit,
       MemTracker::FindOrCreateTracker(name));
   return bld;
 }

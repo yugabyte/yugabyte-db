@@ -267,21 +267,22 @@ void Connection::ParseReceived() {
   stream_->ParseReceived();
 }
 
-Result<size_t> Connection::ProcessReceived(const IoVecs& data, ReadBufferFull read_buffer_full) {
-  auto consumed = context_->ProcessCalls(shared_from_this(), data, read_buffer_full);
-  if (PREDICT_FALSE(!consumed.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "Command sequence failure: " << consumed;
-    return consumed.status();
+Result<ProcessDataResult> Connection::ProcessReceived(
+    const IoVecs& data, ReadBufferFull read_buffer_full) {
+  auto result = context_->ProcessCalls(shared_from_this(), data, read_buffer_full);
+  if (PREDICT_FALSE(!result.ok())) {
+    LOG_WITH_PREFIX(WARNING) << "Command sequence failure: " << result.status();
+    return result;
   }
 
-  if (!*consumed && read_buffer_full && context_->Idle()) {
+  if (!result->consumed && read_buffer_full && context_->Idle()) {
     return STATUS(InvalidArgument, "Command is greater than read buffer");
   }
 
-  return *consumed;
+  return result;
 }
 
-Status Connection::HandleCallResponse(std::vector<char>* call_data) {
+Status Connection::HandleCallResponse(CallData* call_data) {
   DCHECK(reactor_->IsCurrentThread());
   CallResponse resp;
   RETURN_NOT_OK(resp.ParseFrom(call_data));
@@ -440,6 +441,10 @@ Status Connection::Start(ev::loop_ref* loop) {
 
 void Connection::Connected() {
   context_->Connected(shared_from_this());
+}
+
+StreamReadBuffer& Connection::ReadBuffer() {
+  return context_->ReadBuffer();
 }
 
 const Endpoint& Connection::remote() const {

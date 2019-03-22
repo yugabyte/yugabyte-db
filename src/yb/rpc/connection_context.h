@@ -40,9 +40,8 @@ class ConnectionContext {
 
   // Split data into separate calls and invoke them.
   // Returns number of processed bytes.
-  virtual Result<size_t> ProcessCalls(const ConnectionPtr& connection,
-                                      const IoVecs& data,
-                                      ReadBufferFull read_buffer_full) = 0;
+  virtual Result<ProcessDataResult> ProcessCalls(
+      const ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full) = 0;
 
   // Dump information about status of this connection context to protobuf.
   virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) = 0;
@@ -58,12 +57,6 @@ class ConnectionContext {
   // Shutdown this context.
   virtual void Shutdown(const Status& status) = 0;
 
-  // Reading buffer limit for this connection context.
-  // The reading buffer will never be larger than this limit.
-  virtual size_t BufferLimit() = 0;
-
-  virtual GrowableBufferAllocator& Allocator() = 0;
-
   virtual void QueueResponse(const ConnectionPtr& connection, InboundCallPtr call) = 0;
 
   virtual void AssignConnection(const ConnectionPtr& connection) {}
@@ -74,63 +67,49 @@ class ConnectionContext {
 
   virtual RpcConnectionPB::StateType State() = 0;
 
+  virtual StreamReadBuffer& ReadBuffer() = 0;
+
   virtual CHECKED_STATUS ReportPendingWriteBytes(size_t bytes_in_queue) = 0;
 };
 
 class ConnectionContextBase : public ConnectionContext {
  public:
-  explicit ConnectionContextBase(GrowableBufferAllocator* allocator)
-      : allocator_(allocator) {
-  }
-
-  GrowableBufferAllocator& Allocator() override {
-    return *allocator_;
-  }
-
   Status ReportPendingWriteBytes(size_t bytes_in_queue) override {
     return Status::OK();
   }
-
- private:
-  GrowableBufferAllocator* allocator_;
 };
 
 class ConnectionContextFactory {
  public:
   ConnectionContextFactory(
-      size_t block_size, int64_t memory_limit,
-      const std::string& name,
+      int64_t memory_limit, const std::string& name,
       const std::shared_ptr<MemTracker>& parent_mem_tracker);
 
-  virtual std::unique_ptr<ConnectionContext> Create() = 0;
-
-  GrowableBufferAllocator& allocator() {
-    return *allocator_;
-  }
+  virtual std::unique_ptr<ConnectionContext> Create(size_t receive_buffer_size) = 0;
 
   const std::shared_ptr<MemTracker>& parent_tracker() {
     return parent_tracker_;
   }
 
  protected:
-  ~ConnectionContextFactory() {}
+  ~ConnectionContextFactory();
 
   std::shared_ptr<MemTracker> parent_tracker_;
-  std::unique_ptr<GrowableBufferAllocator> allocator_;
   std::shared_ptr<MemTracker> call_tracker_;
+  std::shared_ptr<MemTracker> buffer_tracker_;
 };
 
 template <class ContextType>
 class ConnectionContextFactoryImpl : public ConnectionContextFactory {
  public:
   ConnectionContextFactoryImpl(
-      size_t block_size = 1_MB, int64_t memory_limit = 0,
+      int64_t memory_limit = 0,
       const std::shared_ptr<MemTracker>& parent_mem_tracker = nullptr)
       : ConnectionContextFactory(
-          block_size, memory_limit, ContextType::Name(), parent_mem_tracker) {}
+          memory_limit, ContextType::Name(), parent_mem_tracker) {}
 
-  std::unique_ptr<ConnectionContext> Create() override {
-    return std::make_unique<ContextType>(allocator_.get(), call_tracker_);
+  std::unique_ptr<ConnectionContext> Create(size_t receive_buffer_size) override {
+    return std::make_unique<ContextType>(receive_buffer_size, buffer_tracker_, call_tracker_);
   }
 
   virtual ~ConnectionContextFactoryImpl() {}

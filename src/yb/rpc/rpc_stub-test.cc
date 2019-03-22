@@ -282,7 +282,7 @@ TEST_F(RpcStubTest, TestBigCallData) {
   CalculatorServiceProxy p(proxy_cache_.get(), server_hostport_);
 
   EchoRequestPB req;
-  req.mutable_data()->resize(kMessageSize);
+  req.set_data(RandomHumanReadableString(kMessageSize));
 
   std::vector<EchoResponsePB> resps(kNumSentAtOnce);
   std::vector<RpcController> controllers(kNumSentAtOnce);
@@ -300,6 +300,10 @@ TEST_F(RpcStubTest, TestBigCallData) {
 
   for (RpcController &c : controllers) {
     EXPECT_OK(c.status());
+  }
+
+  for (auto& resp : resps) {
+    ASSERT_EQ(resp.data(), req.data());
   }
 }
 

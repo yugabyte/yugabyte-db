@@ -24,9 +24,7 @@
 namespace yb {
 namespace rpc {
 
-ConnectionContextWithCallId::ConnectionContextWithCallId(GrowableBufferAllocator* allocator)
-    : ConnectionContextBase(allocator) {
-}
+ConnectionContextWithCallId::ConnectionContextWithCallId() {}
 
 void ConnectionContextWithCallId::DumpPB(const DumpRunningRpcsRequestPB& req,
                                          RpcConnectionPB* resp) {

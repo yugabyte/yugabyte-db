@@ -43,6 +43,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/call_data.h"
 #include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/remote_method.h"
@@ -163,7 +164,7 @@ class InboundCall : public RpcCall {
   Slice serialized_request_;
 
   // Data source of this call.
-  std::vector<char> request_data_;
+  CallData request_data_;
 
   // The trace buffer.
   scoped_refptr<Trace> trace_;

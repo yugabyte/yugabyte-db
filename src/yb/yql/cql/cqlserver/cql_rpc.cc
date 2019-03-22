@@ -54,27 +54,23 @@ namespace yb {
 namespace cqlserver {
 
 CQLConnectionContext::CQLConnectionContext(
-    rpc::GrowableBufferAllocator* allocator,
+    size_t receive_buffer_size, const MemTrackerPtr& buffer_tracker,
     const MemTrackerPtr& call_tracker)
-    : ConnectionContextWithCallId(allocator),
-      ql_session_(new ql::QLSession()),
-      parser_(CQLMessage::kMessageHeaderLength, CQLMessage::kHeaderPosLength,
+    : ql_session_(new ql::QLSession()),
+      parser_(buffer_tracker, CQLMessage::kMessageHeaderLength, CQLMessage::kHeaderPosLength,
               FLAGS_max_message_length, rpc::IncludeHeader::kTrue, this),
+      read_buffer_(receive_buffer_size, buffer_tracker),
       call_tracker_(call_tracker) {
 }
 
-Result<size_t> CQLConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
-                                                  const IoVecs& data,
-                                                  rpc::ReadBufferFull read_buffer_full) {
+Result<rpc::ProcessDataResult> CQLConnectionContext::ProcessCalls(
+    const rpc::ConnectionPtr& connection, const IoVecs& data,
+    rpc::ReadBufferFull read_buffer_full) {
   return parser_.Parse(connection, data);
 }
 
-size_t CQLConnectionContext::BufferLimit() {
-  return FLAGS_max_message_length;
-}
-
 Status CQLConnectionContext::HandleCall(
-    const rpc::ConnectionPtr& connection, std::vector<char>* call_data) {
+    const rpc::ConnectionPtr& connection, rpc::CallData* call_data) {
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
@@ -117,14 +113,14 @@ CQLInboundCall::CQLInboundCall(rpc::ConnectionPtr conn,
       ql_session_(std::move(ql_session)) {
 }
 
-Status CQLInboundCall::ParseFrom(const MemTrackerPtr& call_tracker, std::vector<char>* call_data) {
+Status CQLInboundCall::ParseFrom(const MemTrackerPtr& call_tracker, rpc::CallData* call_data) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "CQLInboundCall", this);
   TRACE_EVENT0("rpc", "CQLInboundCall::ParseFrom");
 
   consumption_ = ScopedTrackedConsumption(call_tracker, call_data->size());
 
   // Parsing of CQL message is deferred to CQLServiceImpl::Handle. Just save the serialized data.
-  request_data_.swap(*call_data);
+  request_data_ = std::move(*call_data);
   serialized_request_ = Slice(request_data_.data(), request_data_.size());
 
   // Fill the service name method name to transfer the call to. The method name is for debug

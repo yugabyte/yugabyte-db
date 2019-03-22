@@ -22,6 +22,7 @@
 #define YB_YQL_CQL_QL_PTREE_PARSE_TREE_H_
 
 #include "yb/client/yb_table_name.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 

@@ -41,6 +41,7 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/call_data.h"
 #include "yb/rpc/constants.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/response_callback.h"
@@ -140,7 +141,7 @@ class CallResponse {
 
   // Parse the response received from a call. This must be called before any
   // other methods on this object. Takes ownership of data content.
-  CHECKED_STATUS ParseFrom(std::vector<char>* data);
+  CHECKED_STATUS ParseFrom(CallData* data);
 
   // Return true if the call succeeded.
   bool is_success() const {
@@ -181,7 +182,7 @@ class CallResponse {
 
   // The incoming transfer data - retained because serialized_response_
   // and sidecar_slices_ refer into its data.
-  std::vector<char> response_data_;
+  CallData response_data_;
 
   DISALLOW_COPY_AND_ASSIGN(CallResponse);
 };

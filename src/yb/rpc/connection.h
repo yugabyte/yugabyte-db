@@ -167,7 +167,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // An incoming packet has completed on the client side. This parses the
   // call response, looks up the CallAwaitingResponse, and calls the
   // client callback.
-  CHECKED_STATUS HandleCallResponse(std::vector<char>* call_data);
+  CHECKED_STATUS HandleCallResponse(CallData* call_data);
 
   ConnectionContext& context() { return *context_; }
 
@@ -192,11 +192,14 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
   void ProcessResponseQueue();
 
+  // Stream context implementation
   void UpdateLastActivity() override;
   void Transferred(const OutboundDataPtr& data, const Status& status) override;
   void Destroy(const Status& status) override;
-  Result<size_t> ProcessReceived(const IoVecs& data, ReadBufferFull read_buffer_full) override;
+  Result<ProcessDataResult> ProcessReceived(
+      const IoVecs& data, ReadBufferFull read_buffer_full) override;
   void Connected() override;
+  StreamReadBuffer& ReadBuffer() override;
 
   std::string LogPrefix() const;
 

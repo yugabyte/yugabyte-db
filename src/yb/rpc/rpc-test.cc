@@ -328,7 +328,7 @@ TEST_F(TestRpc, TestRpcSidecar) {
 
   // Test some larger sidecars to verify that we properly handle the case where
   // we can't write the whole response to the socket in a single call.
-  DoTestSidecar(&p, {3000 * 1024, 2000 * 1024, 240 * 1024 * 1024});
+  DoTestSidecar(&p, {3_MB, 2_MB, 240_MB});
 
   std::vector<size_t> sizes(CallResponse::kMaxSidecarSlices);
   std::fill(sizes.begin(), sizes.end(), 123);
