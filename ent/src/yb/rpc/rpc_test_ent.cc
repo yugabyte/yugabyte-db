@@ -37,10 +37,11 @@ class RpcTestEnt : public RpcTestBase {
  protected:
   std::shared_ptr<Messenger> CreateSecureMessenger(const std::string& name) {
     auto builder = CreateMessengerBuilder(name);
-    builder.SetListenProtocol(SecureStream::StaticProtocol());
+    builder.SetListenProtocol(SecureStreamProtocol());
     builder.AddStreamFactory(
-        SecureStream::StaticProtocol(),
-        SecureStream::Factory(TcpStream::Factory(), secure_context_.get()));
+        SecureStreamProtocol(),
+        SecureStreamFactory(TcpStream::Factory(), MemTracker::GetRootTracker(),
+                            secure_context_.get()));
     return EXPECT_RESULT(builder.Build());
   }
 
@@ -52,7 +53,7 @@ class RpcTestEnt : public RpcTestBase {
 
 TEST_F(RpcTestEnt, TLS) {
   rpc_test::CalculatorServiceProxy p(
-      proxy_cache_.get(), server_hostport_, SecureStream::StaticProtocol());
+      proxy_cache_.get(), server_hostport_, SecureStreamProtocol());
 
   RpcController controller;
   controller.set_timeout(5s);
