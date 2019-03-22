@@ -85,10 +85,14 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
     RETURN_NOT_OK(result->UseCertificate(data));
   }
 
-  builder->SetListenProtocol(rpc::SecureStream::StaticProtocol());
+  auto parent_mem_tracker = builder->last_used_parent_mem_tracker();
+  auto buffer_tracker = MemTracker::FindOrCreateTracker(
+      -1, "Encrypted Read Buffer", parent_mem_tracker);
+
+  builder->SetListenProtocol(rpc::SecureStreamProtocol());
   builder->AddStreamFactory(
-      rpc::SecureStream::StaticProtocol(),
-      rpc::SecureStream::Factory(rpc::TcpStream::Factory(), result.get()));
+      rpc::SecureStreamProtocol(),
+      rpc::SecureStreamFactory(rpc::TcpStream::Factory(), buffer_tracker, result.get()));
 
   return std::move(result);
 }
