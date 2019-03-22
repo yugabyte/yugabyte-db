@@ -127,15 +127,15 @@ Status PgDmlWrite::Exec() {
   // Set column references in protobuf.
   SetColumnRefIds(table_desc_, write_req_->mutable_column_refs());
 
-  // Execute the statement.
-  RETURN_NOT_OK(doc_op_->Execute());
-
-  // Get result and handle any rows returned.
-  RETURN_NOT_OK(doc_op_->GetResult(&row_batch_));
-  if (!row_batch_.empty()) {
-    int64_t row_count = 0;
-    RETURN_NOT_OK(PgDocData::LoadCache(row_batch_, &row_count, &cursor_));
-    accumulated_row_count_ += row_count;
+  // Execute the statement. If the request has been sent, get the result and handle any rows
+  // returned.
+  if (VERIFY_RESULT(doc_op_->Execute()) == RequestSent::kTrue) {
+     RETURN_NOT_OK(doc_op_->GetResult(&row_batch_));
+     if (!row_batch_.empty()) {
+       int64_t row_count = 0;
+       RETURN_NOT_OK(PgDocData::LoadCache(row_batch_, &row_count, &cursor_));
+       accumulated_row_count_ += row_count;
+     }
   }
 
   return Status::OK();

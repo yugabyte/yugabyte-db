@@ -25,6 +25,8 @@
 namespace yb {
 namespace pggate {
 
+YB_STRONGLY_TYPED_BOOL(RequestSent);
+
 class PgDocOp {
  public:
   // Public types.
@@ -45,8 +47,10 @@ class PgDocOp {
   explicit PgDocOp(PgSession::ScopedRefPtr pg_session, uint64_t* read_time);
   virtual ~PgDocOp();
 
-  // Postgres Ops.
-  virtual CHECKED_STATUS Execute();
+  // Execute the op. Return true if the request has been sent and is awaiting the result.
+  virtual Result<RequestSent> Execute();
+
+  // Get the result of the op.
   virtual CHECKED_STATUS GetResult(string *result_set);
 
   // Access functions.
@@ -177,8 +181,8 @@ class PgDocCompoundOp : public PgDocOp {
   explicit PgDocCompoundOp(PgSession::ScopedRefPtr pg_session);
   virtual ~PgDocCompoundOp();
 
-  virtual CHECKED_STATUS Execute() {
-    return Status::OK();
+  virtual Result<RequestSent> Execute() {
+    return RequestSent::kTrue;
   }
   virtual CHECKED_STATUS GetResult(string *result_set) {
     return Status::OK();

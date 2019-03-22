@@ -620,3 +620,13 @@ void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple tuple)
 	HandleYBStatus(YBCPgDeleteStatement(update_stmt));
 	update_stmt = NULL;
 }
+
+void YBCStartBufferingWriteOperations()
+{
+	HandleYBStatus(YBCPgStartBufferingWriteOperations(ybc_pg_session));
+}
+
+void YBCFlushBufferedWriteOperations()
+{
+	HandleYBStatus(YBCPgFlushBufferedWriteOperations(ybc_pg_session));
+}

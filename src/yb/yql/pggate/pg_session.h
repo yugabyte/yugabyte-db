@@ -33,6 +33,8 @@
 namespace yb {
 namespace pggate {
 
+YB_STRONGLY_TYPED_BOOL(OpBuffered);
+
 class PgTxnManager;
 
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
@@ -115,8 +117,16 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(const PgObjectId& table_id);
 
-  // Apply the given operation to read and write database content.
-  CHECKED_STATUS PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op, uint64_t* read_time);
+  // Buffer write operations.
+  CHECKED_STATUS StartBufferingWriteOperations();
+  CHECKED_STATUS FlushBufferedWriteOperations();
+
+  // Apply the given operation to read and write database content. If the operation is a write
+  // op, return true if the operation is buffered and should not be flushed except in bulk
+  // by FlushBufferedWriteOperations(). False otherwise.
+  Result<OpBuffered> PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op,
+                                  uint64_t* read_time);
+
   CHECKED_STATUS PgFlushAsync(StatusFunctor callback);
   CHECKED_STATUS RestartTransaction();
   bool HasAppliedOperations() const;
@@ -202,6 +212,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   ObjectIdGenerator rowid_generator_;
 
   std::unordered_map<TableId, std::shared_ptr<client::YBTable>> table_cache_;
+
+  // Should write operations be buffered?
+  bool buffer_write_ops_ = false;
+  std::vector<std::shared_ptr<client::YBPgsqlOp>> buffered_write_ops_;
 
   bool has_txn_ops_ = false;
   bool has_non_txn_ops_ = false;

@@ -41,7 +41,7 @@ Result<bool> PgDocOp::EndOfResult() const {
   return !has_cached_data_ && end_of_data_;
 }
 
-Status PgDocOp::Execute() {
+Result<RequestSent> PgDocOp::Execute() {
   if (is_canceled_) {
     return STATUS(IllegalState, "Operation canceled");
   }
@@ -57,7 +57,9 @@ Status PgDocOp::Execute() {
   // layer.
   InitUnlocked(&lock);
 
-  return SendRequestUnlocked();
+  RETURN_NOT_OK(SendRequestUnlocked());
+  
+  return RequestSent(waiting_for_response_);
 }
 
 void PgDocOp::InitUnlocked(std::unique_lock<std::mutex>* lock) {
@@ -145,10 +147,19 @@ void PgDocReadOp::InitUnlocked(std::unique_lock<std::mutex>* lock) {
 }
 
 Status PgDocReadOp::SendRequestUnlocked() {
-  RETURN_NOT_OK(pg_session_->PgApplyAsync(read_op_, read_time_));
+  CHECK(!waiting_for_response_);
+
+  SCHECK_EQ(VERIFY_RESULT(pg_session_->PgApplyAsync(read_op_, read_time_)), OpBuffered::kFalse,
+            IllegalState, "YSQL read operation should not be buffered");
+
   waiting_for_response_ = true;
-  RETURN_NOT_OK(
-      pg_session_->PgFlushAsync([this](const Status& s) { PgDocReadOp::ReceiveResponse(s); }));
+  Status s = pg_session_->PgFlushAsync([this](const Status& s) {
+                                         PgDocReadOp::ReceiveResponse(s);
+                                       });
+  if (!s.ok()) {
+    waiting_for_response_ = false;
+    return s;
+  }
   return Status::OK();
 }
 
@@ -200,11 +211,15 @@ PgDocWriteOp::~PgDocWriteOp() {
 Status PgDocWriteOp::SendRequestUnlocked() {
   CHECK(!waiting_for_response_);
 
-  RETURN_NOT_OK(pg_session_->PgApplyAsync(write_op_, read_time_));
+  // If the op is buffered, we should not flush now. Just return.
+  if (VERIFY_RESULT(pg_session_->PgApplyAsync(write_op_, read_time_)) == OpBuffered::kTrue) {
+    return Status::OK();
+  }
+
   waiting_for_response_ = true;
   Status s = pg_session_->PgFlushAsync([this](const Status& s) {
-    PgDocWriteOp::ReceiveResponse(s);
-  });
+                                         PgDocWriteOp::ReceiveResponse(s);
+                                       });
   if (!s.ok()) {
     waiting_for_response_ = false;
     return s;
