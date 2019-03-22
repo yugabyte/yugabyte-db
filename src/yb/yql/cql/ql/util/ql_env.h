@@ -30,7 +30,6 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/enums.h"
-#include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ql_session.h"
 

@@ -30,13 +30,55 @@ struct loop_ref;
 namespace yb {
 namespace rpc {
 
+struct ProcessDataResult {
+  size_t consumed;
+  Slice buffer;
+};
+
+class StreamReadBuffer {
+ public:
+  // Returns true we could read from this buffer. It is NOT always !Empty().
+  virtual bool ReadyToRead() = 0;
+
+  // Returns true if this buffer is empty.
+  virtual bool Empty() = 0;
+
+  // Resets buffer and release allocated memory.
+  virtual void Reset() = 0;
+
+  // Returns true if this buffer is full and we cannot anymore read in to it.
+  virtual bool Full() = 0;
+
+  // Ensures there is some space to read into. Depending on currently used size.
+  // Returns iov's that could be used for receiving data into to this buffer.
+  virtual Result<IoVecs> PrepareAppend() = 0;
+
+  // Extends amount of received data by len.
+  virtual void DataAppended(size_t len) = 0;
+
+  // Returns currently appended data.
+  virtual IoVecs AppendedVecs() = 0;
+
+  // Consumes count bytes of received data. If prepend is not empty, then all future reads should
+  // write data to prepend, until it is filled. I.e. unfilled part of prepend will be the first
+  // entry of vector returned by PrepareAppend.
+  virtual void Consume(size_t count, const Slice& prepend) = 0;
+
+  // Render this buffer to string.
+  virtual std::string ToString() const = 0;
+
+  virtual ~StreamReadBuffer() {}
+};
+
 class StreamContext {
  public:
   virtual void UpdateLastActivity() = 0;
   virtual void Transferred(const OutboundDataPtr& data, const Status& status) = 0;
   virtual void Destroy(const Status& status) = 0;
   virtual void Connected() = 0;
-  virtual Result<size_t> ProcessReceived(const IoVecs& data, ReadBufferFull read_buffer_full) = 0;
+  virtual Result<ProcessDataResult> ProcessReceived(
+      const IoVecs& data, ReadBufferFull read_buffer_full) = 0;
+  virtual StreamReadBuffer& ReadBuffer() = 0;
 
  protected:
   ~StreamContext() {}
@@ -89,8 +131,6 @@ struct StreamCreateData {
   Endpoint remote;
   const std::string& remote_hostname;
   Socket* socket;
-  GrowableBufferAllocator* allocator;
-  size_t limit;
 };
 
 class StreamFactory {

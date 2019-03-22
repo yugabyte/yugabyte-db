@@ -97,6 +97,23 @@ void IoVecsToBuffer(const IoVecs& io_vecs, size_t begin, size_t end, std::vector
   }
 }
 
+void IoVecsToBuffer(const IoVecs& io_vecs, size_t begin, size_t end, char* result) {
+  for (const auto& io_vec : io_vecs) {
+    if (begin == end) {
+      break;
+    }
+    if (io_vec.iov_len > begin) {
+      size_t clen = std::min(io_vec.iov_len, end) - begin;
+      auto start = IoVecBegin(io_vec) + begin;
+      memcpy(result, start, clen);
+      result += clen;
+      begin += clen;
+    }
+    begin -= io_vec.iov_len;
+    end -= io_vec.iov_len;
+  }
+}
+
 Socket::Socket()
   : fd_(-1) {
 }
@@ -646,6 +663,31 @@ Status Socket::SetTimeout(int opt, std::string optname, const MonoDelta& timeout
     return STATUS(NetworkError,
         StringPrintf("Failed to set %s to %s", optname.c_str(), timeout.ToString().c_str()),
         ErrnoToString(err), err);
+  }
+  return Status::OK();
+}
+
+Result<int32_t> Socket::GetReceiveBufferSize() {
+  int32_t val = 0;
+  socklen_t val_len = sizeof(val);
+  DCHECK_GE(fd_, 0);
+  if (getsockopt(fd_, SOL_SOCKET, SO_RCVBUF, &val, &val_len)) {
+    int err = errno;
+    return STATUS(
+        NetworkError, Format("Failed to get socket receive buffer: $0", ErrnoToString(err)),
+        Slice(), err);
+  }
+  return val;
+}
+
+Status Socket::SetReceiveBufferSize(int32_t size) {
+  int32_t val = size / 2; // Kernel will double this value
+  DCHECK_GE(fd_, 0);
+  if (setsockopt(fd_, SOL_SOCKET, SO_RCVBUF, &val, sizeof(val))) {
+    int err = errno;
+    return STATUS(
+        NetworkError, Format("Failed to set socket receive buffer: $0", ErrnoToString(err)),
+        Slice(), err);
   }
   return Status::OK();
 }

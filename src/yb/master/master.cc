@@ -115,7 +115,6 @@ DEFINE_int32(master_remote_bootstrap_svc_queue_length, 50,
              "RPC queue length for master remote bootstrap service");
 TAG_FLAG(master_remote_bootstrap_svc_queue_length, advanced);
 
-DECLARE_int64(inbound_rpc_block_size);
 DECLARE_int64(inbound_rpc_memory_limit);
 
 namespace yb {
@@ -136,7 +135,6 @@ Master::Master(const MasterOptions& opts)
                                                              "yb.cluster")),
     master_tablet_server_(new MasterTabletServer(this, metric_entity())) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
-      GetAtomicFlag(&FLAGS_inbound_rpc_block_size),
       GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit),
       mem_tracker()));
 }

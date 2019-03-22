@@ -112,11 +112,13 @@ class MessengerBuilder {
 
   template <class ContextType>
   MessengerBuilder &CreateConnectionContextFactory(
-      size_t block_size, size_t memory_limit,
-      const std::shared_ptr<MemTracker>& parent_mem_tracker = nullptr) {
+      size_t memory_limit, const std::shared_ptr<MemTracker>& parent_mem_tracker = nullptr) {
+    if (parent_mem_tracker) {
+      last_used_parent_mem_tracker_ = parent_mem_tracker;
+    }
     connection_context_factory_ =
         std::make_shared<ConnectionContextFactoryImpl<ContextType>>(
-            block_size, memory_limit, parent_mem_tracker);
+            memory_limit, parent_mem_tracker);
     return *this;
   }
 
@@ -144,6 +146,10 @@ class MessengerBuilder {
     return num_connections_to_server_;
   }
 
+  const std::shared_ptr<MemTracker>& last_used_parent_mem_tracker() const {
+    return last_used_parent_mem_tracker_;
+  }
+
  private:
   const std::string name_;
   CoarseMonoClock::Duration connection_keepalive_time_;
@@ -156,6 +162,7 @@ class MessengerBuilder {
   size_t queue_limit_;
   size_t workers_limit_;
   int num_connections_to_server_;
+  std::shared_ptr<MemTracker> last_used_parent_mem_tracker_;
 };
 
 // A Messenger is a container for the reactor threads which run event loops for the RPC services.

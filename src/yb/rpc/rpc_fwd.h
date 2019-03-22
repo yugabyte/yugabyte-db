@@ -63,9 +63,12 @@ class Protocol;
 class Scheduler;
 class ServicePoolImpl;
 class Stream;
+class StreamReadBuffer;
 class ThreadPool;
 class ThreadPoolTask;
 
+struct CallData;
+struct ProcessDataResult;
 struct RpcMethodMetrics;
 struct RpcMetrics;
 

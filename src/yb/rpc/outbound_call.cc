@@ -561,11 +561,11 @@ Status CallResponse::GetSidecar(int idx, Slice* sidecar) const {
   return Status::OK();
 }
 
-Status CallResponse::ParseFrom(std::vector<char>* call_data) {
+Status CallResponse::ParseFrom(CallData* call_data) {
   CHECK(!parsed_);
   Slice entire_message;
 
-  response_data_.swap(*call_data);
+  response_data_ = std::move(*call_data);
   Slice source(response_data_.data(), response_data_.size());
   RETURN_NOT_OK(serialization::ParseYBMessage(source, &header_, &entire_message));
 
