@@ -3,7 +3,23 @@
 #include "fmgr.h"
 #include "utils/builtins.h"
 
+#include "analyze.h"
+
 PG_MODULE_MAGIC;
+
+void _PG_init(void);
+
+void _PG_init(void)
+{
+    post_parse_analyze_init();
+}
+
+void _PG_fini(void);
+
+void _PG_fini(void)
+{
+    post_parse_analyze_fini();
+}
 
 PG_FUNCTION_INFO_V1(cypher);
 

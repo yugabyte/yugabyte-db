@@ -1,4 +1,7 @@
-MODULES = agensgraph
+MODULE_big = agensgraph
+
+OBJS = agensgraph.o \
+       analyze.o
 
 EXTENSION = agensgraph
 
