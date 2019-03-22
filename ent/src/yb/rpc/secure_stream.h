@@ -16,7 +16,7 @@
 
 #include "yb/rpc/stream.h"
 
-#include "yb/rpc/growable_buffer.h"
+#include "yb/rpc/circular_read_buffer.h"
 
 #include "yb/util/enums.h"
 
@@ -77,72 +77,10 @@ class SecureContext {
   detail::X509Ptr certificate_;
 };
 
-class SecureStream : public Stream, public StreamContext {
- public:
-  SecureStream(const SecureContext& context, std::unique_ptr<Stream> lower_stream,
-               const StreamCreateData& data);
-
-  SecureStream(const SecureStream&) = delete;
-  void operator=(const SecureStream&) = delete;
-
-  static const Protocol* StaticProtocol();
-  static StreamFactoryPtr Factory(
-      StreamFactoryPtr lower_layer_factory, SecureContext* context);
-
-  size_t GetPendingWriteBytes() override {
-    return lower_stream_->GetPendingWriteBytes();
-  }
-
- private:
-  CHECKED_STATUS Start(bool connect, ev::loop_ref* loop, StreamContext* context) override;
-  void Close() override;
-  void Shutdown(const Status& status) override;
-  void Send(OutboundDataPtr data) override;
-  CHECKED_STATUS TryWrite() override;
-  void ParseReceived() override;
-
-  bool Idle(std::string* reason_not_idle) override;
-  bool IsConnected() override;
-  void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
-
-  const Endpoint& Remote() override;
-  const Endpoint& Local() override;
-
-  const Protocol* GetProtocol() override {
-    return StaticProtocol();
-  }
-
-  void UpdateLastActivity() override;
-  void Transferred(const OutboundDataPtr& data, const Status& status) override;
-  void Destroy(const Status& status) override;
-  Result<size_t> ProcessReceived(const IoVecs& data, ReadBufferFull read_buffer_full) override;
-  void Connected() override;
-
-  CHECKED_STATUS Handshake();
-
-  CHECKED_STATUS Init();
-  void Established(SecureState state);
-  static int VerifyCallback(int preverified, X509_STORE_CTX* store_context);
-  bool Verify(bool preverified, X509_STORE_CTX* store_context);
-  void WriteEncrypted(OutboundDataPtr data);
-  CHECKED_STATUS ReadDecrypted();
-
-  std::string ToString() override;
-
-  const SecureContext& secure_context_;
-  std::unique_ptr<Stream> lower_stream_;
-  const std::string remote_hostname_;
-  StreamContext* context_;
-  SecureState state_ = SecureState::kInitial;
-  bool need_connect_ = false;
-  std::vector<OutboundDataPtr> pending_data_;
-  std::vector<std::string> certificate_entries_;
-
-  GrowableBuffer received_data_;
-
-  detail::BIOPtr bio_;
-  detail::SSLPtr ssl_;
-};
+const Protocol* SecureStreamProtocol();
+StreamFactoryPtr SecureStreamFactory(
+    StreamFactoryPtr lower_layer_factory, const MemTrackerPtr& buffer_tracker,
+    SecureContext* context);
 
 } // namespace rpc
 } // namespace yb
