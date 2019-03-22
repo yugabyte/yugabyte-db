@@ -64,22 +64,121 @@ TEST_F(TestQLCreateIndex, TestQLCreateIndexSimple) {
   const string table1 = "human_resource1(id int primary key, name varchar) "
                         "with transactions = {'enabled':true};";
   const string index1 = "i ON human_resource1(name);";
+  const string index_no_name = "ON human_resource1(name);";
 
   // Create the table and index.
   EXEC_VALID_STMT(CreateTableStmt(table1));
   EXEC_VALID_STMT(CreateIndexStmt(index1));
+  EXEC_VALID_STMT(CreateIndexStmt(index_no_name));
 
   // Verify that CREATE statements fail for table and index that have already been created.
   EXEC_DUPLICATE_OBJECT_CREATE_STMT(CreateTableStmt(table1));
   EXEC_DUPLICATE_OBJECT_CREATE_STMT(CreateIndexStmt(index1));
+  EXEC_DUPLICATE_OBJECT_CREATE_STMT(CreateIndexStmt(index_no_name));
 
   // Verify that all 'CREATE ... IF EXISTS' statements succeed for objects that have already been
   // created.
   EXEC_VALID_STMT(CreateTableIfNotExistsStmt(table1));
   EXEC_VALID_STMT(CreateIndexIfNotExistsStmt(index1));
+  EXEC_VALID_STMT(CreateIndexIfNotExistsStmt(index_no_name));
 
-  const string drop_stmt = "DROP TABLE human_resource1;";
-  EXEC_VALID_STMT(drop_stmt);
+  EXEC_VALID_STMT("DROP TABLE human_resource1;");
+}
+
+TEST_F(TestQLCreateIndex, TestQLCreateIndexDefaultName) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  TestQLProcessor *processor = GetQLProcessor();
+
+  // Create the table.
+  EXEC_VALID_STMT(CreateTableStmt(
+      "human_resource(id int primary key, name varchar, surname text, kids int) "
+      "with transactions = {'enabled':true};"));
+
+  EXEC_VALID_STMT(CreateIndexStmt("ON human_resource(name);"));
+  // Get Index name from the Parse Tree and check it.
+  {
+    TreeNode::SharedPtr root = processor->GetLastParseTree()->root();
+    ASSERT_EQ(TreeNodeOpcode::kPTCreateIndex, root->opcode());
+    PTCreateIndex::SharedPtr node = std::static_pointer_cast<PTCreateIndex>(root);
+    ASSERT_STREQ(node->name()->c_str(), "human_resource_name_idx");
+  }
+
+  // Test index over 2-3 columns.
+  EXEC_VALID_STMT(CreateIndexStmt("ON human_resource(name, surname);"));
+  {
+    TreeNode::SharedPtr root = processor->GetLastParseTree()->root();
+    ASSERT_EQ(TreeNodeOpcode::kPTCreateIndex, root->opcode());
+    PTCreateIndex::SharedPtr node = std::static_pointer_cast<PTCreateIndex>(root);
+    ASSERT_STREQ(node->name()->c_str(), "human_resource_name_surname_idx");
+  }
+
+  // Check that the covering columns are not included into the index name.
+  EXEC_VALID_STMT(CreateIndexStmt("ON human_resource(surname, name) INCLUDE (kids);"));
+  {
+    TreeNode::SharedPtr root = processor->GetLastParseTree()->root();
+    ASSERT_EQ(TreeNodeOpcode::kPTCreateIndex, root->opcode());
+    PTCreateIndex::SharedPtr node = std::static_pointer_cast<PTCreateIndex>(root);
+    ASSERT_STREQ(node->name()->c_str(), "human_resource_surname_name_idx");
+  }
+
+  EXEC_VALID_STMT(CreateIndexStmt("ON human_resource((surname, name), id);"));
+  {
+    TreeNode::SharedPtr root = processor->GetLastParseTree()->root();
+    ASSERT_EQ(TreeNodeOpcode::kPTCreateIndex, root->opcode());
+    PTCreateIndex::SharedPtr node = std::static_pointer_cast<PTCreateIndex>(root);
+    ASSERT_STREQ(node->name()->c_str(), "human_resource_surname_name_id_idx");
+  }
+
+  // Duplicate column name.
+  EXEC_INVALID_STMT(CreateIndexStmt("ON human_resource(name, name);"));
+
+  EXEC_VALID_STMT("DROP TABLE human_resource;");
+}
+
+TEST_F(TestQLCreateIndex, TestQLSpecialSymbolsInIndexDefaultName) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  TestQLProcessor *processor = GetQLProcessor();
+
+  // Create the table.
+  EXEC_VALID_STMT(CreateTableStmt(
+      "human_resource (id int primary key, \"Capital\" int, \"Capital With Spaces\" int, "
+      "\"!@#$%^&*-=+()[]{}<>/\\\\,.;:\"\"'\" int) "
+      "with transactions = {'enabled':true};"));
+
+  EXEC_VALID_STMT(CreateIndexStmt("ON human_resource(\"Capital\");"));
+  // Test Capital symbol.
+  {
+    TreeNode::SharedPtr root = processor->GetLastParseTree()->root();
+    ASSERT_EQ(TreeNodeOpcode::kPTCreateIndex, root->opcode());
+    PTCreateIndex::SharedPtr node = std::static_pointer_cast<PTCreateIndex>(root);
+    ASSERT_STREQ(node->name()->c_str(), "human_resource_Capital_idx");
+  }
+
+  // Test spaces.
+  EXEC_VALID_STMT(CreateIndexStmt("ON human_resource(\"Capital With Spaces\");"));
+  {
+    TreeNode::SharedPtr root = processor->GetLastParseTree()->root();
+    ASSERT_EQ(TreeNodeOpcode::kPTCreateIndex, root->opcode());
+    PTCreateIndex::SharedPtr node = std::static_pointer_cast<PTCreateIndex>(root);
+    ASSERT_STREQ(node->name()->c_str(), "human_resource_CapitalWithSpaces_idx");
+  }
+
+  // Test different unprintable symbols.
+  EXEC_VALID_STMT(CreateIndexStmt("ON human_resource(\"!@#$%^&*-=+()[]{}<>/\\\\,.;:\"\"'\");"));
+  {
+    TreeNode::SharedPtr root = processor->GetLastParseTree()->root();
+    ASSERT_EQ(TreeNodeOpcode::kPTCreateIndex, root->opcode());
+    PTCreateIndex::SharedPtr node = std::static_pointer_cast<PTCreateIndex>(root);
+    ASSERT_STREQ(node->name()->c_str(), "human_resource__idx");
+  }
+
+  EXEC_VALID_STMT("DROP TABLE human_resource;");
 }
 
 } // namespace ql

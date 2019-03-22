@@ -85,7 +85,11 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
     return transaction->CreateRestartedTransaction();
   }
   if (transaction_pool_ == nullptr) {
-    transaction_pool_ = transaction_pool_provider_();
+    if (transaction_pool_provider_) {
+      transaction_pool_ = transaction_pool_provider_();
+    } else {
+      return STATUS(InternalError, "No transaction pool provider");
+    }
   }
   auto result = transaction_pool_->Take();
   RETURN_NOT_OK(result->Init(isolation_level));

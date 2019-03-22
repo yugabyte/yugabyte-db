@@ -289,8 +289,9 @@ TEST_F(QLTestParser, TestCreateIndex) {
   PARSE_VALID_STMT("CREATE INDEX i ON t (c2->'a'->>'b');");
   PARSE_VALID_STMT("CREATE INDEX i ON t (c2->'a'->'b'->>'c');");
 
-  // Invalid statement: mandatory index name missing.
-  PARSE_INVALID_STMT("CREATE INDEX ON k.t (c1, c2, c3, c4);");
+  // Default index name.
+  PARSE_VALID_STMT("CREATE INDEX ON k.t (c1, c2, c3, c4);");
+
   // Invalid statement: index name must be simple name without keyspace qualifier.
   PARSE_INVALID_STMT("CREATE INDEX k.i ON k.t (c1, c2, c3, c4);");
 }
