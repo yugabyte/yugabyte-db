@@ -119,8 +119,8 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
   void RunAsync(
       const string& stmt, const StatementParameters& params, Callback<void(const Status&)> cb) {
     result_ = nullptr;
-    QLProcessor::RunAsync(
-        stmt, params, Bind(&TestQLProcessor::RunAsyncDone, Unretained(this), cb));
+    parse_tree.reset(); // Delete previous parse tree.
+    RunAsyncInternal(stmt, params, Bind(&TestQLProcessor::RunAsyncDone, Unretained(this), cb));
   }
 
   // Execute a QL statement.
@@ -160,9 +160,28 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
     ql_env_.RemoveCachedTableDesc(table_name);
   }
 
+  const ParseTree::UniPtr& GetLastParseTree() const {
+    return parse_tree;
+  }
+
  private:
+  void RunAsyncInternal(const std::string& stmt, const StatementParameters& params,
+                        StatementExecutedCallback cb, bool reparsed = false) {
+    const Status s = Prepare(stmt, &parse_tree, reparsed);
+    if (PREDICT_FALSE(!s.ok())) {
+      return cb.Run(s, nullptr /* result */);
+    }
+    // Do not make a copy of stmt and params when binding to the RunAsyncDone callback because when
+    // error occurs due to stale matadata, the statement needs to be reexecuted. We should pass the
+    // original references which are guaranteed to still be alive when the statement is reexecuted.
+    ExecuteAsync(*parse_tree, params, Bind(&QLProcessor::RunAsyncDone, Unretained(this),
+        ConstRef(stmt), ConstRef(params), Unretained(parse_tree.get()), cb));
+  }
+
   // Execute result.
   ExecutedResult::SharedPtr result_;
+
+  ParseTree::UniPtr parse_tree;
 };
 
 // Base class for all QL test cases.

@@ -112,6 +112,7 @@ class QLProcessor : public Rescheduler {
 
  private:
   friend class QLTestBase;
+  friend class TestQLProcessor;
 
   // Parse a SQL statement and generate a parse tree.
   CHECKED_STATUS Parse(const std::string& stmt, ParseTree::UniPtr* parse_tree,

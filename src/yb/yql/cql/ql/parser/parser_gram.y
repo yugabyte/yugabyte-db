@@ -8042,7 +8042,7 @@ opt_concurrently:
 
 opt_index_name:
   index_name                        { $$ = $1; }
-  | /*EMPTY*/                       { PARSER_UNSUPPORTED(@0); }
+  | /*EMPTY*/                       { $$ = nullptr; }
 ;
 
 access_method_clause:
