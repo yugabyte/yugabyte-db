@@ -26,6 +26,8 @@ static bool is_func_cypher(FuncExpr *funcexpr);
 static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate);
 static Query *parse_and_analyze_cypher(const char *query_str);
 static Query *generate_values_query_with_str(const char *str);
+static void check_result_type(Query *query, RangeTblFunction *rtfunc,
+                              ParseState *pstate);
 
 void post_parse_analyze_init(void)
 {
@@ -211,6 +213,8 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     query_str = TextDatumGetCString(((Const *)arg)->constvalue);
     query = parse_and_analyze_cypher(query_str);
 
+    check_result_type(query, rtfunc, pstate);
+
     // rte->functions and rte->funcordinality are kept for debugging.
     // rte->alias, rte->eref, and rte->lateral need to be the same.
     // rte->inh is always false for both RTE_FUNCTION and RTE_SUBQUERY.
@@ -249,4 +253,44 @@ static Query *generate_values_query_with_str(const char *str)
     free_parsestate(pstate);
 
     return query;
+}
+
+static void check_result_type(Query *query, RangeTblFunction *rtfunc,
+                              ParseState *pstate)
+{
+    ListCell *lc;
+    ListCell *lc1;
+    ListCell *lc2;
+    ListCell *lc3;
+
+    if (list_length(query->targetList) != rtfunc->funccolcount) {
+        ereport(ERROR,
+                (errcode(ERRCODE_DATATYPE_MISMATCH),
+                 errmsg("return row and column definition list do not match"),
+                 parser_errposition(pstate, exprLocation(rtfunc->funcexpr))));
+    }
+
+    // NOTE: Implement automatic type coercion instead of this.
+    lc1 = list_head(rtfunc->funccoltypes);
+    lc2 = list_head(rtfunc->funccoltypmods);
+    lc3 = list_head(rtfunc->funccolcollations);
+    foreach (lc, query->targetList) {
+        TargetEntry *te = lfirst(lc);
+        Node *expr = (Node *)te->expr;
+
+        Assert(!te->resjunk);
+
+        if (exprType(expr) != lfirst_oid(lc1) ||
+            exprTypmod(expr) != lfirst_int(lc2) ||
+            exprCollation(expr) != lfirst_oid(lc3)) {
+            ereport(ERROR,
+                    (errcode(ERRCODE_DATATYPE_MISMATCH),
+                     errmsg("return row and column definition list do not match"),
+                     parser_errposition(pstate, exprLocation(rtfunc->funcexpr))));
+        }
+
+        lc1 = lnext(lc1);
+        lc2 = lnext(lc2);
+        lc3 = lnext(lc3);
+    }
 }

@@ -17,6 +17,10 @@ WITH q(s) AS (
 )
 SELECT * FROM q, cypher(q.s) AS r(c text);
 
+-- The numbers of the attributes must match.
+
+SELECT * FROM cypher($$RETURN 0$$) AS r(c text, x text);
+
 -- cypher() function can be called in ROWS FROM only if it is there solely.
 
 SELECT * FROM ROWS FROM (cypher($$RETURN 0$$) AS (c text));
