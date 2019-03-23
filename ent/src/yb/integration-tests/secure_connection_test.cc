@@ -41,7 +41,6 @@ class SecureConnectionTest : public client::KeyValueTableTest {
     FLAGS_use_node_to_node_encryption = true;
     FLAGS_use_client_to_server_encryption = true;
     FLAGS_allow_insecure_connections = false;
-    std::string test_executable_path;
     const auto sub_dir = JoinPathSegments("ent", "test_certs");
     auto root_dir = env_util::GetRootDir(sub_dir);
     FLAGS_certs_dir = JoinPathSegments(root_dir, sub_dir);
