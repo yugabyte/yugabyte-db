@@ -15,6 +15,9 @@
 #include "yb/util/string_util.h"
 #include "yb/client/client.h"
 
+DECLARE_string(certs_dir);
+DECLARE_bool(use_client_to_server_encryption);
+
 namespace yb {
 namespace tools {
 namespace enterprise {
@@ -56,6 +59,28 @@ PB_ENUM_FORMATTERS(yb::master::SysSnapshotEntryPB::State);
 Status ClusterAdminClient::Init() {
   RETURN_NOT_OK(super::Init());
   DCHECK(initted_);
+
+  if (!certs_dir_.empty()) {
+    rpc::MessengerBuilder messenger_builder("yb-admin");
+    FLAGS_use_client_to_server_encryption = true;
+    FLAGS_certs_dir = certs_dir_;
+    secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
+        "", "", server::SecureContextType::kClientToServer, &messenger_builder));
+    messenger_ = VERIFY_RESULT(messenger_builder.Build());
+    client::YBClientBuilder yb_builder;
+    yb_builder.use_messenger(messenger_);
+    CHECK_OK(yb_builder
+        .add_master_server_addr(master_addr_list_)
+        .default_admin_operation_timeout(timeout_)
+        .Build(&yb_client_));
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_);
+
+    // Find the leader master's socket info to set up the proxy
+    leader_addr_ = yb_client_->GetMasterLeaderAddress();
+    master_proxy_.reset(new master::MasterServiceProxy(proxy_cache_.get(), leader_addr_));
+
+    LOG(INFO) << "Built secure client using certs dir " << certs_dir_;;
+  }
 
   rpc::ProxyCache proxy_cache(messenger_);
   master_backup_proxy_.reset(new master::MasterBackupServiceProxy(&proxy_cache, leader_addr_));
