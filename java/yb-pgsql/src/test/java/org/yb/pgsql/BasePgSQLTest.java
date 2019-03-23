@@ -70,7 +70,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static ConcurrentSkipListSet<Integer> stuckBackendPidsConcMap =
       new ConcurrentSkipListSet<>();
 
-  private boolean pgInitialized = false;
+  private static boolean pgInitialized = false;
 
   public void runPgRegressTest(String schedule) throws Exception {
     final int tserverIndex = 0;
@@ -709,5 +709,4 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     // initdb takes a really long time on macOS in debug mode.
     return 1200;
   }
-
 }
