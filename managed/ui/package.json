@@ -14,7 +14,7 @@
     "npm": "3.3.12"
   },
   "devDependencies": {
-    "@babel/runtime": "7.0.0-beta.46",
+    "@babel/runtime": "^7.0.0-beta.3",
     "array-union": "^1.0.2",
     "babel-core": "^6.13.2",
     "babel-loader": "^6.2.4",
@@ -38,7 +38,7 @@
   "dependencies": {
     "async": "^1.5.2",
     "axios": "^0.9.0",
-    "@babel/runtime": "7.0.0-beta.46",
+    "@babel/runtime": "^7.0.0-beta.3",
     "babel-polyfill": "^6.23.0",
     "babel-preset-react": "^6.11.1",
     "babel-preset-stage-1": "^6.1.18",
