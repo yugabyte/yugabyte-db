@@ -66,13 +66,13 @@ class ClusterAdminClient {
   };
 
   // Creates an admin client for host/port combination e.g.,
-  // "localhost" or "127.0.0.1:7050".
-  ClusterAdminClient(std::string addrs, int64_t timeout_millis);
+  // "localhost" or "127.0.0.1:7050" with the given timeout.
+  // If certs_dir is non-empty, caller will init the yb_client_.
+  ClusterAdminClient(std::string addrs, int64_t timeout_millis, string certs_dir);
 
   virtual ~ClusterAdminClient() = default;
 
-  // Initialized the client and connects to the specified tablet
-  // server.
+  // Initialized the client and connects to the specified tablet server.
   virtual CHECKED_STATUS Init();
 
   // Parse the user-specified change type to consensus change type
@@ -80,7 +80,7 @@ class ClusterAdminClient {
       const std::string& change_type,
       consensus::ChangeConfigType* cc_type);
 
-    // Change the configuration of the specified tablet.
+  // Change the configuration of the specified tablet.
   CHECKED_STATUS ChangeConfig(
       const TabletId& tablet_id,
       const std::string& change_type,
@@ -177,11 +177,13 @@ class ClusterAdminClient {
   const std::string master_addr_list_;
   const MonoDelta timeout_;
   HostPort leader_addr_;
-  bool initted_ = false;
   std::shared_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   std::unique_ptr<master::MasterServiceProxy> master_proxy_;
+  // Skip yb_client_ and related fields' initialization.
+  bool client_init_ = true;
   std::shared_ptr<client::YBClient> yb_client_;
+  bool initted_ = false;
 
  private:
   Result<master::GetMasterClusterConfigResponsePB> GetMasterClusterConfig();
