@@ -42,6 +42,8 @@
 DEFINE_string(master_addresses, "localhost:7100",
               "Comma-separated list of YB Master server addresses");
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
+DEFINE_string(certs_dir_name, "",
+              "Directory with certificates to use for secure server connection.");
 
 namespace yb {
 namespace tools {
@@ -98,7 +100,7 @@ int ClusterAdminCli::Run(int argc, char** argv) {
   InitGoogleLoggingSafe(prog_name.c_str());
 
   const string addrs = FLAGS_master_addresses;
-  ClusterAdminClientClass client(addrs, FLAGS_timeout_ms);
+  ClusterAdminClientClass client(addrs, FLAGS_timeout_ms, FLAGS_certs_dir_name);
   RegisterCommandHandlers(&client);
   SetUsage(prog_name);
 
@@ -150,8 +152,8 @@ void ClusterAdminCli::Register(string&& cmd_name, string&& cmd_args, CommandFn&&
 void ClusterAdminCli::SetUsage(const string& prog_name) {
   ostringstream str;
 
-  str << prog_name << " [-master_addresses server1,server2,server3] "
-      << " [-timeout_ms <millisec>] <operation>" << endl
+  str << prog_name << " [-master_addresses server1:port,server2:port,server3:port,...] "
+      << " [-timeout_ms <millisec>] [-certs_dir_name <dir_name>] <operation>" << endl
       << "<operation> must be one of:" << endl;
 
   for (size_t i = 0; i < commands_.size(); ++i) {
