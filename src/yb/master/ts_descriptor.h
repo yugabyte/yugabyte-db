@@ -37,8 +37,13 @@
 #include <string>
 
 #include "yb/gutil/gscoped_ptr.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/master.pb.h"
+
 #include "yb/tserver/tserver_service.proxy.h"
+
+#include "yb/util/capabilities.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -74,7 +79,7 @@ typedef util::SharedPtrTuple<tserver::TabletServerAdminServiceProxy,
 // This class is thread-safe.
 class TSDescriptor {
  public:
-  static Result<std::unique_ptr<TSDescriptor>> RegisterNew(
+  static Result<TSDescriptorPtr> RegisterNew(
       const NodeInstancePB& instance,
       const TSRegistrationPB& registration,
       CloudInfoPB local_cloud_info,
@@ -103,13 +108,11 @@ class TSDescriptor {
   bool has_tablet_report() const;
   void set_has_tablet_report(bool has_report);
 
-  // Copy the current registration info into the given PB object.
-  // A safe copy is returned because the internal Registration object
-  // may be mutated at any point if the tablet server re-registers.
-  void GetRegistration(TSRegistrationPB* reg) const;
+  // Returns TSRegistrationPB for this TSDescriptor.
+  TSRegistrationPB GetRegistration() const;
 
-  // Populates the TSInformationPB for this TSDescriptor.
-  void GetTSInformationPB(TSInformationPB* ts_info) const;
+  // Returns TSInformationPB for this TSDescriptor.
+  TSInformationPB GetTSInformationPB() const;
 
   // Helper function to tell if this TS matches the cloud information provided. For now, we have
   // no wildcard functionality, so it will have to explicitly match each individual component.
@@ -123,8 +126,6 @@ class TSDescriptor {
   std::string placement_uuid() const;
 
   bool IsRunningOn(const HostPortPB& hp) const;
-
-  void GetNodeInstancePB(NodeInstancePB* instance_pb) const;
 
   // Should this ts have any leader load on it.
   virtual bool IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const;
@@ -331,6 +332,9 @@ class TSDescriptor {
 
   // Set of tablet uuids for which a delete is pending on this tablet server.
   std::set<std::string> tablets_pending_delete_;
+
+  // Capabilities of this tablet server.
+  google::protobuf::RepeatedField<CapabilityId> capabilities_;
 
   // We don't remove TSDescriptor's from the master's in memory map since several classes hold
   // references to this object and those would be invalidated if we remove the descriptor from

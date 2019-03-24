@@ -37,6 +37,7 @@ set(CLIENT_SRCS
   client.cc
   client_builder-internal.cc
   client-internal.cc
+  client_utils.cc
   error_collector.cc
   error-internal.cc
   in_flight_op.cc

@@ -160,6 +160,8 @@ void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
   private_rpc_hostports_ = pb.private_rpc_addresses();
   public_rpc_hostports_ = pb.broadcast_addresses();
   cloud_info_pb_ = pb.cloud_info();
+  capabilities_.assign(pb.capabilities().begin(), pb.capabilities().end());
+  std::sort(capabilities_.begin(), capabilities_.end());
 }
 
 bool RemoteTabletServer::IsLocal() const {
@@ -206,6 +208,10 @@ bool RemoteTabletServer::HasHostFrom(const std::unordered_set<std::string>& host
     }
   }
   return false;
+}
+
+bool RemoteTabletServer::HasCapability(CapabilityId capability) const {
+  return std::binary_search(capabilities_.begin(), capabilities_.end(), capability);
 }
 
 ////////////////////////////////////////////////////////////
