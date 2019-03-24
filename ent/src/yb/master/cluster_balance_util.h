@@ -71,8 +71,7 @@ class ClusterLoadState : public yb::master::ClusterLoadState {
         affinitized_zones_.empty()) {
       return;
     }
-    TSRegistrationPB registration;
-    ts_desc->GetRegistration(&registration);
+    TSRegistrationPB registration = ts_desc->GetRegistration();
     if (affinitized_zones_.find(registration.common().cloud_info()) == affinitized_zones_.end()) {
       // This tablet server is in an affinitized leader zone.
       sorted_leader_load_.pop_back();
