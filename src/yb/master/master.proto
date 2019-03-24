@@ -431,7 +431,8 @@ message ResourcePermissionsPB {
 message TSRegistrationPB {
   optional ServerRegistrationPB common = 1;
 
-  // TODO: add stuff like software version, etc.
+  // Capabilities supported byt this TS.
+  repeated fixed32 capabilities = 2;
 }
 
 message ReportedTabletPB {
@@ -609,6 +610,9 @@ message TSInfoPB {
   optional CloudInfoPB cloud_info = 3;
 
   optional bytes placement_uuid = 4;
+
+  // Capabilities of tablet server.
+  repeated fixed32 capabilities = 6;
 }
 
 message GetTabletLocationsRequestPB {

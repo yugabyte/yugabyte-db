@@ -6313,8 +6313,7 @@ void CatalogManager::SelectReplicas(
     // value decays back to 0 over time.
     ts->IncrementRecentReplicaCreations();
 
-    TSRegistrationPB reg;
-    ts->GetRegistration(&reg);
+    TSRegistrationPB reg = ts->GetRegistration();
 
     RaftPeerPB *peer = config->add_peers();
     peer->set_permanent_uuid(ts->permanent_uuid());
@@ -6399,15 +6398,14 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
       replica_pb->set_role(replica.second.role);
       replica_pb->set_member_type(replica.second.member_type);
-      TSInformationPB tsinfo_pb;
-      replica.second.ts_desc->GetTSInformationPB(&tsinfo_pb);
+      TSInformationPB tsinfo_pb = replica.second.ts_desc->GetTSInformationPB();
 
-      replica_pb->mutable_ts_info()->set_permanent_uuid(
-          tsinfo_pb.tserver_instance().permanent_uuid());
-      TakeRegistration(
-          tsinfo_pb.mutable_registration()->mutable_common(), replica_pb->mutable_ts_info());
-      replica_pb->mutable_ts_info()->set_placement_uuid(
-          tsinfo_pb.registration().common().placement_uuid());
+      TSInfoPB* out_ts_info = replica_pb->mutable_ts_info();
+      out_ts_info->set_permanent_uuid(tsinfo_pb.tserver_instance().permanent_uuid());
+      TakeRegistration(tsinfo_pb.mutable_registration()->mutable_common(), out_ts_info);
+      out_ts_info->set_placement_uuid(tsinfo_pb.registration().common().placement_uuid());
+      *out_ts_info->mutable_capabilities() = std::move(
+          *tsinfo_pb.mutable_registration()->mutable_capabilities());
     }
     return Status::OK();
   }
@@ -6888,10 +6886,9 @@ int64_t CatalogManager::GetNumBlacklistReplicas() {
     }
 
     TabletInfo::ReplicaMap locs;
-    TSRegistrationPB reg;
     tablet->GetReplicaLocations(&locs);
     for (const TabletInfo::ReplicaMap::value_type& replica : locs) {
-      replica.second.ts_desc->GetRegistration(&reg);
+      TSRegistrationPB reg = replica.second.ts_desc->GetRegistration();
       bool blacklisted = false;
       for (const auto& hp : reg.common().private_rpc_addresses()) {
         if (blacklistState.tservers_.count(HostPortFromPB(hp)) != 0) {

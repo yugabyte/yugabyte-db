@@ -51,6 +51,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/util/capabilities.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -359,6 +360,9 @@ Status Heartbeater::Thread::TryHeartbeat() {
     LOG_WITH_PREFIX(INFO) << "Registering TS with master...";
     RETURN_NOT_OK_PREPEND(SetupRegistration(req.mutable_registration()),
                           "Unable to set up registration");
+    auto capabilities = Capabilities();
+    *req.mutable_registration()->mutable_capabilities() =
+        google::protobuf::RepeatedField<CapabilityId>(capabilities.begin(), capabilities.end());
   }
 
   if (last_hb_response_.needs_full_tablet_report()) {

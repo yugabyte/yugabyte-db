@@ -389,6 +389,7 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
     }
     ASSERT_OK(s);
     num_tables_created++;
+    LOG(INFO) << "Total created: " << num_tables_created;
   }
   stop.Store(true);
   reload_metadata_thread.join();

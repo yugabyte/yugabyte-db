@@ -814,8 +814,7 @@ bool AsyncAddServerTask::PrepareRequest(int attempt) {
   RaftPeerPB* peer = req_.mutable_server();
   peer->set_permanent_uuid(replacement_replica->permanent_uuid());
   peer->set_member_type(member_type_);
-  TSRegistrationPB peer_reg;
-  replacement_replica->GetRegistration(&peer_reg);
+  TSRegistrationPB peer_reg = replacement_replica->GetRegistration();
 
   if (peer_reg.common().private_rpc_addresses().empty()) {
     YB_LOG_EVERY_N(WARNING, 100) << LogPrefix() << "Candidate replacement "
