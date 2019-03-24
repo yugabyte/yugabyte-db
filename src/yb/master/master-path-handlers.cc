@@ -210,8 +210,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
   for (auto desc : *descs) {
     if (desc->placement_uuid() == current_uuid) {
       const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
-      TSRegistrationPB reg;
-      desc->GetRegistration(&reg);
+      TSRegistrationPB reg = desc->GetRegistration();
       string host_port = Substitute("$0:$1",
                                     reg.common().http_addresses(0).host(),
                                     reg.common().http_addresses(0).port());
@@ -998,8 +997,7 @@ string MasterPathHandlers::RaftConfigToHtml(const std::vector<TabletReplica>& lo
 
 string MasterPathHandlers::TSDescriptorToHtml(const TSDescriptor& desc,
                                               const std::string& tablet_id) const {
-  TSRegistrationPB reg;
-  desc.GetRegistration(&reg);
+  TSRegistrationPB reg = desc.GetRegistration();
 
   if (reg.common().http_addresses().size() > 0) {
     return Substitute(

@@ -56,6 +56,7 @@
 #include "yb/tablet/metadata.pb.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/capabilities.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/semaphore.h"
@@ -146,6 +147,8 @@ class RemoteTabletServer {
 
   const CloudInfoPB& cloud_info() const;
 
+  bool HasCapability(CapabilityId capability) const;
+
  private:
   mutable simple_spinlock lock_;
   const std::string uuid_;
@@ -156,6 +159,7 @@ class RemoteTabletServer {
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy_;
   const tserver::LocalTabletServer* local_tserver_ = nullptr;
   scoped_refptr<Histogram> dns_resolve_histogram_;
+  std::vector<CapabilityId> capabilities_;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTabletServer);
 };
@@ -246,6 +250,12 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // replica has failed recently, check if it is available now if it is local. For remote replica,
   // wait for some time (configurable) before retrying.
   void GetRemoteTabletServers(std::vector<RemoteTabletServer*>* servers);
+
+  std::vector<RemoteTabletServer*> GetRemoteTabletServers() {
+    std::vector<RemoteTabletServer*> result;
+    GetRemoteTabletServers(&result);
+    return result;
+  }
 
   // Return true if the tablet currently has a known LEADER replica
   // (i.e the next call to LeaderTServer() is likely to return non-NULL)
@@ -451,4 +461,5 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 } // namespace internal
 } // namespace client
 } // namespace yb
+
 #endif /* YB_CLIENT_META_CACHE_H */

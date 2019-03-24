@@ -381,8 +381,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   descs.clear();
   mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
   ASSERT_EQ(1, descs.size()) << "Should have registered the TS";
-  TSRegistrationPB reg;
-  descs[0]->GetRegistration(&reg);
+  TSRegistrationPB reg = descs[0]->GetRegistration();
   ASSERT_EQ(fake_reg.DebugString(), reg.DebugString()) << "Master got different registration";
 
   ASSERT_TRUE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));

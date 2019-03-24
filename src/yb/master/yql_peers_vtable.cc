@@ -53,9 +53,8 @@ Status PeersVTable::RetrieveData(const QLReadRequestPB& request,
   for (const shared_ptr<TSDescriptor>& desc : descs) {
     size_t current_index = index++;
 
-    TSInformationPB ts_info;
     // This is thread safe since all operations are reads.
-    desc->GetTSInformationPB(&ts_info);
+    TSInformationPB ts_info = desc->GetTSInformationPB();
 
     if (!proxy_uuid.empty()) {
       if (desc->permanent_uuid() == proxy_uuid) {

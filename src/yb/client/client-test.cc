@@ -44,6 +44,7 @@
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/client_utils.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/value.h"
@@ -71,6 +72,8 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/capabilities.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
@@ -98,6 +101,8 @@ DECLARE_int32(min_backoff_ms_exponent);
 DECLARE_int32(max_backoff_ms_exponent);
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
+
+DEFINE_CAPABILITY(ClientTest, 0x1523c5ae);
 
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
@@ -672,8 +677,7 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
   // We have to loop since some replicas may have been created slowly.
   scoped_refptr<internal::RemoteTablet> rt;
   while (true) {
-    rt = ASSERT_RESULT(client_->data_->meta_cache_->LookupTabletByKeyFuture(
-        table.get(), "" /* partition_key */, MonoTime::Max()).get());
+    rt = ASSERT_RESULT(LookupFirstTabletFuture(table.get()).get());
     ASSERT_TRUE(rt.get() != nullptr);
     vector<internal::RemoteTabletServer*> tservers;
     rt->GetRemoteTabletServers(&tservers);
@@ -1399,8 +1403,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
   ASSERT_NO_FATALS(InsertTestRows(table, kNumRowsToWrite));
 
   // Find the leader of the first tablet.
-  auto remote_tablet = ASSERT_RESULT(client_->data_->meta_cache_->LookupTabletByKeyFuture(
-      table.get(), "" /* partition_key */, MonoTime::Max()).get());
+  auto remote_tablet = ASSERT_RESULT(LookupFirstTabletFuture(table.get()).get());
   internal::RemoteTabletServer *remote_tablet_server = remote_tablet->LeaderTServer();
 
   // Kill the leader of the first tablet.
@@ -1448,8 +1451,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
   SleepFor(MonoDelta::FromMilliseconds(1500));
 
   // Find the leader replica
-  auto remote_tablet = ASSERT_RESULT(client_->data_->meta_cache_->LookupTabletByKeyFuture(
-      table.get(), "" /* partition_key */, MonoTime::Max()).get());
+  auto remote_tablet = ASSERT_RESULT(LookupFirstTabletFuture(table.get()).get());
   internal::RemoteTabletServer *remote_tablet_server;
   set<string> blacklist;
   vector<internal::RemoteTabletServer*> candidates;
@@ -1964,6 +1966,23 @@ TEST_F(ClientTest, TestReadFromFollower) {
       ASSERT_EQ(StringPrintf("hello %d", key), row.column(2).string_value());
       ASSERT_EQ(key * 3, row.column(3).int32_value());
     }
+  }
+}
+
+TEST_F(ClientTest, Capability) {
+  constexpr CapabilityId kFakeCapability = 0x9c40e9a7;
+
+  auto rt = ASSERT_RESULT(LookupFirstTabletFuture(client_table_.get()).get());
+  ASSERT_TRUE(rt.get() != nullptr);
+  auto tservers = rt->GetRemoteTabletServers();
+  ASSERT_EQ(tservers.size(), 3);
+  for (const auto& replica : tservers) {
+    // Capability is related to executable, so it should be present since we run mini cluster for
+    // this test.
+    ASSERT_TRUE(replica->HasCapability(CAPABILITY_ClientTest));
+
+    // Check that fake capability is not reported.
+    ASSERT_FALSE(replica->HasCapability(kFakeCapability));
   }
 }
 

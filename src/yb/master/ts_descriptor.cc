@@ -48,12 +48,12 @@
 namespace yb {
 namespace master {
 
-Result<std::unique_ptr<TSDescriptor>> TSDescriptor::RegisterNew(
+Result<TSDescriptorPtr> TSDescriptor::RegisterNew(
     const NodeInstancePB& instance,
     const TSRegistrationPB& registration,
     CloudInfoPB local_cloud_info,
     rpc::ProxyCache* proxy_cache) {
-  std::unique_ptr<TSDescriptor> result = std::make_unique<YB_EDITION_NS_PREFIX TSDescriptor>(
+  auto result = std::make_shared<YB_EDITION_NS_PREFIX TSDescriptor>(
       instance.permanent_uuid());
   RETURN_NOT_OK(result->Register(instance, registration, std::move(local_cloud_info), proxy_cache));
   return std::move(result);
@@ -189,15 +189,19 @@ double TSDescriptor::RecentReplicaCreations() {
   return recent_replica_creations_;
 }
 
-void TSDescriptor::GetRegistration(TSRegistrationPB* reg) const {
+TSRegistrationPB TSDescriptor::GetRegistration() const {
   std::lock_guard<simple_spinlock> l(lock_);
-  CHECK(registration_) << "No registration";
-  CHECK_NOTNULL(reg)->CopyFrom(*registration_);
+  return *registration_;
 }
 
-void TSDescriptor::GetTSInformationPB(TSInformationPB* ts_info) const {
-  GetRegistration(ts_info->mutable_registration());
-  GetNodeInstancePB(ts_info->mutable_tserver_instance());
+TSInformationPB TSDescriptor::GetTSInformationPB() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  CHECK(registration_) << "No registration";
+  TSInformationPB result;
+  *result.mutable_registration() = *registration_;
+  result.mutable_tserver_instance()->set_permanent_uuid(permanent_uuid_);
+  result.mutable_tserver_instance()->set_instance_seqno(latest_seqno_);
+  return result;
 }
 
 bool TSDescriptor::MatchesCloudInfo(const CloudInfoPB& cloud_info) const {
@@ -210,8 +214,7 @@ bool TSDescriptor::MatchesCloudInfo(const CloudInfoPB& cloud_info) const {
 }
 
 bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
-  TSRegistrationPB reg;
-  GetRegistration(&reg);
+  TSRegistrationPB reg = GetRegistration();
   auto predicate = [&hp](const HostPortPB& rhs) {
     return rhs.host() == hp.host() && rhs.port() == hp.port();
   };
@@ -228,16 +231,11 @@ bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
   return false;
 }
 
-void TSDescriptor::GetNodeInstancePB(NodeInstancePB* instance_pb) const {
-  std::lock_guard<simple_spinlock> l(lock_);
-  instance_pb->set_permanent_uuid(permanent_uuid_);
-  instance_pb->set_instance_seqno(latest_seqno_);
-}
-
 Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
   const auto& addr = DesiredHostPort(registration_->common(), local_cloud_info_);
   if (addr.host().empty()) {
-    return STATUS(NetworkError, "Unable to find the TS address: ", registration_->DebugString());
+    return STATUS_FORMAT(NetworkError, "Unable to find the TS address for $0: $1",
+                         permanent_uuid_, registration_->ShortDebugString());
   }
 
   return HostPortFromPB(addr);
