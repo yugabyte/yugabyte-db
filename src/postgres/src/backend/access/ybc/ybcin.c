@@ -24,6 +24,7 @@
 
 #include "postgres.h"
 
+#include "miscadmin.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
 #include "access/ybcam.h"
@@ -59,15 +60,27 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 
 	Assert(!index->rd_index->indisprimary);
 
-	/* Buffer the inserts into the index */
-	YBCStartBufferingWriteOperations();
+	PG_TRY();
+	{
+		/* Buffer the inserts into the index for initdb */
+		if (IsBootstrapProcessingMode())
+			YBCStartBufferingWriteOperations();
 
-	/* Do the heap scan */
-	buildstate.index_tuples = 0;
-	heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true, ybcinbuildCallback,
-									 &buildstate, NULL);
+		/* Do the heap scan */
+		buildstate.index_tuples = 0;
+		heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true, ybcinbuildCallback,
+										 &buildstate, NULL);
+	}
+	PG_CATCH();
+	{
+		if (IsBootstrapProcessingMode())
+			YBCFlushBufferedWriteOperations();
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
-	YBCFlushBufferedWriteOperations();
+	if (IsBootstrapProcessingMode())
+		YBCFlushBufferedWriteOperations();
 
 	/*
 	 * Return statistics
