@@ -6,8 +6,9 @@
 #include "postgres.h"
 
 #include <math.h>
-
 #include "funcapi.h"
+
+#include "catalog/pg_collation.h"
 #include "parser/parse_oper.h"
 #include "utils/builtins.h"
 #include "orafce.h"
@@ -248,7 +249,7 @@ assert_equals_base(FunctionCallInfo fcinfo)
 		*ptr = eqopfcid;
 	}
 
-	return DatumGetBool(OidFunctionCall2(*ptr, value1, value2));
+	return DatumGetBool(OidFunctionCall2Coll(*ptr, DEFAULT_COLLATION_OID, value1, value2));
 }
 
 Datum

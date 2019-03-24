@@ -760,7 +760,7 @@ other			.
 						yylval.val.str = pstrdup(yytext);
 						yylval.val.modificator = "f";
 						yylval.val.keycode = -1;
-	    					yylval.val.sep = NULL;
+						yylval.val.sep = NULL;
 						return X_NCONST;
 					}
 					yylval.val.str = yytext;
