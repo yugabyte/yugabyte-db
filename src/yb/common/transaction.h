@@ -203,7 +203,8 @@ struct TransactionMetadata {
   uint64_t priority;
 
   // Used for snapshot isolation (as read time and for conflict resolution).
-  HybridTime start_time;
+  // start_time is used only for backward compability during rolling update.
+  HybridTime DEPRECATED_start_time;
 
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
 

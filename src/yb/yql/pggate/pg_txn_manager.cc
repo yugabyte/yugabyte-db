@@ -66,7 +66,7 @@ Status PgTxnManager::SetIsolationLevel(int level) {
 void PgTxnManager::StartNewSession() {
   session_ = std::make_shared<YBSession>(async_client_init_->client(), clock_);
   session_->SetReadPoint(client::Restart::kFalse);
-  session_->SetForceConsistentRead(true);
+  session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
 
 Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op) {

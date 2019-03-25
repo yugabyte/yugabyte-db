@@ -76,12 +76,14 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // If we don't have enough information, then the function returns false and stores
   // the waiter, which will be invoked when we obtain such information.
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
+               ForceConsistentRead force_consistent_read,
                Waiter waiter,
                TransactionMetadata* metadata,
                bool* may_have_metadata);
 
   // Notifies transaction that specified ops were flushed with some status.
-  void Flushed(const internal::InFlightOps& ops, const Status& status);
+  void Flushed(
+      const internal::InFlightOps& ops, const ReadHybridTime& used_read_time, const Status& status);
 
   // Commits this transaction.
   void Commit(CommitCallback callback);
@@ -111,9 +113,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   // Prepares child data, so child transaction could be started in another server.
   // Should be async because status tablet could be not ready yet.
-  void PrepareChild(PrepareChildCallback callback);
+  void PrepareChild(ForceConsistentRead force_consistent_read, PrepareChildCallback callback);
 
-  std::future<Result<ChildTransactionDataPB>> PrepareChildFuture();
+  std::future<Result<ChildTransactionDataPB>> PrepareChildFuture(
+      ForceConsistentRead force_consistent_read);
 
   // After we finish all child operations, we should finish child and send result to parent.
   Result<ChildTransactionResultPB> FinishChild();

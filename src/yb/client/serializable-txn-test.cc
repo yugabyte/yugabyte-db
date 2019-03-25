@@ -293,7 +293,7 @@ TEST_F(SerializableTxnTest, Coloring) {
     SCOPED_TRACE(Format("Iteration: $0", i));
 
     auto session = CreateSession(nullptr /* transaction */, clock_);
-    session->SetForceConsistentRead(true);
+    session->SetForceConsistentRead(ForceConsistentRead::kTrue);
 
     {
       std::vector<YBqlWriteOpPtr> ops;

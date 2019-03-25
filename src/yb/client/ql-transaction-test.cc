@@ -80,8 +80,8 @@ class QLTransactionTest : public TransactionTestBase {
 };
 
 TEST_F(QLTransactionTest, Simple) {
-  WriteData();
-  VerifyData();
+  ASSERT_NO_FATALS(WriteData());
+  ASSERT_NO_FATALS(VerifyData());
   ASSERT_OK(cluster_->RestartSync());
   CheckNoRunningTransactions();
 }
@@ -141,7 +141,7 @@ void QLTransactionTest::TestReadRestart(bool commit) {
 
     server::SkewedClockDeltaChanger delta_changer(-100ms, skewed_clock_);
 
-    auto txn1 = CreateTransaction2();
+    auto txn1 = CreateTransaction2(SetReadTime::kTrue);
     BOOST_SCOPE_EXIT(txn1, commit) {
       if (!commit) {
         txn1->Abort();
@@ -230,7 +230,7 @@ TEST_F(QLTransactionTest, WriteRestart) {
   WriteData();
 
   server::SkewedClockDeltaChanger delta_changer(-100ms, skewed_clock_);
-  auto txn1 = CreateTransaction2();
+  auto txn1 = CreateTransaction2(SetReadTime::kTrue);
   YBTransactionPtr txn2;
   auto session = CreateSession(txn1);
   for (bool retry : {false, true}) {
@@ -267,7 +267,7 @@ TEST_F(QLTransactionTest, WriteRestart) {
   CheckNoRunningTransactions();
 }
 
-// Commit flags says whether we should commit write txn during this test.
+// Check that we could write to transaction that were restarted.
 TEST_F(QLTransactionTest, WriteAfterReadRestart) {
   const auto kClockDelta = 100ms;
   SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
@@ -278,7 +278,7 @@ TEST_F(QLTransactionTest, WriteAfterReadRestart) {
 
   server::SkewedClockDeltaChanger delta_changer(-kClockDelta, skewed_clock_);
 
-  auto txn1 = CreateTransaction2();
+  auto txn1 = CreateTransaction2(SetReadTime::kTrue);
   auto session = CreateSession(txn1);
   for (size_t r = 0; r != kNumRows; ++r) {
     auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
@@ -308,7 +308,7 @@ TEST_F(QLTransactionTest, WriteAfterReadRestart) {
 TEST_F(QLTransactionTest, Child) {
   auto txn = CreateTransaction();
   TransactionManager manager2(client_, clock_, client::LocalTabletFilter());
-  auto data_pb = txn->PrepareChildFuture().get();
+  auto data_pb = txn->PrepareChildFuture(ForceConsistentRead::kFalse).get();
   ASSERT_OK(data_pb);
   auto data = ChildTransactionData::FromPB(*data_pb);
   ASSERT_OK(data);
@@ -336,9 +336,9 @@ TEST_F(QLTransactionTest, ChildReadRestart) {
   }
 
   server::SkewedClockDeltaChanger delta_changer(-100ms, skewed_clock_);
-  auto parent_txn = CreateTransaction2();
+  auto parent_txn = CreateTransaction2(SetReadTime::kTrue);
 
-  auto data_pb = parent_txn->PrepareChildFuture().get();
+  auto data_pb = parent_txn->PrepareChildFuture(ForceConsistentRead::kFalse).get();
   ASSERT_OK(data_pb);
   auto data = ChildTransactionData::FromPB(*data_pb);
   ASSERT_OK(data);
@@ -855,7 +855,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
     VERIFY_ROW(session, 2, 12);
   }
 
-  CommitAndResetSync(&txn2);
+  ASSERT_NO_FATALS(CommitAndResetSync(&txn2));
 
   ASSERT_OK(cluster_->RestartSync());
 }
@@ -889,7 +889,7 @@ TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
   });
 
   // Start T2.
-  auto txn2 = CreateTransaction();
+  auto txn2 = CreateTransaction(SetReadTime::kTrue);
 
   // T2: Should read { 1 -> 1, 2 -> 2 } even in case T1 is committed between reading k1 and k2.
   {
@@ -957,12 +957,7 @@ TEST_F(QLTransactionTest, CorrectStatusRequestBatching) {
     for (size_t i = 0; i != kConcurrentReads; ++i) {
       read_threads.emplace_back([this, key, &stop, &value, &read = reads[i]] {
         auto session = CreateSession();
-        bool ok = false;
-        BOOST_SCOPE_EXIT(&ok, &stop) {
-          if (!ok) {
-            stop = true;
-          }
-        } BOOST_SCOPE_EXIT_END;
+        StopOnFailure stop_on_failure(&stop);
         while (!stop) {
           auto value_before_start = value.load();
           YBqlReadOpPtr op = ReadRow(session, key);
@@ -979,14 +974,11 @@ TEST_F(QLTransactionTest, CorrectStatusRequestBatching) {
           ASSERT_GE(current_value, value_before_start);
           ++read;
         }
-        ok = true;
+        stop_on_failure.Success();
       });
     }
 
-    auto deadline = std::chrono::steady_clock::now() + 10s;
-    while (!stop && std::chrono::steady_clock::now() < deadline) {
-      std::this_thread::sleep_for(100ms);
-    }
+    WaitStopped(10s, &stop);
 
     // Already failed
     bool failed = stop.exchange(true);
@@ -1418,6 +1410,49 @@ TEST_F(QLTransactionTest, FlushIntents) {
   VerifyData(2);
 }
 
+// This test checks that read restart never happen during first read request to single table.
+TEST_F(QLTransactionTest, PickReadTimeAtServer) {
+  constexpr int kKeys = 10;
+  constexpr int kThreads = 5;
+
+  std::atomic<bool> stop(false);
+  std::vector<std::thread> threads;
+  while (threads.size() != kThreads) {
+    threads.emplace_back([this, &stop] {
+      StopOnFailure stop_on_failure(&stop);
+      while (!stop.load(std::memory_order_acquire)) {
+        auto txn = CreateTransaction();
+        auto session = CreateSession(txn);
+        auto key = RandomUniformInt(1, kKeys);
+        auto value_result = SelectRow(session, key);
+        int value;
+        if (value_result.ok()) {
+          value = *value_result;
+        } else {
+          ASSERT_TRUE(value_result.status().IsNotFound()) << value_result.status();
+          value = 0;
+        }
+        auto status = ResultToStatus(WriteRow(session, key, value));
+        if (status.ok()) {
+          status = txn->CommitFuture().get();
+        }
+        // Write or commit could fail because of conflict during write or transaction conflict
+        // during commit.
+        ASSERT_TRUE(status.ok() || status.IsTryAgain() || status.IsExpired()) << status;
+      }
+      stop_on_failure.Success();
+    });
+  }
+
+  WaitStopped(30s, &stop);
+
+  stop.store(true, std::memory_order_release);
+
+  for (auto& thread : threads) {
+    thread.join();
+  }
+}
+
 // Test that we could init transaction after it was originally created.
 TEST_F(QLTransactionTest, DelayedInit) {
   SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
@@ -1434,7 +1469,10 @@ TEST_F(QLTransactionTest, DelayedInit) {
   ASSERT_OK(WriteRow(write_session, 1, 1));
 
   ASSERT_OK(txn1->Init(IsolationLevel::SNAPSHOT_ISOLATION, read_point.GetReadTime()));
-  ASSERT_OK(txn2->Init(IsolationLevel::SNAPSHOT_ISOLATION));
+  // To check delayed init we specify read time here.
+  ASSERT_OK(txn2->Init(
+      IsolationLevel::SNAPSHOT_ISOLATION,
+      ReadHybridTime::FromHybridTimeRange(transaction_manager_->clock()->NowRange())));
 
   ASSERT_OK(WriteRow(write_session, 2, 2));
 

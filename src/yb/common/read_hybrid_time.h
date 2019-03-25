@@ -89,14 +89,18 @@ struct ReadHybridTime {
   }
 
   template <class PB>
+  void ToPB(PB* out) const {
+    out->set_read_ht(read.ToUint64());
+    out->set_local_limit_ht(local_limit.ToUint64());
+    out->set_global_limit_ht(global_limit.ToUint64());
+    out->set_in_txn_limit_ht(
+        in_txn_limit.is_valid() ? in_txn_limit.ToUint64() : HybridTime::kMax.ToUint64());
+  }
+
+  template <class PB>
   void AddToPB(PB* pb) const {
     if (read.is_valid()) {
-      auto* out = pb->mutable_read_time();
-      out->set_read_ht(read.ToUint64());
-      out->set_local_limit_ht(local_limit.ToUint64());
-      out->set_global_limit_ht(global_limit.ToUint64());
-      out->set_in_txn_limit_ht(
-          in_txn_limit.is_valid() ? in_txn_limit.ToUint64() : HybridTime::kMax.ToUint64());
+      ToPB(pb->mutable_read_time());
     } else {
       pb->clear_read_time();
     }

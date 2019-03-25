@@ -215,6 +215,30 @@ std::string GetToolPath(const std::string& tool_name);
 
 int CalcNumTablets(int num_tablet_servers);
 
+class StopOnFailure {
+ public:
+  explicit StopOnFailure(std::atomic<bool>* stop) : stop_(*stop) {}
+
+  StopOnFailure(const StopOnFailure&) = delete;
+  void operator=(const StopOnFailure&) = delete;
+
+  ~StopOnFailure() {
+    if (!success_) {
+      stop_.store(true, std::memory_order_release);
+    }
+  }
+
+  void Success() {
+    success_ = true;
+  }
+ private:
+  bool success_ = false;
+  std::atomic<bool>& stop_;
+};
+
+// Waits specified duration or when stop switches to true.
+void WaitStopped(const CoarseDuration& duration, std::atomic<bool>* stop);
+
 } // namespace yb
 
 // Gives ability to define custom parent class for test fixture.

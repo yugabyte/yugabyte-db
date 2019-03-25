@@ -143,7 +143,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
     return read_point_;
   }
 
-  void SetForceConsistentRead(bool value) {
+  void SetForceConsistentRead(ForceConsistentRead value) {
     force_consistent_read_ = value;
   }
 
@@ -185,7 +185,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   void AddInFlightOp(const InFlightOpPtr& op);
 
   void RemoveInFlightOpsAfterFlushing(
-      const InFlightOps& ops, const Status& status, HybridTime propagated_hybrid_time);
+      const InFlightOps& ops, const Status& status, FlushExtraResult flush_extra_result);
 
     // Return true if the batch has been aborted, and any in-flight ops should stop
   // processing wherever they are.
@@ -301,7 +301,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   ConsistentReadPoint* read_point_ = nullptr;
 
   // Force consistent read on transactional table, even we have only single shard commands.
-  bool force_consistent_read_;
+  ForceConsistentRead force_consistent_read_;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };
