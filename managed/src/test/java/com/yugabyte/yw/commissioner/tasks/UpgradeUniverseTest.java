@@ -81,7 +81,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
-    IsTabletServerReadyResponse okReadyResp = new IsTabletServerReadyResponse(0, "", null, 0);
+    IsTabletServerReadyResponse okReadyResp = new IsTabletServerReadyResponse(0, "", null, 0, 0);
     try {
       when(mockClient.isTServerReady(any(HostAndPort.class))).thenReturn(okReadyResp);
     } catch (Exception ex) {}
