@@ -78,6 +78,8 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
 
   void SetReadPoint(Restart restart);
 
+  bool IsRestartRequired();
+
   // Changed transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
 

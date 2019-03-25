@@ -192,7 +192,20 @@ Status YBInboundCall::AddRpcSidecar(RefCntBuffer car, int* idx) {
   return Status::OK();
 }
 
+int YBInboundCall::RpcSidecarsSize() const {
+  return sidecars_.size();
+}
+
+const RefCntBuffer& YBInboundCall::RpcSidecar(int idx) {
+  return sidecars_[idx];
+}
+
 void YBInboundCall::ResetRpcSidecars() {
+  if (consumption_) {
+    for (const auto& sidecar : sidecars_) {
+      consumption_.Add(-sidecar.size());
+    }
+  }
   sidecars_.clear();
 }
 

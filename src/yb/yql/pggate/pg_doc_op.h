@@ -71,6 +71,10 @@ class PgDocOp {
   // all data in the cache.
   CHECKED_STATUS SendRequestIfNeededUnlocked();
 
+  // Checks whether op causes restart. Could set exec_status_.
+  // Returns true is restart was initiated;
+  bool CheckRestartUnlocked(client::YBPgsqlOp* op);
+
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
 
@@ -99,6 +103,9 @@ class PgDocOp {
 
   // Caching state variables.
   std::list<string> result_cache_;
+
+  // Whether we can restart this operation.
+  const bool can_restart_;
 };
 
 class PgDocReadOp : public PgDocOp {
@@ -159,7 +166,6 @@ class PgDocWriteOp : public PgDocOp {
 
   // Operator.
   std::shared_ptr<client::YBPgsqlWriteOp> write_op_;
-  bool can_restart_;
 };
 
 // TODO(neil)

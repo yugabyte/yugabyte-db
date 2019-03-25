@@ -12,8 +12,12 @@
 
 #include "yb/util/random_util.h"
 
+#include <boost/scope_exit.hpp>
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
+
+using namespace std::literals;
 
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
@@ -271,6 +275,67 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadWriteConflict)) {
     ASSERT_GE(reads_won, kKeys / 4);
     ASSERT_GE(writes_won, kKeys / 4);
   }
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReadRestart)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(Execute(conn.get(), "CREATE TABLE t (key INT PRIMARY KEY)"));
+
+  std::atomic<bool> stop(false);
+  std::atomic<int> last_written(0);
+
+  std::thread write_thread([this, &stop, &last_written] {
+    auto write_conn = ASSERT_RESULT(Connect());
+    int write_key = 1;
+    while (!stop.load(std::memory_order_acquire)) {
+      SCOPED_TRACE(Format("Writing: $0", write_key));
+
+      ASSERT_OK(Execute(write_conn.get(), "BEGIN"));
+      auto status = Execute(write_conn.get(), Format("INSERT INTO t (key) VALUES ($0)", write_key));
+      if (status.ok()) {
+        status = Execute(write_conn.get(), "COMMIT");
+      }
+      if (status.ok()) {
+        last_written.store(write_key, std::memory_order_release);
+        ++write_key;
+      } else {
+        LOG(INFO) << "Write " << write_key << " failed: " << status;
+      }
+    }
+  });
+
+  BOOST_SCOPE_EXIT(&stop, &write_thread) {
+    stop.store(true, std::memory_order_release);
+    write_thread.join();
+  } BOOST_SCOPE_EXIT_END;
+
+  auto deadline = CoarseMonoClock::now() + 30s;
+
+  while (CoarseMonoClock::now() < deadline) {
+    int read_key = last_written.load(std::memory_order_acquire);
+    if (read_key == 0) {
+      std::this_thread::sleep_for(100ms);
+      continue;
+    }
+
+    SCOPED_TRACE(Format("Reading: $0", read_key));
+
+    ASSERT_OK(Execute(conn.get(), "BEGIN"));
+
+    auto res = ASSERT_RESULT(Fetch(conn.get(), Format("SELECT * FROM t WHERE key = $0", read_key)));
+    auto columns = PQnfields(res.get());
+    ASSERT_EQ(1, columns);
+
+    auto lines = PQntuples(res.get());
+    ASSERT_EQ(1, lines);
+
+    auto key = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+    ASSERT_EQ(key, read_key);
+
+    ASSERT_OK(Execute(conn.get(), "ROLLBACK"));
+  }
+
+  ASSERT_GE(last_written.load(std::memory_order_acquire), 100);
 }
 
 } // namespace pgwrapper
