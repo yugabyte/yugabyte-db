@@ -459,10 +459,8 @@ void Batcher::FlushBuffersIfReady() {
       // If transaction is not yet ready to do it, then it will notify as via provided when
       // it could be done.
       if (!transaction->Prepare(ops_,
-                                std::bind(&Batcher::TransactionReady,
-                                          this,
-                                          _1,
-                                          BatcherPtr(this)),
+                                force_consistent_read_,
+                                std::bind(&Batcher::TransactionReady, this, _1, BatcherPtr(this)),
                                 &transaction_metadata_,
                                 &may_have_metadata_)) {
         return;
@@ -600,7 +598,7 @@ void Batcher::AddOpCountMismatchError() {
 }
 
 void Batcher::RemoveInFlightOpsAfterFlushing(
-    const InFlightOps& ops, const Status& status, HybridTime propagated_hybrid_time) {
+    const InFlightOps& ops, const Status& status, FlushExtraResult flush_extra_result) {
   {
     std::lock_guard<simple_spinlock> l(mutex_);
     for (auto& op : ops) {
@@ -610,10 +608,10 @@ void Batcher::RemoveInFlightOpsAfterFlushing(
   }
   auto transaction = this->transaction();
   if (transaction) {
-    transaction->Flushed(ops, status);
+    transaction->Flushed(ops, flush_extra_result.used_read_time, status);
   }
   if (status.ok() && read_point_) {
-    read_point_->UpdateClock(propagated_hybrid_time);
+    read_point_->UpdateClock(flush_extra_result.propagated_hybrid_time);
   }
 }
 

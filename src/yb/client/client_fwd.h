@@ -73,6 +73,7 @@ class YBTableName;
 typedef std::function<void(std::vector<const TabletId*>*)> LocalTabletFilter;
 
 YB_STRONGLY_TYPED_BOOL(UseCache);
+YB_STRONGLY_TYPED_BOOL(ForceConsistentRead);
 
 namespace internal {
 

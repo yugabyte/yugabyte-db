@@ -159,15 +159,23 @@ void TransactionTestBase::WriteDataWithRepetition() {
   ASSERT_OK(txn->CommitFuture().get());
 }
 
-YBTransactionPtr TransactionTestBase::CreateTransaction() {
+YBTransactionPtr TransactionTestBase::CreateTransaction(SetReadTime set_read_time) {
   auto result = std::make_shared<YBTransaction>(transaction_manager_.get_ptr());
-  EXPECT_OK(result->Init(GetIsolationLevel()));
+  ReadHybridTime read_time;
+  if (set_read_time) {
+    read_time = ReadHybridTime::FromHybridTimeRange(transaction_manager_->clock()->NowRange());
+  }
+  EXPECT_OK(result->Init(GetIsolationLevel(), read_time));
   return result;
 }
 
-YBTransactionPtr TransactionTestBase::CreateTransaction2() {
+YBTransactionPtr TransactionTestBase::CreateTransaction2(SetReadTime set_read_time) {
   auto result = std::make_shared<YBTransaction>(transaction_manager2_.get_ptr());
-  EXPECT_OK(result->Init(GetIsolationLevel()));
+  ReadHybridTime read_time;
+  if (set_read_time) {
+    read_time = ReadHybridTime::FromHybridTimeRange(transaction_manager2_->clock()->NowRange());
+  }
+  EXPECT_OK(result->Init(GetIsolationLevel(), read_time));
   return result;
 }
 

@@ -1731,6 +1731,7 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
   }
 
   auto read_time = operation->read_time();
+  const bool allow_immediate_read_restart = !read_time;
 
   if (transactional_table) {
     if (isolation_level == IsolationLevel::NON_TRANSACTIONAL) {
@@ -1763,12 +1764,11 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
 
       RETURN_NOT_OK(docdb::ResolveTransactionConflicts(
           operation->doc_ops(), *write_batch, clock_->Now(),
+          read_time ? read_time.read : HybridTime::kMax,
           { regular_db_.get(), intents_db_.get() }, transaction_participant_.get(),
           metrics_->transaction_conflicts.get()));
 
       if (!read_time) {
-        DSCHECK_EQ(isolation_level, IsolationLevel::SERIALIZABLE_ISOLATION, InvalidArgument,
-                   "Read time should be specified for NON serializable isolation level");
         auto safe_time = SafeTime(RequireLease::kTrue);
         read_time = ReadHybridTime::FromHybridTimeRange({safe_time, clock_->NowRange().second});
       } else if (prepare_result.need_read_snapshot) {
@@ -1781,15 +1781,21 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
   auto read_op = prepare_result.need_read_snapshot
       ? VERIFY_RESULT(ScopedReadOperation::Create(this, RequireLease::kTrue, read_time))
       : ScopedReadOperation();
+  // Actual read hybrid time used for read-modify-write operation.
   auto real_read_time = prepare_result.need_read_snapshot
       ? read_op.read_time()
+      // When need_read_snapshot is false, this time is used only to write TTL field of record.
       : ReadHybridTime::SingleTime(clock_->Now());
+
 
   // We expect all read operations for this transaction to be done in ExecuteDocWriteOperation.
   // Once read_txn goes out of scope, the read point is deregistered.
   HybridTime restart_read_ht;
   bool local_limit_updated = false;
 
+  // This loop may be executed multiple times multiple times only for serializable isolation or
+  // when read_time was not yet picked for snapshot isolation.
+  // In all other cases it is executed only once.
   for (;;) {
     RETURN_NOT_OK(docdb::ExecuteDocWriteOperation(
         operation->doc_ops(), operation->deadline(), real_read_time,
@@ -1802,7 +1808,7 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
 
     // For serializable isolation we don't fix read time, so could do read restart locally,
     // instead of failing whole transaction.
-    if (!restart_read_ht.is_valid() || isolation_level != IsolationLevel::SERIALIZABLE_ISOLATION) {
+    if (!restart_read_ht.is_valid() || !allow_immediate_read_restart) {
       break;
     }
 
@@ -1823,6 +1829,11 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
   }
 
   operation->SetRestartReadHt(restart_read_ht);
+
+  if (allow_immediate_read_restart && isolation_level != IsolationLevel::NON_TRANSACTIONAL &&
+      operation->response()) {
+    real_read_time.ToPB(operation->response()->mutable_used_read_time());
+  }
 
   if (operation->restart_read_ht().is_valid()) {
     return Status::OK();

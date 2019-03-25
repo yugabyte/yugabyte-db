@@ -211,6 +211,7 @@ bool RemoteTabletServer::HasHostFrom(const std::unordered_set<std::string>& host
 }
 
 bool RemoteTabletServer::HasCapability(CapabilityId capability) const {
+  std::lock_guard<simple_spinlock> l(lock_);
   return std::binary_search(capabilities_.begin(), capabilities_.end(), capability);
 }
 

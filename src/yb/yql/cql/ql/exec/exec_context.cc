@@ -74,7 +74,8 @@ Status ExecContext::StartTransaction(const IsolationLevel isolation_level, QLEnv
 
 Status ExecContext::PrepareChildTransaction(ChildTransactionDataPB* data) {
   ChildTransactionDataPB result =
-      VERIFY_RESULT(DCHECK_NOTNULL(transaction_.get())->PrepareChildFuture().get());
+      VERIFY_RESULT(DCHECK_NOTNULL(transaction_.get())->PrepareChildFuture(
+          client::ForceConsistentRead::kTrue).get());
   *data = std::move(result);
   return Status::OK();
 }

@@ -87,7 +87,8 @@ class YBTransaction::Impl final {
       : manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
-        child_(Child::kTrue) {
+        child_(Child::kTrue),
+        child_had_read_time_(data.read_time) {
     // For serializable isolation we use read intents, so could always read most recent
     // version of DB.
     // Otherwise there is possible case when we miss value change that happened after transaction
@@ -118,13 +119,12 @@ class YBTransaction::Impl final {
 
     if (read_time.read.is_valid()) {
       read_point_.SetReadTime(read_time, ConsistentReadPoint::HybridTimeMap());
-    } else if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
-      read_point_.SetCurrentReadTime();
     }
     metadata_.isolation = isolation;
-    metadata_.start_time = read_point_.GetReadTime().read;
-    if (!metadata_.start_time.is_valid()) {
-      metadata_.start_time = read_point_.Now();
+    if (read_point_.GetReadTime()) {
+      metadata_.DEPRECATED_start_time = read_point_.GetReadTime().read;
+    } else {
+      metadata_.DEPRECATED_start_time = read_point_.Now();
     }
 
     return Status::OK();
@@ -151,9 +151,9 @@ class YBTransaction::Impl final {
       other->read_point_.Restart();
       other->metadata_.isolation = metadata_.isolation;
       if (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
-        other->metadata_.start_time = other->read_point_.GetReadTime().read;
+        other->metadata_.DEPRECATED_start_time = other->read_point_.GetReadTime().read;
       } else {
-        other->metadata_.start_time = other->read_point_.Now();
+        other->metadata_.DEPRECATED_start_time = other->read_point_.Now();
       }
       state_.store(TransactionState::kAborted, std::memory_order_release);
     }
@@ -163,6 +163,7 @@ class YBTransaction::Impl final {
   }
 
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
+               ForceConsistentRead force_consistent_read,
                Waiter waiter,
                TransactionMetadata* metadata,
                bool* may_have_metadata) {
@@ -181,9 +182,18 @@ class YBTransaction::Impl final {
         return false;
       }
 
+      bool single_tablet = true;
+      internal::RemoteTablet* tablet = nullptr;
       for (const auto& op : ops) {
         VLOG_WITH_PREFIX(3) << "Prepare, op: " << op->ToString();
         DCHECK(op->tablet != nullptr);
+        if (single_tablet) {
+          if (tablet == nullptr) {
+            tablet = op->tablet.get();
+          } else if (tablet != op->tablet.get()) {
+            single_tablet = false;
+          }
+        }
         auto it = tablets_.find(op->tablet->tablet_id());
         if (it == tablets_.end()) {
           it = tablets_.emplace(op->tablet->tablet_id(), TabletState()).first;
@@ -213,6 +223,12 @@ class YBTransaction::Impl final {
           it->second.metadata_state = InvolvedTabletMetadataState::MAY_EXIST;
         }
       }
+
+      // For serializable isolation we never choose read time, since it always reads latest
+      // snapshot.
+      // For snapshot isolation, if read time was not yet picked, we have to choose it now, if there
+      // multiple tablets that will process first request.
+      SetReadTimeIfNeeded(!single_tablet || force_consistent_read);
     }
 
     VLOG_WITH_PREFIX(3) << "Prepare, has_tablets_without_metadata: "
@@ -227,9 +243,21 @@ class YBTransaction::Impl final {
     return true;
   }
 
-  void Flushed(const internal::InFlightOps& ops, const Status& status) {
+  void Flushed(
+      const internal::InFlightOps& ops, const ReadHybridTime& used_read_time,
+      const Status& status) {
+    VLOG_WITH_PREFIX(5)
+        << "Flushed: " << yb::ToString(ops) << ", used_read_time: " << used_read_time
+        << ", status: " << status;
+
     if (status.ok()) {
       std::lock_guard<std::mutex> lock(mutex_);
+      if (used_read_time && metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+        LOG_IF_WITH_PREFIX(DFATAL, read_point_.GetReadTime())
+            << "Read time already picked (" << read_point_.GetReadTime()
+            << ", but server replied with used read time: " << used_read_time;
+        read_point_.SetReadTime(used_read_time, ConsistentReadPoint::HybridTimeMap());
+      }
       TabletStates::iterator it = tablets_.end();
       for (const auto& op : ops) {
         if (op->yb_op->wrote_data()) {
@@ -332,7 +360,7 @@ class YBTransaction::Impl final {
     return metadata_future_;
   }
 
-  void PrepareChild(PrepareChildCallback callback) {
+  void PrepareChild(ForceConsistentRead force_consistent_read, PrepareChildCallback callback) {
     auto transaction = transaction_->shared_from_this();
     std::unique_lock<std::mutex> lock(mutex_);
     auto status = CheckRunning(&lock);
@@ -345,6 +373,9 @@ class YBTransaction::Impl final {
       callback(STATUS(IllegalState, "Restart required"));
       return;
     }
+
+    SetReadTimeIfNeeded(force_consistent_read);
+
     if (!ready_) {
       waiters_.emplace_back(std::bind(
           &Impl::DoPrepareChild, this, _1, transaction, std::move(callback), nullptr /* lock */));
@@ -371,7 +402,7 @@ class YBTransaction::Impl final {
       out.set_tablet_id(tablet.first);
       tablet.second.ToPB(&out);
     }
-    read_point_.FinishChildTransactionResult(&result);
+    read_point_.FinishChildTransactionResult(HadReadTime(child_had_read_time_), &result);
     return result;
   }
 
@@ -413,6 +444,13 @@ class YBTransaction::Impl final {
     heartbeat_handle_ = manager_->rpcs().InvalidHandle();
     commit_handle_ = manager_->rpcs().InvalidHandle();
     abort_handle_ = manager_->rpcs().InvalidHandle();
+  }
+
+  void SetReadTimeIfNeeded(bool do_it) {
+    if (!read_point_.GetReadTime() && do_it &&
+        metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+      read_point_.SetCurrentReadTime();
+    }
   }
 
   CHECKED_STATUS CheckRunning(std::unique_lock<std::mutex>* lock) {
@@ -758,6 +796,7 @@ class YBTransaction::Impl final {
   std::atomic<TransactionState> state_{TransactionState::kRunning};
   // Transaction is successfully initialized and ready to process intents.
   const bool child_;
+  bool child_had_read_time_ = false;
   bool ready_ = false;
   CommitCallback commit_callback_;
   Status error_;
@@ -826,14 +865,17 @@ Status YBTransaction::Init(IsolationLevel isolation, const ReadHybridTime& read_
 }
 
 bool YBTransaction::Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
+                            ForceConsistentRead force_consistent_read,
                             Waiter waiter,
                             TransactionMetadata* metadata,
                             bool* may_have_metadata) {
-  return impl_->Prepare(ops, std::move(waiter), metadata, may_have_metadata);
+  return impl_->Prepare(
+      ops, force_consistent_read, std::move(waiter), metadata, may_have_metadata);
 }
 
-void YBTransaction::Flushed(const internal::InFlightOps& ops, const Status& status) {
-  impl_->Flushed(ops, status);
+void YBTransaction::Flushed(
+    const internal::InFlightOps& ops, const ReadHybridTime& used_read_time, const Status& status) {
+  impl_->Flushed(ops, used_read_time, status);
 }
 
 void YBTransaction::Commit(CommitCallback callback) {
@@ -878,13 +920,15 @@ Status YBTransaction::FillRestartedTransaction(const YBTransactionPtr& dest) {
   return impl_->FillRestartedTransaction(dest->impl_.get());
 }
 
-void YBTransaction::PrepareChild(PrepareChildCallback callback) {
-  return impl_->PrepareChild(std::move(callback));
+void YBTransaction::PrepareChild(
+    ForceConsistentRead force_consistent_read, PrepareChildCallback callback) {
+  return impl_->PrepareChild(force_consistent_read, std::move(callback));
 }
 
-std::future<Result<ChildTransactionDataPB>> YBTransaction::PrepareChildFuture() {
-  return MakeFuture<Result<ChildTransactionDataPB>>([this](auto callback) {
-      impl_->PrepareChild(std::move(callback));
+std::future<Result<ChildTransactionDataPB>> YBTransaction::PrepareChildFuture(
+    ForceConsistentRead force_consistent_read) {
+  return MakeFuture<Result<ChildTransactionDataPB>>([this, force_consistent_read](auto callback) {
+      impl_->PrepareChild(force_consistent_read, std::move(callback));
   });
 }
 

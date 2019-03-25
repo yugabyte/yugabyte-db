@@ -141,6 +141,7 @@ using tserver::TabletServerErrorPB;
 TabletPeer::TabletPeer(
     const scoped_refptr<TabletMetadata>& meta,
     const consensus::RaftPeerPB& local_peer_pb,
+    const scoped_refptr<server::Clock> &clock,
     const std::string& permanent_uuid,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk)
   : meta_(meta),
@@ -148,6 +149,7 @@ TabletPeer::TabletPeer(
     local_peer_pb_(local_peer_pb),
     state_(TabletStatePB::NOT_STARTED),
     status_listener_(new TabletStatusListener(meta)),
+    clock_(clock),
     log_anchor_registry_(new LogAnchorRegistry()),
     mark_dirty_clbk_(std::move(mark_dirty_clbk)),
     permanent_uuid_(permanent_uuid) {}
@@ -161,7 +163,6 @@ TabletPeer::~TabletPeer() {
 
 Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
                                   const std::shared_future<client::YBClientPtr> &client_future,
-                                  const scoped_refptr<server::Clock> &clock,
                                   const shared_ptr<Messenger> &messenger,
                                   rpc::ProxyCache* proxy_cache,
                                   const scoped_refptr<Log> &log,
@@ -186,7 +187,6 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
     }
     tablet_ = tablet;
     client_future_ = client_future;
-    clock_ = clock;
     proxy_cache_ = proxy_cache;
     log_ = log;
     // "Publish" the log pointer so it can be retrieved using the log() accessor.

@@ -84,7 +84,7 @@ class ConflictResolverContext {
   virtual CHECKED_STATUS CheckConflictWithCommitted(
       const TransactionId& id, HybridTime commit_time) = 0;
 
-  virtual HybridTime GetHybridTime() = 0;
+  virtual HybridTime GetResolutionHt() = 0;
 
   virtual bool IgnoreConflictsWith(const TransactionId& other) = 0;
 
@@ -283,8 +283,8 @@ class ConflictResolver {
       auto& transaction = i;
       StatusRequest request = {
         &transaction.id,
-        context_.GetHybridTime(),
-        context_.GetHybridTime(),
+        context_.GetResolutionHt(),
+        context_.GetResolutionHt(),
         0, // serial no. Could use 0 here, because read_ht == global_limit_ht.
            // So we cannot accept status with time >= read_ht and < global_limit_ht.
         &kRequestReason,
@@ -354,11 +354,13 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
  public:
   TransactionConflictResolverContext(const DocOperations& doc_ops,
                                      const KeyValueWriteBatchPB& write_batch,
-                                     HybridTime hybrid_time,
+                                     HybridTime resolution_ht,
+                                     HybridTime read_time,
                                      Counter* conflicts_metric)
       : doc_ops_(doc_ops),
         write_batch_(write_batch),
-        hybrid_time_(hybrid_time),
+        resolution_ht_(resolution_ht),
+        read_time_(read_time),
         transaction_id_(FullyDecodeTransactionId(
             write_batch.transaction().transaction_id())),
         conflicts_metric_(conflicts_metric)
@@ -430,10 +432,13 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
     auto intent_type_set = strength == IntentStrength::kWeak
         ? StrongToWeak(strong_intent_types) : strong_intent_types;
 
-    if (strength == IntentStrength::kStrong &&
-        metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+    // read_time is HybridTime::kMax in case of serializable isolation or when read time not yet
+    // picked for snapshot isolation.
+    // I.e. if it the first operation in the transaction.
+    if (strength == IntentStrength::kStrong && read_time_ != HybridTime::kMax) {
       Slice key_slice(intent_key_prefix->data());
 
+      // TODO(dtxn) reuse iterator
       auto value_iter = CreateRocksDBIterator(
           resolver->doc_db().regular,
           BloomFilterMode::USE_BLOOM_FILTER,
@@ -445,10 +450,10 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
         auto existing_key = value_iter->key();
         DocHybridTime doc_ht;
         RETURN_NOT_OK(doc_ht.DecodeFromEnd(existing_key));
-        if (doc_ht.hybrid_time() >= metadata_.start_time) {
+        if (doc_ht.hybrid_time() >= read_time_) {
           conflicts_metric_->Increment();
           return STATUS_FORMAT(TryAgain, "Value write after transaction start: $0 >= $1",
-                               doc_ht.hybrid_time(), metadata_.start_time);
+                               doc_ht.hybrid_time(), read_time_);
         }
       }
     }
@@ -483,28 +488,29 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
   CHECKED_STATUS CheckConflictWithCommitted(
       const TransactionId& id, HybridTime commit_time) override {
     DSCHECK(commit_time.is_valid(), Corruption, "Invalid transaction commit time");
-    DSCHECK(metadata_.start_time.is_valid(), Corruption, "Invalid transaction start time");
 
     VLOG(4) << "Committed: " << id << ", " << commit_time;
 
-    bool conflicts;
-    if (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
-      conflicts = commit_time >= metadata_.start_time; // TODO(dtxn) clock skew?
-    } else {
-      // HybridTime::kMax means that transaction is not actually committed, but is going to commit.
-      // So we should conflict with such transaction, because we are not able to read its results.
-      conflicts = commit_time == HybridTime::kMax;
-    }
-
-    if (conflicts) {
+    // commit_time equals to HybridTime::kMax means that transaction is not actually committed,
+    // but is being committed. I.e. status tablet is trying to replicate COMMITTED state.
+    // So we should always conflict with such transaction, because we are not able to read its
+    // results.
+    //
+    // read_time equals to HybridTime::kMax in case of serializable isolation or when
+    // read time was not yet picked for snapshot isolation.
+    // So it should conflict only with transactions that are being committed.
+    //
+    // In all other cases we have concrete read time and should conflict with transactions
+    // that were committed after this point.
+    if (commit_time >= read_time_) {
       return MakeConflictStatus(id, "committed", conflicts_metric_);
     }
 
     return Status::OK();
   }
 
-  HybridTime GetHybridTime() override {
-    return hybrid_time_;
+  HybridTime GetResolutionHt() override {
+    return resolution_ht_;
   }
 
   bool IgnoreConflictsWith(const TransactionId& other) override {
@@ -513,8 +519,17 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
 
   const DocOperations& doc_ops_;
   const KeyValueWriteBatchPB& write_batch_;
-  HybridTime hybrid_time_;
+
+  // Hybrid time of conflict resolution, used to request transaction status from status tablet.
+  const HybridTime resolution_ht_;
+
+  // Read time of the transaction identified by transaction_id_, could be HybridTime::kMax in case
+  // of serializable isolation or when read time not yet picked for snapshot isolation.
+  const HybridTime read_time_;
+
+  // Id of transaction when is writing intents, for which we are resolving conflicts.
   Result<TransactionId> transaction_id_;
+
   TransactionMetadata metadata_;
   Status result_ = Status::OK();
   bool fetched_metadata_for_transactions_ = false;
@@ -524,8 +539,8 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
 class OperationConflictResolverContext : public ConflictResolverContext {
  public:
   OperationConflictResolverContext(const DocOperations* doc_ops,
-                                   HybridTime hybrid_time)
-      : doc_ops_(*doc_ops), hybrid_time_(hybrid_time) {
+                                   HybridTime resolution_ht)
+      : doc_ops_(*doc_ops), resolution_ht_(resolution_ht) {
   }
 
   virtual ~OperationConflictResolverContext() {}
@@ -566,8 +581,8 @@ class OperationConflictResolverContext : public ConflictResolverContext {
     return Status::OK();
   }
 
-  HybridTime GetHybridTime() override {
-    return hybrid_time_;
+  HybridTime GetResolutionHt() override {
+    return resolution_ht_;
   }
 
   bool IgnoreConflictsWith(const TransactionId& other) override {
@@ -576,13 +591,13 @@ class OperationConflictResolverContext : public ConflictResolverContext {
 
   CHECKED_STATUS CheckConflictWithCommitted(
       const TransactionId& id, HybridTime commit_time) override {
-    hybrid_time_.MakeAtLeast(commit_time);
+    resolution_ht_.MakeAtLeast(commit_time);
     return Status::OK();
   }
 
  private:
   const DocOperations& doc_ops_;
-  HybridTime hybrid_time_;
+  HybridTime resolution_ht_;
 };
 
 } // namespace
@@ -590,24 +605,25 @@ class OperationConflictResolverContext : public ConflictResolverContext {
 Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    const KeyValueWriteBatchPB& write_batch,
                                    HybridTime hybrid_time,
+                                   HybridTime read_time,
                                    const DocDB& doc_db,
                                    TransactionStatusManager* status_manager,
                                    Counter* conflicts_metric) {
   DCHECK(hybrid_time.is_valid());
   TransactionConflictResolverContext context(
-      doc_ops, write_batch, hybrid_time, conflicts_metric);
+      doc_ops, write_batch, hybrid_time, read_time, conflicts_metric);
   ConflictResolver resolver(doc_db, status_manager, &context);
   return resolver.Resolve();
 }
 
 Result<HybridTime> ResolveOperationConflicts(const DocOperations& doc_ops,
-                                             HybridTime hybrid_time,
+                                             HybridTime resolution_ht,
                                              const DocDB& doc_db,
                                              TransactionStatusManager* status_manager) {
-  OperationConflictResolverContext context(&doc_ops, hybrid_time);
+  OperationConflictResolverContext context(&doc_ops, resolution_ht);
   ConflictResolver resolver(doc_db, status_manager, &context);
   RETURN_NOT_OK(resolver.Resolve());
-  return context.GetHybridTime();
+  return context.GetResolutionHt();
 }
 
 #define INTENT_KEY_SCHECK(lhs, op, rhs, msg) \

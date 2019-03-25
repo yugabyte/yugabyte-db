@@ -771,13 +771,9 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 // Create and register a new TabletPeer, given tablet metadata.
 Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
     const scoped_refptr<TabletMetadata>& meta, RegisterTabletPeerMode mode) {
-  TabletPeerPtr tablet_peer(
-      new TabletPeerClass(meta,
-                          local_peer_pb_,
-                          fs_manager_->uuid(),
-                          Bind(&TSTabletManager::ApplyChange,
-                               Unretained(this),
-                               meta->tablet_id())));
+  TabletPeerPtr tablet_peer(new TabletPeerClass(
+      meta, local_peer_pb_, scoped_refptr<server::Clock>(server_->clock()), fs_manager_->uuid(),
+      Bind(&TSTabletManager::ApplyChange, Unretained(this), meta->tablet_id())));
   RETURN_NOT_OK(RegisterTablet(meta->tablet_id(), tablet_peer, mode));
   return tablet_peer;
 }
@@ -979,7 +975,6 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
     TRACE("Initializing tablet peer");
     s = tablet_peer->InitTabletPeer(tablet,
                                     async_client_init_->get_client_future(),
-                                    scoped_refptr<server::Clock>(server_->clock()),
                                     server_->messenger(),
                                     &server_->proxy_cache(),
                                     log,

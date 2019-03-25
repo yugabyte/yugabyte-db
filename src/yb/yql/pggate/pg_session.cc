@@ -83,7 +83,7 @@ PgSession::PgSession(
       pg_txn_manager_(std::move(pg_txn_manager)),
       clock_(std::move(clock)) {
   session_->SetTimeout(kSessionTimeout);
-  session_->SetForceConsistentRead(true);
+  session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
 
 PgSession::~PgSession() {
