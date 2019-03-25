@@ -10,15 +10,16 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import org.asynchttpclient.util.Base64;
 
 import com.yugabyte.yw.models.CustomerConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.api.Play;
 import play.libs.Json;
 
 import javax.inject.Inject;
 import java.time.Clock;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -70,7 +71,7 @@ public class CallHomeManager {
       LOG.info("Sending collected diagnostics to " + YB_CALLHOME_URL);
       // Api Helper handles exceptions
       Map<String, String> headers = new HashMap<>();
-      headers.put("X-AUTH-TOKEN", Base64.getEncoder().encodeToString(c.uuid.toString().getBytes()));
+      headers.put("X-AUTH-TOKEN", Base64.encode(c.uuid.toString().getBytes()));
       JsonNode response = apiHelper.postRequest(YB_CALLHOME_URL, payload, headers);
       LOG.info("Response: " + response.toString());
     }
