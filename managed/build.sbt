@@ -1,5 +1,4 @@
 name := """yugaware"""
-import com.typesafe.sbt.packager.MappingsHelper._
 
 lazy val root = (project in file("."))
   .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging)
@@ -44,11 +43,6 @@ testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
 // Skip packaging javadoc for now
 sources in (Compile, doc) := Seq()
 publishArtifact in (Compile, packageDoc) := false
-
-// Add react ui files to public folder of universal package
-mappings in Universal ++= contentOf(baseDirectory.value / "ui/build").map {
-  case (file, dest) => file -> s"public/$dest"
-}
 
 topLevelDirectory := None
 

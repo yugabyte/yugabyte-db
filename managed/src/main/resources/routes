@@ -22,4 +22,5 @@ GET     /metamaster/universe/:universeUUID            com.yugabyte.yw.controller
 ###################################################################################################
 
 # Map static resources from the /public folder to the /assets URL path
-GET     /*file                                 controllers.Assets.versioned(path="/public", file: Asset)
+GET     /                           controllers.UIController.index()
+GET     /*file                      controllers.UIController.assetOrDefault(file)

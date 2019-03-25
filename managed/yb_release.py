@@ -38,9 +38,6 @@ try:
     if not os.path.exists(mapDownloadPath):
         os.makedirs(mapDownloadPath)
     output = check_output(['aws', 's3', 'sync', 's3://no-such-url', mapDownloadPath])
-    log_message(logging.INFO, "Building/Packaging UI code")
-    output = check_output(["npm", "install"], cwd=os.path.join(script_dir, 'ui'))
-    output = check_output(["npm", "run", "build"], cwd=os.path.join(script_dir, 'ui'))
     log_message(logging.INFO, "Kick off SBT universal packaging")
     output = check_output(["sbt", "universal:packageZipTarball"])
     log_message(logging.INFO, "Get a release file name based on the current commit sha")
