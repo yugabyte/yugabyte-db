@@ -1847,6 +1847,10 @@ void YBSession::SetReadPoint(const Restart restart) {
   data_->SetReadPoint(restart);
 }
 
+bool YBSession::IsRestartRequired() const {
+  return data_->IsRestartRequired();
+}
+
 void YBSession::SetTransaction(YBTransactionPtr transaction) {
   data_->SetTransaction(std::move(transaction));
 }

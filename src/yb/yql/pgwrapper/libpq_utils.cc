@@ -37,7 +37,7 @@ Status Execute(PGconn* conn, const std::string& command) {
 }
 
 Result<PGResultPtr> Fetch(PGconn* conn, const std::string& command) {
-  PGResultPtr res(PQexecParams(conn, "SELECT * FROM t", 0, nullptr, nullptr, nullptr, nullptr, 1));
+  PGResultPtr res(PQexecParams(conn, command.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1));
   auto status = PQresultStatus(res.get());
   if (ExecStatusType::PGRES_TUPLES_OK != status) {
     return STATUS_FORMAT(NetworkError, "Fetch '$0' failed: $1, message: $2",

@@ -1041,6 +1041,9 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // the current time.
   void SetReadPoint(Restart restart);
 
+  // Returns true if our current read point requires restart.
+  bool IsRestartRequired() const;
+
   // Changed transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
 

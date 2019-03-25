@@ -104,6 +104,10 @@ class YBInboundCall : public InboundCall {
   // See RpcContext::AddRpcSidecar()
   CHECKED_STATUS AddRpcSidecar(RefCntBuffer car, int* idx);
 
+  int RpcSidecarsSize() const;
+
+  const RefCntBuffer& RpcSidecar(int idx);
+
   // See RpcContext::ResetRpcSidecars()
   void ResetRpcSidecars();
 
