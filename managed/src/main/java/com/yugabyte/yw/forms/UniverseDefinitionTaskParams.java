@@ -274,7 +274,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
              instanceType + ", numNodes=" + numNodes + ", prov=" + provider + ", provType=" +
              providerType + ", RF=" + replicationFactor + ", regions=" + regionList + ", pref=" +
              preferredRegion + ", ybVersion=" + ybSoftwareVersion + ", accessKey=" + accessKeyCode +
-             ", deviceInfo='" + deviceInfo + "', timeSync=" + useTimeSync + ", publicIP=" + assignPublicIP;
+             ", deviceInfo='" + deviceInfo + "', timeSync=" + useTimeSync + ", publicIP=" +
+             assignPublicIP + " tags=" + instanceTags;
     }
 
     public UserIntent clone() {
@@ -297,7 +298,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableYSQL = enableYSQL;
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
-      newUserIntent.instanceTags = instanceTags;
+      newUserIntent.instanceTags = new HashMap<>(instanceTags);
       return newUserIntent;
     }
 
