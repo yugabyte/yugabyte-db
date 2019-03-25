@@ -14,11 +14,13 @@
 #ifndef YB_CLIENT_ASYNC_RPC_H_
 #define YB_CLIENT_ASYNC_RPC_H_
 
+#include "yb/client/tablet_rpc.h"
+
+#include "yb/common/read_hybrid_time.h"
+
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
-
-#include "yb/client/tablet_rpc.h"
 
 namespace yb {
 namespace client {
@@ -54,6 +56,15 @@ struct AsyncRpcData {
   InFlightOps ops;
 };
 
+struct FlushExtraResult {
+  // Latest hybrid time that was present on tserver during processing of this request.
+  HybridTime propagated_hybrid_time;
+
+  // When read time was not specified by client it will contain read time that servers used
+  // to process this request.
+  ReadHybridTime used_read_time;
+};
+
 // An Async RPC which is in-flight to a tablet. Initially, the RPC is sent
 // to the leader replica, but it may be retried with another replica if the
 // leader fails.
@@ -85,8 +96,8 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   // stored in batcher. If there's a callback from the user, it is done in this step.
   virtual void ProcessResponseFromTserver(const Status& status) = 0;
 
-  // Return latest hybrid time that was present on tserver during processing of this request.
-  virtual HybridTime PropagatedHybridTime() = 0;
+  // See FlushExtraResult for details.
+  virtual FlushExtraResult MakeFlushExtraResult() = 0;
 
   void Failed(const Status& status) override;
 
@@ -122,14 +133,17 @@ class AsyncRpcBase : public AsyncRpc {
  protected:
   // Returns `true` if caller should continue processing response, `false` otherwise.
   bool CommonResponseCheck(const Status& status);
+  void SendRpcToTserver() override;
 
  protected: // TODO replace with private
   const tserver::TabletServerErrorPB* response_error() const override {
     return resp_.has_error() ? &resp_.error() : nullptr;
   }
 
-  HybridTime PropagatedHybridTime() override {
-    return GetPropagatedHybridTime(resp_);
+  FlushExtraResult MakeFlushExtraResult() override {
+    return {GetPropagatedHybridTime(resp_),
+            resp_.has_used_read_time() ? ReadHybridTime::FromPB(resp_.used_read_time())
+                                       : ReadHybridTime()};
   }
 
   Req req_;

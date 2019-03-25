@@ -244,7 +244,7 @@ CollectedErrors YBSessionData::GetPendingErrors() {
   return error_collector_->GetErrors();
 }
 
-void YBSessionData::SetForceConsistentRead(bool value) {
+void YBSessionData::SetForceConsistentRead(ForceConsistentRead value) {
   force_consistent_read_ = value;
   if (batcher_) {
     batcher_->SetForceConsistentRead(value);

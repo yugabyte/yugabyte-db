@@ -931,6 +931,7 @@ struct ReadContext {
 
   ReadHybridTime read_time;
   HybridTime safe_ht_to_read;
+  ReadHybridTime used_read_time;
   tablet::RequireLease require_lease = tablet::RequireLease::kFalse;
   HostPortPB* host_port_pb = nullptr;
   bool allow_retry = false;
@@ -1180,6 +1181,14 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
   if (read_context->req->include_trace() && Trace::CurrentTrace() != nullptr) {
     read_context->resp->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
   }
+
+  // It was read as part of transaction, but read time was not specified.
+  // I.e. allow_retry is true.
+  // So we just picked a read time and we should tell it back to the caller.
+  if (read_context->req->has_transaction() && read_context->allow_retry) {
+    read_context->used_read_time.ToPB(read_context->resp->mutable_used_read_time());
+  }
+
   RpcOperationCompletionCallback<ReadResponsePB> callback(
       std::move(*read_context->context), read_context->resp, server_->Clock());
   callback.OperationCompleted();
@@ -1201,6 +1210,7 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
   auto read_tx = VERIFY_RESULT(
       tablet::ScopedReadOperation::Create(
           read_context->tablet.get(), read_context->require_lease, read_context->read_time));
+  read_context->used_read_time = read_tx.read_time();
   if (!read_context->req->redis_batch().empty()) {
     // Assert the primary table is a redis table.
     DCHECK_EQ(read_context->tablet->table_type(), TableType::REDIS_TABLE_TYPE);

@@ -48,7 +48,8 @@ namespace docdb {
 // conflicts_metric - transaction_conflicts metric to update.
 CHECKED_STATUS ResolveTransactionConflicts(const DocOperations& doc_ops,
                                            const KeyValueWriteBatchPB& write_batch,
-                                           HybridTime hybrid_time,
+                                           HybridTime resolution_ht,
+                                           HybridTime read_time,
                                            const DocDB& doc_db,
                                            TransactionStatusManager* status_manager,
                                            Counter* conflicts_metric);
@@ -62,11 +63,11 @@ CHECKED_STATUS ResolveTransactionConflicts(const DocOperations& doc_ops,
 // transaction.
 //
 // doc_ops - doc operations that would be applied as part of operation.
-// hybrid_time - current hybrid time.
+// resolution_ht - current hybrid time. Used to request status of conflicting transactions.
 // db - db that contains tablet data.
 // status_manager - status manager that should be used during this conflict resolution.
 Result<HybridTime> ResolveOperationConflicts(const DocOperations& doc_ops,
-                                             HybridTime hybrid_time,
+                                             HybridTime resolution_ht,
                                              const DocDB& doc_db,
                                              TransactionStatusManager* status_manager);
 

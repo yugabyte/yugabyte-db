@@ -53,7 +53,7 @@ namespace {
 class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
  public:
   explicit DocDBIntentsCompactionFilter(tablet::Tablet* tablet)
-      : tablet_(tablet), compaction_start_time_(tablet->clock()->Now()) {
+      : tablet_(tablet), compaction_start_time_(tablet->clock()->Now().GetPhysicalValueMicros()) {
   }
 
   ~DocDBIntentsCompactionFilter() override;
@@ -82,7 +82,7 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
                 std::string* new_value,
                 bool* value_changed);
   tablet::Tablet* const tablet_;
-  const HybridTime compaction_start_time_;
+  const MicrosTime compaction_start_time_;
 
   TransactionIdSet transactions_to_cleanup_;
   int rejected_transactions_ = 0;
@@ -121,9 +121,11 @@ bool DocDBIntentsCompactionFilter::DoFilter(int level, const rocksdb::Slice& key
       LOG(ERROR) << "Transaction metadata failed to parse.";
       return false;
     }
-    Result<TransactionMetadata> metadata = TransactionMetadata::FromPB(metadata_pb);
-    if (!metadata.ok()) {
-      LOG(ERROR) << "Invalid Transaction metadata parse status:" << metadata.status();
+    uint64_t write_time = metadata_pb.metadata_write_time();
+    if (!write_time) {
+      write_time = HybridTime(metadata_pb.deprecated_start_hybrid_time()).GetPhysicalValueMicros();
+    }
+    if (compaction_start_time_ < write_time + FLAGS_aborted_intent_cleanup_ms * 1000) {
       return false;
     }
     auto result = DecodeTransactionIdFromIntentValue(const_cast<Slice*>(&key));
@@ -131,10 +133,7 @@ bool DocDBIntentsCompactionFilter::DoFilter(int level, const rocksdb::Slice& key
       LOG(ERROR) << "Could not decode Transaction metadata: " << result.status();
       return false;
     }
-    auto cleanup_time = metadata->start_time.AddMilliseconds(FLAGS_aborted_intent_cleanup_ms);
-    if (compaction_start_time_ >= cleanup_time) {
-      AddToSet(*result);
-    }
+    AddToSet(*result);
   }
   return false;
 }

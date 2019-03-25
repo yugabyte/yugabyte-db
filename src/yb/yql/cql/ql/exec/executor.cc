@@ -76,7 +76,7 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
                             StatementExecutedCallback cb) {
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
-  session_->SetForceConsistentRead(false);
+  session_->SetForceConsistentRead(client::ForceConsistentRead::kFalse);
   session_->SetReadPoint(client::Restart::kFalse);
   RETURN_STMT_NOT_OK(Execute(parse_tree, params));
   FlushAsync();
@@ -85,7 +85,7 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
 void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallback cb) {
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
-  session_->SetForceConsistentRead(false);
+  session_->SetForceConsistentRead(client::ForceConsistentRead::kFalse);
   session_->SetReadPoint(client::Restart::kFalse);
 
   // Table for DML batches, where all statements must modify the same table.
@@ -1853,7 +1853,7 @@ Status Executor::AddOperation(const YBqlReadOpPtr& op, TnodeContext *tnode_conte
   // We need consistent read point if statement is executed in multiple RPC commands.
   if (tnode_context->UnreadPartitionsRemaining() > 0 ||
       op->request().hashed_column_values().empty()) {
-    session_->SetForceConsistentRead(true);
+    session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
   }
 
   TRACE("Apply");

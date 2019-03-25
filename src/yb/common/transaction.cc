@@ -71,7 +71,7 @@ Result<TransactionMetadata> TransactionMetadata::FromPB(const TransactionMetadat
     result.isolation = source.isolation();
     result.status_tablet = source.status_tablet();
     result.priority = source.priority();
-    result.start_time = HybridTime(source.start_hybrid_time());
+    result.DEPRECATED_start_time = HybridTime(source.deprecated_start_hybrid_time());
   }
   return result;
 }
@@ -82,7 +82,7 @@ void TransactionMetadata::ToPB(TransactionMetadataPB* dest) const {
     dest->set_isolation(isolation);
     dest->set_status_tablet(status_tablet);
     dest->set_priority(priority);
-    dest->set_start_hybrid_time(start_time.ToUint64());
+    dest->set_deprecated_start_hybrid_time(DEPRECATED_start_time.ToUint64());
   }
 }
 
@@ -91,14 +91,11 @@ bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs) 
          lhs.isolation == rhs.isolation &&
          lhs.status_tablet == rhs.status_tablet &&
          lhs.priority == rhs.priority &&
-         lhs.start_time == rhs.start_time;
+         lhs.DEPRECATED_start_time == rhs.DEPRECATED_start_time;
 }
 
 std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata) {
-  return out << Format("{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 "
-                           "start_time: $4",
-                       metadata.transaction_id, IsolationLevel_Name(metadata.isolation),
-                       metadata.status_tablet, metadata.priority, metadata.start_time);
+  return out << metadata.ToString();
 }
 
 MonoDelta TransactionRpcTimeout() {

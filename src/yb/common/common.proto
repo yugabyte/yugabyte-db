@@ -345,7 +345,13 @@ message TransactionMetadataPB {
   optional IsolationLevel isolation = 2 [default=NON_TRANSACTIONAL];
   optional string status_tablet = 3;
   optional fixed64 priority = 4;
-  optional fixed64 start_hybrid_time = 5;
+
+  // Used for backward compatibility during rolling update.
+  optional fixed64 DEPRECATED_start_hybrid_time = 5;
+
+  // Stores time when metadata was written to provisional records RocksDB on a
+  // participating tablet. So it could be used for cleanup.
+  optional fixed64 metadata_write_time = 6;
 }
 
 // See ReadHybridTime for explation of this message.
@@ -382,6 +388,7 @@ message ChildTransactionResultPB {
   repeated TransactionInvolvedTabletPB tablets = 1;
   optional fixed64 restart_read_ht = 2;
   map<string, fixed64> read_restarts = 3;
+  optional ReadHybridTimePB used_read_time = 4;
 }
 
 message DeletedColumnPB {

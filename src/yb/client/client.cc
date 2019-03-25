@@ -1940,7 +1940,7 @@ void YBSession::SetInTxnLimit(HybridTime value) {
   data_->SetInTxnLimit(value);
 }
 
-void YBSession::SetForceConsistentRead(bool value) {
+void YBSession::SetForceConsistentRead(ForceConsistentRead value) {
   data_->SetForceConsistentRead(value);
 }
 

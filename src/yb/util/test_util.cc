@@ -331,4 +331,11 @@ int CalcNumTablets(int num_tablet_servers) {
 #endif
 }
 
+void WaitStopped(const CoarseDuration& duration, std::atomic<bool>* stop) {
+  auto end = CoarseMonoClock::now() + duration;
+  while (!stop->load(std::memory_order_acquire) && CoarseMonoClock::now() < end) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+}
+
 } // namespace yb

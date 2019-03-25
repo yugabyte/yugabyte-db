@@ -228,6 +228,9 @@ message WriteResponsePB {
 
   // Used to report restart whether this operation requires read restart.
   optional ReadHybridTimePB restart_read_time = 11;
+
+  // Used to report used read time when transaction asked for it.
+  optional ReadHybridTimePB used_read_time = 13;
 }
 
 // A list tablets request
@@ -287,14 +290,13 @@ message ReadRequestPB {
 }
 
 message ReadResponsePB {
+  reserved 2;
+
   repeated RedisResponsePB redis_batch = 1;
 
   repeated QLResponsePB ql_batch = 4;
 
   repeated PgsqlResponsePB pgsql_batch = 8;
-
-  // The hybrid_time chosen by the server for this read.
-  optional fixed64 hybrid_time = 2;
 
   optional TabletServerErrorPB error = 3;
 
@@ -304,6 +306,9 @@ message ReadResponsePB {
 
   // Used to report restart whether this operation requires read restart.
   optional ReadHybridTimePB restart_read_time = 7;
+
+  // Used to report used read time when transaction asked for it.
+  optional ReadHybridTimePB used_read_time = 9;
 }
 
 message TransactionStatePB {

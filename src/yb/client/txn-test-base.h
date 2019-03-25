@@ -44,7 +44,9 @@ void CommitAndResetSync(YBTransactionPtr *txn);
 
 void DisableTransactionTimeout();
 
-#define VERIFY_ROW(...) VerifyRow(__LINE__, __VA_ARGS__)
+#define VERIFY_ROW(...) ASSERT_NO_FATAL_FAILURE(VerifyRow(__LINE__, __VA_ARGS__))
+
+YB_STRONGLY_TYPED_BOOL(SetReadTime);
 
 class TransactionTestBase : public KeyValueTableTest {
  protected:
@@ -63,9 +65,9 @@ class TransactionTestBase : public KeyValueTableTest {
 
   void WriteDataWithRepetition();
 
-  YBTransactionPtr CreateTransaction();
+  YBTransactionPtr CreateTransaction(SetReadTime set_read_time = SetReadTime::kFalse);
 
-  YBTransactionPtr CreateTransaction2();
+  YBTransactionPtr CreateTransaction2(SetReadTime set_read_time = SetReadTime::kFalse);
 
   void VerifyRows(const YBSessionPtr& session,
                   size_t transaction = 0,

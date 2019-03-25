@@ -698,6 +698,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     if (store) {
       docdb::KeyBytes key;
       AppendTransactionKeyPrefix(metadata->transaction_id, &key);
+      auto data_copy = data;
+      // We use hybrid time only for backward compatibility, actually wall time is required.
+      data_copy.set_metadata_write_time(GetCurrentTimeMicros());
       auto value = data.SerializeAsString();
       write_batch->Put(key.data(), value);
     }
