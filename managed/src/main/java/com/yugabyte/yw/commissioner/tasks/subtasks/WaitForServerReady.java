@@ -118,46 +118,41 @@ public class WaitForServerReady extends AbstractTaskBase {
     HostAndPort hp = HostAndPort.fromParts(node.cloudInfo.private_ip, node.tserverRpcPort);
 
     IsTabletServerReadyResponse response = null;
-    while (true) {
-      numIters++;
-      try {
+    try {
+      while (true) {
+        numIters++;
         response = client.isTServerReady(hp);
-      } catch (Exception e) {
-        String emsg = e.getMessage();
-        // message need not be set for some system exceptions (including NPE).
-        if (emsg == null) {
-          emsg = e.getClass().getName();
+
+        if (response.hasError()) {
+          LOG.info("Response has error {} after iters={}.",
+                   response.errorMessage(), numIters);
+          break;
         }
-        String excepMsg = getName() + " hit error " + emsg;
-        // There is no generic mechanism from proto/rpc to check if an older server does not have
-        // this rpc implemented. So, we just sleep for remaining time on any such error.
-        if (emsg.contains("invalid method name: IsTabletServerReady")) {
-          LOG.info(excepMsg);
+
+        if (response.getNumNotRunningTablets() == 0) {
+          LOG.info("{} on node {} ready after iters={}.",
+                   taskParams().serverType, taskParams().nodeName, numIters);
           break;
         }
 
         if (numIters > (MAX_TOTAL_WAIT_MS / WAIT_EACH_ATTEMPT_MS)) {
-          LOG.info("Timing out after iters={}, message={}, numNotRunning={}, excepMsg={}.",
-                   numIters, response != null ? response.errorMessage() : "",
-                   response != null ? response.getNumNotRunningTablets() : 0, excepMsg);
+          LOG.info("Timing out after iters={}. {} tablets not running, out of {}.",
+                   numIters, response.getNumNotRunningTablets(), response.getTotalTablets());
           break;
         }
 
         if (numIters % LOG_EVERY_NUM_ITERS == 0) {
-          LOG.info("Iters={}, message={}, numNotRunning={}, excepMsg={}.",
-                   numIters, response != null ? response.errorMessage() : "",
-                   response != null ? response.getNumNotRunningTablets() : 0, excepMsg);
+          LOG.info("{} on node {} not ready after iters={}, {} tablets not running out of {}.",
+                   taskParams().serverType, taskParams().nodeName, numIters,
+                   response.getNumNotRunningTablets(), response.getTotalTablets());
         }
 
         sleepFor(WAIT_EACH_ATTEMPT_MS);
-
-        continue;
       }
-
-      LOG.info("{} on node {} ready after iters={}, numNotRunning={}.",
-               taskParams().serverType, taskParams().nodeName, numIters,
-               response.getNumNotRunningTablets());
-      break;
+    } catch (Exception e) {
+      // There is no generic mechanism from proto/rpc to check if an older server does not have
+      // this rpc implemented. So, we just sleep for remaining time on any such error.
+      LOG.info("{} hit exception '{}' after {} iters.", getName(), e.getMessage(), numIters);
     }
 
     // Sleep for the remaining portion of user specified time, if any.
