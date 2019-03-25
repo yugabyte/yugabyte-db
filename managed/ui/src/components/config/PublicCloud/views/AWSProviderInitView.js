@@ -2,10 +2,10 @@
 
 import React, { Fragment,  Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
-import { YBInputField, YBTextInputWithLabel, YBControlledSelectWithLabel, YBSelectWithLabel, YBToggle, YBAddRowButton, YBButton } from 'components/common/forms/fields';
+import { YBInputField, YBTextInputWithLabel, YBControlledSelectWithLabel, YBSelectWithLabel, YBToggle, YBAddRowButton, YBButton, YBDropZoneWithLabel } from 'components/common/forms/fields';
 
 import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
-import { isDefinedNotNull, isNonEmptyString, isNonEmptyArray, isValidObject, trimString } from 'utils/ObjectUtils';
+import { isDefinedNotNull, isNonEmptyString, isNonEmptyArray, isNonEmptyObject, isValidObject, trimString } from 'utils/ObjectUtils';
 import { reduxForm, formValueSelector, change, FieldArray, Field, getFormValues } from 'redux-form';
 import { connect } from 'react-redux';
 import AddRegionPopupForm from './AddRegionPopupForm';
@@ -389,6 +389,7 @@ class AWSProviderInitView extends Component {
       networkSetupType: "new_vpc",
       setupHostedZone: false,
       credentialInputType: "custom_keys",
+      sshPrivateKeyContent: {},
       keypairsInputType: "yw_keypairs"
     };
   }
@@ -448,11 +449,26 @@ class AWSProviderInitView extends Component {
 
     if (this.state.keypairsInputType === "custom_keypairs") {
       regionFormVals["keyPairName"] = formValues.keyPairName;
-      regionFormVals["sshPrivateKeyContent"] = formValues.sshPrivateKeyContent;
       regionFormVals["sshUser"] = formValues.sshUser;
     }
     regionFormVals["perRegionMetadata"] = perRegionMetadata;
-    this.props.createAWSProvider(formValues.accountName, awsProviderConfig, regionFormVals);
+
+
+    const sshPrivateKeyText = formValues.sshPrivateKeyContent;
+
+    if (this.state.keypairsInputType === "custom_keypairs" && isNonEmptyObject(sshPrivateKeyText)) {
+      const reader = new FileReader();
+      reader.readAsText(sshPrivateKeyText);
+      // Parse the file back to JSON, since the API controller endpoint doesn't support file upload
+      reader.onloadend = () => {
+        try {
+          regionFormVals["sshPrivateKeyContent"] = JSON.parse(reader.result);
+        } catch (e) {
+          this.setState({"error": "Invalid PEM Config file"});
+        }
+        return this.props.createAWSProvider(formValues.accountName, awsProviderConfig, regionFormVals);
+      };
+    }
   };
 
   isHostInAWS = () => {
@@ -622,9 +638,9 @@ class AWSProviderInitView extends Component {
       pemLabel,
       <Field
         name="sshPrivateKeyContent"
-        type="text"
-        component={YBTextInputWithLabel}
-        normalize={trimString}
+        className="upload-file-button"
+        title={"Upload PEM Config file"}
+        component={YBDropZoneWithLabel}
         infoTitle={pemLabel}
         infoContent={pemTooltipContent}
       />
