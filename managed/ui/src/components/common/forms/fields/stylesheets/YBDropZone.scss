@@ -9,6 +9,8 @@
 .provider-config-container,
 .import-release-modal {
   .form-group.file-upload {
+    display: block;
+    
     .upload-file-button {
       border-radius: 7px;
       overflow: hidden;
