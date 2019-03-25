@@ -61,4 +61,5 @@ The following table lists the primitive types in YSQL.
 | [`UUID`](type_uuid) | | Universally unique identifier |
 | `XML` <sup>1<sup> | | XML data |
 
-<sup>1<sup>: Under development
+<sup>1<sup>: Table columns of this type cannot be part of an `INDEX` `KEY`.
+<sup>2<sup>: Under development.
