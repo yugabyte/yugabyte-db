@@ -99,32 +99,19 @@ class ReleaseUtil(object):
             path = os.path.join(self.repo, path)
         return path
 
-    def create_distribution(self, distribution_dir, prefix_dir=None):
+    def create_distribution(self, distribution_dir):
         """This method would read the release_manifest and traverse through the
         build directory and copy necessary files/symlinks into the distribution_dir
         Args:
             distribution_dir (string): Directory to create the distribution
-            prefix_dir (string): Only add entries that have a manifest key prefixed with this
         """
-        if prefix_dir:
-            full_path_prefix_dir = os.path.join(distribution_dir, prefix_dir)
-            if os.path.exists(full_path_prefix_dir):
-                logging.info("Found data at {}, removing before adding to distribution.".format(
-                    full_path_prefix_dir))
-                # Ignore errors so that it recurses even if dir is not empty.
-                shutil.rmtree(full_path_prefix_dir, ignore_errors=True)
         for dir_from_manifest in self.release_manifest:
             if dir_from_manifest == '%symlinks%':
                 for dst, target in self.release_manifest[dir_from_manifest].iteritems():
-                    if prefix_dir is not None and not dst.startswith(prefix_dir):
-                        continue
                     dst = os.path.join(distribution_dir, dst)
                     logging.debug("Creating symlink {} -> {}".format(dst, target))
                     mkdir_p(os.path.dirname(dst))
                     os.symlink(target, dst)
-                continue
-            # If we're using a prefix_dir, skip all manifest keys not starting with this.
-            if prefix_dir is not None and not dir_from_manifest.startswith(prefix_dir):
                 continue
             current_dest_dir = os.path.join(distribution_dir, dir_from_manifest)
             mkdir_p(current_dest_dir)
