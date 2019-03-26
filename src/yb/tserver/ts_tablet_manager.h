@@ -257,9 +257,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Return the number of tablets for which this ts is a leader.
   int GetLeaderCount() const;
 
-  // Return the number of tablets which are not in RUNNING state.
-  // If the tablet manager itself is not initialized, then INT_MAX is returned.
-  int GetNumTabletsNotRunning() const;
+  // Set the number of tablets which are waiting to be bootstrapped and can go to RUNNING
+  // state in the response proto. Also set the total number of runnable tablets on this tserver.
+  // If the tablet manager itself is not initialized, then INT_MAX is set for both.
+  CHECKED_STATUS GetNumTabletsPendingBootstrap(IsTabletServerReadyResponsePB* resp) const;
 
   CHECKED_STATUS RunAllLogGC();
 

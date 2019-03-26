@@ -22,12 +22,15 @@ public class IsTabletServerReadyResponse extends YRpcResponse {
   private TabletServerErrorPB serverError;
   // Number of tablets that are not in running state on this tserver.
   private int numNotRunning;
+  // Total number of tablets that are managed under this tserver.
+  private int totalTablets;
 
   public IsTabletServerReadyResponse(long ellapsedMillis, String uuid,
-      TabletServerErrorPB error, int notRunning) {
+      TabletServerErrorPB error, int notRunning, int totalTablets) {
     super(ellapsedMillis, uuid);
     this.serverError = error;
     this.numNotRunning = notRunning;
+    this.totalTablets = totalTablets;
   }
 
   public boolean hasError() {
@@ -52,5 +55,9 @@ public class IsTabletServerReadyResponse extends YRpcResponse {
 
   public int getNumNotRunningTablets() {
     return numNotRunning;
+  }
+
+  public int getTotalTablets() {
+    return totalTablets;
   }
 }
