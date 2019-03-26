@@ -48,7 +48,7 @@
 #include "yb/util/trace.h"
 
 DECLARE_int32(rpc_max_message_size);
-DECLARE_int64(remote_boostrap_rate_limit_bytes_per_sec);
+DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 
 namespace yb {
 namespace tserver {
@@ -520,25 +520,25 @@ void RemoteBootstrapSession::EnsureRateLimiterIsInitialized() {
 
 
 void RemoteBootstrapSession::InitRateLimiter() {
-  if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec > 0 && nsessions_) {
+  if (FLAGS_remote_bootstrap_rate_limit_bytes_per_sec > 0 && nsessions_) {
     // Calling SetTargetRateUpdater will activate the rate limiter.
     rate_limiter_.SetTargetRateUpdater([this]() -> uint64_t {
-      DCHECK_GT(FLAGS_remote_boostrap_rate_limit_bytes_per_sec, 0);
-      if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec <= 0) {
+      DCHECK_GT(FLAGS_remote_bootstrap_rate_limit_bytes_per_sec, 0);
+      if (FLAGS_remote_bootstrap_rate_limit_bytes_per_sec <= 0) {
         YB_LOG_EVERY_N(ERROR, 1000)
-          << "Invalid value for remote_boostrap_rate_limit_bytes_per_sec: "
-          << FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
+          << "Invalid value for remote_bootstrap_rate_limit_bytes_per_sec: "
+          << FLAGS_remote_bootstrap_rate_limit_bytes_per_sec;
         // Since the rate limiter is initialized, it's expected that the value of
-        // FLAGS_remote_boostrap_rate_limit_bytes_per_sec is greater than 0. Since this is not the
+        // FLAGS_remote_bootstrap_rate_limit_bytes_per_sec is greater than 0. Since this is not the
         // case, we'll log an error, and set the rate to 50 MB/s.
         return 50_MB;
       }
       auto nsessions = nsessions_->load(std::memory_order_acquire);
       if (nsessions > 0) {
-        return FLAGS_remote_boostrap_rate_limit_bytes_per_sec / nsessions;
+        return FLAGS_remote_bootstrap_rate_limit_bytes_per_sec / nsessions;
       } else {
         LOG(DFATAL) << "Invalid number of sessions: " << nsessions;
-        return FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
+        return FLAGS_remote_bootstrap_rate_limit_bytes_per_sec;
       }
     });
   }

@@ -95,6 +95,12 @@ DECLARE_int32(cql_proxy_webserver_port);
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_bool(start_pgsql_proxy);
 
+DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
+
+// Deprecated because it's misspelled.  But if set, this flag takes precedence over
+// remote_bootstrap_rate_limit_bytes_per_sec for compatibility.
+DECLARE_int64(remote_boostrap_rate_limit_bytes_per_sec);
+
 namespace yb {
 namespace tserver {
 
@@ -125,6 +131,13 @@ static int TabletServerMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(TabletServerOptions::kServerType, argv[0]));
 
   LOG(INFO) << "NumCPUs determined to be: " << base::NumCPUs();
+
+  if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec > 0) {
+    LOG(WARNING) << "Flag remote_boostrap_rate_limit_bytes_per_sec has been deprecated. "
+                 << "Use remote_bootstrap_rate_limit_bytes_per_sec flag instead";
+    FLAGS_remote_bootstrap_rate_limit_bytes_per_sec =
+        FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
+  }
 
 #ifdef TCMALLOC_ENABLED
   LOG(INFO) << "Setting tcmalloc max thread cache bytes to: " <<
