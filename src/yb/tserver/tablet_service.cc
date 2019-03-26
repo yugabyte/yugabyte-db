@@ -1746,17 +1746,12 @@ void TabletServiceImpl::GetTabletStatus(const GetTabletStatusRequestPB* req,
 void TabletServiceImpl::IsTabletServerReady(const IsTabletServerReadyRequestPB* req,
                                             IsTabletServerReadyResponsePB* resp,
                                             rpc::RpcContext context) {
-  int not_running = server_->tablet_manager()->GetNumTabletsNotRunning();
-
-  resp->set_num_tablets_not_running(not_running);
-  if (not_running > 0) {
-    SetupErrorAndRespond(resp->mutable_error(),
-                         STATUS(ServiceUnavailable, "Tablet server not ready."),
-                         TabletServerErrorPB::PENDING_LOCAL_BOOTSTRAPS,
+  Status s = server_->tablet_manager()->GetNumTabletsPendingBootstrap(resp);
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, TabletServerErrorPB::UNKNOWN_ERROR,
                          &context);
     return;
   }
-
   context.RespondSuccess();
 }
 
