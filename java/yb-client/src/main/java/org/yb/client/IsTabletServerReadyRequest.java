@@ -51,10 +51,11 @@ class IsTabletServerReadyRequest extends YRpc<IsTabletServerReadyResponse> {
         Tserver.IsTabletServerReadyResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
     boolean hasError = respBuilder.hasError();
-    IsTabletServerReadyResponse response =
-        new IsTabletServerReadyResponse(deadlineTracker.getElapsedMillis(), uuid,
-                                        hasError ? respBuilder.getErrorBuilder().build() : null,
-                                        respBuilder.getNumTabletsNotRunning());
+    IsTabletServerReadyResponse response = new IsTabletServerReadyResponse(
+        deadlineTracker.getElapsedMillis(), uuid,
+        hasError ? respBuilder.getErrorBuilder().build() : null,
+        respBuilder.getNumTabletsNotRunning(),
+        respBuilder.getTotalTablets());
     return new Pair<IsTabletServerReadyResponse, Object>(response,
                                                          hasError ? respBuilder.getError() : null);
   }

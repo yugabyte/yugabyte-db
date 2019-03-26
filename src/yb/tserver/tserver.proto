@@ -371,11 +371,11 @@ message PublishResponsePB {
 message IsTabletServerReadyRequestPB {
 }
 
-// When no errors, the tserver is deemed ready as per its tablet manager layer.
-// The number of tablets not running is returned as well, to help track readiness progress.
-// When this reaches 0 the server is expected to be ready, or client can choose to
-// timeout before that.
+// When response has no errors, the tserver is deemed ready as per its tablet manager layer
+// when the number of not running tablets is 0. Or the client can choose to
+// timeout before that. Also returns total tablets under this tablet server.
 message IsTabletServerReadyResponsePB {
   optional TabletServerErrorPB error = 1;
   optional int32 num_tablets_not_running = 2;
+  optional int32 total_tablets = 3 [default = 0];
 }
