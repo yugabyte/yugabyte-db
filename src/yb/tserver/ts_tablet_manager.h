@@ -476,7 +476,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 };
 
 // Helper to delete the transition-in-progress entry from the corresponding set
-// when tablet boostrap, create, and delete operations complete.
+// when tablet bootstrap, create, and delete operations complete.
 class TransitionInProgressDeleter : public RefCountedThreadSafe<TransitionInProgressDeleter> {
  public:
   TransitionInProgressDeleter(TransitionInProgressMap* map, RWMutex* lock,
