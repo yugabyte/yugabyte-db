@@ -106,18 +106,13 @@ The data on this cluster can now be moved. First, we `blacklist` the old tablet 
 The commands below can be run from one of the old master nodes. You can first blacklist the six old tservers:
 
 ```sh
-sudo yum -y install java
-
-java -jar ~/master/java/yb-cli-0.8.0-SNAPSHOT.jar
-yb> connect --masters node1:7100,node2:7100,node3:7100
-Connected to database at node1:7100,node2:7100,node3:7100
-yb> change_blacklist --isAdd true --servers node1:9100,node2:9100,node3:9100,node4:9100,node5:9100,node6:9100
+export MASTERS=node1:7100,node2:7100,node3:7100
+~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist ADD node1:9100 node2:9100 node3:9100 node4:9100 node5:9100 node6:9100
 ```
 
 Verify that the blacklist info looks similar to the output below:
-```
-java -jar ~/master/java/yb-cli-0.8.0-SNAPSHOT.jar
-yb> get_universe_config
+```sh
+~/master/bin/yb-admin -master_addresses $MASTERS get_universe_config
 Config:
 version: 5
 server_blacklist {
@@ -141,12 +136,11 @@ server_blacklist {
 Next, wait for the data move to complete. You can check the percentage completion by running the command below.
 
 ```sh
-java -jar ~/master/java/yb-cli-0.8.0-SNAPSHOT.jar
-yb> get_load_move_completion
-66.6
+~/master/bin/yb-admin -master_addresses $MASTERS get_load_move_completion
+Percent complete = 66.6
 ```
 
-In the example above, the data move is `66.6%` done. Rerun this command periodically till the returned value reaches `100.0`.
+In the example above, the data move is `66.6%` done. Rerun this command periodically till the returned value reaches `100`.
 
 {{< note title="Note" >}}
 The time needed for this data move depends on the following:
@@ -208,16 +202,14 @@ Updating master addresses is needed in case the yb-tserver process is restarted.
 The old nodes are not part of the universe any more and can be shutdown.
 Once the old tserver processes are terminated, you can cleanup the blacklist from the master configuration using the command below.
 ```sh
-java -jar ~/master/java/yb-cli-0.8.0-SNAPSHOT.jar
-yb> connect --masters node7:7100,node8:7100,node9:7100
-yb> change_blacklist --isAdd false --servers node1:9100,node2:9100,node3:9100,node4:9100,node5:9100,node6:9100
+~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist REMOVE node1:9100 node2:9100 node3:9100 node4:9100 node5:9100 node6:9100
 ```
 
 {{< note title="Tip" >}}
 Cleaning up the blacklist server will help reuse the older IPs in case they get recycled.
 {{< /note >}}
 
-Ensure there are no `server_blacklist` entries returned by this java cli command:
+Ensure there are no `server_blacklist` entries returned by the command:
 ```sh
-yb> get_universe_config
+~/master/bin/yb-admin -master_addresses $MASTERS get_universe_config
 ```
