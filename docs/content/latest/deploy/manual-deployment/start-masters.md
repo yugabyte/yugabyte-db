@@ -30,7 +30,9 @@ Let us assume the following.
 This section covers deployment for a single region/zone (or a single datacenter/rack). Execute the following steps on each of the instances.
 
 ## Run yb-master with command line params
-- Run `yb-master` binary on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. For the full list of flags, see the [yb-master Reference](../../../admin/yb-master/).
+- Run `yb-master` binary on each of the nodes as shown below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. For each yb-master, replace the rpc bind address flag with the private IP of the host running the yb-master.
+
+For the full list of flags, see the [yb-master Reference](../../../admin/yb-master/).
 
 ```sh
 $ ./bin/yb-master \
@@ -41,7 +43,7 @@ $ ./bin/yb-master \
 ```
 
 ## Run yb-master with conf file
-- Alternatively, you can also create a `master.conf` file with the following flags and then run the `yb-master` with the `--flagfile` option as shown below.
+- Alternatively, you can also create a `master.conf` file with the following flags and then run the `yb-master` with the `--flagfile` option as shown below. For each yb-master, replace the rpc bind address flag with the private IP of the host running the yb-master.
 
 ```sh
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100

@@ -10,6 +10,7 @@ menu:
     weight: 4100
 aliases:
   - /latest/api/ysql/commands/
+  - /latest/api/ysql/commands/ddl_drop_database/
 isTocNested: true
 showAsideToc: true
 ---
