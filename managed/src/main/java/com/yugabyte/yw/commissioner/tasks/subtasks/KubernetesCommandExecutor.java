@@ -392,7 +392,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     }
     overrides.put("Image", imageInfo);
 
-    if (userIntent.enableNodeToNodeEncrypt || userIntent.enableClientToNodeEncrypt) {
+    if (taskParams().rootCA != null) {
       Map<String, Object> tlsInfo = new HashMap<>();
       tlsInfo.put("enabled", true);
       Map<String, Object> rootCA = new HashMap<>();
@@ -456,9 +456,9 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     if (placementUuid != null && masterOverrides.get("placement_uuid") == null) {
       masterOverrides.put("placement_uuid", placementUuid.toString());
     }
-    if (userIntent.enableClientToNodeEncrypt || userIntent.enableNodeToNodeEncrypt) {
-      masterOverrides.put("use_node_to_node_encryption", true);
-      masterOverrides.put("allow_insecure_connections", true);
+    if (taskParams().rootCA != null) {
+      masterOverrides.put("use_node_to_node_encryption", userIntent.enableNodeToNodeEncrypt);
+      masterOverrides.put("allow_insecure_connections", userIntent.enableNodeToNodeEncrypt || userIntent.enableClientToNodeEncrypt);
     }
     if (!masterOverrides.isEmpty()) {
       gflagOverrides.put("master", masterOverrides);
@@ -481,13 +481,11 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       tserverOverrides.put("start_pgsql_proxy", "true");
       tserverOverrides.put("pgsql_proxy_bind_address", String.format("$(POD_IP):%s", YSQL_PORT));
     }
-
-    if (userIntent.enableClientToNodeEncrypt || userIntent.enableNodeToNodeEncrypt) {
-      tserverOverrides.put("use_node_to_node_encryption", true);
-      tserverOverrides.put("allow_insecure_connections", true);
-      tserverOverrides.put("use_client_to_server_encryption", true);
+    if (taskParams().rootCA != null) {
+      tserverOverrides.put("use_node_to_node_encryption", userIntent.enableNodeToNodeEncrypt);
+      tserverOverrides.put("use_client_to_server_encryption", userIntent.enableClientToNodeEncrypt);
+      tserverOverrides.put("allow_insecure_connections", userIntent.enableNodeToNodeEncrypt || userIntent.enableClientToNodeEncrypt);
     }
-
     if (!tserverOverrides.isEmpty()) {
       gflagOverrides.put("tserver", tserverOverrides);
     }

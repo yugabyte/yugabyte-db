@@ -48,6 +48,8 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
+      taskParams().rootCA = universe.getUniverseDetails().rootCA;
+
       UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
 
       if (taskParams().taskType == UpgradeTaskType.Software) {
