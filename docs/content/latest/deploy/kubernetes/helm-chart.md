@@ -192,67 +192,6 @@ REVISION  UPDATED                   STATUS    CHART           DESCRIPTION
 1         Fri Oct  5 09:04:46 2018  DEPLOYED  yugabyte-latest Install complete
 ```
 
-
-## Configure Cluster
-
-### CPU, Memory & Replica Count
-
-The default values for the Helm chart are in the `helm/yugabyte/values.yaml` file. The most important ones are listed below. As noted in the Prerequisites section above, the defaults are set for a 3 nodes Kubernetes cluster each with 4 CPU cores and 15 GB RAM.
-
-```
-persistentVolume:
-  count: 2
-  storage: 10Gi
-  storageClass: standard
-
-resource:
-  master:
-    requests:
-      cpu: 2
-      memory: 7.5Gi
-  tserver:
-    requests:
-      cpu: 2
-      memory: 7.5Gi
-
-replicas:
-  master: 3
-  tserver: 3
-
-partition:
-  master: 3
-  tserver: 3
-```
-
-If you want to change the defaults, you can use the command below. You can even do `helm install` instead of `helm upgrade` when you are installing on a Kubernetes cluster with configuration different than the defaults.
-
-```sh
-$ helm upgrade --set resource.tserver.requests.cpu=8,resource.tserver.requests.memory=15Gi yb-demo ./yugabyte
-```
-
-Replica count can be changed using the command below. Note only the tservers need to be scaled in a Replication Factor 3 cluster which keeps the masters count at 3.
-
-```sh
-$ helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
-```
-
-### LoadBalancer for Services
-
-By default, the YugaByte DB helm chart exposes only the master ui endpoint via LoadBalancer. If you wish to expose also the ycql and yedis services via LoadBalancer for your app to use, you could do that in couple of different ways.
-
-
-If you want individual LoadBalancer endpoint for each of the services (YCQL, YEDIS), run the following command.
-
-```sh
-$ helm install yugabyte -f expose-all.yaml --namespace yb-demo --name yb-demo --wait
-```
-
-If you want to create a shared LoadBalancer endpoint for all the services (YCQL, YEDIS), run the following command.
-
-```sh
-$ helm install yugabyte -f expose-all-shared.yaml --namespace yb-demo --name yb-demo --wait
-```
-
 ## Upgrade Cluster
 
 You can perform rolling upgrades on the YugaByte DB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugaByte DB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the `latest` Docker image is used for the install.
