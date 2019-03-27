@@ -32,7 +32,9 @@
 #include "yb/tools/yb-admin_cli.h"
 
 #include <iostream>
+
 #include <boost/lexical_cast.hpp>
+#include <boost/range.hpp>
 
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/flags.h"
@@ -40,9 +42,46 @@
 DEFINE_string(master_addresses, "localhost:7100",
               "Comma-separated list of YB Master server addresses");
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
+DEFINE_string(certs_dir_name, "",
+              "Directory with certificates to use for secure server connection.");
 
 namespace yb {
 namespace tools {
+namespace {
+
+const int32 kDefaultRpcPort = 9100;
+const string kBlacklistAdd("ADD");
+const string kBlacklistRemove("REMOVE");
+
+void UsageAndExit(const ClusterAdminCli::CLIArguments& args) {
+  ClusterAdminCli::UsageAndExit(args[0]);
+}
+
+CHECKED_STATUS GetUniverseConfig(ClusterAdminClientClass* client,
+                                 const ClusterAdminCli::CLIArguments&) {
+  RETURN_NOT_OK_PREPEND(client->GetUniverseConfig(), "Unable to get universe config");
+  return Status::OK();
+}
+
+CHECKED_STATUS ChangeBlacklist(ClusterAdminClientClass* client,
+                               const ClusterAdminCli::CLIArguments& args) {
+  if (args.size() < 4) {
+    UsageAndExit(args);
+  }
+  const auto change_type = args[2];
+  if (change_type != kBlacklistAdd && change_type != kBlacklistRemove) {
+    UsageAndExit(args);
+  }
+  std::vector<HostPort> hostports;
+  for (const auto& arg : boost::make_iterator_range(args.begin() + 3, args.end())) {
+    hostports.push_back(VERIFY_RESULT(HostPort::FromString(arg, kDefaultRpcPort)));
+  }
+  RETURN_NOT_OK_PREPEND(client->ChangeBlacklist(hostports, change_type == kBlacklistAdd),
+                        "Unable to change blacklist");
+  return Status::OK();
+}
+
+} // namespace
 
 using std::cerr;
 using std::endl;
@@ -52,6 +91,8 @@ using std::string;
 using client::YBTableName;
 using strings::Substitute;
 
+using namespace std::placeholders;
+
 int ClusterAdminCli::Run(int argc, char** argv) {
   const string prog_name = argv[0];
   FLAGS_logtostderr = 1;
@@ -59,7 +100,7 @@ int ClusterAdminCli::Run(int argc, char** argv) {
   InitGoogleLoggingSafe(prog_name.c_str());
 
   const string addrs = FLAGS_master_addresses;
-  ClusterAdminClientClass client(addrs, FLAGS_timeout_ms);
+  ClusterAdminClientClass client(addrs, FLAGS_timeout_ms, FLAGS_certs_dir_name);
   RegisterCommandHandlers(&client);
   SetUsage(prog_name);
 
@@ -111,8 +152,8 @@ void ClusterAdminCli::Register(string&& cmd_name, string&& cmd_args, CommandFn&&
 void ClusterAdminCli::SetUsage(const string& prog_name) {
   ostringstream str;
 
-  str << prog_name << " [-master_addresses server1,server2,server3] "
-      << " [-timeout_ms <millisec>] <operation>" << endl
+  str << prog_name << " [-master_addresses server1:port,server2:port,server3:port,...] "
+      << " [-timeout_ms <millisec>] [-certs_dir_name <dir_name>] <operation>" << endl
       << "<operation> must be one of:" << endl;
 
   for (size_t i = 0; i < commands_.size(); ++i) {
@@ -342,6 +383,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               "Unable to drop Redis table");
         return Status::OK();
       });
+
+  Register(
+      "get_universe_config", "",
+      std::bind(&GetUniverseConfig, client, _1));
+
+  Register(
+      "change_blacklist", Format(" <$0|$1> <ip_addr>:<port> [<ip_addr>:<port>]...",
+          kBlacklistAdd, kBlacklistRemove),
+      std::bind(&ChangeBlacklist, client, _1));
 }
 
 }  // namespace tools

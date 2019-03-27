@@ -85,7 +85,11 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
     return transaction->CreateRestartedTransaction();
   }
   if (transaction_pool_ == nullptr) {
-    transaction_pool_ = transaction_pool_provider_();
+    if (transaction_pool_provider_) {
+      transaction_pool_ = transaction_pool_provider_();
+    } else {
+      return STATUS(InternalError, "No transaction pool provider");
+    }
   }
   auto result = transaction_pool_->Take();
   RETURN_NOT_OK(result->Init(isolation_level));
@@ -166,8 +170,7 @@ Status QLEnv::GrantRevokePermission(GrantRevokeStatementType statement_type,
 
 //------------------------------------------------------------------------------------------------
 Status QLEnv::CreateKeyspace(const std::string& keyspace_name) {
-  return client_->CreateNamespace(keyspace_name, YQLDatabase::YQL_DATABASE_UNDEFINED,
-      CurrentRoleName());
+  return client_->CreateNamespace(keyspace_name, YQLDatabase::YQL_DATABASE_CQL, CurrentRoleName());
 }
 
 Status QLEnv::DeleteKeyspace(const string& keyspace_name) {

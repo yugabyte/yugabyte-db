@@ -27,7 +27,6 @@ CREATE INDEX tenk2_unique1 ON tenk2 USING btree(unique1 int4_ops);
 CREATE INDEX tenk2_unique2 ON tenk2 USING btree(unique2 int4_ops);
 CREATE INDEX tenk2_hundred ON tenk2 USING btree(hundred int4_ops);
 CREATE INDEX rix ON road USING btree (name text_ops);
-ERROR:  relation "road" does not exist
 CREATE INDEX iix ON ihighway USING btree (name text_ops);
 ERROR:  relation "ihighway" does not exist
 CREATE INDEX six ON shighway USING btree (name text_ops);
@@ -38,3 +37,52 @@ DROP INDEX onek_two_idx;
 ERROR:  index "onek_two_idx" does not exist
 DROP INDEX IF EXISTS onek_two_idx;
 NOTICE:  index "onek_two_idx" does not exist, skipping
+--
+-- Create index on existing table with data
+--
+CREATE TABLE index_test (col1 int, col2 int);
+INSERT INTO index_test (col1, col2) VALUES (1, 100);
+INSERT INTO index_test (col1, col2) VALUES (2, 200);
+CREATE INDEX index_test_idx1 ON index_test(col1);
+CREATE INDEX index_test_idx2 ON index_test(col1, col2);
+DROP INDEX index_test_idx1;
+DROP INDEX index_test_idx2;
+DROP TABLE index_test;
+CREATE TABLE test_index (v1 INT, v2 INT, v3 INT);
+CREATE INDEX ON test_index (v1);
+CREATE INDEX ON test_index (v2, v3);
+INSERT INTO test_index VALUES (1, 11, 21), (2, 12, 22), (3, 13, 23), (4, 14, 24), (5, 15, 25);
+-- Verify order by on indexed column
+SELECT * FROM test_index ORDER BY v1;
+ v1 | v2 | v3
+----+----+----
+  1 | 11 | 21
+  2 | 12 | 22
+  3 | 13 | 23
+  4 | 14 | 24
+  5 | 15 | 25
+(5 rows)
+
+-- Verify delete with hash value in index
+DELETE FROM test_index WHERE v2 = 12 OR v2 = 13;
+SELECT * FROM test_index ORDER BY v1;
+ v1 | v2 | v3
+----+----+----
+  1 | 11 | 21
+  4 | 14 | 24
+  5 | 15 | 25
+(3 rows)
+
+-- These search options are not supported in an index yet.
+SELECT * FROM test_index WHERE v1 IS NULL;
+ERROR:  WHERE condition option 65 not supported yet
+DETAIL:  The WHERE condition option is not supported yet.
+HINT:  Rewrite the condition differently.
+SELECT * FROM test_index WHERE v1 IS NOT NULL;
+ERROR:  WHERE condition option 129 not supported yet
+DETAIL:  The WHERE condition option is not supported yet.
+HINT:  Rewrite the condition differently.
+SELECT * FROM test_index WHERE v1 IN (1, 2, 3);
+ERROR:  WHERE condition option 32 not supported yet
+DETAIL:  The WHERE condition option is not supported yet.
+HINT:  Rewrite the condition differently.

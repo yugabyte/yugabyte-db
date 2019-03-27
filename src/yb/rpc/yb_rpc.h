@@ -17,6 +17,7 @@
 #define YB_RPC_YB_RPC_H
 
 #include "yb/rpc/binary_call_parser.h"
+#include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/rpc_with_call_id.h"
 
@@ -25,7 +26,9 @@ namespace rpc {
 
 class YBConnectionContext : public ConnectionContextWithCallId, public BinaryCallParserListener {
  public:
-  YBConnectionContext(GrowableBufferAllocator* allocator, const MemTrackerPtr& call_tracker);
+  YBConnectionContext(
+      size_t receive_buffer_size, const MemTrackerPtr& buffer_tracker,
+      const MemTrackerPtr& call_tracker);
   ~YBConnectionContext();
 
   const MemTrackerPtr& call_tracker() const { return call_tracker_; }
@@ -36,26 +39,32 @@ class YBConnectionContext : public ConnectionContextWithCallId, public BinaryCal
  private:
   uint64_t ExtractCallId(InboundCall* call) override;
 
-  size_t BufferLimit() override;
+  StreamReadBuffer& ReadBuffer() override {
+    return read_buffer_;
+  }
 
   BinaryCallParser parser_;
+
+  CircularReadBuffer read_buffer_;
 
   const MemTrackerPtr call_tracker_;
 };
 
 class YBInboundConnectionContext : public YBConnectionContext {
  public:
-  YBInboundConnectionContext(GrowableBufferAllocator* allocator, const MemTrackerPtr& call_tracker)
-      : YBConnectionContext(allocator, call_tracker) {}
+  YBInboundConnectionContext(
+      size_t receive_buffer_size, const MemTrackerPtr& buffer_tracker,
+      const MemTrackerPtr& call_tracker)
+      : YBConnectionContext(receive_buffer_size, buffer_tracker, call_tracker) {}
 
   static std::string Name() { return "Inbound RPC"; }
  private:
   // Takes ownership of call_data content.
-  CHECKED_STATUS HandleCall(const ConnectionPtr& connection, std::vector<char>* call_data) override;
+  CHECKED_STATUS HandleCall(const ConnectionPtr& connection, CallData* call_data) override;
   void Connected(const ConnectionPtr& connection) override;
-  Result<size_t> ProcessCalls(const ConnectionPtr& connection,
-                              const IoVecs& data,
-                              ReadBufferFull read_buffer_full) override;
+  Result<ProcessDataResult> ProcessCalls(const ConnectionPtr& connection,
+                                          const IoVecs& data,
+                                          ReadBufferFull read_buffer_full) override;
 
   // Takes ownership of call_data content.
   CHECKED_STATUS HandleInboundCall(const ConnectionPtr& connection, std::vector<char>* call_data);
@@ -82,7 +91,7 @@ class YBInboundCall : public InboundCall {
   // from the reactor thread.
   //
   // Takes ownership of call_data content.
-  CHECKED_STATUS ParseFrom(const MemTrackerPtr& mem_tracker, std::vector<char>* call_data);
+  CHECKED_STATUS ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call_data);
 
   int32_t call_id() const {
     return header_.call_id();
@@ -94,6 +103,10 @@ class YBInboundCall : public InboundCall {
 
   // See RpcContext::AddRpcSidecar()
   CHECKED_STATUS AddRpcSidecar(RefCntBuffer car, int* idx);
+
+  int RpcSidecarsSize() const;
+
+  const RefCntBuffer& RpcSidecar(int idx);
 
   // See RpcContext::ResetRpcSidecars()
   void ResetRpcSidecars();
@@ -176,8 +189,10 @@ class YBInboundCall : public InboundCall {
 
 class YBOutboundConnectionContext : public YBConnectionContext {
  public:
-  YBOutboundConnectionContext(GrowableBufferAllocator* allocator, const MemTrackerPtr& call_tracker)
-      : YBConnectionContext(allocator, call_tracker) {}
+  YBOutboundConnectionContext(
+      size_t receive_buffer_size, const MemTrackerPtr& buffer_tracker,
+      const MemTrackerPtr& call_tracker)
+      : YBConnectionContext(receive_buffer_size, buffer_tracker, call_tracker) {}
 
   static std::string Name() { return "Outbound RPC"; }
 
@@ -187,12 +202,12 @@ class YBOutboundConnectionContext : public YBConnectionContext {
   }
 
   // Takes ownership of call_data content.
-  CHECKED_STATUS HandleCall(const ConnectionPtr& connection, std::vector<char>* call_data) override;
+  CHECKED_STATUS HandleCall(const ConnectionPtr& connection, CallData* call_data) override;
   void Connected(const ConnectionPtr& connection) override;
   void AssignConnection(const ConnectionPtr& connection) override;
-  Result<size_t> ProcessCalls(const ConnectionPtr& connection,
-                              const IoVecs& data,
-                              ReadBufferFull read_buffer_full) override;
+  Result<ProcessDataResult> ProcessCalls(
+      const ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full)
+          override;
 };
 
 } // namespace rpc

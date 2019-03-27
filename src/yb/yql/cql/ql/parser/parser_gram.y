@@ -646,8 +646,8 @@ using namespace yb::ql;
 
                           TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P
                           THEN TIME TIMESTAMP TIMEUUID TINYINT TO TOKEN TRAILING TRANSACTION
-                          TRANSFORM TREAT TRIGGER TRIM TRUE_P TRUNCATE TRUSTED TTL TYPE_P TYPES_P
-                          PARTITION_HASH
+                          TRANSFORM TREAT TRIGGER TRIM TRUE_P TRUNCATE TRUSTED TTL TUPLE
+                          TYPE_P TYPES_P PARTITION_HASH
 
                           UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN
                           UNLOGGED UNTIL UPDATE USE USER USING UUID
@@ -4521,6 +4521,9 @@ ParametricTypename:
   | LIST '<' Typename '>' {
     $$ = MAKE_NODE(@1, PTList, $3);
   }
+  | TUPLE '<' type_name_list '>' {
+    PARSER_UNSUPPORTED(@1);
+  }
   | FROZEN '<' Typename '>' {
     $$ = MAKE_NODE(@1, PTFrozen, $3);
   }
@@ -5224,6 +5227,7 @@ col_name_keyword:
   | TINYINT { $$ = $1; }
   | TREAT { $$ = $1; }
   | TRIM { $$ = $1; }
+  | TUPLE { $$ = $1; }
   | UUID { $$ = $1; }
   | VALUES { $$ = $1; }
   | VARCHAR { $$ = $1; }
@@ -8038,7 +8042,7 @@ opt_concurrently:
 
 opt_index_name:
   index_name                        { $$ = $1; }
-  | /*EMPTY*/                       { PARSER_UNSUPPORTED(@0); }
+  | /*EMPTY*/                       { $$ = nullptr; }
 ;
 
 access_method_clause:

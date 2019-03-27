@@ -45,3 +45,34 @@ DROP INDEX onek_two_idx;
 DROP INDEX onek_two_idx;
 
 DROP INDEX IF EXISTS onek_two_idx;
+
+--
+-- Create index on existing table with data
+--
+CREATE TABLE index_test (col1 int, col2 int);
+INSERT INTO index_test (col1, col2) VALUES (1, 100);
+INSERT INTO index_test (col1, col2) VALUES (2, 200);
+
+CREATE INDEX index_test_idx1 ON index_test(col1);
+CREATE INDEX index_test_idx2 ON index_test(col1, col2);
+
+DROP INDEX index_test_idx1;
+DROP INDEX index_test_idx2;
+DROP TABLE index_test;
+
+CREATE TABLE test_index (v1 INT, v2 INT, v3 INT);
+CREATE INDEX ON test_index (v1);
+CREATE INDEX ON test_index (v2, v3);
+INSERT INTO test_index VALUES (1, 11, 21), (2, 12, 22), (3, 13, 23), (4, 14, 24), (5, 15, 25);
+
+-- Verify order by on indexed column
+SELECT * FROM test_index ORDER BY v1;
+
+-- Verify delete with hash value in index
+DELETE FROM test_index WHERE v2 = 12 OR v2 = 13;
+SELECT * FROM test_index ORDER BY v1;
+
+-- These search options are not supported in an index yet.
+SELECT * FROM test_index WHERE v1 IS NULL;
+SELECT * FROM test_index WHERE v1 IS NOT NULL;
+SELECT * FROM test_index WHERE v1 IN (1, 2, 3);

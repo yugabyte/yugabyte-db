@@ -146,7 +146,7 @@ TEST_F(TestRpc, TestCall) {
   Proxy p(client_messenger, server_addr);
 
   for (int i = 0; i < 10; i++) {
-    ASSERT_OK(DoTestSyncCall(&p, GenericCalculatorService::AddMethod()));
+    ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
   }
 }
 
@@ -159,7 +159,7 @@ TEST_F(TestRpc, TestCallToBadServer) {
   // Loop a few calls to make sure that we properly set up and tear down
   // the connections.
   for (int i = 0; i < 5; i++) {
-    Status s = DoTestSyncCall(&p, GenericCalculatorService::AddMethod());
+    Status s = DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod());
     LOG(INFO) << "Status: " << s.ToString();
     ASSERT_TRUE(s.IsRemoteError()) << "unexpected status: " << s.ToString();
   }
@@ -177,8 +177,8 @@ TEST_F(TestRpc, TestInvalidMethodCall) {
   Proxy p(client_messenger, server_addr);
 
   // Call the method which fails.
-  static RemoteMethod method(GenericCalculatorService::static_service_name(),
-                             "ThisMethodDoesNotExist");
+  static RemoteMethod method(
+      rpc_test::CalculatorServiceIf::static_service_name(), "ThisMethodDoesNotExist");
   Status s = DoTestSyncCall(&p, &method);
   ASSERT_TRUE(s.IsRemoteError()) << "unexpected status: " << s.ToString();
   ASSERT_STR_CONTAINS(s.ToString(), "bad method");
@@ -240,7 +240,7 @@ TEST_F(TestRpc, TestHighFDs) {
   StartTestServer(&server_addr);
   shared_ptr<Messenger> client_messenger(CreateMessenger("Client"));
   Proxy p(client_messenger, server_addr);
-  ASSERT_OK(DoTestSyncCall(&p, GenericCalculatorService::AddMethod()));
+  ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
 }
 
 // Test that connections are kept alive between calls.
@@ -260,7 +260,7 @@ TEST_F(TestRpc, TestConnectionKeepalive) {
     shared_ptr<Messenger> client_messenger(CreateMessenger("Client", messenger_options));
     Proxy p(client_messenger, server_addr);
 
-    ASSERT_OK(DoTestSyncCall(&p, GenericCalculatorService::AddMethod()));
+    ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
 
     SleepFor(MonoDelta::FromMilliseconds(5));
 
@@ -310,7 +310,7 @@ TEST_F(TestRpc, TestCallLongerThanKeepalive) {
   req.set_sleep_micros(200 * 1000);
   req.set_deferred(true);
   rpc_test::SleepResponsePB resp;
-  ASSERT_OK(p.SyncRequest(GenericCalculatorService::SleepMethod(), req, &resp, &controller));
+  ASSERT_OK(p.SyncRequest(CalculatorServiceMethods::SleepMethod(), req, &resp, &controller));
 }
 
 // Test that the RpcSidecar transfers the expected messages.
@@ -328,7 +328,7 @@ TEST_F(TestRpc, TestRpcSidecar) {
 
   // Test some larger sidecars to verify that we properly handle the case where
   // we can't write the whole response to the socket in a single call.
-  DoTestSidecar(&p, {3000 * 1024, 2000 * 1024, 240 * 1024 * 1024});
+  DoTestSidecar(&p, {3_MB, 2_MB, 240_MB});
 
   std::vector<size_t> sizes(CallResponse::kMaxSidecarSlices);
   std::fill(sizes.begin(), sizes.end(), 123);
@@ -425,7 +425,7 @@ TEST_F(TestRpc, TestServerShutsDown) {
   for (int i = 0; i < n_calls; i++) {
     auto controller = new RpcController();
     controllers.push_back(controller);
-    p.AsyncRequest(GenericCalculatorService::AddMethod(), req, &resp, controller, [&latch]() {
+    p.AsyncRequest(CalculatorServiceMethods::AddMethod(), req, &resp, controller, [&latch]() {
       latch.CountDown();
     });
   }
@@ -506,9 +506,7 @@ TEST_F(TestRpc, TestRpcHandlerLatencyMetric) {
   req.set_sleep_micros(sleep_micros);
   req.set_deferred(true);
   rpc_test::SleepResponsePB resp;
-  RemoteMethod method(yb::rpc_test::CalculatorServiceIf::static_service_name(),
-                      GenericCalculatorService::SleepMethod()->method_name());
-  ASSERT_OK(p.SyncRequest(&method, req, &resp, &controller));
+  ASSERT_OK(p.SyncRequest(CalculatorServiceMethods::SleepMethod(), req, &resp, &controller));
 
   const unordered_map<const MetricPrototype*, scoped_refptr<Metric> > metric_map =
     server_messenger().metric_entity()->UnsafeMetricsMapForTests();
@@ -545,7 +543,8 @@ TEST_F(TestRpc, TestRpcCallbackDestroysMessenger) {
   controller.set_timeout(MonoDelta::FromMilliseconds(1));
   {
     Proxy p(client_messenger, bad_addr);
-    static RemoteMethod method(GenericCalculatorService::static_service_name(), "my-fake-method");
+    static RemoteMethod method(
+        rpc_test::CalculatorServiceIf::static_service_name(), "my-fake-method");
     p.AsyncRequest(&method, req, &resp, &controller, [&latch]() { latch.CountDown(); });
   }
   latch.Wait();
@@ -569,15 +568,14 @@ TEST_F(TestRpc, TestRpcContextClientDeadline) {
   req.set_client_timeout_defined(true);
   rpc_test::SleepResponsePB resp;
   RpcController controller;
-  RemoteMethod method(yb::rpc_test::CalculatorServiceIf::static_service_name(),
-                      GenericCalculatorService::SleepMethod()->method_name());
-  Status s = p.SyncRequest(&method, req, &resp, &controller);
+  const auto* method = CalculatorServiceMethods::SleepMethod();
+  Status s = p.SyncRequest(method, req, &resp, &controller);
   ASSERT_TRUE(s.IsRemoteError());
   ASSERT_STR_CONTAINS(s.ToString(), "Missing required timeout");
 
   controller.Reset();
   controller.set_timeout(MonoDelta::FromMilliseconds(1000));
-  ASSERT_OK(p.SyncRequest(&method, req, &resp, &controller));
+  ASSERT_OK(p.SyncRequest(method, req, &resp, &controller));
 }
 
 struct DisconnectShare {
@@ -595,7 +593,7 @@ class DisconnectTask {
 
   void Launch() {
     controller_.set_timeout(MonoDelta::FromSeconds(1));
-    share_->proxy.AsyncRequest(GenericCalculatorService::DisconnectMethod(),
+    share_->proxy.AsyncRequest(CalculatorServiceMethods::DisconnectMethod(),
                                rpc_test::DisconnectRequestPB(),
                                &response_,
                                &controller_,
@@ -648,6 +646,53 @@ TEST_F(TestRpc, TestDisconnect) {
     LOG(INFO) << pair.first << ": " << pair.second;
   }
   ASSERT_EQ(kRequests, total);
+}
+
+// Check that we could perform DumpRunningRpcs while timed out calls are in queue.
+//
+// Start listenting socket, that will accept one connection and does not read it.
+// Send big RPC request, that does not fit into socket buffer, so it will be sending forever.
+// Wait until this call is timed out.
+// Check that we could invoke DumpRunningRpcs after it.
+TEST_F(TestRpc, DumpTimedOutCall) {
+  // Set up a simple socket server which accepts a connection.
+  HostPort server_addr;
+  Socket listen_sock;
+  ASSERT_OK(StartFakeServer(&listen_sock, &server_addr));
+
+  std::atomic<bool> stop(false);
+
+  std::thread thread([&listen_sock, &stop] {
+    Socket socket;
+    Endpoint remote;
+    ASSERT_OK(listen_sock.Accept(&socket, &remote, 0));
+    while (!stop.load(std::memory_order_acquire)) {
+      std::this_thread::sleep_for(100ms);
+    }
+  });
+
+  auto messenger = CreateMessenger("Client");
+  Proxy p(messenger, server_addr);
+
+  {
+    rpc_test::EchoRequestPB req;
+    req.set_data(std::string(1_MB, 'X'));
+    rpc_test::EchoResponsePB resp;
+    std::aligned_storage<sizeof(RpcController), alignof(RpcController)>::type storage;
+    auto controller = new (&storage) RpcController;
+    controller->set_timeout(100ms);
+    auto status = p.SyncRequest(CalculatorServiceMethods::EchoMethod(), req, &resp, controller);
+    ASSERT_TRUE(status.IsTimedOut()) << status;
+    controller->~RpcController();
+    memset(&storage, 0xff, sizeof(storage));
+  }
+
+  DumpRunningRpcsRequestPB dump_req;
+  DumpRunningRpcsResponsePB dump_resp;
+  ASSERT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp));
+
+  stop.store(true, std::memory_order_release);
+  thread.join();
 }
 
 } // namespace rpc

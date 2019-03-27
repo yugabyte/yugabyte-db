@@ -57,6 +57,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/path_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
@@ -476,7 +477,9 @@ Status MiniCluster::DoCreateClient(YBClientBuilder* builder,
     CHECK(master);
     builder->add_master_server_addr(master->bound_rpc_addr_str());
   }
-  return builder->Build(client);
+  RETURN_NOT_OK(builder->Build(client));
+
+  return Status::OK();
 }
 
 HostPort MiniCluster::DoGetLeaderMasterBoundRpcAddr() {
@@ -553,6 +556,18 @@ void StepDownAllTablets(MiniCluster* cluster) {
   }
 }
 
+void StepDownRandomTablet(MiniCluster* cluster) {
+  auto peers = ListTabletPeers(cluster, ListPeersFilter::kLeaders);
+  if (!peers.empty()) {
+    auto peer = RandomElement(peers);
+
+    consensus::LeaderStepDownRequestPB req;
+    req.set_tablet_id(peer->tablet_id());
+    consensus::LeaderStepDownResponsePB resp;
+    ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
+  }
+}
+
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(MiniCluster* cluster, ListPeersFilter filter) {
   switch (filter) {
     case ListPeersFilter::kAll:
@@ -579,6 +594,9 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     auto server = cluster->mini_tablet_server(i)->server();
     auto peers = server->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
+      WARN_NOT_OK(
+          WaitFor([peer] { return peer->consensus() != nullptr; }, 5s, "Waiting peer ready"),
+          "List tablet peers failure");
       if (filter(peer)) {
         result.push_back(peer);
       }

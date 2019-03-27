@@ -57,6 +57,8 @@ DEFINE_bool(detect_duplicates_for_retryable_requests, true,
             "Enable tracking of write requests that prevents the same write from being applied "
                 "twice.");
 
+DEFINE_CAPABILITY(PickReadTimeAtTabletServer, 0x8284d67b);
+
 using namespace std::placeholders;
 
 namespace yb {
@@ -157,7 +159,7 @@ void AsyncRpc::Finished(const Status& status) {
   Status new_status = status;
   if (tablet_invoker_.Done(&new_status)) {
     ProcessResponseFromTserver(new_status);
-    batcher_->RemoveInFlightOpsAfterFlushing(ops_, new_status, PropagatedHybridTime());
+    batcher_->RemoveInFlightOpsAfterFlushing(ops_, new_status, MakeFlushExtraResult());
     batcher_->CheckForFinishedFlush();
     retained_self_.reset();
   }
@@ -239,8 +241,10 @@ void SetTransactionMetadata(const TransactionMetadata& metadata, bool may_have_m
 
 void AsyncRpc::SendRpcToTserver() {
   MonoTime end_time = MonoTime::Now();
-  if (async_rpc_metrics_)
+  if (async_rpc_metrics_) {
     async_rpc_metrics_->time_to_send->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+  }
+
   CallRemoteMethod();
 }
 
@@ -291,6 +295,19 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
     return false;
   }
   return true;
+}
+
+template <class Req, class Resp>
+void AsyncRpcBase<Req, Resp>::SendRpcToTserver() {
+  if (!tablet_invoker_.current_ts().HasCapability(CAPABILITY_PickReadTimeAtTabletServer)) {
+    ConsistentReadPoint* read_point = batcher_->read_point();
+    if (read_point && !read_point->GetReadTime()) {
+      read_point->SetCurrentReadTime();
+      read_point->GetReadTime().AddToPB(&req_);
+    }
+  }
+
+  AsyncRpc::SendRpcToTserver();
 }
 
 WriteRpc::WriteRpc(AsyncRpcData* data)
@@ -407,7 +424,7 @@ void WriteRpc::CallRemoteMethod() {
   ADOPT_TRACE(trace.get());
 
   tablet_invoker_.proxy()->WriteAsync(
-      req_, &resp_, PrepareController(MonoDelta::kMax),
+      req_, &resp_, PrepareController(),
       std::bind(&WriteRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }

@@ -38,7 +38,7 @@
 #include <vector>
 
 #include "yb/gutil/strings/fastmem.h"
-#include "yb/util/status.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
@@ -126,16 +126,6 @@ class StackTrace {
     num_frames_ = 0;
   }
 
-  void CopyFrom(const StackTrace& s) {
-    memcpy(this, &s, sizeof(s));
-  }
-
-  bool Equals(const StackTrace& s) {
-    return s.num_frames_ == num_frames_ &&
-      strings::memeq(frames_, s.frames_,
-                     num_frames_ * sizeof(frames_[0]));
-  }
-
   // Collect and store the current stack trace. Skips the top 'skip_frames' frames
   // from the stack. For example, a value of '1' will skip the 'Collect()' function
   // call itself.
@@ -177,6 +167,23 @@ class StackTrace {
 
   uint64_t HashCode() const;
 
+  explicit operator bool() const {
+    return num_frames_ != 0;
+  }
+
+  bool operator!() const {
+    return num_frames_ == 0;
+  }
+
+  int compare(const StackTrace& rhs) const {
+    return as_slice().compare(rhs.as_slice());
+  }
+
+  Slice as_slice() const {
+    return Slice(pointer_cast<const char*>(frames_),
+                 pointer_cast<const char*>(frames_ + num_frames_));
+  }
+
  private:
   enum {
     // The maximum number of stack frames to collect.
@@ -188,7 +195,21 @@ class StackTrace {
 
   int num_frames_;
   void* frames_[kMaxFrames];
+
+  friend inline bool operator==(const StackTrace& lhs, const StackTrace& rhs) {
+    return lhs.num_frames_ == rhs.num_frames_ && lhs.as_slice() == rhs.as_slice();
+  }
+
+  friend inline bool operator!=(const StackTrace& lhs, const StackTrace& rhs) {
+    return !(lhs == rhs);
+  }
+
+  friend inline bool operator<(const StackTrace& lhs, const StackTrace& rhs) {
+    return lhs.compare(rhs) < 0;
+  }
 };
+
+Result<StackTrace> ThreadStack(int64_t tid);
 
 constexpr bool IsDebug() {
 #ifdef NDEBUG

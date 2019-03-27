@@ -18,7 +18,6 @@
 #include <boost/scope_exit.hpp>
 
 #include "yb/client/transaction.h"
-#include "yb/client/transaction_pool.h"
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/consensus/consensus.h"
@@ -55,6 +54,8 @@ DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
 DECLARE_int32(master_inject_latency_on_transactional_tablet_lookups_ms);
 DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_bool(rocksdb_disable_compactions);
+DECLARE_int32(delay_init_tablet_peer_ms);
 
 namespace yb {
 namespace client {
@@ -79,8 +80,8 @@ class QLTransactionTest : public TransactionTestBase {
 };
 
 TEST_F(QLTransactionTest, Simple) {
-  WriteData();
-  VerifyData();
+  ASSERT_NO_FATALS(WriteData());
+  ASSERT_NO_FATALS(VerifyData());
   ASSERT_OK(cluster_->RestartSync());
   CheckNoRunningTransactions();
 }
@@ -140,7 +141,7 @@ void QLTransactionTest::TestReadRestart(bool commit) {
 
     server::SkewedClockDeltaChanger delta_changer(-100ms, skewed_clock_);
 
-    auto txn1 = CreateTransaction2();
+    auto txn1 = CreateTransaction2(SetReadTime::kTrue);
     BOOST_SCOPE_EXIT(txn1, commit) {
       if (!commit) {
         txn1->Abort();
@@ -229,7 +230,7 @@ TEST_F(QLTransactionTest, WriteRestart) {
   WriteData();
 
   server::SkewedClockDeltaChanger delta_changer(-100ms, skewed_clock_);
-  auto txn1 = CreateTransaction2();
+  auto txn1 = CreateTransaction2(SetReadTime::kTrue);
   YBTransactionPtr txn2;
   auto session = CreateSession(txn1);
   for (bool retry : {false, true}) {
@@ -266,7 +267,7 @@ TEST_F(QLTransactionTest, WriteRestart) {
   CheckNoRunningTransactions();
 }
 
-// Commit flags says whether we should commit write txn during this test.
+// Check that we could write to transaction that were restarted.
 TEST_F(QLTransactionTest, WriteAfterReadRestart) {
   const auto kClockDelta = 100ms;
   SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
@@ -277,7 +278,7 @@ TEST_F(QLTransactionTest, WriteAfterReadRestart) {
 
   server::SkewedClockDeltaChanger delta_changer(-kClockDelta, skewed_clock_);
 
-  auto txn1 = CreateTransaction2();
+  auto txn1 = CreateTransaction2(SetReadTime::kTrue);
   auto session = CreateSession(txn1);
   for (size_t r = 0; r != kNumRows; ++r) {
     auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
@@ -307,7 +308,7 @@ TEST_F(QLTransactionTest, WriteAfterReadRestart) {
 TEST_F(QLTransactionTest, Child) {
   auto txn = CreateTransaction();
   TransactionManager manager2(client_, clock_, client::LocalTabletFilter());
-  auto data_pb = txn->PrepareChildFuture().get();
+  auto data_pb = txn->PrepareChildFuture(ForceConsistentRead::kFalse).get();
   ASSERT_OK(data_pb);
   auto data = ChildTransactionData::FromPB(*data_pb);
   ASSERT_OK(data);
@@ -335,9 +336,9 @@ TEST_F(QLTransactionTest, ChildReadRestart) {
   }
 
   server::SkewedClockDeltaChanger delta_changer(-100ms, skewed_clock_);
-  auto parent_txn = CreateTransaction2();
+  auto parent_txn = CreateTransaction2(SetReadTime::kTrue);
 
-  auto data_pb = parent_txn->PrepareChildFuture().get();
+  auto data_pb = parent_txn->PrepareChildFuture(ForceConsistentRead::kFalse).get();
   ASSERT_OK(data_pb);
   auto data = ChildTransactionData::FromPB(*data_pb);
   ASSERT_OK(data);
@@ -757,6 +758,62 @@ TEST_F(QLTransactionTest, CheckCompactionAbortCleanup) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
+class QLTransactionTestWithDisabledCompactions : public QLTransactionTest {
+ public:
+  void SetUp() override {
+    FLAGS_rocksdb_disable_compactions = true;
+    QLTransactionTest::SetUp();
+  }
+};
+
+TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDisabledCompactions) {
+  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
+  FLAGS_transaction_disable_proactive_cleanup_in_tests = true;
+  FLAGS_aborted_intent_cleanup_ms = 1000; // 1 sec
+
+  const int kTransactions = 10;
+
+  LOG(INFO) << "Write values";
+
+  for (size_t i = 0; i != kTransactions; ++i) {
+    SCOPED_TRACE(Format("Transaction $0", i));
+    auto txn = CreateTransaction();
+    auto session = CreateSession(txn);
+    for (int row = 0; row != kNumRows; ++row) {
+      ASSERT_OK(WriteRow(session, i * kNumRows + row, row));
+    }
+    txn->Abort();
+
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kAsync));
+  }
+
+  ASSERT_OK(WaitTransactionsCleaned());
+
+  LOG(INFO) << "Shutdown cluster";
+  cluster_->Shutdown();
+
+  std::this_thread::sleep_for(FLAGS_aborted_intent_cleanup_ms * 1ms);
+
+  FLAGS_delay_init_tablet_peer_ms = 100;
+  FLAGS_rocksdb_disable_compactions = false;
+
+  LOG(INFO) << "Start cluster";
+  ASSERT_OK(cluster_->StartSync());
+
+  ASSERT_OK(WaitFor([cluster = cluster_.get()] {
+    auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
+    int64_t bytes = 0;
+    for (const auto& peer : peers) {
+      if (peer->tablet()) {
+        bytes += peer->tablet()->rocksdb_statistics()->getTickerCount(rocksdb::COMPACT_READ_BYTES);
+      }
+    }
+    LOG(INFO) << "Compact read bytes: " << bytes;
+
+    return bytes >= 10_KB;
+  }, 10s, "Enough compactions happen"));
+}
+
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
   SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
   DisableApplyingIntents();
@@ -798,7 +855,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
     VERIFY_ROW(session, 2, 12);
   }
 
-  CommitAndResetSync(&txn2);
+  ASSERT_NO_FATALS(CommitAndResetSync(&txn2));
 
   ASSERT_OK(cluster_->RestartSync());
 }
@@ -832,7 +889,7 @@ TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
   });
 
   // Start T2.
-  auto txn2 = CreateTransaction();
+  auto txn2 = CreateTransaction(SetReadTime::kTrue);
 
   // T2: Should read { 1 -> 1, 2 -> 2 } even in case T1 is committed between reading k1 and k2.
   {
@@ -900,12 +957,7 @@ TEST_F(QLTransactionTest, CorrectStatusRequestBatching) {
     for (size_t i = 0; i != kConcurrentReads; ++i) {
       read_threads.emplace_back([this, key, &stop, &value, &read = reads[i]] {
         auto session = CreateSession();
-        bool ok = false;
-        BOOST_SCOPE_EXIT(&ok, &stop) {
-          if (!ok) {
-            stop = true;
-          }
-        } BOOST_SCOPE_EXIT_END;
+        StopOnFailure stop_on_failure(&stop);
         while (!stop) {
           auto value_before_start = value.load();
           YBqlReadOpPtr op = ReadRow(session, key);
@@ -922,14 +974,11 @@ TEST_F(QLTransactionTest, CorrectStatusRequestBatching) {
           ASSERT_GE(current_value, value_before_start);
           ++read;
         }
-        ok = true;
+        stop_on_failure.Success();
       });
     }
 
-    auto deadline = std::chrono::steady_clock::now() + 10s;
-    while (!stop && std::chrono::steady_clock::now() < deadline) {
-      std::this_thread::sleep_for(100ms);
-    }
+    WaitStopped(10s, &stop);
 
     // Already failed
     bool failed = stop.exchange(true);
@@ -1361,6 +1410,49 @@ TEST_F(QLTransactionTest, FlushIntents) {
   VerifyData(2);
 }
 
+// This test checks that read restart never happen during first read request to single table.
+TEST_F(QLTransactionTest, PickReadTimeAtServer) {
+  constexpr int kKeys = 10;
+  constexpr int kThreads = 5;
+
+  std::atomic<bool> stop(false);
+  std::vector<std::thread> threads;
+  while (threads.size() != kThreads) {
+    threads.emplace_back([this, &stop] {
+      StopOnFailure stop_on_failure(&stop);
+      while (!stop.load(std::memory_order_acquire)) {
+        auto txn = CreateTransaction();
+        auto session = CreateSession(txn);
+        auto key = RandomUniformInt(1, kKeys);
+        auto value_result = SelectRow(session, key);
+        int value;
+        if (value_result.ok()) {
+          value = *value_result;
+        } else {
+          ASSERT_TRUE(value_result.status().IsNotFound()) << value_result.status();
+          value = 0;
+        }
+        auto status = ResultToStatus(WriteRow(session, key, value));
+        if (status.ok()) {
+          status = txn->CommitFuture().get();
+        }
+        // Write or commit could fail because of conflict during write or transaction conflict
+        // during commit.
+        ASSERT_TRUE(status.ok() || status.IsTryAgain() || status.IsExpired()) << status;
+      }
+      stop_on_failure.Success();
+    });
+  }
+
+  WaitStopped(30s, &stop);
+
+  stop.store(true, std::memory_order_release);
+
+  for (auto& thread : threads) {
+    thread.join();
+  }
+}
+
 // Test that we could init transaction after it was originally created.
 TEST_F(QLTransactionTest, DelayedInit) {
   SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
@@ -1377,7 +1469,10 @@ TEST_F(QLTransactionTest, DelayedInit) {
   ASSERT_OK(WriteRow(write_session, 1, 1));
 
   ASSERT_OK(txn1->Init(IsolationLevel::SNAPSHOT_ISOLATION, read_point.GetReadTime()));
-  ASSERT_OK(txn2->Init(IsolationLevel::SNAPSHOT_ISOLATION));
+  // To check delayed init we specify read time here.
+  ASSERT_OK(txn2->Init(
+      IsolationLevel::SNAPSHOT_ISOLATION,
+      ReadHybridTime::FromHybridTimeRange(transaction_manager_->clock()->NowRange())));
 
   ASSERT_OK(WriteRow(write_session, 2, 2));
 
@@ -1399,114 +1494,6 @@ TEST_F(QLTransactionTest, DelayedInit) {
     ASSERT_EQ(1, row1);
     auto row2 = SelectRow(read_session, 2);
     ASSERT_TRUE(!row2.ok() && row2.status().IsNotFound()) << row2;
-  }
-}
-
-TEST_F(QLTransactionTest, BankAccounts) {
-  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
-  const int kAccounts = 20;
-  const int kThreads = 5;
-  const int kInitialAmount = 100;
-
-  {
-    auto txn = ASSERT_RESULT(pool.TakeAndInit(IsolationLevel::SNAPSHOT_ISOLATION));
-    auto init_session = CreateSession(txn);
-    for (int i = 1; i <= kAccounts; ++i) {
-      ASSERT_OK(WriteRow(init_session, i, kInitialAmount));
-    }
-    ASSERT_OK(txn->CommitFuture().get());
-  }
-
-  std::atomic<bool> stop(false);
-  std::atomic<int64_t> updates(0);
-  std::vector<std::thread> threads;
-  BOOST_SCOPE_EXIT(&stop, &threads, &updates) {
-    stop.store(true, std::memory_order_release);
-
-    for (auto& thread : threads) {
-      thread.join();
-    }
-
-    LOG(INFO) << "Total updates: " << updates.load(std::memory_order_acquire);
-    ASSERT_GT(updates.load(std::memory_order_acquire), 100);
-  } BOOST_SCOPE_EXIT_END;
-
-  while (threads.size() != kThreads) {
-    threads.emplace_back([this, &stop, &pool, &updates] {
-      auto session = CreateSession();
-      YBTransactionPtr txn;
-      int32_t key1 = 0, key2 = 0;
-      while (!stop.load(std::memory_order_acquire)) {
-        if (!txn) {
-          key1 = RandomUniformInt(1, kAccounts);
-          key2 = RandomUniformInt(1, kAccounts - 1);
-          if (key2 >= key1) {
-            ++key2;
-          }
-          txn = ASSERT_RESULT(pool.TakeAndInit(IsolationLevel::SNAPSHOT_ISOLATION));
-        }
-        session->SetTransaction(txn);
-        auto result = SelectRow(session, key1);
-        int32_t balance1 = -1;
-        if (result.ok()) {
-          balance1 = *result;
-          result = SelectRow(session, key2);
-        }
-        if (!result.ok()) {
-          if (txn->IsRestartRequired()) {
-            ASSERT_TRUE(result.status().IsQLError()) << result;
-            txn = ASSERT_RESULT(pool.TakeRestarted(txn));
-            continue;
-          }
-          ASSERT_OK(result);
-        }
-        auto balance2 = *result;
-        if (balance1 == 0) {
-          std::swap(key1, key2);
-          std::swap(balance1, balance2);
-        }
-        if (balance1 == 0) {
-          txn = nullptr;
-          continue;
-        }
-        auto transfer = RandomUniformInt(1, balance1);
-        auto status = ResultToStatus(WriteRow(session, key1, balance1 - transfer));
-        if (status.ok()) {
-          status = ResultToStatus(WriteRow(session, key2, balance2 + transfer));
-        }
-        if (status.ok()) {
-          status = txn->CommitFuture().get();
-        }
-        txn = nullptr;
-        if (status.ok()) {
-          ++updates;
-        } else {
-          ASSERT_TRUE(status.IsTryAgain() || status.IsExpired()) << status;
-        }
-      }
-    });
-  }
-
-  auto end_time = CoarseMonoClock::now() + 30s;
-
-  auto session = CreateSession();
-  YBTransactionPtr txn;
-  while (CoarseMonoClock::now() < end_time) {
-    if (!txn) {
-      txn = ASSERT_RESULT(pool.TakeAndInit(IsolationLevel::SNAPSHOT_ISOLATION));
-    }
-    session->SetTransaction(txn);
-    auto rows = SelectAllRows(session);
-    if (!rows.ok() && txn->IsRestartRequired()) {
-      txn = ASSERT_RESULT(pool.TakeRestarted(txn));
-      continue;
-    }
-    txn = nullptr;
-    int sum_balance = 0;
-    for (const auto& pair : *rows) {
-      sum_balance += pair.second;
-    }
-    ASSERT_EQ(sum_balance, kAccounts * kInitialAmount);
   }
 }
 

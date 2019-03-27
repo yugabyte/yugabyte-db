@@ -9,6 +9,7 @@
 #include "yb/client/client.h"
 
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/gutil/strings/ascii_ctype.h"
 
 namespace yb {
 namespace ql {
@@ -89,6 +90,30 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   // If flag use_cassandra_authentication is enabled, we will not check for the create permission
   // on the table because creating an index requires the alter permission on the table.
   RETURN_NOT_OK(PTCreateTable::Analyze(sem_context));
+
+  if (!name_) {
+    string auto_name = relation_->last_name().c_str();
+
+    for (const auto& column : hash_columns_) {
+      auto_name += string("_") + column->yb_name();
+    }
+
+    for (const auto& column : primary_columns_) {
+      auto_name += string("_") + column->yb_name();
+    }
+
+    auto_name += "_idx";
+    string final_name;
+
+    for (char& c : auto_name) {
+      if (ascii_isalnum(c) || c == '_') { // Accepted a-z, A-Z, 0-9, _.
+        final_name += c;
+      }
+    }
+
+    LOG(INFO) << "Set automatic name for the new index: " << final_name;
+    name_ = MCMakeShared<MCString>(sem_context->PTreeMem(), final_name.c_str());
+  }
 
   // Add remaining primary key columns from the indexed table. For non-unique index, add the columns
   // to the primary key of the index table to make the non-unique values unique. For unique index,

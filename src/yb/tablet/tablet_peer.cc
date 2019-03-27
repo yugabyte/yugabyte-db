@@ -76,6 +76,7 @@
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/stopwatch.h"
@@ -86,6 +87,9 @@ using namespace std::literals;
 using namespace std::placeholders;
 using std::shared_ptr;
 using std::string;
+
+DEFINE_test_flag(int32, delay_init_tablet_peer_ms, 0,
+                 "Wait before executing init tablet peer for specified amount of milliseconds.");
 
 namespace yb {
 namespace tablet {
@@ -137,6 +141,7 @@ using tserver::TabletServerErrorPB;
 TabletPeer::TabletPeer(
     const scoped_refptr<TabletMetadata>& meta,
     const consensus::RaftPeerPB& local_peer_pb,
+    const scoped_refptr<server::Clock> &clock,
     const std::string& permanent_uuid,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk)
   : meta_(meta),
@@ -144,6 +149,7 @@ TabletPeer::TabletPeer(
     local_peer_pb_(local_peer_pb),
     state_(TabletStatePB::NOT_STARTED),
     status_listener_(new TabletStatusListener(meta)),
+    clock_(clock),
     log_anchor_registry_(new LogAnchorRegistry()),
     mark_dirty_clbk_(std::move(mark_dirty_clbk)),
     permanent_uuid_(permanent_uuid) {}
@@ -157,7 +163,6 @@ TabletPeer::~TabletPeer() {
 
 Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
                                   const std::shared_future<client::YBClientPtr> &client_future,
-                                  const scoped_refptr<server::Clock> &clock,
                                   const shared_ptr<Messenger> &messenger,
                                   rpc::ProxyCache* proxy_cache,
                                   const scoped_refptr<Log> &log,
@@ -169,6 +174,10 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
 
+  if (FLAGS_delay_init_tablet_peer_ms > 0) {
+    std::this_thread::sleep_for(FLAGS_delay_init_tablet_peer_ms * 1ms);
+  }
+
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     auto state = state_.load(std::memory_order_acquire);
@@ -178,7 +187,6 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
     }
     tablet_ = tablet;
     client_future_ = client_future;
-    clock_ = clock;
     proxy_cache_ = proxy_cache;
     log_ = log;
     // "Publish" the log pointer so it can be retrieved using the log() accessor.

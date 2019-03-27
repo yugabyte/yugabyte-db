@@ -654,7 +654,8 @@ std::string TransactionApplyData::ToString() const {
 class TransactionParticipant::Impl : public RunningTransactionContext {
  public:
   explicit Impl(TransactionParticipantContext* context, TransactionIntentApplier* applier)
-      : RunningTransactionContext(context, applier), log_prefix_(context->tablet_id() + ": ") {
+      : RunningTransactionContext(context, applier),
+        log_prefix_(Format("T $0 P $1: ", context->tablet_id(), context->permanent_uuid())) {
     LOG_WITH_PREFIX(INFO) << "Start";
   }
 
@@ -697,6 +698,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     if (store) {
       docdb::KeyBytes key;
       AppendTransactionKeyPrefix(metadata->transaction_id, &key);
+      auto data_copy = data;
+      // We use hybrid time only for backward compatibility, actually wall time is required.
+      data_copy.set_metadata_write_time(GetCurrentTimeMicros());
       auto value = data.SerializeAsString();
       write_batch->Put(key.data(), value);
     }

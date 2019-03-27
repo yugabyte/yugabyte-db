@@ -52,13 +52,10 @@ enum QLClient {
 
 // Client type.
 enum YQLDatabase {
-  YQL_DATABASE_UNDEFINED = 1;
+  YQL_DATABASE_UNKNOWN = 1;
   YQL_DATABASE_CQL = 2;
   YQL_DATABASE_PGSQL = 3; // Pgsql database
   YQL_DATABASE_REDIS = 4;
-
-  // Pgsql Schema. Its name should be qualified name <database>.<schema>
-  // YQL_DATABASE_PGSQL_SUBDB = 4;
 }
 
 // To ensure compatibility between release versions, the numeric values of these datatypes cannot
@@ -348,7 +345,13 @@ message TransactionMetadataPB {
   optional IsolationLevel isolation = 2 [default=NON_TRANSACTIONAL];
   optional string status_tablet = 3;
   optional fixed64 priority = 4;
-  optional fixed64 start_hybrid_time = 5;
+
+  // Used for backward compatibility during rolling update.
+  optional fixed64 DEPRECATED_start_hybrid_time = 5;
+
+  // Stores time when metadata was written to provisional records RocksDB on a
+  // participating tablet. So it could be used for cleanup.
+  optional fixed64 metadata_write_time = 6;
 }
 
 // See ReadHybridTime for explation of this message.
@@ -385,6 +388,7 @@ message ChildTransactionResultPB {
   repeated TransactionInvolvedTabletPB tablets = 1;
   optional fixed64 restart_read_ht = 2;
   map<string, fixed64> read_restarts = 3;
+  optional ReadHybridTimePB used_read_time = 4;
 }
 
 message DeletedColumnPB {

@@ -173,6 +173,10 @@ class RpcContext {
   // by the RPC response.
   CHECKED_STATUS AddRpcSidecar(RefCntBuffer car, int* idx);
 
+  int RpcSidecarsSize() const;
+
+  const RefCntBuffer& RpcSidecar(int idx) const;
+
   // Removes all RpcSidecars.
   void ResetRpcSidecars();
 

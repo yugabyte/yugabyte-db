@@ -125,6 +125,13 @@ std::string PeerMessageQueue::TrackedPeer::ToString() const {
                     needs_remote_bootstrap);
 }
 
+void PeerMessageQueue::TrackedPeer::ResetLeaderLeases() {
+  last_leader_lease_expiration_sent_to_follower = CoarseTimePoint();
+  last_leader_lease_expiration_received_by_follower = CoarseTimePoint();
+  last_ht_lease_expiration_sent_to_follower = HybridTime::kMin.GetPhysicalValueMicros();
+  last_ht_lease_expiration_received_by_follower = HybridTime::kMin.GetPhysicalValueMicros();
+}
+
 #define INSTANTIATE_METRIC(x) \
   x.Instantiate(metric_entity, 0)
 PeerMessageQueue::Metrics::Metrics(const scoped_refptr<MetricEntity>& metric_entity)
@@ -184,6 +191,7 @@ void PeerMessageQueue::SetLeaderMode(const OpId& committed_index,
   // failure timeout.
   MonoTime now(MonoTime::Now());
   for (const PeersMap::value_type& entry : peers_map_) {
+    entry.second->ResetLeaderLeases();
     entry.second->last_successful_communication_time = now;
   }
 }
@@ -1137,6 +1145,16 @@ void PeerMessageQueue::NotifyObserversOfFailedFollowerTask(const string& uuid,
   for (PeerMessageQueueObserver* observer : observers_copy) {
     observer->NotifyFailedFollower(uuid, term, reason);
   }
+}
+
+bool PeerMessageQueue::PeerAcceptedOurLease(const std::string& uuid) const {
+  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
+  if (peer == nullptr) {
+    return false;
+  }
+
+  return peer->last_leader_lease_expiration_received_by_follower != CoarseTimePoint();
 }
 
 bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {

@@ -318,7 +318,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // TODO(neil) When database_type is undefined, backend will not check error on database type.
   // Except for testing we should use proper database_types for all creations.
   CHECKED_STATUS CreateNamespace(const std::string& namespace_name,
-                                 YQLDatabase database_type = YQL_DATABASE_UNDEFINED,
+                                 const boost::optional<YQLDatabase>& database_type = boost::none,
                                  const std::string& creator_role_name = "",
                                  const std::string& namespace_id = "",
                                  const std::string& source_namespace_id = "",
@@ -329,11 +329,17 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // TODO(neil) When database_type is undefined, backend will not check error on database type.
   // Except for testing we should use proper database_types for all creations.
   CHECKED_STATUS CreateNamespaceIfNotExists(const std::string& namespace_name,
-                                            YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
+                                            const boost::optional<YQLDatabase>& database_type =
+                                            boost::none,
+                                            const std::string& creator_role_name = "",
+                                            const std::string& namespace_id = "",
+                                            const std::string& source_namespace_id = "",
+                                            const boost::optional<uint32_t>& next_pg_oid =
+                                            boost::none);
 
   // Delete namespace with the given name.
   CHECKED_STATUS DeleteNamespace(const std::string& namespace_name,
-                                 YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
+                                 const boost::optional<YQLDatabase>& database_type = boost::none);
 
   // For Postgres: reserve oids for a Postgres database.
   CHECKED_STATUS ReservePgsqlOids(const std::string& namespace_id,
@@ -350,17 +356,22 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
                                        const char* resource_name,
                                        const char* namespace_name,
                                        const std::string& role_name);
-  // List all namespace names.
+  // List all namespace names and optionally namespace ids.
   // 'namespaces' is appended to only on success.
-  CHECKED_STATUS ListNamespaces(std::vector<std::string>* namespaces) {
-    return ListNamespaces(YQL_DATABASE_UNDEFINED, namespaces);
+  CHECKED_STATUS ListNamespaces(std::vector<std::string>* namespace_names,
+                                std::vector<std::string>* namespace_ids = nullptr) {
+    return ListNamespaces(boost::none, namespace_names, namespace_ids);
   }
-  CHECKED_STATUS ListNamespaces(YQLDatabase database_type, std::vector<std::string>* namespaces);
+  CHECKED_STATUS ListNamespaces(const boost::optional<YQLDatabase>& database_type,
+                                std::vector<std::string>* namespace_names,
+                                std::vector<std::string>* namespace_ids = nullptr);
 
-  // Check if the namespace given by 'namespace_name' exists.
+  // Check if the namespace given by 'namespace_name' or 'namespace_id' exists.
   // Result value is set only on success.
   Result<bool> NamespaceExists(const std::string& namespace_name,
-                               YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
+                               const boost::optional<YQLDatabase>& database_type = boost::none);
+  Result<bool> NamespaceIdExists(const std::string& namespace_id,
+                                 const boost::optional<YQLDatabase>& database_type = boost::none);
 
   // Authentication and Authorization
   // Create a new role.
@@ -571,12 +582,14 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);
   FRIEND_TEST(ClientTest, TestMasterLookupPermits);
-  FRIEND_TEST(ClientTest, TestReplicatedMultiTabletTableFailover);
   FRIEND_TEST(ClientTest, TestReplicatedTabletWritesWithLeaderElection);
   FRIEND_TEST(ClientTest, TestScanFaultTolerance);
   FRIEND_TEST(ClientTest, TestScanTimeout);
   FRIEND_TEST(ClientTest, TestWriteWithDeadMaster);
   FRIEND_TEST(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued);
+
+  friend std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
+      const YBTable* table);
 
   YBClient();
 
@@ -1028,6 +1041,9 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // the current time.
   void SetReadPoint(Restart restart);
 
+  // Returns true if our current read point requires restart.
+  bool IsRestartRequired() const;
+
   // Changed transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
 
@@ -1147,7 +1163,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Sets force consistent read mode, if true then consistent read point will be used even we have
   // only one command to flush.
   // It is useful when whole statement is executed using multiple flushes.
-  void SetForceConsistentRead(bool value);
+  void SetForceConsistentRead(ForceConsistentRead value);
 
  private:
   friend class YBClient;

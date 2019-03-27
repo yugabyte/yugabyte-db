@@ -60,6 +60,7 @@ ADD_YB_LIBRARY(rpc_introspection_proto
 set(YRPC_SRCS
     acceptor.cc
     binary_call_parser.cc
+    circular_read_buffer.cc
     connection.cc
     connection_context.cc
     growable_buffer.cc

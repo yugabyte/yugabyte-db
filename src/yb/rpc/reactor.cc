@@ -73,6 +73,7 @@ using namespace std::literals;
 
 DECLARE_string(local_ip_for_outbound_sockets);
 DECLARE_int32(num_connections_to_server);
+DECLARE_int32(socket_receive_buffer_size);
 
 namespace yb {
 namespace rpc {
@@ -125,7 +126,8 @@ Reactor::Reactor(const std::shared_ptr<Messenger>& messenger,
       cur_time_(CoarseMonoClock::Now()),
       last_unused_tcp_scan_(cur_time_),
       connection_keepalive_time_(bld.connection_keepalive_time()),
-      coarse_timer_granularity_(bld.coarse_timer_granularity()) {
+      coarse_timer_granularity_(bld.coarse_timer_granularity()),
+      num_connections_to_server_(bld.num_connections_to_server()) {
   static std::once_flag libev_once;
   std::call_once(libev_once, DoInitLibEv);
 
@@ -534,24 +536,37 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
 
   // Create a new socket and start connecting to the remote.
   auto sock = VERIFY_RESULT(CreateClientSocket(conn_id.remote()));
-  if (FLAGS_local_ip_for_outbound_sockets.empty()) {
+  if (!messenger_->test_outbound_ip_base_.is_unspecified()) {
+    auto address_bytes(messenger_->test_outbound_ip_base_.to_v4().to_bytes());
+    // Use different addresses for public/private endpoints.
+    // Private addresses are even, and public are odd.
+    // So if base address is "private" and destination address is "public" we will modify
+    // originating address to be "public" also.
+    address_bytes[3] |= conn_id.remote().address().to_v4().to_bytes()[3] & 1;
+    boost::asio::ip::address_v4 outbound_address(address_bytes);
+    auto status = sock.Bind(Endpoint(outbound_address, 0));
+    LOG_IF(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: " << status;
+  } else if (FLAGS_local_ip_for_outbound_sockets.empty()) {
     auto outbound_address = conn_id.remote().address().is_v6()
         ? messenger_->outbound_address_v6()
         : messenger_->outbound_address_v4();
     if (!outbound_address.is_unspecified()) {
-      auto status = sock.Bind(Endpoint(outbound_address, 0), /* explain_addr_in_use */ false);
-      if (!status.ok()) {
-        LOG(WARNING) << "Bind " << outbound_address << " failed: " << status.ToString();
-      }
+      auto status = sock.Bind(Endpoint(outbound_address, 0));
+      LOG_IF(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: " << status;
     }
   }
 
-  auto context = messenger_->connection_context_factory_->Create();
-  auto& allocator = context->Allocator();
+  if (FLAGS_socket_receive_buffer_size) {
+    WARN_NOT_OK(sock.SetReceiveBufferSize(FLAGS_socket_receive_buffer_size),
+                "Set receive buffer size failed: ");
+  }
+
+  auto receive_buffer_size = VERIFY_RESULT(sock.GetReceiveBufferSize());
+
+  auto context = messenger_->connection_context_factory_->Create(receive_buffer_size);
   auto stream = VERIFY_RESULT(CreateStream(
       messenger_->stream_factories_, conn_id.protocol(),
-      {conn_id.remote(), hostname, &sock, &allocator,
-       context->BufferLimit() + allocator.block_size()}));
+      {conn_id.remote(), hostname, &sock}));
 
   // Register the new connection in our map.
   auto connection = std::make_shared<Connection>(
@@ -617,7 +632,7 @@ void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
   // Unlink connection from lists.
   if (conn->direction() == ConnectionDirection::CLIENT) {
     bool erased = false;
-    for (int idx = 0; idx < FLAGS_num_connections_to_server; idx++) {
+    for (int idx = 0; idx < num_connections_to_server_; idx++) {
       auto it = client_conns_.find(ConnectionId(conn->remote(), idx, conn->protocol()));
       if (it != client_conns_.end() && it->second.get() == conn) {
         client_conns_.erase(it);
@@ -849,8 +864,7 @@ void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote,
 
   auto stream = CreateStream(
       messenger_->stream_factories_, messenger_->listen_protocol_,
-      {remote, std::string(), socket, &connection_context->Allocator(),
-       connection_context->BufferLimit()});
+      {remote, std::string(), socket});
   if (!stream.ok()) {
     LOG(DFATAL) << "Failed to create stream for " << remote << ": " << stream.status();
     return;

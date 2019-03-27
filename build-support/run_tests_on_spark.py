@@ -84,8 +84,35 @@ def adjust_pythonpath():
         add_pythonpath_entry(YB_ENT_PYTHONPATH_ENTRY)
 
 
+def wait_for_path_to_exist(target_path):
+    if os.path.exists(target_path):
+        return
+    waited_for_sec = 0
+    start_time_sec = time.time()
+    printed_msg_at_sec = 0
+    MSG_PRINT_INTERVAL_SEC = 5.0
+    TIMEOUT_SEC = 120
+    while not os.path.exists(target_path):
+        current_time_sec = time.time()
+        if current_time_sec - printed_msg_at_sec >= MSG_PRINT_INTERVAL_SEC:
+            sys.stderr.write("Path '%s' does not exist, waiting\n" % target_path)
+            printed_msg_at_sec = current_time_sec
+        if current_time_sec - start_time_sec >= TIMEOUT_SEC:
+            raise IOError(
+                "Timed out after %.1f seconds waiting for path to exist: %s" % (
+                    current_time_sec - start_time_sec, target_path
+                ))
+        time.sleep(0.1)
+    elapsed_time = time.time() - start_time_sec
+    sys.stderr.write("Waited for %.1f seconds for the path '%s' to appear\n" % (
+        elapsed_time, target_path
+    ))
+
+
 adjust_pythonpath()
 
+# Wait for our module path, which may be on NFS, to be mounted.
+wait_for_path_to_exist(YB_PYTHONPATH_ENTRY)
 
 from yb import yb_dist_tests  # noqa
 from yb import command_util  # noqa
@@ -257,6 +284,7 @@ def parallel_run_test(test_descriptor_str):
     This is invoked in parallel to actually run tests.
     """
     adjust_pythonpath()
+    wait_for_path_to_exist(YB_PYTHONPATH_ENTRY)
     try:
         from yb import yb_dist_tests, command_util
     except ImportError as ex:
@@ -264,6 +292,7 @@ def parallel_run_test(test_descriptor_str):
 
     global_conf = yb_dist_tests.set_global_conf_from_dict(global_conf_dict)
     global_conf.set_env(propagated_env_vars)
+    wait_for_path_to_exist(global_conf.build_root)
     yb_dist_tests.global_conf = global_conf
     test_descriptor = yb_dist_tests.TestDescriptor(test_descriptor_str)
     os.environ['YB_TEST_ATTEMPT_INDEX'] = str(test_descriptor.attempt_index)
@@ -380,12 +409,14 @@ def parallel_list_test_descriptors(rel_test_path):
     minutes in debug.
     """
     adjust_pythonpath()
+    wait_for_path_to_exist(YB_PYTHONPATH_ENTRY)
     try:
         from yb import yb_dist_tests, command_util
     except ImportError as ex:
         raise ImportError("%s. %s" % (ex.message, get_sys_path_info_str()))
     global_conf = yb_dist_tests.set_global_conf_from_dict(global_conf_dict)
     global_conf.set_env(propagated_env_vars)
+    wait_for_path_to_exist(global_conf.build_root)
     list_tests_cmd_line = [
             os.path.join(global_conf.build_root, rel_test_path), '--gtest_list_tests']
 

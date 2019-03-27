@@ -148,7 +148,7 @@ multi-touch/hot portion of the cache.
 
 <h2 style="text-align: left;">Additional Optimizations</h2>
 
-As noted in our <a href="https://blog.yugabyte.com/">previous post</a>, DocDB manages 
+As described <a href="building-document-store-on-rocksdb.md">this document</a>, DocDB manages 
 transactional processing, replication, concurrency control, data time-to-live (TTL), and 
 recovery/failover mechanisms at the overall cluster level as opposed to the per-node 
 storage engine level. Therefore, some of the equivalent functionality provided by 

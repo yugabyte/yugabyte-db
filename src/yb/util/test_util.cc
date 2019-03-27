@@ -55,6 +55,7 @@ DEFINE_string(test_leave_files, "on_failure",
 DEFINE_int32(test_random_seed, 0, "Random seed to use for randomized tests");
 DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_bool(enable_tracing);
+DECLARE_bool(running_test);
 
 using std::string;
 using strings::Substitute;
@@ -105,6 +106,7 @@ void YBTest::SetUp() {
   InitGoogleLoggingSafeBasic("yb_test");
   FLAGS_enable_tracing = true;
   FLAGS_memory_limit_hard_bytes = 8 * 1024 * 1024 * 1024L;
+  FLAGS_running_test = true;
   for (const char* env_var_name : {
       "ASAN_OPTIONS",
       "LSAN_OPTIONS",
@@ -327,6 +329,13 @@ int CalcNumTablets(int num_tablet_servers) {
 #else
   return num_tablet_servers * 3;
 #endif
+}
+
+void WaitStopped(const CoarseDuration& duration, std::atomic<bool>* stop) {
+  auto end = CoarseMonoClock::now() + duration;
+  while (!stop->load(std::memory_order_acquire) && CoarseMonoClock::now() < end) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
 }
 
 } // namespace yb

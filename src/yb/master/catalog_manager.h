@@ -481,7 +481,7 @@ struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB, SysRowEn
   }
 
   YQLDatabase database_type() const {
-    return pb.has_database_type() ? pb.database_type() : YQL_DATABASE_UNDEFINED;
+    return pb.database_type();
   }
 };
 
@@ -1032,7 +1032,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Return all the available (user-defined) types.
   void GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo> >* types);
 
+  NamespaceName GetNamespaceNameUnlocked(const NamespaceId& id) const;
   NamespaceName GetNamespaceName(const NamespaceId& id) const;
+
+  NamespaceName GetNamespaceNameUnlocked(const scoped_refptr<TableInfo>& table) const;
+  NamespaceName GetNamespaceName(const scoped_refptr<TableInfo>& table) const;
 
   void GetAllRoles(std::vector<scoped_refptr<RoleInfo>>* roles);
 
@@ -1053,6 +1057,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Is the table a system table?
   bool IsSystemTable(const TableInfo& table) const;
+
+  // Is the table a user created table?
+  bool IsUserTable(const TableInfo& table) const;
+
+  // Is the table a user created index?
+  bool IsUserIndex(const TableInfo& table) const;
+
+  // Is the table a special sequences system table?
+  bool IsSequencesSystemTable(const TableInfo& table) const;
+
+  // Is the table created by user?
+  // Note that table can be regular table or index in this case.
+  bool IsUserCreatedTable(const TableInfo& table) const;
 
   // Let the catalog manager know that we have received a response for a delete tablet request,
   // and that we either deleted the tablet successfully, or we received a fatal error.
@@ -1171,6 +1188,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // the provided timeout, TimedOut Status otherwise.
   CHECKED_STATUS WaitForWorkerPoolTests(
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const;
+
+  // Returns whether the namespace is a YCQL namespace.
+  static bool IsYcqlNamespace(const NamespaceInfo& ns);
 
   // Returns whether the table is a YCQL table.
   static bool IsYcqlTable(const TableInfo& table);
@@ -1593,6 +1613,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   typedef rw_spinlock LockType;
   mutable LockType lock_;
 
+  // Note: Namespaces and tables for YSQL databases are identified by their ids only and therefore
+  // are not saved in the name maps below.
   TableInfoMap table_ids_map_;         // Table map: table-id -> TableInfo
   TableInfoByNameMap table_names_map_; // Table map: [namespace-id, table-name] -> TableInfo
 

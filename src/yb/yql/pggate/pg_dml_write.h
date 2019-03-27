@@ -48,7 +48,9 @@ class PgDmlWrite : public PgDml {
 
  protected:
   // Constructor.
-  PgDmlWrite(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
+  PgDmlWrite(PgSession::ScopedRefPtr pg_session,
+             const PgObjectId& table_id,
+             bool is_single_row_txn = false);
 
   // Allocate write request.
   virtual void AllocWriteRequest() = 0;
@@ -67,6 +69,8 @@ class PgDmlWrite : public PgDml {
 
   // Protobuf code.
   PgsqlWriteRequestPB *write_req_ = nullptr;
+
+  bool is_single_row_txn_ = false; // default.
 };
 
 }  // namespace pggate

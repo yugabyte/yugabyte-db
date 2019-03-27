@@ -56,6 +56,7 @@
 #include "yb/tablet/metadata.pb.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/capabilities.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/semaphore.h"
@@ -146,6 +147,8 @@ class RemoteTabletServer {
 
   const CloudInfoPB& cloud_info() const;
 
+  bool HasCapability(CapabilityId capability) const;
+
  private:
   mutable simple_spinlock lock_;
   const std::string uuid_;
@@ -156,6 +159,7 @@ class RemoteTabletServer {
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy_;
   const tserver::LocalTabletServer* local_tserver_ = nullptr;
   scoped_refptr<Histogram> dns_resolve_histogram_;
+  std::vector<CapabilityId> capabilities_;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTabletServer);
 };
@@ -203,6 +207,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   RemoteTablet(std::string tablet_id,
                Partition partition)
       : tablet_id_(std::move(tablet_id)),
+        log_prefix_(Format("T $0: ", tablet_id_)),
         partition_(std::move(partition)),
         stale_(false) {
   }
@@ -246,6 +251,12 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // wait for some time (configurable) before retrying.
   void GetRemoteTabletServers(std::vector<RemoteTabletServer*>* servers);
 
+  std::vector<RemoteTabletServer*> GetRemoteTabletServers() {
+    std::vector<RemoteTabletServer*> result;
+    GetRemoteTabletServers(&result);
+    return result;
+  }
+
   // Return true if the tablet currently has a known LEADER replica
   // (i.e the next call to LeaderTServer() is likely to return non-NULL)
   bool HasLeader() const;
@@ -257,7 +268,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   }
 
   // Mark the specified tablet server as the leader of the consensus configuration in the cache.
-  void MarkTServerAsLeader(const RemoteTabletServer* server);
+  // Returns whether server was found in replicas_.
+  bool MarkTServerAsLeader(const RemoteTabletServer* server) WARN_UNUSED_RESULT;
 
   // Mark the specified tablet server as a follower in the cache.
   void MarkTServerAsFollower(const RemoteTabletServer* server);
@@ -267,6 +279,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   std::string ToString() const;
 
+  const std::string& LogPrefix() const { return log_prefix_; }
+
   MonoTime refresh_time() { return refresh_time_.load(std::memory_order_acquire); }
 
  private:
@@ -274,6 +288,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   std::string ReplicasAsStringUnlocked() const;
 
   const std::string tablet_id_;
+  const std::string log_prefix_;
   const Partition partition_;
 
   // All non-const members are protected by 'lock_'.
@@ -446,4 +461,5 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 } // namespace internal
 } // namespace client
 } // namespace yb
+
 #endif /* YB_CLIENT_META_CACHE_H */

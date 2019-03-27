@@ -78,6 +78,8 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
 
   void SetReadPoint(Restart restart);
 
+  bool IsRestartRequired();
+
   // Changed transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
 
@@ -104,7 +106,7 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
   void set_allow_local_calls_in_curr_thread(bool flag);
   bool allow_local_calls_in_curr_thread() const;
 
-  void SetForceConsistentRead(bool value);
+  void SetForceConsistentRead(ForceConsistentRead value);
 
   void SetInTxnLimit(HybridTime value);
 

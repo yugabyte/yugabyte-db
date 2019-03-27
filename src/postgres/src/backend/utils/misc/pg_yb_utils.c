@@ -82,7 +82,8 @@ IsYBRelationById(Oid relid)
 }
 
 bool
-IsYBRelationByKind(char relKind){
+IsYBRelationByKind(char relKind)
+{
   return (relKind == RELKIND_RELATION || relKind == RELKIND_INDEX);
 }
 
@@ -430,7 +431,8 @@ YBReportIfYugaByteEnabled()
 	if (YBIsEnabledInPostgresEnvVar()) {
 		ereport(LOG, (errmsg(
 			"YugaByte is ENABLED in PostgreSQL. Transactions are %s.",
-			YBTransactionsEnabled() ? "enabled" : "disabled")));
+			YBCIsEnvVarTrue("YB_PG_TRANSACTIONS_ENABLED") ?
+			"enabled" : "disabled")));
 	} else {
 		ereport(LOG, (errmsg("YugaByte is NOT ENABLED -- "
 							"this is a vanilla PostgreSQL server!")));

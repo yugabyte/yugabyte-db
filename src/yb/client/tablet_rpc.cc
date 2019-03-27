@@ -103,21 +103,27 @@ void TabletInvoker::SelectTabletServer()  {
   }
   if (!current_ts_) {
     // Try to "guess" the next leader.
-    vector<RemoteTabletServer*> replicas;
-    tablet_->GetRemoteTabletServers(&replicas);
-    for (RemoteTabletServer* ts : replicas) {
-      if (!ContainsKey(followers_, ts)) {
-        current_ts_ = ts;
-        break;
+    for (;;) {
+      vector<RemoteTabletServer*> replicas;
+      tablet_->GetRemoteTabletServers(&replicas);
+      for (RemoteTabletServer* ts : replicas) {
+        if (!ContainsKey(followers_, ts)) {
+          current_ts_ = ts;
+          break;
+        }
       }
-    }
-    if (current_ts_) {
-      // Mark this next replica "preemptively" as the leader in the meta cache,
-      // so we go to it first on the next write if writing was successful.
-      VLOG(1) << "Tablet " << tablet_id_ << ": Previous leader failed. "
-              << "Preemptively marking tserver " << current_ts_->ToString()
-              << " as leader in the meta cache.";
-      tablet_->MarkTServerAsLeader(current_ts_);
+      if (current_ts_) {
+        // Mark this next replica "preemptively" as the leader in the meta cache,
+        // so we go to it first on the next write if writing was successful.
+        VLOG(1) << "Tablet " << tablet_id_ << ": Previous leader failed. "
+                << "Preemptively marking tserver " << current_ts_->ToString()
+                << " as leader in the meta cache.";
+        if (!tablet_->MarkTServerAsLeader(current_ts_)) {
+          // That means replica set has been changed from another thread and we need to try again.
+          continue;
+        }
+      }
+      break;
     }
   }
 }
@@ -238,7 +244,7 @@ bool TabletInvoker::Done(Status* status) {
 
   // Prefer controller failures over response failures.
   Status resp_error_status = ErrorStatus(rpc_->response_error());
-  if (status->ok() && !resp_error_status.ok()) {
+  if ((status->ok() || status->IsRemoteError()) && !resp_error_status.ok()) {
     *status = resp_error_status;
   }
 

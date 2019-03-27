@@ -101,6 +101,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
   TabletPeer(const scoped_refptr<TabletMetadata>& meta,
              const consensus::RaftPeerPB& local_peer_pb,
+             const scoped_refptr<server::Clock> &clock,
              const std::string& permanent_uuid,
              Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk);
 
@@ -110,7 +111,6 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // Consensus.
   CHECKED_STATUS InitTabletPeer(const std::shared_ptr<TabletClass> &tablet,
                                 const std::shared_future<client::YBClientPtr> &client_future,
-                                const scoped_refptr<server::Clock> &clock,
                                 const std::shared_ptr<rpc::Messenger> &messenger,
                                 rpc::ProxyCache* proxy_cache,
                                 const scoped_refptr<log::Log> &log,
@@ -292,7 +292,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   const std::string& tablet_id() const override { return tablet_id_; }
 
   // Convenience method to return the permanent_uuid of this peer.
-  const std::string& permanent_uuid() const {
+  const std::string& permanent_uuid() const override {
     return permanent_uuid_;
   }
 

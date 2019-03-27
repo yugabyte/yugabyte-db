@@ -71,7 +71,7 @@ class PgsqlWriteOperation :
   CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
                              const QLTableRow::SharedPtr& table_row);
 
-  CHECKED_STATUS PopulateResultSet();
+  CHECKED_STATUS PopulateResultSet(const QLTableRow::SharedPtr& table_row);
 
   // Reading path to operate on.
   CHECKED_STATUS GetDocPaths(

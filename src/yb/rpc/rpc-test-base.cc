@@ -79,7 +79,7 @@ MessengerBuilder CreateMessengerBuilder(const std::string& name,
   bld.set_coarse_timer_granularity(coarse_time_granularity);
   bld.set_metric_entity(metric_entity);
   bld.CreateConnectionContextFactory<YBOutboundConnectionContext>(
-      FLAGS_outbound_rpc_block_size, FLAGS_outbound_rpc_memory_limit,
+      FLAGS_outbound_rpc_memory_limit,
       MemTracker::FindOrCreateTracker(name));
   return bld;
 }
@@ -101,23 +101,12 @@ constexpr std::chrono::milliseconds kDefaultKeepAlive = 1s;
 const MessengerOptions kDefaultClientMessengerOptions = {1, kDefaultKeepAlive};
 const MessengerOptions kDefaultServerMessengerOptions = {3, kDefaultKeepAlive};
 
-const char* GenericCalculatorService::kFullServiceName = "yb.rpc.GenericCalculatorService";
-const char* GenericCalculatorService::kAddMethodName = "Add";
-const char* GenericCalculatorService::kSleepMethodName = "Sleep";
-const char* GenericCalculatorService::kSendStringsMethodName = "SendStrings";
-const char* GenericCalculatorService::kDisconnectMethodName = "Disconnect";
-
-const char* GenericCalculatorService::kFirstString =
-    "1111111111111111111111111111111111111111111111111111111111";
-const char* GenericCalculatorService::kSecondString =
-    "2222222222222222222222222222222222222222222222222222222222222222222222";
-
 void GenericCalculatorService::Handle(InboundCallPtr incoming) {
-  if (incoming->method_name() == kAddMethodName) {
+  if (incoming->method_name() == CalculatorServiceMethods::kAddMethodName) {
     DoAdd(incoming.get());
-  } else if (incoming->method_name() == kSleepMethodName) {
+  } else if (incoming->method_name() == CalculatorServiceMethods::kSleepMethodName) {
     DoSleep(incoming.get());
-  } else if (incoming->method_name() == kSendStringsMethodName) {
+  } else if (incoming->method_name() == CalculatorServiceMethods::kSendStringsMethodName) {
     DoSendStrings(incoming.get());
   } else {
     incoming->RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_METHOD,
@@ -385,7 +374,7 @@ void RpcTestBase::DoTestSidecar(Proxy* proxy,
   RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(10000));
   auto status = proxy->SyncRequest(
-      GenericCalculatorService::SendStringsMethod(), req, &resp, &controller);
+      CalculatorServiceMethods::SendStringsMethod(), req, &resp, &controller);
 
   ASSERT_EQ(expected_code, status.code()) << "Invalid status received: " << status.ToString();
 
@@ -413,7 +402,7 @@ void RpcTestBase::DoTestExpectTimeout(Proxy* proxy, const MonoDelta& timeout) {
   c.set_timeout(timeout);
   Stopwatch sw;
   sw.start();
-  Status s = proxy->SyncRequest(GenericCalculatorService::SleepMethod(), req, &resp, &c);
+  Status s = proxy->SyncRequest(CalculatorServiceMethods::SleepMethod(), req, &resp, &c);
   ASSERT_FALSE(s.ok());
   sw.stop();
 

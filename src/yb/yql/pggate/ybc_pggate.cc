@@ -10,12 +10,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/util/ybc-internal.h"
+#include "yb/util/atomic.h"
 
+#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/pggate.h"
 
 DECLARE_bool(client_suppress_created_logs);
+
+DEFINE_int32(pggate_num_connections_to_server, 1,
+             "Number of underlying connections to each server from a PostgreSQL backend process. "
+             "This overrides the value of --num_connections_to_server.");
+
+DECLARE_int32(num_connections_to_server);
 
 namespace yb {
 namespace pggate {
@@ -43,6 +50,10 @@ void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count) {
     YBCSetInitDbMode();
   }
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
+
+  SetAtomicFlag(GetAtomicFlag(&FLAGS_pggate_num_connections_to_server),
+                &FLAGS_num_connections_to_server);
+
   pgapi_shutdown_done.exchange(false);
   pgapi = new pggate::PgApiImpl(YBCDataTypeTable, count);
   VLOG(1) << "PgGate open";
@@ -197,6 +208,38 @@ YBCStatus YBCPgExecDropSchema(YBCPgStatement handle) {
   // TODO(neil) Turn this ON when schema is supported.
   return ToYBCStatus(pgapi->ExecDropSchema(handle));
 #endif
+}
+
+YBCStatus YBCInsertSequenceTuple(YBCPgSession pg_session,
+                                 int64_t db_oid,
+                                 int64_t seq_oid,
+                                 int64_t last_val,
+                                 bool is_called) {
+  return ToYBCStatus(pgapi->InsertSequenceTuple(pg_session, db_oid, seq_oid, last_val, is_called));
+}
+
+YBCStatus YBCUpdateSequenceTuple(YBCPgSession pg_session,
+                                 int64_t db_oid,
+                                 int64_t seq_oid,
+                                 int64_t last_val,
+                                 bool is_called,
+                                 int64_t expected_last_val,
+                                 bool expected_is_called,
+                                 bool* skipped) {
+  return ToYBCStatus(pgapi->UpdateSequenceTuple(pg_session, db_oid, seq_oid, last_val, is_called,
+      expected_last_val, expected_is_called, skipped));
+}
+
+YBCStatus YBCReadSequenceTuple(YBCPgSession pg_session,
+                               int64_t db_oid,
+                               int64_t seq_oid,
+                               int64_t *last_val,
+                               bool *is_called) {
+  return ToYBCStatus(pgapi->ReadSequenceTuple(pg_session, db_oid, seq_oid, last_val, is_called));
+}
+
+YBCStatus YBCDeleteSequenceTuple(YBCPgSession pg_session, int64_t db_oid, int64_t seq_oid) {
+  return ToYBCStatus(pgapi->DeleteSequenceTuple(pg_session, db_oid, seq_oid));
 }
 
 // Table Operations -------------------------------------------------------------------------------
@@ -381,19 +424,26 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));
 }
 
+YBCStatus YBCPgStartBufferingWriteOperations(YBCPgSession pg_session) {
+  return ToYBCStatus(pgapi->StartBufferingWriteOperations(pg_session));
+}
+
+YBCStatus YBCPgFlushBufferedWriteOperations(YBCPgSession pg_session) {
+  return ToYBCStatus(pgapi->FlushBufferedWriteOperations(pg_session));
+}
 
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->DmlExecWriteOp(handle));
 }
 
-
 // INSERT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
+                         const bool is_single_row_txn,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewInsert(pg_session, table_id, handle));
+  return ToYBCStatus(pgapi->NewInsert(pg_session, table_id, is_single_row_txn, handle));
 }
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle) {

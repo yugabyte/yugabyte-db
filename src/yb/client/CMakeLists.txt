@@ -37,6 +37,7 @@ set(CLIENT_SRCS
   client.cc
   client_builder-internal.cc
   client-internal.cc
+  client_utils.cc
   error_collector.cc
   error-internal.cc
   in_flight_op.cc
@@ -114,4 +115,6 @@ ADD_YB_TEST(ql-list-test)
 ADD_YB_TEST(ql-tablet-test)
 ADD_YB_TEST(ql-transaction-test)
 ADD_YB_TEST(ql-stress-test)
+ADD_YB_TEST(snapshot-txn-test)
 ADD_YB_TEST(serializable-txn-test)
+ADD_YB_TEST(tablet_rpc-test)

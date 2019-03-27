@@ -16,29 +16,37 @@
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/transaction.h"
 
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/utilities/checkpoint.h"
+
+#include "yb/server/hybrid_clock.h"
+
+#include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
-#include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/util/bfql/gen_opcodes.h"
+#include "yb/util/random_util.h"
 
-#include "yb/rocksdb/utilities/checkpoint.h"
-#include "yb/rocksdb/metadata.h"
-
-#include "yb/tablet/tablet_options.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 DECLARE_double(respond_write_failed_probability);
 DECLARE_bool(detect_duplicates_for_retryable_requests);
 DECLARE_int32(raft_heartbeat_interval_ms);
+DECLARE_bool(combine_batcher_errors);
+DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_double(transaction_max_missed_heartbeat_periods);
+DECLARE_int32(retryable_request_range_time_limit_secs);
 
 using namespace std::literals;
 
@@ -62,13 +70,16 @@ class QLStressTest : public QLDmlTestBase {
   }
 
   void SetUp() override {
-    QLDmlTestBase::SetUp();
+    ASSERT_NO_FATALS(QLDmlTestBase::SetUp());
 
     YBSchemaBuilder b;
     InitSchemaBuilder(&b);
+    CompleteSchemaBuilder(&b);
 
     ASSERT_OK(table_.Create(kTableName, NumTablets(), client_.get(), &b));
   }
+
+  virtual void CompleteSchemaBuilder(YBSchemaBuilder* b) {}
 
   virtual int NumTablets() {
     return CalcNumTablets(3);
@@ -139,26 +150,52 @@ bool QLStressTest::CheckRetryableRequestsCounts(size_t* total_entries, size_t* t
   *total_leaders = 0;
   bool result = true;
   size_t replicated_limit = FLAGS_detect_duplicates_for_retryable_requests ? 1 : 0;
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    auto peers = cluster_->GetTabletPeers(i);
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  for (const auto& peer : peers) {
+    auto leader = peer->LeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+    if (!peer->tablet() || peer->tablet()->metadata()->table_id() != table_.table()->id()) {
+      continue;
+    }
+    size_t tablet_entries = peer->tablet()->TEST_CountRocksDBRecords();
+    auto raft_consensus = down_cast<consensus::RaftConsensus*>(peer->consensus());
+    auto request_counts = raft_consensus->TEST_CountRetryableRequests();
+    LOG(INFO) << "T " << peer->tablet()->tablet_id() << " P " << peer->permanent_uuid()
+              << ", entries: " << tablet_entries
+              << ", running: " << request_counts.running
+              << ", replicated: " << request_counts.replicated
+              << ", leader: " << leader;
+    if (leader) {
+      *total_entries += tablet_entries;
+      ++*total_leaders;
+    }
+    // Last write request could be rejected as duplicate, so followers would not be able to
+    // cleanup replicated requests.
+    if (request_counts.running != 0 || (leader && request_counts.replicated > replicated_limit)) {
+      result = false;
+    }
+  }
+
+  if (result && FLAGS_detect_duplicates_for_retryable_requests) {
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
     for (const auto& peer : peers) {
-      auto leader = peer->LeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
-      size_t tablet_entries = peer->tablet()->TEST_CountRocksDBRecords();
-      auto raft_consensus = down_cast<consensus::RaftConsensus*>(peer->consensus());
-      auto request_counts = raft_consensus->TEST_CountRetryableRequests();
-      LOG(INFO) << "T " << peer->tablet()->tablet_id() << " P " << peer->permanent_uuid()
-                << ", entries: " << tablet_entries
-                << ", running: " << request_counts.running
-                << ", replicated: " << request_counts.replicated
-                << ", leader: " << leader;
-      if (leader) {
-        *total_entries += tablet_entries;
-        ++*total_leaders;
+      if (peer->tablet()->metadata()->table_id() != table_.table()->id()) {
+        continue;
       }
-      // Last write request could be rejected as duplicate, so followers would not be able to
-      // cleanup replicated requests.
-      if (request_counts.running != 0 || (leader && request_counts.replicated > replicated_limit)) {
-        result = false;
+      auto db = peer->tablet()->TEST_db();
+      rocksdb::ReadOptions read_opts;
+      read_opts.query_id = rocksdb::kDefaultQueryId;
+      std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));
+      std::unordered_map<std::string, std::string> keys;
+
+      for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+        Slice key = iter->key();
+        EXPECT_OK(DocHybridTime::DecodeFromEnd(&key));
+        auto emplace_result = keys.emplace(key.ToBuffer(), iter->key().ToBuffer());
+        if (!emplace_result.second) {
+          LOG(ERROR)
+              << "Duplicate key: " << docdb::SubDocKey::DebugSliceToString(iter->key())
+              << " vs " << docdb::SubDocKey::DebugSliceToString(emplace_result.first->second);
+        }
       }
     }
   }
@@ -168,22 +205,51 @@ bool QLStressTest::CheckRetryableRequestsCounts(size_t* total_entries, size_t* t
 
 void QLStressTest::TestRetryWrites(bool restarts) {
   const size_t kConcurrentWrites = 5;
+  // Used only when table is transactional.
+  const double kTransactionalWriteProbability = 0.5;
 
   SetAtomicFlag(0.25, &FLAGS_respond_write_failed_probability);
+
+  const bool transactional = table_.table()->schema().table_properties().is_transactional();
+  boost::optional<TransactionManager> txn_manager;
+  if (transactional) {
+    server::ClockPtr clock(new server::HybridClock(WallClock()));
+    ASSERT_OK(clock->Init());
+    txn_manager.emplace(client_, clock, client::LocalTabletFilter());
+  }
 
   std::vector<std::thread> write_threads;
   std::atomic<int32_t> key_source(0);
   std::atomic<bool> stop_requested(false);
   while (write_threads.size() < kConcurrentWrites) {
-    write_threads.emplace_back([this, &key_source, &stop_requested] {
+    write_threads.emplace_back([this, &key_source, &stop_requested, &txn_manager,
+                                kTransactionalWriteProbability] {
       auto session = NewSession();
       while (!stop_requested.load(std::memory_order_acquire)) {
         int32_t key = key_source.fetch_add(1, std::memory_order_acq_rel);
+        YBTransactionPtr txn;
+        if (txn_manager &&
+            RandomActWithProbability(kTransactionalWriteProbability)) {
+          txn = std::make_shared<YBTransaction>(txn_manager.get_ptr());
+          ASSERT_OK(txn->Init(IsolationLevel::SNAPSHOT_ISOLATION));
+          session->SetTransaction(txn);
+        } else {
+          session->SetTransaction(nullptr);
+        }
 
         auto op = InsertRow(session, key, Format("value_$0", key));
         auto flush_status = session->Flush();
         if (flush_status.ok()) {
           ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
+
+          if (txn) {
+            auto commit_status = txn->CommitFuture().get();
+            if (!commit_status.ok()) {
+              LOG(INFO) << "Commit failed, key: " << key << ", txn: " << txn->id()
+                        << ", commit failed: " << commit_status;
+              ASSERT_TRUE(commit_status.IsExpired());
+            }
+          }
           continue;
         }
         ASSERT_TRUE(flush_status.IsIOError()) << "Status: " << flush_status;
@@ -249,6 +315,33 @@ TEST_F(QLStressTest, RetryWrites) {
 }
 
 TEST_F(QLStressTest, RetryWritesWithRestarts) {
+  FLAGS_detect_duplicates_for_retryable_requests = true;
+  TestRetryWrites(true /* restarts */);
+}
+
+class QLTransactionalStressTest : public QLStressTest {
+ public:
+  void SetUp() override {
+    FLAGS_transaction_rpc_timeout_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(1min).count();
+    FLAGS_transaction_max_missed_heartbeat_periods = 1000000;
+    FLAGS_retryable_request_range_time_limit_secs = 600;
+    ASSERT_NO_FATALS(QLStressTest::SetUp());
+  }
+
+  void CompleteSchemaBuilder(YBSchemaBuilder* b) override {
+    TableProperties table_properties;
+    table_properties.SetTransactional(true);
+    b->SetTableProperties(table_properties);
+  }
+};
+
+TEST_F_EX(QLStressTest, RetryTransactionalWrites, QLTransactionalStressTest) {
+  FLAGS_detect_duplicates_for_retryable_requests = true;
+  TestRetryWrites(false /* restarts */);
+}
+
+TEST_F_EX(QLStressTest, RetryTransactionalWritesWithRestarts, QLTransactionalStressTest) {
   FLAGS_detect_duplicates_for_retryable_requests = true;
   TestRetryWrites(true /* restarts */);
 }
@@ -479,6 +572,75 @@ TEST_F_EX(QLStressTest, FlushCompact, QLStressTestSingleTablet) {
     ASSERT_NO_FATALS(VerifyFlushedFrontiers());
   }
   ASSERT_GE(num_iter, 5);
+}
+
+// The scenario of this test is the following:
+// We do writes in background.
+// Isolate leader for 10 seconds.
+// Restore connectivity.
+// Check that old leader was able to catch up after the partition is healed.
+TEST_F_EX(QLStressTest, OldLeaderCatchUpAfterNetworkPartition, QLStressTestSingleTablet) {
+  FLAGS_combine_batcher_errors = true;
+
+  tablet::TabletPeer* leader_peer = nullptr;
+  std::atomic<int> key(0);
+  {
+    std::atomic<bool> stop(false);
+
+    std::thread writer([this, &stop, &key] {
+      auto session = NewSession();
+      std::string value_prefix = "value_";
+      while (!stop.load(std::memory_order_acquire)) {
+        ASSERT_OK(WriteRow(session, key, value_prefix + std::to_string(key)));
+        ++key;
+      }
+    });
+
+    BOOST_SCOPE_EXIT(&stop, &writer) {
+      stop.store(true);
+      writer.join();
+    } BOOST_SCOPE_EXIT_END;
+
+    tserver::MiniTabletServer* leader = nullptr;
+    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto current = cluster_->mini_tablet_server(i);
+      auto peers = current->server()->tablet_manager()->GetTabletPeers();
+      ASSERT_EQ(peers.size(), 1);
+      if (peers.front()->LeaderStatus() != consensus::LeaderStatus::NOT_LEADER) {
+        leader = current;
+        leader_peer = peers.front().get();
+        break;
+      }
+    }
+
+    ASSERT_NE(leader, nullptr);
+
+    std::this_thread::sleep_for(5s * yb::kTimeMultiplier);
+
+    auto pre_isolate_op_id = leader_peer->GetLatestLogEntryOpId();
+    LOG(INFO) << "Isolate, last op id: " << pre_isolate_op_id << ", key: " << key;
+    ASSERT_EQ(pre_isolate_op_id.term, 1);
+    ASSERT_GT(pre_isolate_op_id.index, key);
+    leader->SetIsolated(true);
+    std::this_thread::sleep_for(10s * yb::kTimeMultiplier);
+
+    auto pre_restore_op_id = leader_peer->GetLatestLogEntryOpId();
+    LOG(INFO) << "Restore, last op id: " << pre_restore_op_id << ", key: " << key;
+    ASSERT_EQ(pre_restore_op_id.term, 1);
+    ASSERT_GE(pre_restore_op_id.index, pre_isolate_op_id.index);
+    ASSERT_LE(pre_restore_op_id.index, pre_isolate_op_id.index + 10);
+    leader->SetIsolated(false);
+    std::this_thread::sleep_for(5s * yb::kTimeMultiplier);
+  }
+
+  ASSERT_OK(WaitFor([leader_peer, &key] {
+    return leader_peer->GetLatestLogEntryOpId().index > key;
+  }, 5s, "Old leader has enough operations"));
+
+  auto finish_op_id = leader_peer->GetLatestLogEntryOpId();
+  LOG(INFO) << "Finish, last op id: " << finish_op_id << ", key: " << key;
+  ASSERT_GT(finish_op_id.term, 1);
+  ASSERT_GT(finish_op_id.index, key);
 }
 
 } // namespace client

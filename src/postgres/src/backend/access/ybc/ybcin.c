@@ -24,6 +24,7 @@
 
 #include "postgres.h"
 
+#include "miscadmin.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
 #include "access/ybcam.h"
@@ -59,10 +60,27 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 
 	Assert(!index->rd_index->indisprimary);
 
-	/* Do the heap scan */
-	buildstate.index_tuples = 0;
-	heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true, ybcinbuildCallback,
-									 &buildstate, NULL);
+	PG_TRY();
+	{
+		/* Buffer the inserts into the index for initdb */
+		if (IsBootstrapProcessingMode())
+			YBCStartBufferingWriteOperations();
+
+		/* Do the heap scan */
+		buildstate.index_tuples = 0;
+		heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true, ybcinbuildCallback,
+										 &buildstate, NULL);
+	}
+	PG_CATCH();
+	{
+		if (IsBootstrapProcessingMode())
+			YBCFlushBufferedWriteOperations();
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	if (IsBootstrapProcessingMode())
+		YBCFlushBufferedWriteOperations();
 
 	/*
 	 * Return statistics
@@ -177,28 +195,10 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	return scan->xs_ctup.t_ybctid != 0;
 }
 
-int64
-ybcingetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
-{
-	return 0;
-}
-
 void 
 ybcinendscan(IndexScanDesc scan)
 {
 	ybc_index_endscan(scan);
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-void 
-ybcinmarkpos(IndexScanDesc scan)
-{
-}
-
-void 
-ybcinrestrpos(IndexScanDesc scan)
-{
 }
 
 /* --------------------------------------------------------------------------------------------- */

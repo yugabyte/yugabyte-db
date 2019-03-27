@@ -449,19 +449,22 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
 Status SetStackTraceSignal(int signum) {
   base::SpinLockHolder h(&g_dumper_thread_lock);
   if (!InitSignalHandlerUnlocked(signum)) {
-    return STATUS(InvalidArgument, "unable to install signal handler");
+    return STATUS(InvalidArgument, "Unable to install signal handler");
   }
   return Status::OK();
 }
 
-std::string DumpThreadStack(int64_t tid) {
+Result<StackTrace> ThreadStack(int64_t tid) {
+  StackTrace result;
 #if defined(__linux__)
   base::SpinLockHolder h(&g_dumper_thread_lock);
 
   // Ensure that our signal handler is installed. We don't need any fancy GoogleOnce here
   // because of the mutex above.
   if (!InitSignalHandlerUnlocked(g_stack_trace_signum)) {
-    return "<unable to take thread stack: signal handler unavailable>";
+    static const Status status = STATUS(
+        RuntimeError, "Unable to take thread stack: signal handler unavailable");
+    return status;
   }
 
   // Set the target TID in our communication structure, so if we end up with any
@@ -480,7 +483,9 @@ std::string DumpThreadStack(int64_t tid) {
       SignalCommunication::Lock l;
       g_comm.target_tid = 0;
     }
-    return "(unable to deliver signal: process may have exited)";
+    static const Status status = STATUS(
+        RuntimeError, "Unable to deliver signal: process may have exited");
+    return status;
   }
 
   // We give the thread ~1s to respond. In testing, threads typically respond within
@@ -489,7 +494,6 @@ std::string DumpThreadStack(int64_t tid) {
   // The main reason that a thread would not respond is that it has blocked signals. For
   // example, glibc's timer_thread doesn't respond to our signal, so we always time out
   // on that one.
-  string buf;
   int i = 0;
   while (!base::subtle::Acquire_Load(&g_comm.result_ready) &&
          i++ < 100) {
@@ -500,16 +504,29 @@ std::string DumpThreadStack(int64_t tid) {
     SignalCommunication::Lock l;
     CHECK_EQ(tid, g_comm.target_tid);
 
-    if (!g_comm.result_ready) {
-      buf = "(thread did not respond: maybe it is blocking signals)";
-    } else {
-      buf = g_comm.stack.Symbolize();
+    if (g_comm.result_ready) {
+      result = g_comm.stack;
     }
 
     g_comm.target_tid = 0;
     g_comm.result_ready = 0;
+
+    if (!result) {
+      static const Status status = STATUS(
+          RuntimeError, "Thread did not respond: maybe it is blocking signals");
+    }
   }
-  return buf;
+#endif
+  return result;
+}
+
+std::string DumpThreadStack(int64_t tid) {
+#if defined(__linux__)
+  auto stack_trace = ThreadStack(tid);
+  if (!stack_trace.ok()) {
+    return stack_trace.status().message().ToBuffer();
+  }
+  return stack_trace->Symbolize();
 #else // defined(__linux__)
   return "(unsupported platform)";
 #endif
@@ -682,6 +699,7 @@ void SymbolizeAddress(
   // We are appending the end-of-line character separately because we want to reuse the same
   // format string for libbacktrace callback and glog-based symbolization, and we have an extra
   // file name / line number component before the end-of-line in the libbacktrace case.
+  buf->push_back('\n');
 }
 
 // Symbolization function borrowed from glog and modified to use libbacktrace on Linux.

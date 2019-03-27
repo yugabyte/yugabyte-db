@@ -259,6 +259,14 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
         include_trace_(trace) {}
 
   void OperationCompleted() override {
+    // When we don't need to return any data, we could return success on duplicate request.
+    if (status_.IsAlreadyPresent() &&
+        state_->ql_write_ops()->empty() &&
+        state_->pgsql_write_ops()->empty() &&
+        state_->request()->redis_write_batch().empty()) {
+      status_ = Status::OK();
+    }
+
     if (!status_.ok()) {
       SetupErrorAndRespond(get_error(), status_, code_, context_.get());
       return;
@@ -759,7 +767,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   // For postgres requests check that the syscatalog version matches.
   if (tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE) {
     for (const auto& pg_req : req->pgsql_write_batch()) {
-      if (pg_req.ysql_catalog_version() < server_->ysql_catalog_version()) {
+      if (pg_req.has_ysql_catalog_version() &&
+          pg_req.ysql_catalog_version() < server_->ysql_catalog_version()) {
         SetupErrorAndRespond(resp->mutable_error(),
             STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while processing "
                                        "this query. Try Again."),
@@ -922,6 +931,7 @@ struct ReadContext {
 
   ReadHybridTime read_time;
   HybridTime safe_ht_to_read;
+  ReadHybridTime used_read_time;
   tablet::RequireLease require_lease = tablet::RequireLease::kFalse;
   HostPortPB* host_port_pb = nullptr;
   bool allow_retry = false;
@@ -1171,6 +1181,14 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
   if (read_context->req->include_trace() && Trace::CurrentTrace() != nullptr) {
     read_context->resp->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
   }
+
+  // It was read as part of transaction, but read time was not specified.
+  // I.e. allow_retry is true.
+  // So we just picked a read time and we should tell it back to the caller.
+  if (read_context->req->has_transaction() && read_context->allow_retry) {
+    read_context->used_read_time.ToPB(read_context->resp->mutable_used_read_time());
+  }
+
   RpcOperationCompletionCallback<ReadResponsePB> callback(
       std::move(*read_context->context), read_context->resp, server_->Clock());
   callback.OperationCompleted();
@@ -1192,6 +1210,7 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
   auto read_tx = VERIFY_RESULT(
       tablet::ScopedReadOperation::Create(
           read_context->tablet.get(), read_context->require_lease, read_context->read_time));
+  read_context->used_read_time = read_tx.read_time();
   if (!read_context->req->redis_batch().empty()) {
     // Assert the primary table is a redis table.
     DCHECK_EQ(read_context->tablet->table_type(), TableType::REDIS_TABLE_TYPE);
@@ -1720,6 +1739,23 @@ void TabletServiceImpl::GetTabletStatus(const GetTabletStatusRequestPB* req,
                          &context);
     return;
   }
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::IsTabletServerReady(const IsTabletServerReadyRequestPB* req,
+                                            IsTabletServerReadyResponsePB* resp,
+                                            rpc::RpcContext context) {
+  int not_running = server_->tablet_manager()->GetNumTabletsNotRunning();
+
+  resp->set_num_tablets_not_running(not_running);
+  if (not_running > 0) {
+    SetupErrorAndRespond(resp->mutable_error(),
+                         STATUS(ServiceUnavailable, "Tablet server not ready."),
+                         TabletServerErrorPB::PENDING_LOCAL_BOOTSTRAPS,
+                         &context);
+    return;
+  }
+
   context.RespondSuccess();
 }
 

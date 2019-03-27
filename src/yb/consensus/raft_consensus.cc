@@ -189,6 +189,8 @@ DEFINE_test_flag(int32, log_change_config_every_n, 1, "How often to log change c
                  "Used to reduce the number of lines being printed for change config requests "
                  "when a test simulates a failure that would generate a log of these requests.");
 
+DEFINE_bool(enable_lease_revocation, true, "Enables lease revocation mechanism");
+
 namespace yb {
 namespace consensus {
 
@@ -1003,7 +1005,20 @@ void RaftConsensus::UpdateMajorityReplicated(
     return;
   }
 
-  state_->SetMajorityReplicatedLeaseExpirationUnlocked(majority_replicated_data);
+  EnumBitSet<SetMajorityReplicatedLeaseExpirationFlag> flags;
+  if (FLAGS_enable_lease_revocation) {
+    if (!state_->old_leader_lease().holder_uuid.empty() &&
+        queue_->PeerAcceptedOurLease(state_->old_leader_lease().holder_uuid)) {
+      flags.Set(SetMajorityReplicatedLeaseExpirationFlag::kResetOldLeaderLease);
+    }
+
+    if (!state_->old_leader_ht_lease().holder_uuid.empty() &&
+        queue_->PeerAcceptedOurLease(state_->old_leader_ht_lease().holder_uuid)) {
+      flags.Set(SetMajorityReplicatedLeaseExpirationFlag::kResetOldLeaderHtLease);
+    }
+  }
+
+  state_->SetMajorityReplicatedLeaseExpirationUnlocked(majority_replicated_data, flags);
   leader_lease_wait_cond_.notify_all();
 
   VLOG_WITH_PREFIX(1) << "Marking majority replicated up to "
@@ -1560,9 +1575,10 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
     // Update the expiration time of the current leader's lease, so that when this follower becomes
     // a leader, it can wait out the time interval while the old leader might still be active.
     if (request->has_leader_lease_duration_ms()) {
-      state_->UpdateOldLeaderLeaseExpirationUnlocked(
-          MonoDelta::FromMilliseconds(request->leader_lease_duration_ms()),
-          request->ht_lease_expiration());
+      state_->UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
+          CoarseTimeLease(deduped_req.leader_uuid,
+                          CoarseMonoClock::now() + request->leader_lease_duration_ms() * 1ms),
+          PhysicalComponentLease(deduped_req.leader_uuid, request->ht_lease_expiration()));
     }
 
     // Also prohibit voting for anyone for the minimum election timeout.
@@ -1685,7 +1701,7 @@ Result<bool> RaftConsensus::EnqueuePreparesUnlocked(const ConsensusRequestPB& re
           msg, last ? propagated_safe_time : HybridTime::kInvalid);
       if (PREDICT_FALSE(!prepare_status.ok())) {
         --iter;
-        LOG(WARNING) << "StartReplicaOperationUnlocked failed: " << prepare_status.ToString();
+        LOG_WITH_PREFIX(WARNING) << "StartReplicaOperationUnlocked failed: " << prepare_status;
         break;
       }
       if (last) {
@@ -1949,14 +1965,17 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   }
 
   auto remaining_old_leader_lease = state_->RemainingOldLeaderLeaseDuration();
+
   if (remaining_old_leader_lease.Initialized()) {
     response->set_remaining_leader_lease_duration_ms(
         remaining_old_leader_lease.ToMilliseconds());
+    response->set_leader_lease_uuid(state_->old_leader_lease().holder_uuid);
   }
 
-  auto old_leader_ht_lease_expiration = state_->old_leader_ht_lease_expiration();
-  if (old_leader_ht_lease_expiration != HybridTime::kMin.GetPhysicalValueMicros()) {
-    response->set_leader_ht_lease_expiration(old_leader_ht_lease_expiration);
+  const auto& old_leader_ht_lease = state_->old_leader_ht_lease();
+  if (old_leader_ht_lease) {
+    response->set_leader_ht_lease_expiration(old_leader_ht_lease.expiration);
+    response->set_leader_ht_lease_uuid(old_leader_ht_lease.holder_uuid);
   }
 
   // Passed all our checks. Vote granted.
@@ -2346,8 +2365,9 @@ MicrosTime RaftConsensus::MajorityReplicatedHtLeaseExpiration(
   return state_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline);
 }
 
-std::string RaftConsensus::GetRequestVoteLogPrefix() const {
-  return state_->LogPrefix() + "Leader election vote request";
+std::string RaftConsensus::GetRequestVoteLogPrefix(const VoteRequestPB& request) const {
+  return Format("$0 Leader $1election vote request",
+                state_->LogPrefix(), request.preelection() ? "pre-" : "");
 }
 
 void RaftConsensus::FillVoteResponseVoteGranted(
@@ -2368,7 +2388,7 @@ Status RaftConsensus::RequestVoteRespondInvalidTerm(const VoteRequestPB* request
   FillVoteResponseVoteDenied(ConsensusErrorPB::INVALID_TERM, response);
   string msg = Substitute("$0: Denying vote to candidate $1 for earlier term $2. "
                           "Current term is $3.",
-                          GetRequestVoteLogPrefix(),
+                          GetRequestVoteLogPrefix(*request),
                           request->candidate_uuid(),
                           request->candidate_term(),
                           state_->GetCurrentTermUnlocked());
@@ -2382,7 +2402,7 @@ Status RaftConsensus::RequestVoteRespondVoteAlreadyGranted(const VoteRequestPB* 
   FillVoteResponseVoteGranted(*request, response);
   LOG(INFO) << Substitute("$0: Already granted yes vote for candidate $1 in term $2. "
                           "Re-sending same reply.",
-                          GetRequestVoteLogPrefix(),
+                          GetRequestVoteLogPrefix(*request),
                           request->candidate_uuid(),
                           request->candidate_term());
   return Status::OK();
@@ -2393,7 +2413,7 @@ Status RaftConsensus::RequestVoteRespondAlreadyVotedForOther(const VoteRequestPB
   FillVoteResponseVoteDenied(ConsensusErrorPB::ALREADY_VOTED, response);
   string msg = Substitute("$0: Denying vote to candidate $1 in current term $2: "
                           "Already voted for candidate $3 in this term.",
-                          GetRequestVoteLogPrefix(),
+                          GetRequestVoteLogPrefix(*request),
                           request->candidate_uuid(),
                           state_->GetCurrentTermUnlocked(),
                           state_->GetVotedForCurrentTermUnlocked());
@@ -2409,7 +2429,7 @@ Status RaftConsensus::RequestVoteRespondLastOpIdTooOld(const OpId& local_last_lo
   string msg = Substitute("$0: Denying vote to candidate $1 for term $2 because "
                           "replica has last-logged OpId of $3, which is greater than that of the "
                           "candidate, which has last-logged OpId of $4.",
-                          GetRequestVoteLogPrefix(),
+                          GetRequestVoteLogPrefix(*request),
                           request->candidate_uuid(),
                           request->candidate_term(),
                           local_last_logged_opid.ShortDebugString(),
@@ -2425,7 +2445,7 @@ Status RaftConsensus::RequestVoteRespondLeaderIsAlive(const VoteRequestPB* reque
   std::string msg = Format(
       "$0: Denying vote to candidate $1 for term $2 because replica is either leader or believes a "
       "valid leader to be alive. Time left: $3",
-      GetRequestVoteLogPrefix(), request->candidate_uuid(), request->candidate_term(),
+      GetRequestVoteLogPrefix(*request), request->candidate_uuid(), request->candidate_term(),
       withhold_votes_until_ - MonoTime::Now());
   LOG(INFO) << msg;
   StatusToPB(STATUS(InvalidArgument, msg), response->mutable_consensus_error()->mutable_status());
@@ -2438,7 +2458,7 @@ Status RaftConsensus::RequestVoteRespondIsBusy(const VoteRequestPB* request,
   string msg = Substitute("$0: Denying vote to candidate $1 for term $2 because "
                           "replica is already servicing an update from a current leader "
                           "or another vote.",
-                          GetRequestVoteLogPrefix(),
+                          GetRequestVoteLogPrefix(*request),
                           request->candidate_uuid(),
                           request->candidate_term());
   LOG(INFO) << msg;
@@ -2465,7 +2485,7 @@ Status RaftConsensus::RequestVoteRespondVoteGranted(const VoteRequestPB* request
   SnoozeFailureDetector(DO_NOT_LOG, additional_backoff);
 
   LOG(INFO) << Substitute("$0: Granting yes vote for candidate $1 in term $2.",
-                          GetRequestVoteLogPrefix(),
+                          GetRequestVoteLogPrefix(*request),
                           request->candidate_uuid(),
                           state_->GetCurrentTermUnlocked());
   return Status::OK();
@@ -2747,12 +2767,9 @@ void RaftConsensus::DoElectionCallback(const LeaderElectionData& data,
 
   LOG_WITH_PREFIX(INFO) << "Leader " << election_name << " won for term " << result.election_term;
 
-  if (result.old_leader_lease_expiration != CoarseTimePoint()) {
-    // Voters told us about the old leader's lease that we have to wait out.
-    state_->UpdateOldLeaderLeaseExpirationUnlocked(
-        result.old_leader_lease_expiration,
-        result.old_leader_ht_lease_expiration);
-  }
+  // Apply lease updates that were possible received from voters.
+  state_->UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
+      result.old_leader_lease, result.old_leader_ht_lease);
 
   // Convert role to LEADER.
   SetLeaderUuidUnlocked(state_->GetPeerUuid());

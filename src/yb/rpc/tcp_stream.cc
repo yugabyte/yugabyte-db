@@ -36,8 +36,7 @@ const size_t kMaxIov = 16;
 
 TcpStream::TcpStream(const StreamCreateData& data)
     : socket_(std::move(*data.socket)),
-      remote_(data.remote),
-      read_buffer_(data.allocator, data.limit) {
+      remote_(data.remote) {
 }
 
 TcpStream::~TcpStream() {
@@ -120,15 +119,15 @@ void TcpStream::Close() {
 void TcpStream::Shutdown(const Status& status) {
   ClearSending(status);
 
-  if (!read_buffer_.empty()) {
+  if (!ReadBuffer().Empty()) {
     LOG_WITH_PREFIX(WARNING) << "Shutting down with pending inbound data ("
-                             << read_buffer_ << ", status = " << status << ")";
+                             << ReadBuffer().ToString() << ", status = " << status << ")";
   }
 
   io_.stop();
   is_epoll_registered_ = false;
 
-  read_buffer_.Reset();
+  ReadBuffer().Reset();
 
   WARN_NOT_OK(socket_.Close(), "Error closing socket");
 }
@@ -290,8 +289,7 @@ Status TcpStream::ReadHandler() {
 }
 
 Result<bool> TcpStream::Receive() {
-  auto iov = read_buffer_.valid() ? read_buffer_.PrepareAppend()
-                                  : STATUS(IllegalState, "Read buffer was reset");
+  auto iov = ReadBuffer().PrepareAppend();
   if (!iov.ok()) {
     if (iov.status().IsBusy()) {
       read_buffer_full_ = true;
@@ -309,7 +307,7 @@ Result<bool> TcpStream::Receive() {
     return nread.status();
   }
 
-  read_buffer_.DataAppended(*nread);
+  ReadBuffer().DataAppended(*nread);
   return *nread != 0;
 }
 
@@ -326,14 +324,15 @@ void TcpStream::ParseReceived() {
 }
 
 Result<bool> TcpStream::TryProcessReceived() {
-  if (read_buffer_.empty()) {
+  auto& read_buffer = ReadBuffer();
+  if (!read_buffer.ReadyToRead()) {
     return false;
   }
 
-  auto consumed = VERIFY_RESULT(context_->ProcessReceived(
-      read_buffer_.AppendedVecs(), ReadBufferFull(read_buffer_.full())));
+  auto result = VERIFY_RESULT(context_->ProcessReceived(
+      read_buffer.AppendedVecs(), ReadBufferFull(read_buffer.Full())));
 
-  read_buffer_.Consume(consumed);
+  read_buffer.Consume(result.consumed, result.buffer);
   return true;
 }
 
@@ -351,7 +350,7 @@ Status TcpStream::WriteHandler(bool just_connected) {
 bool TcpStream::Idle(std::string* reason_not_idle) {
   bool result = true;
   // Check if we're in the middle of receiving something.
-  if (!read_buffer_.empty()) {
+  if (!ReadBuffer().Empty()) {
     if (reason_not_idle) {
       AppendWithSeparator("read buffer not empty", reason_not_idle);
     }
@@ -390,7 +389,7 @@ void TcpStream::Send(OutboundDataPtr data) {
 void TcpStream::DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) {
   auto call_in_flight = resp->add_calls_in_flight();
   for (auto& entry : sending_) {
-    if (entry.data && entry.data->DumpPB(req, call_in_flight)) {
+    if (entry.data && !entry.data->IsFinished() && entry.data->DumpPB(req, call_in_flight)) {
       call_in_flight = resp->add_calls_in_flight();
     }
   }

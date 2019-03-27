@@ -64,16 +64,17 @@ RedisConnectionContext::RedisConnectionContext(
     rpc::GrowableBufferAllocator* allocator,
     const MemTrackerPtr& call_tracker)
     : ConnectionContextWithQueue(
-          allocator, FLAGS_redis_max_concurrent_commands, FLAGS_redis_max_queued_bytes),
+          FLAGS_redis_max_concurrent_commands, FLAGS_redis_max_queued_bytes),
+      read_buffer_(allocator, FLAGS_redis_max_read_buffer_size),
       call_mem_tracker_(call_tracker) {}
 
 RedisConnectionContext::~RedisConnectionContext() {}
 
-Result<size_t> RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
-                                                    const IoVecs& data,
-                                                    rpc::ReadBufferFull read_buffer_full) {
+Result<rpc::ProcessDataResult> RedisConnectionContext::ProcessCalls(
+    const rpc::ConnectionPtr& connection, const IoVecs& data,
+    rpc::ReadBufferFull read_buffer_full) {
   if (!can_enqueue()) {
-    return 0;
+    return rpc::ProcessDataResult{0, Slice()};
   }
 
   if (!parser_) {
@@ -91,8 +92,8 @@ Result<size_t> RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& co
     }
     end_of_batch_ = end_of_command;
     if (++commands_in_batch_ >= FLAGS_redis_max_batch) {
-      std::vector<char> call_data;
-      IoVecsToBuffer(data, begin_of_batch, end_of_batch_, &call_data);
+      rpc::CallData call_data(end_of_batch_ - begin_of_batch);
+      IoVecsToBuffer(data, begin_of_batch, end_of_batch_, call_data.data());
       RETURN_NOT_OK(HandleInboundCall(connection, commands_in_batch_, &call_data));
       begin_of_batch = end_of_batch_;
       commands_in_batch_ = 0;
@@ -102,20 +103,20 @@ Result<size_t> RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& co
   // Do not form new call if we are in a middle of command.
   // It means that soon we should receive remaining data for this command and could wait.
   if (commands_in_batch_ > 0 && (end_of_batch_ == IoVecsFullSize(data) || read_buffer_full)) {
-    std::vector<char> call_data;
-    IoVecsToBuffer(data, begin_of_batch, end_of_batch_, &call_data);
+    rpc::CallData call_data(end_of_batch_ - begin_of_batch);
+    IoVecsToBuffer(data, begin_of_batch, end_of_batch_, call_data.data());
     RETURN_NOT_OK(HandleInboundCall(connection, commands_in_batch_, &call_data));
     begin_of_batch = end_of_batch_;
     commands_in_batch_ = 0;
   }
   parser.Consume(begin_of_batch);
   end_of_batch_ -= begin_of_batch;
-  return begin_of_batch;
+  return rpc::ProcessDataResult{begin_of_batch, Slice()};
 }
 
 Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connection,
                                                  size_t commands_in_batch,
-                                                 std::vector<char>* data) {
+                                                 rpc::CallData* data) {
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
@@ -130,10 +131,6 @@ Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& conne
   Enqueue(std::move(call));
 
   return Status::OK();
-}
-
-size_t RedisConnectionContext::BufferLimit() {
-  return FLAGS_redis_max_read_buffer_size;
 }
 
 Status RedisConnectionContext::ReportPendingWriteBytes(size_t pending_bytes) {
@@ -210,13 +207,13 @@ RedisInboundCall::~RedisInboundCall() {
 }
 
 Status RedisInboundCall::ParseFrom(
-    const MemTrackerPtr& mem_tracker, size_t commands, std::vector<char>* data) {
+    const MemTrackerPtr& mem_tracker, size_t commands, rpc::CallData* data) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "RedisInboundCall", this);
   TRACE_EVENT0("rpc", "RedisInboundCall::ParseFrom");
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, data->size());
 
-  request_data_.swap(*data);
+  request_data_ = std::move(*data);
   serialized_request_ = Slice(request_data_.data(), request_data_.size());
 
   client_batch_.resize(commands);

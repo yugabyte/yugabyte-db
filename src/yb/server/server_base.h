@@ -214,8 +214,11 @@ YB_STRONGLY_TYPED_BOOL(Private);
 std::string TEST_RpcAddress(int index, Private priv);
 // Returns bind endpoint for test server with specified index and specified port.
 std::string TEST_RpcBindEndpoint(int index, uint16_t port);
-// Breaks connectivity in test for specified messenger of server with index.
-void TEST_BreakConnectivity(rpc::Messenger* messenger, int index);
+
+// Sets up connectivity in test for specified messenger of server with index.
+void TEST_SetupConnectivity(rpc::Messenger* messenger, int index);
+// Isolates specific messenger, i.e. breaks connectivity with all other servers.
+void TEST_Isolate(rpc::Messenger* messenger);
 
 } // namespace server
 } // namespace yb

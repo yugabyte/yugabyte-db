@@ -25,6 +25,8 @@
 namespace yb {
 namespace pggate {
 
+YB_STRONGLY_TYPED_BOOL(RequestSent);
+
 class PgDocOp {
  public:
   // Public types.
@@ -45,8 +47,10 @@ class PgDocOp {
   explicit PgDocOp(PgSession::ScopedRefPtr pg_session, uint64_t* read_time);
   virtual ~PgDocOp();
 
-  // Postgres Ops.
-  virtual CHECKED_STATUS Execute();
+  // Execute the op. Return true if the request has been sent and is awaiting the result.
+  virtual Result<RequestSent> Execute();
+
+  // Get the result of the op.
   virtual CHECKED_STATUS GetResult(string *result_set);
 
   // Access functions.
@@ -66,6 +70,10 @@ class PgDocOp {
   // Send another request if no request is pending and we've already consumed
   // all data in the cache.
   CHECKED_STATUS SendRequestIfNeededUnlocked();
+
+  // Checks whether op causes restart. Could set exec_status_.
+  // Returns true is restart was initiated;
+  bool CheckRestartUnlocked(client::YBPgsqlOp* op);
 
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
@@ -95,6 +103,9 @@ class PgDocOp {
 
   // Caching state variables.
   std::list<string> result_cache_;
+
+  // Whether we can restart this operation.
+  const bool can_restart_;
 };
 
 class PgDocReadOp : public PgDocOp {
@@ -155,7 +166,6 @@ class PgDocWriteOp : public PgDocOp {
 
   // Operator.
   std::shared_ptr<client::YBPgsqlWriteOp> write_op_;
-  bool can_restart_;
 };
 
 // TODO(neil)
@@ -177,8 +187,8 @@ class PgDocCompoundOp : public PgDocOp {
   explicit PgDocCompoundOp(PgSession::ScopedRefPtr pg_session);
   virtual ~PgDocCompoundOp();
 
-  virtual CHECKED_STATUS Execute() {
-    return Status::OK();
+  virtual Result<RequestSent> Execute() {
+    return RequestSent::kTrue;
   }
   virtual CHECKED_STATUS GetResult(string *result_set) {
     return Status::OK();

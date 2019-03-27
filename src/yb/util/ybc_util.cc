@@ -30,6 +30,9 @@ namespace yb {
 namespace {
 
 Status InitInternal(const char* argv0) {
+  // Use InitGoogleLoggingSafeBasic() instead of InitGoogleLoggingSafe() to avoid calling
+  // google::InstallFailureSignalHandler(). This will prevent interference with PostgreSQL's
+  // own signal handling.
   yb::InitGoogleLoggingSafeBasic(argv0);
 
   // Allow putting gflags into a file and specifying that file's path as an env variable.
@@ -61,8 +64,7 @@ Status InitInternal(const char* argv0) {
   }
 
   RETURN_NOT_OK(CheckCPUFlags());
-  // Not calling google::InstallFailureSignalHandler() here to avoid interfering with PostgreSQL's
-  // own signal handling.
+
   return Status::OK();
 }
 

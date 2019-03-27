@@ -470,6 +470,8 @@ class MemTrackerAllocator : public Alloc {
   std::shared_ptr<MemTracker> mem_tracker_;
 };
 
+YB_STRONGLY_TYPED_BOOL(AlreadyConsumed);
+
 // Convenience class that adds memory consumption to a tracker when declared,
 // releasing it when the end of scope is reached.
 class ScopedTrackedConsumption {
@@ -477,10 +479,13 @@ class ScopedTrackedConsumption {
   ScopedTrackedConsumption() : consumption_(0) {}
 
   ScopedTrackedConsumption(MemTrackerPtr tracker,
-                           int64_t to_consume)
+                           int64_t to_consume,
+                           AlreadyConsumed already_consumed = AlreadyConsumed::kFalse)
       : tracker_(std::move(tracker)), consumption_(to_consume) {
     DCHECK(*this);
-    tracker_->Consume(consumption_);
+    if (!already_consumed) {
+      tracker_->Consume(consumption_);
+    }
   }
 
   ScopedTrackedConsumption(const ScopedTrackedConsumption&) = delete;
@@ -492,10 +497,15 @@ class ScopedTrackedConsumption {
   }
 
   void operator=(ScopedTrackedConsumption&& rhs) {
-    DCHECK(!*this);
-    tracker_ = std::move(rhs.tracker_);
-    consumption_ = rhs.consumption_;
-    rhs.consumption_ = 0;
+    if (rhs) {
+      DCHECK(!*this);
+      tracker_ = std::move(rhs.tracker_);
+      consumption_ = rhs.consumption_;
+      rhs.consumption_ = 0;
+    } else if (tracker_) {
+      tracker_->Release(consumption_);
+      tracker_ = nullptr;
+    }
   }
 
   void Reset(int64_t new_consumption) {

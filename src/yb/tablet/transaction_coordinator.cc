@@ -196,11 +196,24 @@ class TransactionState {
     auto status = DoProcessReplicated(data);
 
     if (data.leader_term == OpId::kUnknownTerm) {
-      ClearRequests(STATUS(Aborted, "Leader changed"));
-    } else if (Completed()) {
-      ClearRequests(STATUS(Aborted, "Transaction completed"));
+      ClearRequests(STATUS(IllegalState, "Leader changed"));
     } else {
-      ProcessQueue();
+      switch(status_) {
+        case TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS:
+          ClearRequests(STATUS(AlreadyPresent, "Transaction committed"));
+          break;
+        case TransactionStatus::ABORTED:
+          ClearRequests(STATUS(Aborted, "Transaction aborted"));
+          break;
+        case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
+        case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
+        case TransactionStatus::COMMITTED: FALLTHROUGH_INTENDED;
+        case TransactionStatus::APPLYING: FALLTHROUGH_INTENDED;
+        case TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS: FALLTHROUGH_INTENDED;
+        case TransactionStatus::CLEANUP:
+          ProcessQueue();
+          break;
+      }
     }
 
     return status;
@@ -266,6 +279,7 @@ class TransactionState {
     } else if (status_ == TransactionStatus::ABORTED) {
       return TransactionStatusResult::Aborted();
     } else {
+      VLOG_WITH_PREFIX(1) << "External abort request";
       CHECK_EQ(TransactionStatus::PENDING, status_);
       abort_waiters_.emplace_back(std::move(*callback));
       Abort();
@@ -419,8 +433,10 @@ class TransactionState {
   CHECKED_STATUS HandleCommit() {
     auto hybrid_time = context_.coordinator_context().clock().Now();
     if (ExpiredAt(hybrid_time)) {
+      auto status = STATUS(Expired, "Commit of expired transaction");
+      VLOG_WITH_PREFIX(4) << status;
       Abort();
-      return STATUS(Expired, "Commit of expired transaction");;
+      return status;
     }
     if (status_ != TransactionStatus::PENDING) {
       return STATUS_FORMAT(IllegalState,
@@ -517,6 +533,7 @@ class TransactionState {
   // the same meaning.
   CHECKED_STATUS PendingReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
     if (context_.leader() && ExpiredAt(data.hybrid_time)) {
+      VLOG_WITH_PREFIX(4) << "Expired during replication of PENDING or CREATED operations.";
       Abort();
       return Status::OK();
     }
@@ -959,6 +976,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           it = index.erase(it);
         } else {
           bool modified = index.modify(it, [](TransactionState& state) {
+            VLOG(4) << state.LogPrefix() << "Cleanup expired transaction";
             state.Abort();
           });
           DCHECK(modified);

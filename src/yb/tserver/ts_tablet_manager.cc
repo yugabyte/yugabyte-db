@@ -465,6 +465,12 @@ Status TSTabletManager::Init() {
   return Status::OK();
 }
 
+Status TSTabletManager::Start() {
+  async_client_init_->Start();
+
+  return Status::OK();
+}
+
 Status TSTabletManager::WaitForAllBootstrapsToFinish() {
   CHECK_EQ(state(), MANAGER_RUNNING);
 
@@ -765,13 +771,9 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 // Create and register a new TabletPeer, given tablet metadata.
 Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
     const scoped_refptr<TabletMetadata>& meta, RegisterTabletPeerMode mode) {
-  TabletPeerPtr tablet_peer(
-      new TabletPeerClass(meta,
-                          local_peer_pb_,
-                          fs_manager_->uuid(),
-                          Bind(&TSTabletManager::ApplyChange,
-                               Unretained(this),
-                               meta->tablet_id())));
+  TabletPeerPtr tablet_peer(new TabletPeerClass(
+      meta, local_peer_pb_, scoped_refptr<server::Clock>(server_->clock()), fs_manager_->uuid(),
+      Bind(&TSTabletManager::ApplyChange, Unretained(this), meta->tablet_id())));
   RETURN_NOT_OK(RegisterTablet(meta->tablet_id(), tablet_peer, mode));
   return tablet_peer;
 }
@@ -973,7 +975,6 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
     TRACE("Initializing tablet peer");
     s = tablet_peer->InitTabletPeer(tablet,
                                     async_client_init_->get_client_future(),
-                                    scoped_refptr<server::Clock>(server_->clock()),
                                     server_->messenger(),
                                     &server_->proxy_cache(),
                                     log,
@@ -1205,6 +1206,25 @@ void TSTabletManager::MarkTabletDirty(const std::string& tablet_id,
 int TSTabletManager::GetNumDirtyTabletsForTests() const {
   boost::shared_lock<RWMutex> lock(lock_);
   return dirty_tablets_.size();
+}
+
+int TSTabletManager::GetNumTabletsNotRunning() const {
+  if (state() != MANAGER_RUNNING) {
+    return INT_MAX;
+  }
+
+  boost::shared_lock<RWMutex> shared_lock(lock_);
+  int num_not_running = 0;
+  for (const auto& entry : tablet_map_) {
+    tablet::TabletStatePB state = entry.second->state();
+    if (state != tablet::RUNNING) {
+      num_not_running++;
+    }
+  }
+
+  LOG(INFO) << num_not_running << " tablets not running out of " << tablet_map_.size();
+
+  return num_not_running;
 }
 
 int TSTabletManager::GetNumLiveTablets() const {

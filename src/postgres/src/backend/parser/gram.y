@@ -838,6 +838,7 @@ stmt :
 			| CreateAsStmt
 			| CopyStmt
 			| CreateSchemaStmt
+			| CreateSeqStmt
 			| CreateStmt
 			| CreateUserStmt
 			| CreatedbStmt
@@ -915,7 +916,6 @@ stmt :
 			| AlterOpFamilyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePolicyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePLangStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateSeqStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateStatsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateTableSpaceStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -2693,7 +2693,7 @@ alter_column_default:
 		;
 
 opt_drop_behavior:
-			CASCADE						{ $$ = DROP_CASCADE; parser_ybc_not_support(@1, "CASCADE"); }
+			CASCADE						{ $$ = DROP_CASCADE; }
 			| RESTRICT					{ $$ = DROP_RESTRICT; }
 			| /* EMPTY */				{ $$ = DROP_RESTRICT; /* default */ }
 		;
@@ -4376,7 +4376,6 @@ RefreshMatViewStmt:
 CreateSeqStmt:
 			CREATE OptTemp SEQUENCE qualified_name OptSeqOptList
 				{
-					parser_ybc_not_support(@1, "CREATE SEQUENCE");
 					CreateSeqStmt *n = makeNode(CreateSeqStmt);
 					$4->relpersistence = $2;
 					n->sequence = $4;
@@ -4387,7 +4386,6 @@ CreateSeqStmt:
 				}
 			| CREATE OptTemp SEQUENCE IF_P NOT EXISTS qualified_name OptSeqOptList
 				{
-					parser_ybc_not_support(@1, "CREATE SEQUENCE");
 					CreateSeqStmt *n = makeNode(CreateSeqStmt);
 					$7->relpersistence = $2;
 					n->sequence = $7;
@@ -4442,6 +4440,7 @@ SeqOptElem: AS SimpleTypename
 				}
 			| CYCLE
 				{
+					parser_ybc_not_support(@1, "CYCLE");
 					$$ = makeDefElem("cycle", (Node *)makeInteger(true), @1);
 				}
 			| NO CYCLE
@@ -6662,7 +6661,7 @@ DropStmt:	DROP drop_type_any_name IF_P EXISTS any_name_list opt_drop_behavior
 /* object types taking any_name_list */
 drop_type_any_name:
 			TABLE									{ $$ = OBJECT_TABLE; }
-			| SEQUENCE { parser_ybc_not_support(@1, "DROP SEQUENCE"); $$ = OBJECT_SEQUENCE; }
+			| SEQUENCE								{ $$ = OBJECT_SEQUENCE; }
 			| VIEW									{ $$ = OBJECT_VIEW; }
 			| MATERIALIZED VIEW
 				{
@@ -13130,7 +13129,6 @@ Typename:	SimpleTypename opt_array_bounds
 			/* SQL standard syntax, currently only one-dimensional */
 			| SimpleTypename ARRAY '[' Iconst ']'
 				{
-					parser_ybc_not_support(@1, "Complex type");
 					$$ = $1;
 					$$->arrayBounds = list_make1(makeInteger($4));
 				}
@@ -13170,18 +13168,16 @@ opt_array_bounds:
 SimpleTypename:
 			GenericType	{ $$ = $1; }
 			| Numeric	{ $$ = $1; }
-			| Bit	{ parser_ybc_not_support(@1, "Bit type"); $$ = $1; }
+			| Bit	{ $$ = $1; }
 			| Character	{ $$ = $1; }
 			| ConstDatetime	{ $$ = $1; }
 			| ConstInterval opt_interval
 				{
-					parser_ybc_not_support(@1, "Interval");
 					$$ = $1;
 					$$->typmods = $2;
 				}
 			| ConstInterval '(' Iconst ')'
 				{
-					parser_ybc_not_support(@1, "Interval");
 					$$ = $1;
 					$$->typmods = list_make2(makeIntConst(INTERVAL_FULL_RANGE, -1),
 											 makeIntConst($3, @3));
@@ -13331,12 +13327,10 @@ opt_float:	'(' Iconst ')'
  */
 Bit:		BitWithLength
 				{
-					parser_ybc_not_support(@1, "BIT");
 					$$ = $1;
 				}
 			| BitWithoutLength
 				{
-					parser_ybc_not_support(@1, "BIT");
 					$$ = $1;
 				}
 		;
@@ -13357,7 +13351,6 @@ ConstBit:	BitWithLength
 BitWithLength:
 			BIT opt_varying '(' expr_list ')'
 				{
-					parser_ybc_not_support(@1, "BIT");
 					char *typname;
 
 					typname = $2 ? "varbit" : "bit";
@@ -13370,7 +13363,6 @@ BitWithLength:
 BitWithoutLength:
 			BIT opt_varying
 				{
-					parser_ybc_not_support(@1, "BIT");
 					/* bit defaults to bit(1), varbit to no limit */
 					if ($2)
 					{
@@ -13497,7 +13489,6 @@ ConstDatetime:
 ConstInterval:
 			INTERVAL
 				{
-					parser_ybc_not_support(@1, "INTERVAL");
 					$$ = SystemTypeName("interval");
 					$$->location = @1;
 				}

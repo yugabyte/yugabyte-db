@@ -80,6 +80,10 @@ class TcpStream : public Stream {
 
   CHECKED_STATUS DoStart(ev::loop_ref* loop, bool connect);
 
+  StreamReadBuffer& ReadBuffer() {
+    return context_->ReadBuffer();
+  }
+
   // The socket we're communicating on.
   Socket socket_;
 
@@ -103,8 +107,6 @@ class TcpStream : public Stream {
 
   bool connected_ = false;
 
-  // Data received on this connection that has not been processed yet.
-  GrowableBuffer read_buffer_;
   bool read_buffer_full_ = false;
 
   typedef boost::container::small_vector<RefCntBuffer, 4> SendingBytes;

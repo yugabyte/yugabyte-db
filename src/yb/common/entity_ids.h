@@ -43,6 +43,9 @@ using FlushRequestId = std::string;
 
 using RedisConfigKey = std::string;
 
+static const uint32_t kPgSequencesDataTableOid = 0xFFFF;
+static const uint32_t kPgSequencesDataDatabaseOid = 0xFFFF;
+
 // Get YB namespace id for a Postgres database.
 NamespaceId GetPgsqlNamespaceId(uint32_t database_oid);
 

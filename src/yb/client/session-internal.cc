@@ -97,6 +97,11 @@ void YBSessionData::SetReadPoint(const Restart restart) {
   }
 }
 
+bool YBSessionData::IsRestartRequired() {
+  auto rp = read_point();
+  return rp && rp->IsRestartRequired();
+}
+
 Status YBSessionData::Close(bool force) {
   if (batcher_) {
     if (batcher_->HasPendingOperations() && !force) {
@@ -244,7 +249,7 @@ CollectedErrors YBSessionData::GetPendingErrors() {
   return error_collector_->GetErrors();
 }
 
-void YBSessionData::SetForceConsistentRead(bool value) {
+void YBSessionData::SetForceConsistentRead(ForceConsistentRead value) {
   force_consistent_read_ = value;
   if (batcher_) {
     batcher_->SetForceConsistentRead(value);

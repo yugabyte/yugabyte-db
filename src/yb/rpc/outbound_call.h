@@ -41,6 +41,7 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/call_data.h"
 #include "yb/rpc/constants.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/response_callback.h"
@@ -140,7 +141,7 @@ class CallResponse {
 
   // Parse the response received from a call. This must be called before any
   // other methods on this object. Takes ownership of data content.
-  CHECKED_STATUS ParseFrom(std::vector<char>* data);
+  CHECKED_STATUS ParseFrom(CallData* data);
 
   // Return true if the call succeeded.
   bool is_success() const {
@@ -181,7 +182,7 @@ class CallResponse {
 
   // The incoming transfer data - retained because serialized_response_
   // and sidecar_slices_ refer into its data.
-  std::vector<char> response_data_;
+  CallData response_data_;
 
   DISALLOW_COPY_AND_ASSIGN(CallResponse);
 };
@@ -226,10 +227,8 @@ class OutboundCall : public RpcCall {
 
   // Mark the call as failed. This also triggers the callback to notify
   // the caller. If the call failed due to a remote error, then err_pb
-  // should be set to the error returned by the remote server. Takes
-  // ownership of 'err_pb'.
-  void SetFailed(const Status& status,
-                 ErrorStatusPB* err_pb = NULL);
+  // should be set to the error returned by the remote server.
+  void SetFailed(const Status& status, std::unique_ptr<ErrorStatusPB> err_pb = nullptr);
 
   // Mark the call as timed out. This also triggers the callback to notify
   // the caller.
@@ -330,7 +329,7 @@ class OutboundCall : public RpcCall {
   mutable simple_spinlock lock_;
   std::atomic<State> state_ = {READY};
   Status status_;
-  gscoped_ptr<ErrorStatusPB> error_pb_;
+  std::unique_ptr<ErrorStatusPB> error_pb_;
 
   // Call the user-provided callback.
   void CallCallback();

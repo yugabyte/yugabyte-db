@@ -12,11 +12,8 @@ CREATE TABLE feature_tab_double_precision (feature_col DOUBLE PRECISION);
 CREATE TABLE feature_tab_decimal (feature_col DECIMAL);
 CREATE TABLE feature_tab_numeric (feature_col NUMERIC);
 CREATE TABLE feature_tab_smallserial (feature_col SMALLSERIAL);
-ERROR:  could not open file "base/18373/0": No such file or directory
 CREATE TABLE feature_tab_serial (feature_col SERIAL);
-ERROR:  could not open file "base/18373/0": No such file or directory
 CREATE TABLE feature_tab_bigserial (feature_col BIGSERIAL);
-ERROR:  could not open file "base/18373/0": No such file or directory
 --
 -- Monetary Types
 CREATE TABLE feature_tab_money (feature_col MONEY);
@@ -37,12 +34,8 @@ CREATE TABLE feature_tab_timestamp_with_time_zone (feature_col TIMESTAMP WITH TI
 CREATE TABLE feature_tab_date (feature_col DATE);
 CREATE TABLE feature_tab_time (feature_col TIME(2));
 CREATE TABLE feature_tab_time_with_time_zone (feature_col TIME(2) WITH TIME ZONE);
-ERROR:  Type not yet supported in YugaByte: 1266 (TIMETZ)
-CREATE TABLE feature_tab_interval (feature_col INTERVAL[YEAR TO MONTH, DAY TO SECOND](2));
-ERROR:  INTERVAL not supported yet
-LINE 1: CREATE TABLE feature_tab_interval (feature_col INTERVAL[YEAR...
-                                                       ^
-HINT:  Please contact YugaByte for its release schedule.
+CREATE TABLE feature_tab_interval_ym (feature_col INTERVAL YEAR TO MONTH);
+CREATE TABLE feature_tab_interval_ds (feature_col INTERVAL DAY TO SECOND(2));
 --
 -- Boolean Type
 CREATE TABLE feature_tab_bool (feature_col BOOLEAN);
@@ -60,54 +53,32 @@ LINE 1: CREATE TABLE feature_tab_enum (feature_col feature_enum);
 --
 -- Geometric Types
 CREATE TABLE feature_tab_point (feature_col POINT);
-ERROR:  Type not yet supported in YugaByte: 600 (POINT)
 CREATE TABLE feature_tab_line (feature_col LINE);
-ERROR:  Type not yet supported in YugaByte: 628 (LINE)
 CREATE TABLE feature_tab_lseg (feature_col LSEG);
-ERROR:  Type not yet supported in YugaByte: 601 (LSEG)
 CREATE TABLE feature_tab_box (feature_col BOX);
-ERROR:  Type not yet supported in YugaByte: 603 (BOX)
 CREATE TABLE feature_tab_path (feature_col PATH);
-ERROR:  Type not yet supported in YugaByte: 602 (PATH)
 CREATE TABLE feature_tab_polygon (feature_col POLYGON);
-ERROR:  Type not yet supported in YugaByte: 604 (POLYGON)
 CREATE TABLE feature_tab_circle (feature_col CIRCLE);
-ERROR:  Type not yet supported in YugaByte: 718 (CIRCLE)
 --
 -- Network Address Types
 CREATE TABLE feature_tab_cidr (feature_col CIDR);
-ERROR:  Type not yet supported in YugaByte: 650 (CIDR)
 CREATE TABLE feature_tab_inet (feature_col INET);
-ERROR:  Type not yet supported in YugaByte: 869 (INET)
 CREATE TABLE feature_tab_macaddr (feature_col MACADDR);
-ERROR:  Type not yet supported in YugaByte: 829 (MACADDR)
 CREATE TABLE feature_tab_macaddr8 (feature_col MACADDR8);
-ERROR:  Type not yet supported in YugaByte: 774 (MACADDR8)
 --
 -- Bit String Types
 CREATE TABLE feature_tab_bit (feature_col BIT);
-ERROR:  BIT not supported yet
-LINE 1: CREATE TABLE feature_tab_bit (feature_col BIT);
-                                                  ^
-HINT:  Please contact YugaByte for its release schedule.
 CREATE TABLE feature_tab_bit_varying (feature_col BIT VARYING(10));
-ERROR:  BIT not supported yet
-LINE 1: CREATE TABLE feature_tab_bit_varying (feature_col BIT VARYIN...
-                                                          ^
-HINT:  Please contact YugaByte for its release schedule.
 --
 -- Text Search Types
 CREATE TABLE feature_tab_tsvector (feature_col TSVECTOR);
-ERROR:  Type not yet supported in YugaByte: 3614 (TSVECTOR)
 CREATE TABLE feature_tab_tsquery (feature_col TSQUERY);
-ERROR:  Type not yet supported in YugaByte: 3615 (TSQUERY)
 --
 -- UUID Type
 CREATE TABLE feature_tab_uuid (feature_col UUID);
 --
 -- XML Type
 CREATE TABLE feature_tab_xml (feature_col XML);
-ERROR:  Type not yet supported in YugaByte: 142 (XML)
 --
 -- Arrays
 CREATE TABLE feature_tab_array_int (feature_col INTEGER[]);

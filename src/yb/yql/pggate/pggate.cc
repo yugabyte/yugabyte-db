@@ -94,6 +94,8 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count)
     const YBCPgTypeEntity *type_entity = &YBCDataTypeArray[idx];
     type_map_[type_entity->type_oid] = type_entity;
   }
+
+  async_client_init_.Start();
 }
 
 PgApiImpl::~PgApiImpl() {
@@ -146,6 +148,45 @@ Status PgApiImpl::InvalidateCache(PgSession *pg_session) {
   pg_session->InvalidateCache();
   return Status::OK();
 }
+
+//--------------------------------------------------------------------------------------------------
+
+Status PgApiImpl::CreateSequencesDataTable(PgSession *pg_session) {
+  return pg_session->CreateSequencesDataTable();
+}
+
+Status PgApiImpl::InsertSequenceTuple(PgSession *pg_session,
+                                      int64_t db_oid,
+                                      int64_t seq_oid,
+                                      int64_t last_val,
+                                      bool is_called) {
+  return pg_session->InsertSequenceTuple(db_oid, seq_oid, last_val, is_called);
+}
+
+Status PgApiImpl::UpdateSequenceTuple(PgSession *pg_session,
+                                      int64_t db_oid,
+                                      int64_t seq_oid,
+                                      int64_t last_val,
+                                      bool is_called,
+                                      int64_t expected_last_val,
+                                      bool expected_is_called,
+                                      bool* skipped) {
+  return pg_session->UpdateSequenceTuple(db_oid, seq_oid, last_val, is_called, expected_last_val,
+      expected_is_called, skipped);
+}
+
+Status PgApiImpl::ReadSequenceTuple(PgSession *pg_session,
+                                    int64_t db_oid,
+                                    int64_t seq_oid,
+                                    int64_t *last_val,
+                                    bool *is_called) {
+  return pg_session->ReadSequenceTuple(db_oid, seq_oid, last_val, is_called);
+}
+
+Status PgApiImpl::DeleteSequenceTuple(PgSession *pg_session, int64_t db_oid, int64_t seq_oid) {
+  return pg_session->DeleteSequenceTuple(db_oid, seq_oid);
+}
+
 
 //--------------------------------------------------------------------------------------------------
 
@@ -541,6 +582,14 @@ Status PgApiImpl::DmlFetch(PgStatement *handle, int32_t natts, uint64_t *values,
   return down_cast<PgDml*>(handle)->Fetch(natts, values, isnulls, syscols, has_data);
 }
 
+Status PgApiImpl::StartBufferingWriteOperations(PgSession *pg_session) {
+  return pg_session->StartBufferingWriteOperations();
+}
+
+Status PgApiImpl::FlushBufferedWriteOperations(PgSession *pg_session) {
+  return pg_session->FlushBufferedWriteOperations();
+}
+
 Status PgApiImpl::DmlExecWriteOp(PgStatement *handle) {
   switch (handle->stmt_op()) {
     case StmtOp::STMT_INSERT:
@@ -557,10 +606,11 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle) {
 
 Status PgApiImpl::NewInsert(PgSession *pg_session,
                             const PgObjectId& table_id,
+                            const bool is_single_row_txn,
                             PgStatement **handle) {
   DCHECK(pg_session) << "Invalid session handle";
   *handle = nullptr;
-  auto stmt = make_scoped_refptr<PgInsert>(pg_session, table_id);
+  auto stmt = make_scoped_refptr<PgInsert>(pg_session, table_id, is_single_row_txn);
   RETURN_NOT_OK(stmt->Prepare());
   *handle = stmt.detach();
   return Status::OK();

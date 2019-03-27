@@ -443,7 +443,7 @@ Status YBClient::Data::CreateTable(YBClient* client,
   *table_id = resp.table_id();
   RETURN_NOT_OK(s);
   if (resp.has_error()) {
-    if (resp.error().code() == MasterErrorPB::TABLE_ALREADY_PRESENT && attempts > 1) {
+    if (resp.error().code() == MasterErrorPB::OBJECT_ALREADY_PRESENT && attempts > 1) {
       // If the table already exists and the number of attempts is >
       // 1, then it means we may have succeeded in creating the
       // table, but client didn't receive the successful
@@ -570,7 +570,7 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   RETURN_NOT_OK(s);
 
   if (resp.has_error()) {
-    if (resp.error().code() == MasterErrorPB::TABLE_NOT_FOUND && attempts > 1) {
+    if (resp.error().code() == MasterErrorPB::OBJECT_NOT_FOUND && attempts > 1) {
       // A prior attempt to delete the table has succeeded, but
       // appeared as a failure to the client due to, e.g., an I/O or
       // network issue.
@@ -617,7 +617,7 @@ Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
   // compiler complains.
   RETURN_NOT_OK(s);
   if (resp.has_error()) {
-    if (resp.error().code() == MasterErrorPB::TABLE_NOT_FOUND) {
+    if (resp.error().code() == MasterErrorPB::OBJECT_NOT_FOUND) {
       *delete_in_progress = false;
       return Status::OK();
     }

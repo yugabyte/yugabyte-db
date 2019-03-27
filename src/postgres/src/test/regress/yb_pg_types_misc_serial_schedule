@@ -1,0 +1,16 @@
+# src/test/regress/yb_pg_type_serial_schedule
+#
+####################################################################################################
+# Postgres Testsuites: Porting from PostgreSQL original tests.
+# This suite includes all tests on datatypes that are enabled for YugaByte.
+####################################################################################################
+test: yb_boolean
+test: yb_date
+test: yb_time
+test: yb_timestamp
+test: yb_interval
+test: yb_inet
+test: yb_macaddr
+test: yb_macaddr8
+# LOG sequence number
+test: yb_pg_lsn

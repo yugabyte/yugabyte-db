@@ -54,6 +54,11 @@ DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(durable_wal_write);
 DECLARE_int32(stderrthreshold);
 
+DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
+// Deprecated because it's misspelled.  But if set, this flag takes precedence over
+// remote_bootstrap_rate_limit_bytes_per_sec for compatibility.
+DECLARE_int64(remote_boostrap_rate_limit_bytes_per_sec);
+
 using namespace std::literals;
 
 namespace yb {
@@ -92,6 +97,14 @@ static int MasterMain(int argc, char** argv) {
   auto opts_result = MasterOptions::CreateMasterOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(opts_result);
   YB_EDITION_NS_PREFIX Master server(*opts_result);
+
+  if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec > 0) {
+    LOG(WARNING) << "Flag remote_boostrap_rate_limit_bytes_per_sec has been deprecated. "
+                 << "Use remote_bootstrap_rate_limit_bytes_per_sec flag instead";
+    FLAGS_remote_bootstrap_rate_limit_bytes_per_sec =
+        FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
+  }
+
   LOG(INFO) << "Initializing master server...";
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Init());
 

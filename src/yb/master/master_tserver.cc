@@ -71,7 +71,7 @@ Status MasterTabletServer::GetRegistration(ServerRegistrationPB* reg) const {
 }
 
 Status MasterTabletServer::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
-  return STATUS(NotSupported, "Remote boostrap not supported by master tserver");
+  return STATUS(NotSupported, "Remote bootstrap not supported by master tserver");
 }
 
 uint64_t MasterTabletServer::ysql_catalog_version() const {

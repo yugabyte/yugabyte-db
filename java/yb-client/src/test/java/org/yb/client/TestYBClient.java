@@ -51,6 +51,7 @@ import org.yb.Schema;
 import org.yb.Type;
 import org.yb.master.Master;
 import org.yb.minicluster.MiniYBCluster;
+import org.yb.tserver.Tserver.TabletServerErrorPB;
 
 import com.google.common.net.HostAndPort;
 
@@ -120,6 +121,19 @@ public class TestYBClient extends BaseYBClientTest {
     syncClient.injectWaitError();
     boolean isBalanced = syncClient.waitForLoadBalance(Long.MAX_VALUE, 0);
     assertTrue(isBalanced);
+  }
+
+  /**
+   * Test to check tserver readiness status.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testTServerReady() throws Exception {
+    HostAndPort thp = miniCluster.getTabletServers().entrySet().iterator().next().getKey();
+    IsTabletServerReadyResponse resp = syncClient.isTServerReady(thp);
+    assertFalse(resp.hasError());
+    assertEquals(resp.getNumNotRunningTablets(), 0);
+    assertEquals(resp.getCode(), TabletServerErrorPB.Code.UNKNOWN_ERROR);
   }
 
   /**

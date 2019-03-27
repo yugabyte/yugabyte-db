@@ -377,14 +377,14 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
     TRACE_TO(trace_, "Callback called.");
   } else {
     // Error
-    gscoped_ptr<ErrorStatusPB> err(new ErrorStatusPB());
+    auto err = std::make_unique<ErrorStatusPB>();
     if (!pb_util::ParseFromArray(err.get(), r.data(), r.size()).IsOk()) {
       SetFailed(STATUS(IOError, "Was an RPC error but could not parse error response",
                                 err->InitializationErrorString()));
       return;
     }
-    ErrorStatusPB* err_raw = err.release();
-    SetFailed(STATUS(RemoteError, err_raw->message()), err_raw);
+    auto status = STATUS(RemoteError, err->message());
+    SetFailed(status, std::move(err));
   }
 }
 
@@ -420,15 +420,14 @@ void OutboundCall::SetFinished() {
   TRACE_TO(trace_, "Callback called.");
 }
 
-void OutboundCall::SetFailed(const Status &status,
-                             ErrorStatusPB* err_pb) {
+void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB> err_pb) {
   TRACE_TO(trace_, "Call Failed.");
   {
     std::lock_guard<simple_spinlock> l(lock_);
     status_ = status;
     if (status_.IsRemoteError()) {
       CHECK(err_pb);
-      error_pb_.reset(err_pb);
+      error_pb_ = std::move(err_pb);
     } else {
       CHECK(!err_pb);
     }
@@ -562,11 +561,11 @@ Status CallResponse::GetSidecar(int idx, Slice* sidecar) const {
   return Status::OK();
 }
 
-Status CallResponse::ParseFrom(std::vector<char>* call_data) {
+Status CallResponse::ParseFrom(CallData* call_data) {
   CHECK(!parsed_);
   Slice entire_message;
 
-  response_data_.swap(*call_data);
+  response_data_ = std::move(*call_data);
   Slice source(response_data_.data(), response_data_.size());
   RETURN_NOT_OK(serialization::ParseYBMessage(source, &header_, &entire_message));
 

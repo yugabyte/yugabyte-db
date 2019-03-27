@@ -42,9 +42,12 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/common/hybrid_time.h"
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/leader_lease.h"
 #include "yb/consensus/opid_util.h"
+
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -135,9 +138,9 @@ struct ElectionResult {
   // Human-readable explanation of the vote result, if any.
   std::string message;
 
-  CoarseTimePoint old_leader_lease_expiration;
+  CoarseTimeLease old_leader_lease;
 
-  MicrosTime old_leader_ht_lease_expiration = HybridTime::kMin.GetPhysicalValueMicros();
+  PhysicalComponentLease old_leader_ht_lease;
 };
 
 // Driver class to run a leader election.

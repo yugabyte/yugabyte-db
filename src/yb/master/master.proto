@@ -57,11 +57,11 @@ message MasterErrorPB {
     // The schema provided for a request was not well-formed.
     INVALID_SCHEMA = 2;
 
-    // The requested table does not exist
-    TABLE_NOT_FOUND = 3;
+    // The requested table or index does not exist
+    OBJECT_NOT_FOUND = 3;
 
-    // The name requested for the table is already in use
-    TABLE_ALREADY_PRESENT = 4;
+    // The name requested for the table or index is already in use
+    OBJECT_ALREADY_PRESENT = 4;
 
     // The number of tablets requested for a new table is over the per TS limit.
     TOO_MANY_TABLETS = 5;
@@ -150,7 +150,7 @@ message NamespaceIdentifierPB {
   optional string name = 2;
 
   // Database type.
-  optional YQLDatabase database_type = 3 [ default = YQL_DATABASE_UNDEFINED ];
+  optional YQLDatabase database_type = 3 [ default = YQL_DATABASE_CQL ];
 }
 
 message TableIdentifierPB {
@@ -352,7 +352,7 @@ message SysNamespaceEntryPB {
   optional bytes name = 1;
 
   // Namespace/Database type.
-  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
+  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_CQL ];
 
   // For Postgres:
   optional uint32 next_pg_oid = 3; // Next oid to assign.
@@ -431,7 +431,8 @@ message ResourcePermissionsPB {
 message TSRegistrationPB {
   optional ServerRegistrationPB common = 1;
 
-  // TODO: add stuff like software version, etc.
+  // Capabilities supported byt this TS.
+  repeated fixed32 capabilities = 2;
 }
 
 message ReportedTabletPB {
@@ -609,6 +610,9 @@ message TSInfoPB {
   optional CloudInfoPB cloud_info = 3;
 
   optional bytes placement_uuid = 4;
+
+  // Capabilities of tablet server.
+  repeated fixed32 capabilities = 6;
 }
 
 message GetTabletLocationsRequestPB {
@@ -1053,7 +1057,7 @@ message CreateNamespaceRequestPB {
   optional string name = 1;
 
   // Database type.
-  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
+  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_CQL ];
 
   // For RBAC.
   optional string creator_role_name = 3;
@@ -1078,7 +1082,7 @@ message DeleteNamespaceRequestPB {
   optional NamespaceIdentifierPB namespace = 1;
 
   // Database type.
-  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
+  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_CQL ];
 }
 // Fails if the namespace is NOT empty
 
@@ -1088,7 +1092,7 @@ message DeleteNamespaceResponsePB {
 }
 
 message ListNamespacesRequestPB {
-  optional YQLDatabase database_type = 1 [ default = YQL_DATABASE_UNDEFINED ];
+  optional YQLDatabase database_type = 1 [ default = YQL_DATABASE_CQL ];
 }
 
 message ListNamespacesResponsePB {

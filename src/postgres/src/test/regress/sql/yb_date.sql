@@ -268,31 +268,10 @@ SELECT EXTRACT(DECADE FROM DATE '0012-12-31 BC'); --  -2
 SELECT EXTRACT(CENTURY FROM NOW())>=21 AS True;       -- true
 SELECT EXTRACT(CENTURY FROM TIMESTAMP '1970-03-20 04:30:00.00000'); -- 20
 -- on an interval
--- TODO: Enable once we start supporting INTEREVAL - ENG-4681 (part of issue #711)
--- SELECT EXTRACT(CENTURY FROM INTERVAL '100 y');  -- 1
--- date_part
--- -----------
--- 1
--- (1 row)
---
--- SELECT EXTRACT(CENTURY FROM INTERVAL '99 y');   -- 0
--- date_part
--- -----------
--- 0
--- (1 row)
---
--- SELECT EXTRACT(CENTURY FROM INTERVAL '-99 y');  -- 0
--- date_part
--- -----------
--- 0
--- (1 row)
---
--- SELECT EXTRACT(CENTURY FROM INTERVAL '-100 y'); -- -1
--- date_part
--- -----------
--- -1
--- (1 row)
-
+SELECT EXTRACT(CENTURY FROM INTERVAL '100 y');  -- 1
+SELECT EXTRACT(CENTURY FROM INTERVAL '99 y');   -- 0
+SELECT EXTRACT(CENTURY FROM INTERVAL '-99 y');  -- 0
+SELECT EXTRACT(CENTURY FROM INTERVAL '-100 y'); -- -1
 --
 -- test trunc function!
 --

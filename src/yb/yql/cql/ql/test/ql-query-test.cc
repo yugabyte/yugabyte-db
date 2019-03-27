@@ -1547,8 +1547,7 @@ TEST_F(TestQLQuery, TestInvalidPeerTableEntries) {
   hostport_pb->set_host(invalid_host);
   hostport_pb->set_port(123);
 
-  std::shared_ptr<master::TSDescriptor> desc;
-  ASSERT_OK(ts_manager->RegisterTS(instance, registration, CloudInfoPB(), nullptr, &desc));
+  ASSERT_OK(ts_manager->RegisterTS(instance, registration, CloudInfoPB(), nullptr));
 
   // Verify the peers table and ensure the invalid host is not present.
   ASSERT_OK(processor->Run("SELECT * FROM system.peers"));

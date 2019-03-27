@@ -137,6 +137,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Upon return of this method all existing tablets are registered, but
   // the bootstrap is performed asynchronously.
   CHECKED_STATUS Init();
+  CHECKED_STATUS Start();
 
   // Waits for all the bootstraps to complete.
   // Returns Status::OK if all tablets bootstrapped successfully. If
@@ -255,6 +256,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   // Return the number of tablets for which this ts is a leader.
   int GetLeaderCount() const;
+
+  // Return the number of tablets which are not in RUNNING state.
+  // If the tablet manager itself is not initialized, then INT_MAX is returned.
+  int GetNumTabletsNotRunning() const;
 
   CHECKED_STATUS RunAllLogGC();
 
@@ -471,7 +476,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 };
 
 // Helper to delete the transition-in-progress entry from the corresponding set
-// when tablet boostrap, create, and delete operations complete.
+// when tablet bootstrap, create, and delete operations complete.
 class TransitionInProgressDeleter : public RefCountedThreadSafe<TransitionInProgressDeleter> {
  public:
   TransitionInProgressDeleter(TransitionInProgressMap* map, RWMutex* lock,

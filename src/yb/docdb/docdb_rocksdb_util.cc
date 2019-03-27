@@ -50,7 +50,7 @@ DEFINE_int32(rocksdb_universal_compaction_size_ratio, 20,
              "The percentage upto which files that are larger are include in a compaction.");
 DEFINE_int32(rocksdb_universal_compaction_min_merge_width, 4,
              "The minimum number of files in a single compaction run.");
-DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 100 * 1024 * 1024,
+DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 256_MB,
              "Use to control write rate of flush and compaction.");
 DEFINE_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 1024 * 1024,
              "Threshold beyond which compaction is considered large.");
@@ -264,8 +264,10 @@ void PerformRocksDBSeek(
   int seek_count = 0;
   if (seek_key.size() == 0) {
     iter->SeekToFirst();
+    ++seek_count;
   } else if (!iter->Valid() || iter->key().compare(seek_key) > 0) {
     iter->Seek(seek_key);
+    ++seek_count;
   } else {
     for (int nexts = 0; nexts <= FLAGS_max_nexts_to_avoid_seek; nexts++) {
       if (!iter->Valid() || iter->key().compare(seek_key) >= 0) {

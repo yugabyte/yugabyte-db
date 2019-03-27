@@ -41,8 +41,6 @@ class UpdateTransactionRequestPB;
 
 namespace client {
 
-class RemoteTablet;
-
 typedef std::function<void(const Status&, HybridTime)> UpdateTransactionCallback;
 
 // Common arguments for all functions from this header.

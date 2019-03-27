@@ -66,7 +66,7 @@ Status PgTxnManager::SetIsolationLevel(int level) {
 void PgTxnManager::StartNewSession() {
   session_ = std::make_shared<YBSession>(async_client_init_->client(), clock_);
   session_->SetReadPoint(client::Restart::kFalse);
-  session_->SetForceConsistentRead(true);
+  session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
 
 Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op) {
@@ -93,10 +93,14 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op) {
 
 Status PgTxnManager::RestartTransaction() {
   if (!txn_in_progress_ || !txn_) {
-    return STATUS(IllegalState, "Attempting to restart when transaction is not in progress");
+    if (!session_->IsRestartRequired()) {
+      return STATUS(IllegalState, "Attempted to restart when session does not require restart");
+    }
+    session_->SetReadPoint(client::Restart::kTrue);
+    return Status::OK();
   }
   if (!txn_->IsRestartRequired()) {
-    return STATUS(IllegalState, "Attempting to restart when transaction does not require restart");
+    return STATUS(IllegalState, "Attempted to restart when transaction does not require restart");
   }
   auto new_txn = VERIFY_RESULT(txn_->CreateRestartedTransaction());
   ResetTxnAndSession();

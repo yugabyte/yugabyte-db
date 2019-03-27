@@ -31,6 +31,10 @@
 //
 #include "yb/tools/yb-admin_client.h"
 
+#include <type_traits>
+
+#include <boost/tti/has_member_function.hpp>
+
 #include "yb/common/wire_protocol.h"
 #include "yb/client/client.h"
 #include "yb/master/sys_catalog.h"
@@ -112,28 +116,54 @@ const int kNumCharactersInUuid = 32;
 const int kSleepTimeSec = 1;
 const int kNumberOfTryouts = 30;
 
+BOOST_TTI_HAS_MEMBER_FUNCTION(has_error)
+template<typename T>
+constexpr bool HasMemberFunctionHasError = has_member_function_has_error<const T, bool>::value;
+
+template<class Response>
+Result<Response> ResponseResult(Response&& response,
+    typename std::enable_if<HasMemberFunctionHasError<Response>, void*>::type = nullptr) {
+  // Response has has_error method, use status from it
+  if(response.has_error()) {
+    return StatusFromPB(response.error().status());
+  }
+  return std::move(response);
+}
+
+template<class Response>
+Result<Response> ResponseResult(Response&& response,
+    typename std::enable_if<!HasMemberFunctionHasError<Response>, void*>::type = nullptr) {
+  // Response has no has_error method, nothing to check
+  return std::move(response);
+}
+
 }  // anonymous namespace
 
-ClusterAdminClient::ClusterAdminClient(string addrs, int64_t timeout_millis)
+ClusterAdminClient::ClusterAdminClient(string addrs,
+                                       int64_t timeout_millis,
+                                       string certs_dir)
     : master_addr_list_(std::move(addrs)),
       timeout_(MonoDelta::FromMilliseconds(timeout_millis)),
+      client_init_(certs_dir.empty()),
       initted_(false) {}
 
 Status ClusterAdminClient::Init() {
   CHECK(!initted_);
 
-  // Build master proxy.
-  CHECK_OK(YBClientBuilder()
-    .add_master_server_addr(master_addr_list_)
-    .default_admin_operation_timeout(timeout_)
-    .Build(&yb_client_));
+  // Check if caller will initialize the client and related parts.
+  if (client_init_) {
+    CHECK_OK(YBClientBuilder()
+      .add_master_server_addr(master_addr_list_)
+      .default_admin_operation_timeout(timeout_)
+      .Build(&yb_client_));
 
-  messenger_ = VERIFY_RESULT(MessengerBuilder("yb-admin").Build());
-  proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_);
+    messenger_ = VERIFY_RESULT(MessengerBuilder("yb-admin").Build());
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_);
 
-  // Find the leader master's socket info to set up the proxy
-  leader_addr_ = yb_client_->GetMasterLeaderAddress();
-  master_proxy_.reset(new MasterServiceProxy(proxy_cache_.get(), leader_addr_));
+    // Find the leader master's socket info to set up the master proxy.
+    leader_addr_ = yb_client_->GetMasterLeaderAddress();
+    master_proxy_.reset(new MasterServiceProxy(proxy_cache_.get(), leader_addr_));
+  }
 
   initted_ = true;
   return Status::OK();
@@ -152,10 +182,8 @@ Status ClusterAdminClient::LeaderStepDown(
   LeaderStepDownRequestPB req;
   req.set_dest_uuid(leader_uuid);
   req.set_tablet_id(tablet_id);
-  LeaderStepDownResponsePB resp;
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK((*leader_proxy)->LeaderStepDown(req, &resp, &rpc));
+  const auto resp = VERIFY_RESULT(InvokeRpcNoResponseCheck(&ConsensusServiceProxy::LeaderStepDown,
+      leader_proxy->get(), req));
   if (resp.has_error()) {
     LOG(ERROR) << "LeaderStepDown for " << leader_uuid << "received error "
       << resp.error().ShortDebugString();
@@ -173,15 +201,8 @@ Status ClusterAdminClient::StartElection(const TabletId& tablet_id) {
   RunLeaderElectionRequestPB req;
   req.set_dest_uuid(non_leader_uuid);
   req.set_tablet_id(tablet_id);
-  RunLeaderElectionResponsePB resp;
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-
-  RETURN_NOT_OK(non_leader_proxy.RunLeaderElection(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-  return Status::OK();
+  return ResultToStatus(InvokeRpc(&ConsensusServiceProxy::RunLeaderElection,
+      &non_leader_proxy, req));
 }
 
 // Look up the location of the tablet server leader or non-leader peer from the leader master
@@ -278,36 +299,21 @@ Status ClusterAdminClient::ChangeConfig(
   }
 
   consensus::ChangeConfigRequestPB req;
-  consensus::ChangeConfigResponsePB resp;
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-
   req.set_dest_uuid(leader_uuid);
   req.set_tablet_id(tablet_id);
   req.set_type(cc_type);
   *req.mutable_server() = peer_pb;
-
-  RETURN_NOT_OK(consensus_proxy.get()->ChangeConfig(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-  return Status::OK();
+  return ResultToStatus(InvokeRpc(&ConsensusServiceProxy::ChangeConfig,
+      consensus_proxy.get(), req));
 }
 
 Status ClusterAdminClient::GetMasterLeaderInfo(PeerId* leader_uuid) {
-  master::ListMastersRequestPB list_req;
-  master::ListMastersResponsePB list_resp;
-
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  master_proxy_->ListMasters(list_req, &list_resp, &rpc);
-  if (list_resp.has_error()) {
-    return StatusFromPB(list_resp.error().status());
-  }
-  for (int i = 0; i < list_resp.masters_size(); i++) {
-    if (list_resp.masters(i).role() == RaftPeerPB::LEADER) {
+  const auto list_resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::ListMasters,
+      master_proxy_.get(), ListMastersRequestPB()));
+  for (const auto& master : list_resp.masters()) {
+    if (master.role() == RaftPeerPB::LEADER) {
       CHECK(leader_uuid->empty()) << "Found two LEADER's in the same raft config.";
-      *leader_uuid = list_resp.masters(i).instance_id().permanent_uuid();
+      *leader_uuid = master.instance_id().permanent_uuid();
     }
   }
 
@@ -317,33 +323,16 @@ Status ClusterAdminClient::GetMasterLeaderInfo(PeerId* leader_uuid) {
 Status ClusterAdminClient::DumpMasterState() {
   CHECK(initted_);
   master::DumpMasterStateRequestPB req;
-  master::DumpMasterStateResponsePB resp;
-
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
   req.set_peers_also(true);
   req.set_on_disk(true);
-  master_proxy_->DumpState(req, &resp, &rpc);
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-
-  return Status::OK();
+  return ResultToStatus(InvokeRpc(&MasterServiceProxy::DumpState, master_proxy_.get(), req));
 }
 
 Status ClusterAdminClient::GetLoadMoveCompletion() {
   CHECK(initted_);
-  master::GetLoadMovePercentRequestPB req;
-  master::GetLoadMovePercentResponsePB resp;
-
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  master_proxy_->GetLoadMoveCompletion(req, &resp, &rpc);
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &MasterServiceProxy::GetLoadMoveCompletion, master_proxy_.get(),
+      master::GetLoadMovePercentRequestPB()));
   cout << "Percent complete = " << resp.percent() << endl;
   return Status::OK();
 }
@@ -351,31 +340,31 @@ Status ClusterAdminClient::GetLoadMoveCompletion() {
 Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
   vector<string> tablet_ids, ranges;
   RETURN_NOT_OK(yb_client_->GetTablets(table_name, 0, &tablet_ids, &ranges));
-  rpc::RpcController rpc;
   master::GetTabletLocationsRequestPB req;
-  master::GetTabletLocationsResponsePB resp;
-  rpc.set_timeout(timeout_);
   for (const auto& tablet_id : tablet_ids) {
     req.add_tablet_ids(tablet_id);
   }
-  RETURN_NOT_OK(master_proxy_->GetTabletLocations(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::GetTabletLocations,
+      master_proxy_.get(), req));
 
   unordered_map<string, int> leader_counts;
   int total_leader_count = 0;
-  for (int i = 0; i < resp.tablet_locations_size(); ++i) {
-    TabletLocationsPB locs = resp.tablet_locations(i);
-    for (int i = 0; i < locs.replicas_size(); i++) {
-      if (locs.replicas(i).role() == RaftPeerPB::LEADER) {
-        // If this is a leader, increment leader counts.
-        leader_counts[locs.replicas(i).ts_info().permanent_uuid()]++;
-        total_leader_count++;
-      } else if (locs.replicas(i).role() == RaftPeerPB::FOLLOWER) {
-        // If this is a follower, touch the leader count entry also so that tablet server with
-        // followers only and 0 leader will be accounted for still.
-        leader_counts[locs.replicas(i).ts_info().permanent_uuid()];
+  for (const auto& locs : resp.tablet_locations()) {
+    for (const auto& replica : locs.replicas()) {
+      const auto uuid = replica.ts_info().permanent_uuid();
+      switch(replica.role()) {
+        case RaftPeerPB::LEADER:
+          // If this is a leader, increment leader counts.
+          ++leader_counts[uuid];
+          ++total_leader_count;
+          break;
+        case RaftPeerPB::FOLLOWER:
+          // If this is a follower, touch the leader count entry also so that tablet server with
+          // followers only and 0 leader will be accounted for still.
+          leader_counts[uuid];
+          break;
+        default:
+          break;
       }
     }
   }
@@ -419,7 +408,8 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
 
 Status ClusterAdminClient::SetupRedisTable() {
   const YBTableName table_name(common::kRedisKeyspaceName, common::kRedisTableName);
-  RETURN_NOT_OK(yb_client_->CreateNamespaceIfNotExists(common::kRedisKeyspaceName));
+  RETURN_NOT_OK(yb_client_->CreateNamespaceIfNotExists(common::kRedisKeyspaceName,
+                                                       YQLDatabase::YQL_DATABASE_REDIS));
   // Try to create the table.
   gscoped_ptr<yb::client::YBTableCreator> table_creator(yb_client_->NewTableCreator());
   Status s = table_creator->table_name(table_name)
@@ -498,9 +488,6 @@ Status ClusterAdminClient::ChangeMasterConfig(
   consensus::ConsensusServiceProxy *leader_proxy =
     new consensus::ConsensusServiceProxy(proxy_cache_.get(), leader_addr_);
   consensus::ChangeConfigRequestPB req;
-  consensus::ChangeConfigResponsePB resp;
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
 
   RaftPeerPB peer_pb;
   peer_pb.set_permanent_uuid(peer_uuid);
@@ -515,10 +502,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
   req.set_use_host(use_hostport);
   *req.mutable_server() = peer_pb;
 
-  RETURN_NOT_OK(leader_proxy->ChangeConfig(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  RETURN_NOT_OK(InvokeRpc(&consensus::ConsensusServiceProxy::ChangeConfig, leader_proxy, req));
 
   if (cc_type == consensus::ADD_SERVER) {
     RETURN_NOT_OK(yb_client_->AddMasterToClient(changed_leader_addr));
@@ -526,25 +510,15 @@ Status ClusterAdminClient::ChangeMasterConfig(
     RETURN_NOT_OK(yb_client_->RemoveMasterFromClient(changed_leader_addr));
   }
 
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-
   return Status::OK();
 }
 
 Status ClusterAdminClient::GetTabletLocations(const TabletId& tablet_id,
                                               TabletLocationsPB* locations) {
-  rpc::RpcController rpc;
-  rpc.set_timeout(timeout_);
   master::GetTabletLocationsRequestPB req;
-  *req.add_tablet_ids() = tablet_id;
-  master::GetTabletLocationsResponsePB resp;
-  RETURN_NOT_OK(master_proxy_->GetTabletLocations(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  req.add_tablet_ids(tablet_id);
+  const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::GetTabletLocations,
+      master_proxy_.get(), req));
 
   if (resp.errors_size() > 0) {
     // This tool only needs to support one-by-one requests for tablet
@@ -589,17 +563,9 @@ Status ClusterAdminClient::GetTabletPeer(const TabletId& tablet_id,
 
 Status ClusterAdminClient::ListTabletServers(
     RepeatedPtrField<ListTabletServersResponsePB::Entry>* servers) {
-  rpc::RpcController rpc;
-  rpc.set_timeout(timeout_);
-  ListTabletServersRequestPB req;
-  ListTabletServersResponsePB resp;
-  RETURN_NOT_OK(master_proxy_->ListTabletServers(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-
-  servers->Swap(resp.mutable_servers());
+  auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::ListTabletServers, master_proxy_.get(),
+      ListTabletServersRequestPB()));
+  *servers = std::move(*resp.mutable_servers());
   return Status::OK();
 }
 
@@ -638,59 +604,51 @@ Status ClusterAdminClient::ListAllTabletServers() {
 }
 
 Status ClusterAdminClient::ListAllMasters() {
-  ListMastersRequestPB lreq;
-  ListMastersResponsePB lresp;
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_proxy_->ListMasters(lreq, &lresp, &rpc));
-  if (lresp.has_error()) {
-    return StatusFromPB(lresp.error().status());
-  }
+  const auto lresp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::ListMasters,
+      master_proxy_.get(), ListMastersRequestPB()));
   if (!lresp.masters().empty()) {
     cout << RightPadToUuidWidth("Master UUID") << kColumnSep
          << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth)<< kColumnSep
          << "State" << kColumnSep
          << "Role" << endl;
   }
-  for (int i = 0; i < lresp.masters_size(); i++) {
-    if (lresp.masters(i).role() != consensus::RaftPeerPB::UNKNOWN_ROLE) {
-      auto master_reg =
-          lresp.masters(i).has_registration() ? &lresp.masters(i).registration() : nullptr;
-      cout
-          << (master_reg ? lresp.masters(i).instance_id().permanent_uuid() :
-              RightPadToUuidWidth("UNKNOWN_UUID")) << kColumnSep
-          << RightPadToWidth(
-              (master_reg ? FormatFirstHostPort(master_reg->private_rpc_addresses()) : "UNKNOWN"),
-              kHostPortColWidth) << kColumnSep
-          << (lresp.masters(i).has_error() ?
-              PBEnumToString(lresp.masters(i).error().code()) : "ALIVE") << kColumnSep
-          << PBEnumToString(lresp.masters(i).role()) << endl;
+  int i = 0;
+  for (const auto& master : lresp.masters()) {
+    if (master.role() != consensus::RaftPeerPB::UNKNOWN_ROLE) {
+      const auto master_reg = master.has_registration() ? &master.registration() : nullptr;
+      cout << (master_reg ? master.instance_id().permanent_uuid()
+                          : RightPadToUuidWidth("UNKNOWN_UUID")) << kColumnSep;
+      cout << RightPadToWidth(master_reg ? FormatFirstHostPort(master_reg->private_rpc_addresses())
+                                         : "UNKNOWN", kHostPortColWidth) << kColumnSep;
+      cout << (master.has_error() ? PBEnumToString(master.error().code()) : "ALIVE") << kColumnSep;
+      cout << PBEnumToString(master.role()) << endl;
     } else {
       cout << "UNREACHABLE MASTER at index " << i << "." << endl;
     }
+    ++i;
   }
 
-  ListMasterRaftPeersRequestPB r_req;
-  ListMasterRaftPeersResponsePB r_resp;
-  rpc.Reset();
-  RETURN_NOT_OK(master_proxy_->ListMasterRaftPeers(r_req, &r_resp, &rpc));
+  const auto r_resp = VERIFY_RESULT(InvokeRpcNoResponseCheck(
+      &MasterServiceProxy::ListMasterRaftPeers, master_proxy_.get(),
+      ListMasterRaftPeersRequestPB()));
   if (r_resp.has_error()) {
-    return STATUS(RuntimeError, Substitute(
-        "List Raft Masters RPC response hit error: $0", r_resp.error().ShortDebugString()));
+    return STATUS_FORMAT(RuntimeError, "List Raft Masters RPC response hit error: $0",
+        r_resp.error().ShortDebugString());
   }
 
   if (r_resp.masters_size() != lresp.masters_size()) {
     cout << "WARNING: Mismatch in in-memory masters and raft peers info."
          << "Raft peer info from master leader dumped below." << endl;
-    for (int i = 0; i < r_resp.masters_size(); i++) {
-      if (r_resp.masters(i).member_type() != consensus::RaftPeerPB::UNKNOWN_MEMBER_TYPE) {
-        const auto& master = r_resp.masters(i);
+    int i = 0;
+    for (const auto& master : r_resp.masters()) {
+      if (master.member_type() != consensus::RaftPeerPB::UNKNOWN_MEMBER_TYPE) {
         cout << master.permanent_uuid() << "  "
              << master.last_known_private_addr(0).host() << "/"
              << master.last_known_private_addr(0).port() << endl;
       } else {
         cout << "UNREACHABLE MASTER at index " << i << "." << endl;
       }
+      ++i;
     }
   }
 
@@ -715,12 +673,8 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
 
     TabletServerServiceProxy ts_proxy(proxy_cache_.get(), ts_addr);
 
-    rpc::RpcController rpc;
-    rpc.set_timeout(timeout_);
-    tserver::GetLogLocationRequestPB req;
-    tserver::GetLogLocationResponsePB resp;
-    ts_proxy.GetLogLocation(req, &resp, &rpc);
-
+    const auto resp = VERIFY_RESULT(InvokeRpc(&TabletServerServiceProxy::GetLogLocation,
+        &ts_proxy, tserver::GetLogLocationRequestPB()));
     cout << ts_uuid << kColumnSep
          << ts_addr << kColumnSep
          << resp.log_location() << endl;
@@ -738,7 +692,7 @@ Status ClusterAdminClient::ListTables() {
   return Status::OK();
 }
 
-Status ClusterAdminClient::ListTablets(const YBTableName& table_name, const int max_tablets) {
+Status ClusterAdminClient::ListTablets(const YBTableName& table_name, int max_tablets) {
   vector<string> tablet_uuids, ranges;
   std::vector<master::TabletLocationsPB> locations;
   RETURN_NOT_OK(yb_client_->GetTablets(
@@ -768,25 +722,18 @@ Status ClusterAdminClient::ListTablets(const YBTableName& table_name, const int 
 }
 
 Status ClusterAdminClient::ListPerTabletTabletServers(const TabletId& tablet_id) {
-  rpc::RpcController rpc;
-  rpc.set_timeout(timeout_);
   master::GetTabletLocationsRequestPB req;
-  *req.add_tablet_ids() = tablet_id;
-  master::GetTabletLocationsResponsePB resp;
-  RETURN_NOT_OK(master_proxy_->GetTabletLocations(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  req.add_tablet_ids(tablet_id);
+  const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::GetTabletLocations,
+      master_proxy_.get(), req));
 
   if (resp.tablet_locations_size() != 1) {
     if (resp.tablet_locations_size() > 0) {
       std::cerr << "List of all incorrect locations - " << resp.tablet_locations_size()
                 << " : " << endl;
-      for (int i = 0; i < resp.tablet_locations_size(); i++) {
+      const auto limit = std::min(resp.tablet_locations_size(), MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR);
+      for (int i = 0; i < limit; ++i) {
         std::cerr << i << " : " << resp.tablet_locations(i).DebugString();
-        if (i >= MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR) {
-          break;
-        }
       }
       std::cerr << endl;
     }
@@ -822,12 +769,8 @@ Status ClusterAdminClient::ListTabletsForTabletServer(const PeerId& ts_uuid) {
 
   TabletServerServiceProxy ts_proxy(proxy_cache_.get(), ts_addr);
 
-  rpc::RpcController rpc;
-  rpc.set_timeout(timeout_);
-
-  tserver::ListTabletsForTabletServerRequestPB req;
-  tserver::ListTabletsForTabletServerResponsePB resp;
-  RETURN_NOT_OK(ts_proxy.ListTabletsForTabletServer(req, &resp, &rpc));
+  const auto resp = VERIFY_RESULT(InvokeRpc(&TabletServerServiceProxy::ListTabletsForTabletServer,
+      &ts_proxy, tserver::ListTabletsForTabletServerRequestPB()));
 
   cout << RightPadToWidth("Table name", kTableNameColWidth) << kColumnSep
        << RightPadToUuidWidth("Tablet ID") << kColumnSep
@@ -842,35 +785,22 @@ Status ClusterAdminClient::ListTabletsForTabletServer(const PeerId& ts_uuid) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::SetLoadBalancerEnabled(const bool is_enabled) {
-  master::ListMastersRequestPB list_req;
-  master::ListMastersResponsePB list_resp;
-
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_proxy_->ListMasters(list_req, &list_resp, &rpc));
-  if (list_resp.has_error()) {
-    return StatusFromPB(list_resp.error().status());
-  }
+Status ClusterAdminClient::SetLoadBalancerEnabled(bool is_enabled) {
+  const auto list_resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::ListMasters,
+      master_proxy_.get(), ListMastersRequestPB()));
 
   master::ChangeLoadBalancerStateRequestPB req;
   req.set_is_enabled(is_enabled);
-  master::ChangeLoadBalancerStateResponsePB resp;
-  for (int i = 0; i < list_resp.masters_size(); ++i) {
-    rpc.Reset();
-    resp.Clear();
+  for (const auto& master : list_resp.masters()) {
 
-    if (list_resp.masters(i).role() == RaftPeerPB::LEADER) {
-      master_proxy_->ChangeLoadBalancerState(req, &resp, &rpc);
+    if (master.role() == RaftPeerPB::LEADER) {
+      RETURN_NOT_OK(InvokeRpc(&MasterServiceProxy::ChangeLoadBalancerState,
+          master_proxy_.get(), req));
     } else {
-      HostPortPB hp_pb = list_resp.masters(i).registration().private_rpc_addresses(0);
+      HostPortPB hp_pb = master.registration().private_rpc_addresses(0);
 
       MasterServiceProxy proxy(proxy_cache_.get(), HostPortFromPB(hp_pb));
-      proxy.ChangeLoadBalancerState(req, &resp, &rpc);
-    }
-
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
+      RETURN_NOT_OK(InvokeRpc(&MasterServiceProxy::ChangeLoadBalancerState, &proxy, req));
     }
   }
 
@@ -878,29 +808,21 @@ Status ClusterAdminClient::SetLoadBalancerEnabled(const bool is_enabled) {
 }
 
 Status ClusterAdminClient::FlushTable(const YBTableName& table_name, int timeout_secs) {
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
   FlushTablesRequestPB req;
-  FlushTablesResponsePB resp;
   table_name.SetIntoTableIdentifierPB(req.add_tables());
-  RETURN_NOT_OK(master_proxy_->FlushTables(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::FlushTables,
+      master_proxy_.get(), req));
 
   cout << "Started flushing table " << table_name.ToString() << endl
        << "Flush request id: " << resp.flush_request_id() << endl;
 
   IsFlushTablesDoneRequestPB wait_req;
-  IsFlushTablesDoneResponsePB wait_resp;
-
   // Wait for table creation.
   wait_req.set_flush_request_id(resp.flush_request_id());
 
   for (int k = 0; k < timeout_secs; ++k) {
-    rpc.Reset();
-    RETURN_NOT_OK(master_proxy_->IsFlushTablesDone(wait_req, &wait_resp, &rpc));
+    const auto wait_resp = VERIFY_RESULT(InvokeRpcNoResponseCheck(
+        &MasterServiceProxy::IsFlushTablesDone, master_proxy_.get(), wait_req));
 
     if (wait_resp.has_error()) {
       if (wait_resp.error().status().code() == AppStatusPB::NOT_FOUND) {
@@ -925,16 +847,11 @@ Status ClusterAdminClient::FlushTable(const YBTableName& table_name, int timeout
 }
 
 Status ClusterAdminClient::WaitUntilMasterLeaderReady() {
-  master::IsMasterLeaderReadyRequestPB req_leader_ready;
-  master::IsMasterLeaderReadyResponsePB res_leader_ready;
-  rpc::RpcController rpc;
-  rpc.set_timeout(timeout_);
-  int iter = 0;
-  while (iter++ < kNumberOfTryouts) {
-    RETURN_NOT_OK_PREPEND(master_proxy_->IsMasterLeaderServiceReady(
-        req_leader_ready, &res_leader_ready,
-        &rpc), "MasterServiceImpl::IsMasterLeaderServiceReady call fails.")
-    rpc.Reset();
+  for(int iter = 0; iter < kNumberOfTryouts; ++iter) {
+    const auto res_leader_ready = VERIFY_RESULT(InvokeRpcNoResponseCheck(
+        &MasterServiceProxy::IsMasterLeaderServiceReady,
+        master_proxy_.get(),  master::IsMasterLeaderReadyRequestPB(),
+        "MasterServiceImpl::IsMasterLeaderServiceReady call failed."));
     if (!res_leader_ready.has_error()) {
       return Status::OK();
     }
@@ -948,20 +865,10 @@ Status ClusterAdminClient::ModifyPlacementInfo(
 
   // Wait to make sure that master leader is ready.
   RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
-  rpc::RpcController rpc;
-  rpc.set_timeout(timeout_);
 
   // Get the cluster config from the master leader.
-  master::GetMasterClusterConfigRequestPB req_cluster_config;
-  master::GetMasterClusterConfigResponsePB resp_cluster_config;
-  RETURN_NOT_OK_PREPEND(master_proxy_->
-      GetMasterClusterConfig(req_cluster_config, &resp_cluster_config, &rpc),
-                        "MasterServiceImpl::GetMasterClusterConfig call fails.")
+  auto resp_cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
 
-  if (resp_cluster_config.has_error()) {
-    return StatusFromPB(resp_cluster_config.error().status());
-  }
-  rpc.Reset();
   // Create a new cluster config.
   std::vector<std::string> placement_info_split = strings::Split(
       placement_info, ",", strings::SkipEmpty());
@@ -972,7 +879,6 @@ Status ClusterAdminClient::ModifyPlacementInfo(
     + std::to_string(placement_info_split.size()));
   }
   master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
-  master::ChangeMasterClusterConfigResponsePB resp_new_cluster_config;
   master::SysClusterConfigEntryPB* sys_cluster_config_entry =
       resp_cluster_config.mutable_cluster_config();
   master::PlacementInfoPB* live_replicas = new master::PlacementInfoPB;
@@ -998,16 +904,77 @@ Status ClusterAdminClient::ModifyPlacementInfo(
   sys_cluster_config_entry->set_allocated_replication_info(replication_info_pb);
   req_new_cluster_config.mutable_cluster_config()->CopyFrom(*sys_cluster_config_entry);
 
-  RETURN_NOT_OK_PREPEND(master_proxy_->ChangeMasterClusterConfig(
-      req_new_cluster_config, &resp_new_cluster_config, &rpc),
-                        "MasterServiceImpl::ChangeMasterClusterConfig call failed.");
-
-  if (resp_new_cluster_config.has_error()) {
-    return StatusFromPB(resp_new_cluster_config.error().status());
-  }
+  RETURN_NOT_OK(InvokeRpc(&MasterServiceProxy::ChangeMasterClusterConfig,
+      master_proxy_.get(), req_new_cluster_config,
+      "MasterServiceImpl::ChangeMasterClusterConfig call failed."));
 
   LOG(INFO)<< "Changed master cluster config.";
   return Status::OK();
+}
+
+Status ClusterAdminClient::GetUniverseConfig() {
+  const auto cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
+  cout << "Config: "  << endl << cluster_config.cluster_config().DebugString();
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers, bool add) {
+  auto config = VERIFY_RESULT(GetMasterClusterConfig());
+  auto& cluster_config = *config.mutable_cluster_config();
+  auto& blacklist = *cluster_config.mutable_server_blacklist();
+  std::vector<HostPort> result_blacklist;
+  for (const auto& host : blacklist.hosts()) {
+    const HostPort hostport(host.host(), host.port());
+    if (std::find(servers.begin(), servers.end(), hostport) == servers.end()) {
+      result_blacklist.emplace_back(host.host(), host.port());
+    }
+  }
+  if (add) {
+    result_blacklist.insert(result_blacklist.end(), servers.begin(), servers.end());
+  }
+  auto result_begin = result_blacklist.begin(), result_end = result_blacklist.end();
+  std::sort(result_begin, result_end);
+  result_blacklist.erase(std::unique(result_begin, result_end), result_end);
+  blacklist.clear_hosts();
+  for (const auto& hostport : result_blacklist) {
+    auto& new_host = *blacklist.add_hosts();
+    new_host.set_host(hostport.host());
+    new_host.set_port(hostport.port());
+  }
+  master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
+  req_new_cluster_config.mutable_cluster_config()->Swap(&cluster_config);
+  return ResultToStatus(InvokeRpc(&MasterServiceProxy::ChangeMasterClusterConfig,
+                                  master_proxy_.get(), req_new_cluster_config,
+                                  "MasterServiceImpl::ChangeMasterClusterConfig call failed."));
+}
+
+Result<master::GetMasterClusterConfigResponsePB> ClusterAdminClient::GetMasterClusterConfig() {
+  return InvokeRpc(&MasterServiceProxy::GetMasterClusterConfig, master_proxy_.get(),
+                   master::GetMasterClusterConfigRequestPB(),
+                   "MasterServiceImpl::GetMasterClusterConfig call failed.");
+}
+
+template<class Response, class Request, class Object>
+Result<Response> ClusterAdminClient::InvokeRpcNoResponseCheck(
+    Status (Object::*func)(const Request&, Response*, rpc::RpcController*),
+    Object* obj, const Request& req, const char* error_message) {
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+  Response response;
+  auto result = (obj->*func)(req, &response, &rpc);
+  if (error_message) {
+    RETURN_NOT_OK_PREPEND(result, error_message);
+  } else {
+    RETURN_NOT_OK(result);
+  }
+  return std::move(response);
+}
+
+template<class Response, class Request, class Object>
+Result<Response> ClusterAdminClient::InvokeRpc(
+    Status (Object::*func)(const Request&, Response*, rpc::RpcController*),
+    Object* obj, const Request& req, const char* error_message) {
+  return ResponseResult(VERIFY_RESULT(InvokeRpcNoResponseCheck(func, obj, req, error_message)));
 }
 
 string RightPadToUuidWidth(const string &s) {

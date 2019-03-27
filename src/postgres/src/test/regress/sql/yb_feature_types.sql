@@ -34,7 +34,8 @@ CREATE TABLE feature_tab_timestamp_with_time_zone (feature_col TIMESTAMP WITH TI
 CREATE TABLE feature_tab_date (feature_col DATE);
 CREATE TABLE feature_tab_time (feature_col TIME(2));
 CREATE TABLE feature_tab_time_with_time_zone (feature_col TIME(2) WITH TIME ZONE);
-CREATE TABLE feature_tab_interval (feature_col INTERVAL[YEAR TO MONTH, DAY TO SECOND](2));
+CREATE TABLE feature_tab_interval_ym (feature_col INTERVAL YEAR TO MONTH);
+CREATE TABLE feature_tab_interval_ds (feature_col INTERVAL DAY TO SECOND(2));
 --
 -- Boolean Type
 CREATE TABLE feature_tab_bool (feature_col BOOLEAN);

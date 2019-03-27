@@ -133,6 +133,7 @@ set(UTIL_SRCS
   bloom_filter.cc
   bytes_formatter.cc
   cache_metrics.cc
+  capabilities.cc
   coding.cc
   concurrent_value.cc
   condition_variable.cc

@@ -53,6 +53,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final String PG_DATA_FLAG = "PGDATA";
   private static final String YB_ENABLED_IN_PG_ENV_VAR_NAME = "YB_ENABLED_IN_POSTGRES";
 
+  // CQL and Redis settings.
+  protected static boolean startCqlProxy = false;
+  protected static boolean startRedisProxy = false;
+
   protected static Connection connection;
 
   private static File initdbDataDir;
@@ -103,8 +107,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     if (isTSAN()) {
       flagMap.put("yb_client_admin_operation_timeout_sec", "120");
     }
-    flagMap.put("start_redis_proxy", "false");
-    flagMap.put("start_cql_proxy", "false");
+    flagMap.put("start_cql_proxy", Boolean.toString(startCqlProxy));
+    flagMap.put("start_redis_proxy", Boolean.toString(startRedisProxy));
 
     return flagMap;
   }
@@ -567,6 +571,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
+  protected void assertRowSet(String stmt, Set<Row> expectedRows) throws SQLException {
+    try (Statement statement = connection.createStatement()) {
+      try (ResultSet rs = statement.executeQuery(stmt)) {
+        assertEquals(expectedRows, getRowSet(rs));
+      }
+    }
+  }
+
   /*
    * Returns whether or not this select statement requires filtering by Postgres (i.e. not all
    * conditions can be pushed down to YugaByte).
@@ -605,12 +617,37 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected void runInvalidQuery(Statement statement, String stmt) {
+  /**
+   * Deprecated. Use the version below which requires an expected error message substring.
+   * TODO Consider replacing all occurences of this version and then removing it.
+   */
+  @Deprecated
+  protected void runInvalidQuery(Statement statement, String query) {
     try {
-      statement.execute(stmt);
-      fail(String.format("Statement did not fail: %s", stmt));
+      statement.execute(query);
+      fail(String.format("Statement did not fail: %s", query));
     } catch (SQLException e) {
       LOG.info("Expected exception", e);
+    }
+  }
+
+  /**
+   *
+   * @param statement The statement used to execute the query.
+   * @param query The query string.
+   * @param errorSubstring A substring of the expected error message.
+   */
+  protected void runInvalidQuery(Statement statement, String query, String errorSubstring) {
+    try {
+      statement.execute(query);
+      fail(String.format("Statement did not fail: %s", query));
+    } catch (SQLException e) {
+      if (e.getMessage().contains(errorSubstring)) {
+        LOG.info("Expected exception", e);
+      } else {
+        fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+                           e.getMessage(), errorSubstring));
+      }
     }
   }
 
