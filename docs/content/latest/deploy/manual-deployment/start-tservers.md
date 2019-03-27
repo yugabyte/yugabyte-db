@@ -29,7 +29,9 @@ This section covers deployment for a single region/zone (or a single datacenter/
 
 ## Run yb-tserver with command line params
 
-- Run `yb-tserver` as below. Note that all the master addresses have to be provided as a flag. For the full list of flags, see the [yb-tserver Reference](../../../admin/yb-tserver/).
+- Run `yb-tserver` as below. Note that all the master addresses have to be provided as a flag. For each yb-tserver, replace the rpc bind address flags with the private IP of the host running the yb-tserver.
+
+For the full list of flags, see the [yb-tserver Reference](../../../admin/yb-tserver/).
 
 ```sh
 $ ./bin/yb-tserver \
@@ -42,7 +44,7 @@ $ ./bin/yb-tserver \
   >& /home/centos/disk1/yb-tserver.out &
 ```
 
-Add `--redis_proxy_bind_address=172.22.25.108:6379` to the above list if you need to turn on the YEDIS API as well.
+Add `--redis_proxy_bind_address=172.151.17.130:6379` to the above list if you need to turn on the YEDIS API as well.
 
 {{< note title="Note" >}}
 The number of comma seperated values in `tserver_master_addrs` parameter should match the total number of masters (aka replication factor).
@@ -50,7 +52,7 @@ The number of comma seperated values in `tserver_master_addrs` parameter should 
 
 ## Run yb-tserver with conf file
 
-- Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the `--flagfile` option as shown below.
+- Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the `--flagfile` option as shown below. For each yb-tserver, replace the rpc bind address flags with the private IP of the host running the yb-tserver.
 
 ```sh
 --tserver_master_addrs=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100

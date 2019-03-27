@@ -27,7 +27,7 @@ YugaByte DB Community Edition is developed and distributed as an [Apache 2.0 ope
 
 ## What makes YugaByte DB unique?
 
-YugaByte DB is a transactional database that brings together three must-have needs of cloud native microservices, namely SQL as a flexible query language, low-latency reads and globally-distributed write scalability. Monolithic SQL databases offer SQL and low-latency reads but do not have ability to scale writes across multiple nodes and/or regions. Distributed NoSQL databases offer performance and write scalablility but give up on SQL semantics such as multi-key access, ACID transactions and strong consistency.
+YugaByte DB is a transactional database that brings together three must-have needs of cloud native microservices, namely SQL as a flexible query language, low-latency read performance and globally-distributed write scalability. Monolithic SQL databases offer SQL and low-latency reads but do not have ability to scale writes across multiple nodes and/or regions. Distributed NoSQL databases offer performance and write scalablility but give up on SQL semantics such as multi-key access, ACID transactions and strong consistency.
 
 YugaByte DB feature highlights are listed below.
 
@@ -37,13 +37,13 @@ YugaByte DB feature highlights are listed below.
 
 - Transactional [document store](../architecture/concepts/docdb/) backed by self-healing, strongly consistent [replication](../architecture/concepts/docdb/replication/).
 
-### 2. High Performance & Massively Scalable
+### 2. High Performance & Massive Scalability
 
 - Low latency for geo-distributed applications with multiple [read consistency levels](../architecture/concepts/docdb/replication/#tunable-read-consistency) and [read-only replicas](../architecture/concepts/docdb/replication/#read-only-replicas).
 
 - Linearly scalable throughput for ingesting and serving ever-growing datasets.
 
-### 3. Geo-Distributed
+### 3. Global Data Consistency
 
 - [Global data distribution](../explore/global-distribution/) that brings consistent data close to users through multi-region and multi-cloud deployments.
 
@@ -64,9 +64,13 @@ YugaByte DB feature highlights are listed below.
 
 YugaByte DB supports two flavors of distributed SQL.
 
-1. [YugaByte SQL (Beta)](../api/ysql/) - YSQL is a fully relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Get started by [exploring YSQL features](../quick-start/explore-ysql/).
+### 1. YugaByte SQL (YSQL)
 
-2. [YugaByte Cloud QL](../api/ycql/) - YCQL is a SQL-based flexible-schema API that is best fit for internet-scale OLTP apps needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. Get started by [exploring YCQL features](../api/ycql/quick-start/).
+[YSQL](../api/ysql/), currently in Beta, is a fully relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Get started by [exploring YSQL features](../quick-start/explore-ysql/).
+
+### 2. YugaByte Cloud QL (YCQL)
+
+[YCQL]((../api/ycql/)) is a SQL-based flexible-schema API that is best fit for internet-scale OLTP apps needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. Get started by [exploring YCQL features](../api/ycql/quick-start/).
 
 {{< note title="Note" >}}
 The YugaByte DB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../develop/ecosystem-integrations/presto/) can help for simple cases). 
@@ -87,12 +91,12 @@ Trade-offs depend on the type of database used as baseline for comparison.
 
 Examples: PostgreSQL, MySQL, Oracle, Amazon Aurora.
 
-Benefits of YugaByte DB
+**Benefits of YugaByte DB**
 
 - Scale write throughput linearly across multiple nodes and/or geographic regions. 
 - Automatic failover and native repair.
 
-Trade-offs
+**Trade-offs**
 
 - Transactions and JOINs can now span multiple nodes, thereby increasing latency.
 
@@ -102,12 +106,12 @@ Learn more: [Distributed PostgreSQL on a Google Spanner Architecture – Query L
 
 Examples: Vitess, Citus
 
-Benefits of YugaByte DB
+**Benefits of YugaByte DB**
 
 - Distributed transactions across any number of nodes.
 - No single point of failure given all nodes are equal.
 
-Trade-offs
+**Trade-offs**
 
 - None
 
@@ -117,13 +121,13 @@ Learn more: [Rise of Globally Distributed SQL Databases – Redefining Transacti
 
 Examples: MongoDB, Amazon DynamoDB, FoundationDB, Azure Cosmos DB.
 
-Benefits of YugaByte DB
+**Benefits of YugaByte DB**
 
 - Flexibility of SQL as query needs change in response to business changes.
 - Distributed transactions across any number of nodes.
 - Low latency, strongly consistent reads given that read-time quorum is avoided altogether.
 
-Trade-offs
+**Trade-offs**
 
 - None
 
@@ -133,13 +137,13 @@ Learn more: [Why are NoSQL Databases Becoming Transactional?](https://blog.yugab
 
 Examples: Apache Cassandra, Couchbase.
 
-Benefits of YugaByte DB
+**Benefits of YugaByte DB**
 
 - Flexibility of SQL as query needs change in response to business changes.
 - Strongly consistent, zero data loss writes.
 - Strongly consistent as well as timeline-consistent reads without resorting to eventual consistency-related penalties such as read repairs and anti-entropy.
 
-Trade-offs
+**Trade-offs**
 
 - Extremely short unavailability during the leader election time for all shard leaders lost during a node failure or network partition. 
 
