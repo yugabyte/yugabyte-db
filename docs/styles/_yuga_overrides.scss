@@ -151,6 +151,10 @@ a {
 
   .data {
     text-align: left;
+
+    a {
+      border-bottom: none !important;
+    }
   }
 
   .wrapper {
