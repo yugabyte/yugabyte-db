@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <atomic>
+
 #include "yb/client/client.h"
 #include "yb/client/permissions.h"
 
@@ -105,7 +107,7 @@ void PermissionsCache::ScheduleGetPermissionsFromMaster(bool now) {
 }
 
 void PermissionsCache::UpdateRolesPermissions(const GetPermissionsResponsePB& resp) {
-  auto new_roles_permissions_map = std::make_unique<RolesPermissionsMap>();
+  auto new_roles_permissions_map = std::make_shared<RolesPermissionsMap>();
 
   // Populate the cache.
   // Get all the roles in the response. They should have at least one piece of information:
@@ -121,7 +123,8 @@ void PermissionsCache::UpdateRolesPermissions(const GetPermissionsResponsePB& re
     std::unique_lock<simple_spinlock> l(permissions_cache_lock_);
     // It's possible that another thread already updated the cache with a more recent version.
     if (version_ < resp.version()) {
-      roles_permissions_map_ = std::move(new_roles_permissions_map);
+      std::atomic_store_explicit(&roles_permissions_map_, std::move(new_roles_permissions_map),
+          std::memory_order_release);
       // Set the permissions cache's version.
       version_ = resp.version();
     }
@@ -155,8 +158,12 @@ bool PermissionsCache::HasCanonicalResourcePermission(const std::string& canonic
                                                       const ql::ObjectType& object_type,
                                                       const RoleName& role_name,
                                                       const PermissionType& permission) {
-  const auto& role_permissions_iter = roles_permissions_map_->find(role_name);
-  if (role_permissions_iter == roles_permissions_map_->end()) {
+  std::shared_ptr<RolesPermissionsMap> roles_permissions_map;
+  roles_permissions_map = std::atomic_load_explicit(&roles_permissions_map_,
+      std::memory_order_acquire);
+
+  const auto& role_permissions_iter = roles_permissions_map->find(role_name);
+  if (role_permissions_iter == roles_permissions_map->end()) {
     VLOG(1) << "Role " << role_name << " not found";
     // Role doesn't exist.
     return false;
