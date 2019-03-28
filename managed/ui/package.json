@@ -5,7 +5,10 @@
   "scripts": {
     "start": "react-app-rewired start",
     "start:prod": "pushstate-server build",
-    "build": "rimraf ../src/main/public && react-app-rewired build && ncp build ../src/main/public && rimraf build",
+    "cleanup": "rimraf build && rimraf ../src/main/public",
+    "fetch-map": "aws s3 sync s3://no-such-url build/static/map",
+    "build": "npm run cleanup && react-app-rewired build && npm run fetch-map",
+    "build-and-copy": "npm run build && ncp build ../src/main/public",
     "eject": "react-app-rewired eject",
     "test": "react-app-rewired test --env=jsdom"
   },
