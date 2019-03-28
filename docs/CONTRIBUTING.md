@@ -51,7 +51,57 @@ Content pages contain information about topics. The names of these docs page has
 
 There are a number of display widgets available. These are listed below.
 
-### NOTE, INFO and TIP Boxes
+### Inline Section Switcher
+
+An inline section switcher lets you switch between content sections **without a separate URL***. If you want to link to sub-sections inside a switcher, use tabs.
+
+You can achieve this as follows:
+
+```
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
+      <i class="fab fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li>
+    <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab" role="tab" aria-controls="linux" aria-selected="false">
+      <i class="fab fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+  <li>
+    <a href="#docker" class="nav-link" id="docker-tab" data-toggle="tab" role="tab" aria-controls="docker" aria-selected="false">
+      <i class="fab fa-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+  <li >
+    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
+    {{% includeMarkdown "binary/explore-ysql.md" /%}}
+  </div>
+  <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
+    {{% includeMarkdown "binary/explore-ysql.md" /%}}
+  </div>
+  <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
+    {{% includeMarkdown "docker/explore-ysql.md" /%}}
+  </div>
+  <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
+    {{% includeMarkdown "kubernetes/explore-ysql.md" /%}}
+  </div>
+</div>
+```
+
+### Information Boxes - NOTE, INFO and TIP
 
 Short code for a note box:
 ```
