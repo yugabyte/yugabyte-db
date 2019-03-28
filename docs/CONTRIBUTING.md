@@ -66,19 +66,22 @@ You can achieve this as follows:
     </a>
   </li>
   <li>
-    <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab" role="tab" aria-controls="linux" aria-selected="false">
+    <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab" 
+       role="tab" aria-controls="linux" aria-selected="false">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
   <li>
-    <a href="#docker" class="nav-link" id="docker-tab" data-toggle="tab" role="tab" aria-controls="docker" aria-selected="false">
+    <a href="#docker" class="nav-link" id="docker-tab" data-toggle="tab"
+       role="tab" aria-controls="docker" aria-selected="false">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
   <li >
-    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
+    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab"
+       role="tab" aria-controls="kubernetes" aria-selected="false">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
