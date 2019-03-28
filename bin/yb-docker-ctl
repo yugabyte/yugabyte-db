@@ -418,11 +418,15 @@ class YBDockerControl():
                         init_db_cmd = "{} {}/initdb -U postgres -D {}".format(
                             init_db_envs, pg_bin_dir, tmp_data_dir)
                         # Setup the list based cmdline.
-                        print("Running initdb to initialize PostgreSQL metadata "
-                              "in the YugaByte cluster. This may take up to a minute.")
                         docker_cmd = ['docker', 'exec', '-it', self.YB_TSERVER_FORMAT.format(1)]
                         docker_cmd.extend(["bash", "-c", init_db_cmd])
+                        print(' '.join(docker_cmd))
+                        print("Running initdb to initialize YSQL metadata "
+                              "in the YugaByte cluster. This may take up to a minute.")
                         result = get_subprocess_result_as_str(docker_cmd)
+                        with open("initdb.log", "w") as initdb_log:
+                            initdb_log.write(result)
+                        print("initdb log available at ./initdb.log")
                     return
             except subprocess.CalledProcessError:
                 pass
