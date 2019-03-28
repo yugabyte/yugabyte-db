@@ -32,12 +32,6 @@ try:
     init_env(logging.INFO)
     script_dir = os.path.dirname(os.path.realpath(__file__))
     output = check_output(["sbt", "clean"])
-    shutil.rmtree(os.path.join(script_dir, "ui", "node_modules"), ignore_errors=True)
-    log_message(logging.INFO, "Copy Map Tiles from S3 Repo")
-    mapDownloadPath = os.path.join(script_dir, 'ui', 'public', 'map')
-    if not os.path.exists(mapDownloadPath):
-        os.makedirs(mapDownloadPath)
-    output = check_output(['aws', 's3', 'sync', 's3://no-such-url', mapDownloadPath])
     log_message(logging.INFO, "Kick off SBT universal packaging")
     output = check_output(["sbt", "universal:packageZipTarball"])
     log_message(logging.INFO, "Get a release file name based on the current commit sha")
@@ -47,7 +41,6 @@ try:
         raise YBOpsRuntimeError("Yugaware packaging failed")
     log_message(logging.INFO, "Rename the release file to have current commit sha")
     shutil.copyfile(packaged_files[0], release_file)
-    shutil.rmtree(mapDownloadPath, ignore_errors=True)
     if args.destination:
         if not os.path.exists(args.destination):
             raise YBOpsRuntimeError("Destination {} not a directory.".format(args.destination))

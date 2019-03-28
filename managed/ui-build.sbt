@@ -19,7 +19,7 @@ def runNpmInstall(implicit dir: File): Int =
 // Execute `npm run build` command to build the production build of the UI code. Return 0 if success.
 def runNpmBuild(implicit dir: File): Int =
   if (runNpmInstall != 0) throw new Exception("npm install failed")
-  else Process("npm run build", dir)!
+  else Process("npm run build-and-copy", dir)!
 
 
 lazy val UIBuild = taskKey[Unit]("Build production version of UI code.")
