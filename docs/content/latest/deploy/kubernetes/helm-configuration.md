@@ -75,14 +75,31 @@ If you want to create a shared LoadBalancer endpoint for all the services (YCQL,
 $ helm install yugabyte -f expose-all-shared.yaml --namespace yb-demo --name yb-demo --wait
 ```
 
-You can also bring up an internal LoadBalancer (for either the masters' or the tservers' service) if required. Just specify the [annotation](https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer) required for your cloud provider. The following command brings up an internal LoadBalancer for the tserver service(s) in GCP and AWS respectively.
+You can also bring up an internal LoadBalancer (for either the masters' or the tservers' service) if required. Just specify the [annotation](https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer) required for your cloud provider. The following commands brings up an internal LoadBalancer for the tserver service(s) in the respective providers.
 
-```sh
-$ helm install yugabyte -f expose-all.yaml --namespace yb-demo --name yb-demo --set annotations.tserver.loadbalancer."cloud\.google\.com/load-balancer-type"=Internal --wait
-```
-```sh
-$ helm install yugabyte -f expose-all.yaml --namespace yb-demo --name yb-demo --set annotations.tserver.loadbalancer."service\.beta\.kubernetes\.io/aws-load-balancer-internal"=0.0.0.0/0 --wait
-```
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="#aks" class="nav-link active" id="aks-tab" data-toggle="tab" role="tab" aria-controls="aks" aria-selected="true">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      AKS
+    </a>
+  </li>
+  <li>
+    <a href="#gke" class="nav-link" id="gke-tab" data-toggle="tab" role="tab" aria-controls="gke" aria-selected="false">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      GKE
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="aks" class="tab-pane fade show active" role="tabpanel" aria-labelledby="aks-tab">
+    {{% includeMarkdown "public-cloud/aks.md" /%}}
+  </div>
+  <div id="gke" class="tab-pane fade" role="tabpanel" aria-labelledby="gke-tab">
+    {{% includeMarkdown "public-cloud/gke.md" /%}}
+  </div>
+</div>
 
 ### Storage Class
 
