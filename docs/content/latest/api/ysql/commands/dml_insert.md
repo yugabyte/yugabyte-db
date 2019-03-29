@@ -8,6 +8,7 @@ menu:
     parent: api-ysql-commands
 aliases:
   - /latest/api/ysql/dml_insert/
+  - /latest/api/postgresql/dml_insert/
 isTocNested: true
 showAsideToc: true
 ---
