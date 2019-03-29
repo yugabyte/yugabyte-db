@@ -1,4 +1,16 @@
 
+## Table of Contents
+
+- [Structure of each page](#structure-of-each-page)
+- [Types of pages](#types-of-pages)
+- [Widgets](#widgets)
+    - [Information boxes](#information-boxes)
+        - [Note box](note-box)
+        - [Tip box](tip-box)
+        - [Warning box](warning-box)
+    - [Inline section switcher](#inline-section-switcher)
+
+
 # Structure of each page
 
 All docs pages must start with a front matter as shown below.
@@ -50,6 +62,45 @@ Content pages contain information about topics. The names of these docs page has
 # Widgets
 
 There are a number of display widgets available. These are listed below.
+
+## Information Boxes
+
+### NOTE Box
+
+A note box gives some important information that is often not optional. It looks as follows:
+![Note Box](https://raw.githubusercontent.com/YugaByte/docs/master/contributing/info-box-NOTE.png)
+
+Short code for a note box:
+```
+{{< note title="Note" >}}
+This is a note with a [link](https://www.yugabyte.com).
+{{< /note >}}
+```
+
+### TIP Box
+
+A tip box gives a hint or other useful but optional piece of information. It looks as follows:
+![Tip Box](https://raw.githubusercontent.com/YugaByte/docs/master/contributing/info-box-TIP.png)
+
+Short code for a tip code:
+```
+{{< tip title="Tip" >}}
+This is a tip with a [link](https://www.yugabyte.com).
+{{< /tip >}}
+```
+
+### WARNING Box
+
+A warning box informs the user about a potential issue or something to watch out for. It looks as follows:
+![Warning Box](https://raw.githubusercontent.com/YugaByte/docs/master/contributing/info-box-WARNING.png)
+
+Short code for a warning code:
+```
+{{< warning title="Warning" >}}
+This is a warning with a [link](https://www.yugabyte.com).
+{{< /warning >}}
+```
+
 
 ## Inline Section Switcher
 
@@ -105,42 +156,4 @@ The corresponding code for this widget is shown below. Note that the actual cont
     {{% includeMarkdown "kubernetes/explore-ysql.md" /%}}
   </div>
 </div>
-```
-
-## Information Boxes - NOTE, INFO and TIP
-
-### NOTE Box
-
-A note box gives some important information that is often not optional. It looks as follows:
-![Note Box](https://raw.githubusercontent.com/YugaByte/docs/master/contributing/info-box-NOTE.png)
-
-Short code for a note box:
-```
-{{< note title="Note" >}}
-This is a note with a [link](https://www.yugabyte.com).
-{{< /note >}}
-```
-
-### TIP Box
-
-A tip box gives a hint or other useful but optional piece of information. It looks as follows:
-![Tip Box](https://raw.githubusercontent.com/YugaByte/docs/master/contributing/info-box-TIP.png)
-
-Short code for a tip code:
-```
-{{< tip title="Tip" >}}
-This is a tip with a [link](https://www.yugabyte.com).
-{{< /tip >}}
-```
-
-### WARNING Box
-
-A warning box informs the user about a potential issue or something to watch out for. It looks as follows:
-![Warning Box](https://raw.githubusercontent.com/YugaByte/docs/master/contributing/info-box-WARNING.png)
-
-Short code for a warning code:
-```
-{{< warning title="Warning" >}}
-This is a warning with a [link](https://www.yugabyte.com).
-{{< /warning >}}
 ```
