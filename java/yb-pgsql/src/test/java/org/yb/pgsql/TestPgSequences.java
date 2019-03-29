@@ -547,17 +547,98 @@ public class TestPgSequences extends BasePgSQLTest {
   }
 
   //------------------------------------------------------------------------------------------------
-  // Unsupported features tests.
-  //-----------------------------------------------------------------------------------------------
+  // CYCLE tests.
+  //------------------------------------------------------------------------------------------------
   @Test
   public void testCycle() throws Exception {
     try (Statement statement = connection.createStatement()) {
-      thrown.expect(org.postgresql.util.PSQLException.class);
-      thrown.expectMessage("CYCLE not supported yet");
-      statement.execute("CREATE SEQUENCE s1 CYCLE");
+      statement.execute("CREATE SEQUENCE s1 CYCLE MAXVALUE 2");
+      for (int i = 1; i <= 2; i++) {
+        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(i, rs.getInt("nextval"));
+      }
+      // After reaching MAXVALUE the sequence should go back to 1.
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getInt("nextval"));
     }
   }
 
+  // A cycled sequence always go back to the MINVALUE value in a sequence with a positive increment
+  // regardless by how much the sequence is overflown.
+  @Test
+  public void testCycleWithBigPositiveIncrement() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      long increment = Long.MAX_VALUE / 2 + 1234567;
+      statement.execute(String.format("CREATE SEQUENCE s1 CYCLE INCREMENT %d", increment));
+      for (long i = 0; i < 2; i++) {
+        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(i * increment + 1L, rs.getLong("nextval"));
+      }
+      // After reaching MAXVALUE the sequence should go back to 1.
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong("nextval"));
+    }
+  }
+
+  // A cycled sequence always go back to the MINVALUE value in a sequence with a positive increment
+  // regardless by how much the sequence is overflown.
+  @Test
+  public void testCycleWithBigNegativeIncrement() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      long increment = Long.MIN_VALUE / 2 - 1234567;
+      statement.execute(
+          String.format("CREATE SEQUENCE s1 MAXVALUE 0 START 0 CYCLE INCREMENT %d", increment));
+      for (long i = 0; i < 2; i++) {
+        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(i * increment, rs.getLong("nextval"));
+      }
+      // After reaching MAXVALUE the sequence should go back to 1.
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(0, rs.getLong("nextval"));
+    }
+  }
+
+  @Test
+  public void testCycleWithPositiveIncrement() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE SEQUENCE s1 CYCLE MINVALUE 5 START 8 MAXVALUE 10 INCREMENT 1");
+      for (int i = 8; i <= 10; i++) {
+        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(i, rs.getInt("nextval"));
+      }
+      // After reaching MAXVALUE the sequence should go back to MINVALUE which is 5.
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(5, rs.getInt("nextval"));
+    }
+  }
+
+  @Test
+  public void testCycleWithNegativeIncrement() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE SEQUENCE s1 CYCLE MINVALUE 1 START 3 MAXVALUE 9 INCREMENT -1");
+      for (int i = 3; i >= 1; i--) {
+        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(i, rs.getInt("nextval"));
+      }
+      // After reaching MINVALUE the sequence should go back to MAXVALUE which is 3.
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(9, rs.getInt("nextval"));
+    }
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Unsupported features tests.
+  //------------------------------------------------------------------------------------------------
   @Test
   public void testSelectDirectlyFromSequenceTable() throws Exception {
     try (Statement statement = connection.createStatement()) {

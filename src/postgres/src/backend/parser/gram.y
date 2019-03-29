@@ -4440,7 +4440,6 @@ SeqOptElem: AS SimpleTypename
 				}
 			| CYCLE
 				{
-					parser_ybc_not_support(@1, "CYCLE");
 					$$ = makeDefElem("cycle", (Node *)makeInteger(true), @1);
 				}
 			| NO CYCLE
