@@ -51,11 +51,13 @@ Content pages contain information about topics. The names of these docs page has
 
 There are a number of display widgets available. These are listed below.
 
-### Inline Section Switcher
+## Inline Section Switcher
 
-An inline section switcher lets you switch between content sections **without a separate URL***. If you want to link to sub-sections inside a switcher, use tabs.
+An inline section switcher lets you switch between content sections **without a separate URL***. If you want to link to sub-sections inside a switcher, use tabs. This widget looks as follows:
 
-You can achieve this as follows:
+![Inline section switcher](https://raw.githubusercontent.com/YugaByte/docs/master/contributing/inline-section-switcher.png)
+
+The corresponding code for this widget is shown below. Note that the actual content must be placed in a file with the `.md` extension inside a subdirectory whose name is easy to associate with the switcher title.
 
 ```
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -105,7 +107,12 @@ You can achieve this as follows:
 </div>
 ```
 
-### Information Boxes - NOTE, INFO and TIP
+## Information Boxes - NOTE, INFO and TIP
+
+### NOTE Box
+
+A note box gives some important information that is often not optional. It looks as follows:
+![Note Box](https://raw.githubusercontent.com/YugaByte/docs/master/contributing/info-box-NOTE.png)
 
 Short code for a note box:
 ```
@@ -114,9 +121,26 @@ This is a note with a [link](https://www.yugabyte.com).
 {{< /note >}}
 ```
 
+### TIP Box
+
+A tip box gives a hint or other useful but optional piece of information. It looks as follows:
+![Tip Box](https://raw.githubusercontent.com/YugaByte/docs/master/contributing/info-box-TIP.png)
+
 Short code for a tip code:
 ```
 {{< tip title="Tip" >}}
 This is a tip with a [link](https://www.yugabyte.com).
 {{< /tip >}}
+```
+
+### WARNING Box
+
+A warning box informs the user about a potential issue or something to watch out for. It looks as follows:
+![Warning Box](https://raw.githubusercontent.com/YugaByte/docs/master/contributing/info-box-WARNING.png)
+
+Short code for a warning code:
+```
+{{< warning title="Warning" >}}
+This is a warning with a [link](https://www.yugabyte.com).
+{{< /warning >}}
 ```
