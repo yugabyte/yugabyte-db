@@ -326,6 +326,7 @@ foreach my $catname (@catnames)
     # Select a unique index on the table if available as the table's primary key
     # and add it after the table definition:
     # - prefer the oid one if available,
+    # - for pg_attribute, pg_attribute_relid_attnum_index fits better as the primary key,
     # - otherwise default to first index.
     my $pkidxname;
     my $pkidx;
@@ -336,7 +337,8 @@ foreach my $catname (@catnames)
         die "Unrecognized index declaration $_" if !$idxname;
         if ($icatname eq $catname && $unique)
         {
-            if ($columns eq "btree(oid oid_ops)")
+            if (($columns eq "btree(oid oid_ops)") ||
+                ($icatname eq "pg_attribute" && $idxname eq "pg_attribute_relid_attnum_index"))
             {
                 ($pkidxname, $pkidx) = ($idxname, $_);
                 last;

@@ -76,3 +76,27 @@ SELECT * FROM test_index ORDER BY v1;
 SELECT * FROM test_index WHERE v1 IS NULL;
 SELECT * FROM test_index WHERE v1 IS NOT NULL;
 SELECT * FROM test_index WHERE v1 IN (1, 2, 3);
+
+-- Verify indexes on system catalog tables are updated properly
+
+CREATE TABLE test_sys_catalog_update (k int primary key, v int);
+
+EXPLAIN SELECT relname, reltype FROM pg_class WHERE relname = 'test_sys_catalog_update';
+SELECT relname, reltype  FROM pg_class WHERE relname = 'test_sys_catalog_update';
+
+EXPLAIN SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
+SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
+
+EXPLAIN SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
+SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
+
+ALTER TABLE test_sys_catalog_update RENAME TO test_sys_catalog_update_new;
+ALTER TABLE test_sys_catalog_update_new RENAME COLUMN v TO w;
+
+SELECT relname, reltype  FROM pg_class WHERE relname = 'test_sys_catalog_update';
+SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
+SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
+
+SELECT relname, reltype  FROM pg_class WHERE relname = 'test_sys_catalog_update_new';
+SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update_new';
+SELECT attname, atttypid FROM pg_attribute WHERE attname = 'w';

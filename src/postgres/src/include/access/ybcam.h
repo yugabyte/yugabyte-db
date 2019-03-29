@@ -83,4 +83,10 @@ extern void ybc_index_beginscan(Relation relation,
 extern HeapTuple ybc_index_getnext(IndexScanDesc scan_desc);
 extern void ybc_index_endscan(IndexScanDesc scan_desc);
 
+/*
+ * Fetch a single tuple by the ybctid.
+ */
+extern HeapTuple YBCFetchTuple(Relation relation, Datum ybctid);
+
+
 #endif							/* YBCAM_H */

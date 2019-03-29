@@ -57,9 +57,7 @@ extern void YBCExecuteInsertIndex(Relation rel,
 /*
  * Delete a tuple (identified by ybctid) from a YugaByte table.
  */
-extern void YBCExecuteDelete(Relation rel,
-                             ResultRelInfo *resultRelInfo,
-                             TupleTableSlot *slot);
+extern void YBCExecuteDelete(Relation rel, TupleTableSlot *slot);
 /*
  * Delete a tuple (identified by index columns and base table ybctid) from an
  * index's backing YugaByte index table.
@@ -72,10 +70,7 @@ extern void YBCExecuteDeleteIndex(Relation index,
 /*
  * Update a row (identified by ybctid) in a YugaByte table.
  */
-extern void YBCExecuteUpdate(Relation rel,
-                             ResultRelInfo *resultRelInfo,
-                             TupleTableSlot *slot,
-                             HeapTuple tuple);
+extern void YBCExecuteUpdate(Relation rel, TupleTableSlot *slot, HeapTuple tuple);
 
 //------------------------------------------------------------------------------
 // System tables modify-table API.
@@ -85,7 +80,9 @@ extern void YBCExecuteUpdate(Relation rel,
 
 extern void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple);
 
-extern void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple tuple);
+extern void YBCUpdateSysCatalogTuple(Relation rel,
+									 HeapTuple oldtuple,
+									 HeapTuple tuple);
 
 // Buffer write operations.
 extern void YBCStartBufferingWriteOperations();
