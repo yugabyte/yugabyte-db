@@ -86,3 +86,78 @@ SELECT * FROM test_index WHERE v1 IN (1, 2, 3);
 ERROR:  WHERE condition option 32 not supported yet
 DETAIL:  The WHERE condition option is not supported yet.
 HINT:  Rewrite the condition differently.
+-- Verify indexes on system catalog tables are updated properly
+CREATE TABLE test_sys_catalog_update (k int primary key, v int);
+EXPLAIN SELECT relname, reltype FROM pg_class WHERE relname = 'test_sys_catalog_update';
+                                          QUERY PLAN
+-----------------------------------------------------------------------------------------------
+ Index Scan using pg_class_relname_nsp_index on pg_class  (cost=0.00..4.01 rows=1000 width=68)
+   Index Cond: (relname = 'test_sys_catalog_update'::name)
+(2 rows)
+
+SELECT relname, reltype  FROM pg_class WHERE relname = 'test_sys_catalog_update';
+         relname         | reltype
+-------------------------+---------
+ test_sys_catalog_update |   26447
+(1 row)
+
+EXPLAIN SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
+                                         QUERY PLAN
+---------------------------------------------------------------------------------------------
+ Index Scan using pg_type_typname_nsp_index on pg_type  (cost=0.00..4.01 rows=1000 width=64)
+   Index Cond: (typname = 'test_sys_catalog_update'::name)
+(2 rows)
+
+SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
+         typname
+-------------------------
+ test_sys_catalog_update
+(1 row)
+
+EXPLAIN SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
+                                               QUERY PLAN
+--------------------------------------------------------------------------------------------------------
+ Index Scan using pg_attribute_relid_attnam_index on pg_attribute  (cost=0.00..4.01 rows=1000 width=68)
+   Index Cond: (attname = 'v'::name)
+(2 rows)
+
+SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
+ attname | atttypid
+---------+----------
+ v       |       23
+(1 row)
+
+ALTER TABLE test_sys_catalog_update RENAME TO test_sys_catalog_update_new;
+ALTER TABLE test_sys_catalog_update_new RENAME COLUMN v TO w;
+SELECT relname, reltype  FROM pg_class WHERE relname = 'test_sys_catalog_update';
+ relname | reltype
+---------+---------
+(0 rows)
+
+SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
+ typname
+---------
+(0 rows)
+
+SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
+ attname | atttypid
+---------+----------
+(0 rows)
+
+SELECT relname, reltype  FROM pg_class WHERE relname = 'test_sys_catalog_update_new';
+           relname           | reltype
+-----------------------------+---------
+ test_sys_catalog_update_new |   26447
+(1 row)
+
+SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update_new';
+           typname
+-----------------------------
+ test_sys_catalog_update_new
+(1 row)
+
+SELECT attname, atttypid FROM pg_attribute WHERE attname = 'w';
+ attname | atttypid
+---------+----------
+ w       |       23
+(1 row)

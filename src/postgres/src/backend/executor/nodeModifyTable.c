@@ -775,7 +775,7 @@ ExecDelete(ModifyTableState *mtstate,
 	}
 	else if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
 	{
-		YBCExecuteDelete(resultRelationDesc, resultRelInfo, planSlot);
+		YBCExecuteDelete(resultRelationDesc, planSlot);
 
 		if (resultRelInfo->ri_NumIndices > 0)
 		{
@@ -1112,7 +1112,7 @@ ExecUpdate(ModifyTableState *mtstate,
 	}
 	else if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
 	{
-		YBCExecuteUpdate(resultRelationDesc, resultRelInfo, planSlot, tuple);
+		YBCExecuteUpdate(resultRelationDesc, planSlot, tuple);
 
 		if (resultRelInfo->ri_NumIndices > 0)
 		{

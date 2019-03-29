@@ -15,7 +15,6 @@
  */
 #include "postgres.h"
 
-#include "miscadmin.h"
 #include "access/htup_details.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
@@ -24,6 +23,7 @@
 #include "utils/rel.h"
 
 #include "pg_yb_utils.h"
+#include "access/ybcam.h"
 #include "executor/ybcModifyTable.h"
 
 /*
@@ -312,24 +312,40 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 void
 CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 {
+	CatalogIndexState indstate;
+
+	indstate = CatalogOpenIndexes(heapRel);
 
 	if (IsYugaByteEnabled())
 	{
-		YBCUpdateSysCatalogTuple(heapRel, tup);
+		HeapTuple oldtup = NULL;
+
+		if (heapRel->rd_rel->relhasindex)
+		{
+			if (tup->t_ybctid)
+			{
+				oldtup = YBCFetchTuple(heapRel, tup->t_ybctid);
+				CatalogIndexDelete(indstate, oldtup);
+			}
+			else
+				YBC_LOG_WARNING("ybctid missing in %s's tuple",
+								RelationGetRelationName(heapRel));
+		}
+
+		YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
 		/* Update the local cache automatically */
 		SetSysCacheTuple(heapRel, tup);
 
 		if (heapRel->rd_rel->relhasindex)
-			YBC_LOG_WARNING("Skipping index update for %s", RelationGetRelationName(heapRel));
-		return;
+			CatalogIndexInsert(indstate, tup);
+	}
+	else
+	{
+		simple_heap_update(heapRel, otid, tup);
+
+		CatalogIndexInsert(indstate, tup);
 	}
 
-	CatalogIndexState indstate;
-
-	indstate = CatalogOpenIndexes(heapRel);
-	simple_heap_update(heapRel, otid, tup);
-
-	CatalogIndexInsert(indstate, tup);
 	CatalogCloseIndexes(indstate);
 }
 
@@ -347,18 +363,33 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 {
 	if (IsYugaByteEnabled())
 	{
-		YBCUpdateSysCatalogTuple(heapRel, tup);
+		HeapTuple oldtup = NULL;
+
+		if (heapRel->rd_rel->relhasindex)
+		{
+			if (tup->t_ybctid)
+			{
+				oldtup = YBCFetchTuple(heapRel, tup->t_ybctid);
+				CatalogIndexDelete(indstate, oldtup);
+			}
+			else
+				YBC_LOG_WARNING("ybctid missing in %s's tuple",
+								RelationGetRelationName(heapRel));
+		}
+
+		YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
 		/* Update the local cache automatically */
 		SetSysCacheTuple(heapRel, tup);
 
 		if (heapRel->rd_rel->relhasindex)
-			YBC_LOG_WARNING("Skipping index update for %s", RelationGetRelationName(heapRel));
-		return;
+			CatalogIndexInsert(indstate, tup);
 	}
+	else
+	{
+		simple_heap_update(heapRel, otid, tup);
 
-	simple_heap_update(heapRel, otid, tup);
-
-	CatalogIndexInsert(indstate, tup);
+		CatalogIndexInsert(indstate, tup);
+	}
 }
 
 /*

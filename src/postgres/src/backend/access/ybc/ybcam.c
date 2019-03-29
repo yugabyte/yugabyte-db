@@ -362,3 +362,89 @@ void ybc_index_endscan(IndexScanDesc scan_desc)
 	ybcEndScan(ybscan->state);
 	pfree(ybscan);
 }
+
+/* --------------------------------------------------------------------------------------------- */
+
+HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
+{
+	YBCPgStatement ybc_stmt;
+	TupleDesc      tupdesc = RelationGetDescr(relation);
+
+	HandleYBStatus(YBCPgNewSelect(ybc_pg_session,
+								  YBCGetDatabaseOid(relation),
+								  RelationGetRelid(relation),
+								  InvalidOid,
+								  &ybc_stmt,
+								  NULL /* read_time */));
+
+	/* Bind ybctid to identify the current row. */
+	YBCPgExpr ybctid_expr = YBCNewConstant(ybc_stmt,
+										   BYTEAOID,
+										   ybctid,
+										   false);
+	HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt,
+										  YBTupleIdAttributeNumber,
+										  ybctid_expr), ybc_stmt);
+
+	/*
+	 * Set up the scan targets. For index-based scan we need to return all "real" columns.
+	 */
+	if (RelationGetForm(relation)->relhasoids)
+	{
+		YBCPgTypeAttrs type_attrs = { 0 };
+		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, ObjectIdAttributeNumber, InvalidOid,
+										   &type_attrs);
+		HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_stmt, expr), ybc_stmt);
+	}
+	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
+	{
+		Form_pg_attribute att = TupleDescAttr(tupdesc, attnum - 1);
+		YBCPgTypeAttrs type_attrs = { att->atttypmod };
+		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid, &type_attrs);
+		HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_stmt, expr), ybc_stmt);
+	}
+	YBCPgTypeAttrs type_attrs = { 0 };
+	YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, YBTupleIdAttributeNumber, InvalidOid,
+									   &type_attrs);
+	HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_stmt, expr), ybc_stmt);
+
+	/* Execute the select statement. */
+	HandleYBStmtStatus(YBCPgExecSelect(ybc_stmt), ybc_stmt);
+
+	HeapTuple tuple    = NULL;
+	bool      has_data = false;
+
+	Datum           *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
+	bool            *nulls  = (bool *) palloc(tupdesc->natts * sizeof(bool));
+	YBCPgSysColumns syscols;
+
+	/* Fetch one row. */
+	HandleYBStmtStatus(YBCPgDmlFetch(ybc_stmt,
+									 tupdesc->natts,
+									 (uint64_t *) values,
+									 nulls,
+									 &syscols,
+									 &has_data),
+					   ybc_stmt);
+
+	if (has_data)
+	{
+		tuple = heap_form_tuple(tupdesc, values, nulls);
+
+		if (syscols.oid != InvalidOid)
+		{
+			HeapTupleSetOid(tuple, syscols.oid);
+		}
+		if (syscols.ybctid != NULL)
+		{
+			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+		}
+	}
+	pfree(values);
+	pfree(nulls);
+
+	/* Complete execution */
+	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
+
+	return tuple;
+}
