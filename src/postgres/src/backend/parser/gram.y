@@ -10528,7 +10528,6 @@ transaction_mode_item:
 				}
 			| READ WRITE
 				{
-					parser_ybc_not_support(@1, "TRANSACTION READ WRITE mode");
 					$$ = makeDefElem("transaction_read_only",
 									 makeIntConst(false, @1), @1);
 				}
