@@ -636,7 +636,7 @@ index_fetch_heap(IndexScanDesc scan)
 	/* For YugaByte index, we need to select from the base table using ybctid */
 	if (IsYugaByteEnabled())
 	{
-		return YBCIndexExecuteSelect(scan->heapRelation, scan->xs_ctup.t_ybctid);
+		return YBCFetchTuple(scan->heapRelation, scan->xs_ctup.t_ybctid);
 	}
 
 	ItemPointer tid = &scan->xs_ctup.t_self;

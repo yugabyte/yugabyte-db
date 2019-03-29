@@ -365,7 +365,7 @@ void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	ybc_stmt = NULL;
 }
 
-void YBCExecuteDelete(Relation rel, ResultRelInfo *resultRelInfo, TupleTableSlot *slot)
+void YBCExecuteDelete(Relation rel, TupleTableSlot *slot)
 {
 	Oid            dboid       = YBCGetDatabaseOid(rel);
 	Oid            relid       = RelationGetRelid(rel);
@@ -443,10 +443,7 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	ybc_stmt = NULL;
 }
 
-void YBCExecuteUpdate(Relation rel,
-                      ResultRelInfo *resultRelInfo,
-                      TupleTableSlot *slot,
-                      HeapTuple tuple)
+void YBCExecuteUpdate(Relation rel, TupleTableSlot *slot, HeapTuple tuple)
 {
 	TupleDesc      tupleDesc   = slot->tts_tupleDescriptor;
 	Oid            dboid       = YBCGetDatabaseOid(rel);
@@ -543,7 +540,8 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	bms_free(pkey);
 
 	/*
-	 * Invalidate the cache now so if there is an error with delete we will
+	 * Mark tuple for invalidation from system caches at next command
+	 * boundary. Do this now so if there is an error with delete we will
 	 * re-query to get the correct state from the master.
 	 */
 	CacheInvalidateHeapTuple(rel, tuple, NULL);
@@ -555,7 +553,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	delete_stmt = NULL;
 }
 
-void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple tuple)
+void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple oldtuple, HeapTuple tuple)
 {
 	Oid            dboid       = YBCGetDatabaseOid(rel);
 	Oid            relid       = RelationGetRelid(rel);
@@ -610,10 +608,17 @@ void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple tuple)
 	}
 
 	/*
-	 * Invalidate the cache now so if there is an error with delete we will
-	 * re-query to get the correct state from the master.
+	 * Mark old tuple for invalidation from system caches at next command
+	 * boundary, and mark the new tuple for invalidation in case we abort.
+	 * In case when there is no old tuple, we will invalidate with the
+	 * new tuple at next command boundary instead. Do these now so if there
+	 * is an error with update we will re-query to get the correct state
+	 * from the master.
 	 */
-	CacheInvalidateHeapTuple(rel, tuple, NULL);
+	if (oldtuple)
+		CacheInvalidateHeapTuple(rel, oldtuple, tuple);
+	else
+		CacheInvalidateHeapTuple(rel, tuple, NULL);
 
 	/* Execute the statement and clean up */
 	YBCExecWriteStmt(update_stmt, rel);

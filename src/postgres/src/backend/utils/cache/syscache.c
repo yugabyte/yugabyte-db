@@ -1002,7 +1002,7 @@ YBSysTablePrimaryKeyOid(Oid relid)
 		case AccessMethodProcedureRelationId: return AccessMethodProcedureOidIndexId;
 		case AccessMethodRelationId: return AmOidIndexId;
 		case AggregateRelationId: return AggregateFnoidIndexId;
-		case AttributeRelationId: return AttributeRelidNameIndexId;
+		case AttributeRelationId: return AttributeRelidNumIndexId;
 		case AuthIdRelationId: return AuthIdOidIndexId;
 		case AuthMemRelationId: return AuthMemRoleMemIndexId;
 		case CastRelationId: return CastOidIndexId;
@@ -1100,7 +1100,7 @@ YBSysTablePrimaryKey(Oid relid)
 			break;
 		case AttributeRelationId:
 			YBPkAddAttribute(Anum_pg_attribute_attrelid);
-			YBPkAddAttribute(Anum_pg_attribute_attname);
+			YBPkAddAttribute(Anum_pg_attribute_attnum);
 			break;
 		case AuthMemRelationId:
 			YBPkAddAttribute(Anum_pg_auth_members_roleid);

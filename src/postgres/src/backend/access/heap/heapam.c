@@ -6439,7 +6439,7 @@ heap_inplace_update(Relation relation, HeapTuple tuple)
 
 	if (IsYugaByteEnabled())
 	{
-		YBCUpdateSysCatalogTuple(relation, tuple);
+		YBCUpdateSysCatalogTuple(relation, NULL /* oldtuple */, tuple);
 		return;
 	}
 
