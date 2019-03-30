@@ -17,6 +17,8 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 
+using namespace std::literals;
+
 ///////////////////////////////////////////////////
 // YBMiniClusterTestBase
 ///////////////////////////////////////////////////
@@ -66,5 +68,23 @@ void YBMiniClusterTestBase<T>::DontVerifyClusterBeforeNextTearDown() {
 // implementation changes.
 template class YBMiniClusterTestBase<MiniCluster>;
 template class YBMiniClusterTestBase<ExternalMiniCluster>;
+
+template <class T>
+Status MiniClusterTestWithClient<T>::CreateClient() {
+  // Connect to the cluster.
+  return YBMiniClusterTestBase<T>::cluster_->CreateClient(&client_);
+}
+
+template <class T>
+client::YBSessionPtr MiniClusterTestWithClient<T>::NewSession() {
+  auto session = client_->NewSession();
+  session->SetTimeout(60s);
+  return session;
+}
+
+// Instantiate explicitly to avoid recompilation of a lot of dependent test classes due to template
+// implementation changes.
+template class MiniClusterTestWithClient<MiniCluster>;
+template class MiniClusterTestWithClient<ExternalMiniCluster>;
 
 } // namespace yb
