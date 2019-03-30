@@ -228,7 +228,7 @@ Status ExternalMiniCluster::HandleOptions() {
   return Status::OK();
 }
 
-Status ExternalMiniCluster::Start() {
+Status ExternalMiniCluster::Start(const rpc::MessengerPtr& messenger) {
   CHECK(masters_.empty()) << "Masters are not empty (size: " << masters_.size()
       << "). Maybe you meant Restart()?";
   CHECK(tablet_servers_.empty()) << "Tablet servers are not empty (size: "
@@ -236,10 +236,14 @@ Status ExternalMiniCluster::Start() {
   RETURN_NOT_OK(HandleOptions());
   FLAGS_replication_factor = opts_.num_masters;
 
-  rpc::MessengerBuilder builder("minicluster-messenger");
-  builder.set_num_reactors(1);
-  RETURN_NOT_OK_PREPEND(builder.Build().MoveTo(&messenger_),
-                        "Failed to start Messenger for minicluster");
+  if (!messenger) {
+    rpc::MessengerBuilder builder("minicluster-messenger");
+    builder.set_num_reactors(1);
+    RETURN_NOT_OK_PREPEND(builder.Build().MoveTo(&messenger_),
+        "Failed to start Messenger for minicluster");
+  } else {
+    messenger_ = messenger;
+  }
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_);
 
   Status s = Env::Default()->CreateDir(data_root_);
@@ -368,7 +372,7 @@ Result<ExternalMaster *> ExternalMiniCluster::StartMasterWithPeers(const string&
   LOG(INFO) << "Using auto-assigned rpc_port " << rpc_port << "; http_port " << http_port
             << " to start a new external mini-cluster master with peers '" << peer_addrs << "'.";
 
-  string addr = Substitute("127.0.0.1:$0", rpc_port);
+  string addr = MasterAddressForPort(rpc_port);
   string exe = GetBinaryPath(kMasterBinaryName);
 
   ExternalMaster* master =
@@ -382,13 +386,17 @@ Result<ExternalMaster *> ExternalMiniCluster::StartMasterWithPeers(const string&
   return master;
 }
 
+std::string ExternalMiniCluster::MasterAddressForPort(uint16_t port) const {
+  return Format(opts_.use_even_ips ? "127.0.0.2:$0" : "127.0.0.1:$0", port);
+}
+
 void ExternalMiniCluster::StartShellMaster(ExternalMaster** new_master) {
   uint16_t rpc_port = AllocateFreePort();
   uint16_t http_port = AllocateFreePort();
   LOG(INFO) << "Using auto-assigned rpc_port " << rpc_port << "; http_port " << http_port
             << " to start a new external mini-cluster shell master.";
 
-  string addr = Substitute("127.0.0.1:$0", rpc_port);
+  string addr = MasterAddressForPort(rpc_port);
 
   string exe = GetBinaryPath(kMasterBinaryName);
 
@@ -861,7 +869,7 @@ string ExternalMiniCluster::GetMasterAddresses() const {
     if (!peer_addrs.empty()) {
       peer_addrs += ",";
     }
-    peer_addrs += Substitute("127.0.0.1:$0", opts_.master_rpc_ports[i]);
+    peer_addrs += MasterAddressForPort(opts_.master_rpc_ports[i]);
   }
   return peer_addrs;
 }
@@ -884,7 +892,7 @@ Status ExternalMiniCluster::StartMasters() {
 
   vector<string> peer_addrs;
   for (int i = 0; i < num_masters; i++) {
-    string addr = Substitute("127.0.0.1:$0", opts_.master_rpc_ports[i]);
+    string addr = MasterAddressForPort(opts_.master_rpc_ports[i]);
     peer_addrs.push_back(addr);
   }
   string peer_addrs_str = JoinStrings(peer_addrs, ",");
@@ -914,7 +922,9 @@ Status ExternalMiniCluster::StartMasters() {
 }
 
 string ExternalMiniCluster::GetBindIpForTabletServer(int index) const {
-  if (opts_.bind_to_unique_loopback_addresses) {
+  if (opts_.use_even_ips) {
+    return Substitute("127.0.0.$0", (index + 1) * 2);
+  } else if (opts_.bind_to_unique_loopback_addresses) {
 #if defined(__APPLE__)
     return Substitute("127.0.0.$0", index + 1); // Use default 127.0.0.x IPs.
 #else

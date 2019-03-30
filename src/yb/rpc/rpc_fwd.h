@@ -48,7 +48,6 @@ class Acceptor;
 class AcceptorPool;
 class ConnectionContext;
 class GrowableBufferAllocator;
-class Messenger;
 class MessengerBuilder;
 class Proxy;
 class ProxyCache;
@@ -82,6 +81,9 @@ typedef std::weak_ptr<Connection> ConnectionWeakPtr;
 
 class InboundCall;
 typedef std::shared_ptr<InboundCall> InboundCallPtr;
+
+class Messenger;
+typedef std::shared_ptr<Messenger> MessengerPtr;
 
 class OutboundCall;
 typedef std::shared_ptr<OutboundCall> OutboundCallPtr;

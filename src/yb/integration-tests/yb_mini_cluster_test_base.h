@@ -18,6 +18,8 @@
 
 #include "yb/util/test_util.h"
 
+#include "yb/client/client.h"
+
 namespace yb {
 
 template <class T>
@@ -45,6 +47,18 @@ class YBMiniClusterTestBase: public YBTest {
 
   virtual void DoTearDown();
   virtual void DoBeforeTearDown();
+};
+
+template <class T>
+class MiniClusterTestWithClient : public YBMiniClusterTestBase<T> {
+ public:
+  // Create a new YB session
+  client::YBSessionPtr NewSession();
+
+ protected:
+  virtual CHECKED_STATUS CreateClient();
+
+  client::YBClientPtr client_;
 };
 
 } // namespace yb
