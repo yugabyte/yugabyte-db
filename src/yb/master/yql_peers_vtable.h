@@ -14,8 +14,9 @@
 #ifndef YB_MASTER_YQL_PEERS_VTABLE_H
 #define YB_MASTER_YQL_PEERS_VTABLE_H
 
-#include "yb/master/master.h"
 #include "yb/master/yql_virtual_table.h"
+
+#include "yb/util/net/net_fwd.h"
 
 namespace yb {
 namespace master {
@@ -27,19 +28,10 @@ class PeersVTable : public YQLVirtualTable {
   CHECKED_STATUS RetrieveData(const QLReadRequestPB& request,
                               std::unique_ptr<QLRowBlock>* vtable) const;
 
- protected:
+ private:
   Schema CreateSchema() const;
 
- private:
-  static constexpr const char* const kPeer = "peer";
-  static constexpr const char* const kDataCenter = "data_center";
-  static constexpr const char* const kHostId = "host_id";
-  static constexpr const char* const kPreferredIp = "preferred_ip";
-  static constexpr const char* const kRack = "rack";
-  static constexpr const char* const kReleaseVersion = "release_version";
-  static constexpr const char* const kRPCAddress = "rpc_address";
-  static constexpr const char* const kSchemaVersion = "schema_version";
-  static constexpr const char* const kTokens = "tokens";
+  std::unique_ptr<Resolver> resolver_;
 };
 
 }  // namespace master

@@ -14,11 +14,38 @@
 #include "yb/master/yql_local_vtable.h"
 #include "yb/master/ts_descriptor.h"
 
+#include "yb/rpc/messenger.h"
+
 namespace yb {
 namespace master {
 
+namespace {
+
+const std::string kSystemLocalKeyColumn = "key";
+const std::string kSystemLocalBootstrappedColumn = "bootstrapped";
+const std::string kSystemLocalBroadcastAddressColumn = "broadcast_address";
+const std::string kSystemLocalClusterNameColumn = "cluster_name";
+const std::string kSystemLocalCQLVersionColumn = "cql_version";
+const std::string kSystemLocalDataCenterColumn = "data_center";
+const std::string kSystemLocalGossipGenerationColumn = "gossip_generation";
+const std::string kSystemLocalHostIdColumn = "host_id";
+const std::string kSystemLocalListenAddressColumn = "listen_address";
+const std::string kSystemLocalNativeProtocolVersionColumn =
+    "native_protocol_version";
+const std::string kSystemLocalPartitionerColumn = "partitioner";
+const std::string kSystemLocalRackColumn = "rack";
+const std::string kSystemLocalReleaseVersionColumn = "release_version";
+const std::string kSystemLocalRpcAddressColumn = "rpc_address";
+const std::string kSystemLocalSchemaVersionColumn = "schema_version";
+const std::string kSystemLocalThriftVersionColumn = "thrift_version";
+const std::string kSystemLocalTokensColumn = "tokens";
+const std::string kSystemLocalTruncatedAtColumn = "truncated_at";
+
+} // namespace
+
 LocalVTable::LocalVTable(const Master* const master)
-    : YQLVirtualTable(master::kSystemLocalTableName, master, CreateSchema()) {
+    : YQLVirtualTable(master::kSystemLocalTableName, master, CreateSchema()),
+      resolver_(new Resolver(master->messenger()->io_service())) {
 }
 
 Status LocalVTable::RetrieveData(const QLReadRequestPB& request,
@@ -30,9 +57,17 @@ Status LocalVTable::RetrieveData(const QLReadRequestPB& request,
   InetAddress remote_endpoint;
   RETURN_NOT_OK(remote_endpoint.FromString(request.remote_endpoint().host()));
 
+  struct Entry {
+    size_t index;
+    TSInformationPB ts_info;
+    util::PublicPrivateIPFutures ips;
+  };
+
+  std::vector<Entry> entries;
+  entries.reserve(descs.size());
+
   size_t index = 0;
   for (const std::shared_ptr<TSDescriptor>& desc : descs) {
-    ++index;
     // This is thread safe since all operations are reads.
     TSInformationPB ts_info = desc->GetTSInformationPB();
 
@@ -45,24 +80,32 @@ Status LocalVTable::RetrieveData(const QLReadRequestPB& request,
     } else if (!util::RemoteEndpointMatchesTServer(ts_info, remote_endpoint)) {
       continue;
     }
+
+    entries.push_back({index, std::move(ts_info)});
+    entries.back().ips = util::GetPublicPrivateIPFutures(entries.back().ts_info, resolver_.get());
+    ++index;
+  }
+
+  for (const auto& entry : entries) {
     QLRow& row = (*vtable)->Extend();
-    auto ips = VERIFY_RESULT(util::GetPublicPrivateIPs(ts_info));
-    const CloudInfoPB& cloud_info = ts_info.registration().common().cloud_info();
+    auto private_ip = VERIFY_RESULT(entry.ips.private_ip_future.get());
+    auto public_ip = VERIFY_RESULT(entry.ips.public_ip_future.get());
+    const CloudInfoPB& cloud_info = entry.ts_info.registration().common().cloud_info();
     RETURN_NOT_OK(SetColumnValue(kSystemLocalKeyColumn, "local", &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalBootstrappedColumn, "COMPLETED", &row));
-    RETURN_NOT_OK(SetColumnValue(kSystemLocalBroadcastAddressColumn, ips.public_ip, &row));
+    RETURN_NOT_OK(SetColumnValue(kSystemLocalBroadcastAddressColumn, public_ip, &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalClusterNameColumn, "local cluster", &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalCQLVersionColumn, "3.4.2", &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalDataCenterColumn, cloud_info.placement_region(),
                                  &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalGossipGenerationColumn, 0, &row));
-    RETURN_NOT_OK(SetColumnValue(kSystemLocalListenAddressColumn, ips.private_ip, &row));
+    RETURN_NOT_OK(SetColumnValue(kSystemLocalListenAddressColumn, private_ip, &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalNativeProtocolVersionColumn, "4", &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalPartitionerColumn,
                                  "org.apache.cassandra.dht.Murmur3Partitioner", &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalRackColumn, cloud_info.placement_zone(), &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalReleaseVersionColumn, "3.9-SNAPSHOT", &row));
-    RETURN_NOT_OK(SetColumnValue(kSystemLocalRpcAddressColumn, ips.public_ip, &row));
+    RETURN_NOT_OK(SetColumnValue(kSystemLocalRpcAddressColumn, public_ip, &row));
 
     Uuid schema_version;
     RETURN_NOT_OK(schema_version.FromString(master::kDefaultSchemaVersion));
@@ -70,7 +113,7 @@ Status LocalVTable::RetrieveData(const QLReadRequestPB& request,
     RETURN_NOT_OK(SetColumnValue(kSystemLocalThriftVersionColumn, "20.1.0", &row));
     // setting tokens
     RETURN_NOT_OK(SetColumnValue(kSystemLocalTokensColumn,
-                                 util::GetTokensValue(index - 1, descs.size()), &row));
+                                 util::GetTokensValue(entry.index, descs.size()), &row));
     break;
   }
 
