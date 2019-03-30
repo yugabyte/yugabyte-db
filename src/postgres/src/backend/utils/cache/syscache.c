@@ -990,65 +990,6 @@ static int	SysCacheSupportingRelOidSize;
 
 static int	oid_compare(const void *a, const void *b);
 
-/*
- * Returns the oid of the primary key index of the sys catalog tables in SysCache in YugaByte.
- */
-Oid
-YBSysTablePrimaryKeyOid(Oid relid)
-{
-	switch (relid)
-	{
-		case AccessMethodOperatorRelationId: return AccessMethodOperatorOidIndexId;
-		case AccessMethodProcedureRelationId: return AccessMethodProcedureOidIndexId;
-		case AccessMethodRelationId: return AmOidIndexId;
-		case AggregateRelationId: return AggregateFnoidIndexId;
-		case AttributeRelationId: return AttributeRelidNumIndexId;
-		case AuthIdRelationId: return AuthIdOidIndexId;
-		case AuthMemRelationId: return AuthMemRoleMemIndexId;
-		case CastRelationId: return CastOidIndexId;
-		case CollationRelationId: return CollationOidIndexId;
-		case ConstraintRelationId: return ConstraintOidIndexId;
-		case ConversionRelationId: return ConversionOidIndexId;
-		case DatabaseRelationId: return DatabaseOidIndexId;
-		case DefaultAclRelationId: return DefaultAclOidIndexId;
-		case EnumRelationId: return EnumOidIndexId;
-		case EventTriggerRelationId: return EventTriggerOidIndexId;
-		case ForeignDataWrapperRelationId: return ForeignDataWrapperOidIndexId;
-		case ForeignServerRelationId: return ForeignServerOidIndexId;
-		case ForeignTableRelationId: return ForeignTableRelidIndexId;
-		case IndexRelationId: return IndexRelidIndexId;
-		case LanguageRelationId: return LanguageOidIndexId;
-		case NamespaceRelationId: return NamespaceOidIndexId;
-		case OperatorClassRelationId: return OpclassOidIndexId;
-		case OperatorFamilyRelationId: return OpfamilyOidIndexId;
-		case OperatorRelationId: return OperatorOidIndexId;
-		case PartitionedRelationId: return PartitionedRelidIndexId;
-		case ProcedureRelationId: return ProcedureOidIndexId;
-		case PublicationRelRelationId: return PublicationRelObjectIndexId;
-		case PublicationRelationId: return PublicationObjectIndexId;
-		case RangeRelationId: return RangeTypidIndexId;
-		case RelationRelationId: return ClassOidIndexId;
-		case ReplicationOriginRelationId: return ReplicationOriginIdentIndex;
-		case RewriteRelationId: return RewriteOidIndexId;
-		case SequenceRelationId: return SequenceRelidIndexId;
-		case StatisticExtRelationId: return StatisticExtOidIndexId;
-		case StatisticRelationId: return StatisticRelidAttnumInhIndexId;
-		case SubscriptionRelRelationId: return SubscriptionRelSrrelidSrsubidIndexId;
-		case SubscriptionRelationId: return SubscriptionObjectIndexId;
-		case TSConfigMapRelationId: return TSConfigMapIndexId;
-		case TSConfigRelationId: return TSConfigOidIndexId;
-		case TSDictionaryRelationId: return TSDictionaryOidIndexId;
-		case TSParserRelationId: return TSParserOidIndexId;
-		case TSTemplateRelationId: return TSTemplateOidIndexId;
-		case TableSpaceRelationId: return TablespaceOidIndexId;
-		case TransformRelationId: return TransformOidIndexId;
-		case TypeRelationId: return TypeOidIndexId;
-		case UserMappingRelationId: return UserMappingOidIndexId;
-		default: break;
-	}
-	return InvalidOid;
-}
-
 Bitmapset *
 YBSysTablePrimaryKey(Oid relid)
 {

@@ -41,6 +41,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
+#include "pg_yb_utils.h"
 
 static TupleTableSlot *IndexOnlyNext(IndexOnlyScanState *node);
 static void StoreIndexTuple(TupleTableSlot *slot, IndexTuple itup,
@@ -154,8 +155,11 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		 *
 		 * It's worth going through this complexity to avoid needing to lock
 		 * the VM buffer, which could cause significant contention.
+		 *
+		 * YugaByte index tuple is always visible.
 		 */
-		if (!VM_ALL_VISIBLE(scandesc->heapRelation,
+		if (!IsYugaByteEnabled() &&
+			!VM_ALL_VISIBLE(scandesc->heapRelation,
 							ItemPointerGetBlockNumber(tid),
 							&node->ioss_VMBuffer))
 		{
@@ -241,8 +245,10 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		 * locks need the tuple's xmin value.  If we had to visit the tuple
 		 * anyway, then we already have the tuple-level lock and can skip the
 		 * page lock.
+		 *
+		 * YugaByte index tuple does not require locking.
 		 */
-		if (tuple == NULL)
+		if (tuple == NULL && !IsYugaByteEnabled())
 			PredicateLockPage(scandesc->heapRelation,
 							  ItemPointerGetBlockNumber(tid),
 							  estate->es_snapshot);

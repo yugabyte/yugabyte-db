@@ -114,7 +114,6 @@ enum SysCacheIdentifier
 #define SysCacheSize (USERMAPPINGUSERSERVER + 1)
 };
 
-extern Oid YBSysTablePrimaryKeyOid(Oid relid);
 extern Bitmapset *YBSysTablePrimaryKey(Oid relid);
 
 /* Used in IsYugaByteEnabled() mode only */

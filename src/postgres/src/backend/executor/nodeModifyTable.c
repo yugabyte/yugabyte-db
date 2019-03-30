@@ -956,10 +956,13 @@ ldelete:;
 		}
 		else if (IsYugaByteEnabled())
 		{
+			/*
+			 * Prepare the original tuple in inner slot for RETURNING clause execution.
+			 */
 			if (!IsYBRelation(resultRelationDesc)) {
 				ereport(ERROR,
-								(errcode(ERRCODE_UNDEFINED_OBJECT),
-								 errmsg("This relational object does not exist in YugaByte database")));
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("This relational object does not exist in YugaByte database")));
 			}
 			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
 			delbuffer = InvalidBuffer;
@@ -1114,6 +1117,12 @@ ExecUpdate(ModifyTableState *mtstate,
 	{
 		YBCExecuteUpdate(resultRelationDesc, planSlot, tuple);
 
+		/*
+		 * Prepare the updated tuple in inner slot for RETURNING clause execution.
+		 */
+		if (resultRelInfo->ri_projectReturning)
+			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+
 		if (resultRelInfo->ri_NumIndices > 0)
 		{
 			/*
@@ -1129,9 +1138,6 @@ ExecUpdate(ModifyTableState *mtstate,
 												   estate, false, NULL,
 												   NIL);
 		}
-
-		if (resultRelInfo->ri_projectReturning)
-			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
 	}
 	else
 	{

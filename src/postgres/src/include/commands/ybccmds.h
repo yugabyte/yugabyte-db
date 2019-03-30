@@ -43,12 +43,15 @@ extern void YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid
 
 /*  Table Functions ----------------------------------------------------------------------------- */
 
-extern void YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId,
-													 Oid namespaceId);
+extern void YBCCreateTable(CreateStmt *stmt,
+						   char relkind,
+						   TupleDesc desc,
+						   Oid relationId,
+						   Oid namespaceId);
 
 extern void YBCDropTable(Oid relationId);
 
-extern void YBCTruncateTable(Relation	rel);
+extern void YBCTruncateTable(Relation rel);
 
 extern void YBCCreateIndex(const char *indexName,
 						   IndexInfo *indexInfo,
@@ -61,6 +64,5 @@ extern void YBCDropIndex(Oid relationId);
 extern void YBCAlterTable(AlterTableStmt* stmt, Relation rel, Oid relationId);
 
 extern void YBCRename(RenameStmt* stmt, Oid relationId);
-
 
 #endif

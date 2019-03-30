@@ -77,7 +77,8 @@ SELECT
 				t1.col_array_text,
 				t2.col_name
 		FROM feature_tab_dml t1, feature_tab_dml_identifier t2
-		WHERE t1.col_smallint = t2.col_id AND t2.col_name = t1.col_array_text[2];
+		WHERE t1.col_smallint = t2.col_id AND t2.col_name = t1.col_array_text[2]
+        ORDER BY t1.col_smallint;
 --
 SELECT
 				t1.col_smallint,
@@ -85,7 +86,8 @@ SELECT
 				t2.col_name
 		FROM feature_tab_dml t1, feature_tab_dml_identifier t2
 		WHERE t1.col_smallint = t2.col_id AND
-					(t2.col_name = 'nine' OR t2.col_name = 'seven');
+					(t2.col_name = 'nine' OR t2.col_name = 'seven')
+        ORDER BY t1.col_smallint;
 -- UNION
 SELECT	col_smallint Employee_ID,
 				col_text Employee_Name

@@ -129,7 +129,7 @@ static int num_columns_read = 0;
 %token NULLVAL
 /* All the rest are unreserved, and should be handled in boot_ident! */
 %token <kw> OPEN XCLOSE XCREATE INSERT_TUPLE
-%token <kw> XDECLARE YBDECLARE INDEX ON USING XBUILD INDICES UNIQUE XTOAST
+%token <kw> XDECLARE YBDECLARE INDEX ON USING XBUILD INDICES PRIMARY UNIQUE XTOAST
 %token <kw> OBJ_ID XBOOTSTRAP XSHARED_RELATION XWITHOUT_OIDS XROWTYPE_OID
 %token <kw> XFORCE XNOT XNULL
 
@@ -154,6 +154,7 @@ Boot_Query :
 		| Boot_InsertStmt
 		| Boot_DeclareIndexStmt
 		| Boot_DeclareUniqueIndexStmt
+		| Boot_DeclarePrimaryIndexStmt
 		| Boot_DeclareToastStmt
 		| Boot_BuildIndsStmt
 		;
@@ -187,7 +188,7 @@ Boot_CloseStmt:
 		;
 Boot_YBIndex:
           /* EMPTY */ { $$ = NULL; }
-          | YBDECLARE UNIQUE INDEX boot_ident oidspec ON boot_ident USING boot_ident
+          | YBDECLARE PRIMARY INDEX boot_ident oidspec ON boot_ident USING boot_ident
             LPAREN boot_index_params RPAREN
 				{
 					IndexStmt *stmt = makeNode(IndexStmt);
@@ -206,7 +207,7 @@ Boot_YBIndex:
 					stmt->indexOid = $5;
 					stmt->oldNode = InvalidOid;
 					stmt->unique = true;
-					stmt->primary = false;
+					stmt->primary = true;
 					stmt->isconstraint = false;
 					stmt->deferrable = false;
 					stmt->initdeferred = false;
@@ -425,6 +426,52 @@ Boot_DeclareUniqueIndexStmt:
 					stmt->oldNode = InvalidOid;
 					stmt->unique = true;
 					stmt->primary = false;
+					stmt->isconstraint = false;
+					stmt->deferrable = false;
+					stmt->initdeferred = false;
+					stmt->transformed = false;
+					stmt->concurrent = false;
+					stmt->if_not_exists = false;
+
+					/* locks and races need not concern us in bootstrap mode */
+					relationId = RangeVarGetRelid(stmt->relation, NoLock,
+												  false);
+
+					DefineIndex(relationId,
+								stmt,
+								$5,
+								InvalidOid,
+								InvalidOid,
+								false,
+								false,
+								false,
+								true, /* skip_build */
+								false);
+					do_end();
+				}
+		;
+
+Boot_DeclarePrimaryIndexStmt:
+		  XDECLARE PRIMARY INDEX boot_ident oidspec ON boot_ident USING boot_ident LPAREN boot_index_params RPAREN
+				{
+					IndexStmt *stmt = makeNode(IndexStmt);
+					Oid		relationId;
+
+					do_start();
+
+					stmt->idxname = $4;
+					stmt->relation = makeRangeVar(NULL, $7, -1);
+					stmt->accessMethod = $9;
+					stmt->tableSpace = NULL;
+					stmt->indexParams = $11;
+					stmt->options = NIL;
+					stmt->whereClause = NULL;
+					stmt->excludeOpNames = NIL;
+					stmt->idxcomment = NULL;
+					stmt->indexOid = InvalidOid;
+					stmt->oldNode = InvalidOid;
+					stmt->unique = true;
+					stmt->primary = true;
 					stmt->isconstraint = false;
 					stmt->deferrable = false;
 					stmt->initdeferred = false;
