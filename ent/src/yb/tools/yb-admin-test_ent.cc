@@ -6,12 +6,20 @@
 
 #include "yb/client/client.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/ts_itest-base.h"
+#include "yb/integration-tests/external_mini_cluster_ent.h"
+
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_backup.proxy.h"
+
+#include "yb/rpc/secure_stream.h"
+
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/subprocess.h"
+
+DECLARE_string(certs_dir);
 
 namespace yb {
 namespace tools {
@@ -97,7 +105,7 @@ TEST_F(AdminCliTest, TestCreateSnapshot) {
   ListSnapshotsRequestPB req;
   ListSnapshotsResponsePB resp;
   RpcController rpc;
-  ASSERT_OK(cluster_->master_backup_proxy()->ListSnapshots(req, &resp, &rpc));
+  ASSERT_OK(master_backup_proxy(cluster_.get())->ListSnapshots(req, &resp, &rpc));
   ASSERT_EQ(resp.snapshots_size(), 0);
 
   // Default table that gets created.
@@ -115,7 +123,7 @@ TEST_F(AdminCliTest, TestCreateSnapshot) {
   ASSERT_OK(Subprocess::Call(arg_str));
 
   rpc.Reset();
-  ASSERT_OK(cluster_->master_backup_proxy()->ListSnapshots(req, &resp, &rpc));
+  ASSERT_OK(master_backup_proxy(cluster_.get())->ListSnapshots(req, &resp, &rpc));
   ASSERT_EQ(resp.snapshots_size(), 1);
 
   LOG(INFO) << "Test TestCreateSnapshot finished.";
