@@ -224,31 +224,18 @@ void Proxy::HandleResolve(
 
 void Proxy::ResolveDone(
     const boost::system::error_code& error, const Resolver::results_type& entries) {
-  if (error) {
-    NotifyAllFailed(STATUS_FORMAT(
-        NetworkError, "Resolve failed $0: $1", remote_.host(), error.message()));
+  auto address = PickResolvedAddress(remote_.host(), error, entries);
+  if (!address.ok()) {
+    NotifyAllFailed(address.status());
     return;
-  }
-  std::vector<Endpoint> endpoints, endpoints_v6;
-  for (const auto& entry : entries) {
-    auto& dest = entry.endpoint().address().is_v4() ? endpoints : endpoints_v6;
-    dest.emplace_back(entry.endpoint().address(), remote_.port());
-  }
-  endpoints.insert(endpoints.end(), endpoints_v6.begin(), endpoints_v6.end());
-  if (endpoints.empty()) {
-    NotifyAllFailed(STATUS_FORMAT(NetworkError, "No endpoints resolved for: $0", remote_.host()));
-    return;
-  }
-  if (endpoints.size() > 1) {
-    LOG(WARNING) << "Peer address '" << remote_.ToString() << "' "
-                 << "resolves to " << yb::ToString(endpoints) << " different addresses. Using "
-                 << endpoints.front();
   }
 
+  Endpoint endpoint(address->address(), remote_.port());
+  resolved_ep_.Store(endpoint);
+
   RpcController* controller = nullptr;
-  resolved_ep_.Store(endpoints.front());
   while (resolve_waiters_.pop(controller)) {
-    QueueCall(controller, endpoints.front());
+    QueueCall(controller, endpoint);
   }
 }
 
