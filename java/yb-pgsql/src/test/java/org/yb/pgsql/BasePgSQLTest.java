@@ -580,6 +580,23 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   /*
+   * Returns whether or not this select statement uses index.
+   */
+  protected boolean useIndex(String stmt, String index) throws SQLException {
+    try (Statement statement = connection.createStatement()) {
+      try (ResultSet rs = statement.executeQuery("EXPLAIN " + stmt)) {
+        assert(rs.getMetaData().getColumnCount() == 1); // Expecting one string column.
+        while (rs.next()) {
+          if (rs.getString(1).contains("Index Scan using " + index)) {
+            return true;
+          }
+        }
+        return false;
+      }
+    }
+  }
+
+  /*
    * Returns whether or not this select statement requires filtering by Postgres (i.e. not all
    * conditions can be pushed down to YugaByte).
    */

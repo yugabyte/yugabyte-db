@@ -348,6 +348,7 @@ foreach my $catname (@catnames)
 	}
     if ($pkidx)
     {
+		$pkidx =~ s/unique index/primary index/;
         print $bki " yb_" . $pkidx;
         $pkidxs{$pkidxname} = 1;
 	}
@@ -458,7 +459,7 @@ foreach (@index_decls)
 {
 	my ($unique, $idxname, $oid, $icatname, $columns) =
 		/declare (unique )?index (.*) (\d+) on (.+) using (.+)/;
-	next if $idxname && $pkidxs{$idxname};
+	s/unique index/primary index/ if $idxname && $pkidxs{$idxname};
 	print $bki $_;
 }
 

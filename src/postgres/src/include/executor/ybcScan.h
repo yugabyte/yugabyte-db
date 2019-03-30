@@ -25,6 +25,7 @@
 
 #include "postgres.h"
 
+#include "access/itup.h"
 #include "utils/resowner.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -71,12 +72,12 @@ typedef struct YbScanStateData
 
 typedef YbScanStateData *YbScanState;
 
-void ybcFreeScanState(YbScanState ybc_state);
 extern YbScanState ybcBeginScan(Relation rel,
 								Relation index,
 								List *target_attrs,
 								List *yb_conds);
-extern HeapTuple ybcFetchNext(YbScanState ybc_state);
+extern HeapTuple ybcFetchNextHeapTuple(YbScanState ybc_state);
+extern IndexTuple ybcFetchNextIndexTuple(YbScanState ybc_state, Relation index);
 extern void ybcEndScan(YbScanState ybc_handle);
 
 

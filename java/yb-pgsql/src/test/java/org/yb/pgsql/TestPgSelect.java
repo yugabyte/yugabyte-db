@@ -35,13 +35,14 @@ public class TestPgSelect extends BasePgSQLTest {
   @Test
   public void testWhereClause() throws Exception {
     List<Row> allRows = setupSimpleTable("test_where");
+    final String PRIMARY_KEY = "test_where_pkey";
     try (Statement statement = connection.createStatement()) {
       // Test no where clause -- select all rows.
       String query = "SELECT * FROM test_where";
       try (ResultSet rs = statement.executeQuery(query)) {
         assertEquals(allRows, getSortedRowList(rs));
       }
-      assertFalse(needsPgFiltering(query));
+      assertFalse(useIndex(query, PRIMARY_KEY));
 
       // Test fixed hash key.
       query = "SELECT * FROM test_where WHERE h = 2";
@@ -52,7 +53,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(10, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertFalse(needsPgFiltering(query));
+      assertTrue(useIndex(query, PRIMARY_KEY));
 
       // Test fixed primary key.
       query = "SELECT * FROM test_where WHERE h = 2 AND r = 3.5";
@@ -64,7 +65,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(1, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertFalse(needsPgFiltering(query));
+      assertTrue(useIndex(query, PRIMARY_KEY));
 
       // Test fixed range key without fixed hash key.
       query = "SELECT * FROM test_where WHERE r = 6.5";
@@ -75,7 +76,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(10, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertTrue(needsPgFiltering(query));
+      assertTrue(useIndex(query, PRIMARY_KEY));
 
       // Test range scan.
       query = "SELECT * FROM test_where WHERE h = 2 AND r >= 3.5 AND r < 8.5";
@@ -88,7 +89,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(5, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertTrue(needsPgFiltering(query));
+      assertTrue(useIndex(query, PRIMARY_KEY));
 
       // Test conditions on regular (non-primary-key) columns.
       query = "SELECT * FROM test_where WHERE vi < 14 AND vs != 'v09'";
@@ -101,10 +102,10 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(13, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertTrue(needsPgFiltering(query));
+      assertFalse(useIndex(query, PRIMARY_KEY));
 
       // Test other WHERE operators (IN, OR, LIKE).
-      query = "SELECT * FROM test_where WHERE h IN (2,3) OR vs LIKE 'v_2'";
+      query = "SELECT * FROM test_where WHERE h = 2 OR h = 3 OR vs LIKE 'v_2'";
       try (ResultSet rs = statement.executeQuery(query)) {
         List<Row> expectedRows = allRows.stream()
             .filter(row -> row.getLong(0).equals(2L) ||
@@ -115,7 +116,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(28, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertTrue(needsPgFiltering(query));
+      assertFalse(useIndex(query, PRIMARY_KEY));
     }
   }
 
@@ -228,7 +229,7 @@ public class TestPgSelect extends BasePgSQLTest {
 
       // Test join with WHERE clause.
       joinStmt = "SELECT a.h, a.r, a.v as av, b.v as bv FROM t1 a LEFT JOIN t2 b " +
-          "ON (a.h = b.h and a.r = b.r) WHERE a.h = 1 AND a.r IN (2.5, 3.5)";
+          "ON (a.h = b.h and a.r = b.r) WHERE a.h = 1 AND (a.r = 2.5 OR a.r = 3.5)";
       try (ResultSet rs = statement.executeQuery(joinStmt)) {
         assertNextRow(rs, 1L, 2.5D, "abc", "foo");
         assertNextRow(rs, 1L, 3.5D, "def", null);

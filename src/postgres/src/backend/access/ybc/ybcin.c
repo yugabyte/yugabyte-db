@@ -39,7 +39,8 @@
 /* Working state for ybcinbuild and its callback */
 typedef struct
 {
-	double	  index_tuples;
+	bool	isprimary;
+	double	index_tuples;
 } YBCBuildState;
 
 static void
@@ -48,7 +49,9 @@ ybcinbuildCallback(Relation index, HeapTuple heapTuple, Datum *values, bool *isn
 {
 	YBCBuildState  *buildstate = (YBCBuildState *)state;
 
-	YBCExecuteInsertIndex(index, values, isnull, heapTuple->t_ybctid);
+	if (!buildstate->isprimary)
+		YBCExecuteInsertIndex(index, values, isnull, heapTuple->t_ybctid);
+
 	buildstate->index_tuples += 1;
 }
 
@@ -58,8 +61,6 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 	YBCBuildState	buildstate;
 	double			heap_tuples = 0;
 
-	Assert(!index->rd_index->indisprimary);
-
 	PG_TRY();
 	{
 		/* Buffer the inserts into the index for initdb */
@@ -67,6 +68,7 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 			YBCStartBufferingWriteOperations();
 
 		/* Do the heap scan */
+		buildstate.isprimary = index->rd_index->indisprimary;
 		buildstate.index_tuples = 0;
 		heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true, ybcinbuildCallback,
 										 &buildstate, NULL);
@@ -101,9 +103,8 @@ bool
 ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation heap,
 			IndexUniqueCheck checkUnique, struct IndexInfo *indexInfo)
 {
-	Assert(!index->rd_index->indisprimary);
-
-	YBCExecuteInsertIndex(index, values, isnull, ybctid);
+	if (!index->rd_index->indisprimary)
+		YBCExecuteInsertIndex(index, values, isnull, ybctid);
 
 	return index->rd_index->indisunique ? true : false;
 }
@@ -112,7 +113,8 @@ void
 ybcindelete(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation heap,
 			struct IndexInfo *indexInfo)
 {
-	YBCExecuteDeleteIndex(index, values, isnull, ybctid);
+	if (!index->rd_index->indisprimary)
+		YBCExecuteDeleteIndex(index, values, isnull, ybctid);
 }
 
 IndexBulkDeleteResult *
@@ -134,7 +136,15 @@ ybcinvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 
 bool ybcincanreturn(Relation index, int attno)
 {
-	return false;
+	/*
+	 * If "canreturn" is true, Postgres will attempt to perform index-only scan on the indexed
+	 * columns and expect us to return the column values as an IndexTuple. This will be the case
+	 * for secondary index.
+	 *
+	 * For indexes which are primary keys, we will return the table row as a HeapTuple instead.
+	 * For this reason, we set "canreturn" to false for primary keys.
+	 */
+	return !index->rd_index->indisprimary;
 }
 
 void
@@ -183,20 +193,52 @@ ybcinbeginscan(Relation rel, int nkeys, int norderbys)
 void 
 ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys, int norderbys)
 {
-	ybc_index_beginscan(scan->indexRelation, scan, nscankeys, scankey);
+	if (scan->indexRelation->rd_index->indisprimary)
+		ybc_pkey_beginscan(scan->heapRelation, scan->indexRelation, scan, nscankeys, scankey);
+	else
+		ybc_index_beginscan(scan->indexRelation, scan, nscankeys, scankey);
 }
 
 bool
 ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 {
-	HeapTuple tuple = ybc_index_getnext(scan);
-	scan->xs_ctup.t_ybctid = (tuple != NULL) ? tuple->t_ybctid : 0;
-	scan->xs_recheck = false; /* no need to recheck because the scan key is exact match */
+	scan->xs_ctup.t_ybctid = 0;
+
+	/* 
+	 * If IndexTuple is requested or it is a secondary index, return the result as IndexTuple.
+	 * Otherwise, return the result as a HeapTuple of the base table.
+	 */
+	if (scan->xs_want_itup || !scan->indexRelation->rd_index->indisprimary)
+	{
+		IndexTuple tuple = ybc_index_getnext(scan);
+
+		if (tuple)
+		{
+			scan->xs_ctup.t_ybctid = tuple->t_ybctid;
+			scan->xs_itup = tuple;
+			scan->xs_itupdesc = RelationGetDescr(scan->indexRelation);
+		}
+	}
+	else
+	{
+		HeapTuple tuple = ybc_pkey_getnext(scan);
+
+		if (tuple)
+		{
+			scan->xs_ctup.t_ybctid = tuple->t_ybctid;
+			scan->xs_hitup = tuple;
+			scan->xs_hitupdesc = RelationGetDescr(scan->heapRelation);
+		}
+	}
+
 	return scan->xs_ctup.t_ybctid != 0;
 }
 
 void 
 ybcinendscan(IndexScanDesc scan)
 {
-	ybc_index_endscan(scan);
+	if (scan->indexRelation->rd_index->indisprimary)
+		ybc_pkey_endscan(scan);
+	else
+		ybc_index_endscan(scan);
 }

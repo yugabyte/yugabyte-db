@@ -106,23 +106,24 @@ public class TestPgPrepareExecute extends BasePgSQLTest {
     }
 
     // Test bind variable pushdown:
-    // Equality on hash key -- expect no postgres filtering, everything should be pushed to YB.
+    // Equality on hash key -- expect index is used with index condition.
     String query = "EXPLAIN SELECT * FROM test WHERE h = ?";
     try (PreparedStatement sel = connection.prepareStatement(query)) {
       sel.setLong(1, 2);
       ResultSet rs = sel.executeQuery();
       List<Row> rows = getRowList(rs);
-      assertFalse(rows.toString().contains("Filter: "));
+      assertTrue(rows.toString().contains("Index Cond: "));
     }
 
     // Test bind variable pushdown:
-    // Inequality on hash key -- expect postgres filtering.
+    // Inequality on hash key -- expect index is used also with index condition. We do not support
+    // hash inequality in DocDB yet and the filtering is done inside the YB's index access method.
     query = "EXPLAIN SELECT * FROM test WHERE h > ?";
     try (PreparedStatement sel = connection.prepareStatement(query)) {
       sel.setLong(1, 2);
       ResultSet rs = sel.executeQuery();
       List<Row> rows = getRowList(rs);
-      assertTrue(rows.toString().contains("Filter: "));
+      assertTrue(rows.toString().contains("Index Cond: "));
     }
   }
 

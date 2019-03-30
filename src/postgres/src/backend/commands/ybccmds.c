@@ -320,7 +320,9 @@ YBCCreateIndex(const char *indexName,
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 }
 
-void YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId) {
+void
+YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
+{
 	YBCPgStatement handle = NULL;
 	HandleYBStatus(YBCPgNewAlterTable(ybc_pg_session,
 									  MyDatabaseId,
@@ -383,7 +385,9 @@ void YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId) {
 	}
 }
 
-void YBCRename(RenameStmt *stmt, Oid relationId) {
+void
+YBCRename(RenameStmt *stmt, Oid relationId)
+{
 	YBCPgStatement handle = NULL;
 	char *db_name	  = get_database_name(MyDatabaseId);
 
