@@ -152,6 +152,10 @@ struct ExternalMiniClusterOptions {
   // If true logs will be writen in both stderr and file
   bool log_to_file = false;
 
+  // Use even IPs for cluster, like we have for MiniCluster.
+  // So it could be used with test certificates.
+  bool use_even_ips = false;
+
   CHECKED_STATUS RemovePort(const uint16_t port);
   CHECKED_STATUS AddPort(const uint16_t port);
 };
@@ -175,7 +179,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   ~ExternalMiniCluster();
 
   // Start the cluster.
-  CHECKED_STATUS Start();
+  CHECKED_STATUS Start(const rpc::MessengerPtr& messenger = nullptr);
 
   // Restarts the cluster. Requires that it has been Shutdown() first.
   CHECKED_STATUS Restart();
@@ -422,6 +426,9 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Step down the master leader and wait for a new leader to be elected.
   CHECKED_STATUS StepDownMasterLeaderAndWaitForNewLeader();
+
+  // Return master address for specified port.
+  std::string MasterAddressForPort(uint16_t port) const;
 
   ExternalMiniClusterOptions opts_;
 
