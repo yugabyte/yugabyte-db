@@ -11,8 +11,11 @@
 // under the License.
 //
 
-#include "yb/util/yb_partition.h"
 #include "yb/master/util/yql_vtable_helpers.h"
+
+#include "yb/util/yb_partition.h"
+
+#include "yb/util/net/dns_resolver.h"
 
 namespace yb {
 namespace master {
@@ -80,22 +83,27 @@ QLValuePB GetReplicationValue(int replication_factor) {
   return value_pb;
 }
 
-Result<PublicPrivateIPs> GetPublicPrivateIPs(const TSInformationPB& ts_info) {
-  const auto& private_host = ts_info.registration().common().private_rpc_addresses()[0].host();
-  if (private_host.empty()) {
-    return STATUS_SUBSTITUTE(IllegalState,
-        "tserver $0 doesn't have any rpc addresses registered",
-        ts_info.tserver_instance().permanent_uuid());
-  }
-  const auto* broadcast_address = !ts_info.registration().common().broadcast_addresses().empty() ?
-      &ts_info.registration().common().broadcast_addresses()[0].host() : &private_host;
+PublicPrivateIPFutures GetPublicPrivateIPFutures(
+    const TSInformationPB& ts_info, Resolver* resolver) {
+  const auto& common = ts_info.registration().common();
+  PublicPrivateIPFutures result;
 
-  PublicPrivateIPs result;
-  RETURN_NOT_OK(result.private_ip.FromString(private_host));
-  if (broadcast_address != &private_host) {
-    RETURN_NOT_OK(result.public_ip.FromString(*broadcast_address));
+  const auto& private_host = common.private_rpc_addresses()[0].host();
+  if (private_host.empty()) {
+    std::promise<Result<InetAddress>> promise;
+    result.private_ip_future = promise.get_future();
+    promise.set_value(STATUS_FORMAT(
+        IllegalState, "Tablet sserver $0 doesn't have any rpc addresses registered",
+        ts_info.tserver_instance().permanent_uuid()));
+    return result;
+  }
+
+  result.private_ip_future = ResolveDnsFuture(private_host, resolver);
+
+  if (!common.broadcast_addresses().empty()) {
+    result.public_ip_future = ResolveDnsFuture(common.broadcast_addresses()[0].host(), resolver);
   } else {
-    result.public_ip = result.private_ip;
+    result.public_ip_future = result.private_ip_future;
   }
 
   return result;
