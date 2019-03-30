@@ -1131,7 +1131,14 @@ doDeletion(const ObjectAddress *object, int flags)
 					Assert(object->objectSubId == 0);
 
 					if (IsYugaByteEnabled() && IsYBRelationByKind(relKind))
-						YBCDropIndex(object->objectId);
+					{
+						Relation index = RelationIdGetRelation(object->objectId);
+
+						if (!index->rd_index->indisprimary)
+							YBCDropIndex(object->objectId);
+
+						RelationClose(index);
+					}
 					index_drop(object->objectId, concurrent);
 				}
 				else

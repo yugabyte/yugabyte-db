@@ -21,7 +21,7 @@
  *
  * This is meant to a be a common api betwen regular scan path (ybc_fdw.c)
  * and syscatalog scan path (ybcam.c).
- * TODO currently this is only used by syscatalog scan path, ybc_fdw needs to
+ * TODO currently this is only used by sys catalog and index scan paths, ybc_fdw needs to
  * be refactored.
  */
 
@@ -45,7 +45,7 @@
 #include "pg_yb_utils.h"
 
 
-void ybcFreeScanState(YbScanState ybc_state)
+static void ybcFreeScanState(YbScanState ybc_state)
 {
 	/* If yb_fdw_exec_state is NULL, we are in EXPLAIN; nothing to do */
 	if (ybc_state != NULL && ybc_state->handle != NULL)
@@ -231,11 +231,21 @@ static void ybcAddWhereCond(Expr *expr, YBCPgStatement yb_stmt, bool useIndex)
 	}
 }
 
+/*
+ * Begin a scan of a table or index. When "rel" is a table, an optional local "index" may be given,
+ * in which case we will scan using that index co-located with the table (which currently applies
+ * to sys catalog table in yb-master only) in the same scan. The attribute numbers in "yb_conds"
+ * will be those of the index whereas the ones in "target_attrs" will be those of the table.
+ *
+ * Alternatively, when scanning an index directly, "rel" points to the index itself and "index"
+ * will be NULL. The attribute numbers in "target_attrs" and "yb_conds" will be those of the index.
+ */
 YbScanState ybcBeginScan(Relation rel, Relation index, List *target_attrs, List *yb_conds)
 {
 	Oid         dboid     = YBCGetDatabaseOid(rel);
 	Oid         relid     = RelationGetRelid(rel);
-	Oid         index_id  = index ? RelationGetRelid(index) : InvalidOid;
+	bool        useIndex  = (index != NULL);
+	Oid         index_id  = useIndex ? RelationGetRelid(index) : InvalidOid;
 	YbScanState ybc_state = NULL;
 	ListCell    *lc;
 
@@ -259,7 +269,7 @@ YbScanState ybcBeginScan(Relation rel, Relation index, List *target_attrs, List 
 	ybc_state->tupleDesc  = RelationGetDescr(rel);
 
 	YbScanPlan ybc_plan = (YbScanPlan) palloc0(sizeof(YbScanPlanData));
-	ybcLoadTableInfo(index ? index : rel, ybc_plan);
+	ybcLoadTableInfo(useIndex ? index : rel, ybc_plan);
 
 	foreach(lc, yb_conds)
 	{
@@ -282,8 +292,7 @@ YbScanState ybcBeginScan(Relation rel, Relation index, List *target_attrs, List 
 	}
 	else
 	{
-		AttrNumber attnum;
-		TupleDesc  tupleDesc = index ? RelationGetDescr(index) : RelationGetDescr(rel);
+		TupleDesc  tupleDesc = RelationGetDescr(useIndex ? index : rel);
 
 		/*
 		 * TODO: We scan the range columns by increasing attribute number to look for the first
@@ -291,7 +300,7 @@ YbScanState ybcBeginScan(Relation rel, Relation index, List *target_attrs, List 
 		 * of the primary key in YugaByte follows the same order as the attribute number. When the
 		 * bug is fixed, this scan needs to be updated.
 		 */
-		for (attnum = 1; attnum <= tupleDesc->natts; attnum++)
+		for (AttrNumber attnum = 1; attnum <= tupleDesc->natts; attnum++)
 		{
 			int  bms_idx = attnum - FirstLowInvalidHeapAttributeNumber;
 			if ( bms_is_member(bms_idx, ybc_plan->primary_key) &&
@@ -330,7 +339,6 @@ YbScanState ybcBeginScan(Relation rel, Relation index, List *target_attrs, List 
 	}
 
 	/* Set WHERE clause values (currently only primary key). */
-	bool useIndex = (index != NULL);
 	foreach(lc, ybc_plan->yb_hconds)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
@@ -391,7 +399,7 @@ YbScanState ybcBeginScan(Relation rel, Relation index, List *target_attrs, List 
 	return ybc_state;
 }
 
-HeapTuple ybcFetchNext(YbScanState ybc_state)
+HeapTuple ybcFetchNextHeapTuple(YbScanState ybc_state)
 {
 	HeapTuple tuple    = NULL;
 	bool      has_data = false;
@@ -423,10 +431,6 @@ HeapTuple ybcFetchNext(YbScanState ybc_state)
 		{
 			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
 		}
-		if (syscols.ybbasectid != NULL)
-		{
-			tuple->t_ybctid = PointerGetDatum(syscols.ybbasectid);
-		}
 	}
 	pfree(values);
 	pfree(nulls);
@@ -434,7 +438,69 @@ HeapTuple ybcFetchNext(YbScanState ybc_state)
 	return tuple;
 }
 
-extern void ybcEndScan(YbScanState ybc_state)
+IndexTuple ybcFetchNextIndexTuple(YbScanState ybc_state, Relation index)
+{
+	IndexTuple tuple    = NULL;
+	bool       has_data = false;
+	TupleDesc  tupdesc  = ybc_state->tupleDesc;
+
+	Datum           *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
+	bool            *nulls = (bool *) palloc(tupdesc->natts * sizeof(bool));
+	YBCPgSysColumns syscols;
+
+	/* Fetch one row. */
+	HandleYBStmtStatusWithOwner(YBCPgDmlFetch(ybc_state->handle,
+	                                          tupdesc->natts,
+	                                          (uint64_t *) values,
+	                                          nulls,
+	                                          &syscols,
+	                                          &has_data),
+	                            ybc_state->handle,
+	                            ybc_state->stmt_owner);
+
+	if (has_data)
+	{
+		/*
+		 * Return the IndexTuple. If this is a primary key, reorder the values first as expected
+		 * in the index's column order first.
+		 */
+		if (index->rd_index->indisprimary)
+		{
+			Assert(index->rd_index->indnatts <= INDEX_MAX_KEYS);
+
+			Datum ivalues[INDEX_MAX_KEYS];
+			bool  inulls[INDEX_MAX_KEYS];
+
+			for (int i = 0; i < index->rd_index->indnatts; i++)
+			{
+				AttrNumber attno = index->rd_index->indkey.values[i];
+				ivalues[i] = values[attno - 1];
+				inulls[i]  = nulls[attno - 1];
+			}
+
+			tuple = index_form_tuple(RelationGetDescr(index), ivalues, inulls);
+			if (syscols.ybctid != NULL)
+			{
+				tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+			}
+		}
+		else
+		{
+			tuple = index_form_tuple(tupdesc, values, nulls);
+			if (syscols.ybbasectid != NULL)
+			{
+				tuple->t_ybctid = PointerGetDatum(syscols.ybbasectid);
+			}
+		}
+
+	}
+	pfree(values);
+	pfree(nulls);
+
+	return tuple;
+}
+
+void ybcEndScan(YbScanState ybc_state)
 {
 	ybcFreeScanState(ybc_state);
 }

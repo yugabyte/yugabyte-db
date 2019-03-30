@@ -37,14 +37,16 @@
 #include "executor/ybcExpr.h"
 #include "executor/ybcScan.h"
 
-typedef struct YbSysScanDescData
+typedef struct YbScanDescData
 {
 	YbScanState state;
 	int nkeys;
 	ScanKey key;
-} YbSysScanDescData;
+	AttrNumber sk_attno[INDEX_MAX_KEYS * 2];
+	Relation index;
+} YbScanDescData;
 
-typedef struct YbSysScanDescData *YbSysScanDesc;
+typedef struct YbScanDescData *YbScanDesc;
 
 /*
  * Access to YB-stored system catalogs (mirroring API from genam.c)
@@ -52,11 +54,11 @@ typedef struct YbSysScanDescData *YbSysScanDesc;
  * would do either heap scan or index scan depending on the params).
  */
 extern SysScanDesc ybc_systable_beginscan(Relation relation,
-                                          Oid indexId,
-                                          bool indexOK,
-                                          Snapshot snapshot,
-                                          int nkeys,
-                                          ScanKey key);
+										  Oid indexId,
+										  bool indexOK,
+										  Snapshot snapshot,
+										  int nkeys,
+										  ScanKey key);
 extern HeapTuple ybc_systable_getnext(SysScanDesc scanDesc);
 extern void ybc_systable_endscan(SysScanDesc scan_desc);
 
@@ -75,12 +77,21 @@ extern void ybc_heap_endscan(HeapScanDesc scanDesc);
 /*
  * Access to YB-stored index (mirroring API from indexam.c)
  * We will do a YugaByte scan instead of a heap scan.
+ * When the index is the primary key, the base table is scanned instead.
  */
-extern void ybc_index_beginscan(Relation relation,
+extern void ybc_pkey_beginscan(Relation relation,
+							   Relation index,
+							   IndexScanDesc scan_desc,
+							   int nkeys,
+							   ScanKey key);
+extern HeapTuple ybc_pkey_getnext(IndexScanDesc scan_desc);
+extern void ybc_pkey_endscan(IndexScanDesc scan_desc);
+
+extern void ybc_index_beginscan(Relation index,
 								IndexScanDesc scan_desc,
 								int nkeys,
 								ScanKey key);
-extern HeapTuple ybc_index_getnext(IndexScanDesc scan_desc);
+extern IndexTuple ybc_index_getnext(IndexScanDesc scan_desc);
 extern void ybc_index_endscan(IndexScanDesc scan_desc);
 
 /*
