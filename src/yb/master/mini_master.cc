@@ -131,11 +131,12 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
 
   gscoped_ptr<Master> server(new YB_EDITION_NS_PREFIX Master(*opts));
   RETURN_NOT_OK(server->Init());
+
+  server::TEST_SetupConnectivity(server->messenger().get(), index_);
+
   RETURN_NOT_OK(server->StartAsync());
 
   master_.swap(server);
-
-  server::TEST_SetupConnectivity(master_->messenger().get(), index_);
 
   tunnel_ = std::make_unique<Tunnel>(&master_->messenger()->io_service());
   std::vector<Endpoint> local;
