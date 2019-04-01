@@ -402,7 +402,7 @@ set_rel_size(PlannerInfo *root, RelOptInfo *rel,
 				}
 				else if (rte->tablesample != NULL)
 				{
-					if (IsYugaByteEnabled() && IsYBRelationById(rte->relid))
+					if (IsYBRelationById(rte->relid))
 					{
 						/* TODO we don't support tablesample queries yet. */
 						ereport(ERROR,
@@ -417,7 +417,7 @@ set_rel_size(PlannerInfo *root, RelOptInfo *rel,
 				else
 				{
 					/* Plain relation */
-					if (IsYugaByteEnabled() && IsYBRelationById(rte->relid))
+					if (IsYBRelationById(rte->relid))
 					{
 						set_foreign_size(root, rel, rte);
 					}
@@ -502,7 +502,7 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				}
 				else if (rte->tablesample != NULL)
 				{
-					if (IsYugaByteEnabled() && IsYBRelationById(rte->relid))
+					if (IsYBRelationById(rte->relid))
 					{
 						/* TODO we don't support tablesample queries yet. */
 						ereport(ERROR,
@@ -517,7 +517,7 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				else
 				{
 					/* Plain relation */
-					if (IsYugaByteEnabled() && IsYBRelationById(rte->relid))
+					if (IsYBRelationById(rte->relid))
 					{
 						/*
 						 * Using a foreign scan which will use the YB FDW by

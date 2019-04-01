@@ -774,6 +774,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 */
 	if (IsYugaByteEnabled())
 	{
+		CheckIsYBSupportedRelationByKind(relkind);
+
 		Relation pg_class_desc = heap_open(RelationRelationId,
 		                                   RowExclusiveLock);
 
@@ -1655,14 +1657,8 @@ ExecuteTruncateGuts(List *explicit_rels, List *relids, List *relids_logged,
 		 * truncate it in-place, because a rollback would cause the whole
 		 * table or the current physical file to be thrown away anyway.
 		 */
-		if (IsYugaByteEnabled())
+		if (IsYBRelation(rel))
 		{
-			if (!IsYBRelation(rel))
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_OBJECT),
-						 errmsg("This relational object does not exist in YugaByte database")));
-			}
 			// Call YugaByte API to truncate tables.
 			YBCTruncateTable(rel);
 		}
@@ -3765,7 +3761,7 @@ ATController(AlterTableStmt *parsetree,
 	/* Close the relation, but keep lock until commit */
 	relation_close(rel, NoLock);
 
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(rel))
 	{
 		YBCAlterTable(parsetree, rel, relid);
 	}

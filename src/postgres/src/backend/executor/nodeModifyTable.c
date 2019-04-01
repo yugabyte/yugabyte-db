@@ -418,7 +418,7 @@ ExecInsert(ModifyTableState *mtstate,
 		if (resultRelationDesc->rd_att->constr)
 			ExecConstraints(resultRelInfo, slot, estate);
 
-		if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
+		if (IsYBRelation(resultRelationDesc))
 		{
 			/*
 			 * Try to execute the statement as a single row transaction (rather
@@ -462,7 +462,7 @@ ExecInsert(ModifyTableState *mtstate,
 			 */
 			goto yb_end_of_skipped_pg_code;
 		}
-		/* CODE BELOW IS SKIPPED IN YugaByte MODE ---------------------------*/
+		/* CODE BELOW IS SKIPPED FOR RELATIONS THAT ARE NON-YugaByte RELATIONS */
 
 		/*
 		 * Also check the tuple against the partition constraint, if there is
@@ -773,7 +773,7 @@ ExecDelete(ModifyTableState *mtstate,
 		tuple = ExecMaterializeSlot(slot);
 		tuple->t_tableOid = RelationGetRelid(resultRelationDesc);
 	}
-	else if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
+	else if (IsYBRelation(resultRelationDesc))
 	{
 		YBCExecuteDelete(resultRelationDesc, planSlot);
 
@@ -954,16 +954,8 @@ ldelete:;
 			Assert(!TupIsNull(slot));
 			delbuffer = InvalidBuffer;
 		}
-		else if (IsYugaByteEnabled())
+		else if (IsYBRelation(resultRelationDesc))
 		{
-			/*
-			 * Prepare the original tuple in inner slot for RETURNING clause execution.
-			 */
-			if (!IsYBRelation(resultRelationDesc)) {
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_OBJECT),
-						 errmsg("This relational object does not exist in YugaByte database")));
-			}
 			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
 			delbuffer = InvalidBuffer;
 		}
@@ -1113,7 +1105,7 @@ ExecUpdate(ModifyTableState *mtstate,
 		 */
 		tuple->t_tableOid = RelationGetRelid(resultRelationDesc);
 	}
-	else if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
+	else if (IsYBRelation(resultRelationDesc))
 	{
 		YBCExecuteUpdate(resultRelationDesc, planSlot, tuple);
 
@@ -2771,7 +2763,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 					char		relkind;
 
 					relkind = resultRelInfo->ri_RelationDesc->rd_rel->relkind;
-					if (IsYugaByteEnabled() && IsYBRelation(rel))
+					if (IsYBRelation(rel))
 					{
 						j->jf_junkAttNo = ExecFindJunkAttribute(j, "ybctid");
 						if (!AttributeNumberIsValid(j->jf_junkAttNo)) {
