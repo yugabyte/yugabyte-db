@@ -199,6 +199,9 @@ public class AccessManager extends DevopsBase {
     if (region == null) {
       throw new RuntimeException("Invalid Region UUID: " + regionUUID);
     }
+    if (!region.provider.code.equals("aws")) {
+      return null;
+    }
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
 
     commandArgs.add("--key_pair_name");

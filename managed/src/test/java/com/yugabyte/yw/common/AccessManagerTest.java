@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import org.apache.commons.io.FileUtils;
@@ -56,6 +57,7 @@ import static org.mockito.Mockito.when;
 
   private Provider defaultProvider;
   private Region defaultRegion;
+  private Customer defaultCustomer;
   ArgumentCaptor<ArrayList> command;
   ArgumentCaptor<HashMap> cloudCredentials;
 
@@ -68,7 +70,8 @@ import static org.mockito.Mockito.when;
   @Before
   public void beforeTest() {
     new File(TMP_KEYS_PATH).mkdirs();
-    defaultProvider = ModelFactory.awsProvider(ModelFactory.testCustomer());
+    defaultCustomer = ModelFactory.testCustomer();
+    defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
     when(appConfig.getString("yb.storage.path")).thenReturn(TMP_STORAGE_PATH);
     command = ArgumentCaptor.forClass(ArrayList.class);
@@ -395,6 +398,15 @@ import static org.mockito.Mockito.when;
     assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
     assertTrue(cloudCredentials.getValue().isEmpty());
     assertValue(result, "foo", "bar");
+  }
+
+  @Test
+  public void testDeleteKeyWithValidRegionInGCP() {
+    Provider testProvider = ModelFactory.gcpProvider(defaultCustomer);
+    Region testRegion = Region.create(testProvider, "us-west-2", "US West 2", "yb-image");
+    JsonNode result = runCommand(testRegion.uuid, "delete-key", false);
+    Mockito.verify(shellProcessHandler, times(0)).run(command.capture(),
+        cloudCredentials.capture());
   }
 
   @Test
