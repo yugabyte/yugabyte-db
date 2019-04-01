@@ -3658,6 +3658,9 @@ static void ybcPrepareRetryIfNeeded(MemoryContext oldcontext,
 	/* Initialize, will set to true below if needed */
 	*need_retry = false;
 
+	/*
+	 * A retry is only required if the transaction is handled by YugaByte.
+	 */
 	if (!IsYugaByteEnabled())
 	{
 		return;

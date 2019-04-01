@@ -843,6 +843,11 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 		rel = heap_openrv(stmt->relation,
 						  (is_from ? RowExclusiveLock : AccessShareLock));
 
+		if (rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP &&
+				IsYugaByteEnabled()) {
+			SetTxnWithPGRel();
+		}
+
 		relid = RelationGetRelid(rel);
 
 		rte = addRangeTableEntryForRelation(pstate, rel, NULL, false, false);
@@ -2587,7 +2592,8 @@ CopyFrom(CopyState cstate)
 		  resultRelInfo->ri_TrigDesc->trig_insert_instead_row)) ||
 		resultRelInfo->ri_FdwRoutine != NULL ||
 		cstate->partition_tuple_routing != NULL ||
-		cstate->volatile_defexprs || IsYugaByteEnabled())
+		cstate->volatile_defexprs ||
+		IsYBRelation(resultRelInfo->ri_RelationDesc))
 	{
 		useHeapMultiInsert = false;
 	}
@@ -2828,7 +2834,7 @@ CopyFrom(CopyState cstate)
 					List	   *recheckIndexes = NIL;
 
 					/* OK, store the tuple and create index entries for it */
-					if (IsYugaByteEnabled())
+					if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 					{
 						YBCExecuteInsert(cstate->rel, tupDesc, tuple);
 					}

@@ -953,7 +953,7 @@ index_create(Relation heapRelation,
 	 * Create index in YugaByte only if it is a secondary index. Primary key is
 	 * an implicit part of the base table in YugaByte and doesn't need to be created.
 	 */
-	if (IsYugaByteEnabled() && !isprimary)
+	if (IsYBRelation(indexRelation) && !isprimary)
 	{
 		YBCCreateIndex(indexRelationName,
 					   indexInfo,

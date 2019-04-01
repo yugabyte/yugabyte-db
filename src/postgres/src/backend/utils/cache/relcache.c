@@ -1140,21 +1140,10 @@ void YBCInitializeRelCache()
 				else
 				{
 					/*
-					 * If it's a temp table, but not one of ours, we have to use
-					 * the slow, grotty method to figure out the owning backend.
-					 *
-					 * Note: it's possible that rd_backend gets set to MyBackendId
-					 * here, in case we are looking at a pg_class entry left over
-					 * from a crashed backend that coincidentally had the same
-					 * BackendId we're using.  We should *not* consider such a
-					 * table to be "ours"; this is why we need the separate
-					 * rd_islocaltemp flag.  The pg_class entry will get flushed
-					 * if/when we clean out the corresponding temp table namespace
-					 * in preparation for using it.
+					 * If it's a temp table, but not one of ours,
+					 * we set rd_backend to the invalid backend id.
 					 */
-					relation->rd_backend = GetTempNamespaceBackendId(relation->rd_rel
-					                                                         ->relnamespace);
-					Assert(relation->rd_backend != InvalidBackendId);
+					relation->rd_backend = InvalidBackendId;
 					relation->rd_islocaltemp = false;
 				}
 				break;
@@ -1726,7 +1715,7 @@ RelationInitPhysicalAddr(Relation relation)
 	else
 		relation->rd_node.dbNode = MyDatabaseId;
 
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(relation))
 	  return;
 
 	if (relation->rd_rel->relfilenode)

@@ -1462,10 +1462,20 @@ heap_beginscan_internal(Relation relation, Snapshot snapshot,
 {
 	HeapScanDesc scan;
 
-	if (IsYugaByteEnabled())
+	/* YB scan methods should only be used for tables that are handled by YugaByte. */
+	if (IsYBRelation(relation))
 	{
 		return ybc_heap_beginscan(relation, snapshot, nkeys, key, temp_snap);
 	}
+
+	/* Give more specific error for sequence tables */
+	if (RelationGetForm(relation)->relkind == RELKIND_SEQUENCE)
+		ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+										 errmsg("\"%s\" is a sequence table",
+													  RelationGetRelationName(relation)),
+										 errdetail("Querying sequence tables is not supported yet."),
+										 errhint("Use lastval() and currval() instead.")));
 
 	/*
 	 * increment relation ref count while scanning relation
@@ -1581,7 +1591,7 @@ heap_endscan(HeapScanDesc scan)
 {
 	/* Note: no locking manipulations needed */
 
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(scan->rs_rd))
 	{
 		return ybc_heap_endscan(scan);
 	}
@@ -1849,7 +1859,7 @@ heap_getnext(HeapScanDesc scan, ScanDirection direction)
 {
 	/* Note: no locking manipulations needed */
 
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(scan->rs_rd))
 	{
 		return ybc_heap_getnext(scan);
 	}
@@ -2470,7 +2480,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	Buffer		vmbuffer = InvalidBuffer;
 	bool		all_visible_cleared = false;
 
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(relation))
 	{
 		ereport(ERROR,
 		        (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
@@ -2748,7 +2758,7 @@ heap_multi_insert(Relation relation, HeapTuple *tuples, int ntuples,
 	bool		need_tuple_data = RelationIsLogicallyLogged(relation);
 	bool		need_cids = RelationIsAccessibleInLogicalDecoding(relation);
 
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(relation))
 	{
 		ereport(ERROR,
 		        (errcode(ERRCODE_INTERNAL_ERROR),
@@ -3112,7 +3122,7 @@ heap_delete(Relation relation, ItemPointer tid,
 	HeapTuple	old_key_tuple = NULL;	/* replica identity of the tuple */
 	bool		old_key_copied = false;
 
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(relation))
 	{
 		YBC_LOG_WARNING("Ignoring unsupported tuple delete for rel %s",
 		                RelationGetRelationName(relation));

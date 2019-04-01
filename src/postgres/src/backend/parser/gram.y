@@ -3457,18 +3457,15 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 OptTemp:
 			TEMPORARY
 				{
-					parser_ybc_not_support(@1, "TEMPORARY database object");
 					$$ = RELPERSISTENCE_TEMP;
 				}
-			| TEMP { parser_ybc_not_support(@1, "TEMP database object"); $$ = RELPERSISTENCE_TEMP; }
+			| TEMP { $$ = RELPERSISTENCE_TEMP; }
 			| LOCAL TEMPORARY
 				{
-					parser_ybc_not_support(@1, "LOCAL TEMPORARY database object");
 					$$ = RELPERSISTENCE_TEMP;
 				}
 			| LOCAL TEMP
 				{
-					parser_ybc_not_support(@1, "LOCAL TEMP database object");
 					$$ = RELPERSISTENCE_TEMP;
 				}
 			| GLOBAL TEMPORARY
@@ -4152,17 +4149,14 @@ OptWith:
 OnCommitOption:
 			ON COMMIT DROP
 				{
-					parser_ybc_not_support(@1, "ON COMMIT DROP");
 					$$ = ONCOMMIT_DROP;
 				}
 			| ON COMMIT DELETE_P ROWS
 				{
-					parser_ybc_not_support(@1, "ON COMMIT DELETE ROWS");
 					$$ = ONCOMMIT_DELETE_ROWS;
 				}
 			| ON COMMIT PRESERVE ROWS
 				{
-					parser_ybc_not_support(@1, "ON COMMIT PRESERVE ROWS");
 					$$ = ONCOMMIT_PRESERVE_ROWS;
 				}
 			| /*EMPTY*/						{ $$ = ONCOMMIT_NOOP; }

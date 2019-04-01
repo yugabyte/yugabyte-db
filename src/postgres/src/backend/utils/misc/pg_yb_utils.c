@@ -63,13 +63,36 @@ IsYugaByteEnabled()
 	return ybc_pg_session != NULL;
 }
 
+void
+CheckIsYBSupportedRelation(Relation relation)
+{
+	const char relkind = relation->rd_rel->relkind;
+	CheckIsYBSupportedRelationByKind(relkind);
+}
+
+void
+CheckIsYBSupportedRelationByKind(char relkind)
+{
+	if (!(relkind == RELKIND_RELATION || relkind == RELKIND_INDEX ||
+		  relkind == RELKIND_VIEW || relkind == RELKIND_SEQUENCE))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("This feature is not supported in YugaByte.")));
+}
+
 bool
 IsYBRelation(Relation relation)
 {
+	if (!IsYugaByteEnabled()) return false;
+
 	const char relkind = relation->rd_rel->relkind;
 
-	/* Currently only support regular tables and indexes */
-	return (relkind == RELKIND_RELATION || relkind == RELKIND_INDEX);
+	CheckIsYBSupportedRelationByKind(relkind);
+
+	/* Currently only support regular tables and indexes.
+	 * Temp tables and views are supported, but they are not YB relations. */
+	return (relkind == RELKIND_RELATION || relkind == RELKIND_INDEX)
+				 && relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP;
 }
 
 bool
@@ -82,12 +105,6 @@ IsYBRelationById(Oid relid)
 }
 
 bool
-IsYBRelationByKind(char relKind)
-{
-  return (relKind == RELKIND_RELATION || relKind == RELKIND_INDEX);
-}
-
-bool
 YBNeedRetryAfterCacheRefresh(ErrorData *edata)
 {
 	// TODO Inspect error code to distinguish retryable errors.
@@ -96,7 +113,7 @@ YBNeedRetryAfterCacheRefresh(ErrorData *edata)
 
 AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation)
 {
-	return IsYugaByteEnabled() && IsYBRelation(relation)
+	return IsYBRelation(relation)
 	       ? YBFirstLowInvalidAttributeNumber
 	       : FirstLowInvalidHeapAttributeNumber;
 }
