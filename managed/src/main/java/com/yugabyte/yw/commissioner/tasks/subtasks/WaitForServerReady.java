@@ -123,10 +123,15 @@ public class WaitForServerReady extends AbstractTaskBase {
       try {
         response = client.isTServerReady(hp);
       } catch (Exception e) {
-        String excepMsg = getName() + " hit error " + e.getMessage();
+        String emsg = e.getMessage();
+        // message need not be set for some system exceptions (including NPE).
+        if (emsg == null) {
+          emsg = e.getClass().getName();
+        }
+        String excepMsg = getName() + " hit error " + emsg;
         // There is no generic mechanism from proto/rpc to check if an older server does not have
         // this rpc implemented. So, we just sleep for remaining time on any such error.
-        if (e.getMessage().contains("invalid method name: IsTabletServerReady")) {
+        if (emsg.contains("invalid method name: IsTabletServerReady")) {
           LOG.info(excepMsg);
           break;
         }
