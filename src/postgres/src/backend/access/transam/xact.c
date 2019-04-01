@@ -190,6 +190,8 @@ typedef struct TransactionStateData
 	bool		didLogXid;		/* has xid been included in WAL record? */
 	int			parallelModeLevel;	/* Enter/ExitParallelMode counter */
 	struct TransactionStateData *parent;	/* back link to parent */
+	bool		isYBTxnWithPostgresRel; /* does the current transaction
+										   * operate on a postgres table? */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -1151,7 +1153,8 @@ RecordTransactionCommit(void)
 	bool		RelcacheInitFileInval = false;
 	bool		wrote_xlog;
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled() && !IsCurrentTxnWithPGRel())
+	{
 		return latestXid;
 	}
 	/* Get data needed for commit record */
@@ -1833,6 +1836,8 @@ StartTransaction(void)
 
 	/* check the current transaction state */
 	Assert(s->state == TRANS_DEFAULT);
+
+	s->isYBTxnWithPostgresRel = IsYugaByteEnabled() ? false : true;
 
 	/*
 	 * Set the current transaction state information appropriately during
@@ -2805,6 +2810,19 @@ StartTransactionCommand(void)
 	 */
 	Assert(CurTransactionContext != NULL);
 	MemoryContextSwitchTo(CurTransactionContext);
+}
+
+void
+SetTxnWithPGRel(void)
+{
+	TransactionState s = CurrentTransactionState;
+	s->isYBTxnWithPostgresRel = true;
+}
+
+bool
+IsCurrentTxnWithPGRel(void)
+{
+	return CurrentTransactionState->isYBTxnWithPostgresRel;
 }
 
 void

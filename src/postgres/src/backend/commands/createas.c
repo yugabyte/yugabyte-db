@@ -604,7 +604,15 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 	if (myState->rel->rd_rel->relhasoids)
 		HeapTupleSetOid(tuple, InvalidOid);
 
-	if (IsYugaByteEnabled())
+	/*
+	 * if we are creating and inserting into a temporary table,
+	 * we must use PG transaction codepaths as well
+	 */
+	if (myState->rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP
+			&& IsYugaByteEnabled())
+		SetTxnWithPGRel();
+
+	if (IsYBRelation(myState->rel))
 	{
 		YBCExecuteInsert(myState->rel, RelationGetDescr(myState->rel), tuple);
 	}

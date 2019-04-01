@@ -67,12 +67,17 @@ extern uint64 ybc_catalog_cache_version;
 extern bool IsYugaByteEnabled();
 
 /*
+ * Given a relation, checks whether the relation is supported in YugaByte mode.
+ */
+extern void CheckIsYBSupportedRelation(Relation relation);
+
+extern void CheckIsYBSupportedRelationByKind(char relkind);
+
+/*
  * Given a relation (table) id, returns whether this table is handled by
- * YugaByte: i.e. it is not a system table or in the template1 database.
+ * YugaByte: i.e. it is not a temporary or foreign table.
  */
 extern bool IsYBRelationById(Oid relid);
-
-extern bool IsYBRelationByKind(char relKind);
 
 extern bool IsYBRelation(Relation relation);
 

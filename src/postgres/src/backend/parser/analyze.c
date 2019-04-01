@@ -25,6 +25,7 @@
 #include "postgres.h"
 
 #include "access/sysattr.h"
+#include "access/xact.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "miscadmin.h"
@@ -116,6 +117,13 @@ parse_analyze(RawStmt *parseTree, const char *sourceText,
 	pstate->p_queryEnv = queryEnv;
 
 	query = transformTopLevelStmt(pstate, parseTree);
+
+	if (pstate->p_target_relation &&
+		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
+		&& IsYugaByteEnabled())
+	{
+		SetTxnWithPGRel();
+	}
 
 	if (post_parse_analyze_hook)
 		(*post_parse_analyze_hook) (pstate, query);
@@ -2347,14 +2355,8 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 							RelationGetRelationName(pstate->p_target_relation)),
 					 parser_errposition(pstate, origTarget->location)));
 
-		if (IsYugaByteEnabled())
+		if (IsYBRelation(pstate->p_target_relation))
 		{
-			if (!IsYBRelation(pstate->p_target_relation))
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_OBJECT),
-						 errmsg("This relational object does not exist in YugaByte database")));
-			}
 
 			// Currently, YugaByte does not allow updating primary key columns that were specified
 			// when creating table.

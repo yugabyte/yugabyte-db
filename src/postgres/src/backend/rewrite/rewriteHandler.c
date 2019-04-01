@@ -1316,7 +1316,7 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 	const char *attrname;
 	TargetEntry *tle;
 
-	if (IsYugaByteEnabled() && IsYBRelation(target_relation))
+	if (IsYBRelation(target_relation))
 	{
 		/*
 		 * If there are indexes on the target table, return the whole row also.

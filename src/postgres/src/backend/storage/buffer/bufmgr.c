@@ -2788,7 +2788,7 @@ FlushBuffer(BufferDesc *buf, SMgrRelation reln)
 BlockNumber
 RelationGetNumberOfBlocksInFork(Relation relation, ForkNumber forkNum)
 {
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(relation))
 	{
 		return 0;
 	}
