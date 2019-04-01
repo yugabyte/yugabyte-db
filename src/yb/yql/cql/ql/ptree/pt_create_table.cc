@@ -164,6 +164,20 @@ CHECKED_STATUS PTCreateTable::AppendColumn(SemContext *sem_context,
   return Status::OK();
 }
 
+CHECKED_STATUS PTCreateTable::AppendColumnIfNotPresent(SemContext *sem_context,
+                                                       PTColumnDefinition *column) {
+  RETURN_NOT_OK(CheckType(sem_context, column->datatype()));
+  if (ColumnExists(columns_, column)) {
+    return Status::OK();
+  }
+  columns_.push_back(column);
+
+  if (column->is_counter()) {
+    contain_counters_ = true;
+  }
+  return Status::OK();
+}
+
 CHECKED_STATUS PTCreateTable::AppendPrimaryColumn(SemContext *sem_context,
                                                   PTColumnDefinition *column,
                                                   const bool check_duplicate) {

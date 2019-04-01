@@ -87,7 +87,8 @@ CHECKED_STATUS PTName::SetupCoveringIndexColumn(SemContext *sem_context) const {
     return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
   }
   if (column->is_primary_key()) {
-    return sem_context->Error(this, "Column covered already", ErrorCode::INVALID_TABLE_DEFINITION);
+    // Covering column is already included in primary key, do nothing
+    return Status::OK();
   }
   if (column->is_static()) {
     return sem_context->Error(this, "Static column not supported as a covering index column",
@@ -103,7 +104,7 @@ CHECKED_STATUS PTName::SetupCoveringIndexColumn(SemContext *sem_context) const {
   }
   column->set_loc(*this);
   column->datatype()->set_loc(*this);
-  return table->AppendColumn(sem_context, column, true /* check_duplicate */);
+  return table->AppendColumnIfNotPresent(sem_context, column);
 }
 
 //--------------------------------------------------------------------------------------------------
