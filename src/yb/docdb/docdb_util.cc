@@ -78,9 +78,13 @@ CHECKED_STATUS InitKeyColumnPrimitiveValues(
       return status;
     }
 
-    if (column_value.has_value() && !IsNull(column_value.value())) {
-      components->push_back(PrimitiveValue::FromQLValuePB(
-          column_value.value(), schema.column(column_idx).sorting_type()));
+    if (column_value.has_value()) {
+      if (IsNull(column_value.value())) {
+        components->push_back(PrimitiveValue(ValueType::kNull));
+      } else {
+        components->push_back(PrimitiveValue::FromQLValuePB(
+            column_value.value(), schema.column(column_idx).sorting_type()));
+      }
     } else {
       // TODO(neil) The current setup only works for CQL as it assumes primary key value must not
       // be dependent on any column values. This needs to be fixed as PostgreSQL expression might
