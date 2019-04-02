@@ -71,8 +71,8 @@ class SecureOutboundData : public OutboundData {
     return false;
   }
 
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override {
-    output->push_back(buffer_);
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override {
+    output->push_back(std::move(buffer_));
   }
 
   std::string ToString() const override {
@@ -332,9 +332,13 @@ class SecureStream : public Stream, public StreamContext {
   CHECKED_STATUS Start(bool connect, ev::loop_ref* loop, StreamContext* context) override;
   void Close() override;
   void Shutdown(const Status& status) override;
-  void Send(OutboundDataPtr data) override;
+  size_t Send(OutboundDataPtr data) override;
   CHECKED_STATUS TryWrite() override;
   void ParseReceived() override;
+
+  void Cancelled(size_t handle) override {
+    LOG_WITH_PREFIX(DFATAL) << "Cancel is not supported for secure stream: " << handle;
+  }
 
   bool Idle(std::string* reason_not_idle) override;
   bool IsConnected() override;
@@ -406,12 +410,12 @@ void SecureStream::Shutdown(const Status& status) {
   lower_stream_->Shutdown(status);
 }
 
-void SecureStream::Send(OutboundDataPtr data) {
+size_t SecureStream::Send(OutboundDataPtr data) {
   switch (state_) {
   case SecureState::kInitial:
   case SecureState::kHandshake:
     pending_data_.push_back(std::move(data));
-    break;
+    return std::numeric_limits<size_t>::max();
   case SecureState::kEnabled: {
       boost::container::small_vector<RefCntBuffer, 10> queue;
       data->Serialize(&queue);
@@ -428,11 +432,13 @@ void SecureStream::Send(OutboundDataPtr data) {
         }
       }
       WriteEncrypted(std::move(data));
-    } break;
+    }
+    return std::numeric_limits<size_t>::max();
   case SecureState::kDisabled:
-    lower_stream_->Send(std::move(data));
-    break;
+    return lower_stream_->Send(std::move(data));
   }
+
+  return std::numeric_limits<size_t>::max();
 }
 
 void SecureStream::WriteEncrypted(OutboundDataPtr data) {
