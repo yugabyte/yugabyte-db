@@ -277,6 +277,8 @@ class Messenger : public ProxyContext {
     return *rpc_metrics_;
   }
 
+  const std::shared_ptr<MemTracker>& parent_mem_tracker() override;
+
   int num_connections_to_server() const override {
     return num_connections_to_server_;
   }

@@ -189,11 +189,16 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
     }
   }
 
-  while (!expiration_queue_.empty() && expiration_queue_.top().first <= now) {
-    auto call = expiration_queue_.top().second.lock();
+  while (!expiration_queue_.empty() && expiration_queue_.top().time <= now) {
+    auto& top = expiration_queue_.top();
+    auto call = top.call.lock();
+    auto handle = top.handle;
     expiration_queue_.pop();
     if (call && !call->IsFinished()) {
       call->SetTimedOut();
+      if (handle != std::numeric_limits<size_t>::max()) {
+        stream_->Cancelled(handle);
+      }
       auto i = awaiting_response_.find(call->call_id());
       if (i != awaiting_response_.end()) {
         i->second.reset();
@@ -202,7 +207,7 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
   }
 
   if (!expiration_queue_.empty()) {
-    deadline = std::min(deadline, expiration_queue_.top().first);
+    deadline = std::min(deadline, expiration_queue_.top().time);
   }
 
   if (deadline != CoarseTimePoint::max()) {
@@ -214,14 +219,14 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
   DCHECK(call);
   DCHECK_EQ(direction_, Direction::CLIENT);
 
-  DoQueueOutboundData(call, true);
+  auto handle = DoQueueOutboundData(call, true);
 
   // Set up the timeout timer.
   const MonoDelta& timeout = call->controller()->timeout();
   if (timeout.Initialized()) {
     auto expires_at = CoarseMonoClock::Now() + timeout.ToSteadyDuration();
-    auto reschedule = expiration_queue_.empty() || expiration_queue_.top().first > expires_at;
-    expiration_queue_.emplace(expires_at, call);
+    auto reschedule = expiration_queue_.empty() || expiration_queue_.top().time > expires_at;
+    expiration_queue_.push({expires_at, call, handle});
     if (reschedule && (stream_->IsConnected() ||
                        expires_at < last_activity_time_ + FLAGS_rpc_connection_timeout_ms * 1ms)) {
       StartTimer(timeout.ToSteadyDuration(), &timer_);
@@ -231,12 +236,12 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
   call->SetQueued();
 }
 
-void Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) {
+size_t Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) {
   DCHECK(reactor_->IsCurrentThread());
 
   if (!shutdown_status_.ok()) {
     outbound_data->Transferred(shutdown_status_, this);
-    return;
+    return std::numeric_limits<size_t>::max();
   }
 
   // If the connection is torn down, then the QueueOutbound() call that
@@ -249,18 +254,20 @@ void Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) 
   Status s = context_->ReportPendingWriteBytes(stream_->GetPendingWriteBytes());
   if (!s.ok()) {
     Shutdown(s);
-    return;
+    return std::numeric_limits<size_t>::max();
   }
-  stream_->Send(std::move(outbound_data));
+  auto result = stream_->Send(std::move(outbound_data));
   s = context_->ReportPendingWriteBytes(stream_->GetPendingWriteBytes());
   if (!s.ok()) {
     Shutdown(s);
-    return;
+    return std::numeric_limits<size_t>::max();
   }
 
   if (!batch) {
     OutboundQueued();
   }
+
+  return result;
 }
 
 void Connection::ParseReceived() {
@@ -276,7 +283,9 @@ Result<ProcessDataResult> Connection::ProcessReceived(
   }
 
   if (!result->consumed && read_buffer_full && context_->Idle()) {
-    return STATUS(InvalidArgument, "Command is greater than read buffer");
+    return STATUS_FORMAT(
+        InvalidArgument, "Command is greater than read buffer, exist data: $0",
+        IoVecsFullSize(data));
   }
 
   return result;

@@ -188,7 +188,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   CHECKED_STATUS DoWrite();
 
   // Does actual outbound data queueing. Invoked in appropriate reactor thread.
-  void DoQueueOutboundData(OutboundDataPtr call, bool batch);
+  size_t DoQueueOutboundData(OutboundDataPtr call, bool batch);
 
   void ProcessResponseQueue();
 
@@ -229,17 +229,21 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // at connection level.
   scoped_refptr<Histogram> handler_latency_outbound_transfer_;
 
+  struct ExpirationEntry {
+    CoarseTimePoint time;
+    std::weak_ptr<OutboundCall> call;
+    // See Stream::Send for details.
+    size_t handle;
+  };
+
   struct CompareExpiration {
-    template<class Pair>
-    bool operator()(const Pair& lhs, const Pair& rhs) const {
-      return rhs.first < lhs.first;
+    bool operator()(const ExpirationEntry& lhs, const ExpirationEntry& rhs) const {
+      return rhs.time < lhs.time;
     }
   };
 
-  typedef std::pair<CoarseTimePoint, std::weak_ptr<OutboundCall>> ExpirationPair;
-
-  std::priority_queue<ExpirationPair,
-                      std::vector<ExpirationPair>,
+  std::priority_queue<ExpirationEntry,
+                      std::vector<ExpirationEntry>,
                       CompareExpiration> expiration_queue_;
   ev::timer timer_;
 

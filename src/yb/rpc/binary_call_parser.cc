@@ -63,6 +63,9 @@ Result<ProcessDataResult> BinaryCallParser::Parse(
         size_t received_size = full_size - (consumed + body_offset);
         Slice buffer(call_data_.data() + received_size, call_data_size - received_size);
         return ProcessDataResult{ full_size, buffer };
+      } else {
+        LOG(WARNING) << "Unable to allocate read buffer because of limit, required: "
+                     << call_data_size;
       }
       break;
     }

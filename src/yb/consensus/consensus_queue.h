@@ -239,7 +239,7 @@ class PeerMessageQueue {
   virtual CHECKED_STATUS RequestForPeer(
       const std::string& uuid,
       ConsensusRequestPB* request,
-      ReplicateMsgs* msg_refs,
+      ReplicateMsgsHolder* msgs_holder,
       bool* needs_remote_bootstrap,
       RaftPeerPB::MemberType* member_type = nullptr,
       bool* last_exchange_successful = nullptr);

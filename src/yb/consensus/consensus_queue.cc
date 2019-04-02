@@ -49,6 +49,8 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/replicate_msgs_holder.h"
+
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
@@ -332,10 +334,12 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
 
 Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                         ConsensusRequestPB* request,
-                                        ReplicateMsgs* msg_refs,
+                                        ReplicateMsgsHolder* msgs_holder,
                                         bool* needs_remote_bootstrap,
                                         RaftPeerPB::MemberType* member_type,
                                         bool* last_exchange_successful) {
+  DCHECK(request->ops().empty());
+
   OpId preceding_id;
   MonoDelta unreachable_time = MonoDelta::kMin;
   bool is_voter = false;
@@ -388,9 +392,6 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     }
 
     request->set_propagated_hybrid_time(now_ht.ToUint64());
-
-    // Clear the requests without deleting the entries, as they may be in use by other peers.
-    request->mutable_ops()->ExtractSubrange(0, request->ops_size(), /* elements */ nullptr);
 
     // This is initialized to the queue's last appended op but gets set to the id of the
     // log entry preceding the first one in 'messages' if messages are found for the peer.
@@ -477,13 +478,15 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     for (const auto& msg : messages) {
       request->mutable_ops()->AddAllocated(msg.get());
     }
+    *msgs_holder = ReplicateMsgsHolder(request->mutable_ops(), std::move(messages));
+
     if (propagated_safe_time && !have_more_messages) {
       // Get the current local safe time on the leader and propagate it to the follower.
       request->set_propagated_safe_time(propagated_safe_time.ToUint64());
     } else {
       request->clear_propagated_safe_time();
     }
-    msg_refs->swap(messages);
+
     DCHECK_LE(request->ByteSize(), FLAGS_consensus_max_batch_size_bytes);
   }
 

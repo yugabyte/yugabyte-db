@@ -106,7 +106,7 @@ class MockQueue : public PeerMessageQueue {
   MOCK_METHOD1(UntrackPeer, void(const string&));
   MOCK_METHOD6(RequestForPeer, Status(const std::string& uuid,
                                       ConsensusRequestPB* request,
-                                      ReplicateMsgs* msg_refs,
+                                      ReplicateMsgsHolder* msgs_holder,
                                       bool* needs_remote_bootstrap,
                                       RaftPeerPB::MemberType* member_type,
                                       bool* last_exchange_successful));

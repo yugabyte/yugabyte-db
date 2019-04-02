@@ -50,6 +50,7 @@
 #include "yb/rpc/service_if.h"
 
 #include "yb/util/locks.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/object_pool.h"
@@ -210,11 +211,12 @@ class OutboundCall : public RpcCall {
   //
   // Because the data is fully serialized by this call, 'req' may be
   // subsequently mutated with no ill effects.
-  virtual CHECKED_STATUS SetRequestParam(const google::protobuf::Message& req);
+  virtual CHECKED_STATUS SetRequestParam(
+      const google::protobuf::Message& req, const MemTrackerPtr& mem_tracker);
 
   // Serialize the call for the wire. Requires that SetRequestParam()
   // is called first. This is called from the Reactor thread.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override;
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
 
   // Callback after the call has been put on the outbound connection queue.
   void SetQueued();
@@ -291,17 +293,7 @@ class OutboundCall : public RpcCall {
  private:
   friend class RpcController;
 
-  // Various states the call propagates through.
-  // NB: if adding another state, be sure to update OutboundCall::IsFinished()
-  // and OutboundCall::StateName(State state) as well.
-  enum State {
-    READY = 0,
-    ON_OUTBOUND_QUEUE = 1,
-    SENT = 2,
-    TIMED_OUT = 3,
-    FINISHED_ERROR = 4,
-    FINISHED_SUCCESS = 5
-  };
+  typedef RpcCallState State;
 
   static std::string StateName(State state);
 
@@ -343,6 +335,9 @@ class OutboundCall : public RpcCall {
 
   // Buffers for storing segments of the wire-format request.
   RefCntBuffer buffer_;
+
+  // Consumption of buffer_.
+  ScopedTrackedConsumption buffer_consumption_;
 
   // Once a response has been received for this call, contains that response.
   CallResponse call_response_;

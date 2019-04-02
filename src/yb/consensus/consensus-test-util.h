@@ -480,7 +480,7 @@ class LocalTestPeerProxy : public TestPeerProxy {
                    const rpc::ResponseCallback& callback) override {
     RegisterCallback(kUpdate, callback);
     CHECK_OK(pool_->SubmitFunc(
-        std::bind(&LocalTestPeerProxy::SendUpdateRequest, this, request, response)));
+        std::bind(&LocalTestPeerProxy::SendUpdateRequest, this, *request, response)));
   }
 
   void RequestConsensusVoteAsync(const VoteRequestPB* request,
@@ -521,20 +521,15 @@ class LocalTestPeerProxy : public TestPeerProxy {
     Respond(method);
   }
 
-  void SendUpdateRequest(const ConsensusRequestPB* request,
+  void SendUpdateRequest(ConsensusRequestPB request,
                          ConsensusResponsePB* response) {
-    // Copy the request and the response for the other peer so that ownership
-    // remains as close to the dist. impl. as possible.
-    ConsensusRequestPB other_peer_req;
-    other_peer_req.CopyFrom(*request);
-
     // Give the other peer a clean response object to write to.
     ConsensusResponsePB other_peer_resp;
     std::shared_ptr<RaftConsensus> peer;
     Status s = peers_->GetPeerByUuid(peer_uuid_, &peer);
 
     if (s.ok()) {
-      s = peer->Update(&other_peer_req, &other_peer_resp);
+      s = peer->Update(&request, &other_peer_resp);
       if (s.ok() && !other_peer_resp.has_error()) {
         CHECK(other_peer_resp.has_status());
         CHECK(other_peer_resp.status().IsInitialized());
@@ -542,13 +537,13 @@ class LocalTestPeerProxy : public TestPeerProxy {
     }
     if (!s.ok()) {
       LOG(WARNING) << "Could not Update replica with request: "
-                   << other_peer_req.ShortDebugString()
+                   << request.ShortDebugString()
                    << " Status: " << s.ToString();
       SetResponseError(s, &other_peer_resp);
     }
 
     response->CopyFrom(other_peer_resp);
-    RespondOrMissResponse(request, other_peer_resp, response, kUpdate);
+    RespondOrMissResponse(&request, other_peer_resp, response, kUpdate);
   }
 
 
