@@ -142,3 +142,16 @@ SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r;
 
 EXPLAIN (COSTS OFF) SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r;
 SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r;
+
+--
+-- NULL value in index
+--
+CREATE TABLE null_index(k int, v int);
+CREATE INDEX null_index_v ON null_index(v);
+INSERT INTO null_index(k) VALUES(1);
+INSERT INTO null_index VALUES(2, NULL);
+INSERT INTO null_index VALUES(3, 3);
+
+SELECT * FROM null_index ORDER BY k;
+SELECT * FROM null_index WHERE v IS NULL ORDER BY k;
+SELECT * FROM null_index WHERE v IS NOT NULL ORDER BY k;
