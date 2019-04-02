@@ -91,6 +91,10 @@ class ConnectionContextFactory {
     return parent_tracker_;
   }
 
+  const std::shared_ptr<MemTracker>& buffer_tracker() {
+    return buffer_tracker_;
+  }
+
  protected:
   ~ConnectionContextFactory();
 

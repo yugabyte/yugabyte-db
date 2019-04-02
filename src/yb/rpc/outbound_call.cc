@@ -231,11 +231,13 @@ void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
   }
 }
 
-void OutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
-  output->push_back(buffer_);
+void OutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+  output->push_back(std::move(buffer_));
+  buffer_consumption_ = ScopedTrackedConsumption();
 }
 
-Status OutboundCall::SetRequestParam(const Message& message) {
+Status OutboundCall::SetRequestParam(
+    const Message& message, const MemTrackerPtr& mem_tracker) {
   using serialization::SerializeHeader;
   using serialization::SerializeMessage;
 
@@ -258,6 +260,11 @@ Status OutboundCall::SetRequestParam(const Message& message) {
   if (!status.ok()) {
     return status;
   }
+
+  if (mem_tracker) {
+    buffer_consumption_ = ScopedTrackedConsumption(mem_tracker, buffer_.size());
+  }
+
   return SerializeMessage(message,
                           &buffer_,
                           /* additional_size */ 0,
@@ -277,23 +284,7 @@ const ErrorStatusPB* OutboundCall::error_pb() const {
 
 
 string OutboundCall::StateName(State state) {
-  switch (state) {
-    case READY:
-      return "READY";
-    case ON_OUTBOUND_QUEUE:
-      return "ON_OUTBOUND_QUEUE";
-    case SENT:
-      return "SENT";
-    case TIMED_OUT:
-      return "TIMED_OUT";
-    case FINISHED_ERROR:
-      return "FINISHED_ERROR";
-    case FINISHED_SUCCESS:
-      return "FINISHED_SUCCESS";
-    default:
-      LOG(DFATAL) << "Unknown state in OutboundCall: " << state;
-      return StringPrintf("UNKNOWN(%d)", state);
-  }
+  return RpcCallState_Name(state);
 }
 
 OutboundCall::State OutboundCall::state() const {
@@ -400,7 +391,6 @@ void OutboundCall::SetQueued() {
 
 void OutboundCall::SetSent() {
   auto end_time = MonoTime::Now();
-  buffer_ = RefCntBuffer();
   // Track time taken to be sent
   if (outbound_call_metrics_) {
     outbound_call_metrics_->send_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
@@ -484,6 +474,7 @@ bool OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   std::lock_guard<simple_spinlock> l(lock_);
   InitHeader(resp->mutable_header());
   resp->set_micros_elapsed(MonoTime::Now().GetDeltaSince(start_).ToMicroseconds());
+  resp->set_state(state());
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
@@ -497,9 +488,11 @@ std::string OutboundCall::LogPrefix() const {
 void OutboundCall::InitHeader(RequestHeader* header) {
   header->set_call_id(call_id_);
 
-  const MonoDelta &timeout = controller_->timeout();
-  if (timeout.Initialized()) {
-    header->set_timeout_millis(timeout.ToMilliseconds());
+  if (!IsFinished()) {
+    MonoDelta timeout = controller_->timeout();
+    if (timeout.Initialized()) {
+      header->set_timeout_millis(timeout.ToMilliseconds());
+    }
   }
   header->set_allocated_remote_method(remote_method_pool_->Take());
 }

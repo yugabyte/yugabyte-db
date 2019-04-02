@@ -140,11 +140,11 @@ const std::string& CQLInboundCall::method_name() const {
   return result;
 }
 
-void CQLInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
+void CQLInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   TRACE_EVENT0("rpc", "CQLInboundCall::Serialize");
   CHECK_GT(response_msg_buf_.size(), 0);
 
-  output->push_back(response_msg_buf_);
+  output->push_back(std::move(response_msg_buf_));
 }
 
 void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code,

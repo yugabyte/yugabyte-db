@@ -208,8 +208,6 @@ class Peer : public std::enable_shared_from_this<Peer> {
     return std::unique_lock<AtomicTryMutex>(performing_mutex_, type);
   }
 
-  void ReleaseResourcesUnlocked();
-
   std::string LogPrefix() const;
 
   const std::string& tablet_id() const { return tablet_id_; }
@@ -231,12 +229,6 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // The latest remote bootstrap request and response.
   StartRemoteBootstrapRequestPB rb_request_;
   StartRemoteBootstrapResponsePB rb_response_;
-
-  // Reference-counted pointers to any ReplicateMsgs which are in-flight to the peer. We may have
-  // loaded these messages from the LogCache, in which case we are potentially sharing the same
-  // object as other peers. Since the PB request_ itself can't hold reference counts, this holds
-  // them.
-  ReplicateMsgs replicate_msg_refs_;
 
   rpc::RpcController controller_;
 

@@ -32,12 +32,13 @@ LocalOutboundCall::LocalOutboundCall(
                    std::move(callback)) {
 }
 
-Status LocalOutboundCall::SetRequestParam(const google::protobuf::Message& req) {
+Status LocalOutboundCall::SetRequestParam(
+    const google::protobuf::Message& req, const MemTrackerPtr& mem_tracker) {
   req_ = &req;
   return Status::OK();
 }
 
-void LocalOutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
+void LocalOutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   LOG(FATAL) << "Local call should not require serialization";
 }
 

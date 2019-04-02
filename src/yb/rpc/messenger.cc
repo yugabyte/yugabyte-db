@@ -505,6 +505,10 @@ void Messenger::Handle(InboundCallPtr call) {
   service->Handle(std::move(call));
 }
 
+const std::shared_ptr<MemTracker>& Messenger::parent_mem_tracker() {
+  return connection_context_factory_->buffer_tracker();
+}
+
 void Messenger::RegisterInboundSocket(
     const ConnectionContextFactoryPtr& factory, Socket *new_socket, const Endpoint& remote) {
   if (TEST_ShouldArtificiallyRejectIncomingCallsFrom(remote.address())) {
@@ -527,7 +531,8 @@ void Messenger::RegisterInboundSocket(
 
   int idx = num_connections_accepted_.fetch_add(1) % num_connections_to_server_;
   Reactor *reactor = RemoteToReactor(remote, idx);
-  reactor->RegisterInboundSocket(new_socket, remote, factory->Create(*receive_buffer_size));
+  reactor->RegisterInboundSocket(
+      new_socket, remote, factory->Create(*receive_buffer_size), factory->buffer_tracker());
 }
 
 Messenger::Messenger(const MessengerBuilder &bld)

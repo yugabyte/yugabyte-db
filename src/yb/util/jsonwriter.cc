@@ -191,7 +191,8 @@ void JsonWriter::Protobuf(const Message& pb) {
     String(field->name());
     if (field->is_repeated()) {
       StartArray();
-      for (int i = 0; i < reflection->FieldSize(pb, field); i++) {
+      auto field_size = reflection->FieldSize(pb, field);
+      for (int i = 0; i < field_size; i++) {
         ProtobufRepeatedField(pb, field, i);
       }
       EndArray();

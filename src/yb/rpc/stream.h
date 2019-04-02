@@ -28,6 +28,9 @@ struct loop_ref;
 }
 
 namespace yb {
+
+class MemTracker;
+
 namespace rpc {
 
 struct ProcessDataResult {
@@ -89,10 +92,16 @@ class Stream {
   virtual CHECKED_STATUS Start(bool connect, ev::loop_ref* loop, StreamContext* context) = 0;
   virtual void Close() = 0;
   virtual void Shutdown(const Status& status) = 0;
-  virtual void Send(OutboundDataPtr data) = 0;
+
+  // Returns handle to block associated with this data. This handle could be used to cancel
+  // transfer of this block using Cancelled.
+  // For instance when unsent call times out.
+  virtual size_t Send(OutboundDataPtr data) = 0;
+
   virtual CHECKED_STATUS TryWrite() = 0;
   virtual void ParseReceived() = 0;
   virtual size_t GetPendingWriteBytes() = 0;
+  virtual void Cancelled(size_t handle) = 0;
 
   virtual bool Idle(std::string* reason_not_idle) = 0;
   virtual bool IsConnected() = 0;
@@ -131,6 +140,7 @@ struct StreamCreateData {
   Endpoint remote;
   const std::string& remote_hostname;
   Socket* socket;
+  std::shared_ptr<MemTracker> mem_tracker;
 };
 
 class StreamFactory {

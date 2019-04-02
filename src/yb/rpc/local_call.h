@@ -32,12 +32,13 @@ class LocalOutboundCall : public OutboundCall {
                     google::protobuf::Message* response_storage,
                     RpcController* controller, RpcMetrics* rpc_metrics, ResponseCallback callback);
 
-  CHECKED_STATUS SetRequestParam(const google::protobuf::Message& req) override;
+  CHECKED_STATUS SetRequestParam(
+      const google::protobuf::Message& req, const MemTrackerPtr& mem_tracker) override;
 
   const std::shared_ptr<LocalYBInboundCall>& CreateLocalInboundCall();
 
  protected:
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override;
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
 
   CHECKED_STATUS GetSidecar(int idx, Slice* sidecar) const override;
 

@@ -83,6 +83,8 @@ class ProxyContext {
 
   virtual RpcMetrics& rpc_metrics() = 0;
 
+  virtual const std::shared_ptr<MemTracker>& parent_mem_tracker() = 0;
+
   // Number of connections to create per destination address.
   virtual int num_connections_to_server() const = 0;
 
@@ -183,6 +185,8 @@ class Proxy {
 
   // Number of outbound connections to create per each destination server address.
   int num_connections_to_server_;
+
+  MemTrackerPtr mem_tracker_;
 };
 
 class ProxyCache {

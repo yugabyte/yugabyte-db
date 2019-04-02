@@ -1758,7 +1758,7 @@ void CQLServerEventList::Transferred(const Status& status, rpc::Connection*) {
 }
 
 void CQLServerEventList::Serialize(
-    boost::container::small_vector_base<RefCntBuffer>* output) const {
+    boost::container::small_vector_base<RefCntBuffer>* output) {
   for (const auto& cql_server_event : cql_server_events_) {
     cql_server_event->Serialize(output);
   }
