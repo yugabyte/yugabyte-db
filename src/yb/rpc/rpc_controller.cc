@@ -106,7 +106,7 @@ Status RpcController::GetSidecar(int idx, Slice* sidecar) const {
 
 void RpcController::set_timeout(const MonoDelta& timeout) {
   std::lock_guard<simple_spinlock> l(lock_);
-  DCHECK(!call_ || call_->state() == OutboundCall::READY);
+  DCHECK(!call_ || call_->state() == RpcCallState::READY);
   timeout_ = timeout;
 }
 

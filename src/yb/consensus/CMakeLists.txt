@@ -124,6 +124,7 @@ set(CONSENSUS_SRCS
   quorum_util.cc
   raft_consensus.cc
   replica_state.cc
+  replicate_msgs_holder.cc
   retryable_requests.cc)
 
 add_library(consensus ${CONSENSUS_SRCS})

@@ -299,13 +299,14 @@ void YBInboundCall::LogTrace() const {
   }
 }
 
-void YBInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
+void YBInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   TRACE_EVENT0("rpc", "YBInboundCall::Serialize");
   CHECK_GT(response_buf_.size(), 0);
-  output->push_back(response_buf_);
+  output->push_back(std::move(response_buf_));
   for (auto& car : sidecars_) {
-    output->push_back(car);
+    output->push_back(std::move(car));
   }
+  sidecars_.clear();
 }
 
 Status YBInboundCall::ParseParam(google::protobuf::Message *message) {

@@ -88,6 +88,10 @@ Proxy::Proxy(std::shared_ptr<ProxyContext> context, const HostPort& remote,
       num_connections_to_server_(context_->num_connections_to_server()) {
   VLOG(1) << "Create proxy to " << remote << " with num_connections_to_server="
           << num_connections_to_server_;
+  if (context_->parent_mem_tracker()) {
+    mem_tracker_ = MemTracker::FindOrCreateTracker(
+        "Queueing", context_->parent_mem_tracker());
+  }
 }
 
 Proxy::~Proxy() {
@@ -130,7 +134,7 @@ void Proxy::AsyncRequest(const RemoteMethod* method,
                                      &context_->rpc_metrics(),
                                      std::move(callback));
   auto call = controller->call_.get();
-  Status s = call->SetRequestParam(req);
+  Status s = call->SetRequestParam(req, mem_tracker_);
   if (PREDICT_FALSE(!s.ok())) {
     // Failed to serialize request: likely the request is missing a required
     // field.

@@ -566,7 +566,8 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
   auto context = messenger_->connection_context_factory_->Create(receive_buffer_size);
   auto stream = VERIFY_RESULT(CreateStream(
       messenger_->stream_factories_, conn_id.protocol(),
-      {conn_id.remote(), hostname, &sock}));
+      {conn_id.remote(), hostname, &sock,
+       messenger_->connection_context_factory_->buffer_tracker()}));
 
   // Register the new connection in our map.
   auto connection = std::make_shared<Connection>(
@@ -858,13 +859,14 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
 // More Reactor class members
 // ------------------------------------------------------------------------------------------------
 
-void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote,
-                                    std::unique_ptr<ConnectionContext> connection_context) {
+void Reactor::RegisterInboundSocket(
+    Socket *socket, const Endpoint& remote, std::unique_ptr<ConnectionContext> connection_context,
+    const MemTrackerPtr& mem_tracker) {
   VLOG(3) << name_ << ": new inbound connection to " << remote;
 
   auto stream = CreateStream(
       messenger_->stream_factories_, messenger_->listen_protocol_,
-      {remote, std::string(), socket});
+      {remote, std::string(), socket, mem_tracker});
   if (!stream.ok()) {
     LOG(DFATAL) << "Failed to create stream for " << remote << ": " << stream.status();
     return;
