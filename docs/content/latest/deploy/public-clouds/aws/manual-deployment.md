@@ -30,7 +30,7 @@ export AZ2_NODES="<ip2> <ip2> ..."
 export AZ3_NODES="<ip1> <ip2> ..."
 
 # Version of YugaByte DB you plan to install.
-export YB_VERSION=1.2.2.0
+export YB_VERSION=1.2.3.0
 
 # Comma separated list of directories available for YB on each node
 # In this example, it is just 1. But if you have two then the RHS
