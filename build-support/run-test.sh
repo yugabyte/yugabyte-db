@@ -63,6 +63,7 @@ cleanup() {
   if [[ $exit_code -eq 0 ]] && "$killed_stuck_processes"; then
     exit_code=1
   fi
+  rm -rf "$TEST_TMPDIR"
 
   exit "$exit_code"
 }
@@ -95,6 +96,8 @@ echo "Test is running on host $HOSTNAME, arguments: $*"
 
 set_java_home
 set_test_invocation_id
+
+create_test_tmpdir
 
 trap cleanup EXIT
 
@@ -270,8 +273,8 @@ for test_descriptor in "${tests[@]}"; do
     else
       test_attempt_index=""
     fi
-    prepare_for_running_test
-    run_test_and_process_results
+    prepare_for_running_cxx_test
+    run_cxx_test_and_process_results
   done
 done
 

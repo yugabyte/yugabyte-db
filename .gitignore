@@ -79,3 +79,7 @@ compile_commands.json
 
 # This might be added by some editors' Java plugins
 ent/java/yb-cqlent/bin/
+
+test_results.json
+test_failures.json
+*_test_report.json

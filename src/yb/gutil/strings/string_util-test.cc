@@ -33,6 +33,7 @@
 
 #include "yb/gutil/strings/util.h"
 #include "yb/util/string_util.h"
+#include "yb/util/test_util.h"
 
 #include <gtest/gtest.h>
 
@@ -40,7 +41,10 @@ using std::string;
 
 namespace yb {
 
-TEST(StringUtilTest, MatchPatternTest) {
+class StringUtilTest : public YBTest {
+};
+
+TEST_F(StringUtilTest, MatchPatternTest) {
   EXPECT_TRUE(MatchPattern("www.google.com", "*.com"));
   EXPECT_TRUE(MatchPattern("www.google.com", "*"));
   EXPECT_FALSE(MatchPattern("www.google.com", "www*.g*.org"));
@@ -73,7 +77,7 @@ TEST(StringUtilTest, MatchPatternTest) {
                            "He********************************o"));
 }
 
-TEST(StringUtilTest, TestIsBigInteger) {
+TEST_F(StringUtilTest, TestIsBigInteger) {
   ASSERT_TRUE(IsBigInteger("0"));
   ASSERT_TRUE(IsBigInteger("1234"));
   ASSERT_TRUE(IsBigInteger("-1234"));
@@ -93,7 +97,7 @@ TEST(StringUtilTest, TestIsBigInteger) {
   ASSERT_FALSE(IsBigInteger("0 "));
 }
 
-TEST(StringUtilTest, TestIsDecimal) {
+TEST_F(StringUtilTest, TestIsDecimal) {
   // Integer cases
   ASSERT_TRUE(IsDecimal("0"));
   ASSERT_TRUE(IsDecimal("1234"));
@@ -151,7 +155,7 @@ TEST(StringUtilTest, TestIsDecimal) {
   ASSERT_FALSE(IsDecimal("0e0."));
 }
 
-TEST(StringUtilTest, TestIsBoolean) {
+TEST_F(StringUtilTest, TestIsBoolean) {
   ASSERT_TRUE(IsBoolean("true"));
   ASSERT_TRUE(IsBoolean("TRUE"));
   ASSERT_TRUE(IsBoolean("fAlSe"));
@@ -163,7 +167,7 @@ TEST(StringUtilTest, TestIsBoolean) {
   ASSERT_FALSE(IsBoolean("false "));
 }
 
-TEST(StringUtilTest, TestAppendWithSeparator) {
+TEST_F(StringUtilTest, TestAppendWithSeparator) {
   string s;
   AppendWithSeparator("foo", &s);
   ASSERT_EQ(s, "foo");
@@ -181,7 +185,7 @@ TEST(StringUtilTest, TestAppendWithSeparator) {
   ASSERT_EQ(s, "foo, bar -- foo");
 }
 
-TEST(StringUtilTest, TestCollectionToString) {
+TEST_F(StringUtilTest, TestCollectionToString) {
   std::vector<std::string> v{"foo", "123", "bar", ""};
   ASSERT_EQ("[foo, 123, bar, ]", VectorToString(v));
   ASSERT_EQ("[foo, 123, bar, ]", RangeToString(v.begin(), v.end()));

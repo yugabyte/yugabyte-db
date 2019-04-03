@@ -110,16 +110,23 @@ class ProcessTreeSupervisor():
     def new_process_found(self, process):
         pid = process.pid
         try:
-            logging.info("Tracking a child pid: %s: %s", pid, process.cmdline())
-            return True
+            cmdline = process.cmdline()
         except psutil.NoSuchProcess, e:
             logging.warning("Newly added child process disappeared right away")
             return False
         except psutil.AccessDenied, e:
             logging.warning(
-                "Access denied trying to get the command line for pid %d, ignoring this process",
-                pid)
+                "Access denied trying to get the command line for pid %d (%s), "
+                "ignoring this process", pid, str(e))
             return False
+        except OSError, e:
+            logging.warning(
+                "OSError trying to get the command line for pid %d (%s), ignoring this process",
+                pid, str(e))
+            return False
+
+        logging.info("Tracking a child pid: %s: %s", pid, cmdline)
+        return True
 
     def process_terminated(self, existing_pid):
             logging.info("Process finished by itself: %d", existing_pid)
@@ -217,7 +224,7 @@ def main():
         "Supervisor of pid %d's process tree (this script's pid: %d) is terminating%s",
         args.pid, os.getpid(),
         ('' if g_signal_caught is None else
-         ' (caught signal %d / %s' % (
+         ' (caught signal %d / %s)' % (
              g_signal_caught, SIGNAL_TO_NAME.get(g_signal_caught, 'unknown'))))
 
 

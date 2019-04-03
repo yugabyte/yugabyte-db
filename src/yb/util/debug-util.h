@@ -99,10 +99,7 @@ inline std::string GetStackTraceWithoutTopFrame() {
 std::string GetStackTraceHex();
 
 // This is the same as GetStackTraceHex(), except multi-line in a format that
-// looks very similar to GetStackTrace() but without symbols. Because it's in
-// that format, the tool stacktrace_addr2line.pl in the yb build-support
-// directory can symbolize it automatically (to the extent that addr2line(1)
-// is able to find the symbols).
+// looks very similar to GetStackTrace() but without symbols.
 std::string GetLogFormatStackTraceHex();
 
 // Collect the current stack trace in hex form into the given buffer.
