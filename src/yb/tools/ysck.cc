@@ -484,7 +484,7 @@ bool Ysck::VerifyTablet(const shared_ptr<YsckTablet>& tablet, int table_num_repl
     }
   }
   if (leaders_count == 0) {
-    LOG(WARNING) << Substitute("Tablet $0 doesn't have a leader", tablet->id());
+    LOG(WARNING) << Format("Tablet $0 doesn't have a leader, replicas: $1", tablet->id(), replicas);
     good_tablet = false;
   }
   VLOG(1) << Substitute("Tablet $0 has $1 leader and $2 followers",

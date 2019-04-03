@@ -96,6 +96,7 @@ MiniTabletServer::MiniTabletServer(const string& fs_root,
   opts_.broadcast_addresses = {
       HostPort(server::TEST_RpcAddress(index_, server::Private::kFalse), rpc_port) };
   opts_.webserver_opts.port = 0;
+  opts_.webserver_opts.bind_interface = opts_.broadcast_addresses.front().host();
   if (!opts_.has_placement_cloud()) {
     opts_.SetPlacement(Format("cloud$0", (index_ + 1) / 2), Format("rack$0", index_), "zone");
   }

@@ -75,7 +75,7 @@ class QLTransactionTest : public TransactionTestBase {
 
   CHECKED_STATUS WaitTransactionsCleaned() {
     return WaitFor(
-      [this] { return CountTransactions() == 0; }, kTransactionApplyTime, "Transactions cleaned");
+      [this] { return !HasTransactions(); }, kTransactionApplyTime, "Transactions cleaned");
   }
 };
 
@@ -421,7 +421,7 @@ TEST_F(QLTransactionTest, Expire) {
   latch.Wait();
   std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_heartbeat_usec * 2));
   ASSERT_OK(cluster_->CleanTabletLogs());
-  ASSERT_EQ(0, CountTransactions());
+  ASSERT_FALSE(HasTransactions());
 }
 
 TEST_F(QLTransactionTest, PreserveLogs) {
@@ -455,7 +455,7 @@ TEST_F(QLTransactionTest, ResendApplying) {
   DisableApplyingIntents();
   WriteData();
   std::this_thread::sleep_for(5s); // Transaction should not be applied here.
-  ASSERT_NE(0, CountTransactions());
+  ASSERT_TRUE(HasTransactions());
 
   SetIgnoreApplyingProbability(0.0);
 
@@ -782,9 +782,12 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
     for (int row = 0; row != kNumRows; ++row) {
       ASSERT_OK(WriteRow(session, i * kNumRows + row, row));
     }
-    txn->Abort();
-
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kAsync));
+
+    // Need some time for flush to be initiated.
+    std::this_thread::sleep_for(100ms);
+
+    txn->Abort();
   }
 
   ASSERT_OK(WaitTransactionsCleaned());
@@ -810,7 +813,7 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
     }
     LOG(INFO) << "Compact read bytes: " << bytes;
 
-    return bytes >= 10_KB;
+    return bytes >= 5_KB;
   }, 10s, "Enough compactions happen"));
 }
 

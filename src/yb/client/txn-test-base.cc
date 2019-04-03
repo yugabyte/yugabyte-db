@@ -95,7 +95,7 @@ void TransactionTestBase::SetUp() {
   server::SkewedClock::Register();
   FLAGS_time_source = server::SkewedClock::kName;
   FLAGS_load_balancer_max_concurrent_adds = 100;
-  KeyValueTableTest::SetUp();
+  ASSERT_NO_FATALS(KeyValueTableTest::SetUp());
 
   CreateTable(Transactional::kTrue);
 
@@ -218,20 +218,23 @@ void TransactionTestBase::VerifyData(
   }
 }
 
-size_t TransactionTestBase::CountTransactions() {
-  size_t result = 0;
+bool TransactionTestBase::HasTransactions() {
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
     auto peers = tablet_manager->GetTabletPeers();
     for (const auto& peer : peers) {
+      if (!peer->consensus()) {
+        return true; // Report true, since we could have transactions on this non ready peer.
+      }
       if (peer->consensus()->GetLeaderStatus() !=
               consensus::LeaderStatus::NOT_LEADER &&
-          peer->tablet()->transaction_coordinator()) {
-        result += peer->tablet()->transaction_coordinator()->test_count_transactions();
+          peer->tablet()->transaction_coordinator() &&
+          peer->tablet()->transaction_coordinator()->test_count_transactions()) {
+        return true;
       }
     }
   }
-  return result;
+  return false;
 }
 
 size_t TransactionTestBase::CountIntents() {

@@ -484,7 +484,7 @@ std::string Tablet::LogPrefix() const {
 
 Status Tablet::OpenKeyValueTablet() {
   rocksdb::Options rocksdb_options;
-  docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, tablet_options_);
+  docdb::InitRocksDBOptions(&rocksdb_options, LogPrefix(), rocksdb_statistics_, tablet_options_);
   rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker("RegularDB", mem_tracker_);
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
@@ -1507,7 +1507,7 @@ Status Tablet::ModifyFlushedFrontier(
     } BOOST_SCOPE_EXIT_END;
     rocksdb::Options rocksdb_options;
     docdb::InitRocksDBOptions(
-        &rocksdb_options, tablet_id(), /* statistics */ nullptr, tablet_options_);
+        &rocksdb_options, LogPrefix(), /* statistics */ nullptr, tablet_options_);
     rocksdb_options.create_if_missing = false;
     LOG_WITH_PREFIX(INFO) << "Opening the test RocksDB at " << checkpoint_dir_for_test
         << ", expecting to see flushed frontier of " << frontier.ToString();
@@ -1554,7 +1554,7 @@ Status Tablet::Truncate(TruncateOperationState *state) {
   const string db_dir = regular_db_->GetName();
 
   rocksdb::Options rocksdb_options;
-  docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, tablet_options_);
+  docdb::InitRocksDBOptions(&rocksdb_options, LogPrefix(), rocksdb_statistics_, tablet_options_);
 
   Status intents_status;
   if (intents_db_) {

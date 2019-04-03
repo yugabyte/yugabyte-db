@@ -250,7 +250,7 @@ Status DocDBRocksDBUtil::InitCommonRocksDBOptions() {
 
   tablet::TabletOptions tablet_options;
   tablet_options.block_cache = block_cache_;
-  docdb::InitRocksDBOptions(&rocksdb_options_, tablet_id(), rocksdb::CreateDBStatistics(),
+  docdb::InitRocksDBOptions(&rocksdb_options_, "" /* log_prefix */, rocksdb::CreateDBStatistics(),
                             tablet_options);
   InitRocksDBWriteOptions(&write_options_);
   rocksdb_options_.compaction_filter_factory =
@@ -370,7 +370,7 @@ Status DocDBRocksDBUtil::FlushRocksDbAndWait() {
 
 Status DocDBRocksDBUtil::ReinitDBOptions() {
   tablet::TabletOptions tablet_options;
-  docdb::InitRocksDBOptions(&rocksdb_options_, tablet_id(), rocksdb_options_.statistics,
+  docdb::InitRocksDBOptions(&rocksdb_options_, "" /* log_prefix */, rocksdb_options_.statistics,
                             tablet_options);
   return ReopenRocksDB();
 }

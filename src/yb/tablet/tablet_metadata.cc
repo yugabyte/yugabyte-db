@@ -364,8 +364,9 @@ Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
 
   rocksdb::Options rocksdb_options;
   TabletOptions tablet_options;
+  std::string log_prefix = Format("T $0 P $1: ", tablet_id_, fs_manager_->uuid());
   docdb::InitRocksDBOptions(
-      &rocksdb_options, tablet_id_, nullptr /* statistics */, tablet_options);
+      &rocksdb_options, log_prefix, nullptr /* statistics */, tablet_options);
 
   LOG(INFO) << "Destroying regular db at: " << rocksdb_dir_;
   rocksdb::Status status = rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options);
