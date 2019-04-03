@@ -523,7 +523,7 @@ void QLStressTest::VerifyFlushedFrontiers() {
 
       rocksdb::Options options;
 
-      InitRocksDBOptions(&options, "test_tablet", nullptr, TabletOptions());
+      InitRocksDBOptions(&options, "", nullptr, TabletOptions());
       std::unique_ptr<rocksdb::DB> checkpoint_db;
       rocksdb::DB* checkpoint_db_raw_ptr = nullptr;
 

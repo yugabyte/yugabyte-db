@@ -422,14 +422,14 @@ void AutoInitRocksDBFlags(rocksdb::Options* options) {
 } // namespace
 
 void InitRocksDBOptions(
-    rocksdb::Options* options, const string& tablet_id,
+    rocksdb::Options* options, const string& log_prefix,
     const shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options) {
   AutoInitRocksDBFlags(options);
   options->create_if_missing = true;
   options->disableDataSync = true;
   options->statistics = statistics;
-  options->log_prefix = Substitute("T $0: ", tablet_id);
+  options->log_prefix = log_prefix;
   options->info_log = std::make_shared<YBRocksDBLogger>(options->log_prefix);
   options->info_log_level = YBRocksDBLogger::ConvertToRocksDBLogLevel(FLAGS_minloglevel);
   options->initial_seqno = FLAGS_initial_seqno;

@@ -129,11 +129,11 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
     const Slice* iterate_upper_bound = nullptr);
 
-// Initialize the RocksDB 'options' object for tablet identified by 'tablet_id'. The 'statistics'
-// object provided by the caller will be used by RocksDB to maintain the stats for the tablet
-// specified by 'tablet_id'.
+// Initialize the RocksDB 'options'.
+// The 'statistics' object provided by the caller will be used by RocksDB to maintain the stats for
+// the tablet.
 void InitRocksDBOptions(
-    rocksdb::Options* options, const std::string& tablet_id,
+    rocksdb::Options* options, const std::string& log_prefix,
     const std::shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options);
 

@@ -136,6 +136,10 @@ class LogReader {
 
   std::string ToString() const;
 
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
  private:
   FRIEND_TEST(LogTest, TestLogReader);
   FRIEND_TEST(LogTest, TestReadLogWithReplacedReplicates);
@@ -201,6 +205,7 @@ class LogReader {
   FsManager *fs_manager_;
   const scoped_refptr<LogIndex> log_index_;
   const std::string tablet_id_;
+  const std::string log_prefix_;
 
   // Metrics
   scoped_refptr<Counter> bytes_read_;
