@@ -13,7 +13,7 @@ WITH r(c) AS (
 SELECT * FROM r;
 SELECT * FROM cypher(NULL) AS r(c text);
 WITH q(s) AS (
-  VALUES ($$RETURN 0$$)
+  VALUES (textout($$RETURN 0$$))
 )
 SELECT * FROM q, cypher(q.s) AS r(c text);
 

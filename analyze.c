@@ -4,6 +4,7 @@
 #include "access/htup_details.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "fmgr.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
@@ -201,16 +202,16 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     arg = linitial(funcexpr->args);
 
     // Since cypher() function is nothing but an interface to get a Cypher
-    // query, it must take a text constant as an argument so that the query can
-    // be parsed and analyzed at this point to create a Query tree of it.
+    // query, it must take a string constant as an argument so that the query
+    // can be parsed and analyzed at this point to create a Query tree of it.
     if (!IsA(arg, Const) || ((Const *)arg)->constisnull) {
         ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
                         errmsg("a string constant is expected"),
                         parser_errposition(pstate, exprLocation(arg))));
     }
-    Assert(exprType(arg) == TEXTOID);
+    Assert(exprType(arg) == CSTRINGOID);
 
-    query_str = TextDatumGetCString(((Const *)arg)->constvalue);
+    query_str = DatumGetCString(((Const *)arg)->constvalue);
     query = parse_and_analyze_cypher(query_str);
 
     check_result_type(query, rtfunc, pstate);

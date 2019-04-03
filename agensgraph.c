@@ -27,9 +27,9 @@ Datum cypher(PG_FUNCTION_ARGS)
 {
     const char *s;
 
-    s = PG_ARGISNULL(0) ? "NULL" : text_to_cstring(PG_GETARG_TEXT_PP(0));
+    s = PG_ARGISNULL(0) ? "NULL" : PG_GETARG_CSTRING(0);
 
-    ereport(ERROR, (errmsg_internal("unhandled cypher(text) function call"),
+    ereport(ERROR, (errmsg_internal("unhandled cypher(cstring) function call"),
                     errdetail_internal("%s", s)));
 
     PG_RETURN_NULL();
