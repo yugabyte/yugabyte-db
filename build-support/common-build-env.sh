@@ -2047,6 +2047,22 @@ activate_virtualenv() {
     run_with_retries 10 0.5 pip2 install -r "$YB_SRC_ROOT/python_requirements_frozen.txt" \
       $pip_no_cache
   fi
+
+  if [[ ${YB_DEBUG_VIRTUALENV:-0} == "1" ]]; then
+    echo >&2 "
+VIRTUALENV DEBUGGING
+--------------------
+
+    Activated virtualenv in: $virtualenv_dir
+    Executable: $0
+    PATH: $PATH
+    PYTHONPATH: ${PYTHONPATH:-undefined}
+    VIRTUAL_ENV: ${VIRTUAL_ENV:-undefined}
+
+"
+  fi
+
+  export VIRTUAL_ENV
 }
 
 check_python_interpreter_version() {

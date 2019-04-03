@@ -145,6 +145,13 @@ cleanup() {
 
 cd "$YB_SRC_ROOT"
 
+log "Removing old JSON-based test report files"
+(
+  set -x
+  find . -name "*_test_report.json" -exec rm -f '{}' \;
+  rm -f test_results.json test_failures.json
+)
+
 export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
 log "Running with Bash version $BASH_VERSION"
 if ! "$YB_BUILD_SUPPORT_DIR/common-build-env-test.sh"; then
@@ -279,9 +286,7 @@ if is_jenkins; then
   fi
 fi
 
-if [[ ! -d $BUILD_ROOT ]]; then
-  create_dir_on_ephemeral_drive "$BUILD_ROOT" "build/${BUILD_ROOT##*/}"
-fi
+mkdir_safe "$BUILD_ROOT"
 
 if [[ -h $BUILD_ROOT ]]; then
   # If we ended up creating BUILD_ROOT as a symlink to an ephemeral drive, now make BUILD_ROOT
@@ -710,6 +715,16 @@ fi
 
 # Finished running tests.
 remove_latest_symlink
+
+log "Aggregating test reports"
+cd "$YB_SRC_ROOT"  # even though we should already be in this directory
+find . -type f -name "*_test_report.json" | \
+    "$YB_SRC_ROOT/python/yb/aggregate_test_reports.py" \
+      --yb-src-root "$YB_SRC_ROOT" \
+      --output-dir "$YB_SRC_ROOT" \
+      --build-type "$build_type" \
+      --compiler-type "$YB_COMPILER_TYPE" \
+      --build-root "$BUILD_ROOT"
 
 if [[ -n $FAILURES ]]; then
   heading "Failure summary"

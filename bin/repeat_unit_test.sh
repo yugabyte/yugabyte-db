@@ -259,8 +259,7 @@ if [[ $iteration -gt 0 ]]; then
 
   set +e
   current_timestamp=$( get_timestamp_for_filenames )
-  export TEST_TMPDIR=/tmp/yb__${script_name_no_ext}_${build_type}_${current_timestamp}_\
-$RANDOM.$RANDOM.$RANDOM.$$
+  export TEST_TMPDIR=/tmp/yb_tests__${current_timestamp}__$RANDOM.$RANDOM.$RANDOM
   mkdir -p "$TEST_TMPDIR"
   set_expected_core_dir "$TEST_TMPDIR"
   if ! "$is_java_test"; then
@@ -298,7 +297,7 @@ $RANDOM.$RANDOM.$RANDOM.$$
   pass_or_fail="PASSED"
   if ! did_test_succeed "$exit_code" "$raw_test_log_path"; then
     if ! "$is_java_test"; then
-      postprocess_test_log
+      postprocess_cxx_test_log
       process_core_file
     fi
     if "$skip_address_already_in_use" && \

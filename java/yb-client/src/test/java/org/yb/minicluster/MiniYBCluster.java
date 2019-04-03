@@ -297,7 +297,7 @@ public class MiniYBCluster implements AutoCloseable {
       return pickFreeRandomBindIpOnLinux(daemonType);
     }
 
-    return pickFreeBindIpOnlyVaryingLastTwoBytes(daemonType);
+    return pickFreeBindIpOnMacOrWithCertificate(daemonType);
   }
 
   private String getMasterBindAddress() throws IOException {
@@ -320,15 +320,14 @@ public class MiniYBCluster implements AutoCloseable {
         daemonType.humanReadableName() + " in " + MAX_NUM_ATTEMPTS + " attempts");
   }
 
-  private String getLoopbackIpWithLastByte(int lastByte) {
-    return "127.0.0." + lastByte;
-  }
-
-  private String getLoopbackIpWithLastTwoBytesByte(int nextToLastByte, int lastByte) {
+  private String getLoopbackIpWithLastTwoBytes(int nextToLastByte, int lastByte) {
     return "127.0." + nextToLastByte + "." + lastByte;
   }
 
-  private String pickFreeBindIpOnlyVaryingLastTwoBytes(
+  private final int MIN_LAST_IP_BYTE = 2;
+  private final int MAX_LAST_IP_BYTE = 254;
+
+  private String pickFreeBindIpOnMacOrWithCertificate(
       MiniYBDaemonType daemonType) throws IOException {
     List<String> bindIps = new ArrayList<>();
 
@@ -337,16 +336,39 @@ public class MiniYBCluster implements AutoCloseable {
     // range of x.
     final int nextToLastByteMax = useIpWithCertificate ? 0 : 3;
 
-    // We only use even last bytes of the loopback IP in case we are testing TLS encryption.
-    final int lastIpByteStep = useIpWithCertificate ? 2 : 1;
-    for (int nextToLastByte = nextToLastByteMin;
-         nextToLastByte <= nextToLastByteMax;
-         ++nextToLastByte) {
-      for (int lastIpByte = 2; lastIpByte <= 254; lastIpByte += lastIpByteStep) {
-        String bindIp = getLoopbackIpWithLastTwoBytesByte(nextToLastByte, lastIpByte);
-        if (!usedBindIPs.contains(bindIp)) {
-          bindIps.add(bindIp);
+    if (TestUtils.IS_LINUX) {
+      // We only use even last bytes of the loopback IP in case we are testing TLS encryption.
+      final int lastIpByteStep = useIpWithCertificate ? 2 : 1;
+      for (int nextToLastByte = nextToLastByteMin;
+           nextToLastByte <= nextToLastByteMax;
+           ++nextToLastByte) {
+        for (int lastIpByte = MIN_LAST_IP_BYTE;
+             lastIpByte <= MAX_LAST_IP_BYTE;
+             lastIpByte += lastIpByteStep) {
+          String bindIp = getLoopbackIpWithLastTwoBytes(nextToLastByte, lastIpByte);
+          if (!usedBindIPs.contains(bindIp)) {
+            bindIps.add(bindIp);
+          }
         }
+      }
+    } else {
+      List<String> loopbackIps  = BindIpUtil.getLoopbackIPs();
+      if (useIpWithCertificate) {
+        // macOS, but we need a 127.0.0.x, where x is even.
+        for (String loopbackIp : loopbackIps) {
+          if (loopbackIp.startsWith("127.0.0.")) {
+            String[] components = loopbackIp.split("[.]");
+            int lastIpByte = Integer.valueOf(components[components.length - 1]);
+            if (lastIpByte >= MIN_LAST_IP_BYTE &&
+                lastIpByte <= MAX_LAST_IP_BYTE &&
+                lastIpByte % 2 == 0) {
+              bindIps.add(loopbackIp);
+            }
+          }
+        }
+      } else {
+        // macOS, no requirement that there is a certificate.
+        bindIps = loopbackIps;
       }
     }
 
