@@ -430,8 +430,13 @@ ExecInsert(ModifyTableState *mtstate,
 			bool has_triggers = resultRelInfo->ri_TrigDesc &&
 			                    resultRelInfo->ri_TrigDesc->numtriggers > 0;
 
+			bool has_indices = resultRelInfo->ri_NumIndices > 1 ||
+			                   (resultRelInfo->ri_NumIndices == 1 &&
+			                    !resultRelInfo->ri_IndexRelationDescs[0]->rd_index
+			                                                            ->indisprimary);
+
 			bool is_single_row_txn = estate->es_yb_is_single_row_modify_txn &&
-			                         resultRelInfo->ri_NumIndices == 0 &&
+			                         !has_indices &&
 			                         !has_triggers;
 
 			if (is_single_row_txn)
