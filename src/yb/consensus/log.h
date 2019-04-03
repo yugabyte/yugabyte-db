@@ -247,6 +247,10 @@ class Log : public RefCountedThreadSafe<Log> {
 
   CHECKED_STATUS TEST_SubmitFuncToAppendToken(const std::function<void()>& func);
 
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
  private:
   friend class LogTest;
   friend class LogTestBase;
@@ -445,6 +449,8 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Used in tests to declare all operations as safe.
   bool all_op_ids_safe_ = false;
+
+  const std::string log_prefix_;
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };

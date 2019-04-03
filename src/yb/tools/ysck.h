@@ -86,6 +86,11 @@ class YsckTabletReplica {
     return ts_uuid_;
   }
 
+  std::string ToString() const {
+    return Format("{ is_leader: $0 is_follower: $1 ts_uuid: $2 }",
+                  is_leader_, is_follower_, ts_uuid_);
+  }
+
  private:
   const bool is_leader_;
   const bool is_follower_;

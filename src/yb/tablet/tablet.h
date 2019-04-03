@@ -518,6 +518,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return regular_db_.get();
   }
 
+  rocksdb::DB* TEST_intents_db() {
+    return intents_db_.get();
+  }
+
   CHECKED_STATUS TEST_SwitchMemtable();
 
   // Initialize RocksDB's max persistent op id and hybrid time to that of the operation state.
