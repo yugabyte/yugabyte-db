@@ -700,6 +700,10 @@ while [[ $# -gt 0 ]]; do
       export YB_GTEST_FILTER=$2
       shift
     ;;
+    # Support the way of argument passing that is used for gtest test programs themselves.
+    --gtest-filter=*)
+      export YB_GTEST_FILTER=${2#--gtest-filter=}
+    ;;
     --rebuild-file)
       ensure_option_has_arg "$@"
       register_file_to_rebuild "$2"
@@ -764,7 +768,8 @@ while [[ $# -gt 0 ]]; do
     ;;
     --)
       if [[ $num_test_repetitions -lt 2 ]]; then
-        fatal "Forward to arguments to repeat_unit_test.sh without multiple repetitions"
+        fatal "Trying to forward arguments to repeat_unit_test.sh, but -n not specified, so" \
+              "we won't be repeating a test multiple times."
       fi
       forward_args_to_repeat_unit_test=true
     ;;

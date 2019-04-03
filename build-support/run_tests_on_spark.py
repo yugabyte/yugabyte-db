@@ -295,6 +295,10 @@ def parallel_run_test(test_descriptor_str):
     wait_for_path_to_exist(global_conf.build_root)
     yb_dist_tests.global_conf = global_conf
     test_descriptor = yb_dist_tests.TestDescriptor(test_descriptor_str)
+
+    # This is saved in the test result file by process_test_result.py.
+    os.environ['YB_TEST_DESCRIPTOR_STR'] = test_descriptor_str
+
     os.environ['YB_TEST_ATTEMPT_INDEX'] = str(test_descriptor.attempt_index)
     os.environ['build_type'] = global_conf.build_type
     os.environ['YB_RUNNING_TEST_ON_SPARK'] = '1'
@@ -307,6 +311,7 @@ def parallel_run_test(test_descriptor_str):
                     ''.join('%09d' % random.randrange(0, 1000000000) for i in xrange(4))))
 
     os.environ['YB_TEST_STARTED_RUNNING_FLAG_FILE'] = test_started_running_flag_file
+    os.environ['YB_TEST_EXTRA_ERROR_LOG_PATH'] = test_descriptor.error_output_path
 
     yb_dist_tests.wait_for_clock_sync()
 
@@ -993,6 +998,9 @@ def main():
         assert total_num_tests == len(test_descriptors), \
             "total_num_tests={}, len(test_descriptors)={}".format(
                     total_num_tests, len(test_descriptors))
+
+        # Randomize test order to avoid any kind of skew.
+        random.shuffle(test_descriptors)
 
         test_names_rdd = spark_context.parallelize(
                 [test_descriptor.descriptor_str for test_descriptor in test_descriptors],

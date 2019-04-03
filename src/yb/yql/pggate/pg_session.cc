@@ -46,9 +46,15 @@ using client::YBTable;
 using client::YBTableName;
 using client::YBTableType;
 
-// TODO(neil) This should be derived from a GFLAGS.
-static MonoDelta kSessionTimeout = 60s;
+#if defined(__APPLE__) && !defined(NDEBUG)
+// We are experiencing more slowness in tests on macOS in debug mode.
+const int kDefaultPgYbSessionTimeoutMs = 120 * 1000;
+#else
+const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
+#endif
 
+DEFINE_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
+             "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
 
 //--------------------------------------------------------------------------------------------------
 // Constants used for the sequences data table.
@@ -82,7 +88,7 @@ PgSession::PgSession(
       session_(client_->NewSession()),
       pg_txn_manager_(std::move(pg_txn_manager)),
       clock_(std::move(clock)) {
-  session_->SetTimeout(kSessionTimeout);
+  session_->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
   session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
 
