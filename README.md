@@ -112,6 +112,15 @@ interfere with the build.
 We don't need to add `~/.linuxbrew-yb-build/linuxbrew-<version>/bin` to PATH. The build scripts
 will automatically discover this Linuxbrew installation.
 
+### Prerequisites for Ubuntu 18.04
+
+In addition to (corresponding) steps required for Centos 7, following steps are required for additional packages that need to be installed
+
+```bash
+sudo apt-get update
+sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven
+```
+
 ### Prerequisites for Mac OS X
 
 Install [Homebrew](https://brew.sh/):
