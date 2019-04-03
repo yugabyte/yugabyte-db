@@ -172,7 +172,7 @@ Status Tablet::RestoreCheckpoint(const std::string& dir, const docdb::ConsensusF
   regular_db_.reset();
 
   rocksdb::Options rocksdb_options;
-  docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, tablet_options_);
+  docdb::InitRocksDBOptions(&rocksdb_options, LogPrefix(), rocksdb_statistics_, tablet_options_);
 
   Status s = rocksdb::DestroyDB(db_dir, rocksdb_options);
   if (PREDICT_FALSE(!s.ok())) {
