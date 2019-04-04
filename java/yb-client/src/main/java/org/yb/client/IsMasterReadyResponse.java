@@ -13,16 +13,13 @@
 
 package org.yb.client;
 
-import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.annotations.InterfaceAudience;
-import org.yb.tserver.Tserver;
-import org.yb.util.Pair;
-
-import com.google.protobuf.Message;
+import org.yb.tserver.Tserver.TabletServerErrorPB;
 
 @InterfaceAudience.Public
-class IsTabletServerReadyRequest extends IsServerReadyRequest {
-  public IsTabletServerReadyRequest() {
-    super();
+public class IsMasterReadyResponse extends IsServerReadyResponse {
+  public IsMasterReadyResponse(long ellapsedMillis, String uuid,
+      TabletServerErrorPB error, int notRunning, int totalTablets) {
+    super(ellapsedMillis, uuid, error, notRunning, totalTablets);
   }
 }
