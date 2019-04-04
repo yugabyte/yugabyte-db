@@ -49,6 +49,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyLong;
+import static org.mockito.Matchers.anyMap;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -68,10 +69,13 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
   String nodePrefix = "demo-universe";
 
-  private void setupUniverse(boolean setMasters) {
-    Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+  Map<String, String> config= new HashMap<String, String>();
+
+  private void setupUniverseMultiAZ(boolean setMasters) {
+    Region r = Region.create(defaultProvider, "region-1", "PlacementRegion-1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ-2", "subnet-2");
+    AvailabilityZone.create(r, "az-3", "PlacementAZ-3", "subnet-3");
     InstanceType i = InstanceType.upsert(defaultProvider.code, "c3.xlarge",
         10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
@@ -84,6 +88,59 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
     defaultUniverse = Universe.get(defaultUniverse.universeUUID);
+  }
+
+  private void setupUniverse(boolean setMasters) {
+    Region r = Region.create(defaultProvider, "region-1", "PlacementRegion-1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
+    InstanceType i = InstanceType.upsert(defaultProvider.code, "c3.xlarge",
+        10, 5.5, new InstanceType.InstanceTypeDetails());
+    UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
+    userIntent.replicationFactor = 3;
+    userIntent.masterGFlags = new HashMap<>();
+    userIntent.tserverGFlags = new HashMap<>();
+    userIntent.universeName = "demo-universe";
+    userIntent.ybSoftwareVersion = "1.0.0";
+    defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
+    Universe.saveDetails(defaultUniverse.universeUUID,
+        ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
+    defaultUniverse = Universe.get(defaultUniverse.universeUUID);
+  }
+
+  private void setupCommon() {
+    config.put("KUBECONFIG", "test");
+    defaultProvider.setConfig(config);
+    defaultProvider.save();
+    ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
+    when(mockKubernetesManager.createNamespace(anyMap(), any())).thenReturn(response);
+    when(mockKubernetesManager.applySecret(anyMap(), any(), any())).thenReturn(response);
+    when(mockKubernetesManager.helmInstall(anyMap(), any(), any(), any())).thenReturn(response);
+    // Table RPCs.
+    mockClient = mock(YBClient.class);
+    when(mockYBClient.getClient(any())).thenReturn(mockClient);
+    YBTable mockTable = mock(YBTable.class);
+    when(mockTable.getName()).thenReturn("redis");
+    when(mockTable.getTableType()).thenReturn(Common.TableType.REDIS_TABLE_TYPE);
+    // WaitForServer mock.
+    when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+    try {
+      // WaitForTServerHeartBeats mock.
+      ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
+      when(mockClient.listTabletServers()).thenReturn(mockResponse);
+      when(mockResponse.getTabletServersCount()).thenReturn(3);
+      // WaitForMasterLeader mock.
+      doNothing().when(mockClient).waitForMasterLeader(anyLong());
+      // PlacementUtil mock.
+      Master.SysClusterConfigEntryPB.Builder configBuilder = Master.SysClusterConfigEntryPB.newBuilder();
+      GetMasterClusterConfigResponse gcr = new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
+      when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
+      ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
+      // CreateTable mock.
+      when(mockClient.createRedisTable(any())).thenReturn(mockTable);
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
   }
 
   List<TaskType> KUBERNETES_CREATE_UNIVERSE_TASKS = ImmutableList.of(
@@ -115,17 +172,25 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     );
   }
 
-  private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition) {
+  private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition, int numTasks) {
     int position = 0;
     for (TaskType taskType: KUBERNETES_CREATE_UNIVERSE_TASKS) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
-      assertEquals(1, tasks.size());
-      assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults =
           getExpectedCreateUniverseTaskResults().get(position);
       List<JsonNode> taskDetails = tasks.stream()
           .map(t -> t.getTaskDetails())
           .collect(Collectors.toList());
+      List<JsonNode> parallelTasks = ImmutableList.of(
+        Json.toJson(ImmutableMap.of("commandType", CREATE_NAMESPACE.name())),
+        Json.toJson(ImmutableMap.of("commandType", APPLY_SECRET.name())),
+        Json.toJson(ImmutableMap.of("commandType", HELM_INSTALL.name())));
+      if (parallelTasks.contains(expectedResults)) {
+        assertEquals(numTasks, tasks.size());  
+      } else {
+        assertEquals(1, tasks.size());
+      }
+      assertEquals(taskType, tasks.get(0).getTaskType());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -149,12 +214,64 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testCreateKubernetesUniverseSuccess() {
-    setupUniverse(/* Create Masters */ false);
+  public void testCreateKubernetesUniverseSuccessMultiAZ() {
+    setupUniverseMultiAZ(/* Create Masters */ false);
+    setupCommon();
     ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
-    when(mockKubernetesManager.createNamespace(any(), any())).thenReturn(response);
-    when(mockKubernetesManager.applySecret(any(), any(), any())).thenReturn(response);
-    when(mockKubernetesManager.helmInstall(any(), any(), any())).thenReturn(response);
+    response.message =
+        "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
+            "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
+            "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
+            "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"}}]}";
+    when(mockKubernetesManager.getPodInfos(any(), any())).thenReturn(response);
+
+    ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
+    ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedPullSecretFile = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    TaskInfo taskInfo = submitTask(taskParams);
+    
+    verify(mockKubernetesManager, times(3)).createNamespace(expectedConfig.capture(),
+        String.format("%s-%s", expectedNodePrefix.capture(), "az-1"));
+    verify(mockKubernetesManager, times(3)).createNamespace(expectedConfig.capture(),
+        String.format("%s-%s", expectedNodePrefix.capture(), "az-2"));
+    verify(mockKubernetesManager, times(3)).createNamespace(expectedConfig.capture(),
+        String.format("%s-%s", expectedNodePrefix.capture(), "az-3"));
+    
+    verify(mockKubernetesManager, times(3)).helmInstall(expectedConfig.capture(), expectedUniverseUUID.capture(),
+        String.format("%s-%s", expectedNodePrefix.capture(), "az-1"), expectedOverrideFile.capture());
+    verify(mockKubernetesManager, times(3)).helmInstall(expectedConfig.capture(), expectedUniverseUUID.capture(),
+        String.format("%s-%s", expectedNodePrefix.capture(), "az-2"), expectedOverrideFile.capture());
+    verify(mockKubernetesManager, times(3)).helmInstall(expectedConfig.capture(), expectedUniverseUUID.capture(),
+        String.format("%s-%s", expectedNodePrefix.capture(), "az-3"), expectedOverrideFile.capture());
+    
+    assertEquals(defaultProvider.uuid, expectedUniverseUUID.getValue());
+    assertTrue(expectedNodePrefix.getValue().contains(nodePrefix));
+    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+    
+    verify(mockKubernetesManager, times(3)).getPodInfos(expectedConfig.capture(),
+        String.format("%s-%s", expectedNodePrefix.capture(), "az-1"));
+    verify(mockKubernetesManager, times(3)).getPodInfos(expectedConfig.capture(),
+        String.format("%s-%s", expectedNodePrefix.capture(), "az-2"));
+    verify(mockKubernetesManager, times(3)).getPodInfos(expectedConfig.capture(),
+        String.format("%s-%s", expectedNodePrefix.capture(), "az-3"));
+    verify(mockSwamperHelper, times(1)).writeUniverseTargetJson(defaultUniverse.universeUUID);
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+    assertTaskSequence(subTasksByPosition, 3);
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testCreateKubernetesUniverseSuccessSingleAZ() {
+    setupUniverse(/* Create Masters */ false);
+    setupCommon();
+    ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
     response.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
             "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
@@ -169,55 +286,35 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
             "\"podIP\": \"1.2.3.6\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"}}]}";
     when(mockKubernetesManager.getPodInfos(any(), any())).thenReturn(response);
-    // Table RPCs.
-    mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any())).thenReturn(mockClient);
-    YBTable mockTable = mock(YBTable.class);
-    when(mockTable.getName()).thenReturn("redis");
-    when(mockTable.getTableType()).thenReturn(Common.TableType.REDIS_TABLE_TYPE);
-    // WaitForServer mock.
-    when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
-    try {
-      // WaitForTServerHeartBeats mock.
-      ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
-      when(mockClient.listTabletServers()).thenReturn(mockResponse);
-      when(mockResponse.getTabletServersCount()).thenReturn(3);
-      // WaitForMasterLeader mock.
-      doNothing().when(mockClient).waitForMasterLeader(anyLong());
-      // PlacementUtil mock.
-      Master.SysClusterConfigEntryPB.Builder configBuilder = Master.SysClusterConfigEntryPB.newBuilder();
-      GetMasterClusterConfigResponse gcr = new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
-      when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
-      ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
-      when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
-      // CreateTable mock.
-      when(mockClient.createRedisTable(any())).thenReturn(mockTable);
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
 
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedPullSecretFile = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     TaskInfo taskInfo = submitTask(taskParams);
-    verify(mockKubernetesManager, times(1)).createNamespace(expectedUniverseUUID.capture(),
+    
+    verify(mockKubernetesManager, times(1)).createNamespace(expectedConfig.capture(),
         expectedNodePrefix.capture());
-    verify(mockKubernetesManager, times(1)).helmInstall(expectedUniverseUUID.capture(),
+    
+    verify(mockKubernetesManager, times(1)).helmInstall(expectedConfig.capture(), expectedUniverseUUID.capture(),
         expectedNodePrefix.capture(), expectedOverrideFile.capture());
-    assertEquals(nodePrefix, expectedNodePrefix.getValue());
+    
     assertEquals(defaultProvider.uuid, expectedUniverseUUID.getValue());
-    assertEquals(nodePrefix, expectedNodePrefix.getValue());
+    assertEquals(expectedNodePrefix.getValue(), nodePrefix);
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
-    verify(mockKubernetesManager, times(1)).getPodInfos(defaultProvider.uuid, nodePrefix);
+
+    verify(mockKubernetesManager, times(1)).getPodInfos(expectedConfig.capture(),
+        expectedNodePrefix.capture());
     verify(mockSwamperHelper, times(1)).writeUniverseTargetJson(defaultUniverse.universeUUID);
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
-    assertTaskSequence(subTasksByPosition);
+    assertTaskSequence(subTasksByPosition, 1);
     assertEquals(Success, taskInfo.getTaskState());
   }
 

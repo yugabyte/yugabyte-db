@@ -12,16 +12,23 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.List;
 import java.util.UUID;
 
@@ -51,6 +58,7 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
       taskParams().rootCA = universe.getUniverseDetails().rootCA;
 
       UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      PlacementInfo pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
 
       if (taskParams().taskType == UpgradeTaskType.Software) {
         if (taskParams().ybSoftwareVersion == null ||
@@ -69,7 +77,7 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
           LOG.info("Upgrading software version to {} in universe {}",
                    taskParams().ybSoftwareVersion, universe.name);
 
-          createUpgradeTask(userIntent, universe);
+          createUpgradeTask(userIntent, universe, pi);
 
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
@@ -79,7 +87,7 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
           updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
               .setSubTaskGroupType(getTaskSubGroupType());
 
-          createUpgradeTask(userIntent, universe);
+          createUpgradeTask(userIntent, universe, pi);
           break;
       }
 
@@ -109,35 +117,86 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
     }
   }
 
-  private void createUpgradeTask(UserIntent userIntent, Universe universe) {
+  private void createUpgradeTask(UserIntent userIntent, Universe universe, PlacementInfo pi) {
     String version = null;
     boolean flag = true;
     if (taskParams().taskType == UpgradeTaskType.Software) {
       version = taskParams().ybSoftwareVersion;
       flag = false;
     }
+    
+    createSingleKubernetesExecutorTask(CommandType.POD_INFO, pi);
+    
+    Map<UUID, Integer> azToNumMasters = PlacementInfoUtil.getNumMasterPerAZ(pi);
+    Map<UUID, Integer> azToNumTservers = PlacementInfoUtil.getNumTServerPerAZ(pi);
+    Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
 
-    createKubernetesExecutorTask(CommandType.POD_INFO);
+    String masterAddresses = PlacementInfoUtil.computeMasterAddresses(azToNumMasters,
+        taskParams().nodePrefix);
+    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(pi);
 
     if (!taskParams().masterGFlags.isEmpty() || !flag) {
-      for (int partition = userIntent.replicationFactor - 1; partition >= 0; partition--) {
-        createKubernetesExecutorTaskForServerType(CommandType.HELM_UPGRADE,
-            version, ServerType.MASTER, partition);
-        createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
-            String.format("yb-master-%d", partition));
+
+      userIntent.masterGFlags = taskParams().masterGFlags;
+
+      // Iterate through all helm deployments with masters.
+      for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
+        
+        UUID azUUID = entry.getKey();
+        String azName = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
+
+        PlacementInfo tempPI = new PlacementInfo();
+            PlacementInfoUtil.addPlacementZoneHelper(azUUID, tempPI);
+
+        Map<String, String> config = azToConfig.get(azUUID);
+        
+        int replicationFactor = entry.getValue();
+
+        // Upgrade the master pods individually for each deployment.
+        for (int partition = replicationFactor - 1; partition >= 0; partition--) {
+          createSingleKubernetesExecutorTaskForServerType(CommandType.HELM_UPGRADE,
+              tempPI, azName, masterAddresses, version, ServerType.MASTER, partition, config);
+          String masterName = String.format("yb-master-%d", partition);
+          createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
+              masterName, azName, config);
+
+          NodeDetails node = new NodeDetails();
+          node.nodeName = isMultiAz ? String.format("%s_%s", masterName, azName) : masterName;
+          createWaitForServerReady(node, ServerType.MASTER, taskParams().sleepAfterTServerRestartMillis)
+              .setSubTaskGroupType(getTaskSubGroupType());
+        }     
       }
     }
     if (!taskParams().tserverGFlags.isEmpty() || !flag) {
+      
       userIntent.tserverGFlags = taskParams().tserverGFlags;
-      for (int partition = userIntent.numNodes - 1; partition >= 0; partition--) {
-        createKubernetesExecutorTaskForServerType(CommandType.HELM_UPGRADE,
-            version, ServerType.TSERVER, partition);
-        String tserverName = String.format("yb-tserver-%d", partition);
-        createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD, tserverName);
-        NodeDetails node = new NodeDetails();
-        node.nodeName = tserverName;
-        createWaitForServerReady(node, ServerType.TSERVER, taskParams().sleepAfterTServerRestartMillis)
-            .setSubTaskGroupType(getTaskSubGroupType());
+
+      // Iterate through all helm deployments.
+      for (Entry<UUID, Integer> entry : azToNumTservers.entrySet()) {
+        
+        UUID azUUID = entry.getKey();
+        String azName = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
+
+        PlacementInfo tempPI = new PlacementInfo();
+            PlacementInfoUtil.addPlacementZoneHelper(azUUID, tempPI);
+
+        Map<String, String> config = azToConfig.get(azUUID);
+        
+        int replicationFactor = entry.getValue();
+
+        // Upgrade the tserver pods individually for each deployment.
+        for (int partition = replicationFactor - 1; partition >= 0; partition--) {
+          createSingleKubernetesExecutorTaskForServerType(CommandType.HELM_UPGRADE,
+              tempPI, azName, masterAddresses, version, ServerType.TSERVER, partition, config);
+          String tserverName = String.format("yb-tserver-%d", partition);
+          createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
+              tserverName, azName, config);
+          
+          NodeDetails node = new NodeDetails();
+          node.nodeName = isMultiAz ? String.format("%s_%s", tserverName, azName) : tserverName;
+          createWaitForServerReady(node, ServerType.TSERVER, taskParams().sleepAfterTServerRestartMillis)
+              .setSubTaskGroupType(getTaskSubGroupType());
+        }     
       }
     }
   }

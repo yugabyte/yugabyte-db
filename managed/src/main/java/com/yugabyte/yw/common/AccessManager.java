@@ -79,6 +79,25 @@ public class AccessManager extends DevopsBase {
     throw new RuntimeException("Unable to create key file path " + keyFilePath.getAbsolutePath());
   }
 
+  private String getOrCreateKeyFilePath(String path) {
+    File keyBasePathName = new File(appConfig.getString("yb.storage.path"), "/keys");
+    // Protect against multi-threaded access and validate that we only error out if mkdirs fails
+    // correctly, by NOT creating the final dir path.
+    synchronized(this) {
+      if (!keyBasePathName.exists() && !keyBasePathName.mkdirs() && !keyBasePathName.exists()) {
+        throw new RuntimeException("Key path " +
+            keyBasePathName.getAbsolutePath() + " doesn't exist.");
+      }
+    }
+
+    File keyFilePath = new File(keyBasePathName.getAbsoluteFile(), path);
+    if (keyFilePath.isDirectory() || keyFilePath.mkdirs()) {
+      return keyFilePath.getAbsolutePath();
+    }
+
+    throw new RuntimeException("Unable to create key file path " + keyFilePath.getAbsolutePath());
+  }
+
   // This method would upload the provided key file to the provider key file path.
   public AccessKey uploadKeyFile(UUID regionUUID, File uploadedFile,
                                  String keyCode, KeyType keyType, String sshUser) {
@@ -223,7 +242,7 @@ public class AccessManager extends DevopsBase {
     return credentialsFilePath;
   }
 
-  public String createKubernetesConfig(UUID providerUUID, Map<String, String> config, boolean edit) throws IOException {
+  public String createKubernetesConfig(String path, Map<String, String> config, boolean edit) throws IOException {
     // Grab the kubernetes config file name and file content and create the physical file.
     String configFileName = config.remove("KUBECONFIG_NAME");
     String configFileContent = config.remove("KUBECONFIG_CONTENT");
@@ -238,7 +257,7 @@ public class AccessManager extends DevopsBase {
     } else if (configFileContent == null) {
       throw new RuntimeException("Missing KUBECONFIG_CONTENT data in the provider config.");
     }
-    String configFilePath = getOrCreateKeyFilePath(providerUUID);
+    String configFilePath = getOrCreateKeyFilePath(path);
     Path configFile = Paths.get(configFilePath, configFileName);
     if (!edit && Files.exists(configFile)) {
       throw new RuntimeException("File " + configFile.getFileName() + " already exists.");

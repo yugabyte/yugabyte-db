@@ -5,6 +5,8 @@ package com.yugabyte.yw.controllers;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
@@ -13,6 +15,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +24,10 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
@@ -125,26 +132,42 @@ public class MetaMasterController extends Controller {
   }
 
   private String getKuberenetesServiceIPPort(ServerType type, Universe universe) {
+    List<String> allIPs = new ArrayList<String>();
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UniverseDefinitionTaskParams.Cluster primary = universeDetails.getPrimaryCluster();
     if (!primary.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       return null;
     } else {
-      ShellProcessHandler.ShellResponse r = kubernetesManager.getServiceIPs(
-          UUID.fromString(primary.userIntent.provider),
-          universeDetails.nodePrefix,
-          type == ServerType.MASTER);
-      if (r.code != 0 || r.message == null) {
-        LOG.warn("Kubernetes getServiceIPs api failed!", r.message);
-        return null;
+      PlacementInfo pi = universeDetails.getPrimaryCluster().placementInfo;
+
+      boolean isMultiAz = PlacementInfoUtil.isMultiAZ(pi);
+      Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
+
+      for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
+        UUID azUUID = entry.getKey();
+        String azName = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
+
+        Map<String, String> config = entry.getValue();
+
+        String namespace = isMultiAz ?
+            String.format("%s-%s", universeDetails.nodePrefix, azName) :
+            universeDetails.nodePrefix;
+
+        ShellProcessHandler.ShellResponse r = kubernetesManager.getServiceIPs(
+            config, namespace, type == ServerType.MASTER);
+        if (r.code != 0 || r.message == null) {
+          LOG.warn("Kubernetes getServiceIPs api failed!", r.message);
+          return null;
+        }
+        List<String> ips = Arrays.stream(r.message.split("\\|"))
+            .filter((ip) -> !ip.isEmpty()).collect(Collectors.toList());
+        int rpcPort = MASTER_RPC_PORT;
+        if (!type.equals(ServerType.MASTER)) {
+          rpcPort = type == ServerType.YQLSERVER ? YCQL_SERVER_RPC_PORT : YEDIS_SERVER_RPC_PORT;
+        }
+        allIPs.add(String.format("%s:%d", ips.get(ips.size() - 1), rpcPort));
       }
-      List<String> ips = Arrays.stream(r.message.split("\\|"))
-          .filter((ip) -> !ip.isEmpty()).collect(Collectors.toList());
-      int rpcPort = MASTER_RPC_PORT;
-      if (!type.equals(ServerType.MASTER)) {
-        rpcPort = type == ServerType.YQLSERVER ? YCQL_SERVER_RPC_PORT : YEDIS_SERVER_RPC_PORT;
-      }
-      return String.format("%s:%d", ips.get(ips.size() - 1), rpcPort);
+      return String.join(",", allIPs);
     }
   }
 }

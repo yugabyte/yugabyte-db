@@ -6,11 +6,18 @@ import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.UUID;
 
 public class DestroyKubernetesUniverse extends DestroyUniverse {
@@ -30,21 +37,54 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       } else {
         universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       }
-      UniverseDefinitionTaskParams.UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-
+      UniverseDefinitionTaskParams.UserIntent userIntent =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent;
       UUID providerUUID = UUID.fromString(userIntent.provider);
 
-      // We need to call Helm Delete first to delete the helm chart and then delete all the
-      // volumes that were attached to the pods.
-      createDestroyKubernetesTask(providerUUID,
-          universe.getUniverseDetails().nodePrefix,
-          KubernetesCommandExecutor.CommandType.HELM_DELETE);
-      createDestroyKubernetesTask(providerUUID,
-          universe.getUniverseDetails().nodePrefix,
-          KubernetesCommandExecutor.CommandType.VOLUME_DELETE);
-      createDestroyKubernetesTask(providerUUID,
-          universe.getUniverseDetails().nodePrefix,
-          KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE);
+      PlacementInfo pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+
+      Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
+      boolean isMultiAz = PlacementInfoUtil.isMultiAZ(pi);
+
+      SubTaskGroup helmDeletes = new SubTaskGroup(
+          KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName(), executor);
+      helmDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+      SubTaskGroup volumeDeletes = new SubTaskGroup(
+          KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName(), executor);
+      volumeDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+      SubTaskGroup namespaceDeletes = new SubTaskGroup(
+          KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName(), executor);
+      namespaceDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+      
+      for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
+        UUID azUUID = entry.getKey();
+        String azName = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
+
+        Map<String, String> config = entry.getValue();
+
+        // Delete the helm deployments.
+        helmDeletes.addTask(createDestroyKubernetesTask(
+            universe.getUniverseDetails().nodePrefix, azName, config,
+            KubernetesCommandExecutor.CommandType.HELM_DELETE,
+            providerUUID));
+            
+        // Delete the PVs created for the deployments.
+        volumeDeletes.addTask(createDestroyKubernetesTask(
+            universe.getUniverseDetails().nodePrefix, azName, config,
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE,
+            providerUUID));
+        
+        // Delete the namespaces of the deployments.
+        namespaceDeletes.addTask(createDestroyKubernetesTask(
+            universe.getUniverseDetails().nodePrefix, azName, config,
+            KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE,
+            providerUUID));
+
+      }
+
+      subTaskGroupQueue.add(helmDeletes);
+      subTaskGroupQueue.add(volumeDeletes);
+      subTaskGroupQueue.add(namespaceDeletes);
 
       // Create tasks to remove the universe entry from the Universe table.
       createRemoveUniverseEntryTask()
@@ -65,18 +105,23 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
     LOG.info("Finished {} task.", getName());
   }
 
-  protected void createDestroyKubernetesTask(UUID providerUUID, String nodePrefix,
-                                             KubernetesCommandExecutor.CommandType commandType) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup(commandType.getSubTaskGroupName(), executor);
+  protected KubernetesCommandExecutor
+      createDestroyKubernetesTask(String nodePrefix, String az, Map<String, String> config,
+                                  KubernetesCommandExecutor.CommandType commandType,
+                                  UUID providerUUID) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
-    params.providerUUID = providerUUID;
     params.commandType = commandType;
     params.nodePrefix = nodePrefix;
+    params.providerUUID = providerUUID;
+    if (az != null) {
+      params.nodePrefix = String.format("%s-%s", nodePrefix, az);  
+    }
+    if (config != null) {
+      params.config = config;
+    }
     params.universeUUID = taskParams().universeUUID;
     KubernetesCommandExecutor task = new KubernetesCommandExecutor();
     task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
-    subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+    return task;
   }
 }

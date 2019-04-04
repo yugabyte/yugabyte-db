@@ -1,6 +1,8 @@
 // Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.models;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.UUID;
 
@@ -9,14 +11,20 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 
+import com.avaje.ebean.annotation.DbJson;
 import com.avaje.ebean.Ebean;
 import com.avaje.ebean.Model;
 import com.avaje.ebean.Query;
 import com.avaje.ebean.RawSql;
 import com.avaje.ebean.RawSqlBuilder;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import play.data.validation.Constraints;
+import play.libs.Json;
+
+import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
 
 @Entity
 public class AvailabilityZone extends Model {
@@ -44,6 +52,36 @@ public class AvailabilityZone extends Model {
 
   @Column(length = 50)
   public String subnet;
+
+  @DbJson
+  public JsonNode config;
+
+  public void setConfig(Map<String, String> configMap) {
+    Map<String, String> currConfig = this.getConfig();
+    for (String key : configMap.keySet()) {
+      currConfig.put(key, configMap.get(key));
+    }
+    this.config = Json.toJson(currConfig);
+    this.save();
+  }
+
+  @JsonIgnore
+  public JsonNode getMaskedConfig() {
+    if (this.config == null) {
+      return Json.newObject();
+    } else {
+      return maskConfig(this.config);
+    }
+  }
+
+  @JsonIgnore
+  public Map<String, String> getConfig() {
+    if (this.config == null) {
+      return new HashMap();
+    } else {
+      return Json.fromJson(this.config, Map.class);
+    }
+  }
 
   /**
    * Query Helper for Availability Zone with primary key

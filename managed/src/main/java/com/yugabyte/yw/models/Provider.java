@@ -60,14 +60,13 @@ public class Provider extends Model {
   @JsonBackReference(value="regions")
   public Set<Region> regions;
 
-  public void setConfig(Map<String, String> configMap) { this.config = Json.toJson(configMap); }
-
-  public void updateConfig(Map<String, String> configMap) {
-    Map<String, String> currConfig = Json.fromJson(this.config, Map.class);
+  public void setConfig(Map<String, String> configMap) {
+    Map<String, String> currConfig = this.getConfig();
     for (String key : configMap.keySet()) {
       currConfig.put(key, configMap.get(key));
     }
-    setConfig(currConfig);
+    this.config = Json.toJson(currConfig);
+    this.save();
   }
 
   @JsonIgnore

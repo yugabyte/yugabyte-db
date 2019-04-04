@@ -18,6 +18,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
@@ -53,10 +54,14 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   Universe defaultUniverse;
   String nodePrefix = "demo-universe";
 
+  Map<String, String> config= new HashMap<String, String>();
+
   private void setupUniverse(boolean updateInProgress) {
+    config.put("KUBECONFIG", "test");
+    defaultProvider.setConfig(config);
+    defaultProvider.save();
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     InstanceType i = InstanceType.upsert(defaultProvider.code, "c3.xlarge",
         10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
@@ -69,6 +74,28 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, true /* setMasters */, updateInProgress));
   }
+
+  private void setupUniverseMultiAZ(boolean updateInProgress) {
+    config.put("KUBECONFIG", "test");
+    defaultProvider.setConfig(config);
+    defaultProvider.save();
+    Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
+    InstanceType i = InstanceType.upsert(defaultProvider.code, "c3.xlarge",
+        10, 5.5, new InstanceType.InstanceTypeDetails());
+    UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
+    userIntent.replicationFactor = 3;
+    userIntent.masterGFlags = new HashMap<>();
+    userIntent.tserverGFlags = new HashMap<>();
+    userIntent.universeName = "demo-universe";
+
+    defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
+    Universe.saveDetails(defaultUniverse.universeUUID,
+        ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, true /* setMasters */, updateInProgress));
+  }
+
 
   List<TaskType> KUBERNETES_DESTROY_UNIVERSE_TASKS = ImmutableList.of(
       TaskType.KubernetesCommandExecutor,
@@ -84,11 +111,15 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
       Json.toJson(ImmutableMap.of())
   );
 
-  private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition) {
+  private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition, int numTasks) {
     int position = 0;
     for (TaskType taskType: KUBERNETES_DESTROY_UNIVERSE_TASKS) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
-      assertEquals(1, tasks.size());
+      if (taskType != TaskType.RemoveUniverseEntry) {
+        assertEquals(numTasks, tasks.size());
+      } else {
+        assertEquals(1, tasks.size());
+      }
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults =
           KUBERNETES_DESTROY_UNIVERSE_EXPECTED_RESULTS.get(position);
@@ -122,13 +153,13 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     taskParams.customerUUID = defaultCustomer.uuid;
     taskParams.universeUUID = defaultUniverse.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams);
-    verify(mockKubernetesManager, times(1)).helmDelete(defaultProvider.uuid, nodePrefix);
-    verify(mockKubernetesManager, times(1)).deleteStorage(defaultProvider.uuid, nodePrefix);
-    verify(mockKubernetesManager, times(1)).deleteNamespace(defaultProvider.uuid, nodePrefix);
+    verify(mockKubernetesManager, times(1)).helmDelete(config, nodePrefix);
+    verify(mockKubernetesManager, times(1)).deleteStorage(config, nodePrefix);
+    verify(mockKubernetesManager, times(1)).deleteNamespace(config, nodePrefix);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
-    assertTaskSequence(subTasksByPosition);
+    assertTaskSequence(subTasksByPosition, 1);
     assertEquals(Success, taskInfo.getTaskState());
     assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
   }
@@ -152,13 +183,47 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     taskParams.customerUUID = defaultCustomer.uuid;
     taskParams.universeUUID = defaultUniverse.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams);
-    verify(mockKubernetesManager, times(1)).helmDelete(defaultProvider.uuid, nodePrefix);
-    verify(mockKubernetesManager, times(1)).deleteStorage(defaultProvider.uuid, nodePrefix);
-    verify(mockKubernetesManager, times(1)).deleteNamespace(defaultProvider.uuid, nodePrefix);
+    verify(mockKubernetesManager, times(1)).helmDelete(config, nodePrefix);
+    verify(mockKubernetesManager, times(1)).deleteStorage(config, nodePrefix);
+    verify(mockKubernetesManager, times(1)).deleteNamespace(config, nodePrefix);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
-    assertTaskSequence(subTasksByPosition);
+    assertTaskSequence(subTasksByPosition, 1);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
+  }
+
+  @Test
+  public void testDestroyKubernetesUniverseSuccessMultiAZ() {
+    setupUniverseMultiAZ(false);
+    ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
+    when(mockKubernetesManager.helmDelete(any(), any())).thenReturn(response);
+
+    ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
+    ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    
+    DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
+    taskParams.isForceDelete = false;
+    taskParams.customerUUID = defaultCustomer.uuid;
+    taskParams.universeUUID = defaultUniverse.universeUUID;
+    TaskInfo taskInfo = submitTask(taskParams);
+    String nodePrefix1 = String.format("%s-%s", nodePrefix, "az-1");
+    String nodePrefix2 = String.format("%s-%s", nodePrefix, "az-2");
+    String nodePrefix3 = String.format("%s-%s", nodePrefix, "az-3");
+    verify(mockKubernetesManager, times(1)).helmDelete(config, nodePrefix1);
+    verify(mockKubernetesManager, times(1)).helmDelete(config, nodePrefix2);
+    verify(mockKubernetesManager, times(1)).helmDelete(config, nodePrefix3);
+    verify(mockKubernetesManager, times(1)).deleteStorage(config, nodePrefix1);
+    verify(mockKubernetesManager, times(1)).deleteStorage(config, nodePrefix2);
+    verify(mockKubernetesManager, times(1)).deleteStorage(config, nodePrefix3);
+    verify(mockKubernetesManager, times(1)).deleteNamespace(config, nodePrefix1);
+    verify(mockKubernetesManager, times(1)).deleteNamespace(config, nodePrefix2);
+    verify(mockKubernetesManager, times(1)).deleteNamespace(config, nodePrefix3);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+    assertTaskSequence(subTasksByPosition, 3);
     assertEquals(Success, taskInfo.getTaskState());
     assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
   }
