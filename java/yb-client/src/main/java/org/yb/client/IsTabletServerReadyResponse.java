@@ -13,51 +13,11 @@
 
 package org.yb.client;
 
-import org.yb.annotations.InterfaceAudience;
 import org.yb.tserver.Tserver.TabletServerErrorPB;
 
-@InterfaceAudience.Public
-public class IsTabletServerReadyResponse extends YRpcResponse {
-  // Error status indicates the tserver is not ready.
-  private TabletServerErrorPB serverError;
-  // Number of tablets that are not in running state on this tserver.
-  private int numNotRunning;
-  // Total number of tablets that are managed under this tserver.
-  private int totalTablets;
-
+public class IsTabletServerReadyResponse extends IsServerReadyResponse {
   public IsTabletServerReadyResponse(long ellapsedMillis, String uuid,
       TabletServerErrorPB error, int notRunning, int totalTablets) {
-    super(ellapsedMillis, uuid);
-    this.serverError = error;
-    this.numNotRunning = notRunning;
-    this.totalTablets = totalTablets;
-  }
-
-  public boolean hasError() {
-    return serverError != null;
-  }
-
-  public TabletServerErrorPB.Code getCode() {
-    if (serverError == null) {
-      return TabletServerErrorPB.Code.UNKNOWN_ERROR;
-    }
-
-    return serverError.getCode();
-  }
-
-  public String errorMessage() {
-    if (serverError == null) {
-      return "";
-    }
-
-    return serverError.getStatus().getMessage();
-  }
-
-  public int getNumNotRunningTablets() {
-    return numNotRunning;
-  }
-
-  public int getTotalTablets() {
-    return totalTablets;
+    super(ellapsedMillis, uuid, error, notRunning, totalTablets);
   }
 }

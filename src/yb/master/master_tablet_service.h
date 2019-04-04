@@ -49,6 +49,10 @@ class MasterTabletServiceImpl : public yb::tserver::TabletServiceImpl {
                 tserver::ChecksumResponsePB* resp,
                 rpc::RpcContext context) override;
 
+  void IsTabletServerReady(const tserver::IsTabletServerReadyRequestPB* req,
+                           tserver::IsTabletServerReadyResponsePB* resp,
+                           rpc::RpcContext context) override;
+
  private:
   bool GetTabletOrRespond(const tserver::ReadRequestPB* req,
                           tserver::ReadResponsePB* resp,

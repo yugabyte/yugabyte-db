@@ -323,22 +323,25 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
-   * Check if the tserver is ready to serve requests.
-   * @param hp host port of the tablet server.
-   * @return a deferred object for the response from tablet server.
+   * Check if the server is ready to serve requests.
+   * @param hp host port of the server.
+   * @param isTserver true if host/port is for tserver, else its master.
+   * @return a deferred object for the response from server.
    */
-  public Deferred<IsTabletServerReadyResponse> isTServerReady(final HostAndPort hp) {
+  public Deferred<IsServerReadyResponse> isServerReady(final HostAndPort hp, boolean isTserver) {
     checkIsClosed();
     TabletClient client = newSimpleClient(hp);
     if (client == null) {
       throw new IllegalStateException("Could not create a client to " + hp.toString());
     }
-    IsTabletServerReadyRequest rpc = new IsTabletServerReadyRequest();
+
+    IsServerReadyRequest rpc =
+        isTserver ? new IsTabletServerReadyRequest() : new IsMasterReadyRequest();
     // TODO: Allow these two to be paramters in all such user API's.
     rpc.maxAttempts = 1;
     rpc.setTimeoutMillis(5000);
 
-    Deferred<IsTabletServerReadyResponse> d = rpc.getDeferred();
+    Deferred<IsServerReadyResponse> d = rpc.getDeferred();
     rpc.attempt++;
     client.sendRpc(rpc);
     return d;

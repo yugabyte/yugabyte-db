@@ -224,6 +224,9 @@ DEFINE_bool(
     master_auto_run_initdb, false,
     "Automatically run initdb on master leader initialization");
 
+DEFINE_test_flag(int32, simulate_slow_system_tablet_bootstrap_secs, 0,
+    "Simulates a slow tablet bootstrap by adding a sleep before system tablet init.");
+
 namespace yb {
 namespace master {
 
@@ -393,6 +396,11 @@ Status CatalogManager::Init(bool is_first_run) {
 
   RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(is_first_run),
                         "Failed to initialize sys tables async");
+
+  if (PREDICT_FALSE(FLAGS_simulate_slow_system_tablet_bootstrap_secs > 0)) {
+    LOG(INFO) << "Simulating slow system tablet bootstrap";
+    SleepFor(MonoDelta::FromSeconds(FLAGS_simulate_slow_system_tablet_bootstrap_secs));
+  }
 
   // WaitUntilRunning() must run outside of the lock as to prevent
   // deadlock. This is safe as WaitUntilRunning waits for another

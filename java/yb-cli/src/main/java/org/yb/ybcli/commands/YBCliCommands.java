@@ -33,7 +33,7 @@ import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.IsLoadBalancedResponse;
-import org.yb.client.IsTabletServerReadyResponse;
+import org.yb.client.IsServerReadyResponse;
 import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTablesResponse;
@@ -402,24 +402,27 @@ public class YBCliCommands implements CommandMarker {
     }
   }
 
-  @CliCommand(value = "is_tserver_ready",
-              help = "Check if tserver is ready to serve IO requests.")
+  @CliCommand(value = "is_server_ready",
+              help = "Check if server is ready to serve IO requests.")
   public String getIsTserverReady(
       @CliOption(key = {"host", "h"},
                  mandatory = true,
-                 help = "Hostname or IP of the tserver. ") final String host,
+                 help = "Hostname or IP of the server. ") final String host,
       @CliOption(key = {"port", "p"},
                  mandatory = true,
-                 help = "RPC port number of the tserver.") final int port) {
+                 help = "RPC port number of the server.") final int port,
+      @CliOption(key = {"isTserver", "t"},
+                 mandatory = true,
+                 help = "True imples the tserver, else master.") final boolean isTserver) {
     try {
       HostAndPort hp = HostAndPort.fromParts(host, port);
-      IsTabletServerReadyResponse resp = ybClient.isTServerReady(hp);
+      IsServerReadyResponse resp = ybClient.isServerReady(hp, isTserver);
 
       if (resp.hasError()) {
-        return "Failed: tserver response error : " + resp.errorMessage();
+        return "Failed: server response error : " + resp.errorMessage();
       }
 
-      return "Tserver is ready.";
+      return "Server is ready.";
     } catch (Exception e) {
       LOG.error("Caught exception ", e);
       return "Failed: " + e.toString();

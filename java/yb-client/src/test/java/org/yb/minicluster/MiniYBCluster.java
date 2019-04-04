@@ -185,13 +185,19 @@ public class MiniYBCluster implements AutoCloseable {
     startSyncClient();
   }
 
-  private void startSyncClient() throws Exception {
+  public void startSyncClient() throws Exception {
+    startSyncClient(true);
+  }
+
+  public void startSyncClient(boolean waitForMasterLeader) throws Exception {
     syncClient = new YBClient.YBClientBuilder(getMasterAddresses())
         .defaultAdminOperationTimeoutMs(defaultTimeoutMs)
         .defaultOperationTimeoutMs(defaultTimeoutMs)
         .build();
 
-    syncClient.waitForMasterLeader(defaultTimeoutMs);
+    if (waitForMasterLeader) {
+      syncClient.waitForMasterLeader(defaultTimeoutMs);
+    }
   }
 
   /** Common flags for both master and tserver processes */
@@ -778,8 +784,13 @@ public class MiniYBCluster implements AutoCloseable {
 
   /**
    * Restart the cluster
+   * @param waitForMasterLeader should sync client wait for master leader.
    */
   public void restart() throws Exception {
+    restart(true /* waitForMasterLeader */);
+  }
+
+  public void restart(boolean waitForMasterLeader) throws Exception {
     List<MiniYBDaemon> masters = new ArrayList<>(masterProcesses.values());
     List<MiniYBDaemon> tservers = new ArrayList<>(tserverProcesses.values());
 
@@ -789,13 +800,14 @@ public class MiniYBCluster implements AutoCloseable {
     LOG.info("Restarting mini cluster");
     for (MiniYBDaemon master : masters) {
       master = restart(master);
-      masterProcesses.put(master.getWebHostAndPort(), master);
+      masterProcesses.put(master.getHostAndPort(), master);
     }
     for (MiniYBDaemon tserver : tservers) {
       tserver = restart(tserver);
-      tserverProcesses.put(tserver.getWebHostAndPort(), tserver);
+      tserverProcesses.put(tserver.getHostAndPort(), tserver);
     }
-    startSyncClient();
+
+    startSyncClient(waitForMasterLeader);
 
     LOG.info("Restarted mini cluster");
   }
@@ -940,7 +952,6 @@ public class MiniYBCluster implements AutoCloseable {
    */
   public String getMasterAddresses() {
     return masterAddresses;
-
   }
 
   /**
