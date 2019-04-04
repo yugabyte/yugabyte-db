@@ -166,6 +166,8 @@ a {
     border-radius: 7px;
     margin-bottom: 25px;
     box-shadow: 0 1px 2px rgba(#202951, 0.16);
+    z-index: 2;
+    position: relative;
 
     @media only screen and (max-width: 991px) {
       padding-top: 22px !important;
@@ -395,6 +397,10 @@ a {
     } 
   }
 
+  > ul > li > ul {
+    margin-left: 10px;
+  }
+
   > ul > li > ul > li > ul {
     margin-left: 0;
     border-left: 1px solid $YB_ORANGE;
@@ -406,9 +412,6 @@ a {
     font-family: Montserrat, sans-serif;
     font-size: 16px;
     font-weight: 600;
-  }
-  > ul > li > ul {
-    margin-left: 10px;
   }
   .node-toggle {
     position: relative;
@@ -454,6 +457,105 @@ a {
   }
   li a.current {
     color: $YB_ORANGE !important;
+  }
+}
+
+.drawer .toc {
+  > .menu-with-sections {
+    margin-left: 0;
+    
+    > li {
+      margin-bottom: 0px;
+      position: relative;
+
+      &:after {
+        position: absolute;
+        height: 1px;
+        width: calc( 100% - 25px );
+        background: darken($YB_LIGHT_GRAY_BACK, 12);
+        content: "";
+        top: 100%;
+      }
+
+      &:last-child:after {
+        content: none;
+      }
+
+      &.open > a.node-toggle {
+        background: darken($YB_LIGHT_GRAY_BACK, 4);
+      }
+
+      > a.node-toggle {
+        text-transform: uppercase;
+        font-size: 13px;
+        font-weight: 400;
+        line-height: 36px !important;
+        display: block;
+        margin-left: -35px;
+        padding-left: 36px;
+        border-radius: 0;
+        left: 0;
+        color: $YB_DARK;
+
+        i {
+          text-align: right;
+          line-height: 36px !important;
+          float: right;
+          margin-right: 20px;
+        }
+      }
+
+      > ul {
+        margin-top: 15px;
+        margin-left: 0px;
+        
+        > li {
+          margin-bottom: 6px;
+          position: relative;
+
+          > a:not(.node-toggle) > i {
+            position: absolute;
+            top: 7px;
+            left: -13px;
+            text-align: center;
+            display: inline-block;
+            width: 16px;
+          }
+
+          a.node-toggle {
+            color: $YB_LIGHT_BLUE;
+
+            > i {
+              font-size: 12px;
+            }
+          } 
+        }
+      }
+
+      > ul > li > ul {
+        margin-left: 10px;
+        border-left: none;
+
+        a {
+          padding-left: 0px;
+        }
+      }
+
+      > ul > li > ul > li > ul {
+        margin-left: 0;
+        border-left: 1px solid $YB_ORANGE;
+
+        a {
+          padding-left: 15px;
+        }
+      }
+
+      > ul > li > a {
+        font-family: Montserrat, sans-serif;
+        font-size: 15px;
+        font-weight: 600;
+      }
+    }
   }
 }
 
