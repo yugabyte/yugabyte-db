@@ -5,6 +5,9 @@ package com.yugabyte.yw.models;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.*;
+import static org.hamcrest.CoreMatchers.*;
+
+import com.google.common.collect.ImmutableMap;
 
 import java.util.Set;
 import java.util.List;
@@ -200,4 +203,21 @@ public class RegionTest extends FakeDBApplication {
     List<Region> fetchedRegions = Region.getByProvider(defaultProvider.uuid);
     assertEquals(fetchedRegions.size(), 2);
   }
+  
+  @Test
+  public void testNullConfig() {
+    Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
+    assertNotNull(r.uuid);
+    assertTrue(r.getConfig().isEmpty());
+  }
+
+  @Test
+  public void testNotNullConfig() {
+    Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
+    r.setConfig(ImmutableMap.of("Foo", "Bar"));
+    r.save();
+    assertNotNull(r.uuid);
+    assertNotNull(r.getConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
+  }
+
 }

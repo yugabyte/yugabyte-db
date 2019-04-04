@@ -3,6 +3,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
 import static com.yugabyte.yw.commissioner.Common.CloudType.kubernetes;
 import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntent;
+import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntentSingleAZ;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -77,9 +78,12 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   }
 
   // TODO: move this to ModelFactory!
-  private Universe getKuberentesUniverse() {
+  private Universe getKuberentesUniverse(boolean isMultiAz) {
     Provider provider = ModelFactory.newProvider(defaultCustomer, kubernetes);
-    UserIntent ui = getDefaultUserIntent(provider);
+    provider.setConfig(ImmutableMap.of("KUBECONFIG", "test"));
+    provider.save();
+    UserIntent ui = isMultiAz ? getDefaultUserIntent(provider) : 
+        getDefaultUserIntentSingleAZ(provider);
     Universe universe = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(ui, true));
     defaultCustomer.addUniverseUUID(universe.universeUUID);
@@ -157,7 +161,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testServerAddressForKuberenetesServiceFailure() {
-    Universe universe = getKuberentesUniverse();
+    Universe universe = getKuberentesUniverse(false);
     ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
     re.code = -1;
     re.message = "Unknown Error!";
@@ -179,7 +183,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testServerAddressForKuberenetesServiceWithPodIP() {
-    Universe universe = getKuberentesUniverse();
+    Universe universe = getKuberentesUniverse(false);
     ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
     re.code = 0;
     re.message = "12.13.14.15||";
@@ -194,9 +198,28 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     });
   }
 
+
+  @Test
+  public void testServerAddressForKuberenetesServiceWithPodIPMultiCluster() {
+    Universe universe = getKuberentesUniverse(true);
+    ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
+    re.code = 0;
+    re.message = "12.13.14.15||";
+    when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
+
+    endpointPort.entrySet().forEach((endpoint) -> {
+      String expectedHostString = "12.13.14.15:" + endpoint.getValue();
+      String completeString = String.format("%s,%s", expectedHostString, expectedHostString);
+      Result r = route(fakeRequest("GET", "/api/customers/" + defaultCustomer.uuid + "/universes/" +
+          universe.universeUUID + endpoint.getKey()));
+      JsonNode json = Json.parse(contentAsString(r));
+      assertEquals(completeString, json.asText());
+    });
+  }
+
   @Test
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIP() {
-    Universe universe = getKuberentesUniverse();
+    Universe universe = getKuberentesUniverse(false);
     ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
     re.code = 0;
     re.message = "12.13.14.15|56.78.90.1|";
@@ -213,7 +236,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerHostname() {
-    Universe universe = getKuberentesUniverse();
+    Universe universe = getKuberentesUniverse(false);
     ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
     re.code = 0;
     re.message = "12.13.14.15||loadbalancer.hostname";
@@ -230,7 +253,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIpAndHostname() {
-    Universe universe = getKuberentesUniverse();
+    Universe universe = getKuberentesUniverse(false);
     ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
     re.code = 0;
     re.message = "12.13.14.15|56.78.90.1|loadbalancer.hostname";

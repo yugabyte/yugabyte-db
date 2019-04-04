@@ -20,6 +20,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,10 +41,12 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
       // Get requested user intent.
       Cluster primaryCluster = taskParams().getPrimaryCluster();
       UserIntent userIntent = primaryCluster.userIntent;
+      PlacementInfo newPI = primaryCluster.placementInfo;
 
       // Get current universe's intent.
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       UserIntent currIntent = universeDetails.getPrimaryCluster().userIntent.clone();
+      PlacementInfo currPI = universeDetails.getPrimaryCluster().placementInfo;
 
       boolean userIntentChange = false;
       boolean isNumNodeChange = false;
@@ -63,7 +66,7 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
 
       // Update the user intent.
       writeUserIntentToUniverse();
-
+      
       List<NodeDetails> currTServers = universe.getTServers();
       int numTServers = currTServers.size();
 
@@ -73,7 +76,7 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
           userIntent.numNodes, universe);
 
       // Get node detail set at the start of edit.
-      createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO);  
+      createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO, newPI);  
 
       if (!tserversToRemove.isEmpty()) {
         createModifyBlackListTask(new ArrayList(tserversToRemove), true /* isAdd */)
@@ -89,14 +92,14 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
         // In case user intent changes per pod, roll each pod.
         for (int partition = userIntent.numNodes - 1; partition >= 0; partition--) {
           createKubernetesExecutorTaskForServerType(KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
-              null, ServerType.TSERVER, partition);
+              null, null, ServerType.TSERVER, partition);
           createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
-              String.format("yb-tserver-%d", partition));
+              String.format("yb-tserver-%d", partition), null, null);
 
           // Update the node detail set with the current pods so that the wait tasks
           // get the latest pods to wait for (required when new pods are added).
           if (isNumNodeChange && isFirstIteration) {
-            createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO);
+            createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO, newPI);
           }
 
           // Get the tserver that has just been rolled.
@@ -113,7 +116,7 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Final update for the node details.
-      createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO);
+      createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO, newPI);
 
       // Waiting on all newly added tservers.
       if (!tserversToAdd.isEmpty()) {

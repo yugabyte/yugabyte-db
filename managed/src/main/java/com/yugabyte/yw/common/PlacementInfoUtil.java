@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.Queue;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -1470,6 +1471,139 @@ public class PlacementInfoUtil {
     }
   }
 
+  // Select the number of AZs for each deployment.
+  public static void selectNumMastersAZ(PlacementInfo pi, int numTotalMasters) {
+    int totalAZs = 0;
+    for (PlacementCloud pc : pi.cloudList) {
+      for (PlacementRegion pr : pc.regionList) {
+        totalAZs += pr.azList.size();
+      }
+    }
+    for (PlacementCloud pc : pi.cloudList) {
+      
+      int remainingMasters = numTotalMasters;
+      int azsRemaining = totalAZs;
+
+      for (PlacementRegion pr : pc.regionList) {
+        
+        int numAzsInRegion = pr.azList.size();
+        // Distribute masters in each region according to the number of AZs in each region.
+        int mastersInRegion = (int) Math.round(remainingMasters * ((double) numAzsInRegion / azsRemaining));
+        int mastersAdded = 0;
+        int saturated = 0;
+        int count = 0;
+        
+        while (mastersInRegion == mastersAdded || saturated == numAzsInRegion ) {
+          saturated = 0;
+          for (PlacementAZ pa : pr.azList) {
+            // The number of masters in an AZ cannot exceed the number of tservers.
+            if ((count + 1) <= pa.numNodesInAZ) {
+              pa.replicationFactor = count + 1;
+              mastersAdded++;
+            } else {
+              saturated++;
+            }
+            if (mastersInRegion == 0) {
+              break;
+            }
+          }
+          count++;
+        }
+        remainingMasters -= mastersAdded;
+        azsRemaining -= numAzsInRegion;
+      }
+    }
+  }
+
+  // Check if there are multiple zones for deployment.
+  public static boolean isMultiAZ(PlacementInfo pi) {
+    if (pi.cloudList.size() > 1) {
+      return true;
+    }
+    for (PlacementCloud pc : pi.cloudList) {
+      if (pc.regionList.size() > 1) {
+        return true;
+      }
+      for (PlacementRegion pr : pc.regionList) {
+        if (pr.azList.size() > 1) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Get the zones with the number of masters for each zone.
+  public static Map<UUID, Integer> getNumMasterPerAZ(PlacementInfo pi) {
+    Map<UUID, Integer> azToNumMasters = new HashMap<UUID, Integer>();
+    for (PlacementCloud pc : pi.cloudList) {
+      for (PlacementRegion pr : pc.regionList) {
+        for (PlacementAZ pa : pr.azList) {
+          azToNumMasters.put(pa.uuid, pa.replicationFactor);
+        }
+      }
+    }
+    return azToNumMasters;
+  }
+
+  // Get the zones with the number of tservers for each zone.
+  public static Map<UUID, Integer> getNumTServerPerAZ(PlacementInfo pi) {
+    Map<UUID, Integer> azToNumTservers = new HashMap<UUID, Integer>();
+    for (PlacementCloud pc : pi.cloudList) {
+      for (PlacementRegion pr : pc.regionList) {
+        for (PlacementAZ pa : pr.azList) {
+          azToNumTservers.put(pa.uuid, pa.replicationFactor);
+        }
+      }
+    }
+    return azToNumTservers;
+  }
+
+  // Get the zones with the kubeconfig for that zone.
+  public static Map<UUID, Map<String, String>> getConfigPerAZ(PlacementInfo pi) {
+    Map<UUID, Map<String, String>> azToConfig = new HashMap<UUID, Map<String, String>>();
+    for (PlacementCloud pc : pi.cloudList) {
+      Map<String, String> config = Provider.get(pc.uuid).getConfig();
+      for (PlacementRegion pr : pc.regionList) {
+        if (!config.containsKey("KUBECONFIG")) {
+            config = Region.get(pr.uuid).getConfig();
+        }
+        for (PlacementAZ pa : pr.azList) {
+          if (!config.containsKey("KUBECONFIG")) {
+            config = AvailabilityZone.get(pa.uuid).getConfig();
+          }
+          if (!config.containsKey("KUBECONFIG")) {
+            throw new RuntimeException("No Kubeconfig found");
+          }
+          azToConfig.put(pa.uuid, config);
+          System.out.println("ADDING CONFIG TO AZ: " + pa.uuid);
+        }
+      }
+    }
+    return azToConfig;
+  }
+      
+
+  // Compute the master addresses of the pods in the deployment if multiAZ.
+  public static String computeMasterAddresses(Map<UUID, Integer> azToNumMasters, String nodePrefix) {
+    List<String> masters = new ArrayList<String>();
+    if (azToNumMasters.size() == 1) {
+      return null;
+    }
+    for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
+      AvailabilityZone az = AvailabilityZone.get(entry.getKey());
+      for (int idx = 0; idx < entry.getValue(); idx++) {
+        // Domain name can be parameterized later to support different providers
+        String domain = "svc.cluster.local";
+        int port = 7100;
+        String master = String.format("yb-master-%d.yb-masters.%s-%s.%s:%d", idx, nodePrefix, az.code,
+            domain, port);
+        masters.add(master);
+      }
+    }
+    return String.join(",", masters);
+  }
+
   // Returns the start index for provisioning new nodes based on the current maximum node index
   // across existing nodes. If called for a new universe being created, then it will return a
   // start index of 1.
@@ -1644,6 +1778,11 @@ public class PlacementInfoUtil {
       }
     }
     return count;
+  }
+
+  // Helper for creating PlacementInfo for multi-az kubernetes.
+  public static void addPlacementZoneHelper(UUID zone, PlacementInfo placementInfo) {
+    addPlacementZone(zone, placementInfo);
   }
 
   private static void addPlacementZone(UUID zone, PlacementInfo placementInfo) {

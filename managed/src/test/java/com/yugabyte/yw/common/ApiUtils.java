@@ -216,6 +216,17 @@ public class ApiUtils {
     return ui;
   }
 
+  public static UserIntent getDefaultUserIntentSingleAZ(Provider p) {
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    UserIntent ui = getTestUserIntent(r, p, i, 3);
+    ui.replicationFactor = 3;
+    ui.masterGFlags = new HashMap<>();
+    ui.tserverGFlags = new HashMap<>();
+    return ui;
+  }
+
   public static UserIntent getTestUserIntent(Region r, Provider p, InstanceType i, int numNodes) {
     UserIntent ui = new UserIntent();
     ui.regionList = ImmutableList.of(r.uuid);

@@ -48,6 +48,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
 /**
@@ -366,6 +367,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (numMastersToChoose > 0) {
       PlacementInfoUtil.selectMasters(primaryNodes, numMastersToChoose);
     }
+  }
+
+  /**
+  * Get the number of masters to be placed in the availability zones.
+  *
+  * @param pi : the placement info in which the masters need to be placed.
+  */
+  public void selectNumMastersAZ(PlacementInfo pi) {
+    UserIntent userIntent = taskParams().getPrimaryCluster().userIntent;
+    int numTotalMasters = userIntent.replicationFactor;
+    PlacementInfoUtil.selectNumMastersAZ(pi, numTotalMasters);
   }
 
   public void createGFlagsOverrideTasks(Collection<NodeDetails> nodes, ServerType taskType) {
@@ -695,13 +707,150 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
+  // Create Kubernetes Executor task for creating the namespaces and pull secrets.
+  public KubernetesCommandExecutor createKubernetesExecutorTask(
+      KubernetesCommandExecutor.CommandType commandType, String az, Map<String, String> config) {
+    return createKubernetesExecutorTask(commandType, null, az, null, config);
+  }
+
+  // Create Kubernetes Executor task for getting the pod info and
+  // updating the NodeDetailSet for the universe.
+  public KubernetesCommandExecutor createKubernetesExecutorTask(
+      KubernetesCommandExecutor.CommandType commandType, PlacementInfo pi) {
+    return createKubernetesExecutorTask(commandType, pi, null, null, null);
+  }
+
+  // Create the Kubernetes Executor task for the helm deployments.
+  public KubernetesCommandExecutor createKubernetesExecutorTask(
+      KubernetesCommandExecutor.CommandType commandType, PlacementInfo pi, String az,
+      String masterAddresses, Map<String, String> config) {
+    return createKubernetesExecutorTaskForServerType(commandType, pi, az, masterAddresses, null,
+        ServerType.EITHER, 0, config);
+  }
+
+  // Create and return the Kubernetes Executor task for deployment of a k8s universe.
+  public KubernetesCommandExecutor createKubernetesExecutorTaskForServerType(
+                                                        KubernetesCommandExecutor.CommandType commandType,
+                                                        PlacementInfo pi, String az, String masterAddresses,
+                                                        String ybSoftwareVersion, ServerType serverType,
+                                                        int partition, Map<String, String> config) {
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
+    params.providerUUID = UUID.fromString(
+        primary.userIntent.provider);
+    params.commandType = commandType;
+    params.nodePrefix = taskParams().nodePrefix;
+    params.universeUUID = taskParams().universeUUID;
+
+    if (az != null) {
+      params.nodePrefix = String.format("%s-%s", params.nodePrefix, az);
+    }
+    if (masterAddresses != null) {
+      params.masterAddresses = masterAddresses;
+    }
+    if (ybSoftwareVersion != null) {
+      params.ybSoftwareVersion = ybSoftwareVersion;
+    }
+    if (pi != null) {
+      params.placementInfo = pi;
+    }
+    if (config != null) {
+      params.config = config;
+    }
+    params.rollingUpgradePartition = partition;
+    params.enableNodeToNodeEncrypt = primary.userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = primary.userIntent.enableClientToNodeEncrypt;
+    params.rootCA = taskParams().rootCA;
+    params.serverType = serverType;
+    KubernetesCommandExecutor task = new KubernetesCommandExecutor();
+    task.initialize(params);
+    return task;
+  }
+
+  // Create a single Kubernetes Executor task in case we cannot execute tasks in parallel.
+  public void createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType commandType,
+                                                 PlacementInfo pi) {
+    createSingleKubernetesExecutorTaskForServerType(commandType, pi, null, null, null, ServerType.EITHER, 0, null);
+  }
+
+  // Create a single Kubernetes Executor task in case we cannot execute tasks in parallel.
+  public void createSingleKubernetesExecutorTaskForServerType(KubernetesCommandExecutor.CommandType commandType,
+                                                              PlacementInfo pi, String az, String masterAddresses,
+                                                              String ybSoftwareVersion, ServerType serverType,
+                                                              int partition, Map<String, String> config) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup(commandType.getSubTaskGroupName(), executor);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
+    params.providerUUID = UUID.fromString(
+        primary.userIntent.provider);
+    params.commandType = commandType;
+    params.nodePrefix = taskParams().nodePrefix;
+    params.universeUUID = taskParams().universeUUID;
+
+    if (az != null) {
+      params.nodePrefix = String.format("%s-%s", params.nodePrefix, az);
+    }
+    if (masterAddresses != null) {
+      params.masterAddresses = masterAddresses;
+    }
+    if (ybSoftwareVersion != null) {
+      params.ybSoftwareVersion = ybSoftwareVersion;
+    }
+    if (pi != null) {
+      params.placementInfo = pi;
+    }
+    if (config != null) {
+      params.config = config;
+    }
+
+    params.rollingUpgradePartition = partition;
+    params.enableNodeToNodeEncrypt = primary.userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = primary.userIntent.enableClientToNodeEncrypt;
+    params.rootCA = taskParams().rootCA;
+    params.serverType = serverType;
+    KubernetesCommandExecutor task = new KubernetesCommandExecutor();
+    task.initialize(params);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
+  }  
+
   public void createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType commandType) {
-    createKubernetesExecutorTaskForServerType(commandType, null, ServerType.EITHER, 0);    
+    createKubernetesExecutorTaskForServerType(commandType, null, null, ServerType.EITHER, 0);    
   }
 
   public void createKubernetesExecutorTaskForServerType(KubernetesCommandExecutor.CommandType commandType,
-                                        String ybSoftwareVersion, ServerType serverType,
-                                        int partition) {
+                                                        PlacementInfo pi, String ybSoftwareVersion,
+                                                        ServerType serverType, int partition) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup(commandType.getSubTaskGroupName(), executor);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
+    params.providerUUID = UUID.fromString(
+        primary.userIntent.provider);
+    params.commandType = commandType;
+    params.nodePrefix = taskParams().nodePrefix;
+    params.universeUUID = taskParams().universeUUID;
+    if (ybSoftwareVersion != null) {
+      params.ybSoftwareVersion = ybSoftwareVersion;
+    }
+    if(pi != null) {
+      params.placementInfo = pi;
+    }
+    params.rollingUpgradePartition = partition;
+    params.enableNodeToNodeEncrypt = primary.userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = primary.userIntent.enableClientToNodeEncrypt;
+    params.rootCA = taskParams().rootCA;
+    params.serverType = serverType;
+    KubernetesCommandExecutor task = new KubernetesCommandExecutor();
+    task.initialize(params);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
+  }
+
+  public void createKubernetesExecutorTaskForServerType(KubernetesCommandExecutor.CommandType commandType,
+                                                        String ybSoftwareVersion, ServerType serverType,
+                                                        int partition) {
     SubTaskGroup subTaskGroup = new SubTaskGroup(commandType.getSubTaskGroupName(), executor);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
@@ -725,13 +874,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
   }
 
-  public void createKubernetesWaitForPodTask(CommandType commandType, String podName) {
+  public void createKubernetesWaitForPodTask(CommandType commandType, String podName, String az,
+                                             Map<String, String> config) {
     SubTaskGroup subTaskGroup = new SubTaskGroup(commandType.getSubTaskGroupName(), executor);
     KubernetesWaitForPod.Params params = new KubernetesWaitForPod.Params();
     UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
     params.providerUUID = UUID.fromString(primary.userIntent.provider);
     params.commandType = commandType;
     params.nodePrefix = taskParams().nodePrefix;
+    if (az != null) {
+      params.nodePrefix = String.format("%s-%s", params.nodePrefix, az);
+    }
+    if (config != null) {
+      params.config = config;
+    }
     params.universeUUID = taskParams().universeUUID;
     params.podName = podName;
     KubernetesWaitForPod task = new KubernetesWaitForPod();

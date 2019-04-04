@@ -65,7 +65,7 @@ public class PlacementInfo {
     public boolean isAffinitized;
     @Override
     public String toString() {
-      return "(AZ=" + name + ", count=" + numNodesInAZ + ")";
+      return "(AZ=" + name + ", count=" + numNodesInAZ + ", replication factor=" + replicationFactor + ")";
     }
   }
 

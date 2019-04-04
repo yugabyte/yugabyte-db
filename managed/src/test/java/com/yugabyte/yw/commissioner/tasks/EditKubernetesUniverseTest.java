@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import org.junit.Test;
 import org.junit.Ignore;
 import org.junit.runner.RunWith;
@@ -87,13 +88,17 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   String nodePrefix = "demo-universe";
 
+  Map<String, String> config= new HashMap<String, String>();
+
   ModifyMasterClusterConfigBlacklist modifyBL;
 
   private void setupUniverse(boolean setMasters) {
+    config.put("KUBECONFIG", "test");
+    defaultProvider.setConfig(config);
+    defaultProvider.save();
     editUniverse.setUserTaskUUID(UUID.randomUUID());
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
-    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     InstanceType i = InstanceType.upsert(defaultProvider.code, "c3.xlarge",
         10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
@@ -233,8 +238,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   private TaskInfo submitTask(UniverseDefinitionTaskParams taskParams,
-                              UniverseDefinitionTaskParams.UserIntent userIntent) {
-    taskParams.upsertPrimaryCluster(userIntent, null);
+                              UniverseDefinitionTaskParams.UserIntent userIntent,
+                              PlacementInfo pi) {
+    taskParams.upsertPrimaryCluster(userIntent, pi);
     taskParams.nodePrefix = nodePrefix;
     
     try {
@@ -259,14 +265,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   public void testAddNode() {
     setupUniverse(/* Create Masters */ true);
 
-    Universe testUniverse = Universe.get(defaultUniverse.universeUUID);
-
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedPodName = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
 
-    String overrideFileRegex = "(.*)" + testUniverse.universeUUID + "(.*).yml";
+    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
 
     // After changing to 5 tservers.
     ShellProcessHandler.ShellResponse responsePods = new ShellProcessHandler.ShellResponse();
@@ -286,19 +291,20 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockKubernetesManager.getPodInfos(any(), any())).thenReturn(responsePods);
     
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.universeUUID = testUniverse.universeUUID;
+    taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.expectedUniverseVersion = 2;
-    taskParams.nodeDetailsSet = testUniverse.getUniverseDetails().nodeDetailsSet; 
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet; 
     UniverseDefinitionTaskParams.UserIntent newUserIntent = 
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
     newUserIntent.numNodes = 5;
-    TaskInfo taskInfo = submitTask(taskParams, newUserIntent);
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
         
-    verify(mockKubernetesManager, times(1)).helmUpgrade(expectedUniverseUUID.capture(),
+    verify(mockKubernetesManager, times(1)).helmUpgrade(expectedConfig.capture(),
         expectedNodePrefix.capture(), expectedOverrideFile.capture());
-    verify(mockKubernetesManager, times(2)).getPodInfos(expectedUniverseUUID.capture(), expectedNodePrefix.capture());
+    verify(mockKubernetesManager, times(2)).getPodInfos(expectedConfig.capture(), expectedNodePrefix.capture());
 
-    assertEquals(defaultProvider.uuid, expectedUniverseUUID.getValue());
+    assertEquals(config, expectedConfig.getValue());
     assertEquals(nodePrefix, expectedNodePrefix.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
@@ -321,6 +327,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedPodName = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
     ShellProcessHandler.ShellResponse responsePods = new ShellProcessHandler.ShellResponse();
@@ -340,13 +347,14 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent newUserIntent = 
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
     newUserIntent.numNodes = 2;
-    TaskInfo taskInfo = submitTask(taskParams, newUserIntent);
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
         
-    verify(mockKubernetesManager, times(1)).helmUpgrade(expectedUniverseUUID.capture(),
+    verify(mockKubernetesManager, times(1)).helmUpgrade(expectedConfig.capture(),
         expectedNodePrefix.capture(), expectedOverrideFile.capture());
-    verify(mockKubernetesManager, times(2)).getPodInfos(expectedUniverseUUID.capture(), expectedNodePrefix.capture());
+    verify(mockKubernetesManager, times(2)).getPodInfos(expectedConfig.capture(), expectedNodePrefix.capture());
 
-    assertEquals(defaultProvider.uuid, expectedUniverseUUID.getValue());
+    assertEquals(config, expectedConfig.getValue());
     assertEquals(nodePrefix, expectedNodePrefix.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
@@ -365,6 +373,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedPodName = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
     ShellProcessHandler.ShellResponse responsePods = new ShellProcessHandler.ShellResponse();
@@ -388,15 +397,16 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent newUserIntent = 
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
     newUserIntent.instanceType = "c5.xlarge";
-    TaskInfo taskInfo = submitTask(taskParams, newUserIntent);
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
         
-    verify(mockKubernetesManager, times(3)).helmUpgrade(expectedUniverseUUID.capture(),
+    verify(mockKubernetesManager, times(3)).helmUpgrade(expectedConfig.capture(),
         expectedNodePrefix.capture(), expectedOverrideFile.capture());
-    verify(mockKubernetesManager, times(3)).getPodStatus(expectedUniverseUUID.capture(),
+    verify(mockKubernetesManager, times(3)).getPodStatus(expectedConfig.capture(),
         expectedNodePrefix.capture(), expectedPodName.capture());
-    verify(mockKubernetesManager, times(2)).getPodInfos(expectedUniverseUUID.capture(), expectedNodePrefix.capture());
+    verify(mockKubernetesManager, times(2)).getPodInfos(expectedConfig.capture(), expectedNodePrefix.capture());
 
-    assertEquals(defaultProvider.uuid, expectedUniverseUUID.getValue());
+    assertEquals(config, expectedConfig.getValue());
     assertEquals(nodePrefix, expectedNodePrefix.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 

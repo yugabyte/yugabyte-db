@@ -54,7 +54,9 @@ import org.junit.Before;
 import org.junit.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -113,7 +115,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     new File(TestHelper.TMP_PATH).mkdirs();
     try{
       String kubeFile = createTempFile("test2.conf", "test5678");
-      when(mockAccessManager.createKubernetesConfig(any(), anyMap(), anyBoolean())).thenReturn(kubeFile);
+      when(mockAccessManager.createKubernetesConfig(anyString(), anyMap(), anyBoolean())).thenReturn(kubeFile);
     } catch (Exception e) {
       // Do nothing
     }
@@ -132,6 +134,11 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   private Result createProvider(JsonNode bodyJson) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody("POST",
         "/api/customers/" + customer.uuid + "/providers", customer.createAuthToken(), bodyJson);
+  }
+
+  private Result createKubernetesProvider(JsonNode bodyJson) {
+    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST",
+        "/api/customers/" + customer.uuid + "/providers/kubernetes", customer.createAuthToken(), bodyJson);
   }
 
   private Result deleteProvider(UUID providerUUID) {
@@ -279,6 +286,80 @@ public class CloudProviderControllerTest extends FakeDBApplication {
         assertEquals(configJson.size(), config.size());
       }
     }
+  }
+
+  @Test
+  public void testCreateKubernetesMultiRegionProvider() {
+    ObjectMapper mapper = new ObjectMapper();
+
+    String providerName = "Kubernetes-Provider";
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "kubernetes");
+    bodyJson.put("name", providerName);
+    ObjectNode configJson = Json.newObject();
+    configJson.put("KUBECONFIG_NAME", "test");
+    configJson.put("KUBECONFIG_CONTENT", "test");
+    bodyJson.set("config", configJson);
+    
+    ArrayNode regions = mapper.createArrayNode();
+    ObjectNode regionJson = Json.newObject();
+    regionJson.put("code", "US-West");
+    regionJson.put("name", "US West");
+    ArrayNode azs = mapper.createArrayNode();
+    ObjectNode azJson = Json.newObject();
+    azJson.put("code", "us-west1-a");
+    azJson.put("name", "us-west1-a");
+    azs.add(azJson);
+    regionJson.putArray("zoneList").addAll(azs);
+    regions.add(regionJson);
+    
+    bodyJson.putArray("regionList").addAll(regions);
+    
+    Result result = createKubernetesProvider(bodyJson);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertValue(json, "name", providerName);
+    Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
+    Map<String, String> config = provider.getConfig();
+    assertFalse(config.isEmpty());
+    List<Region> createdRegions = Region.getByProvider(provider.uuid);
+    assertEquals(1, createdRegions.size());
+    List<AvailabilityZone> createdZones = AvailabilityZone.getAZsForRegion(createdRegions.get(0).uuid);
+    assertEquals(1, createdZones.size());
+  }
+
+
+  @Test
+  public void testCreateKubernetesMultiRegionProviderFailure() {
+    ObjectMapper mapper = new ObjectMapper();
+
+    String providerName = "Kubernetes-Provider";
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "kubernetes");
+    bodyJson.put("name", providerName);
+    ObjectNode configJson = Json.newObject();
+    configJson.put("KUBECONFIG_NAME", "test");
+    configJson.put("KUBECONFIG_CONTENT", "test");
+    bodyJson.set("config", configJson);
+    
+    ArrayNode regions = mapper.createArrayNode();
+    ObjectNode regionJson = Json.newObject();
+    regionJson.put("code", "US-West");
+    regionJson.put("name", "US West");
+    ArrayNode azs = mapper.createArrayNode();
+    ObjectNode azJson = Json.newObject();
+    azJson.put("code", "us-west1-a");
+    azJson.put("name", "us-west1-a");
+    azJson.put("config", configJson);
+    azs.add(azJson);
+    regionJson.putArray("zoneList").addAll(azs);
+    regions.add(regionJson);
+    
+    bodyJson.putArray("regionList").addAll(regions);
+    
+    Result result = createKubernetesProvider(bodyJson);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertBadRequest(result, "Kubeconfig can't be at two levels");
   }
 
   @Test

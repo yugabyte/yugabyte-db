@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudCleanup;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
+import com.yugabyte.yw.commissioner.tasks.params.KubernetesClusterInitParams;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -18,12 +19,16 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.CloudBootstrapFormData;
+import com.yugabyte.yw.forms.KubernetesProviderFormData;
+import com.yugabyte.yw.forms.KubernetesProviderFormData.RegionData;
+import com.yugabyte.yw.forms.KubernetesProviderFormData.RegionData.ZoneData;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.google.inject.Inject;
 
@@ -51,7 +56,7 @@ public class CloudProviderController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderController.class);
 
   private static JsonNode KUBERNETES_DEV_INSTANCE_TYPE = Json.parse(
-      "{\"instanceTypeCode\": \"dev\", \"numCores\": 0, \"memSizeGB\": 1}");
+      "{\"instanceTypeCode\": \"dev\", \"numCores\": 0.5, \"memSizeGB\": 0.5}");
   private static JsonNode KUBERNETES_INSTANCE_TYPES = Json.parse("[" +
       "{\"instanceTypeCode\": \"xsmall\", \"numCores\": 2, \"memSizeGB\": 4}," +
       "{\"instanceTypeCode\": \"small\", \"numCores\": 4, \"memSizeGB\": 7.5}," +
@@ -176,7 +181,7 @@ public class CloudProviderController extends AuthenticatedController {
             } catch (javax.persistence.PersistenceException ex) {
               // TODO: make instance types more multi-tenant friendly...
             }
-            kubernetesProvision(provider, customerUUID);
+            kubernetesProvision(provider, provider.getConfig(), customerUUID);
             break;
         }
       }
@@ -186,6 +191,168 @@ public class CloudProviderController extends AuthenticatedController {
       LOG.error(errorMsg, e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, errorMsg);
     }
+  }
+
+  // For creating the a multi-cluster kubernetes provider.
+  public Result createKubernetes(UUID customerUUID) throws IOException{
+    JsonNode requestBody = request().body().asJson();
+    ObjectMapper mapper = new ObjectMapper();
+    KubernetesProviderFormData formData;
+    try {
+      formData = mapper.treeToValue(requestBody, KubernetesProviderFormData.class);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid JSON");
+    }
+
+    Common.CloudType providerCode = formData.code;
+    if (!providerCode.equals(Common.CloudType.kubernetes)) {
+      return ApiResponse.error(BAD_REQUEST, "API for only kubernetes provider creation: " + providerCode);
+    }
+
+    boolean hasConfig = formData.config.containsKey("KUBECONFIG_NAME");
+    if (formData.regionList.isEmpty()) {
+      return ApiResponse.error(BAD_REQUEST, "Need regions in provider");
+    }
+    for (RegionData rd : formData.regionList) {
+      if (rd.config != null) {
+        if (rd.config.containsKey("KUBECONFIG_NAME")) {
+          if (hasConfig) {
+            return ApiResponse.error(BAD_REQUEST, "Kubeconfig can't be at two levels");
+          } else {
+            hasConfig = true;
+          }
+        }
+      }
+      if (rd.zoneList.isEmpty()) {
+        return ApiResponse.error(BAD_REQUEST, "No zone provided in region");
+      }
+      for (ZoneData zd : rd.zoneList) {
+        if (zd.config != null) {
+          if (zd.config.containsKey("KUBECONFIG_NAME")) {
+            if (hasConfig) {
+              return ApiResponse.error(BAD_REQUEST, "Kubeconfig can't be at two levels");
+            }
+          } else if (!hasConfig) {
+            return ApiResponse.error(BAD_REQUEST, "No Kubeconfig found for zone(s)");
+          }
+        } 
+      }
+      hasConfig = formData.config.containsKey("KUBECONFIG_NAME");
+    }
+   
+    Provider provider = null;
+    try {
+      Map<String, String> config = formData.config;
+      provider = Provider.create(customerUUID, providerCode, formData.name, config);
+      boolean isConfigInProvider = updateKubeConfig(provider, config, false);
+      if (isConfigInProvider) {
+        kubernetesProvision(provider, config, customerUUID);
+      }
+      List<RegionData> regionList = formData.regionList;
+      for (RegionData rd : regionList) {
+        Map<String, String> regionConfig = rd.config;
+        Region region = Region.create(provider, rd.code, rd.name, null, rd.latitude, rd.longitude);
+        boolean isConfigInRegion = updateKubeConfig(provider, region, regionConfig, false);
+        if (isConfigInRegion) {
+          kubernetesProvision(provider, regionConfig, customerUUID);
+        }
+        for (ZoneData zd : rd.zoneList) {
+          Map<String, String> zoneConfig = zd.config;
+          AvailabilityZone az = AvailabilityZone.create(region, zd.code, zd.name, null);
+          boolean isConfigInZone = updateKubeConfig(provider, region, az, zoneConfig, false);
+          if (isConfigInZone) {
+            kubernetesProvision(provider, zoneConfig, customerUUID);
+          }
+        }
+      }
+      try {
+        createKubernetesInstanceTypes(provider);
+      } catch (javax.persistence.PersistenceException ex) {
+        provider.delete();
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, "Couldn't create instance types");
+        // TODO: make instance types more multi-tenant friendly...
+      }
+      return ApiResponse.success(provider);
+    } catch (RuntimeException e) {
+      if (provider != null) {
+        provider.delete();
+      }
+      String errorMsg = "Unable to create provider: " + providerCode;
+      LOG.error(errorMsg, e);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, errorMsg);
+    }
+  }
+
+  private boolean updateKubeConfig(Provider provider, Map<String, String> config, boolean edit) {
+    return updateKubeConfig(provider, null, config, edit);
+  }
+  
+  private boolean updateKubeConfig(Provider provider, Region region, Map<String, String> config, boolean edit) {
+    return updateKubeConfig(provider, region, null, config, edit);
+  }
+
+  private boolean updateKubeConfig(Provider provider, Region region, AvailabilityZone zone, Map<String, String> config, boolean edit) {
+    String kubeConfigFile = null;
+    String pullSecretFile = null;
+
+    if (config == null) {
+      return false;
+    }
+
+    String path = provider.uuid.toString();
+    if (region != null) {
+      path = path + "/" + region.uuid.toString();
+      if (zone != null) {
+        path = path + "/" + zone.uuid.toString();
+      }
+    }
+    boolean hasKubeConfig = config.containsKey("KUBECONFIG_NAME");
+    if (hasKubeConfig) {
+      try {
+        kubeConfigFile = accessManager.createKubernetesConfig(
+            path, config, edit
+        );
+
+        // Remove the kubeconfig file related configs from provider config.
+        config.remove("KUBECONFIG_NAME");
+        config.remove("KUBECONFIG_CONTENT");
+
+        if (kubeConfigFile != null) {
+          config.put("KUBECONFIG", kubeConfigFile);
+        }
+        
+      } catch (IOException e) {
+        LOG.error(e.getMessage());
+        throw new RuntimeException("Unable to create Kube Config file.");
+      }
+    }
+
+    if (region == null) {
+      if (config.containsKey("KUBECONFIG_PULL_SECRET_NAME")) {
+        if (config.get("KUBECONFIG_PULL_SECRET_NAME") != null) {
+          try {
+            pullSecretFile = accessManager.createPullSecret(
+                provider.uuid, config, edit
+            );
+          } catch (IOException e) {
+            LOG.error(e.getMessage());
+            throw new RuntimeException("Unable to create Pull Secret file.");
+          }
+        }
+      }
+      config.remove("KUBECONFIG_PULL_SECRET_NAME");
+      config.remove("KUBECONFIG_PULL_SECRET_CONTENT");
+      if (pullSecretFile != null) {
+        config.put("KUBECONFIG_PULL_SECRET", pullSecretFile);
+      }
+
+      provider.setConfig(config);
+    } else if (zone == null) {
+      region.setConfig(config);
+    } else {
+      zone.setConfig(config);
+    }
+    return hasKubeConfig;
   }
 
   private void updateGCPConfig(Provider provider, Map<String,String> config) {
@@ -237,8 +404,9 @@ public class CloudProviderController extends AuthenticatedController {
   /* Function to create Commissioner task for provisioning K8s providers
   // Will also be helpful to provision regions/AZs in the future
   */
-  private void kubernetesProvision(Provider provider, UUID customerUUID) {
-    CloudTaskParams taskParams = new CloudTaskParams();
+  private void kubernetesProvision(Provider provider, Map<String, String> config, UUID customerUUID) {
+    KubernetesClusterInitParams taskParams = new KubernetesClusterInitParams();
+    taskParams.config = config;
     taskParams.providerUUID = provider.uuid;
     Customer customer = Customer.get(customerUUID);
     UUID taskUUID = commissioner.submit(TaskType.KubernetesProvision, taskParams);
@@ -249,51 +417,6 @@ public class CloudProviderController extends AuthenticatedController {
       CustomerTask.TaskType.Create,
       provider.name);
 
-  }
-
-  private void updateKubeConfig(Provider provider, Map<String, String> config, boolean edit) {
-    String kubeConfigFile = null;
-    String pullSecretFile = null;
-    try {
-      kubeConfigFile = accessManager.createKubernetesConfig(
-          provider.uuid, config, edit
-      );
-    } catch (IOException e) {
-      LOG.error(e.getMessage());
-      throw new RuntimeException("Unable to create Kube Config file.");
-    }
-    if (config.containsKey("KUBECONFIG_PULL_SECRET_NAME")) {
-      if (config.get("KUBECONFIG_PULL_SECRET_NAME") != null) {
-        try {
-          pullSecretFile = accessManager.createPullSecret(
-              provider.uuid, config, edit
-          );
-        } catch (IOException e) {
-          LOG.error(e.getMessage());
-          throw new RuntimeException("Unable to create Pull Secret file.");
-        }
-      }
-    }
-    // Remove the kubeconfig file related configs from provider config.
-    config.remove("KUBECONFIG_NAME");
-    config.remove("KUBECONFIG_CONTENT");
-    // Update the KUBECONFIG variable with file path.
-
-    config.remove("KUBECONFIG_PULL_SECRET_NAME");
-    config.remove("KUBECONFIG_PULL_SECRET_CONTENT");
-    
-    if (kubeConfigFile != null) {
-      config.put("KUBECONFIG", kubeConfigFile);
-    }
-    if (pullSecretFile != null) {
-      config.put("KUBECONFIG_PULL_SECRET", pullSecretFile);
-    }
-    if (!edit) {
-      provider.setConfig(config);
-    } else {
-      provider.updateConfig(config);
-    }
-    provider.save();
   }
 
   // TODO: This is temporary endpoint, so we can setup docker, will move this
