@@ -44,11 +44,16 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   ArgumentCaptor<ArrayList> command;
   ArgumentCaptor<HashMap> config;
+  Map<String, String> configProvider = new HashMap<String, String>();
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.kubernetes);
+    configProvider.put("KUBECONFIG_SERVICE_ACCOUNT", "demo-account");
+    configProvider.put("KUBECONFIG", "test");
+    defaultProvider.setConfig(configProvider);
+    defaultProvider.save();
     command = ArgumentCaptor.forClass(ArrayList.class);
     config = ArgumentCaptor.forClass(HashMap.class);
   }
@@ -60,20 +65,20 @@ public class KubernetesManagerTest extends FakeDBApplication {
     int numOfCalls = 1;
     switch(commandType) {
       case HELM_INIT:
-        kubernetesManager.helmInit(defaultProvider.uuid);
+        kubernetesManager.helmInit(configProvider, defaultProvider.uuid);
         break;
       case HELM_INSTALL:
-        kubernetesManager.helmInstall(defaultProvider.uuid, "demo-universe",
+        kubernetesManager.helmInstall(configProvider, defaultProvider.uuid, "demo-universe",
             "/tmp/override.yml");
         break;
       case POD_INFO:
-        kubernetesManager.getPodInfos(defaultProvider.uuid, "demo-universe");
+        kubernetesManager.getPodInfos(configProvider, "demo-universe");
         break;
       case HELM_DELETE:
-        kubernetesManager.helmDelete(defaultProvider.uuid, "demo-universe");
+        kubernetesManager.helmDelete(configProvider, "demo-universe");
         break;
       case VOLUME_DELETE:
-        kubernetesManager.deleteStorage(defaultProvider.uuid, "demo-universe");
+        kubernetesManager.deleteStorage(configProvider, "demo-universe");
         numOfCalls = 2;
         break;
     }
@@ -84,12 +89,8 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   @Test
   public void testHelmInitWithRequiredConfig() {
-    Map<String, String> providerConfig = new HashMap<>();
-    providerConfig.put("KUBECONFIG_SERVICE_ACCOUNT", "demo-account");
-    defaultProvider.setConfig(providerConfig);
-    defaultProvider.save();
     runCommand(KubernetesCommandExecutor.CommandType.HELM_INIT);
-    assertEquals(providerConfig, config.getValue());
+    assertEquals(configProvider, config.getValue());
     assertEquals(ImmutableList.of("helm", "init", "--service-account", "demo-account", "--upgrade", "--wait"),
         command.getValue());
   }
@@ -112,7 +113,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
         "--namespace", "demo-universe", "--name", "demo-universe", "-f",
         "/tmp/override.yml", "--wait"),
         command.getValue());
-    assertTrue(config.getValue().isEmpty());
+    assertEquals(config.getValue(), configProvider);
   }
 
   @Test
@@ -130,7 +131,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
     assertEquals(ImmutableList.of("kubectl", "get", "pods",
         "--namespace", "demo-universe", "-o", "json",  "-l", "release=demo-universe"),
         command.getValue());
-    assertTrue(config.getValue().isEmpty());
+    assertEquals(config.getValue(), configProvider);
   }
 
   @Test
@@ -138,7 +139,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
     runCommand(KubernetesCommandExecutor.CommandType.HELM_DELETE);
     assertEquals(ImmutableList.of("helm", "delete", "demo-universe", "--purge"),
         command.getValue());
-    assertTrue(config.getValue().isEmpty());
+    assertEquals(config.getValue(), configProvider);
   }
 
   @Test
@@ -150,12 +151,12 @@ public class KubernetesManagerTest extends FakeDBApplication {
         ImmutableList.of("kubectl", "delete", "pvc",
             "--namespace", "demo-universe", "-l", "app=yb-tserver")),
         command.getAllValues());
-    assertTrue(config.getValue().isEmpty());
+    assertEquals(config.getValue(), configProvider);
   }
 
   @Test
   public void getMasterServiceIPs() {
-      kubernetesManager.getServiceIPs(defaultProvider.uuid, "demo-universe", true);
+      kubernetesManager.getServiceIPs(configProvider, "demo-universe", true);
       Mockito.verify(shellProcessHandler, times(1))
           .run(command.capture(), (Map<String, String>) config.capture());
       assertEquals(ImmutableList.of("kubectl", "get", "svc",
@@ -165,7 +166,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   @Test
   public void getTserverServiceIPs() {
-    kubernetesManager.getServiceIPs(defaultProvider.uuid, "demo-universe", false);
+    kubernetesManager.getServiceIPs(configProvider, "demo-universe", false);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture());
     assertEquals(ImmutableList.of("kubectl", "get", "svc",
@@ -176,7 +177,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
   @Test
   public void initYSQL() {
     String masterAddresses = "yb-master-0,yb-master-1,yb-master-2";
-    kubernetesManager.initYSQL(defaultProvider.uuid, "demo-universe", masterAddresses);
+    kubernetesManager.initYSQL(configProvider, "demo-universe", masterAddresses);
     Mockito.verify(shellProcessHandler, times(1))
       .run(command.capture(), (Map<String, String>) config.capture());
     assertEquals(ImmutableList.of("kubectl", "--namespace", "demo-universe", "exec", "yb-tserver-0", "--", "bash", "-c",

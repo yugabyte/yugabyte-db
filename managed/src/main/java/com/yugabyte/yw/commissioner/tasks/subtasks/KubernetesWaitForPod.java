@@ -71,6 +71,7 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
     // so we would need that for any sort helm operations.
     public String nodePrefix;
     public String podName = null;
+    public Map<String, String> config = null;
   }
 
   protected KubernetesWaitForPod.Params taskParams() {
@@ -85,13 +86,16 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
         int iters = 0;
         String status;
         do {
+          status = waitForPod();
+          iters++;
+          if (status.equals("Running")) {
+            break;
+          }
           try {
             TimeUnit.SECONDS.sleep(SLEEP_TIME);
           } catch (InterruptedException ex) {
             // Do nothing
           }
-          status = waitForPod();
-          iters++;
         } while (!status.equals("Running") && iters < MAX_ITERS);
         if (MAX_ITERS > 10) {
           throw new RuntimeException("Pod " + taskParams().podName + " creation taking too long.");
@@ -102,8 +106,8 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
 
   // Waits for pods as well as the containers inside the pod.
   private String waitForPod() {
-    ShellResponse podResponse = kubernetesManager.getPodStatus(taskParams().providerUUID,
-        taskParams().nodePrefix, taskParams().podName);
+    ShellResponse podResponse = kubernetesManager.getPodStatus(taskParams().config, taskParams().nodePrefix,
+        taskParams().podName);
     JsonNode podInfo = parseShellResponseAsJson(podResponse);
     JsonNode statusNode = podInfo.path("status");
     String status = statusNode.get("phase").asText();

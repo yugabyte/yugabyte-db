@@ -1,6 +1,8 @@
 // Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.models;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -15,6 +17,7 @@ import javax.persistence.OneToMany;
 import com.avaje.ebean.*;
 import com.avaje.ebean.annotation.DbJson;
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -24,6 +27,7 @@ import play.libs.Json;
 import static com.avaje.ebean.Ebean.beginTransaction;
 import static com.avaje.ebean.Ebean.commitTransaction;
 import static com.avaje.ebean.Ebean.endTransaction;
+import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
 
 @Entity
 public class Region extends Model {
@@ -93,6 +97,36 @@ public class Region extends Model {
       return sgNode == null || sgNode.isNull() ? null : sgNode.asText();
     }
     return null;
+  }
+
+  @DbJson
+  public JsonNode config;
+
+  public void setConfig(Map<String, String> configMap) {
+    Map<String, String> currConfig = this.getConfig();
+    for (String key : configMap.keySet()) {
+      currConfig.put(key, configMap.get(key));
+    }
+    this.config = Json.toJson(currConfig);
+    this.save();
+  }
+
+  @JsonIgnore
+  public JsonNode getMaskedConfig() {
+    if (this.config == null) {
+      return Json.newObject();
+    } else {
+      return maskConfig(this.config);
+    }
+  }
+
+  @JsonIgnore
+  public Map<String, String> getConfig() {
+    if (this.config == null) {
+      return new HashMap();
+    } else {
+      return Json.fromJson(this.config, Map.class);
+    }
   }
 
   /**
