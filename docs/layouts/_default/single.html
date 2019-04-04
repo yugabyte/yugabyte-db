@@ -22,10 +22,9 @@
 		</div>
 
 		<article class="article">
-			<div class="content-flex-wrapper">
-
-				<div class="content-flex-container">
-					<div class="wrapper">
+			<div class="wrapper">
+				<div class="content-flex-wrapper">
+					<div class="content-flex-container">
 						{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}
 
 						<h1>{{ .Description }} {{ if .IsDraft }} (Draft){{ end }}{{ if .Page.Params.beta }}<a class="tag-beta" href="{{ .Page.Params.beta }}">Beta</a>{{ end }}</h1>
@@ -36,21 +35,22 @@
 						{{ .TableOfContents }}
 						{{ end }}
 						{{ .Content }}
-					</div>			
+					</div>		
+					
+					{{if (and (.Params.showAsideToc) (ne (print .TableOfContents) "")) }}
+					<div class="menu-flex-container">
+						<div class="toc-container" id="toc-aside">{{ .TableOfContents }}</div>
+					</div>
+					{{ end }}	
+				</div>	
+			</div>	
 
-					{{if not (.Params.hidePagination) }}
-						{{ partial "pagination" . }}
-					{{ end }}
-
-					{{ partial "footer_links" . }}
-					<!--{{ partial "feedback" . }}-->
-				</div>
-				{{if (and (.Params.showAsideToc) (ne (print .TableOfContents) "")) }}
-				<div class="menu-flex-container">
-					<div class="toc-container" id="toc-aside">{{ .TableOfContents }}</div>
-				</div>
+				{{if not (.Params.hidePagination) }}
+					{{ partial "pagination" . }}
 				{{ end }}
-			</div>
+
+				{{ partial "footer_links" . }}
+				<!--{{ partial "feedback" . }}-->
 		</article>
 
 		<div class="results" role="status" aria-live="polite">
