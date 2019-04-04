@@ -121,9 +121,19 @@ class ScopedLeaderSharedLock {
   template<typename RespClass>
   bool CheckIsInitializedAndIsLeaderOrRespondTServer(RespClass* resp, rpc::RpcContext* rpc);
 
+  // If set_error is false, then the error field of resp should not be set.
+  template<typename RespClass>
+  bool CheckIsInitializedOrRespondTServer(RespClass* resp, rpc::RpcContext* rpc,
+                                          bool set_error = true);
+
  private:
   template<typename RespClass, typename ErrorClass>
   bool CheckIsInitializedAndIsLeaderOrRespondInternal(RespClass* resp, rpc::RpcContext* rpc);
+
+  template<typename RespClass, typename ErrorClass>
+  bool CheckIsInitializedOrRespondInternal(RespClass* resp, rpc::RpcContext* rpc,
+                                           bool set_error = true);
+
   CatalogManager* catalog_;
   shared_lock<RWMutex> leader_shared_lock_;
   Status catalog_status_;

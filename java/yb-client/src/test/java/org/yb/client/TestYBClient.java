@@ -123,18 +123,61 @@ public class TestYBClient extends BaseYBClientTest {
     assertTrue(isBalanced);
   }
 
+  private void testServerReady(HostAndPort hp, boolean isTserver) throws Exception {
+    testServerReady(hp, isTserver, false /* slowMaster */);
+  }
+
+  private void testServerReady(HostAndPort hp, boolean isTserver, boolean slowMaster)
+      throws Exception {
+    IsServerReadyResponse resp = syncClient.isServerReady(hp, isTserver);
+    assertFalse(resp.hasError());
+    assertEquals(resp.getNumNotRunningTablets(), slowMaster ? 1 : 0);
+    assertEquals(resp.getCode(), TabletServerErrorPB.Code.UNKNOWN_ERROR);
+    assertEquals(resp.getTotalTablets(), isTserver ? 0 : 1);
+  }
+
   /**
    * Test to check tserver readiness status.
    * @throws Exception
    */
   @Test(timeout = 100000)
   public void testTServerReady() throws Exception {
-    HostAndPort thp = miniCluster.getTabletServers().entrySet().iterator().next().getKey();
-    IsTabletServerReadyResponse resp = syncClient.isTServerReady(thp);
-    assertFalse(resp.hasError());
-    assertEquals(resp.getNumNotRunningTablets(), 0);
-    assertEquals(resp.getCode(), TabletServerErrorPB.Code.UNKNOWN_ERROR);
-    assertEquals(resp.getTotalTablets(), 0);
+    for (HostAndPort thp : miniCluster.getTabletServers().keySet()) {
+      testServerReady(thp, true);
+    }
+  }
+
+  /**
+   * Test to check master readiness status.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testMasterReady() throws Exception {
+    for (HostAndPort mhp : miniCluster.getMasters().keySet()) {
+      testServerReady(mhp, false);
+    }
+  }
+
+  /**
+   * Test to check master not ready status.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testMasterNotReady() throws Exception {
+    destroyMiniCluster();
+    List<String> masterArgs = new ArrayList<String>();
+    masterArgs.add("--simulate_slow_system_tablet_bootstrap_secs=20");
+    List<List<String>> tserverArgs = new ArrayList<List<String>>();
+    int numServers = 3;
+    for (int i = 1; i <= numServers; i++) {
+      tserverArgs.add(Arrays.asList());
+    }
+    createMiniCluster(numServers, masterArgs, tserverArgs);
+    miniCluster.restart(false /* waitForMasterLeader */);
+
+    for (HostAndPort mhp : miniCluster.getMasters().keySet()) {
+      testServerReady(mhp, false, true);
+    }
   }
 
   /**

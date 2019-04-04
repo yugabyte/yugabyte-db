@@ -295,6 +295,10 @@ public class MiniYBDaemon {
     return HostAndPort.fromParts(bindIp, webPort);
   }
 
+  public HostAndPort getHostAndPort() {
+    return HostAndPort.fromParts(bindIp, rpcPort);
+  }
+
   public int getWebPort() {
     return webPort;
   }
