@@ -1,14 +1,14 @@
 /* Copyright (c) YugaByte, Inc. */
 
 .dl-normal {
-  margin-top: 20px;
+  margin-top: 0px;
   margin-bottom: 0px;
 }
 
 @media (min-width: 768px) {
   .dl-normal {
-    margin-top: 20px;
-    margin-bottom: 10px;
+    margin-top: 0px;
+    margin-bottom: 0px;
   }
 
   .dl-normal dt {
@@ -19,7 +19,6 @@
     text-align: left;
     text-overflow: ellipsis;
     white-space: nowrap;
-    letter-spacing: -.03em;
   }
 
   .dl-normal dd {

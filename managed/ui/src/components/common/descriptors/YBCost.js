@@ -13,7 +13,7 @@ export default class YBCost extends Component {
   }
 
   render() {
-    const {value, multiplier} = this.props;
+    const {value, multiplier } = this.props;
     let finalCost = value || 0;
     if (multiplier === "day") {
       finalCost *= 24;
@@ -22,10 +22,8 @@ export default class YBCost extends Component {
       finalCost = finalCost * 24 * moment().daysInMonth();
     }
     return (
-      <div>
-        <YBFormattedNumber value={finalCost} maximumFractionDigits={2}
-          formattedNumberStyle="currency" currency="USD" multiplier={multiplier}/>
-      </div>
+      <YBFormattedNumber value={finalCost} maximumFractionDigits={2}
+        formattedNumberStyle="currency" currency="USD" multiplier={multiplier}/>
     );
   }
 }

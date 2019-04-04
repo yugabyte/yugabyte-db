@@ -28,6 +28,30 @@
   font-size: 1.4em;
 }
 
+.text-normal {
+  font-weight: 400;
+}
+
+.text-light {
+  font-weight: 300;
+}
+
+.text-red {
+  color: $YB_FAIL_COLOR;
+}
+
+.text-green {
+  color: $YB_SUCCESS_COLOR;
+}
+
+.text-dark {
+  color: $YB_TEXT_COLOR;
+}
+
+.text-lightgray {
+  color: $YB_SUBTITLE_COLOR;
+}
+
 .btn-primary {
   background-color: $YB_ORANGE ;
   border-color: $YB_ORANGE;

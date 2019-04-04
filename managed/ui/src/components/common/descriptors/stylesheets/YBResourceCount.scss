@@ -3,29 +3,39 @@
 @import "_style/colors.scss";
 
 .yb-resource-count {
-  text-align: left;
-  margin-right: 40px;
   min-width: 70px;
   white-space: nowrap;
   position: relative;
   padding: 0;
   
   .yb-resource-count-size {
-    font-size: 28px;
+    font-size: 32px;
     line-height: 30px;
     font-weight: 600;
-    color: $YB_VIOLET_TEXT;
+    color: $YB_VIOLET_TEXT_NEW;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .yb-resource-count-unit {
     font-size: 14px;
     line-height: 14px;
     font-weight: 400;
-    color: $YB_VIOLET_TEXT;
+    color: $YB_VIOLET_TEXT_NEW;
   }
 
   .yb-resource-count-kind {
     font-size: 14px;
     font-weight: 300;
+  }
+
+  &.yb-resource-count-inline {
+    .yb-resource-count-size > div {
+      display: inline;
+    }
+    .yb-resource-count-kind {
+      display: inline;
+      font-size: 18px;
+    }
   }
 }

@@ -69,7 +69,7 @@ export default class NodeDetailsTable extends Component {
         header={
           <div>
             <div className='pull-right'>
-              { nodeIPs && <NodeConnectModal nodeIPs={nodeIPs} providerUUID={providerUUID} />}
+              <NodeConnectModal nodeIPs={nodeIPs} providerUUID={providerUUID} />
             </div>
             <h2 className='content-title'>{panelTitle}</h2>
           </div>

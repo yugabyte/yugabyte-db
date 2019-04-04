@@ -150,7 +150,7 @@ export default class UniverseOverview extends Component {
             <Row>
               {this.getInfoWidgets(universeInfo)}
               {this.getRegionMapWidget(currentUniverse)}
-              <OverviewMetricsContainer type={"overview"} origin={"universe"}
+              <OverviewMetricsContainer universeUuid={universeInfo.universeUUID} type={"overview"} origin={"universe"}
                     width={width} nodePrefixes={nodePrefixes} />
             </Row>
           </div>
