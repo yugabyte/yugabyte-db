@@ -4,7 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.IsTabletServerReadyResponse;
+import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
 import org.yb.tserver.Tserver.TabletServerErrorPB;
 
@@ -87,13 +87,6 @@ public class WaitForServerReady extends AbstractTaskBase {
     int userWaitTimeMs = taskParams().waitTimeMs != 0 ? taskParams().waitTimeMs :
                              RollingRestartParams.DEFAULT_SLEEP_AFTER_RESTART_MS;
 
-    // Need not perform any rpc for MASTER.
-    if (taskParams().serverType == ServerType.MASTER) {
-      LOG.info("Waiting for master on " + taskParams().nodeName);
-      sleepFor(userWaitTimeMs);
-      return;
-    }
-
     String masterAddresses = Universe.get(taskParams().universeUUID).getMasterAddresses();
     LOG.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
 
@@ -110,18 +103,31 @@ public class WaitForServerReady extends AbstractTaskBase {
                                          "universe " + taskParams().universeUUID);
     }
 
-    if (taskParams().serverType == ServerType.TSERVER && !node.isTserver) {
+    if (taskParams().serverType != ServerType.TSERVER &&
+        taskParams().serverType != ServerType.MASTER) {
+      throw new IllegalArgumentException("Unexpected server type " + taskParams().serverType +
+          " for universe " + taskParams().universeUUID);
+    }
+
+    boolean isTserverTask = taskParams().serverType == ServerType.TSERVER;
+    if (isTserverTask && !node.isTserver) {
       throw new IllegalArgumentException("Task server type " + taskParams().serverType + " is " +
                                          "not for a node running tserver : " + node.toString());
     }
 
-    HostAndPort hp = HostAndPort.fromParts(node.cloudInfo.private_ip, node.tserverRpcPort);
+    if (!isTserverTask && !node.isMaster) {
+      throw new IllegalArgumentException("Task server type " + taskParams().serverType + " is " +
+                                         "not for a node running master : " + node.toString());
+    }
 
-    IsTabletServerReadyResponse response = null;
+    HostAndPort hp = HostAndPort.fromParts(node.cloudInfo.private_ip,
+        isTserverTask ? node.tserverRpcPort : node.masterRpcPort);
+
+    IsServerReadyResponse response = null;
     try {
       while (true) {
         numIters++;
-        response = client.isTServerReady(hp);
+        response = client.isServerReady(hp, isTserverTask);
 
         if (response.hasError()) {
           LOG.info("Response has error {} after iters={}.",

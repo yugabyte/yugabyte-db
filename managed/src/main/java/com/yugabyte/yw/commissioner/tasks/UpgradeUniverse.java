@@ -18,6 +18,8 @@ import org.slf4j.LoggerFactory;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.models.Universe;
 
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpgradeSoftware;
@@ -166,10 +168,9 @@ public class UpgradeUniverse extends UniverseTaskBase {
       }
     } else {
       createMultipleNodeUpgradeTasks(nodes, processType);
+      createWaitForServersTasks(nodes, processType)
+         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
-
-    createWaitForServersTasks(nodes, processType)
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   private void createDownloadTasks(List<NodeDetails> nodes) {
@@ -223,6 +224,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     }
 
     createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
+    createWaitForServersTasks(new HashSet<NodeDetails>(Arrays.asList(node)), processType);
     createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
         .setSubTaskGroupType(subGroupType);
     createSetNodeStateTask(node, NodeDetails.NodeState.Live).setSubTaskGroupType(subGroupType);
