@@ -27,7 +27,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.Common;
-import org.yb.client.IsTabletServerReadyResponse;
+import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
@@ -49,6 +49,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyBoolean;
 import static org.mockito.Matchers.anyLong;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
@@ -99,9 +100,9 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any())).thenReturn(mockClient);
-    IsTabletServerReadyResponse okReadyResp = new IsTabletServerReadyResponse(0, "", null, 0, 0);
+    IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     try {
-      when(mockClient.isTServerReady(any(HostAndPort.class))).thenReturn(okReadyResp);
+      when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
     } catch (Exception ex) {}
   }
 
