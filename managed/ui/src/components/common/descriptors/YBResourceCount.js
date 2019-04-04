@@ -25,21 +25,22 @@ export default class YBResourceCount extends PureComponent {
   }
 
   render() {
-    const {size, kind, unit, pluralizeKind, className, pluralizeUnit} = this.props;
+    const {size, kind, unit, inline, pluralizeKind, className, pluralizeUnit} = this.props;
     const displayUnit = unit && pluralizeUnit ?
       ((size === 1) ? unit : (this.props.unitPlural || this.pluralize(unit))) :
       unit;
     const displayKind = kind && pluralizeKind ?
       ((size === 1) ? kind : (this.props.kindPlural || this.pluralize(kind))) :
       kind;
+    const classNames = (inline ? "yb-resource-count-inline " : null) + className;
 
     return (
-      <div className={"yb-resource-count "+className}>
+      <div className={"yb-resource-count "+classNames}>
         <div className="yb-resource-count-size">
-          {size}
+          {size} {kind && inline && <div className="yb-resource-count-kind">{displayKind}</div>}
           {displayUnit && <span className="yb-resource-count-unit">{displayUnit}</span>}
         </div>
-        {kind && <div className="yb-resource-count-kind">{displayKind}</div>}
+        {kind && !inline && <div className="yb-resource-count-kind">{displayKind}</div>}
       </div>
     );
   }

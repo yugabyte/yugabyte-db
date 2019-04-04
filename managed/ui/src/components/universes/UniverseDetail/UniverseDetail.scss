@@ -251,7 +251,7 @@ h2 {
   line-height: 44px;
 }
 
-.universe-details-new {
+.universe-details {
 
   .content-panel {
     > .header {
@@ -352,6 +352,12 @@ h2 {
   }
 }
 
+.universe-details-new {
+  .leaflet-container {
+    height: 360px;
+  }
+}
+
 .operating-costs {
   position: relative;
   border: none;
@@ -376,5 +382,174 @@ h2 {
 
   .yb-resource-count-kind {
     text-align: right;
+  }
+}
+
+.widget-panel {
+  .overview-widget-database {
+    .dl-stack {
+      margin-left: -10px;
+      
+      .btn-copy-round {
+        position: absolute;
+        top: -2px;
+        right: -2px;
+      }
+    }
+    .centered {
+      .btn {
+        margin-top: 25px;
+        max-width: 80%;
+        width: 140px;
+      }
+      .yb-resource-count-size {
+        letter-spacing: -0.03em;
+      }
+    }
+  }
+
+  &.overview-widget-tables {
+    .yb-resource-count-size {
+      margin-top: 25px;
+    }
+  }
+
+
+  &.overview-widget-cost {
+    .body .flex-cnt {
+      height: 93px;
+    }
+  }
+
+  &.overview-widget-cluster-primary {
+    .body .flex-cnt {
+      height: 120px;
+    }
+    .fa-info {
+      cursor: pointer;
+      font-size: 14px !important;
+      line-height: 18px;
+      color: white;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background-color: $YB_SUBTITLE_COLOR;
+      text-align: center;
+      top: 0 !important;
+    }
+    .dl-inline {
+      text-align: left;
+    }
+  }
+
+  .centered {
+    .yb-resource-count {
+      margin-top: 10px;
+    }
+  }
+}
+
+.health-check-legend {
+
+  .fa {
+    margin-right: 5px;
+  }
+}
+
+#health-heart {
+  position: relative;
+  margin-top: 5px;
+
+  .fa-heart {
+    font-size: 48px;
+    color: $YB_GRAY_HOVER;
+  }
+  #health-heartbeat {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    margin-left: -33px;
+
+    svg {
+      height: 26px;
+      width: auto;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    polyline{
+      stroke: $YB_SUCCESS_COLOR;
+      stroke-width: 3px;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+      stroke-dasharray: 150, 200;
+      stroke-dashoffset: 0;
+      animation: pulse 15s infinite linear;
+    }
+  }
+  
+  #health-droplet {
+    position: absolute;
+    top: 15px;
+    left: 50%;
+    margin-left: -23px;
+
+    svg {
+      height: 24px;
+      width: auto;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transform-origin: 50% 0;
+      transform: scale(0.01, 0.01);
+      animation: droplet 3s forwards linear;
+    }
+
+    path{
+      stroke: $YB_FAIL_COLOR;
+      stroke-width: 3px;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: $YB_FAIL_COLOR;
+      stroke-dasharray: 150, 200;
+      stroke-dashoffset: 0;
+    }
+  }
+}
+
+@keyframes pulse {
+  0% {
+    stroke-dashoffset: -200;
+    opacity: 1;
+  }
+  7% {
+    stroke-dashoffset: 0;
+  }
+  93% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes droplet {
+  0% {
+    transform: scale(0.01, 0.01);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.01, 0.01);
+    opacity: 0;
+  }
+  80% {
+    transform: scale(0.5, 0.5);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1, 1);
+    opacity: 1;
   }
 }

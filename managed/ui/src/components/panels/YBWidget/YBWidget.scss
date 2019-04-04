@@ -10,7 +10,7 @@
   background-color: #fff;
   border-radius: 7px;
   margin-bottom: 25px;
-  height: 180px;
+  height: 190px;
   overflow: hidden;
 
   > .header {
@@ -19,17 +19,28 @@
     border-bottom: 1px solid $YB_BACKGROUND;
     overflow: hidden;
     line-height: 45px;
-    font-family: 'Montserrat', 'Helvetica Neue', sans-serif;
-    font-weight: 500;
     font-size: 14px;
 
     .left {
       color: $YB_TEXT_COLOR;
       text-align: left;
+      font-family: 'Montserrat', 'Helvetica Neue', sans-serif;
+      font-weight: 500;
     }
 
     .right {
       text-align: right;
+      font-weight: 300;
+      color: $YB_SUBTITLE_COLOR;
+
+      .fa {
+        font-size: 18px;
+        position: relative;
+        top: 1px;
+      }
+    }
+    a {
+      cursor: pointer;
     }
   }
 
@@ -37,7 +48,7 @@
     position: relative;
     padding: 10px 20px 15px 20px;
     margin: 0;
-    min-height: 134px;
+    min-height: 144px;
 
     &.body-no-margin {
       padding: 0;
@@ -45,39 +56,16 @@
   }
   
   &.widget-panel-row-2 {
-    height: 385px;
+    height: 405px;
     > .body {
-      min-height: 339px;
+      min-height: 359px;
     }
   }
 
   &.widget-panel-row-3 {
     height: 570px;
     > .body {
-      min-height: 524px;
-    }
-  }
-
-  .dl-normal {
-    margin: 0;
-    padding: 0;
-  
-    dd, dt {
-      font-weight: 400;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-      overflow: hidden;
-      line-height: 22px;
-    }
-
-    dt {
-      color: $YB_SUBTITLE_COLOR;
-      font-weight: 400;
-      float: left;
-      overflow: hidden;
-      clear: left;
-      width: 130px;
-      text-align: left;
+      min-height: 584px;
     }
   }
 }

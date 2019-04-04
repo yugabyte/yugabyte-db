@@ -13,7 +13,12 @@ import './NodeConnectModal.scss';
 
 class NodeConnectModal extends Component {
   static propTypes = {
-    nodeIPs: PropTypes.array.isRequired
+    nodeIPs: PropTypes.array,
+    providerUUID: PropTypes.string.isRequired
+  };
+
+  static defaultProps = {
+    nodeIPs: []
   };
 
   constructor(props) {
@@ -28,7 +33,7 @@ class NodeConnectModal extends Component {
   render() {
     const { nodeIPs, hostInfo, accessKeys, providerUUID } = this.props;
     if (isEmptyArray(nodeIPs) || !getPromiseState(accessKeys).isSuccess()) {
-      return <span />;
+      return <YBButton btnText={"Connect"} disabled={true} btnClass={"btn btn-disabled"}/>;
     }
 
     let fromAdminMsg = "From Admin host: ";
@@ -67,7 +72,7 @@ class NodeConnectModal extends Component {
     });
     return (
       <div className="node-connect-modal">
-        <YBButton btnText={"Connect"} btnClass={"btn btn-default"} onClick={this.toggleConnectModal}/>
+        <YBButton btnText={"Connect"} btnClass={"btn btn-orange"} onClick={this.toggleConnectModal}/>
         <YBModal title={"Access your Cluster"}
                  visible={this.state.showConnectModal}
                  onHide={this.toggleConnectModal}
