@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { MetricsPanelOverview, DiskUsagePanel } from '../';
+import { MetricsPanelOverview } from '../';
 import './OverviewMetrics.scss';
 import { YBLoading } from '../../common/indicators';
 import { isNonEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
@@ -16,7 +16,8 @@ const panelTypes = {
     metrics: ["cql_server_rpc_per_second",
       "cql_sql_latency",
       "redis_rpcs_per_sec_all",
-      "redis_ops_latency_all", "cpu_usage", 
+      "redis_ops_latency_all", 
+      "cpu_usage", 
       "disk_usage", "memory_usage"]}
 };
 
@@ -32,15 +33,6 @@ class OverviewMetrics extends Component {
 
   componentDidMount() {
     this.queryMetricsType(this.props.graph.graphFilter);
-  }
-
-  componentWillReceiveProps(nextProps) {
-    // Perform metric query only if the graph filter has changed.
-    // TODO: add the nodePrefixes to the queryParam
-    if(nextProps.graph.graphFilter !== this.props.graph.graphFilter) {
-      this.props.resetMetrics();
-      this.queryMetricsType(nextProps.graph.graphFilter);
-    }
   }
 
   queryMetricsType = graphFilter => {
@@ -73,7 +65,7 @@ class OverviewMetrics extends Component {
   }
 
   render() {
-    const { type, graph: { metrics }} = this.props;
+    const { type, graph: { metrics } } = this.props;
     let panelItem = panelTypes[type].metrics.map(function(metricKey, idx) {
       return (<Col lg={4} md={6} sm={6} xs={12} key={idx}><YBWidget key={type+idx}
         noMargin
@@ -89,8 +81,9 @@ class OverviewMetrics extends Component {
       and group metrics by panel type and filter out anything that is empty.
       */
       const width = this.props.width;
-      panelItem = panelTypes[type].metrics.map(function(metricKey, idx) {
-        if(isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error) {
+      panelItem = panelTypes[type].metrics.map((metricKey, idx) => {
+        // skip disk_usage and cpu_usage due to separate widget
+        if(isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error && metricKey !== "disk_usage" && metricKey !== "cpu_usage") {
           const legendData = [];
           for(let idx=0; idx < metrics[type][metricKey].data.length; idx++){
             metrics[type][metricKey].data[idx].line = {
@@ -107,15 +100,10 @@ class OverviewMetrics extends Component {
               <YBWidget
                 noMargin
                 headerRight={
-                  metricKey === "disk_usage" ? null :
                   <YBPanelLegend data={legendData} />
                 }
                 headerLeft={metrics[type][metricKey].layout.title}
-                body={metricKey === "disk_usage" ?
-                  <DiskUsagePanel 
-                    metric={metrics[type][metricKey]}
-                    className={"disk-usage-container"}
-                  /> :
+                body={
                   <MetricsPanelOverview 
                     metricKey={metricKey}
                     metric={metrics[type][metricKey]}

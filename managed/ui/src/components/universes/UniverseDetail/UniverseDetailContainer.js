@@ -90,8 +90,8 @@ function mapStateToProps(state, ownProps) {
             
             const currentVersion = current[0];
             const iteratorVersion = iterator[0];
-            const currentBuild = parseInt(current[1].substr(1), 10);
-            const iteratorBuild = parseInt(iterator[1].substr(1), 10);
+            const currentBuild = current[1] ? parseInt(current[1].substr(1), 10) : "";
+            const iteratorBuild = iterator[1] ? parseInt(iterator[1].substr(1), 10) : "";
 
             // Compare versions till current won't be founded or founded an older one and compare release codes separately because "b9" > "b13"
             if (isFirstVersionOlder(iteratorVersion.split("."), currentVersion.split("."))

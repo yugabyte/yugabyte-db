@@ -8,7 +8,7 @@ import { CustomerMetricsPanel } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
 import { RollingUpgradeFormContainer } from 'components/common/forms';
 import { UniverseFormContainer, UniverseStatusContainer, NodeDetailsContainer,
-         DeleteUniverseContainer, UniverseAppsModal, UniverseOverviewContainer } from '../../universes';
+         DeleteUniverseContainer, UniverseAppsModal, UniverseOverviewContainer, UniverseOverviewContainerNew } from '../../universes';
 import { YBButton } from '../../common/forms/fields';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsPanel } from '../../panels';
@@ -160,7 +160,7 @@ class UniverseDetail extends Component {
       //common tabs for every universe
       ...[
         <Tab eventKey={"overview"} title="Overview" key="overview-tab" mountOnEnter={true} unmountOnExit={true}>
-          <UniverseOverviewContainer width={width} currentUniverse={currentUniverse} customer={currentCustomer} />
+          {query.layout === 'new' ? <UniverseOverviewContainerNew width={width} universe={universe} updateAvailable={updateAvailable} showSoftwareUpgradesModal={showSoftwareUpgradesModal} /> : <UniverseOverviewContainer width={width} currentUniverse={currentUniverse} customer={currentCustomer} />}
         </Tab>,
         <Tab eventKey={"tables"} title="Tables" key="tables-tab" mountOnEnter={true} unmountOnExit={true}>
           <ListTablesContainer/>
@@ -203,7 +203,7 @@ class UniverseDetail extends Component {
     );
 
     return (
-      <Grid id="page-wrapper" fluid={true} className="universe-details universe-details-new">
+      <Grid id="page-wrapper" fluid={true} className={`universe-details ${query.layout === 'new' ? "universe-details-new" : ""}`}>
         <Row>
           <Col lg={10} sm={8} xs={6}>
 

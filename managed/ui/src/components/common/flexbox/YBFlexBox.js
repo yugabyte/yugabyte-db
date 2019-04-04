@@ -3,8 +3,8 @@
 import React from 'react';
 import './YBFlexBox.scss';
 
-const FlexContainer = ({ className, ...props }) => (
-  <div className={"flex-cnt "+className} {...props}>
+const FlexContainer = ({ className, direction, ...props }) => (
+  <div className={"flex-cnt "+className} style={{flexDirection: direction ? direction : "row"}} {...props}>
     {props.children}
   </div>
 );

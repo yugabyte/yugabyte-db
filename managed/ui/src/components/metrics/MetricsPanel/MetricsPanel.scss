@@ -35,4 +35,13 @@
       margin: 10px 0;
     }
   }
+  .cpu-usage-panel {
+    .graph-body {
+      margin-top: 15px !important;
+      margin-bottom: 5px !important;
+    }
+    .yb-resource-count {
+      text-align: center;
+    }
+  }
 }

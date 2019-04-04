@@ -156,6 +156,35 @@
   }
 }
 
+.btn-copy-round {
+  height: 24px;
+  width: 24px;
+  font-size: 13px;
+  line-height: 8px;
+  border-radius: 50%;
+  text-align: center;
+
+  .fa {
+    margin-right: 0;
+  }
+
+  &:after {
+    position: absolute;
+    top: 0;
+    left: 0;    
+    font: normal normal normal 14px/1 FontAwesome;
+    content: '\F00C';
+    color: #fff;
+    text-align: center;
+    border-radius: 2px;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    opacity: 1;
+    background-color: $YB_SUCCESS_COLOR !important;
+  }
+}
+
 .btn-copy-inactive {
   &, &:focus {
     background-color: $YB_BACKGROUND !important;
@@ -210,9 +239,11 @@
 }
 
 .btn-disabled {
-  color: rgba($YB_TEXT_COLOR, 0.5) !important;
-  border-color: $YB_GRAY_BORDER;
-  background-color: $YB_GRAY_HOVER;
+  &, &:hover, &:focus {
+    color: rgba($YB_TEXT_COLOR, 0.5) !important;
+    border-color: transparent;
+    background-color: $YB_GRAY_HOVER;
+  }
 }
 
 .btn-group {

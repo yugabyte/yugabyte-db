@@ -15,4 +15,8 @@
   &.empty {
     opacity: 0.5;
   }
+  .yb-resource-count {
+    min-width: 70px;
+    text-align: left;
+  }
 }
