@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[Presto](http://https://prestodb.io/) is a distributed SQL query engine optimized for ad-hoc analysis at interactive speed. It supports standard ANSI SQL, including complex queries, aggregations, joins, and window functions. It has a connector architecture to query data from many data sources.
+[Presto](https://prestodb.io/) is a distributed SQL query engine optimized for ad-hoc analysis at interactive speed. It supports standard ANSI SQL, including complex queries, aggregations, joins, and window functions. It has a connector architecture to query data from many data sources.
 This page shows how Presto can be setup to query YugaByte DB's YCQL tables.
 
 ## 1. Start Local Cluster

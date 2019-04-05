@@ -22,14 +22,19 @@ You can view the tablet servers on the [tablet servers page](http://localhost:70
 
 ## 2. Start a workload
 
+Download the sample app jar.
+
+```sh
+$ wget https://github.com/YugaByte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
+```
+
 Run a simple key-value workload in a separate shell.
 
 ```sh
-$ java -jar java/yb-sample-apps.jar \
-    --workload CassandraKeyValue \
-    --nodes 127.0.0.1:9042 \
-    --num_threads_read 1 \
-    --num_threads_write 1
+$ java -jar ./yb-sample-apps.jar --workload SqlInserts \
+                                    --nodes 127.0.0.1:5433 \
+                                    --num_threads_write 1 \
+                                    --num_threads_read 4
 ```
 
 You should now see some read and write load on the [tablet servers page](http://localhost:7000/tablet-servers).

@@ -24,22 +24,24 @@ $ ./yb-docker-ctl add_node
 
 ## 2. Write some data
 
+Pull the [yb-sample-apps](https://github.com/YugaByte/yb-sample-apps) docker container. This container has built-in Java client programs for various workloads including SQL inserts and updates.
+
+```sh
+$ docker pull yugabytedb/yb-sample-apps
+```
+
 By default, the key-value sample application runs with strong read consistency where all data is read from the tablet leader. We are going to populate exactly one key with a 10KB value into the system. Since the replication factor is 5, this key will get replicated to 5 of the 7 nodes in the universe.
 
 Let us run the CQL sample key-value app to constantly update this key-value, as well as perform reads with strong consistency against the local universe.
 
 ```sh
-$ docker cp yb-master-n1:/home/yugabyte/java/yb-sample-apps.jar .
-```
-
-```sh
-$ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
-                                    --nodes localhost:9042 \
-                                    --nouuid \
-                                    --num_unique_keys 1 \
-                                    --num_threads_write 1 \
-                                    --num_threads_read 1 \
-                                    --value_size 10240
+$ docker run --name yb-sample-apps --hostname yb-sample-apps --net yb-net yugabytedb/yb-sample-apps --workload CassandraKeyValue \
+  --nodes yb-tserver-n1:9042 \
+  --nouuid \
+  --num_unique_keys 1 \
+  --num_threads_write 1 \
+  --num_threads_read 1 \
+  --value_size 10240
 ```
 
 

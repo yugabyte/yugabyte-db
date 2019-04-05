@@ -14,18 +14,19 @@ $ ./yb-docker-ctl create  --rf 3
 
 ## 2. Run sample key-value app
 
+Pull the [yb-sample-apps](https://github.com/YugaByte/yb-sample-apps) docker container. This container has built-in Java client programs for various workloads including SQL inserts and updates.
+
+```sh
+$ docker pull yugabytedb/yb-sample-apps
+```
+
 Run a simple key-value workload in a separate shell.
 
 ```sh
-$ docker cp yb-master-n1:/home/yugabyte/java/yb-sample-apps.jar .
-```
-
-```sh
-$ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
-                                    --nodes localhost:9042 \
-                                    --num_threads_write 1 \
-                                    --num_threads_read 4 \
-                                    --value_size 4096
+$ docker run --name yb-sample-apps --hostname yb-sample-apps --net yb-net yugabytedb/yb-sample-apps --workload CassandraKeyValue \
+  --nodes yb-tserver-n1:9042 \
+  --num_threads_write 1 \
+  --num_threads_read 4
 ```
 
 

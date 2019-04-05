@@ -21,16 +21,21 @@ $ ./bin/yb-ctl create
 
 ## 2. Run sample key-value app
 
+Download the sample app jar.
+
+```sh
+$ wget https://github.com/YugaByte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
+```
+
 Run a simple key-value workload in a separate shell.
 
 ```sh
-$ java -jar java/yb-sample-apps.jar \
+$ java -jar ./yb-sample-apps.jar \
     --workload CassandraKeyValue \
     --nodes 127.0.0.1:9042 \
     --num_threads_read 1 \
     --num_threads_write 1
 ```
-
 
 ## 3. Prepare Prometheus config file
 

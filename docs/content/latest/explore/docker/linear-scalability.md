@@ -20,7 +20,6 @@ Pull the [yb-sample-apps](https://github.com/YugaByte/yb-sample-apps) docker con
 $ docker pull yugabytedb/yb-sample-apps
 ```
 
-
 ```sh
 $ docker run --name yb-sample-apps --hostname yb-sample-apps --net yb-net yugabytedb/yb-sample-apps --workload SqlInserts \
 	--nodes yb-tserver-n1:5433 \

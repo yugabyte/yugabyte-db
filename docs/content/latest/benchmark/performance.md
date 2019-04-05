@@ -47,7 +47,11 @@ For this benchmark, we will setup a 3-node cluster with a replication factor of 
 
 ### Benchmark Tool
 
-We will use the `yb-sample-apps.jar` tool to perform this benchmark. You can get it from [this GitHub repository](https://github.com/YugaByte/yb-sample-apps).
+We will use the `yb-sample-apps.jar` tool to perform this benchmark. You can get it from [this GitHub repository](https://github.com/YugaByte/yb-sample-apps) as shown below.
+
+```sh
+$ wget https://github.com/YugaByte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
+```
 
 You would need to install java in order to run this tool. Also export the environment variable  $ENDPOINTS containing the IP addresses (plus port) for the nodes of the cluster.
 
@@ -63,7 +67,7 @@ Run the key-value workload with higher number of write threads (representing wri
 Load 1B keys of 256 bytes each across 256 writer threads
 
 ```sh
-$ java -jar java/yb-sample-apps.jar  \
+$ java -jar ./yb-sample-apps.jar  \
       --workload CassandraKeyValue   \
       --nodes $ENDPOINTS             \
       --nouuid                       \
@@ -89,7 +93,7 @@ Run the key-value workload with higher number of read threads (representing read
 Load 1M keys of 256 bytes and access them with 256 reader threads
 
 ```sh
-$ java -jar java/yb-sample-apps.jar  \
+$ java -jar ./yb-sample-apps.jar  \
       --workload CassandraKeyValue   \
       --nodes $ENDPOINTS             \
       --nouuid                       \
@@ -116,7 +120,7 @@ Run the key-value workload in batch mode and higher number of write threads (rep
 Load 1B keys of 256 bytes each across 64 writer threads in batches of 25 each
 
 ```sh
-$ java -jar java/yb-sample-apps.jar      \
+$ java -jar ./yb-sample-apps.jar      \
       --workload CassandraBatchKeyValue  \
       --nodes $ENDPOINTS                 \
       --nouuid                           \

@@ -6,7 +6,6 @@ If you have a previously running local universe, destroy it using the following.
 $ ./bin/yb-ctl destroy
 ```
 
-
 Start a new local universe with a replication factor of 1 (rf=1). We are passing the following options/flags:
 
 - `--rf 1` This creates a universe with a replication factor of 1.
@@ -117,10 +116,16 @@ Let us insert a key-value entry, with the value size around 2MB. Since the memst
 - `--value_size 10000000`  - Generate the value being written as a random byte string of around 10MB size.
 - `--nouuid` - Do not prefix a UUID to the key. A UUID allows multiple instances of the load tester to run without interfering with each other.
 
-You can do this as shown below.
+Download the sample app jar.
 
 ```sh
-$ java -jar java/yb-sample-apps.jar --workload CassandraKeyValue \
+$ wget https://github.com/YugaByte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
+```
+
+Run the workload.
+
+```sh
+$ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --nodes 127.0.0.1:9042 \
                                     --nouuid \
                                     --num_unique_keys 1 \

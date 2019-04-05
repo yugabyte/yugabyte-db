@@ -20,12 +20,18 @@ $ ./bin/yb-ctl add_node
 
 ## 2. Write some data
 
+Download the sample app jar.
+
+```sh
+$ wget https://github.com/YugaByte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
+```
+
 By default, the key-value sample application runs with strong read consistency where all data is read from the tablet leader. We are going to populate exactly one key with a 10KB value into the system. Since the replication factor is 3, this key will get replicated to only 3 of the 4 nodes in the universe.
 
 Let us run the Cassandra sample key-value app to constantly update this key-value, as well as perform reads with strong consistency against the local universe.
 
 ```sh
-$ java -jar ./java/yb-sample-apps.jar --workload CassandraKeyValue \
+$ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --nodes 127.0.0.1:9042 \
                                     --nouuid \
                                     --num_unique_keys 1 \
@@ -73,7 +79,7 @@ When performing strongly consistent reads as a part of the above command, all re
 Let us stop the above sample app, and run the following variant of the sample app. This command will do updates to the same key `key:0` which will go through the tablet leader, but it will reads from the replicas.
 
 ```sh
-$ java -jar ./java/yb-sample-apps.jar --workload CassandraKeyValue \
+$ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --nodes 127.0.0.1:9042 \
                                     --nouuid \
                                     --num_unique_keys 1 \
