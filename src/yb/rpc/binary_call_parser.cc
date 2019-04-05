@@ -30,7 +30,7 @@ BinaryCallParser::BinaryCallParser(
 }
 
 Result<ProcessDataResult> BinaryCallParser::Parse(
-    const rpc::ConnectionPtr& connection, const IoVecs& data) {
+    const rpc::ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full) {
   if (!call_data_.empty()) {
     RETURN_NOT_OK(listener_->HandleCall(connection, &call_data_));
     call_data_.Reset();
@@ -55,7 +55,8 @@ Result<ProcessDataResult> BinaryCallParser::Parse(
     }
     if (consumed + total_length > full_size) {
       size_t call_data_size = header_size - body_offset + data_length;
-      if (buffer_tracker_->TryConsume(call_data_size)) {
+      MemTracker* blocking_mem_tracker = nullptr;
+      if (buffer_tracker_->TryConsume(call_data_size, &blocking_mem_tracker)) {
         call_data_consumption_ = ScopedTrackedConsumption(
             buffer_tracker_, call_data_size, AlreadyConsumed::kTrue);
         call_data_ = CallData(call_data_size);
@@ -63,9 +64,9 @@ Result<ProcessDataResult> BinaryCallParser::Parse(
         size_t received_size = full_size - (consumed + body_offset);
         Slice buffer(call_data_.data() + received_size, call_data_size - received_size);
         return ProcessDataResult{ full_size, buffer };
-      } else {
+      } else if (read_buffer_full && consumed == 0) {
         LOG(WARNING) << "Unable to allocate read buffer because of limit, required: "
-                     << call_data_size;
+                     << call_data_size << ", blocked by: " << yb::ToString(blocking_mem_tracker);
       }
       break;
     }

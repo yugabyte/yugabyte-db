@@ -41,7 +41,8 @@ class BinaryCallParser {
                             size_t header_size, size_t size_offset, size_t max_message_length,
                             IncludeHeader include_header, BinaryCallParserListener* listener);
 
-  Result<ProcessDataResult> Parse(const rpc::ConnectionPtr& connection, const IoVecs& data);
+  Result<ProcessDataResult> Parse(const rpc::ConnectionPtr& connection, const IoVecs& data,
+                                  ReadBufferFull read_buffer_full);
 
  private:
   MemTrackerPtr mandatory_tracker_;
