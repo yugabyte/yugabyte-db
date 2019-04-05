@@ -259,7 +259,8 @@ class Consensus {
   // stringified Status message.
   virtual CHECKED_STATUS Update(
       ConsensusRequestPB* request,
-      ConsensusResponsePB* response) = 0;
+      ConsensusResponsePB* response,
+      CoarseTimePoint deadline) = 0;
 
   // Messages sent from CANDIDATEs to voting peers to request their vote
   // in leader election.

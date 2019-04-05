@@ -59,6 +59,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/threadpool.h"
 
+using namespace std::literals;
+
 #define TOKENPASTE(x, y) x ## y
 #define TOKENPASTE2(x, y) TOKENPASTE(x, y)
 
@@ -75,6 +77,10 @@ namespace consensus {
 using log::Log;
 using rpc::Messenger;
 using strings::Substitute;
+
+inline CoarseTimePoint CoarseBigDeadline() {
+  return CoarseMonoClock::now() + 600s;
+}
 
 inline ReplicateMsgPtr CreateDummyReplicate(int term,
                                             int index,
@@ -529,7 +535,7 @@ class LocalTestPeerProxy : public TestPeerProxy {
     Status s = peers_->GetPeerByUuid(peer_uuid_, &peer);
 
     if (s.ok()) {
-      s = peer->Update(&request, &other_peer_resp);
+      s = peer->Update(&request, &other_peer_resp, CoarseBigDeadline());
       if (s.ok() && !other_peer_resp.has_error()) {
         CHECK(other_peer_resp.has_status());
         CHECK(other_peer_resp.status().IsInitialized());

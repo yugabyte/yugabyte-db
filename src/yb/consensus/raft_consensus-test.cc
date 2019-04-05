@@ -678,7 +678,7 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
   request.mutable_committed_index()->CopyFrom(MakeOpId(3, 6));
 
   ConsensusResponsePB response;
-  ASSERT_OK(consensus_->Update(&request, &response));
+  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.has_error());
 
   ASSERT_TRUE(Mock::VerifyAndClearExpectations(consensus_.get()));
@@ -693,7 +693,7 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
   request.mutable_preceding_id()->CopyFrom(MakeOpId(3, 9));
   request.mutable_committed_index()->CopyFrom(MakeOpId(3, 9));
 
-  ASSERT_OK(consensus_->Update(&request, &response));
+  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.has_error());
 }
 
@@ -727,7 +727,7 @@ TEST_F(RaftConsensusTest, TestResetRcvdFromCurrentLeaderOnNewTerm) {
   // Heartbeat. This will cause the term to increment on the follower.
   request = MakeConsensusRequest(caller_term, caller_uuid, preceding_opid);
   response.Clear();
-  ASSERT_OK(consensus_->Update(&request, &response));
+  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
   ASSERT_EQ(caller_term, response.responder_term());
   ASSERT_OPID_EQ(response.status().last_received(), MinimumOpId());
@@ -737,7 +737,7 @@ TEST_F(RaftConsensusTest, TestResetRcvdFromCurrentLeaderOnNewTerm) {
   OpId noop_opid = MakeOpId(caller_term, ++log_index);
   AddNoOpToConsensusRequest(&request, noop_opid);
   response.Clear();
-  ASSERT_OK(consensus_->Update(&request, &response));
+  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
   ASSERT_OPID_EQ(response.status().last_received(), noop_opid);
   ASSERT_OPID_EQ(response.status().last_received_current_leader(),  noop_opid);
@@ -750,7 +750,7 @@ TEST_F(RaftConsensusTest, TestResetRcvdFromCurrentLeaderOnNewTerm) {
   preceding_opid = noop_opid;
   request = MakeConsensusRequest(caller_term, caller_uuid, preceding_opid);
   response.Clear();
-  ASSERT_OK(consensus_->Update(&request, &response));
+  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
   ASSERT_EQ(caller_term, response.responder_term());
   ASSERT_OPID_EQ(response.status().last_received(), preceding_opid);
@@ -760,7 +760,7 @@ TEST_F(RaftConsensusTest, TestResetRcvdFromCurrentLeaderOnNewTerm) {
   noop_opid = MakeOpId(caller_term, ++log_index);
   AddNoOpToConsensusRequest(&request, noop_opid);
   response.Clear();
-  ASSERT_OK(consensus_->Update(&request, &response));
+  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
   ASSERT_OPID_EQ(response.status().last_received(), noop_opid);
   ASSERT_OPID_EQ(response.status().last_received_current_leader(), noop_opid);
@@ -771,7 +771,7 @@ TEST_F(RaftConsensusTest, TestResetRcvdFromCurrentLeaderOnNewTerm) {
   preceding_opid = MakeOpId(caller_term, log_index + 1); // Not replicated yet.
   request = MakeConsensusRequest(caller_term, caller_uuid, preceding_opid);
   response.Clear();
-  ASSERT_OK(consensus_->Update(&request, &response));
+  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
   ASSERT_EQ(caller_term, response.responder_term());
   ASSERT_OPID_EQ(response.status().last_received(), noop_opid); // Not preceding this time.
   ASSERT_OPID_EQ(response.status().last_received_current_leader(), MinimumOpId());
@@ -784,7 +784,7 @@ TEST_F(RaftConsensusTest, TestResetRcvdFromCurrentLeaderOnNewTerm) {
   request = MakeConsensusRequest(caller_term, caller_uuid, preceding_opid);
   AddNoOpToConsensusRequest(&request, noop_opid);
   response.Clear();
-  ASSERT_OK(consensus_->Update(&request, &response));
+  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
   ASSERT_OPID_EQ(response.status().last_received(), noop_opid) << response.ShortDebugString();
   ASSERT_OPID_EQ(response.status().last_received_current_leader(), noop_opid)
@@ -799,7 +799,7 @@ TEST_F(RaftConsensusTest, TestResetRcvdFromCurrentLeaderOnNewTerm) {
   request = MakeConsensusRequest(caller_term, caller_uuid, preceding_opid);
   AddNoOpToConsensusRequest(&request, noop_opid);
   response.Clear();
-  ASSERT_OK(consensus_->Update(&request, &response));
+  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
   ASSERT_EQ(caller_term, response.responder_term());
   ASSERT_OPID_EQ(response.status().last_received(), noop_opid);
