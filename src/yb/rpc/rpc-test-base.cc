@@ -67,6 +67,9 @@ MessengerBuilder CreateMessengerBuilder(const std::string& name,
                                         const MessengerOptions& options) {
   MessengerBuilder bld(name);
   bld.set_num_reactors(options.n_reactors);
+  if (options.num_connections_to_server >= 0) {
+    bld.set_num_connections_to_server(options.num_connections_to_server);
+  }
   static constexpr std::chrono::milliseconds kMinCoarseTimeGranularity(1);
   static constexpr std::chrono::milliseconds kMaxCoarseTimeGranularity(100);
   auto coarse_time_granularity = std::max(std::min(options.keep_alive_timeout,
@@ -106,6 +109,8 @@ void GenericCalculatorService::Handle(InboundCallPtr incoming) {
     DoAdd(incoming.get());
   } else if (incoming->method_name() == CalculatorServiceMethods::kSleepMethodName) {
     DoSleep(incoming.get());
+  } else if (incoming->method_name() == CalculatorServiceMethods::kEchoMethodName) {
+    DoEcho(incoming.get());
   } else if (incoming->method_name() == CalculatorServiceMethods::kSendStringsMethodName) {
     DoSendStrings(incoming.get());
   } else {
@@ -163,6 +168,21 @@ void GenericCalculatorService::DoSleep(InboundCall* incoming) {
   LOG(INFO) << "got call: " << req.ShortDebugString();
   SleepFor(MonoDelta::FromMicroseconds(req.sleep_micros()));
   SleepResponsePB resp;
+  down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
+}
+
+void GenericCalculatorService::DoEcho(InboundCall* incoming) {
+  Slice param(incoming->serialized_request());
+  EchoRequestPB req;
+  if (!req.ParseFromArray(param.data(), param.size())) {
+    incoming->RespondFailure(ErrorStatusPB::ERROR_INVALID_REQUEST,
+        STATUS(InvalidArgument, "Couldn't parse pb",
+            req.InitializationErrorString()));
+    return;
+  }
+
+  EchoResponsePB resp;
+  resp.set_data(std::move(*req.mutable_data()));
   down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
 }
 

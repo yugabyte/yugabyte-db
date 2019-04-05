@@ -122,11 +122,13 @@ class GenericCalculatorService : public ServiceIf {
   void DoAdd(InboundCall *incoming);
   void DoSendStrings(InboundCall* incoming);
   void DoSleep(InboundCall *incoming);
+  void DoEcho(InboundCall *incoming);
 };
 
 struct MessengerOptions {
   size_t n_reactors;
   std::chrono::milliseconds keep_alive_timeout;
+  int num_connections_to_server = -1;
 };
 
 extern const MessengerOptions kDefaultClientMessengerOptions;
