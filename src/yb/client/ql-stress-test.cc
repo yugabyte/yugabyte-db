@@ -19,6 +19,7 @@
 #include "yb/client/transaction.h"
 
 #include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/replica_state.h"
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -641,6 +642,45 @@ TEST_F_EX(QLStressTest, OldLeaderCatchUpAfterNetworkPartition, QLStressTestSingl
   LOG(INFO) << "Finish, last op id: " << finish_op_id << ", key: " << key;
   ASSERT_GT(finish_op_id.term, 1);
   ASSERT_GT(finish_op_id.index, key);
+}
+
+TEST_F_EX(QLStressTest, SlowUpdateConsensus, QLStressTestSingleTablet) {
+  std::atomic<bool> stop(false);
+  std::atomic<int> key(0);
+
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders);
+  ASSERT_EQ(peers.size(), 2);
+
+  down_cast<consensus::RaftConsensus*>(peers[0]->consensus())->TEST_DelayUpdate(20s);
+
+  std::thread writer([this, &stop, &key] {
+    auto session = NewSession();
+    std::string value_prefix = std::string(100_KB, 'X');
+    while (!stop.load(std::memory_order_acquire)) {
+      ASSERT_OK(WriteRow(session, key, value_prefix + std::to_string(key)));
+      std::this_thread::sleep_for(100ms);
+      ++key;
+    }
+  });
+
+  BOOST_SCOPE_EXIT(&stop, &writer) {
+    stop.store(true);
+    writer.join();
+  } BOOST_SCOPE_EXIT_END;
+
+  std::this_thread::sleep_for(30s);
+
+  down_cast<consensus::RaftConsensus*>(peers[0]->consensus())->TEST_DelayUpdate(0s);
+
+  int64_t max_peak_consumption = 0;
+  for (int i = 1; i <= cluster_->num_tablet_servers(); ++i) {
+    auto server_tracker = MemTracker::FindTracker(Format("server $0", i));
+    auto call_tracker = MemTracker::FindTracker("Call", server_tracker);
+    auto inbound_rpc_tracker = MemTracker::FindTracker("Inbound RPC", call_tracker);
+    max_peak_consumption = std::max(max_peak_consumption, inbound_rpc_tracker->peak_consumption());
+  }
+  LOG(INFO) << "Peak consumption: " << max_peak_consumption;
+  ASSERT_LE(max_peak_consumption, 150_MB);
 }
 
 } // namespace client

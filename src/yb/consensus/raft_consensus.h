@@ -151,7 +151,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   CHECKED_STATUS Update(
       ConsensusRequestPB* request,
-      ConsensusResponsePB* response) override;
+      ConsensusResponsePB* response,
+      CoarseTimePoint deadline) override;
 
   CHECKED_STATUS RequestVote(const VoteRequestPB* request,
                              VoteResponsePB* response) override;
@@ -228,14 +229,18 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   yb::OpId MinRetryableRequestOpId();
 
+  CHECKED_STATUS StartElection(const LeaderElectionData& data) override {
+    return DoStartElection(data, PreElected::kFalse);
+  }
+
   RetryableRequestsCounts TEST_CountRetryableRequests();
 
   void TEST_RejectMode(RejectMode value) {
     reject_mode_.store(value, std::memory_order_release);
   }
 
-  CHECKED_STATUS StartElection(const LeaderElectionData& data) override {
-    return DoStartElection(data, PreElected::kFalse);
+  void TEST_DelayUpdate(MonoDelta duration) {
+    TEST_delay_update_.store(duration, std::memory_order_release);
   }
 
  protected:
@@ -614,12 +619,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk_;
 
-  // TODO hack to serialize updates due to repeated/out-of-order messages
-  // should probably be refactored out.
-  //
   // Lock ordering note: If both this lock and the ReplicaState lock are to be
   // taken, this lock must be taken first.
-  mutable std::mutex update_lock_;
+  mutable std::timed_mutex update_mutex_;
 
   AtomicBool shutdown_;
 
@@ -648,6 +650,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   std::atomic<RejectMode> reject_mode_{RejectMode::kNone};
 
   CoarseTimePoint disable_pre_elections_until_ = CoarseTimePoint::min();
+
+  std::atomic<MonoDelta> TEST_delay_update_{MonoDelta::kZero};
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };

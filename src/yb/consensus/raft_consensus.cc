@@ -1135,7 +1135,8 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
 }
 
 Status RaftConsensus::Update(ConsensusRequestPB* request,
-                             ConsensusResponsePB* response) {
+                             ConsensusResponsePB* response,
+                             CoarseTimePoint deadline) {
   if (PREDICT_FALSE(FLAGS_follower_reject_update_consensus_requests)) {
     return STATUS(IllegalState, "Rejected: --follower_reject_update_consensus_requests "
                                 "is set to true.");
@@ -1169,7 +1170,13 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
   VLOG_WITH_PREFIX(2) << "Replica received request: " << request->ShortDebugString();
 
   // see var declaration
-  std::lock_guard<std::mutex> lock(update_lock_);
+  auto wait_start = CoarseMonoClock::now();
+  auto wait_duration = deadline - wait_start;
+  std::unique_lock<decltype(update_mutex_)> lock(update_mutex_, wait_duration);
+  if (!lock.owns_lock()) {
+    return STATUS_FORMAT(TimedOut, "Unable to lock update mutex for $0", wait_duration);
+  }
+
   Status s = UpdateReplica(request, response);
   if (PREDICT_FALSE(VLOG_IS_ON(1))) {
     if (request->ops_size() == 0) {
@@ -1178,6 +1185,11 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
     }
   }
   RETURN_NOT_OK(s);
+
+  auto delay = TEST_delay_update_.load(std::memory_order_acquire);
+  if (delay != MonoDelta::kZero) {
+    std::this_thread::sleep_for(delay.ToSteadyDuration());
+  }
 
   RETURN_NOT_OK(ExecuteHook(POST_UPDATE));
   return Status::OK();
@@ -1870,7 +1882,7 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // We must acquire the update lock in order to ensure that this vote action
   // takes place between requests.
   // Lock ordering: The update lock must be acquired before the ReplicaState lock.
-  std::unique_lock<std::mutex> update_guard(update_lock_, std::defer_lock);
+  std::unique_lock<decltype(update_mutex_)> update_guard(update_mutex_, std::defer_lock);
   if (FLAGS_enable_leader_failure_detection) {
     update_guard.try_lock();
   } else {
