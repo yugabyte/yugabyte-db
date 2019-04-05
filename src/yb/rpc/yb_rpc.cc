@@ -97,12 +97,12 @@ Result<ProcessDataResult> YBInboundConnectionContext::ProcessCalls(
     IoVecs data_copy(data);
     data_copy[0].iov_len -= kConnectionHeaderSize;
     data_copy[0].iov_base = const_cast<uint8_t*>(slice.data() + kConnectionHeaderSize);
-    auto result = VERIFY_RESULT(parser().Parse(connection, data_copy));
-    result.consumed += + kConnectionHeaderSize;
+    auto result = VERIFY_RESULT(parser().Parse(connection, data_copy, ReadBufferFull::kFalse));
+    result.consumed += kConnectionHeaderSize;
     return result;
   }
 
-  return parser().Parse(connection, data);
+  return parser().Parse(connection, data, read_buffer_full);
 }
 
 Status YBInboundConnectionContext::HandleCall(
@@ -158,11 +158,11 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
   TRACE_EVENT_FLOW_BEGIN0("rpc", "YBInboundCall", this);
   TRACE_EVENT0("rpc", "YBInboundCall::ParseFrom");
 
-  consumption_ = ScopedTrackedConsumption(mem_tracker, call_data->size());
-
-  request_data_ = std::move(*call_data);
-  Slice source(request_data_.data(), request_data_.size());
+  Slice source(call_data->data(), call_data->size());
   RETURN_NOT_OK(serialization::ParseYBMessage(source, &header_, &serialized_request_));
+
+  consumption_ = ScopedTrackedConsumption(mem_tracker, call_data->size());
+  request_data_ = std::move(*call_data);
 
   // Adopt the service/method info from the header as soon as it's available.
   if (PREDICT_FALSE(!header_.has_remote_method())) {
@@ -398,7 +398,7 @@ void YBOutboundConnectionContext::AssignConnection(const ConnectionPtr& connecti
 
 Result<ProcessDataResult> YBOutboundConnectionContext::ProcessCalls(
     const ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full) {
-  return parser().Parse(connection, data);
+  return parser().Parse(connection, data, read_buffer_full);
 }
 
 } // namespace rpc

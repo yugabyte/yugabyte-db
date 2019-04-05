@@ -142,6 +142,11 @@ class MessengerBuilder {
     return *this;
   }
 
+  MessengerBuilder& set_num_connections_to_server(int value) {
+    num_connections_to_server_ = value;
+    return *this;
+  }
+
   int num_connections_to_server() const {
     return num_connections_to_server_;
   }

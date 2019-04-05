@@ -253,7 +253,9 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // they can all consume 'bytes'. If this brings any of them over, none of them
   // are updated.
   // Returns true if the try succeeded.
-  bool TryConsume(int64_t bytes);
+  // In case of failure mem tracker that prevented consumption will be stored to
+  // blocking_mem_tracker.
+  bool TryConsume(int64_t bytes, MemTracker** blocking_mem_tracker = nullptr);
 
   // Decreases consumption of this tracker and its ancestors by 'bytes'.
   void Release(int64_t bytes);

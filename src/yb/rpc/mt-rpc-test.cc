@@ -285,6 +285,54 @@ TEST_F(MultiThreadedRpcTest, TestShutdownWithIncomingConnections) {
   }
 }
 
+TEST_F(MultiThreadedRpcTest, MemoryLimit) {
+  constexpr size_t kMemoryLimit = 1;
+  auto read_buffer_tracker = MemTracker::FindOrCreateTracker(kMemoryLimit, "Read Buffer");
+
+  // Set up server.
+  HostPort server_addr;
+  StartTestServer(&server_addr);
+
+  LOG(INFO) << "Server " << server_addr;
+
+  std::atomic<bool> stop(false);
+  MessengerOptions options;
+  options.n_reactors = 1;
+  options.num_connections_to_server = 1;
+  Proxy proxy_for_big(CreateMessenger("Client for big", options), server_addr);
+  Proxy proxy_for_small(CreateMessenger("Client for small", options), server_addr);
+
+  std::vector<std::thread> threads;
+  while (threads.size() != 10) {
+    bool big_call = threads.size() == 0;
+    auto proxy = big_call ? &proxy_for_big : &proxy_for_small;
+    threads.emplace_back([proxy, server_addr, &stop, big_call] {
+      rpc_test::EchoRequestPB req;
+      req.set_data(std::string(big_call ? 5_MB : 5_KB, 'X'));
+      while (!stop.load(std::memory_order_acquire)) {
+        rpc_test::EchoResponsePB resp;
+        RpcController controller;
+        controller.set_timeout(500ms);
+        auto status = proxy->SyncRequest(
+            CalculatorServiceMethods::EchoMethod(), req, &resp, &controller);
+        if (big_call) {
+          ASSERT_NOK(status);
+        } else {
+          ASSERT_OK(status);
+        }
+      }
+    });
+  }
+
+  std::this_thread::sleep_for(10s);
+
+  stop.store(true, std::memory_order_release);
+
+  for (auto& thread : threads) {
+    thread.join();
+  }
+}
+
 } // namespace rpc
 } // namespace yb
 
