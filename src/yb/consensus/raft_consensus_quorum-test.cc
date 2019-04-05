@@ -875,7 +875,7 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
 
   // Appending this message to peer0 should work and update
   // its 'last_received' to 'id'.
-  ASSERT_OK(follower->Update(&req, &resp));
+  ASSERT_OK(follower->Update(&req, &resp, CoarseBigDeadline()));
   ASSERT_TRUE(OpIdEquals(resp.status().last_received(), *id));
 
   // Now skip one message in the same term. The replica should
@@ -884,7 +884,7 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
   id->set_index(id->index() + 2);
   // Appending this message to peer0 should return a Status::OK
   // but should contain an error referring to the log matching property.
-  ASSERT_OK(follower->Update(&req, &resp));
+  ASSERT_OK(follower->Update(&req, &resp, CoarseBigDeadline()));
   ASSERT_TRUE(resp.has_status());
   ASSERT_TRUE(resp.status().has_error());
   ASSERT_EQ(resp.status().error().code(), ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH);
@@ -1001,7 +1001,7 @@ TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
   req.set_caller_uuid("peer-0");
   req.mutable_committed_index()->CopyFrom(last_op_id);
   ConsensusResponsePB res;
-  Status s = peer->Update(&req, &res);
+  Status s = peer->Update(&req, &res, CoarseBigDeadline());
   ASSERT_EQ(last_op_id.term() + 3, res.responder_term());
   ASSERT_TRUE(res.status().has_error());
   ASSERT_EQ(ConsensusErrorPB::INVALID_TERM, res.status().error().code());
