@@ -118,6 +118,10 @@ def parse_args():
         '--build-root',
         help='Root directory for build artifacts (not including Java). Added to test result files.',
         required=True)
+    parser.add_argument(
+        '--edition',
+        help='YugaByte DB edition',
+        required=True)
 
     return parser.parse_args()
 
@@ -127,6 +131,11 @@ def get_test_set(all_test_reports, predicate):
         (report["class_name"], report["test_name"])
         for report in all_test_reports if predicate(report)
     ]))
+
+
+def add_counters(dest, src):
+    for k in src:
+        dest[k] = dest.get(k, 0) + src[k]
 
 
 def aggregate_test_reports(args):
@@ -150,34 +159,41 @@ def aggregate_test_reports(args):
 
     logging.info("Collected %d test report files", len(all_test_reports))
 
-    total_errors = 0
-    total_failures = 0
-    total_skipped = 0
-    total_tests_run = 0
-
+    totals = {}
+    by_language = {}
     for test_report in all_test_reports:
-        total_errors += get_zero_one_counter(test_report, "num_errors")
-        total_failures += get_zero_one_counter(test_report, "num_failures")
+        tests_run_delta = 0
+        tests_skipped_delta = 0
         if is_test_skipped(test_report):
-            total_skipped += 1
+            tests_skipped_delta = 1
         else:
-            total_tests_run += 1
+            tests_run_delta = 1
+        deltas = {
+            "errors": get_zero_one_counter(test_report, "num_errors"),
+            "failures": get_zero_one_counter(test_report, "num_failures"),
+            "skipped": tests_skipped_delta,
+            "run": tests_run_delta,
+            "test_instances": 1
+        }
         if is_test_failure(test_report):
             failure_reports.append(test_report)
+        language = test_report["language"]
+        if language not in by_language:
+            by_language[language] = {}
+        add_counters(totals, deltas)
+        add_counters(by_language[language], deltas)
 
     top_level_details = {
-        "total_errors": total_errors,
-        "total_failures": total_failures,
-        "total_skipped": total_skipped,
-        "total_test_instances": len(all_test_reports),
-        "total_tests_run": total_tests_run,
+        "totals": totals,
+        "by_language": by_language,
         "aggregation_errors": errors,
         "build_type": args.build_type,
         "compiler_type": args.compiler_type,
         "build_root": os.path.relpath(
             os.path.realpath(args.build_root),
             os.path.realpath(args.yb_src_root)
-        )
+        ),
+        "edition": args.edition
     }
 
     failure_only_report = dict(top_level_details)
@@ -201,13 +217,7 @@ def aggregate_test_reports(args):
     with open(failure_only_output_path, 'w') as output_file:
         json.dump(failure_only_report, output_file, indent=2)
 
-    logging.info(
-        "Number of tests seen %d, run: %d, errors: %d, failures: %d, skipped: %d",
-        len(all_test_reports),
-        total_tests_run,
-        total_errors,
-        total_failures,
-        total_skipped)
+    logging.info("Stats:\n%s", json.dumps(top_level_details, indent=2))
 
 
 if __name__ == '__main__':

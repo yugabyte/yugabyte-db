@@ -39,7 +39,6 @@
 # May be relative or absolute.
 
 # Portions Copyright (c) YugaByte, Inc.
-
 set -euo pipefail
 readonly YB_COMPLETED_TEST_FLAG_DIR=/tmp/yb_completed_tests
 
