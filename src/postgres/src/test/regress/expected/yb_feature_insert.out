@@ -440,7 +440,7 @@ INSERT INTO feature_tab_dml VALUES(
 ERROR:  INSERT ON CONFLICT option not supported yet
 LINE 16:      ON CONFLICT DO UPDATE SET
               ^
-HINT:  Please contact YugaByte for its release schedule.
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 INSERT INTO feature_tab_dml_identifier VALUES(10, 'ten');
 --
 -- INSERT WITH OVERRIDING
