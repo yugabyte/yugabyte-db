@@ -51,7 +51,7 @@ CREATE TABLE tenk1 (
 ERROR:  WITH OIDS not supported yet
 LINE 18: ) WITH OIDS;
            ^
-HINT:  Please contact YugaByte for its release schedule.
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
 CREATE TABLE tenk2 (
 	unique1 	int4,
 	unique2 	int4,
@@ -82,21 +82,21 @@ CREATE TABLE emp (
 ERROR:  INHERITS not supported yet
 LINE 4: ) INHERITS (person) WITH OIDS;
           ^
-HINT:  Please contact YugaByte for its release schedule.
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
 CREATE TABLE student (
 	gpa 		float8
 ) INHERITS (person);
 ERROR:  INHERITS not supported yet
 LINE 3: ) INHERITS (person);
           ^
-HINT:  Please contact YugaByte for its release schedule.
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
 CREATE TABLE stud_emp (
 	percent 	int4
 ) INHERITS (emp, student);
 ERROR:  INHERITS not supported yet
 LINE 3: ) INHERITS (emp, student);
           ^
-HINT:  Please contact YugaByte for its release schedule.
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
 CREATE TABLE city (
 	name		name,
 	location 	box,
@@ -123,14 +123,14 @@ CREATE TABLE ihighway () INHERITS (road);
 ERROR:  INHERITS not supported yet
 LINE 1: CREATE TABLE ihighway () INHERITS (road);
                                  ^
-HINT:  Please contact YugaByte for its release schedule.
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
 CREATE TABLE shighway (
 	surface		text
 ) INHERITS (road);
 ERROR:  INHERITS not supported yet
 LINE 3: ) INHERITS (road);
           ^
-HINT:  Please contact YugaByte for its release schedule.
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
 CREATE TABLE real_city (
 	pop			int4,
 	cname		text,
