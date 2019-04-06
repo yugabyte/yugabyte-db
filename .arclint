@@ -5,7 +5,8 @@
      "(src/yb/common/ql_type.h$)",
      "(\\.sql$)",
      "(\\.txt$)",
-     "(^src/postgres/.*$)"
+     "(^src/postgres/.*$)",
+     "(^[.]gitmodules$)"
   ],
   "linters": {
     "text": {

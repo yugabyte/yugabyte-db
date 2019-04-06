@@ -2255,6 +2255,15 @@ set_java_home() {
   put_path_entry_first "$JAVA_HOME/bin"
 }
 
+update_submodules() {
+  # This does NOT create any new commits in the top-level repository (the "superproject").
+  #
+  # From documentation on "update" from https://git-scm.com/docs/git-submodule:
+  # Update the registered submodules to match what the superproject expects by cloning missing
+  # submodules and updating the working tree of the submodules
+  ( cd "$YB_SRC_ROOT"; git submodule update --init --recursive )
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------

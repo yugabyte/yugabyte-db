@@ -5,7 +5,7 @@
   "bin": ["bin/bulk_load_cleanup.sh",
           "bin/bulk_load_helper.sh",
           "bin/configure",
-          "bin/yb-ctl",
+          "submodules/yugabyte-installation/bin/yb-ctl",
           "bin/yb-prof.py",
           "$BUILD_ROOT/bin/log-dump",
           "$BUILD_ROOT/bin/sst_dump",

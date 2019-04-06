@@ -952,6 +952,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+update_submodules
 
 if [[ -n $YB_GTEST_FILTER && -z $cxx_test_name ]]; then
   test_name=${YB_GTEST_FILTER%%.*}
