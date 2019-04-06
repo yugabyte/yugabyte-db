@@ -494,11 +494,15 @@ log "ALL OF YUGABYTE C++ BUILD FINISHED"
 # -------------------------------------------------------------------------------------------------
 
 if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
-  (
-    set -x
-    "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
-      --build-root "$BUILD_ROOT" self-test --rebuild-graph
-  )
+  if ! ( set -x
+         "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
+           --build-root "$BUILD_ROOT" self-test --rebuild-graph ); then
+    # Trying to diagnose this error:
+    # https://gist.githubusercontent.com/mbautin/c5c6f14714f7655c10620d8e658e1f5b/raw
+    log "dependency_graph.py failed, listing all pb.{h,cc} files in the build directory"
+    ( set -x; find "$BUILD_ROOT" -name "*.pb.h" -or -name "*.pb.cc" )
+    fatal "Dependency graph construction failed"
+  fi
 fi
 
 # Save the current HEAD commit in case we build Java below and add a new commit. This is used for
@@ -724,7 +728,8 @@ find . -type f -name "*_test_report.json" | \
       --output-dir "$YB_SRC_ROOT" \
       --build-type "$build_type" \
       --compiler-type "$YB_COMPILER_TYPE" \
-      --build-root "$BUILD_ROOT"
+      --build-root "$BUILD_ROOT" \
+      --edition "$YB_EDITION"
 
 if [[ -n $FAILURES ]]; then
   heading "Failure summary"
