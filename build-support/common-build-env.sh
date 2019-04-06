@@ -854,6 +854,7 @@ append_common_mvn_opts() {
 # A utility function called by both 'build_yb_java_code' and 'build_yb_java_code_with_retries'.
 build_yb_java_code_filter_save_output() {
   set_mvn_parameters
+  log "Building Java code in $PWD"
 
   # --batch-mode hides download progress.
   # We are filtering out some patterns from Maven output, e.g.:

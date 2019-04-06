@@ -35,6 +35,28 @@ g_stop_requested = False
 g_signal_caught = None
 
 
+def get_cmdline(process):
+    try:
+        return process.cmdline()
+    except psutil.NoSuchProcess, e:
+        logging.warning("Newly added child process disappeared right away")
+    except psutil.AccessDenied, e:
+        logging.warning(
+            "Access denied trying to get the command line for pid %d (%s), "
+            "ignoring this process", process.pid, str(e))
+    except OSError, e:
+        logging.warning(
+            "OSError trying to get the command line for pid %d (%s), ignoring this process",
+            process.pid, str(e))
+
+
+def get_cmdline_for_log(process):
+    cmdline = get_cmdline(process)
+    if cmdline:
+        return cmdline
+    return '[failed to get cmdline for pid %d]' % process.pid
+
+
 def get_process_by_pid(pid):
     try:
         process = psutil.Process(pid)
@@ -109,20 +131,8 @@ class ProcessTreeSupervisor():
 
     def new_process_found(self, process):
         pid = process.pid
-        try:
-            cmdline = process.cmdline()
-        except psutil.NoSuchProcess, e:
-            logging.warning("Newly added child process disappeared right away")
-            return False
-        except psutil.AccessDenied, e:
-            logging.warning(
-                "Access denied trying to get the command line for pid %d (%s), "
-                "ignoring this process", pid, str(e))
-            return False
-        except OSError, e:
-            logging.warning(
-                "OSError trying to get the command line for pid %d (%s), ignoring this process",
-                pid, str(e))
+        cmdline = get_cmdline(process)
+        if not cmdline:
             return False
 
         logging.info("Tracking a child pid: %s: %s", pid, cmdline)
@@ -132,14 +142,11 @@ class ProcessTreeSupervisor():
             logging.info("Process finished by itself: %d", existing_pid)
 
     def report_stray_process(self, process, will_kill=False):
-        # YB_STRAY_PROCESS is something we'll grep for
-        try:
-            logging.info(
-                "YB_STRAY_PROCESS: Found a stray process%s: pid: %d, command line: %s",
-                (', killing' if will_kill else ', not killing'),
-                process.pid, process.cmdline())
-        except psutil.NoSuchProcess, e:
-            logging.warning("YB_STRAY_PROCESS: Stray process disappeared before we could kill it")
+        # YB_STRAY_PROCESS is something we'll grep for in an enclosing script.
+        logging.info(
+            "YB_STRAY_PROCESS: Found a stray process%s: pid: %d, command line: %s",
+            (', killing' if will_kill else ', not killing'),
+            process.pid, get_cmdline_for_log(process))
 
     def handle_termination(self):
         killed_pids = []
@@ -159,13 +166,8 @@ class ProcessTreeSupervisor():
             process = get_process_by_pid(killed_pid)
             if process is not None:
                 num_still_running += 1
-                try:
-                    logging.warning("Stray process still running: %d, cmd line: %s",
-                                    process.pid, process.cmdline())
-                except psutil.NoSuchProcess, e:
-                    # This is OK -- the process has disappeared while we were trying to get the
-                    # command line.
-                    pass
+                logging.warning("Stray process still running: %d, cmd line: %s",
+                                process.pid, get_cmdline_for_log(process))
 
         if killed_pids and num_still_running == 0:
             logging.info("All %d stray processes successfully killed", len(killed_pids))

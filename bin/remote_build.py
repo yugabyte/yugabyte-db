@@ -13,14 +13,17 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 #
+
 import argparse
 import os
 import shlex
 import subprocess
 import sys
 import time
+import json
 
 REMOTE_BUILD_HOST_ENV_VAR = 'YB_REMOTE_BUILD_HOST'
+DEFAULT_BASE_BRANCH = 'origin/master'
 
 
 def check_output(args):
@@ -108,6 +111,14 @@ def add_extra_ybd_args(ybd_args, extra_args):
     return ybd_args + extra_args
 
 
+def read_config_file():
+    conf_file_path = os.path.expanduser('~/.yb_remote_build.json')
+    if not os.path.exists(conf_file_path):
+        return None
+    with open(conf_file_path) as conf_file:
+        return json.load(conf_file)
+
+
 def main():
     parser = argparse.ArgumentParser(prog=sys.argv[0])
     parser.add_argument('--host', type=str, default=None,
@@ -116,19 +127,17 @@ def main():
     home = os.path.expanduser('~')
     cwd = os.getcwd()
     default_path = '~/{0}'.format(cwd[len(home) + 1:] if cwd.startswith(home) else 'code/yugabyte')
-    parser.add_argument('--remote-path',
-                        type=str,
-                        default=default_path,
-                        help='path used for build')
-    parser.add_argument('--branch', type=str, default='origin/master', help='base branch for build')
+
+    # Note: don't specify default arguments here, because they may come from the "profile".
+    parser.add_argument('--remote-path', type=str, help='path used for build')
+    parser.add_argument('--branch', type=str, help='base branch for build')
     parser.add_argument('--build-type', type=str, default=None, help='build type')
-    parser.add_argument('--skip-build',
-                        action='store_const',
-                        const=True,
-                        default=False,
+    parser.add_argument('--skip-build', action='store_true',
                         help='skip build, only sync files')
     parser.add_argument('--wait-for-ssh', action='store_true',
                         help='Wait for the remote server to be ssh-able')
+    parser.add_argument('--profile',
+                        help='Use a "profile" specified in the ~/.yb_remote_build.json file')
     parser.add_argument('args', nargs=argparse.REMAINDER, help='arguments for yb_build.sh')
 
     if len(sys.argv) >= 2 and sys.argv[1] in ['ybd', 'yb_build.sh']:
@@ -137,8 +146,41 @@ def main():
         sys.argv[1:2] = ['--']
     args = parser.parse_args()
 
+    conf = read_config_file()
+
+    if conf and not args.profile:
+        args.profile = conf.get("default_profile", args.profile)
+
+    if args.profile:
+        profiles = conf['profiles']
+        profile = profiles.get(args.profile)
+        if profile is None:
+            # Match profile using the remote host.
+            for profile_name_to_try in profiles:
+                if profiles[profile_name_to_try].get('host') == args.profile:
+                    profile = profiles[profile_name_to_try]
+                    break
+            if profile is None:
+                raise ValueError("Unknown profile '%s'" % args.profile)
+        for arg_name in ['host', 'remote_path', 'branch']:
+            if getattr(args, arg_name) is None:
+                setattr(args, arg_name, profile.get(arg_name))
+        args.args += profile.get('extra_args', [])
+
+    # ---------------------------------------------------------------------------------------------
+    # Default arguments go here.
+
     if args.host is None and REMOTE_BUILD_HOST_ENV_VAR in os.environ:
         args.host = os.environ[REMOTE_BUILD_HOST_ENV_VAR]
+
+    if args.branch is None:
+        args.branch = DEFAULT_BASE_BRANCH
+
+    if args.remote_path is None:
+        args.remote_path = default_path
+
+    # End of default arguments.
+    # ---------------------------------------------------------------------------------------------
 
     if args.host is None:
         sys.stderr.write(
@@ -151,7 +193,7 @@ def main():
     print("Host: {0}, build type: {1}, remote path: {2}".format(args.host,
                                                                 args.build_type or 'N/A',
                                                                 args.remote_path))
-
+    print("Arguments to remote yb_build.sh: {}".format(args.args))
     commit = check_output_line(['git', 'merge-base', args.branch, 'HEAD'])
     print("Base commit: {0}".format(commit))
 

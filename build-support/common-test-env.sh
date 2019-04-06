@@ -1391,8 +1391,8 @@ run_java_test() {
   ensure_directory_exists "$module_dir"
   local java_project_dir=${module_dir%/*}
   if [[ $java_project_dir != */java ]]; then
-    fatal "Something wrong: expected the Java module directory '$module_dir' to have the form of" \
-          ".../java/<module_name>. Trying to run test: $test_class_and_maybe_method"
+    fatal "Expected the Java module directory '$module_dir' to have the form of" \
+          ".../java/<module_name>. Trying to run test: $test_class_and_maybe_method."
   fi
 
   local test_method_name=""
@@ -1439,7 +1439,22 @@ run_java_test() {
   report_suffix=${report_suffix//[/_}
   report_suffix=${report_suffix//]/_}
 
-  local surefire_reports_dir=$module_dir/target/surefire-reports_${report_suffix}
+  local should_clean_test_dir=false
+  local surefire_reports_dir
+  if [[ -n ${YB_SUREFIRE_REPORTS_DIR:-} ]]; then
+    surefire_reports_dir=$YB_SUREFIRE_REPORTS_DIR
+  elif should_run_java_test_methods_separately; then
+    surefire_reports_dir=$module_dir/target/surefire-reports_${report_suffix}
+    if [[ -n $test_method_name ]]; then
+      # This report directory only has data for one test method (see how we come up with
+      # report_suffix above if test method name is defined ), so it is OK to clean it before running
+      # the test.
+      should_clean_test_dir=true
+    fi
+  fi
+  declare -r surefire_reports_dir
+  declare -r should_clean_test_dir
+
   unset report_suffix
 
   mvn_opts+=(
@@ -1456,13 +1471,6 @@ run_java_test() {
     fatal "Maven not found on PATH. PATH: $PATH"
   fi
 
-  local should_clean_test_dir=false
-  if [[ -n ${YB_SUREFIRE_REPORTS_DIR:-} ]]; then
-    surefire_reports_dir=$YB_SUREFIRE_REPORTS_DIR
-  elif should_run_java_test_methods_separately &&
-       [[ -d $surefire_reports_dir && -n $test_method_name ]]; then
-    should_clean_test_dir=true
-  fi
   local junit_xml_path=$surefire_reports_dir/TEST-$test_class.xml
   local log_files_path_prefix=$surefire_reports_dir/$test_class
   local test_log_path=$log_files_path_prefix-output.txt
@@ -1477,7 +1485,7 @@ run_java_test() {
 
   local attempts_left
   for attempts_left in {1..0}; do
-    if "$should_clean_test_dir"; then
+    if "$should_clean_test_dir" && [[ -d $surefire_reports_dir ]]; then
       log "Cleaning the existing contents of: $surefire_reports_dir"
       ( set -x; rm -f "$surefire_reports_dir"/* )
     fi
