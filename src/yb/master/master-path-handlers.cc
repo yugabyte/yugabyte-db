@@ -161,8 +161,7 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
           << "      <th>Server</th>\n"
           << "      <th>Time since </br>heartbeat</th>\n"
           << "      <th>Status & Uptime</th>\n"
-          << "      <th>User Tablets</br>(Total)</th>\n"
-          << "      <th>User Tablets</br>(Leaders)</th>\n"
+          << "      <th>User Tablets</br>Total / Leaders</th>\n"
           << "      <th>RAM Used</th>\n"
           << "      <th>SST Files Size</th>\n"
           << "      <th>Uncompressed SST </br>Files Size</th>\n"
@@ -171,8 +170,8 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
           << "      <th>Cloud</th>\n"
           << "      <th>Region</th>\n"
           << "      <th>Zone</th>\n"
-          << "      <th>System Tablets</br>(Total)</th>\n"
-          << "      <th>System Tablets</br>(Leaders)</th>\n"
+          << "      <th>System Tablets</br>Total / Leaders</th>\n"
+          << "      <th>Total Active Tablets</th>\n"
           << "    </tr>\n";
 }
 
@@ -218,20 +217,18 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
       *output << "  <td>" << RegistrationToHtml(reg.common(), host_port) << "</br>";
       *output << "  " << desc->permanent_uuid() << "</td>";
       *output << "<td>" << time_since_hb << "</td>";
-      bool is_dead = false;
       if (master_->ts_manager()->IsTSLive(desc)) {
         *output << "    <td style=\"color:Green\">" << kTserverAlive << ":" <<
                 UptimeString(desc->uptime_seconds()) << "</td>";
       } else {
-        is_dead = true;
         *output << "    <td style=\"color:Red\">" << kTserverDead << "</td>";
       }
 
       auto tserver = tablet_map->find(desc->permanent_uuid());
-      bool no_tablets = tserver == tablet_map->end() || is_dead;
+      bool no_tablets = tserver == tablet_map->end();
       *output << "    <td>" << (no_tablets ? 0
-        : tserver->second.user_tablet_leaders + tserver->second.user_tablet_followers) << "</td>";
-      *output << "    <td>" << (no_tablets ? 0 : tserver->second.user_tablet_leaders) << "</td>";
+              : tserver->second.user_tablet_leaders + tserver->second.user_tablet_followers)
+              << " / " << (no_tablets ? 0 : tserver->second.user_tablet_leaders) << "</td>";
       *output << "    <td>" << BytesToHumanReadable(desc->total_memory_usage()) << "</td>";
       *output << "    <td>" << BytesToHumanReadable(desc->total_sst_file_size()) << "</td>";
       *output << "    <td>" << BytesToHumanReadable(desc->uncompressed_sst_file_size()) << "</td>";
@@ -241,9 +238,9 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
       *output << "    <td>" << reg.common().cloud_info().placement_region() << "</td>";
       *output << "    <td>" << reg.common().cloud_info().placement_zone() << "</td>";
       *output << "    <td>" << (no_tablets ? 0
-        : tserver->second.system_tablet_leaders + tserver->second.system_tablet_followers)
-        << "</td>";
-      *output << "    <td>" << (no_tablets ? 0 : tserver->second.system_tablet_leaders) << "</td>";
+              : tserver->second.system_tablet_leaders + tserver->second.system_tablet_followers)
+              << " / " << (no_tablets ? 0 : tserver->second.system_tablet_leaders) << "</td>";
+      *output << "    <td>" << (no_tablets ? 0 : desc->num_live_replicas()) << "</td>";
       *output << "  </tr>\n";
     }
   }
