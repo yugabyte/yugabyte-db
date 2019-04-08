@@ -126,8 +126,10 @@ usage(unsigned short int pager)
 	fprintf(output, _("\nConnection options:\n"));
 	/* Display default host */
 	env = getenv("PGHOST");
+	/* YugaByte use localhost instead of local socket */
 	fprintf(output, _("  -h, --host=HOSTNAME      database server host or socket directory (default: \"%s\")\n"),
-			env ? env : _("local socket"));
+			env ? env : "localhost");
+	/* YugaByte end */
 	/* Display default port */
 	env = getenv("PGPORT");
 	fprintf(output, _("  -p, --port=PORT          database server port (default: \"%s\")\n"),

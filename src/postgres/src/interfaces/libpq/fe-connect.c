@@ -1043,6 +1043,11 @@ connectOptions2(PGconn *conn)
 		{
 			if (ch->host)
 				free(ch->host);
+
+/* YugaByte use localhost instead of local socket */
+#pragma push_macro("HAVE_UNIX_SOCKETS")
+#undef HAVE_UNIX_SOCKETS
+
 #ifdef HAVE_UNIX_SOCKETS
 			ch->host = strdup(DEFAULT_PGSOCKET_DIR);
 			ch->type = CHT_UNIX_SOCKET;
@@ -1050,6 +1055,10 @@ connectOptions2(PGconn *conn)
 			ch->host = strdup(DefaultHost);
 			ch->type = CHT_HOST_NAME;
 #endif
+
+#pragma pop_macro("HAVE_UNIX_SOCKETS")
+/* YugaByte end */
+
 			if (ch->host == NULL)
 				goto oom_error;
 		}
