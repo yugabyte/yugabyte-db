@@ -37,6 +37,9 @@
 #include <regex>
 #include <sstream>
 
+#include <boost/scope_exit.hpp>
+
+#include <glog/logging.h>
 #include <glog/stl_logging.h>
 
 #include "yb/gutil/ref_counted.h"
@@ -45,8 +48,12 @@
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
+#include "yb/util/debug/long_operation_tracker.h"
+
 using std::string;
 using std::vector;
+
+using namespace std::literals;
 
 namespace yb {
 
@@ -252,5 +259,49 @@ TEST_F(DebugUtilTest, TestConcurrentStackTrace) {
   }
 }
 #endif
+
+TEST_F(DebugUtilTest, LongOperationTracker) {
+  struct TestLogSink : public google::LogSink {
+    void send(google::LogSeverity severity, const char* full_filename,
+              const char* base_filename, int line,
+              const struct ::tm* tm_time,
+              const char* message, size_t message_len) override {
+      log_messages.emplace_back(message, message_len);
+    }
+
+    std::vector<std::string> log_messages;
+  };
+
+  const auto kTimeMultiplier = RegularBuildVsSanitizers(1, 10);
+
+  const auto kShortDuration = 100ms * kTimeMultiplier;
+  const auto kMidDuration = 300ms * kTimeMultiplier;
+  const auto kLongDuration = 500ms * kTimeMultiplier;
+  TestLogSink log_sink;
+  google::AddLogSink(&log_sink);
+  BOOST_SCOPE_EXIT(&log_sink) {
+    google::RemoveLogSink(&log_sink);
+  } BOOST_SCOPE_EXIT_END;
+
+  {
+    LongOperationTracker tracker("Op1", kLongDuration);
+    std::this_thread::sleep_for(kShortDuration);
+  }
+  {
+    LongOperationTracker tracker("Op2", kShortDuration);
+    std::this_thread::sleep_for(kLongDuration);
+  }
+  {
+    LongOperationTracker tracker1("Op3", kLongDuration);
+    LongOperationTracker tracker2("Op4", kShortDuration);
+    std::this_thread::sleep_for(kMidDuration);
+  }
+
+  std::this_thread::sleep_for(kLongDuration);
+
+  ASSERT_EQ(log_sink.log_messages.size(), 2);
+  ASSERT_STR_CONTAINS(log_sink.log_messages[0], "Op2");
+  ASSERT_STR_CONTAINS(log_sink.log_messages[1], "Op4");
+}
 
 } // namespace yb
